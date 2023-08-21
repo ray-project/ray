@@ -128,10 +128,10 @@ class BreastCancerTrainable(Trainable):
         path = os.path.join(checkpoint_dir, "checkpoint")
         with open(path, "wb") as outputFile:
             pickle.dump((self.config, self.nthread, self.model.save_raw()), outputFile)
-        return path
 
-    def load_checkpoint(self, checkpoint_path):
-        with open(checkpoint_path, "rb") as inputFile:
+    def load_checkpoint(self, checkpoint_dir):
+        path = os.path.join(checkpoint_dir, "checkpoint")
+        with open(path, "rb") as inputFile:
             self.config, self.nthread, raw_model = pickle.load(inputFile)
         self.model = Booster()
         self.model.load_model(bytearray(raw_model))

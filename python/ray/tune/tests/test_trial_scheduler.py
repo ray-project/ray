@@ -1669,10 +1669,10 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 path = os.path.join(checkpoint_dir, "checkpoint")
                 with open(path, "w") as f:
                     f.write(json.dumps({"iter": self.iter, "replayed": self.replayed}))
-                return path
 
-            def load_checkpoint(self, checkpoint_path):
-                with open(checkpoint_path) as f:
+            def load_checkpoint(self, checkpoint_dir):
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "r") as f:
                     checkpoint_json = json.loads(f.read())
                     self.iter = checkpoint_json["iter"]
                     self.replayed = checkpoint_json["replayed"]
@@ -1841,10 +1841,10 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 path = os.path.join(checkpoint_dir, "checkpoint")
                 with open(path, "w") as f:
                     f.write(json.dumps({"iter": self.iter, "replayed": self.replayed}))
-                return path
 
-            def load_checkpoint(self, checkpoint_path):
-                with open(checkpoint_path) as f:
+            def load_checkpoint(self, checkpoint_dir):
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "r") as f:
                     checkpoint_json = json.loads(f.read())
                     self.iter = checkpoint_json["iter"]
                     self.replayed = checkpoint_json["replayed"]
@@ -2026,7 +2026,6 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
                 checkpoint = os.path.join(path, "checkpoint")
                 with open(checkpoint, "w") as f:
                     f.write("OK")
-                return checkpoint
 
             def reset_config(self, config):
                 return True
