@@ -22,7 +22,6 @@ import React, { useEffect, useState } from "react";
 import { getEvents } from "../service/event";
 import { Event } from "../type/event";
 import { useFilter } from "../util/hook";
-import { MOCK_DATA } from "./EventTableMockData";
 import { StatusChip } from "./StatusChip";
 
 export enum SeverityLevel {
@@ -203,11 +202,6 @@ const useEventTable = (props: EventTableProps) => {
     };
     getEvent();
   }, [filters]);
-
-  useEffect(() => {
-    setEvents(MOCK_DATA.data.events["64000000"] as any);
-    setLoading(false);
-  }, [events]);
 
   const realLen = events.filter(filterFunc).length;
   useEffect(() => {

@@ -458,7 +458,31 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS, "1")
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 
-    def filterEvents(events, severity_levels, source_types, count=200, **params):
+
+    def filter_events(
+        events: Dict[str, Dict[str, dict]],
+        severity_levels: list,
+        source_type: str,
+        custom_field: dict,
+        count: int,
+    ) -> Dict[str, dict]:
+        filtered_events = {}
+        for job_id, job_events in events.items():
+            filtered_job_events = []
+            for event_id, event in job_events.items():
+                if (
+                    event["severity"] in severity_levels
+                    and event["source_type"] == source_type
+                    and custom_field.items() <= event["custom_fields"].items()
+                ):
+                    filtered_job_events.append(event)
+
+            filtered_job_events.sort(key=lambda x: x["timestamp"], reverse=True)
+            filtered_events[job_id] = filtered_job_events[:count]
+
+        return filtered_events
+
+    def filterEvents(events, severity_levels, source_types, count=200, job_id,  **params):
         filtered_events = []
 
         # Apply filter 1: severity_level and source_type
@@ -500,8 +524,11 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         rest_of_query = {
             key: value for key, value in req.query.items() if key not in excluded_keys
         }
-        assert len(rest_of_query) <= 1, "At most 1 filter key is allowed"
-
+        all_events = await self._client.get_all_cluster_events()
+        for _, events in all_events.items():
+            for _, event in events.items():
+                event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
+                result.append(event)
         return await self._handle_list_api(
             self._state_api.list_cluster_events(req=req), req
         )
