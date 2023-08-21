@@ -182,7 +182,7 @@ def input_blocks_to_batches(
     if first is None:
         return []
     blocks = itertools.chain([first], block_iter)
-    empty_block = BlockAccessor.for_block(first).slice(0, 0, copy=True)
+    empty_block = BlockAccessor.for_block(first).builder().build()
     # Don't hold the first block in memory, so we reset the reference.
     first = None
 
