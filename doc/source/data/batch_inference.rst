@@ -420,6 +420,9 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
     predictions.show(limit=1)
 
 
+.. _batch_inference_ray_train:
+
+
 Using models from Ray Train
 ---------------------------
 
