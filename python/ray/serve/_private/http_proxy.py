@@ -7,7 +7,7 @@ import logging
 import pickle
 import socket
 import time
-from typing import Callable, Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Type
 import uuid
 
 import uvicorn
@@ -35,10 +35,10 @@ from ray.serve._private.http_util import (
     validate_http_proxy_callback_return,
 )
 from ray.serve._private.common import (
-    ApplicationName,
     EndpointInfo,
     EndpointTag,
     NodeId,
+    RequestProtocol,
     StreamingHTTPRequest,
 )
 from ray.serve._private.constants import (
@@ -59,6 +59,10 @@ from ray.serve._private.logging_utils import (
     configure_component_cpu_profiler,
     configure_component_memory_profiler,
     get_component_logger_file_path,
+)
+from ray.serve._private.proxy_router import (
+    LongestPrefixRouter,
+    ProxyRouter,
 )
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
@@ -108,111 +112,12 @@ MAX_BACKOFF_PERIOD_SEC = 5
 BACKOFF_FACTOR = 2
 
 
-class LongestPrefixRouter:
-    """Router that performs longest prefix matches on incoming routes."""
-
-    def __init__(self, get_handle: Callable):
-        # Function to get a handle given a name. Used to mock for testing.
-        self._get_handle = get_handle
-        # Routes sorted in order of decreasing length.
-        self.sorted_routes: List[str] = list()
-        # Endpoints associated with the routes.
-        self.route_info: Dict[str, EndpointTag] = dict()
-        # Contains a ServeHandle for each endpoint.
-        self.handles: Dict[EndpointTag, RayServeHandle] = dict()
-        # Map of application name to is_cross_language.
-        self.app_to_is_cross_language: Dict[ApplicationName, bool] = dict()
-
-    def endpoint_exists(self, endpoint: EndpointTag) -> bool:
-        return endpoint in self.handles
-
-    def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
-        logger.info(
-            f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
-        )
-
-        existing_handles = set(self.handles.keys())
-        routes = []
-        route_info = {}
-        app_to_is_cross_language = {}
-        for endpoint, info in endpoints.items():
-            routes.append(info.route)
-            route_info[info.route] = endpoint
-            app_to_is_cross_language[endpoint.app] = info.app_is_cross_language
-            if endpoint in self.handles:
-                existing_handles.remove(endpoint)
-            else:
-                self.handles[endpoint] = self._get_handle(
-                    endpoint.name, endpoint.app
-                ).options(
-                    # Streaming codepath isn't supported for Java.
-                    stream=(
-                        RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
-                        and not info.app_is_cross_language
-                    ),
-                )
-
-        # Clean up any handles that are no longer used.
-        if len(existing_handles) > 0:
-            logger.info(
-                f"Deleting {len(existing_handles)} unused handles.",
-                extra={"log_to_stderr": False},
-            )
-        for endpoint in existing_handles:
-            del self.handles[endpoint]
-
-        # Routes are sorted in order of decreasing length to enable longest
-        # prefix matching.
-        self.sorted_routes = sorted(routes, key=lambda x: len(x), reverse=True)
-        self.route_info = route_info
-        self.app_to_is_cross_language = app_to_is_cross_language
-
-    def match_route(
-        self, target_route: str
-    ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
-        """Return the longest prefix match among existing routes for the route.
-
-        Args:
-            target_route: route to match against.
-
-        Returns:
-            (route, handle, app_name, is_cross_language) if found, else None.
-        """
-
-        for route in self.sorted_routes:
-            if target_route.startswith(route):
-                matched = False
-                # If the route we matched on ends in a '/', then so does the
-                # target route and this must be a match.
-                if route.endswith("/"):
-                    matched = True
-                # If the route we matched on doesn't end in a '/', we need to
-                # do another check to ensure that either this is an exact match
-                # or the next character in the target route is a '/'. This is
-                # to guard against the scenario where we have '/route' as a
-                # prefix and there's a request to '/routesuffix'. In this case,
-                # it should *not* be a match.
-                elif len(target_route) == len(route) or target_route[len(route)] == "/":
-                    matched = True
-
-                if matched:
-                    endpoint = self.route_info[route]
-                    return (
-                        route,
-                        self.handles[endpoint],
-                        endpoint.app,
-                        self.app_to_is_cross_language[endpoint.app],
-                    )
-
-        return None
-
-
 class GenericProxy(ABC):
     """This class is served as the base class for different types of proxies.
     It contains all the common setup and methods required for running a proxy.
 
     The proxy subclass need to implement the following methods:
-      - `proxy_name()`
+      - `protocol()`
       - `not_found()`
       - `draining_response()`
       - `timeout_response()`
@@ -228,6 +133,7 @@ class GenericProxy(ABC):
         controller_name: str,
         node_id: NodeId,
         node_ip_address: str,
+        proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
     ):
         self.request_timeout_s = request_timeout_s
@@ -260,10 +166,9 @@ class GenericProxy(ABC):
                 app_name,
                 sync=False,
                 missing_ok=True,
-                _is_for_http_requests=True,
             )
 
-        self.prefix_router = LongestPrefixRouter(get_handle)
+        self.proxy_router = proxy_router_class(get_handle)
         self.long_poll_client = LongPollClient(
             ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
@@ -272,14 +177,14 @@ class GenericProxy(ABC):
             call_in_event_loop=get_or_create_event_loop(),
         )
         self.request_counter = metrics.Counter(
-            f"serve_num_{self.proxy_name.lower()}_requests",
-            description=f"The number of {self.proxy_name} requests processed.",
+            f"serve_num_{self.protocol.lower()}_requests",
+            description=f"The number of {self.protocol} requests processed.",
             tag_keys=("route", "method", "application", "status_code"),
         )
 
         self.request_error_counter = metrics.Counter(
-            f"serve_num_{self.proxy_name.lower()}_error_requests",
-            description=f"The number of non-200 {self.proxy_name} responses.",
+            f"serve_num_{self.protocol.lower()}_error_requests",
+            description=f"The number of non-200 {self.protocol} responses.",
             tag_keys=(
                 "route",
                 "error_code",
@@ -288,9 +193,9 @@ class GenericProxy(ABC):
         )
 
         self.deployment_request_error_counter = metrics.Counter(
-            f"serve_num_deployment_{self.proxy_name.lower()}_error_requests",
+            f"serve_num_deployment_{self.protocol.lower()}_error_requests",
             description=(
-                f"The number of non-200 {self.proxy_name} responses returned by "
+                f"The number of non-200 {self.protocol} responses returned by "
                 "each deployment."
             ),
             tag_keys=(
@@ -303,10 +208,10 @@ class GenericProxy(ABC):
         )
 
         self.processing_latency_tracker = metrics.Histogram(
-            f"serve_{self.proxy_name.lower()}_request_latency_ms",
+            f"serve_{self.protocol.lower()}_request_latency_ms",
             description=(
-                f"The end-to-end latency of {self.proxy_name} requests "
-                f"(measured from the Serve {self.proxy_name} proxy)."
+                f"The end-to-end latency of {self.protocol} requests "
+                f"(measured from the Serve {self.protocol} proxy)."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=(
@@ -338,8 +243,8 @@ class GenericProxy(ABC):
 
     @property
     @abstractmethod
-    def proxy_name(self) -> str:
-        """Proxy name used for metrics.
+    def protocol(self) -> RequestProtocol:
+        """Protocol used for metrics.
 
         Each proxy needs to implement its own logic for setting up the proxy name.
         """
@@ -355,7 +260,7 @@ class GenericProxy(ABC):
             route = info.route
             self.route_info[route] = endpoint
 
-        self.prefix_router.update_routes(endpoints)
+        self.proxy_router.update_routes(endpoints)
 
     def is_drained(self):
         """Check whether the proxy actor is drained or not.
@@ -477,7 +382,9 @@ class GenericProxy(ABC):
         try:
             self._ongoing_requests_start()
 
-            matched_route = self.prefix_router.match_route(route_path)
+            matched_route = None
+            if self.protocol == RequestProtocol.HTTP:
+                matched_route = self.proxy_router.match_route(route_path)
             if matched_route is None:
                 self.request_error_counter.inc(
                     tags={
@@ -594,21 +501,24 @@ class GenericProxy(ABC):
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
-        assignment_task = handle.remote(
+        result_gen = handle.remote(
             StreamingHTTPRequest(pickle.dumps(scope), self.self_actor_handle)
         )
+        to_object_ref_gen = asyncio.ensure_future(
+            result_gen._to_object_ref_gen(_record_telemetry=False)
+        )
         done, _ = await asyncio.wait(
-            [assignment_task, disconnected_task],
+            [to_object_ref_gen, disconnected_task],
             return_when=FIRST_COMPLETED,
             timeout=timeout_s,
         )
-        if assignment_task in done:
-            return assignment_task.result()
+        if to_object_ref_gen in done:
+            return to_object_ref_gen.result()
         elif disconnected_task in done:
-            assignment_task.cancel()
+            result_gen.cancel()
             return None
         else:
-            assignment_task.cancel()
+            result_gen.cancel()
             raise TimeoutError()
 
     @abstractmethod
@@ -667,8 +577,8 @@ class HTTPProxy(GenericProxy):
     """
 
     @property
-    def proxy_name(self) -> str:
-        return "HTTP"
+    def protocol(self) -> RequestProtocol:
+        return RequestProtocol.HTTP
 
     async def not_found(self, scope, receive, send):
         current_path = scope["path"]
@@ -743,10 +653,13 @@ class HTTPProxy(GenericProxy):
         # call might never arrive; if it does, it can only be `http.disconnect`.
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
             should_backoff = False
-            assignment_task: asyncio.Task = handle.remote(request)
+            result_ref = handle.remote(request)
             client_disconnection_task = loop.create_task(receive())
             done, _ = await asyncio.wait(
-                [assignment_task, client_disconnection_task],
+                [
+                    result_ref._to_object_ref(_record_telemetry=False),
+                    client_disconnection_task,
+                ],
                 return_when=FIRST_COMPLETED,
             )
             if client_disconnection_task in done:
@@ -760,14 +673,11 @@ class HTTPProxy(GenericProxy):
                     "request.",
                     extra={"log_to_stderr": False},
                 )
-                # This will make the .result() to raise cancelled error.
-                assignment_task.cancel()
+                result_ref.cancel()
             else:
                 client_disconnection_task.cancel()
 
             try:
-                object_ref = await assignment_task
-
                 # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
                 # some replicas crash simultaneously (e.g. if the head node crashes),
                 # requests to the dead replicas hang until the gcs recovers.
@@ -776,7 +686,7 @@ class HTTPProxy(GenericProxy):
                 # check if latency drops significantly. See
                 # https://github.com/ray-project/ray/pull/29534 for more info.
                 _, request_timed_out = await asyncio.wait(
-                    [object_ref], timeout=self.request_timeout_s
+                    [result_ref], timeout=self.request_timeout_s
                 )
                 if request_timed_out:
                     logger.info(
@@ -787,7 +697,7 @@ class HTTPProxy(GenericProxy):
                     )
                     should_backoff = True
                 else:
-                    result = await object_ref
+                    result = await result_ref
                     break
             except asyncio.CancelledError:
                 # Here because the client disconnected, we will return a custom
@@ -911,6 +821,7 @@ class HTTPProxy(GenericProxy):
         Unpack HTTP request headers and extract info to set up request context and
         handle.
         """
+        handle._set_request_protocol(RequestProtocol.HTTP)
         request_context_info = {
             "route": route_path,
             "app_name": app_name,
@@ -1024,7 +935,6 @@ class RequestIdMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-
         headers = MutableHeaders(scope=scope)
         if RAY_SERVE_REQUEST_ID_HEADER not in headers and "x-request-id" not in headers:
             # If X-Request-ID and RAY_SERVE_REQUEST_ID_HEADER are both not set, we
@@ -1114,6 +1024,7 @@ class HTTPProxyActor:
             controller_name=controller_name,
             node_id=node_id,
             node_ip_address=node_ip_address,
+            proxy_router_class=LongestPrefixRouter,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             ),
