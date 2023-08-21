@@ -8,10 +8,10 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
+    BuildOutputBlocksMapTransformFn,
     MapTransformer,
     MapTransformFn,
     MapTransformFnDataType,
-    blocks_to_output_blocks,
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data.block import Block, BlockAccessor
@@ -82,7 +82,7 @@ def _generate_output_transform_fn(
     if additional_split_factor is None:
         # If additional_split_factor is None, we build output blocks from the
         # output blocks of the read tasks.
-        return blocks_to_output_blocks
+        return BuildOutputBlocksMapTransformFn.for_blocks()
     else:
         # If additional_split_factor is not None, we do additional splits to the
         # output blocks of the read tasks.
