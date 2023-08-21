@@ -3,7 +3,7 @@
 Working with Tensors
 ====================
 
-N-dimensional arrays (that is, tensors) are ubiquitous in ML workloads. This guide
+N-dimensional arrays (in other words, tensors) are ubiquitous in ML workloads. This guide
 describes the limitations and best practices of working with such data.
 
 Tensor data representation

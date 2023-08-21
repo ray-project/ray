@@ -75,7 +75,7 @@ swap:
   synch: sync
   tablename: table name
   tablet: device
-  touch: tap
+  # touch: tap  # We rarely use touch in the sense of "tap" in our docs.
   url: URL
   vs\.: versus
   World Wide Web: web

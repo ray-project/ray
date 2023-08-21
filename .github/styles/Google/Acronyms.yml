@@ -1,7 +1,7 @@
 extends: conditional
 message: "Spell out '%s', if it's unfamiliar to the audience."
 link: 'https://developers.google.com/style/abbreviations'
-level: suggestion
+level: warning
 ignorecase: false
 # Ensures that the existence of 'first' implies the existence of 'second'.
 first: '\b([A-Z]{3,5})\b'
@@ -10,13 +10,16 @@ second: '(?:\b[A-Z][a-z]+ )+\(([A-Z]{3,5})\)'
 exceptions:
   - API
   - ASP
+  - AWS
   - CLI
   - CPU
   - CSS
   - CSV
+  - CUDA
   - DEBUG
   - DOM
   - DPI
+  - ETL
   - FAQ
   - GCC
   - GDB
@@ -30,16 +33,19 @@ exceptions:
   - IDE
   - JAR
   - JSON
+  - JSONL
   - JSX
   - LESS
   - LLDB
   - NET
+  - NFS
   - NOTE
   - NVDA
   - OSS
   - PATH
   - PDF
   - PHP
+  - PNG
   - POST
   - RAM
   - REPL

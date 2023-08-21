@@ -340,7 +340,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 Configuring Batch Size
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Configure the size of the input batch that is passed to ``__call__`` by setting the ``batch_size`` argument for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
+Configure the size of the input batch that's passed to ``__call__`` by setting the ``batch_size`` argument for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
 
 Increasing batch size results in faster execution because inference is a vectorized operation. For GPU inference, increasing batch size increases GPU utilization. Set the batch size to as large possible without running out of memory. If you encounter out-of-memory errors, decreasing ``batch_size`` may help.
 
@@ -464,7 +464,7 @@ Models that have been trained with :ref:`Ray Train <train-docs>` can then be use
 
 **Step 3:** Use Ray Data for batch inference. To load in the model from the :class:`Checkpoint <ray.train.Checkpoint>` inside the Python class, use one of the framework-specific Checkpoint classes.
 
-In this case, we use the :class:`XGBoostCheckpoint <ray.train.xgboost.XGBoostCheckpoint>` to load the model.
+In this case, use :class:`XGBoostCheckpoint <ray.train.xgboost.XGBoostCheckpoint>` to load the model.
 
 The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
 

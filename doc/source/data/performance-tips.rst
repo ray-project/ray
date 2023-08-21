@@ -26,10 +26,10 @@ Tuning read parallelism
 By default, Ray Data automatically selects the read ``parallelism`` according to the following procedure:
 
 1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster.
-2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it is set to 8.
+2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it's set to 8.
 3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
 
-Occasionally, it is advantageous to manually tune the parallelism to optimize the application. This can be done when loading data via the ``parallelism`` parameter.
+Occasionally, it's advantageous to manually tune the parallelism to optimize the application. This can be done when loading data via the ``parallelism`` parameter.
 For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
 
 Tuning read resources
@@ -101,7 +101,7 @@ Enabling push-based shuffle
 Some Dataset operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
 These operations include :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`,
 :meth:`Dataset.sort <ray.data.Dataset.sort>` and :meth:`Dataset.groupby <ray.data.Dataset.groupby>`.
-Shuffle can be challenging to scale to large data sizes and clusters, especially when the total dataset size cannot fit into memory.
+Shuffle can be challenging to scale to large data sizes and clusters, especially when the total dataset size can't fit into memory.
 
 Datasets provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
 Try this out if your dataset has more than 1000 blocks or is larger than 1 TB in size.

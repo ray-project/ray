@@ -242,7 +242,7 @@ Finally, call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
     {'class': 296}
 
 For more information on performing inference, see
-:ref:`End-to-end: Offline Batch Inference <batch_inference_home>`
+:ref:`End-to-end: offline batch inference <batch_inference_home>`
 and :ref:`Transforming batches with actors <transforming_data_actors>`.
 
 .. _saving_images:
@@ -250,7 +250,7 @@ and :ref:`Transforming batches with actors <transforming_data_actors>`.
 Saving images
 -------------
 
-Save images with formats like PNG, Parquet, and Numpy. To view all supported formats,
+Save images with formats like PNG, Parquet, and NumPy. To view all supported formats,
 see the :ref:`Input/Output reference <input-output>`.
 
 .. tab-set::

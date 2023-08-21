@@ -1,13 +1,10 @@
 extends: existence
 message: "'%s' should have one space."
 link: 'https://developers.google.com/style/sentence-spacing'
-level: error
+level: warning
 nonword: true
 action:
   name: remove
-# FIXME: This rule complains about Sphinx directives like
-# ":class:`Dataset <ray.data.Dataset>`".
 tokens:
-  - '^(?!a)b$'  # This regex is impossible to match.
-  # - '[a-z][.?!] {2,}[A-Z]'
-  # - '[a-z][.?!][A-Z]'
+  - '[a-z][.?!] {2,}[A-Z]'
+  - '[a-z][.?!][A-Z]'

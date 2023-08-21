@@ -15,6 +15,8 @@ This guide shows you how to:
 Reading text files
 ------------------
 
+Food: Spam ham eggs.
+
 Ray Data can read lines of text and JSONL. Alternatively, you can read raw binary
 files and manually decode data.
 
