@@ -163,11 +163,17 @@ def _download_from_fs_path(
         _local_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
+        # Note that use_threads=True is safe for download, just not for uploads, see:
+        # https://github.com/apache/arrow/issues/32372
         if filelock:
             with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
-                _pyarrow_fs_copy_files(fs_path, local_path, source_filesystem=fs)
+                _pyarrow_fs_copy_files(
+                    fs_path, local_path, source_filesystem=fs, use_threads=True
+                )
         else:
-            _pyarrow_fs_copy_files(fs_path, local_path, source_filesystem=fs)
+            _pyarrow_fs_copy_files(
+                fs_path, local_path, source_filesystem=fs, use_threads=True
+            )
     except Exception as e:
         # Clean up the directory if downloading was unsuccessful
         if not exists_before:
