@@ -20,3 +20,4 @@ forge_dirs:
   - ci/forge
 env:
   BUILDKITE_BAZEL_CACHE_URL: https://bk-premerge-first-jawfish-artifacts.s3.us-west-2.amazonaws.com/bazel/cache/runtime
+  RAYCI_SKIP_UPLOAD: "true"
