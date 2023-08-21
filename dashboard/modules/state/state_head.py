@@ -460,16 +460,26 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 
     def filter_events(self, events, severity_levels, source_types, **params):
+        logger.info(f"severity_levels {type(severity_levels)}: {severity_levels}")
         filtered_events = []
 
         # If custom field parameters are provided, extract them
         entity_name, entity_id = list(params.items())[0] if params else (None, None)
+        logger.info(f"entity_id {type(entity_id)}: {entity_id}")
+        logger.info(f"entity_name {type(entity_name)}: {entity_name}")
 
         for event in events:
+            logger.info(f"event {type(event)}: {event}")
+            logger.info(
+                f'event["severity"] {type(event["severity"])}: {event["severity"]}'
+            )
+
             # Filter 1: severity_level and source_type
-            if (severity_levels and event["severity_level"] not in severity_levels) or (
-                source_types and event["source_type"] not in source_types
-            ):
+            if severity_levels and event["severity"] not in severity_levels:
+                ## [debug] ERROR
+                logger.info("continue")
+                continue
+            if source_types and event["source_type"] not in source_types:
                 continue
 
             # Filter 2: custom_fields matching entity parameters (if provided)
@@ -500,8 +510,10 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
 
         job_id = req.query.get("job_id", None)
-        source_types = req.query.getall("sourceType", [])
-        severity_levels = req.query.getall("severityLevel", [])
+        source_types = [s.capitalize() for s in req.query.getall("sourceType", [])]
+        severity_levels = [
+            s.capitalize() for s in req.query.getall("severityLevel", [])
+        ]
         count = int(req.query.get("count", 200))
 
         # Filtering out specified keys from the query parameters
@@ -513,6 +525,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         all_events = await self._state_api_data_source_client.get_all_events_as_list(
             job_id
         )
+        logger.info(f"all_events {type(all_events)}: {all_events}")
 
         self.filter_events(all_events, severity_levels, source_types, **rest_of_query)
 
@@ -522,7 +535,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         return self._reply(
             success=True,
             error_message="",
-            result=asdict(all_events),
+            result=all_events,
         )
 
     @routes.get("/api/v0/logs")
