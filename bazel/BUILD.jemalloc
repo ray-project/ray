@@ -11,8 +11,9 @@ configure_make(
     autogen = True,
     configure_in_place = True,
     lib_source = ":all",
+    linkopts = ["-ldl"],
     args = ["-j"],
     configure_options = ["--disable-shared", "--enable-prof", "--enable-prof-libunwind"],
     visibility = ["//visibility:public"],
-    deps = [""],
+    deps = ["@libunwind//:libunwind"],
 )
