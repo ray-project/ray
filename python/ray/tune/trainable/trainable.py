@@ -12,6 +12,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Type
 
 import ray
+import ray.cloudpickle as ray_pickle
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
@@ -24,11 +25,9 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
     TRAINING_ITERATION,
 )
-from ray.train._internal.storage import (
-    _use_storage_context,
-    StorageContext,
-    init_shared_storage_context,
-)
+from ray.train._internal.checkpoint_manager import _TrainingResult
+from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -67,6 +66,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
+
+# File containing dict data returned by user from `Trainable.save_checkpoint`
+_DICT_CHECKPOINT_FILE_NAME = "_dict_checkpoint.pkl"
 
 
 @PublicAPI
@@ -172,6 +174,14 @@ class Trainable:
 
         self._start_time = time.time()
         self._local_ip = ray.util.get_node_ip_address()
+
+        self._storage = storage
+
+        if _use_storage_context():
+            assert storage
+            assert storage.trial_fs_path
+            logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
+
         self.setup(copy.deepcopy(self.config))
         setup_time = time.time() - self._start_time
         if setup_time > SETUP_TIME_THRESHOLD:
@@ -183,18 +193,6 @@ class Trainable:
             )
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
-
-        self._storage = storage
-
-        if _use_storage_context():
-            assert storage
-            assert storage.trial_fs_path
-            logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
-            storage._check_validation_file()
-
-            # Set a globally accessible storage context on the remote Trainable process
-            # This is accessible from the training loop thread for FunctionTrainable's
-            init_shared_storage_context(storage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
         # If no sync_config is provided, but we save to a remote_checkpoint_dir,
@@ -469,6 +467,12 @@ class Trainable:
     def _create_checkpoint_dir(
         self, checkpoint_dir: Optional[str] = None
     ) -> Optional[str]:
+        if _use_storage_context():
+            # NOTE: There's no need to supply the checkpoint directory inside
+            # the local trial dir, since it'll get persisted to the right location.
+            checkpoint_dir = tempfile.mkdtemp()
+            return checkpoint_dir
+
         # Create checkpoint_xxxxx directory and drop checkpoint marker
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             checkpoint_dir or self.logdir, index=self.iteration, override=True
@@ -501,6 +505,46 @@ class Trainable:
         # User saves checkpoint
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
 
+        if _use_storage_context():
+            if not isinstance(self, ray.tune.trainable.FunctionTrainable):
+                # TODO(justinvyu): [cls_trainable_support]
+                # This is to get class Trainables to work in the new persistence mode.
+                # Need to handle checkpoint_dict_or_path == path, dict, or None
+                # Also need to upload to cloud, since `train.report` never gets called.
+                if isinstance(checkpoint_dict_or_path, dict):
+                    with open(
+                        os.path.join(checkpoint_dir, _DICT_CHECKPOINT_FILE_NAME), "wb"
+                    ) as f:
+                        ray_pickle.dump(checkpoint_dict_or_path, f)
+                elif isinstance(checkpoint_dict_or_path, str):
+                    if checkpoint_dict_or_path != checkpoint_dir:
+                        raise ValueError(
+                            "The returned checkpoint path from `save_checkpoint` "
+                            "must be None or the same as the provided path argument."
+                        )
+
+                local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
+                persisted_checkpoint = self._storage.persist_current_checkpoint(
+                    local_checkpoint
+                )
+                # The checkpoint index needs to be incremented.
+                # NOTE: This is no longer using "iteration" as the folder indexing
+                # to be consistent with fn trainables.
+                self._storage.current_checkpoint_index += 1
+
+                checkpoint_result = _TrainingResult(
+                    checkpoint=persisted_checkpoint, metrics=self._last_result.copy()
+                )
+
+            else:
+                checkpoint_result: _TrainingResult = checkpoint_dict_or_path
+                assert self._last_result
+                # Update the checkpoint result to include auto-filled metrics.
+                checkpoint_result.metrics.update(self._last_result)
+
+            assert isinstance(checkpoint_result, _TrainingResult)
+            return checkpoint_result
+
         if checkpoint_dict_or_path is None:
             # checkpoint_dict_or_path can only be None in class trainables.
             # In that case the default is to use the root checkpoint directory.
@@ -510,7 +554,7 @@ class Trainable:
             # checkpoint_dir is only None in function trainables. In that case,
             # checkpoint_dict_or_path points to the already saved checkpoint dir.
             # This will be considered the root dir.
-            assert isinstance(checkpoint_dict_or_path, str)
+            assert isinstance(checkpoint_dict_or_path, str), checkpoint_dict_or_path
             checkpoint_dir = checkpoint_dict_or_path
 
         # Get trainable metadata
@@ -857,6 +901,49 @@ class Trainable:
                 could not be found.
 
         """
+        if _use_storage_context():
+            checkpoint_result = checkpoint_path
+            assert isinstance(checkpoint_result, _TrainingResult)
+
+            checkpoint_metrics = checkpoint_result.metrics
+            self._iteration = checkpoint_metrics[TRAINING_ITERATION]
+            self._time_total = checkpoint_metrics[TIME_TOTAL_S]
+            self._time_since_restore = 0.0
+            self._iterations_since_restore = 0
+
+            # TODO(justinvyu): This stuff should be moved to rllib.
+            self._timesteps_total = checkpoint_metrics.get(TIMESTEPS_TOTAL)
+            self._timesteps_since_restore = 0
+            self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
+
+            # TODO(justinvyu): [cls_trainable_support]
+            # This is to conform to the public class Trainable `load_checkpoint` API.
+            if not isinstance(self, ray.tune.trainable.FunctionTrainable):
+                # Need to convert Checkpoint -> local path or dict
+                # (depending on what the output of save_checkpoint was)
+                with checkpoint_result.checkpoint.as_directory() as checkpoint_dir:
+                    checkpoint_path = Path(checkpoint_dir)
+                    dict_checkpoint_file = checkpoint_path / _DICT_CHECKPOINT_FILE_NAME
+                    if dict_checkpoint_file.exists():
+                        # If this was a dict checkpoint, load it as a dict
+                        with open(dict_checkpoint_file, "rb") as f:
+                            checkpoint_dict = ray_pickle.load(f)
+                        self.load_checkpoint(checkpoint_dict)
+                    else:
+                        self.load_checkpoint(checkpoint_dir)
+            else:
+                # TODO(justinvyu): The Function Trainable case doesn't conform
+                # to the load_checkpoint API at the moment.
+                self.load_checkpoint(checkpoint_result)
+
+            self._restored = True
+
+            logger.info(
+                f"Restored on {self._local_ip} from checkpoint: "
+                f"{checkpoint_result.checkpoint}"
+            )
+            return True
+
         # Ensure Checkpoints are converted
         if isinstance(checkpoint_path, Checkpoint):
             return self._restore_from_checkpoint_obj(checkpoint_path)
@@ -1020,17 +1107,23 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(self, new_config, logger_creator=None, remote_checkpoint_dir=None):
+    def reset(
+        self, new_config, logger_creator=None, remote_checkpoint_dir=None, storage=None
+    ):
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
         reset actor behavior for the new config."""
+
+        # TODO(justinvyu): remote_checkpoint_dir can be removed.
         # Save artifacts one last time, if this actor has been swapped to a
         # different trial.
         if remote_checkpoint_dir != self.remote_checkpoint_dir:
             self._maybe_save_artifacts_to_cloud()
 
         self.config = new_config
+
+        self._storage = storage
 
         trial_info = new_config.pop(TRIAL_INFO, None)
         if trial_info:
@@ -1116,14 +1209,14 @@ class Trainable:
     def _open_logfiles(self, stdout_file, stderr_file):
         """Create loggers. Open stdout and stderr logfiles."""
         if stdout_file:
-            stdout_path = os.path.expanduser(os.path.join(self._logdir, stdout_file))
+            stdout_path = (Path(self._logdir) / stdout_file).expanduser().as_posix()
             self._stdout_fp = open(stdout_path, "a+")
             self._stdout_stream = Tee(sys.stdout, self._stdout_fp)
             self._stdout_context = redirect_stdout(self._stdout_stream)
             self._stdout_context.__enter__()
 
         if stderr_file:
-            stderr_path = os.path.expanduser(os.path.join(self._logdir, stderr_file))
+            stderr_path = (Path(self._logdir) / stderr_file).expanduser().as_posix()
             self._stderr_fp = open(stderr_path, "a+")
             self._stderr_stream = Tee(sys.stderr, self._stderr_fp)
             self._stderr_context = redirect_stderr(self._stderr_stream)

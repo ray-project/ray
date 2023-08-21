@@ -229,7 +229,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options, GetWorkerID());
 
-  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+  RAY_CHECK_OK(gcs_client_->Connect(io_service_, options_.cluster_id));
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
   // Initialize the task state event buffer.
@@ -947,6 +947,10 @@ void CoreWorker::ExitIfParentRayletDies() {
   if (should_shutdown) {
     RAY_LOG(WARNING) << "Shutting down the core worker because the local raylet failed. "
                      << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
+
+    // Kill child procs so that child processes of the workers do not outlive the workers.
+    KillChildProcs();
+
     QuickExit();
   }
 }
@@ -1429,6 +1433,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
       missing_result = true;
     }
   }
+
   // If no timeout was set and none of the results will throw an exception,
   // then check that we fetched all results before returning.
   if (timeout_ms < 0 && !will_throw_exception) {
@@ -2475,11 +2480,10 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const size_t &data_size,
                                         const std::shared_ptr<Buffer> &metadata,
                                         const std::vector<ObjectID> &contained_object_ids,
+                                        const rpc::Address &caller_address,
                                         int64_t *task_output_inlined_bytes,
                                         std::shared_ptr<RayObject> *return_object) {
-  rpc::Address owner_address(options_.is_local_mode
-                                 ? rpc::Address()
-                                 : worker_context_.GetCurrentTask()->CallerAddress());
+  rpc::Address owner_address(options_.is_local_mode ? rpc::Address() : caller_address);
 
   bool object_already_exists = false;
   std::shared_ptr<Buffer> data_buffer;
@@ -2664,7 +2668,8 @@ Status CoreWorker::ExecuteTask(
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
       /*is_reattempt=*/task_spec.AttemptNumber() > 0,
-      /*is_streaming_generator*/ task_spec.IsStreamingGenerator());
+      /*is_streaming_generator*/ task_spec.IsStreamingGenerator(),
+      /*retry_exception*/ task_spec.ShouldRetryExceptions());
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2739,16 +2744,17 @@ Status CoreWorker::ExecuteTask(
 
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
                                     std::shared_ptr<RayObject> return_object,
-                                    const ObjectID &generator_id) {
+                                    const ObjectID &generator_id,
+                                    const rpc::Address &caller_address) {
   RAY_LOG(DEBUG) << "Sealing return object " << return_id;
   Status status = Status::OK();
   RAY_CHECK(return_object);
   RAY_CHECK(!options_.is_local_mode);
-  std::unique_ptr<rpc::Address> caller_address =
-      std::make_unique<rpc::Address>(worker_context_.GetCurrentTask()->CallerAddress());
+  std::unique_ptr<rpc::Address> caller_address_ptr =
+      std::make_unique<rpc::Address>(caller_address);
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
     status = SealExisting(
-        return_id, /*pin_object=*/true, generator_id, std::move(caller_address));
+        return_id, /*pin_object=*/true, generator_id, std::move(caller_address_ptr));
     if (!status.ok()) {
       RAY_LOG(FATAL) << "Failed to seal object " << return_id
                      << " in store: " << status.message();

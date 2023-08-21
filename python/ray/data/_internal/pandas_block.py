@@ -17,6 +17,7 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.util import find_partitions
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -346,41 +347,17 @@ class PandasBlockAccessor(TableBlockAccessor):
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List[Block]:
-        columns, ascending = sort_key.to_pandas_sort_args()
-        if len(columns) > 1:
-            raise NotImplementedError(
-                "Sorting by multiple columns is not supported yet"
-            )
         if self._table.shape[0] == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.
             return [self._empty_table() for _ in range(len(boundaries) + 1)]
 
-        col = columns[0]
-        table = self._table.sort_values(by=col, ascending=ascending)
+        columns, ascending = sort_key.to_pandas_sort_args()
+        table = self._table.sort_values(by=columns, ascending=ascending)
         if len(boundaries) == 0:
             return [table]
 
-        partitions = []
-        # For each boundary value, count the number of items that are less
-        # than it. Since the block is sorted, these counts partition the items
-        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
-        # partition[i]. If `descending` is true, `boundaries` would also be
-        # in descending order and we only need to count the number of items
-        # *greater than* the boundary value instead.
-        if not ascending:
-            num_rows = len(table[col])
-            bounds = num_rows - table[col].searchsorted(
-                boundaries, sorter=np.arange(num_rows - 1, -1, -1)
-            )
-        else:
-            bounds = table[col].searchsorted(boundaries)
-        last_idx = 0
-        for idx in bounds:
-            partitions.append(table[last_idx:idx])
-            last_idx = idx
-        partitions.append(table[last_idx:])
-        return partitions
+        return find_partitions(table, boundaries, sort_key)
 
     def combine(self, key: str, aggs: Tuple["AggregateFn"]) -> "pandas.DataFrame":
         """Combine rows with the same key into an accumulator.

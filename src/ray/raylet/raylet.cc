@@ -87,7 +87,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
   self_node_info_.set_node_manager_hostname(boost::asio::ip::host_name());
   self_node_info_.set_metrics_export_port(metrics_export_port);
-  auto resource_map = node_manager_config.resource_config.ToResourceMap();
+  self_node_info_.set_runtime_env_agent_port(node_manager_config.runtime_env_agent_port);
+  auto resource_map = node_manager_config.resource_config.GetResourceMap();
   self_node_info_.mutable_resources_total()->insert(resource_map.begin(),
                                                     resource_map.end());
   self_node_info_.set_start_time_ms(current_sys_time_ms());

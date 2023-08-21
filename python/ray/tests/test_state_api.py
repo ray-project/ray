@@ -11,7 +11,7 @@ import pytest
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.state.common import Humanify
-from ray._private.gcs_utils import GcsAioClient
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
 import yaml
 from click.testing import CliRunner
 
@@ -25,6 +25,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
     async_wait_for_condition_async_predicate,
+    find_free_port,
 )
 from ray.cluster_utils import cluster_not_supported
 from ray._raylet import NodeID
@@ -156,8 +157,11 @@ def state_api_manager_e2e(ray_start_with_dashboard):
     address_info = ray_start_with_dashboard
     gcs_address = address_info["gcs_address"]
     gcs_aio_client = GcsAioClient(address=gcs_address)
-    gcs_channel = gcs_aio_client.channel.channel()
-    state_api_data_source_client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
+    gcs_channel.connect()
+    state_api_data_source_client = StateDataSourceClient(
+        gcs_channel.channel(), gcs_aio_client
+    )
     manager = StateAPIManager(state_api_data_source_client)
 
     yield manager
@@ -1317,8 +1321,12 @@ async def test_api_manager_list_objects(state_api_manager):
 @pytest.mark.asyncio
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    data_source_client.get_all_registered_agent_ids = MagicMock()
-    data_source_client.get_all_registered_agent_ids.return_value = ["1", "2", "3"]
+    data_source_client.get_all_registered_runtime_env_agent_ids = MagicMock()
+    data_source_client.get_all_registered_runtime_env_agent_ids.return_value = [
+        "1",
+        "2",
+        "3",
+    ]
 
     data_source_client.get_runtime_envs_info = AsyncMock()
     data_source_client.get_runtime_envs_info.side_effect = [
@@ -1500,10 +1508,10 @@ Integration tests
 async def test_state_data_source_client(ray_start_cluster):
     cluster = ray_start_cluster
     # head
-    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2, dashboard_agent_listen_port=find_free_port())
     ray.init(address=cluster.address)
     # worker
-    worker = cluster.add_node(num_cpus=2)
+    worker = cluster.add_node(num_cpus=2, dashboard_agent_listen_port=find_free_port())
 
     client = state_source_client(cluster.address)
 
@@ -1563,7 +1571,8 @@ async def test_state_data_source_client(ray_start_cluster):
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
+        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
         result = await client.get_task_info(node_id)
         assert isinstance(result, GetTasksInfoReply)
 
@@ -1581,7 +1590,8 @@ async def test_state_data_source_client(ray_start_cluster):
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
+        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
         result = await client.get_object_info(node_id)
         assert isinstance(result, GetObjectsInfoReply)
 
@@ -1724,7 +1734,8 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
+        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
 
     """
     Test tasks

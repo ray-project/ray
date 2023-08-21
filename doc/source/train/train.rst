@@ -24,8 +24,8 @@ Intro to Ray Train
 for common machine learning frameworks such as XGBoost, Pytorch, and Tensorflow.
 There are three broad categories of Trainers that Train offers:
 
-* :ref:`Deep Learning Trainers <train-dl-guide>` (Pytorch, Tensorflow, Horovod)
-* :ref:`Tree-based Trainers <train-gbdt-guide>` (XGboost, LightGBM)
+* Deep Learning Trainers (:doc:`PyTorch </train/getting-started-pytorch>`, :doc:`TensorFlow </train/distributed-tensorflow-keras>`, :doc:`Horovod </train/horovod>`)
+* :doc:`Tree-based Trainers </train/distributed-xgboost-lightgbm>` (XGboost, LightGBM)
 * Other ML frameworks (HuggingFace, Scikit-Learn, RLlib)
 
 **Built for ML practitioners**: Train supports standard ML tools and features that practitioners love:
@@ -42,90 +42,12 @@ There are three broad categories of Trainers that Train offers:
 * Leverage the :ref:`Ray cluster launcher <cluster-index>` to launch autoscaling or spot instance clusters on any cloud.
 
 
-Quick Start to Distributed Training with Ray Train
---------------------------------------------------
-
-.. tab-set::
-
-    .. tab-item:: XGBoost
-
-        .. literalinclude:: doc_code/gbdt_user_guide.py
-           :language: python
-           :start-after: __xgboost_start__
-           :end-before: __xgboost_end__
-
-    .. tab-item:: LightGBM
-
-        .. literalinclude:: doc_code/gbdt_user_guide.py
-           :language: python
-           :start-after: __lightgbm_start__
-           :end-before: __lightgbm_end__
-
-    .. tab-item:: Pytorch
-
-       .. literalinclude:: /ray-air/doc_code/torch_trainer.py
-          :language: python
-
-    .. tab-item:: Tensorflow
-
-       .. literalinclude:: /ray-air/doc_code/tf_starter.py
-          :language: python
-          :start-after: __air_tf_train_start__
-          :end-before: __air_tf_train_end__
-
-    .. tab-item:: Horovod
-
-       .. literalinclude:: /ray-air/doc_code/hvd_trainer.py
-          :language: python
-
-.. _train-framework-catalog:
-
-Training Framework Catalog
---------------------------
-
-Here is a catalog of the framework-specific Trainer, Checkpoint, and Predictor
-classes that ship out of the box with Train:
-
-.. list-table::
-
-    * - **Trainer Class**
-      - **Checkpoint Class**
-      - **Predictor Class**
-    * - :class:`TorchTrainer <ray.train.torch.TorchTrainer>`
-      - :class:`TorchCheckpoint <ray.train.torch.TorchCheckpoint>`
-      - :class:`TorchPredictor <ray.train.torch.TorchPredictor>`
-    * - :class:`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>`
-      - :class:`TensorflowCheckpoint <ray.train.tensorflow.TensorflowCheckpoint>`
-      - :class:`TensorflowPredictor <ray.train.tensorflow.TensorflowPredictor>`
-    * - :class:`HorovodTrainer <ray.train.horovod.HorovodTrainer>`
-      - (Torch/TF Checkpoint)
-      - (Torch/TF Predictor)
-    * - :class:`XGBoostTrainer <ray.train.xgboost.XGBoostTrainer>`
-      - :class:`XGBoostCheckpoint <ray.train.xgboost.XGBoostCheckpoint>`
-      - :class:`XGBoostPredictor <ray.train.xgboost.XGBoostPredictor>`
-    * - :class:`LightGBMTrainer <ray.train.lightgbm.LightGBMTrainer>`
-      - :class:`LightGBMCheckpoint <ray.train.lightgbm.LightGBMCheckpoint>`
-      - :class:`LightGBMPredictor <ray.train.lightgbm.LightGBMPredictor>`
-    * - :class:`SklearnTrainer <ray.train.sklearn.SklearnTrainer>`
-      - :class:`SklearnCheckpoint <ray.train.sklearn.SklearnCheckpoint>`
-      - :class:`SklearnPredictor <ray.train.sklearn.SklearnPredictor>`
-    * - :class:`TransformersTrainer <ray.train.huggingface.TransformersTrainer>`
-      - :class:`TransformersCheckpoint <ray.train.huggingface.TransformersCheckpoint>`
-      - :class:`TransformersPredictor <ray.train.huggingface.TransformersPredictor>`
-    * - :class:`LightningTrainer <ray.train.lightning.LightningTrainer>`
-      - :class:`LightningCheckpoint <ray.train.lightning.LightningCheckpoint>`
-      - :class:`LightningPredictor <ray.train.lightning.LightningPredictor>`
-    * - :class:`RLTrainer <ray.train.rl.RLTrainer>`
-      - :class:`RLCheckpoint <ray.train.rl.RLCheckpoint>`
-      - :class:`RLPredictor <ray.train.rl.RLPredictor>`
-
-
 Next steps
 ----------
 
-* :ref:`Getting Started <train-getting-started>`
 * :ref:`Key Concepts for Ray Train <train-key-concepts>`
-* :ref:`User Guide for Deep Learning Trainers <train-dl-guide>`
-* :ref:`User Guide for Tree-Based Trainers <train-gbdt-guide>`
+* :doc:`User Guide for distributed PyTorch </train/getting-started-pytorch>`
+* :doc:`User Guide for distributed TensorFlow </train/distributed-tensorflow-keras>`
+* :doc:`User Guide for Tree-Based Trainers </train/distributed-xgboost-lightgbm>`
 
 .. include:: /_includes/train/announcement_bottom.rst

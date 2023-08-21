@@ -9,7 +9,6 @@ import unittest
 import pytest
 
 import ray
-import ray.cloudpickle as ray_pickle
 from ray import train, tune
 from ray.train import (
     Checkpoint,
@@ -26,7 +25,7 @@ from ray.air._internal.remote_storage import (
 )
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune import Callback, Trainable
-from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
+from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
 from ray.tune.result_grid import ResultGrid
 from ray.tune.schedulers.async_hyperband import ASHAScheduler
@@ -1174,18 +1173,6 @@ def testParamSpaceOverwrite(ray_start_4_cpus, tmp_path, monkeypatch):
         # Make sure that test and test2 are updated.
         assert r.config["test"].name in ["8", "9", "10"]
         assert r.config["test2"].name in ["11", "12", "13", "14"]
-
-
-def test_tuner_pkl_backwards_compatibility(tmp_path, propagate_logs, caplog):
-    tuner_internal = Tuner(
-        _train_fn_sometimes_failing, param_space={"a": 1}
-    )._local_tuner
-    with open(tmp_path / "tuner.pkl", "wb") as f:
-        ray_pickle.dump(tuner_internal, f)
-
-    with caplog.at_level(logging.WARNING, "ray.tune.impl.tuner_internal"):
-        tuner_internal._load_tuner_state(tmp_path / "tuner.pkl")
-        assert "run with an older version of Ray" in caplog.text
 
 
 if __name__ == "__main__":

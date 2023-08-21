@@ -41,6 +41,9 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
+const codeTextStyle = {
+  fontFamily: "Roboto Mono, monospace",
+};
 const columns = [
   { label: "" }, // Expand button
   { label: "Host / Worker Process name" },
@@ -101,6 +104,19 @@ const columns = [
   },
   { label: "Sent" },
   { label: "Received" },
+  {
+    label: "Logical Resources",
+    helpInfo: (
+      <Typography>
+        <a href="https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#physical-resources-and-logical-resources">
+          Logical resources usage
+        </a>{" "}
+        (e.g., CPU, memory) for a node. Alternatively, you can run the CLI
+        command <p style={codeTextStyle}>ray status -v </p>
+        to obtain a similar result.
+      </Typography>
+    ),
+  },
 ];
 
 export const brpcLinkChanger = (href: string) => {

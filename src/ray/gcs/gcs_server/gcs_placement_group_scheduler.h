@@ -21,7 +21,6 @@
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -287,8 +286,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       const GcsNodeManager &gcs_node_manager,
       ClusterResourceScheduler &cluster_resource_scheduler,
-      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-      gcs_syncer::RaySyncer *ray_syncer);
+      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   virtual ~GcsPlacementGroupScheduler() = default;
 
@@ -492,10 +490,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// The nodes which are releasing unused bundles.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
-
-  /// The syncer of resource. This is used to report placement group updates.
-  /// TODO (iycheng): Remove this one from pg once we finish the refactor
-  gcs_syncer::RaySyncer *ray_syncer_;
 
   /// The resources changed listeners.
   std::vector<std::function<void()>> resources_changed_listeners_;

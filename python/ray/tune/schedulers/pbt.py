@@ -5,11 +5,11 @@ import math
 import os
 import random
 import shutil
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from pathlib import Path
+from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.air.constants import TRAINING_ITERATION
-from ray.tune.execution import trial_runner
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search import SearchGenerator
@@ -20,6 +20,9 @@ from ray.tune.search.variant_generator import format_vars
 from ray.tune.experiment import Trial
 from ray.util import PublicAPI
 from ray.util.debug import log_once
+
+if TYPE_CHECKING:
+    from ray.tune.execution.tune_controller import TuneController
 
 logger = logging.getLogger(__name__)
 
@@ -445,14 +448,14 @@ class PopulationBasedTraining(FIFOScheduler):
 
         return True
 
-    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
-        if trial_runner.search_alg is not None and isinstance(
-            trial_runner.search_alg, SearchGenerator
+    def on_trial_add(self, tune_controller: "TuneController", trial: Trial):
+        if tune_controller.search_alg is not None and isinstance(
+            tune_controller.search_alg, SearchGenerator
         ):
             raise ValueError(
                 "Search algorithms cannot be used with {} "
                 "schedulers. Please remove {}.".format(
-                    self.__class__.__name__, trial_runner.search_alg
+                    self.__class__.__name__, tune_controller.search_alg
                 )
             )
 
@@ -482,7 +485,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 trial.evaluated_params[attr] = trial.config[attr]
 
     def on_trial_result(
-        self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
+        self, tune_controller: "TuneController", trial: Trial, result: Dict
     ) -> str:
         if self._time_attr not in result:
             time_missing_msg = (
@@ -538,12 +541,12 @@ class PopulationBasedTraining(FIFOScheduler):
             state.last_perturbation_time = time
             lower_quantile, upper_quantile = self._quantiles()
             decision = TrialScheduler.CONTINUE
-            for other_trial in trial_runner.get_trials():
+            for other_trial in tune_controller.get_trials():
                 if other_trial.status in [Trial.PENDING, Trial.PAUSED]:
                     decision = TrialScheduler.PAUSE
                     break
             self._checkpoint_or_exploit(
-                trial, trial_runner, upper_quantile, lower_quantile
+                trial, tune_controller, upper_quantile, lower_quantile
             )
             return TrialScheduler.NOOP if trial.status == Trial.PAUSED else decision
         else:
@@ -551,13 +554,13 @@ class PopulationBasedTraining(FIFOScheduler):
             if any(
                 self._trial_state[t].last_train_time < self._next_perturbation_sync
                 and t != trial
-                for t in trial_runner.get_live_trials()
+                for t in tune_controller.get_live_trials()
             ):
                 logger.debug("Pausing trial {}".format(trial))
             else:
                 # All trials are synced at the same timestep.
                 lower_quantile, upper_quantile = self._quantiles()
-                all_trials = trial_runner.get_trials()
+                all_trials = tune_controller.get_trials()
                 not_in_quantile = []
                 for t in all_trials:
                     if t not in lower_quantile and t not in upper_quantile:
@@ -570,12 +573,12 @@ class PopulationBasedTraining(FIFOScheduler):
                     logger.debug("Perturbing Trial {}".format(t))
                     self._trial_state[t].last_perturbation_time = time
                     self._checkpoint_or_exploit(
-                        t, trial_runner, upper_quantile, lower_quantile
+                        t, tune_controller, upper_quantile, lower_quantile
                     )
 
                 all_train_times = [
                     self._trial_state[t].last_train_time
-                    for t in trial_runner.get_trials()
+                    for t in tune_controller.get_trials()
                 ]
                 max_last_train_time = max(all_train_times)
                 self._next_perturbation_sync = max(
@@ -616,12 +619,11 @@ class PopulationBasedTraining(FIFOScheduler):
     def _checkpoint_or_exploit(
         self,
         trial: Trial,
-        trial_runner: "trial_runner.TrialRunner",
+        tune_controller: "TuneController",
         upper_quantile: List[Trial],
         lower_quantile: List[Trial],
     ):
         """Checkpoint if in upper quantile, exploits if in lower."""
-        trial_executor = trial_runner.trial_executor
         state = self._trial_state[trial]
         if trial in upper_quantile:
             # The trial last result is only updated after the scheduler
@@ -632,7 +634,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 # Paused trial will always have an in-memory checkpoint.
                 state.last_checkpoint = trial.checkpoint
             else:
-                state.last_checkpoint = trial_executor.save(
+                state.last_checkpoint = tune_controller._schedule_trial_save(
                     trial, CheckpointStorage.MEMORY, result=state.last_result
                 )
             self._num_checkpoints += 1
@@ -649,7 +651,7 @@ class PopulationBasedTraining(FIFOScheduler):
                     " Skip exploit for Trial {}".format(trial)
                 )
                 return
-            self._exploit(trial_runner, trial, trial_to_clone)
+            self._exploit(tune_controller, trial, trial_to_clone)
 
     def _log_config_on_step(
         self,
@@ -795,7 +797,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def _exploit(
         self,
-        trial_runner: "trial_runner.TrialRunner",
+        tune_controller: "TuneController",
         trial: Trial,
         trial_to_clone: Trial,
     ):
@@ -853,7 +855,7 @@ class PopulationBasedTraining(FIFOScheduler):
                     " please raise an issue on Ray Github."
                 )
         else:
-            trial_runner.pause_trial(trial, should_checkpoint=False)
+            tune_controller.pause_trial(trial, should_checkpoint=False)
         trial.set_experiment_tag(new_tag)
         # Clone hyperparameters from the `trial_to_clone`
         trial.set_config(new_config)
@@ -894,20 +896,18 @@ class PopulationBasedTraining(FIFOScheduler):
                 num_trials_in_quantile = int(math.floor(len(trials) / 2))
             return (trials[:num_trials_in_quantile], trials[-num_trials_in_quantile:])
 
-    def choose_trial_to_run(
-        self, trial_runner: "trial_runner.TrialRunner"
-    ) -> Optional[Trial]:
+    def choose_trial_to_run(self, tune_controller: "TuneController") -> Optional[Trial]:
         """Ensures all trials get fair share of time (as defined by time_attr).
 
         This enables the PBT scheduler to support a greater number of
         concurrent trials than can fit in the cluster at any given time.
         """
         candidates = []
-        for trial in trial_runner.get_trials():
+        for trial in tune_controller.get_trials():
             if trial.status in [
                 Trial.PENDING,
                 Trial.PAUSED,
-            ] and trial_runner.trial_executor.has_resources_for_trial(trial):
+            ]:
                 if not self._synch:
                     candidates.append(trial)
                 elif (
@@ -989,11 +989,11 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
     """
 
     def __init__(self, policy_file: str):
-        policy_file = os.path.expanduser(policy_file)
-        if not os.path.exists(policy_file):
-            raise ValueError("Policy file not found: {}".format(policy_file))
+        policy_file = Path(policy_file).expanduser()
+        if not policy_file.exists():
+            raise ValueError("Policy file not found: {}".format(policy_file.as_posix()))
 
-        self.policy_file = policy_file
+        self.policy_file = policy_file.as_posix()
 
         # Find and read pbt policy file, potentially raise error
         initial_config, self._policy = self._load_policy(self.policy_file)
@@ -1039,7 +1039,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
 
         return last_old_conf, list(reversed(policy))
 
-    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+    def on_trial_add(self, tune_controller: "TuneController", trial: Trial):
         if self._trial:
             raise ValueError(
                 "More than one trial added to PBT replay run. This "
@@ -1064,7 +1064,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         self._trial.set_config(self.config)
 
     def on_trial_result(
-        self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
+        self, tune_controller: "TuneController", trial: Trial, result: Dict
     ) -> str:
         if TRAINING_ITERATION not in result:
             # No time reported
@@ -1088,13 +1088,13 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
             "Configuration will be changed to {}.".format(step, new_config)
         )
 
-        checkpoint = trial_runner.trial_executor.save(
+        checkpoint = tune_controller._schedule_trial_save(
             trial, CheckpointStorage.MEMORY, result=result
         )
 
         new_tag = _make_experiment_tag(self.experiment_tag, new_config, new_config)
 
-        trial_runner.pause_trial(trial, should_checkpoint=False)
+        tune_controller.pause_trial(trial, should_checkpoint=False)
         trial.set_experiment_tag(new_tag)
         trial.set_config(new_config)
         trial.on_checkpoint(checkpoint)

@@ -24,6 +24,9 @@ DEFAULT_HTTP_HOST = "127.0.0.1"
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
+#: Uvicorn timeout_keep_alive Config
+DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 5
+
 #: gRPC Port
 DEFAULT_GRPC_PORT = 9000
 
@@ -154,7 +157,7 @@ RAY_GCS_RPC_TIMEOUT_S = 3.0
 RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S = 10.0
 
 # Minimum duration to wait until broadcasting model IDs.
-PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 1.0
+PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 0.1
 
 
 # Deprecation message for V1 migrations.
@@ -228,3 +231,25 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
 )
 # Serve gauge metric set period.
 RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S = 1
+# How often autoscaling metrics are recorded on Serve replicas.
+RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
+
+# Serve multiplexed matching timeout.
+# This is the timeout for the matching process of multiplexed requests. To avoid
+# thundering herd problem, the timeout value will be randomed between this value
+# and this value * 2. The unit is second.
+# If the matching process takes longer than the timeout, the request will be
+# fallen to the default routing strategy.
+RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = float(
+    os.environ.get("RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S", "1")
+)
+
+# Enable memray in all Serve actors.
+RAY_SERVE_ENABLE_MEMORY_PROFILING = (
+    os.environ.get("RAY_SERVE_ENABLE_MEMORY_PROFILING", "0") == "1"
+)
+
+# Enable cProfile in all Serve actors.
+RAY_SERVE_ENABLE_CPU_PROFILING = (
+    os.environ.get("RAY_SERVE_ENABLE_CPU_PROFILING", "0") == "1"
+)

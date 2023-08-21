@@ -56,52 +56,18 @@ train_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(0, 32, 
 valid_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(1, 32, 3)])
 
 preprocessor = MinMaxScaler(["x"])
+preprocessor.fit(train_dataset)
+train_dataset = preprocessor.transform(train_dataset)
+valid_dataset = preprocessor.transform(valid_dataset)
 
 trainer = XGBoostTrainer(
     label_column="y",
     params={"objective": "reg:squarederror"},
     scaling_config=ScalingConfig(num_workers=2),
     datasets={"train": train_dataset, "valid": valid_dataset},
-    preprocessor=preprocessor,
 )
 result = trainer.fit()
 # __trainer_end__
-
-
-# __checkpoint_start__
-import os
-import ray.cloudpickle as cpickle
-from ray.air.constants import PREPROCESSOR_KEY
-
-checkpoint = result.checkpoint
-with checkpoint.as_directory() as checkpoint_path:
-    path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
-    with open(path, "rb") as f:
-        preprocessor = cpickle.load(f)
-    print(preprocessor)
-# MixMaxScaler(columns=['x'], stats={'min(x)': 0, 'max(x)': 30})
-# __checkpoint_end__
-
-
-# __predictor_start__
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.xgboost import XGBoostPredictor
-
-test_dataset = ray.data.from_items([{"x": x} for x in range(2, 32, 3)])
-
-batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)
-predicted_probabilities = batch_predictor.predict(test_dataset)
-predicted_probabilities.show()
-# {'predictions': 0.09843720495700836}
-# {'predictions': 5.604666709899902}
-# {'predictions': 11.405311584472656}
-# {'predictions': 15.684700012207031}
-# {'predictions': 23.990947723388672}
-# {'predictions': 29.900211334228516}
-# {'predictions': 34.59944152832031}
-# {'predictions': 40.6968994140625}
-# {'predictions': 45.68107604980469}
-# __predictor_end__
 
 
 # __chain_start__
