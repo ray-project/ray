@@ -75,6 +75,27 @@ def _do_additional_splits(
             offset += size
 
 
+def _generate_output_transform_fn(
+    additional_split_factor: Optional[int],
+):
+    """Generate the MapTransformFn for handling output blocks of a ReadTask."""
+    if additional_split_factor is None:
+        # If additional_split_factor is None, we build output blocks from the
+        # output blocks of the read tasks.
+        return blocks_to_output_blocks
+    else:
+        # If additional_split_factor is not None, we do additional splits to the
+        # output blocks of the read tasks.
+        return MapTransformFn(
+            functools.partial(
+                _do_additional_splits,
+                additional_output_splits=op._additional_split_factor,
+            ),
+            MapTransformFnDataType.Block,
+            MapTransformFnDataType.Block,
+        )
+
+
 def plan_read_op(op: Read) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for Read.
 
@@ -112,24 +133,8 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         MapTransformFn(
             do_read, MapTransformFnDataType.Block, MapTransformFnDataType.Block
         ),
+        _generate_output_transform_fn(op._additional_split_factor),
     ]
-    if op._additional_split_factor is None:
-        # If additional_split_factor is None, we build output blocks from the
-        # output blocks of the read tasks.
-        transform_fns.append(blocks_to_output_blocks)
-    else:
-        # If additional_split_factor is not None, we do additional splits to the
-        # output blocks of the read tasks.
-        transform_fns.append(
-            MapTransformFn(
-                functools.partial(
-                    _do_additional_splits,
-                    additional_output_splits=op._additional_split_factor,
-                ),
-                MapTransformFnDataType.Block,
-                MapTransformFnDataType.Block,
-            )
-        )
 
     map_transformer = MapTransformer(transform_fns)
 
@@ -141,29 +146,15 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     )
 
 
-def apply_output_block_building_and_additional_splitting_to_read_tasks(
+def apply_output_blocks_handling_to_read_tasks(
     read_tasks: List[ReadTask],
     additional_split_factor: Optional[int],
 ):
-    """Apply output block building and additional splitting logic to read tasks.
+    """Patch the read tasks and apply output blocks handling logic.
 
     This function is only used for compability with the legacy LazyBlockList code path.
     """
-    transform_fns = [
-        blocks_to_output_blocks,
-    ]
-    if additional_split_factor is not None:
-        transform_fns.append(
-            MapTransformFn(
-                functools.partial(
-                    _do_additional_splits,
-                    additional_output_splits=additional_split_factor,
-                ),
-                MapTransformFnDataType.Block,
-                MapTransformFnDataType.Block,
-            )
-        )
-    map_transformer = MapTransformer(transform_fns)
+    map_transformer = _generate_output_transform_fn(additional_split_factor)
 
     for read_task in read_tasks:
         original_read_fn = read_task._read_fn
