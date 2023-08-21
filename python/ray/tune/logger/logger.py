@@ -171,22 +171,23 @@ class LoggerCallback(Callback):
         if not _use_storage_context():
             return  # Legacy code path.
 
+        if not trial.checkpoint:
+            return
+
         local_file = os.path.join(trial.local_path, file_name)
         remote_file = os.path.join(trial.storage.trial_fs_path, file_name)
 
-        if not os.path.exists(local_file):
-            # TODO(ekl) avoid the remote IO call below by checking if the trial
-            # has any existing checkpoints loaded. If no checkpoints are loaded,
-            # we can ignore any previous metric files written.
-            try:
-                pyarrow.fs.copy_files(
-                    remote_file,
-                    local_file,
-                    source_filesystem=trial.storage.storage_filesystem,
-                )
-                logger.debug(f"Copied {remote_file} to {local_file}")
-            except FileNotFoundError:
-                logger.debug(f"Remote file not found: {remote_file}")
+        try:
+            pyarrow.fs.copy_files(
+                remote_file,
+                local_file,
+                source_filesystem=trial.storage.storage_filesystem,
+            )
+            logger.debug(f"Copied {remote_file} to {local_file}")
+        except FileNotFoundError:
+            logger.warning(f"Remote file not found: {remote_file}")
+        except Exception:
+            logger.exception(f"Error downloading {remote_file}")
 
 
 @DeveloperAPI
