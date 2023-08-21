@@ -78,13 +78,21 @@ For example, if a deployment's `num_replicas` is specified in the config file an
 Keep in mind that this override order is applied separately to each individual parameter.
 For example, if a user has a deployment `ExampleDeployment` with the following decorator:
 
-```python
+```{testcode}
+from ray import serve
+
+
 @serve.deployment(
     num_replicas=2,
     max_concurrent_queries=15,
 )
 class ExampleDeployment:
-    ...
+    pass
+```
+
+```{testoutput}
+:hide:
+
 ```
 
 and the following config file:
@@ -116,11 +124,20 @@ You can use the `user_config` field to supply structured configuration for your 
 
 To enable the `user_config` feature, you need to implement a `reconfigure` method that takes a JSON-serializable object (e.g., a Dictionary, List or String) as its only argument:
 
-```python
+```{testcode}
+from ray import serve
+from typing import Any, Dict
+
+
 @serve.deployment
 class Model:
     def reconfigure(self, config: Dict[str, Any]):
         self.threshold = config["threshold"]
+```
+
+```{testoutput}
+:hide:
+
 ```
 
 If the `user_config` is set when the deployment is created (e.g., in the decorator or the Serve config file), this `reconfigure` method is called right after the deployment's `__init__` method, and the `user_config` is passed in as an argument. You can also trigger the `reconfigure` method by updating your Serve config file with a new `user_config` and reapplying it to your Ray cluster. See [In-place Updates](serve-inplace-updates) for more information.
@@ -134,6 +151,3 @@ deployments:
       user_config:
         threshold: 1.5
 ```
-
-
-

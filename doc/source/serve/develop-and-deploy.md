@@ -101,7 +101,7 @@ $ serve build model:translator_app -o config.yaml
 
 The serve build command adds a default application name that can be modified. The resulting Serve config file is:
 
-```
+```yaml
 # This file was generated using the `serve build` command on Ray v2.5.1.
   
 proxy_location: EveryNode
