@@ -1,6 +1,7 @@
 from functools import partial
 import os
 import pandas as pd
+import pyarrow
 from typing import Optional, Union
 
 from ray.air.result import Result
@@ -84,16 +85,6 @@ class ResultGrid:
         ]
 
     @property
-    def _local_path(self) -> str:
-        """Return path pointing to the experiment directory on the local disk."""
-        return self._experiment_analysis._local_path
-
-    @property
-    def _remote_path(self) -> Optional[str]:
-        """Return path pointing to the experiment directory on remote storage."""
-        return self._experiment_analysis._remote_path
-
-    @property
     def experiment_path(self) -> str:
         """Path pointing to the experiment directory on persistent storage.
 
@@ -104,6 +95,15 @@ class ResultGrid:
         this will point to ``s3://bucket/location/experiment_name``.
         """
         return self._remote_path or self._local_path
+
+    @property
+    def storage_filesystem(self) -> pyarrow.fs.FileSystem:
+        """Return the filesystem that can be used to access the experiment path.
+
+        Returns:
+            pyarrow.fs.FileSystem implementation.
+        """
+        return self._experiment_analysis.storage_filesystem
 
     def get_best_result(
         self,
