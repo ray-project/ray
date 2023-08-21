@@ -80,7 +80,7 @@ def tune_horovod_keras(num_workers, num_samples, use_gpu):
     concatenator = Concatenator(exclude=["target"], dtype=np.float32)
 
     dataset = scaler.fit_transform(dataset)
-    concatenator = concatenator.transform(dataset)
+    dataset = concatenator.transform(dataset)
 
     horovod_trainer = HorovodTrainer(
         train_loop_per_worker=keras_train_loop,

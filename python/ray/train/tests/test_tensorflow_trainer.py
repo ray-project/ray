@@ -55,13 +55,13 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
     scaling_config = ScalingConfig(num_workers=num_workers)
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
     preprocessor = Concatenator(exclude=["", "y"], output_column_name="x")
+    dataset = preprocessor.transform(dataset)
 
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=train_loop_config,
         scaling_config=scaling_config,
         datasets={TRAIN_DATASET_KEY: dataset},
-        preprocessor=preprocessor,
     )
     trainer.fit()
 

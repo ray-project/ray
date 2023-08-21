@@ -30,8 +30,7 @@ def add_fake_labels(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
 def transform_image(
     batch: Dict[str, np.ndarray], transform: torch.nn.Module
 ) -> Dict[str, np.ndarray]:
-    image_tensors = [torch.as_tensor(array) for array in batch["image"]]
-    transformed_tensors = [transform(tensor).numpy() for tensor in image_tensors]
+    transformed_tensors = [transform(image).numpy() for image in batch["image"]]
     batch["image"] = transformed_tensors
     return batch
 
