@@ -3,7 +3,7 @@
 Saving and Loading Checkpoints
 ==============================
 
-Ray Train provides a way to save :ref:`Checkpoints <checkpoint-api-ref>` during the training process. This is
+Ray Train provides a way to save :class:`Checkpoints <ray.train.Checkpoint>` during the training process. This is
 useful for:
 
 1. :ref:`Integration with Ray Tune <train-tune>` to use certain Ray Tune
@@ -20,7 +20,7 @@ directory <train-log-dir>` of each run.
 Saving checkpoints
 ------------------
 
-:ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``train.report(metrics, checkpoint=Checkpoint(...))`` in the
+:class:`Checkpoints <ray.train.Checkpoint>` can be saved by calling ``train.report(metrics, checkpoint=Checkpoint(...))`` in the
 training function. This will saves the checkpoint from the distributed workers to the ``storage_path``. The metrics here are 
 tied to the checkpoint and are used to filter the top k checkpoints. 
 

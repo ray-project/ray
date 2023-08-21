@@ -18,7 +18,7 @@ Trainers
 
 Trainers are responsible for executing (distributed) training runs.
 The output of a Trainer run is a :ref:`Result <train-key-concepts-results>` that contains
-metrics from the training run and the latest saved :ref:`Checkpoint <checkpoint-api-ref>`.
+metrics from the training run and the latest saved :class:`~ray.train.Checkpoint`.
 You can also configured trainers with :ref:`Datasets <data-ingest-torch>` and :ref:`Preprocessors <air-preprocessors>` for scalable data ingest and preprocessing.
 
 

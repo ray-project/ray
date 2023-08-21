@@ -116,7 +116,7 @@ documentation, sorted alphabetically.
         different Ray components and libraries. A Checkpoint can have its data
         represented as a directory on local (on-disk) storage, as a directory on an
         external storage (e.g., cloud storage), and as an in-memory dictionary.
-        :ref:`Learn more<checkpoint-api-ref>`,
+        :class:`Learn more <ray.train.Checkpoint>`,
 
         .. TODO: How does this relate to RLlib checkpoints etc.? Be clear here
 
@@ -411,7 +411,7 @@ documentation, sorted alphabetically.
         on input data with a trained model.
 
     Preprocessor
-        :ref:`An interface used to preprocess a Dataset<air-preprocessor-ref>` for
+        :ref:`An interface used to preprocess a Dataset<preprocessor-ref>` for
         training and inference (prediction). Preprocessors
         can be stateful, as they can be fitted on the training dataset before being
         used to transform the training and evaluation datasets.
