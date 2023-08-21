@@ -219,6 +219,7 @@ When using a [Serve deployment graph](serve-deployment-graphs), you can configur
 For example, the `json_request` adapter parses JSON in the HTTP body:
 
 ```{testcode}
+from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
 from ray.dag.input_node import InputNode
@@ -258,6 +259,7 @@ you can directly pass in a pydantic model class to effectively tell Ray Serve to
 Once validated, the model instance will passed to the predictor.
 
 ```{testcode}
+from ray import serve
 from pydantic import BaseModel
 from ray.serve.drivers import DAGDriver
 
