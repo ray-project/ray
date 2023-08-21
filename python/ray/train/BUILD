@@ -610,7 +610,7 @@ py_test(
     name = "test_transformers_trainer_steps",
     size = "enormous", # TODO: Reduce this.
     srcs = ["tests/test_transformers_trainer_steps.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib"]
 )
 
