@@ -17,7 +17,7 @@ from ray.data._internal.planner.repartition import generate_repartition_fn
 from ray.data._internal.planner.sort import generate_sort_fn
 
 
-def _plan_all_to_all_op(
+def plan_all_to_all_op(
     op: AbstractAllToAll,
     input_physical_dag: PhysicalOperator,
 ) -> AllToAllOperator:
