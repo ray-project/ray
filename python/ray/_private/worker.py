@@ -1432,7 +1432,7 @@ def init(
 
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
-                job_config.runtime_env
+                runtime_env
             )
 
         job_config.set_runtime_env(runtime_env)
