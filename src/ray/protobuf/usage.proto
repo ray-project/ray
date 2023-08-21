@@ -75,6 +75,8 @@ enum TagKey {
   // Whether the `to_object_ref` or any of its variants were used in the
   // `DeploymentHandle` API.
   SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED = 21;
+  // Whether multuplexed API is was used.
+  SERVE_MULTIPLEXED_API_USED = 22;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of
