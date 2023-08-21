@@ -12,6 +12,7 @@ from ray.train import (
     FailureConfig,
 )
 from ray.air._internal.remote_storage import upload_to_uri
+from ray.air._internal.uri_utils import URI
 from ray.train.base_trainer import BaseTrainer
 from ray.train.constants import LAZY_CHECKPOINT_MARKER_FILE
 from ray.train.trainer import TrainingFailedError
@@ -26,6 +27,8 @@ from ray.train.huggingface import TransformersTrainer
 from ray.tune import Callback
 from ray.data.preprocessors.batch_mapper import BatchMapper
 from ray.data.preprocessor import Preprocessor
+
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 @pytest.fixture
@@ -56,7 +59,8 @@ def _failing_train_fn(config):
     if checkpoint:
         it = checkpoint.to_dict()["it"] + 1
         print(f"\nLoading from checkpoint, which is at iteration {it}...\n")
-    train.report({"it": it}, checkpoint=Checkpoint.from_dict({"it": it}))
+    with create_dict_checkpoint({"it": it}) as checkpoint:
+        train.report({"it": it}, checkpoint=checkpoint)
     if it == 1:
         raise _TestSpecificError
 
@@ -134,7 +138,7 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
     assert not result.error
     assert result.metrics["training_iteration"] == 2
     assert result.metrics["iterations_since_restore"] == 1
-    assert tmpdir / "data_parallel_restore_test" in result.log_dir.parents
+    assert tmpdir / "data_parallel_restore_test" in Path(result.path).parents
 
 
 @pytest.mark.parametrize("trainer_cls", [XGBoostTrainer, LightGBMTrainer])
@@ -226,27 +230,26 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     assert not result.error
     assert result.metrics["training_iteration"] == 5
     assert result.metrics["iterations_since_restore"] == 3
-    assert tmpdir / exp_name in result.log_dir.parents
+    assert tmpdir / exp_name in Path(result.path).parents
 
 
-def test_restore_from_uri_s3(ray_start_4_cpus, tmpdir, mock_s3_bucket_uri):
+def test_restore_from_uri_s3(
+    ray_start_4_cpus, tmp_path, monkeypatch, mock_s3_bucket_uri
+):
     """Restoration from S3 should work."""
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
     trainer = DataParallelTrainer(
         train_loop_per_worker=lambda config: train.report({"score": 1}),
         scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="restore_from_uri", local_dir=tmpdir),
+        run_config=RunConfig(name="restore_from_uri", storage_path=mock_s3_bucket_uri),
     )
-    trainer._save(tmpdir)
+    trainer.fit()
 
     # Restore from local dir
-    DataParallelTrainer.restore(str(tmpdir))
-
-    # Upload to S3
-    uri = mock_s3_bucket_uri
-    upload_to_uri(tmpdir, uri)
+    DataParallelTrainer.restore(str(tmp_path / "restore_from_uri"))
 
     # Restore from S3
-    DataParallelTrainer.restore(uri)
+    DataParallelTrainer.restore(str(URI(mock_s3_bucket_uri) / "restore_from_uri"))
 
 
 def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
@@ -425,7 +428,7 @@ def test_restore_from_invalid_dir(tmpdir):
         BaseTrainer.restore(str(tmpdir))
 
     with pytest.raises(ValueError):
-        BaseTrainer.restore("memory:///not/found")
+        BaseTrainer.restore("mock:///not/found")
 
 
 @pytest.mark.parametrize("upload_dir", [None, "memory:///test/"])
