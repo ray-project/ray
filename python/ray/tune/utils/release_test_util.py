@@ -67,7 +67,6 @@ class TestDurableTrainable(tune.Trainable):
         checkpoint_data = np.random.uniform(0, 1, size=self._checkpoint_num_items)
         with open(checkpoint_file, "wb") as fp:
             pickle.dump(checkpoint_data, fp)
-        return tmp_checkpoint_dir
 
     def load_checkpoint(self, checkpoint):
         pass

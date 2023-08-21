@@ -562,9 +562,10 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
             path = os.path.join(checkpoint_dir, "checkpoint")
             with open(path, "w") as f:
                 f.write(json.dumps({"idx": self.idx}))
-            return path
 
-        def load_checkpoint(self, checkpoint_path):
+        def load_checkpoint(self, checkpoint_dir):
+            path = os.path.join(checkpoint_dir, "checkpoint")
+
             self._is_restored = True
             with open(self.tag_file_path, "r") as f:
                 retried_num = json.loads(f.read())["retried_num"]
@@ -574,7 +575,7 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
 
             if retried_num < self.retry_num_to_fail:
                 raise RuntimeError(f"===== Failing restore #{retried_num + 1} =====")
-            with open(checkpoint_path) as f:
+            with open(path, "r") as f:
                 self.idx = json.loads(f.read())["idx"]
 
     # Set environment variable just for this test
