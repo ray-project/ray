@@ -33,7 +33,7 @@ def train_breast_cancer(config: dict):
         train_set,
         evals=[(test_set, "test")],
         verbose_eval=False,
-        callbacks=[TuneReportCheckpointCallback(filename="model.xgb")],
+        callbacks=[TuneReportCheckpointCallback(filename="model.xgb", frequency=1)],
     )
 
 
@@ -57,7 +57,9 @@ def train_breast_cancer_cv(config: dict):
         verbose_eval=False,
         stratified=True,
         # Checkpointing is not supported for CV
-        callbacks=[TuneReportCallback(results_postprocessing_fn=average_cv_folds)],
+        callbacks=[
+            TuneReportCallback(results_postprocessing_fn=average_cv_folds, frequency=1)
+        ],
     )
 
 
