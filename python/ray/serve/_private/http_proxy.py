@@ -194,7 +194,7 @@ class GenericProxy(ABC):
                 missing_ok=True,
             )
 
-        self.proxy_router = proxy_router_class(get_handle)
+        self.proxy_router = proxy_router_class(get_handle, self.protocol)
         self.long_poll_client = LongPollClient(
             ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
@@ -251,7 +251,7 @@ class GenericProxy(ABC):
         self.num_ongoing_requests_gauge = metrics.Gauge(
             name=f"serve_num_ongoing_{self.protocol.lower()}_requests",
             description=f"The number of ongoing requests in this {self.protocol} "
-            "Proxy.",
+            "proxy.",
             tag_keys=("node_id", "node_ip_address"),
         ).set_default_tags(
             {
@@ -759,7 +759,6 @@ class gRPCProxy(GenericProxy):
         Unpack gRPC request metadata and extract info to set up request context and
         handle.
         """
-        handle._set_request_protocol(RequestProtocol.GRPC)
         multiplexed_model_id = proxy_request.multiplexed_model_id
         request_id = proxy_request.request_id
         if not request_id:
@@ -1172,7 +1171,6 @@ class HTTPProxy(GenericProxy):
         Unpack HTTP request headers and extract info to set up request context and
         handle.
         """
-        handle._set_request_protocol(RequestProtocol.HTTP)
         request_context_info = {
             "route": route_path,
             "app_name": app_name,

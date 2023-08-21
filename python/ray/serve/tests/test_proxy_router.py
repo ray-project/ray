@@ -1,7 +1,7 @@
 import pytest
 from typing import Callable
 
-from ray.serve._private.common import EndpointInfo, EndpointTag
+from ray.serve._private.common import EndpointInfo, EndpointTag, RequestProtocol
 from ray.serve._private.proxy_router import (
     ProxyRouter,
     EndpointRouter,
@@ -21,6 +21,7 @@ def mock_longest_prefix_router() -> LongestPrefixRouter:
     class MockHandle:
         def __init__(self, name: str):
             self._name = name
+            self._protocol = RequestProtocol.UNDEFINED
 
         def options(self, *args, **kwargs):
             return self
@@ -28,10 +29,13 @@ def mock_longest_prefix_router() -> LongestPrefixRouter:
         def __eq__(self, other_name: str):
             return self._name == other_name
 
+        def _set_request_protocol(self, protocol: RequestProtocol):
+            self._protocol = protocol
+
     def mock_get_handle(name, *args, **kwargs):
         return MockHandle(name)
 
-    yield LongestPrefixRouter(mock_get_handle)
+    yield LongestPrefixRouter(mock_get_handle, RequestProtocol.HTTP)
 
 
 @pytest.fixture
@@ -39,6 +43,7 @@ def mock_endpoint_router() -> EndpointRouter:
     class MockHandle:
         def __init__(self, name: str):
             self._name = name
+            self._protocol = RequestProtocol.UNDEFINED
 
         def options(self, *args, **kwargs):
             return self
@@ -46,10 +51,13 @@ def mock_endpoint_router() -> EndpointRouter:
         def __eq__(self, other_name: str):
             return self._name == other_name
 
+        def _set_request_protocol(self, protocol: RequestProtocol):
+            self._protocol = protocol
+
     def mock_get_handle(name, *args, **kwargs):
         return MockHandle(name)
 
-    yield EndpointRouter(mock_get_handle)
+    yield EndpointRouter(mock_get_handle, RequestProtocol.GRPC)
 
 
 @pytest.mark.parametrize(

@@ -226,7 +226,6 @@ class TestgRPCProxy:
         )
 
         assert returned_request_id == request_id
-        handle._set_request_protocol.assert_called_with(RequestProtocol.GRPC)
         handle.options.assert_called_with(
             stream=stream,
             multiplexed_model_id=multiplexed_model_id,
@@ -618,7 +617,6 @@ class TestHTTPProxy:
         )
 
         assert returned_request_id == request_id
-        handle._set_request_protocol.assert_called_with(RequestProtocol.HTTP)
         handle.options.assert_called_with(
             multiplexed_model_id=multiplexed_model_id,
         )
