@@ -25,7 +25,11 @@ from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator
 
 from ray import serve
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import (
+    DeploymentResponse,
+    DeploymentResponseGenerator,
+    RayServeHandle,
+)
 from ray.serve._private.grpc_util import (
     create_serve_grpc_server,
     DummyServicer,
@@ -539,11 +543,21 @@ class GenericProxy(ABC):
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
-        assignment_task = handle.remote(
+        result = handle.remote(
             proxy_request.request_object(proxy_handle=self.self_actor_handle)
         )
-
-        tasks = [assignment_task]
+        to_object_ref = None
+        if isinstance(result, DeploymentResponse):
+            to_object_ref = asyncio.ensure_future(
+                result._to_object_ref(_record_telemetry=False)
+            )
+        elif isinstance(result, DeploymentResponseGenerator):
+            to_object_ref = asyncio.ensure_future(
+                result._to_object_ref_gen(_record_telemetry=False)
+            )
+        tasks = []
+        if to_object_ref is not None:
+            tasks.append(to_object_ref)
         if disconnected_task is not None:
             tasks.append(disconnected_task)
         done, _ = await asyncio.wait(
@@ -551,13 +565,13 @@ class GenericProxy(ABC):
             return_when=FIRST_COMPLETED,
             timeout=timeout_s,
         )
-        if assignment_task in done:
-            return assignment_task.result()
+        if to_object_ref in done:
+            return to_object_ref.result()
         elif disconnected_task in done:
-            assignment_task.cancel()
+            result.cancel()
             return None
         else:
-            assignment_task.cancel()
+            result.cancel()
             raise TimeoutError()
 
     @abstractmethod
@@ -986,10 +1000,13 @@ class HTTPProxy(GenericProxy):
         # call might never arrive; if it does, it can only be `http.disconnect`.
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
             should_backoff = False
-            assignment_task: asyncio.Task = handle.remote(request)
+            result_ref = handle.remote(request)
             client_disconnection_task = loop.create_task(proxy_request.receive())
             done, _ = await asyncio.wait(
-                [assignment_task, client_disconnection_task],
+                [
+                    result_ref._to_object_ref(_record_telemetry=False),
+                    client_disconnection_task,
+                ],
                 return_when=FIRST_COMPLETED,
             )
             if client_disconnection_task in done:
@@ -1003,14 +1020,11 @@ class HTTPProxy(GenericProxy):
                     "request.",
                     extra={"log_to_stderr": False},
                 )
-                # This will make the .result() to raise cancelled error.
-                assignment_task.cancel()
+                result_ref.cancel()
             else:
                 client_disconnection_task.cancel()
 
             try:
-                object_ref = await assignment_task
-
                 # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
                 # some replicas crash simultaneously (e.g. if the head node crashes),
                 # requests to the dead replicas hang until the gcs recovers.
@@ -1019,7 +1033,7 @@ class HTTPProxy(GenericProxy):
                 # check if latency drops significantly. See
                 # https://github.com/ray-project/ray/pull/29534 for more info.
                 _, request_timed_out = await asyncio.wait(
-                    [object_ref], timeout=self.request_timeout_s
+                    [result_ref], timeout=self.request_timeout_s
                 )
                 if request_timed_out:
                     logger.info(
@@ -1030,7 +1044,7 @@ class HTTPProxy(GenericProxy):
                     )
                     should_backoff = True
                 else:
-                    result = await object_ref
+                    result = await result_ref
                     break
             except asyncio.CancelledError:
                 # Here because the client disconnected, we will return a custom
@@ -1274,7 +1288,6 @@ class RequestIdMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-
         headers = MutableHeaders(scope=scope)
         if RAY_SERVE_REQUEST_ID_HEADER not in headers and "x-request-id" not in headers:
             # If X-Request-ID and RAY_SERVE_REQUEST_ID_HEADER are both not set, we
