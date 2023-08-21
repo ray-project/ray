@@ -359,7 +359,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_trial_scheduler.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "medium_instance", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "medium_instance"],
 )
 
 py_test(
@@ -367,7 +367,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "medium_instance", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "medium_instance"],
 )
 
 py_test(
@@ -375,7 +375,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_trial_scheduler_resource_changing.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive"],
 )
 
 py_test(
@@ -383,7 +383,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tune_restore_warm_start.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive"],
 )
 
 py_test(
@@ -565,7 +565,7 @@ py_test(
     size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"]
+    tags = ["team:ml", "exclusive", "example"]
 )
 
 py_test(

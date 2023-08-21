@@ -1518,19 +1518,18 @@ class TuneController:
             exception: Exception prior to invoking this method.
         """
         self._has_errored = True
-        if trial.status == Trial.RUNNING:
-            if trial.should_recover():
-                self._try_recover(trial, exc=exception)
-                self._callbacks.on_trial_recover(
-                    iteration=self._iteration, trials=self._trials, trial=trial
-                )
-            else:
-                self._scheduler_alg.on_trial_error(self, trial)
-                self._search_alg.on_trial_complete(trial.trial_id, error=True)
-                self._schedule_trial_stop(trial, exception=exception)
-                self._callbacks.on_trial_error(
-                    iteration=self._iteration, trials=self._trials, trial=trial
-                )
+        if trial.status == Trial.RUNNING and trial.should_recover():
+            self._try_recover(trial, exc=exception)
+            self._callbacks.on_trial_recover(
+                iteration=self._iteration, trials=self._trials, trial=trial
+            )
+        elif trial.status in {Trial.RUNNING, Trial.PENDING}:
+            self._scheduler_alg.on_trial_error(self, trial)
+            self._search_alg.on_trial_complete(trial.trial_id, error=True)
+            self._schedule_trial_stop(trial, exception=exception)
+            self._callbacks.on_trial_error(
+                iteration=self._iteration, trials=self._trials, trial=trial
+            )
 
     def _schedule_trial_stop(self, trial: Trial, exception: Optional[Exception] = None):
         if trial.status == Trial.ERROR:
@@ -1619,38 +1618,13 @@ class TuneController:
             self._schedule_trial_stop(trial)
 
     def _schedule_trial_pause(self, trial: Trial, should_checkpoint: bool = True):
-        if _use_storage_context():
-            if trial not in self._trial_to_actor:
-                logger.debug(
-                    f"Trial PAUSE requested for trial {trial} but trial is already "
-                    f"stopping. Ignoring."
-                )
-                return
-
-            if should_checkpoint:
-                # We need to wait for the save to finish before stopping the trial.
-                def stop_after_save_result(*args, **kwargs):
-                    self._on_saving_result(*args, **kwargs)
-                    self._schedule_trial_stop(trial)
-                    self._set_trial_status(trial, Trial.PAUSED)
-
-                # NOTE: Ensure that the trial is PAUSED while it's saving a checkpoint.
-                self._set_trial_status(trial, Trial.PAUSED)
-                self._schedule_trial_task(
-                    trial=trial,
-                    method_name="save",
-                    on_result=stop_after_save_result,
-                    on_error=self._trial_task_failure,
-                )
-                trial.temporary_state.saving_to = True
-            else:
-                self._schedule_trial_stop(trial)
-                self._set_trial_status(trial, Trial.PAUSED)
-
-            return
-
         if should_checkpoint:
-            self._schedule_trial_save(trial, storage=CheckpointStorage.MEMORY)
+            self._schedule_trial_save(
+                trial,
+                storage=CheckpointStorage.PERSISTENT
+                if _use_storage_context()
+                else CheckpointStorage.MEMORY,
+            )
         self._schedule_trial_stop(trial)
         self._set_trial_status(trial, Trial.PAUSED)
 
@@ -1981,6 +1955,9 @@ class TuneController:
 
         try:
             if _use_storage_context() and isinstance(checkpoint_value, _TrainingResult):
+                if not checkpoint_value.checkpoint:
+                    logger.debug(f"Got empty checkpoint for trial {trial}")
+                    return
                 try:
                     self._callbacks.on_checkpoint(
                         iteration=self._iteration,

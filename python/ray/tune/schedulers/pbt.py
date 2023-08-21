@@ -635,7 +635,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 state.last_checkpoint = trial.checkpoint
             else:
                 state.last_checkpoint = tune_controller._schedule_trial_save(
-                    trial, CheckpointStorage.MEMORY, result=state.last_result
+                    trial, CheckpointStorage.PERSISTENT, result=state.last_result
                 )
             self._num_checkpoints += 1
         else:
@@ -1089,7 +1089,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         )
 
         checkpoint = tune_controller._schedule_trial_save(
-            trial, CheckpointStorage.MEMORY, result=result
+            trial, CheckpointStorage.PERSISTENT, result=result
         )
 
         new_tag = _make_experiment_tag(self.experiment_tag, new_config, new_config)
