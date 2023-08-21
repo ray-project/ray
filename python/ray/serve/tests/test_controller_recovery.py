@@ -123,7 +123,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     @ray.remote(num_cpus=0)
     def call(block=False):
         handle = serve.get_deployment_handle(name, "app")
-        ret = ray.get(handle.handler.remote(block))
+        ret = handle.handler.remote(block).result()
 
         return ret.split("|")[0], ret.split("|")[1]
 

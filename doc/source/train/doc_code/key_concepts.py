@@ -201,10 +201,11 @@ print("Results location", result_path)
 # __result_path_end__
 
 
+# TODO(justinvyu): Re-enable this after updating all of doc_code.
 # __result_restore_start__
-from ray.train import Result
+# from ray.train import Result
 
-restored_result = Result.from_path(result_path)
+# restored_result = Result.from_path(result_path)
 print("Restored loss", result.metrics["loss"])
 # __result_restore_end__
 

@@ -60,14 +60,11 @@ def get_deployment(name: str, app_name: str = ""):
             f"Deployment {name} was not found. Did you call Deployment.deploy()?"
         )
     return Deployment(
-        deployment_info.replica_config.deployment_def,
         name,
         deployment_info.deployment_config,
+        deployment_info.replica_config,
         version=deployment_info.version,
-        init_args=deployment_info.replica_config.init_args,
-        init_kwargs=deployment_info.replica_config.init_kwargs,
         route_prefix=route_prefix,
-        ray_actor_options=deployment_info.replica_config.ray_actor_options,
         _internal=True,
     )
 
@@ -82,14 +79,11 @@ def list_deployments() -> Dict[str, Deployment]:
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
-            deployment_info.replica_config.deployment_def,
             name,
             deployment_info.deployment_config,
+            deployment_info.replica_config,
             version=deployment_info.version,
-            init_args=deployment_info.replica_config.init_args,
-            init_kwargs=deployment_info.replica_config.init_kwargs,
             route_prefix=route_prefix,
-            ray_actor_options=deployment_info.replica_config.ray_actor_options,
             _internal=True,
         )
 

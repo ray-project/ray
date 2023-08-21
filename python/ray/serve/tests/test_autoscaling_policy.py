@@ -983,7 +983,7 @@ def test_e2e_raise_min_replicas(serve_instance):
     assert check_autoscale_num_replicas(controller, "A") == 0
 
     handle = serve.get_deployment_handle("A", "default")
-    [handle.remote() for _ in range(1)]
+    handle.remote()
     print("Issued one request.")
 
     time.sleep(2)
