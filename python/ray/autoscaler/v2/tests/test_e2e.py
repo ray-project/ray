@@ -262,7 +262,7 @@ def test_serve_num_replica_idle_node():
             return "hello"
 
     try:
-        cluster.start()
+        cluster.start(override_env={"RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S": "2"})
         # 5 workers nodes should be busy and have 2(replicas) * 2(cpus per replicas)
         # = 4 cpus used
         serve.run(Deployment.options(num_replicas=10).bind())
@@ -305,7 +305,7 @@ def test_serve_num_replica_idle_node():
             return True
 
         # A long sleep is needed for serve proxy to be removed.
-        wait_for_condition(verify, timeout=45, retry_interval_ms=1000)
+        wait_for_condition(verify, timeout=15, retry_interval_ms=1000)
 
     finally:
         ray.shutdown()
