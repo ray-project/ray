@@ -664,6 +664,11 @@ def test_multiplexed_detect(manage_ray):
     serve.run(Model.bind(), name="app", route_prefix="/app")
 
     storage_handle = start_telemetry_app()
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+    report = ray.get(storage_handle.get_report.remote())
+    assert "serve_multiplexed_api_used" not in report["extra_usage_tags"]
 
     client = get_global_client()
     wait_for_condition(
