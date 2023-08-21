@@ -1123,7 +1123,10 @@ def start_api_server(
         # Explicitly check here that when the user explicitly specifies
         # dashboard inclusion, the install is not minimal.
         if include_dashboard and minimal:
-            logger.error("--include-dashboard was specified, but packages are missing.")
+            logger.error(
+                f"--include-dashboard was specified, but packages are missing. "
+                "Please check dashboard.err for the specific missing modules."
+            )
             raise Exception("Cannot include dashboard with missing packages.")
 
         include_dash: bool = True if include_dashboard is None else include_dashboard
