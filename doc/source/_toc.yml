@@ -92,8 +92,6 @@ parts:
                 title: "PyTorch Lightning Advanced Example"
               - file: train/examples/lightning/lightning_exp_tracking
                 title: "PyTorch Lightning with Experiment Tracking Tools"
-              - file: train/examples/transformers/transformers_example
-                title: "HF Transformers Example"
               - file: train/examples/tf/tensorflow_mnist_example
                 title: "TensorFlow MNIST Example"
               - file: train/examples/horovod/horovod_example
