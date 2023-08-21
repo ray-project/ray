@@ -63,7 +63,7 @@ class _CheckpointManager:
         # The latest registered checkpoint.
         # This should never be immediately deleted upon registration,
         # even if it's not in the top K checkpoints, based on score.
-        self._latest_checkpoint_result: _TrainingResult = None
+        self._latest_checkpoint_result: Optional[_TrainingResult] = None
 
         if (
             self._checkpoint_config.num_to_keep is not None

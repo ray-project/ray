@@ -83,14 +83,6 @@ Ray Train Examples Using Loggers & Callbacks
     :class-container: container pb-3
 
     .. grid-item-card::
-        :img-top: /images/mlflow.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: train_mlflow_example
-
-            Logging Training Runs with MLflow
-
-    .. grid-item-card::
         :img-top: /images/pytorch_lightning_small.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 

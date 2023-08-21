@@ -9,6 +9,10 @@ doctest(
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
             "huggingface/transformers/transformers_trainer.py",
+            "accelerate/accelerate_torch_trainer.py",
+            "accelerate/accelerate_torch_trainer_no_raydata.py",
+            "deepspeed/deepspeed_torch_trainer.py",
+            "deepspeed/deepspeed_torch_trainer_no_raydata.py",
             "_internal/session.py",
             "context.py"
         ]
@@ -21,6 +25,10 @@ doctest(
     files = [
         "tensorflow/tensorflow_trainer.py",
         "huggingface/transformers/transformers_trainer.py",
+        "accelerate/accelerate_torch_trainer.py",
+        "accelerate/accelerate_torch_trainer_no_raydata.py",
+        "deepspeed/deepspeed_torch_trainer.py",
+        "deepspeed/deepspeed_torch_trainer_no_raydata.py",
         "_internal/session.py",
         "context.py"
     ],
@@ -36,16 +44,6 @@ doctest(
 py_library(
     name = "conftest",
     srcs = ["tests/conftest.py"]
-)
-
-py_test(
-    name = "mlflow_fashion_mnist_example",
-    size = "medium",
-    main = "examples/mlflow_fashion_mnist_example.py",
-    srcs = ["examples/mlflow_fashion_mnist_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"],
-    args = ["--smoke-test"]
 )
 
 py_test(
