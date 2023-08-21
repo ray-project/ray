@@ -57,9 +57,8 @@ class TrainMNIST(tune.Trainable):
         torch.save(self.model.state_dict(), checkpoint_path)
 
     def load_checkpoint(self, checkpoint_dir):
-        self.model.load_state_dict(
-            torch.load(os.path.join(checkpoint_dir, "model.pth"))
-        )
+        checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
+        self.model.load_state_dict(torch.load(checkpoint_path))
 
 
 # __trainable_example_end__
