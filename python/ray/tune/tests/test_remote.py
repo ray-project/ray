@@ -64,6 +64,7 @@ class RemoteTest(unittest.TestCase):
         default_kwargs.pop("run_or_experiment")
         default_kwargs.pop("_remote")
         default_kwargs.pop("progress_reporter")
+        default_kwargs.pop("_ray_trace_ctx")  # automatically added for remote
 
         self.assertDictEqual(kwargs, default_kwargs)
 
