@@ -294,17 +294,20 @@ class ResultGrid:
                 for checkpoint in trial.get_trial_checkpoints()
             ]
 
+        if _use_storage_context():
+            metrics_df = self._experiment_analysis.trial_dataframes.get(trial.trial_id)
+        else:
+            metrics_df = self._experiment_analysis.trial_dataframes.get(
+                trial.local_path
+            )
+
         result = Result(
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
             _local_path=trial.local_path,
             _remote_path=trial.remote_path,
-            metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
-                trial.local_path
-            )
-            if self._experiment_analysis.trial_dataframes
-            else None,
+            metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
         )
         return result
