@@ -426,7 +426,7 @@ def get_deployment(name: str) -> Deployment:
     Returns:
         Deployment
     """
-    ServeUsageTag.API_USED.record("v1")
+    ServeUsageTag.API_VERSION.record("v1")
     return _private_api.get_deployment(name)
 
 
@@ -437,7 +437,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    ServeUsageTag.API_USED.record("v1")
+    ServeUsageTag.API_VERSION.record("v1")
     return _private_api.list_deployments()
 
 
@@ -481,7 +481,7 @@ def run(
     )
 
     # Record after Ray has been started.
-    ServeUsageTag.API_USED.record("v2")
+    ServeUsageTag.API_VERSION.record("v2")
 
     if isinstance(target, Application):
         deployments = pipeline_build(target._get_internal_dag_node(), name)
