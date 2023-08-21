@@ -614,13 +614,6 @@ Ray Examples
         End-to-end Example for Tuning a PyTorch Model with PBT
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training
-        :link: train_mlflow_example
-        :link-type: ref
-
-        Logging Training Runs with MLflow
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tracking
         :link: lightning_experiment_tracking
         :link-type: ref
