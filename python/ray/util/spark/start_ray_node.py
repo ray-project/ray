@@ -7,6 +7,7 @@ import fcntl
 import signal
 import socket
 import logging
+import threading
 from ray.util.spark.cluster_init import RAY_ON_SPARK_COLLECT_LOG_TO_PATH
 from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
 
@@ -109,7 +110,31 @@ if __name__ == "__main__":
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
             os.close(lock_fd)
 
+
+    def check_parent_alive() -> None:
+        orig_parent_id = os.getppid()
+        while True:
+            time.sleep(0.5)
+            if os.getppid() != orig_parent_id:
+                process.terminate()
+                try_clean_temp_dir_at_exit()
+                os._exit(143)
+
+    threading.Thread(target=check_parent_alive, daemon=True).start()
+
     try:
+        def sighup_handler(*args):
+            pass
+
+        # When spark application is terminated, this process will receive
+        # SIGHUP (comes from pyspark application termination).
+        # Ignore the SIGHUP signal, because in this case,
+        # `check_parent_alive` will capture parent process died event
+        # and execute killing node and cleanup routine
+        # but if we enable default SIGHUP handler, it will kill
+        # the process immediately and it causes `check_parent_alive`
+        # have no time to exeucte cleanup routine.
+        signal.signal(signal.SIGHUP, sighup_handler)
 
         def sigterm_handler(*args):
             process.terminate()

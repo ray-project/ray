@@ -410,19 +410,3 @@ def get_spark_task_assigned_physical_gpus(gpu_addr_list):
         return [visible_cuda_dev_list[addr] for addr in gpu_addr_list]
     else:
         return gpu_addr_list
-
-
-def setup_sigterm_on_parent_death():
-    """
-    Uses prctl to automatically send SIGTERM to the child process when its parent is
-    dead. The child process itself should handle SIGTERM properly.
-    """
-    try:
-        import ctypes
-        import signal
-
-        libc = ctypes.CDLL("libc.so.6")
-        # Set the parent process death signal of the command process to SIGTERM.
-        libc.prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG, see prctl.h
-    except OSError as e:
-        _logger.warning(f"Setup libc.prctl PR_SET_PDEATHSIG failed, error {repr(e)}.")
