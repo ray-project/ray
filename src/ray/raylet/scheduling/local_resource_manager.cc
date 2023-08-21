@@ -46,8 +46,8 @@ LocalResourceManager::LocalResourceManager(
 
 void LocalResourceManager::AddLocalResourceInstances(
     scheduling::ResourceID resource_id, const std::vector<FixedPoint> &instances) {
-  local_resources_.available.Set(resource_id, instances);
-  local_resources_.total.Set(resource_id, instances);
+  local_resources_.available.Add(resource_id, instances);
+  local_resources_.total.Add(resource_id, instances);
   SetResourceIdle(resource_id);
   OnResourceOrStateChanged();
 }
@@ -74,29 +74,6 @@ std::string LocalResourceManager::DebugString(void) const {
 
 uint64_t LocalResourceManager::GetNumCpus() const {
   return static_cast<uint64_t>(local_resources_.total.Sum(ResourceID::CPU()).Double());
-}
-
-std::vector<FixedPoint> LocalResourceManager::AddAvailableResourceInstances(
-    const std::vector<FixedPoint> &available,
-    const std::vector<FixedPoint> &local_total,
-    std::vector<FixedPoint> &local_available,
-    bool *is_idle) const {
-  RAY_CHECK(available.size() == local_available.size())
-      << available.size() << ", " << local_available.size();
-  std::vector<FixedPoint> overflow(available.size(), 0.);
-  for (size_t i = 0; i < available.size(); i++) {
-    local_available[i] = local_available[i] + available[i];
-    if (local_available[i] > local_total[i]) {
-      overflow[i] = (local_available[i] - local_total[i]);
-      local_available[i] = local_total[i];
-    }
-    // If any resource instance is not idle, the whole resource is not idle.
-    if (is_idle != nullptr) {
-      *is_idle = *is_idle && (local_available[i] == local_total[i]);
-    }
-  }
-
-  return overflow;
 }
 
 bool LocalResourceManager::AllocateTaskResourceInstances(

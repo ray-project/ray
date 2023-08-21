@@ -176,6 +176,13 @@ NodeResourceSet::NodeResourceSet(
   }
 }
 
+NodeResourceSet::NodeResourceSet(
+    const absl::flat_hash_map<ResourceID, double> &resource_map) {
+  for (auto const &[id, quantity] : resource_map) {
+    Set(id, FixedPoint(quantity));
+  }
+}
+
 NodeResourceSet &NodeResourceSet::Set(ResourceID resource_id, FixedPoint value) {
   if (value == ResourceDefaultValue(resource_id)) {
     resources_.erase(resource_id);
@@ -437,6 +444,23 @@ void NodeResourceInstanceSet::Free(ResourceID resource_id,
   }
 
   Set(resource_id, std::move(available));
+}
+
+void NodeResourceInstanceSet::Add(ResourceID resource_id,
+                                  const std::vector<FixedPoint> &instances) {
+  RAY_CHECK(!resource_id.IsImplicitResource());
+
+  if (!resources_.contains(resource_id)) {
+    Set(resource_id, instances);
+  } else {
+    auto &resource_instances = resources_[resource_id];
+    if (resource_instances.size() <= instances.size()) {
+      resource_instances.resize(instances.size());
+    }
+    for (size_t i = 0; i < instances.size(); ++i) {
+      resource_instances[i] += instances[i];
+    }
+  }
 }
 
 std::vector<FixedPoint> NodeResourceInstanceSet::Subtract(

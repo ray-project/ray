@@ -144,6 +144,8 @@ class NodeResourceSet {
 
   explicit NodeResourceSet(const absl::flat_hash_map<std::string, double> &resource_map);
 
+  explicit NodeResourceSet(const absl::flat_hash_map<ResourceID, double> &resource_map);
+
   NodeResourceSet &Set(ResourceID resource_id, FixedPoint value);
 
   FixedPoint Get(ResourceID resource_id) const;
@@ -197,6 +199,11 @@ class NodeResourceInstanceSet {
       const ResourceSet &resource_demands);
 
   void Free(ResourceID resource_id, const std::vector<FixedPoint> &allocation);
+
+  /// Add values for each instance of the given resource.
+  /// Note, if the number of instances in this set is less than the given instance
+  /// vector, more instances will be appended to match the number.
+  void Add(ResourceID resource_id, const std::vector<FixedPoint> &instances);
 
   /// Decrease the capacities of the instances of a given resource.
   ///

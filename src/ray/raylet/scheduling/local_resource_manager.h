@@ -159,23 +159,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Convert local resources to NodeResources.
   NodeResources ToNodeResources() const;
 
-  /// Increase the available capacities of the instances of a given resource.
-  ///
-  /// \param available A list of available capacities for resource's instances.
-  /// \param local_total Local total resource instances.
-  /// \param local_available Local available resource instances being updated.
-  /// \param[out] is_idle Pointer to record if the resource are idle after the
-  ///       addition. This is nullptr if not recording idle resources.
-  ///
-  /// \return Overflow capacities of "local_available" after adding instance
-  /// capacities in "available", i.e.,
-  /// min(available + local_available, local_total)
-  std::vector<FixedPoint> AddAvailableResourceInstances(
-      const std::vector<FixedPoint> &available,
-      const std::vector<FixedPoint> &local_total,
-      std::vector<FixedPoint> &local_available,
-      bool *is_idle = nullptr) const;
-
   /// Allocate local resources to satisfy a given request (resource_request).
   ///
   /// \param resource_request: Resources requested by a task.

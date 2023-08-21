@@ -201,23 +201,6 @@ class TaskResourceInstances {
     return *this;
   }
 
-  /// Add values for each instance of the given resource.
-  /// Note, if the number of instances in this set is less than the given instance
-  /// vector, more instances will be appended to match the number.
-  void Add(const ResourceID resource_id, const std::vector<FixedPoint> &instances) {
-    if (!Has(resource_id)) {
-      Set(resource_id, instances);
-    } else {
-      auto &resource_instances = GetMutable(resource_id);
-      if (resource_instances.size() <= instances.size()) {
-        resource_instances.resize(instances.size());
-      }
-      for (size_t i = 0; i < instances.size(); ++i) {
-        resource_instances[i] += instances[i];
-      }
-    }
-  }
-
   /// Remove a particular resource.
   void Remove(ResourceID resource_id) { resources_.erase(resource_id); }
 
