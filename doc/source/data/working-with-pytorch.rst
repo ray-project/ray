@@ -45,7 +45,7 @@ Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for 
 .. testcode::
 
     import torch
-    from Torch import nn
+    from torch import nn
     import ray
     from ray import train
     from ray.train import ScalingConfig

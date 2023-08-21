@@ -18,14 +18,14 @@ mock
 numpy
 scikit-image
 pandas
-# pickle5
+pickle5
 pillow
 pyarrow
 pydantic < 1.10.0
 # Note: more recent typing-extensions does not work well with pinned pydantic <1.10.0
 typing-extensions < 4.6.0
 pyyaml
-pytorch-lightning
+pytorch-lightning==1.6.5
 scikit-optimize
 redis
 starlette

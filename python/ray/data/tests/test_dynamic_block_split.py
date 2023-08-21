@@ -16,7 +16,7 @@ from ray.data.datasource.datasource import Reader, ReadTask
 from ray.tests.conftest import *  # noqa
 
 
-# Datasource generates random bytes data
+# Data source generates random bytes data
 class RandomBytesDatasource(Datasource):
     def create_reader(self, **read_args):
         return RandomBytesReader(

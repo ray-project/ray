@@ -11,7 +11,7 @@ libraries, so you can quickly map what you may already know to Ray Data APIs.
 .. note::
 
   - This is meant to map APIs that perform comparable but not necessarily identical operations.
-    Please select the API reference for exact semantics and usage.
+    Select the API reference for exact semantics and usage.
   - This list may not be exhaustive: Ray Data isn't a traditional ETL data processing library, so not all data processing APIs can map to Datasets.
     In addition, this list focuses on common APIs or APIs that are less obvious to see a connection.
 
