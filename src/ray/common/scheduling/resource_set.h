@@ -181,16 +181,59 @@ class NodeResourceInstanceSet {
   /// Construct a TaskResourceInstances from a node total resources.
   NodeResourceInstanceSet(const NodeResourceSet &total);
 
-  NodeResourceInstanceSet &Set(const ResourceID resource_id,
-                               const std::vector<FixedPoint> &instances);
+  const std::vector<FixedPoint> &Get(ResourceID resource_id) const;
+
+  NodeResourceInstanceSet &Set(ResourceID resource_id, std::vector<FixedPoint> instances);
 
   void Remove(ResourceID resource_id);
+
+  FixedPoint Sum(ResourceID resource_id) const;
 
   bool operator==(const NodeResourceInstanceSet &other) const;
 
   std::string DebugString() const;
 
+  std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>> TryAllocate(
+      const ResourceSet &resource_demands);
+
+  void Free(ResourceID resource_id, const std::vector<FixedPoint> &allocation);
+
+  /// Decrease the capacities of the instances of a given resource.
+  ///
+  /// \param resource_id The id of the resource to be subtracted.
+  /// \param instances A list of capacities for resource's instances to be subtracted.
+  /// \param allow_going_negative Allow the values to go negative (disable underflow).
+  ///
+  /// \return Underflow of resource capacities after subtracting instance
+  /// capacities in "instances", i.e.,.
+  /// max(instances - Get(resource_id), 0)
+  std::vector<FixedPoint> Subtract(ResourceID resource_id,
+                                   const std::vector<FixedPoint> &instances,
+                                   bool allow_going_negative);
+
+  NodeResourceSet ToNodeResourceSet() const;
+
  private:
+  /// Allocate enough capacity across the instances of a resource to satisfy "demand".
+  ///
+  /// Allocate full unit-capacity instances until
+  /// demand becomes fractional, and then satisfy the fractional demand using the
+  /// instance with the smallest available capacity that can satisfy the fractional
+  /// demand. For example, assume a resource conisting of 4 instances, with available
+  /// capacities: (1., 1., .7, 0.5) and deman of 1.2. Then we allocate one full
+  /// instance and then allocate 0.2 of the 0.5 instance (as this is the instance
+  /// with the smalest available capacity that can satisfy the remaining demand of 0.2).
+  /// As a result remaining available capacities will be (0., 1., .7, .3).
+  /// Thus, we will allocate a bunch of full instances and
+  /// at most a fractional instance.
+  ///
+  /// \param resource_id: The id of the resource to be allocated.
+  /// \param demand: The resource amount to be allocated.
+  ///
+  /// \return the allocated instances, if allocation successful. Else, return nullopt.
+  std::optional<std::vector<FixedPoint>> TryAllocate(ResourceID resource_id,
+                                                     FixedPoint demand);
+
   /// Map from the resource IDs to the resource instance values.
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources_;
 };

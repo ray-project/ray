@@ -147,6 +147,10 @@ class TaskResourceInstances {
     }
   }
 
+  explicit TaskResourceInstances(
+      absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources)
+      : resources_(std::move(resources)) {}
+
   /// Get the per-instance values of a particular resource.
   /// NOTE: the resource MUST already exist in this TaskResourceInstances, otherwise a
   /// check fail will occur.
