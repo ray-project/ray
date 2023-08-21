@@ -2320,9 +2320,8 @@ class Dataset:
             raise ValueError("The dataset is empty.")
         self._synchronize_progress_bar()
 
-        # Save the computed stats and blocks to the original dataset.
+        # Save the computed stats to the original dataset.
         self._plan._snapshot_stats = limited_ds._plan.stats()
-        self._plan._snapshot_blocks = limited_ds._plan._snapshot_blocks
         return res
 
     @ConsumptionAPI
@@ -2371,9 +2370,8 @@ class Dataset:
                 break
         self._synchronize_progress_bar()
 
-        # Save the computed stats and blocks to the original dataset.
+        # Save the computed stats to the original dataset.
         self._plan._snapshot_stats = limited_ds._plan.stats()
-        self._plan._snapshot_blocks = limited_ds._plan._snapshot_blocks
         return output
 
     @ConsumptionAPI
@@ -2445,9 +2443,6 @@ class Dataset:
         limited_ds = self.limit(limit)
         for row in limited_ds.take(limit):
             print(row)
-        # Save the computed stats and blocks to the original dataset.
-        self._plan._snapshot_stats = limited_ds._plan.stats()
-        self._plan._snapshot_blocks = limited_ds._plan._snapshot_blocks
 
     @ConsumptionAPI(
         if_more_than_read=True,
