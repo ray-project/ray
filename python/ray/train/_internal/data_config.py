@@ -45,8 +45,8 @@ class DataConfig:
         else:
             raise TypeError(
                 "`datasets_to_split` should be a string ('all' or 'none') or a list "
-                f"of dataset names. Received {type(datasets_to_split).__name__} "
-                f"with value {datasets_to_split}."
+                "of strings of dataset names. Received "
+                f"{type(datasets_to_split).__name__} with value {datasets_to_split}."
             )
 
         self._execution_options: ExecutionOptions = (

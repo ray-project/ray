@@ -61,7 +61,7 @@ def test_basic(ray_start_4_cpus):
 
     # Two workers, train split.
     test = TestBasic(
-        2, True, {"train": 5, "test": 10}, datasets={"train": ds, "test": ds}
+        2, True, {"train": 5, "test": 5}, datasets={"train": ds, "test": ds}
     )
     test.fit()
 
@@ -75,6 +75,68 @@ def test_basic(ray_start_4_cpus):
     )
     # Test get config.
     assert isinstance(test.get_dataset_config(), DataConfig)
+    test.fit()
+
+
+def test_split(ray_start_4_cpus):
+    ds = ray.data.range(10)
+
+    # Split all by default
+    test = TestBasic(
+        2,
+        True,
+        {"train": 5, "test": 5, "val": 5},
+        datasets={"train": ds, "test": ds, "val": ds},
+    )
+    test.fit()
+
+    # Test flag "all"
+    test = TestBasic(
+        2,
+        True,
+        {"train": 5, "test": 5},
+        datasets={"train": ds, "test": ds},
+        dataset_config=DataConfig(datasets_to_split="all"),
+    )
+
+    # Test flag "none"
+    test = TestBasic(
+        2,
+        True,
+        {"train": 20, "test": 20},
+        datasets={"train": ds, "test": ds},
+        dataset_config=DataConfig(datasets_to_split="none"),
+    )
+
+    # Test split train only.
+    test = TestBasic(
+        2,
+        True,
+        {"train": 5, "test": 10},
+        datasets={"train": ds, "test": ds},
+        dataset_config=DataConfig(datasets_to_split=["train"]),
+    )
+    test.fit()
+
+    # Test invalid arguments
+    for datasets_to_split in ["train", ("train"), {}]:
+        with pytest.raises(TypeError, match="`datasets_to_split` should be.*"):
+            test = TestBasic(
+                2,
+                True,
+                {"train": 5, "test": 10},
+                datasets={"train": ds, "test": ds},
+                dataset_config=DataConfig(datasets_to_split=datasets_to_split),
+            )
+
+    # Test empty `datasets_to_split` list
+    test = TestBasic(
+        2,
+        True,
+        {"train": 10, "test": 10},
+        datasets={"train": ds, "test": ds},
+        dataset_config=DataConfig(datasets_to_split=[]),
+    )
     test.fit()
 
 
