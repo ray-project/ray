@@ -25,8 +25,6 @@ from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.train.huggingface import TransformersTrainer
 from ray.tune import Callback
-from ray.data.preprocessors.batch_mapper import BatchMapper
-from ray.data.preprocessor import Preprocessor
 
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
@@ -281,107 +279,6 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
         )
 
     trainer = DataParallelTrainer.restore(str(tmpdir), datasets=datasets)
-
-
-@pytest.mark.parametrize("new_preprocessor", [True, False])
-def test_preprocessor_restore(ray_start_4_cpus, tmpdir, new_preprocessor):
-    """Preprocessors get restored from latest checkpoint if no new one is provided.
-    They will not be re-fit if loaded from the checkpoint.
-    If a new one is provided on restore, then it will be re-fit.
-    """
-    datasets = {
-        "train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(8)]),
-    }
-
-    class MyPreprocessor(Preprocessor):
-        def __init__(self, id):
-            self.id = id
-            self._num_fits = 0
-
-        def _fit(self, dataset):
-            self.fitted_ = True
-            self._num_fits += 1
-            return self
-
-        def _transform_numpy(self, np_data):
-            return np_data
-
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=_failing_train_fn,
-        datasets=datasets,
-        preprocessor=MyPreprocessor(id=1),
-        scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="preprocessor_restore_test", local_dir=str(tmpdir)),
-    )
-    with pytest.raises(TrainingFailedError) as exc_info:
-        result = trainer.fit()
-    assert isinstance(exc_info.value.__cause__, _TestSpecificError)
-
-    new_preprocessor = MyPreprocessor(id=2) if new_preprocessor else None
-    trainer = DataParallelTrainer.restore(
-        str(tmpdir / "preprocessor_restore_test"),
-        datasets=datasets,
-        preprocessor=new_preprocessor,
-    )
-    result = trainer.fit()
-    preprocessor = result.checkpoint.get_preprocessor()
-    assert result.metrics["training_iteration"] == 2
-    assert preprocessor and preprocessor._num_fits == 1, (
-        "The preprocessor should have been loaded from the checkpoint, "
-        "and it should not have been fit again. "
-        f"Fit {preprocessor._num_fits} times instead of once."
-    )
-    if new_preprocessor:
-        assert preprocessor and preprocessor.id == 2, "Wrong preprocessor was used."
-
-
-def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
-    """Re-specifying the preprocessor allows restoration when the preprocessor
-    includes some non-serializable (across clusters) objects.
-    In this test, the preprocessor consists of a calls to a dummy preprocessor
-    object that is put on the object store.
-    NOTE: Capturing a remote actor would actually break this on restore, since
-    unpickling an actor handle immediately throws an exception from a new cluster."""
-
-    class ModelPreprocessor:
-        def transform(self, x):
-            return {k: v + 1 for k, v in x.items()}
-
-    def create_preprocessor():
-        model_prep_ref = ray.put(ModelPreprocessor())
-
-        def preprocess_fn(batch):
-            batch = ray.get(model_prep_ref).transform(batch)
-            return batch
-
-        return BatchMapper(preprocess_fn, batch_format="numpy")
-
-    preprocessor = create_preprocessor()
-
-    def train_fn(config):
-        train.report({"score": 1})
-
-    datasets = {"train": ray.data.from_items([{"x": 1}])}
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=train_fn,
-        datasets=datasets,
-        scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="obj_ref_in_train_config_test", local_dir=tmpdir),
-        preprocessor=preprocessor,
-    )
-    trainer._save(tmpdir)
-
-    # Explicit shutdown. Otherwise, old object references may still be usable
-    ray.shutdown()
-    ray.init(num_cpus=4)
-
-    datasets = {"train": ray.data.from_items([{"x": 1}])}
-    trainer = DataParallelTrainer.restore(
-        str(tmpdir), datasets=datasets, preprocessor=create_preprocessor()
-    )
-    trainer.preprocess_datasets()
-
-    assert trainer.datasets["train"].take()[0]["x"] == 2
 
 
 def test_restore_with_different_trainer(tmpdir):
