@@ -192,7 +192,7 @@ const useEventTable = (props: EventTableProps) => {
         const rsp = await getEvents(params); // We don't useSWR since we need to get real time events data once filters changed
         const events = rsp?.data?.data?.result?.result;
         if (events) {
-          setEvents(events); // We sor the event by timestamp in the backend
+          setEvents(events); // We sort the event by timestamp in the backend
         }
       } catch (e) {
         console.error("getEvent error: ", e);
