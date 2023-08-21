@@ -6,6 +6,7 @@ from typing import Dict
 import pytest
 
 import ray
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.cluster_utils import AutoscalingCluster
@@ -14,7 +15,7 @@ from ray.util.state.api import list_placement_groups, list_tasks
 
 
 def is_head_node_from_resource_usage(usage: Dict[str, float]) -> bool:
-    if "node:__internal_head__" in usage:
+    if HEAD_NODE_RESOURCE_NAME in usage:
         return True
     return False
 
@@ -251,7 +252,7 @@ def test_serve_num_replica_idle_node():
                 "max_workers": 30,
             },
         },
-        idle_timeout_minutes=1,
+        idle_timeout_minutes=999,
     )
 
     from ray import serve
@@ -283,11 +284,13 @@ def test_serve_num_replica_idle_node():
 
         wait_for_condition(verify)
 
-        # Downscale to 1 replicas, 2 workers nodes should be idle.
-        serve.run(Deployment.options(num_replicas=2).bind())
+        # Downscale to 1 replicas, 1 workers nodes should be idle.
+        serve.run(Deployment.options(num_replicas=1).bind())
 
         def verify():
             cluster_state = get_cluster_status()
+            # We should only have 1 running worker for the 1 replica, the rest idle.
+            expected_idle_workers = expected_num_workers - 1
 
             assert len((cluster_state.healthy_nodes)) == expected_num_workers + 1
             idle_nodes = []
@@ -301,7 +304,7 @@ def test_serve_num_replica_idle_node():
             from rich import print
 
             print(cluster_state.healthy_nodes)
-            assert len(idle_nodes) == 3
+            assert len(idle_nodes) == expected_idle_workers
             return True
 
         # A long sleep is needed for serve proxy to be removed.
