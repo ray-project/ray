@@ -269,7 +269,14 @@ if setup_spec.type == SetupType.RAY:
             if sys.platform == "darwin"
             else "grpcio",
         ],
-        "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
+        "serve": [
+            "uvicorn",
+            "requests",
+            "starlette",
+            "fastapi",
+            "aiorwlock",
+            "watchfiles",
+        ],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
         "observability": [
             "opentelemetry-api",
@@ -336,7 +343,6 @@ if setup_spec.type == SetupType.RAY:
         "aiosignal",
         "frozenlist",
         "requests",
-        "watchfiles",
         # Light weight requirement, can be replaced with "typing" once
         # we deprecate Python 3.7 (this will take a while).
         "typing_extensions; python_version < '3.8'",
