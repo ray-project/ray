@@ -641,6 +641,17 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
         wait_for_condition(check_telemetry, tag_should_be_set=True)
 
 
+def check_telemetry_recorded(storage_handle, key, expected_value):
+    report = ray.get(storage_handle.get_report.remote())
+    assert report["extra_usage_tags"][key] == expected_value
+    return True
+
+
+def check_telemetry_not_recorded(storage_handle, key, expected_value):
+    report = ray.get(storage_handle.get_report.remote())
+    assert report["extra_usage_tags"].get(key) != expected_value
+
+
 @pytest.mark.parametrize("location", ["driver", "deployment", None])
 def test_status_api_detected(manage_ray, location):
     """Check that serve.status is detected correctly by telemetry."""
@@ -652,16 +663,13 @@ def test_status_api_detected(manage_ray, location):
     wait_for_condition(
         lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
     )
+    # Check telemetry is not recorded before test starts
+    check_telemetry_not_recorded(storage_handle, "serve_status_api_used", "1")
 
     @serve.deployment
     class Model:
         async def __call__(self):
             return serve.status()
-
-    def check_telemetry():
-        report = ray.get(storage_handle.get_report.remote())
-        assert report["extra_usage_tags"]["serve_status_api_used"] == "1"
-        return True
 
     if location:
         if location == "deployment":
@@ -670,11 +678,15 @@ def test_status_api_detected(manage_ray, location):
         elif location == "driver":
             run_string_as_driver("from ray import serve; serve.status()")
 
-        wait_for_condition(check_telemetry)
+        wait_for_condition(
+            check_telemetry_recorded,
+            storage_handle=storage_handle,
+            key="serve_status_api_used",
+            expected_value="1",
+        )
     else:
         for _ in range(3):
-            report = ray.get(storage_handle.get_report.remote())
-            assert report["extra_usage_tags"].get("serve_status_api_used") != "1"
+            check_telemetry_not_recorded(storage_handle, "serve_status_api_used", "1")
             time.sleep(1)
 
 
@@ -689,16 +701,13 @@ def test_get_app_handle_api_detected(manage_ray, location):
     wait_for_condition(
         lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
     )
+    # Check telemetry is not recorded before test starts
+    check_telemetry_not_recorded(storage_handle, "serve_get_app_handle_api_used", "1")
 
     @serve.deployment
     class Model:
         async def __call__(self):
             serve.get_app_handle("telemetry")
-
-    def check_telemetry():
-        report = ray.get(storage_handle.get_report.remote())
-        assert report["extra_usage_tags"]["serve_get_app_handle_api_used"] == "1"
-        return True
 
     if location:
         if location == "deployment":
@@ -709,12 +718,16 @@ def test_get_app_handle_api_detected(manage_ray, location):
                 "from ray import serve; serve.get_app_handle('telemetry')"
             )
 
-        wait_for_condition(check_telemetry)
+        wait_for_condition(
+            check_telemetry_recorded,
+            storage_handle=storage_handle,
+            key="serve_get_app_handle_api_used",
+            expected_value="1",
+        )
     else:
         for _ in range(3):
-            report = ray.get(storage_handle.get_report.remote())
-            assert (
-                report["extra_usage_tags"].get("serve_get_app_handle_api_used") != "1"
+            check_telemetry_not_recorded(
+                storage_handle, "serve_get_app_handle_api_used", "1"
             )
             time.sleep(1)
 
@@ -730,16 +743,15 @@ def test_get_deployment_handle_api_detected(manage_ray, location):
     wait_for_condition(
         lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
     )
+    # Check telemetry is not recorded before test starts
+    check_telemetry_not_recorded(
+        storage_handle, "serve_get_deployment_handle_api_used", "1"
+    )
 
     @serve.deployment
     class Model:
         async def __call__(self):
             serve.get_deployment_handle("TelemetryReceiver", "telemetry")
-
-    def check_telemetry():
-        report = ray.get(storage_handle.get_report.remote())
-        assert report["extra_usage_tags"]["serve_get_deployment_handle_api_used"] == "1"
-        return True
 
     if location:
         if location == "deployment":
@@ -751,13 +763,16 @@ def test_get_deployment_handle_api_detected(manage_ray, location):
                 "serve.get_deployment_handle('TelemetryReceiver', 'telemetry')"
             )
 
-        wait_for_condition(check_telemetry)
+        wait_for_condition(
+            check_telemetry_recorded,
+            storage_handle=storage_handle,
+            key="serve_get_deployment_handle_api_used",
+            expected_value="1",
+        )
     else:
         for _ in range(3):
-            report = ray.get(storage_handle.get_report.remote())
-            assert (
-                report["extra_usage_tags"].get("serve_get_deployment_handle_api_used")
-                != "1"
+            check_telemetry_not_recorded(
+                storage_handle, "serve_get_deployment_handle_api_used", "1"
             )
             time.sleep(1)
 
