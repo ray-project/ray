@@ -19,13 +19,18 @@ from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 
 import ray
+from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator
 
 from ray import serve
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import (
+    DeploymentResponse,
+    DeploymentResponseGenerator,
+    RayServeHandle,
+)
 from ray.serve._private.http_util import (
     ASGIMessageQueue,
     HTTPRequestWrapper,
@@ -149,6 +154,8 @@ class GenericProxy(ABC):
         node_ip_address: str,
         proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
+        controller_actor: Optional[ActorHandle] = None,
+        proxy_actor: Optional[ActorHandle] = None,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
@@ -165,7 +172,7 @@ class GenericProxy(ABC):
         # Used only for displaying the route table.
         self.route_info: Dict[str, EndpointTag] = dict()
 
-        self.self_actor_handle = ray.get_runtime_context().current_actor
+        self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
 
         if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
@@ -182,9 +189,10 @@ class GenericProxy(ABC):
                 missing_ok=True,
             )
 
-        self.proxy_router = proxy_router_class(get_handle)
+        self.proxy_router = proxy_router_class(get_handle, self.protocol)
         self.long_poll_client = LongPollClient(
-            ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
+            controller_actor
+            or ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
             },
@@ -239,7 +247,7 @@ class GenericProxy(ABC):
         self.num_ongoing_requests_gauge = metrics.Gauge(
             name=f"serve_num_ongoing_{self.protocol.lower()}_requests",
             description=f"The number of ongoing requests in this {self.protocol} "
-            "Proxy.",
+            "proxy.",
             tag_keys=("node_id", "node_ip_address"),
         ).set_default_tags(
             {
@@ -529,16 +537,21 @@ class GenericProxy(ABC):
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
-        result_gen = handle.remote(
+        result = handle.remote(
             proxy_request.request_object(proxy_handle=self.self_actor_handle)
         )
-        to_object_ref_gen = asyncio.ensure_future(
-            result_gen._to_object_ref_gen(_record_telemetry=False)
-        )
-
+        to_object_ref = None
+        if isinstance(result, DeploymentResponse):
+            to_object_ref = asyncio.ensure_future(
+                result._to_object_ref(_record_telemetry=False)
+            )
+        elif isinstance(result, DeploymentResponseGenerator):
+            to_object_ref = asyncio.ensure_future(
+                result._to_object_ref_gen(_record_telemetry=False)
+            )
         tasks = []
-        if to_object_ref_gen is not None:
-            tasks.append(to_object_ref_gen)
+        if to_object_ref is not None:
+            tasks.append(to_object_ref)
         if disconnected_task is not None:
             tasks.append(disconnected_task)
         done, _ = await asyncio.wait(
@@ -546,13 +559,13 @@ class GenericProxy(ABC):
             return_when=FIRST_COMPLETED,
             timeout=timeout_s,
         )
-        if to_object_ref_gen in done:
-            return to_object_ref_gen.result()
+        if to_object_ref in done:
+            return to_object_ref.result()
         elif disconnected_task in done:
-            result_gen.cancel()
+            result.cancel()
             return None
         else:
-            result_gen.cancel()
+            result.cancel()
             raise TimeoutError()
 
     @abstractmethod
@@ -740,7 +753,6 @@ class gRPCProxy(GenericProxy):
         Unpack gRPC request metadata and extract info to set up request context and
         handle.
         """
-        handle._set_request_protocol(RequestProtocol.GRPC)
         multiplexed_model_id = proxy_request.multiplexed_model_id
         request_id = proxy_request.request_id
         if not request_id:
@@ -1153,7 +1165,6 @@ class HTTPProxy(GenericProxy):
         Unpack HTTP request headers and extract info to set up request context and
         handle.
         """
-        handle._set_request_protocol(RequestProtocol.HTTP)
         request_context_info = {
             "route": route_path,
             "app_name": app_name,

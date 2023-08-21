@@ -1,3 +1,4 @@
+import asyncio
 import pickle
 import sys
 from unittest.mock import patch, MagicMock, ANY
@@ -34,9 +35,67 @@ else:
     from asyncmock import AsyncMock
 
 
+class FakeRef:
+    def __init__(self, messages=()):
+        self.called = False
+        self.messages = messages
+
+    def _on_completed(self, func):
+        pass
+
+    def is_nil(self):
+        return False
+
+    def __await__(self):
+        future = asyncio.Future()
+        future.set_result(self)
+        result = yield from future
+        if self.called:
+            return pickle.dumps(self.messages)
+        self.called = True
+        return result
+
+    def _to_object_ref(self, *args, **kwargs):
+        return self
+
+    def cancel(self):
+        pass
+
+
+class FakeRefGenerator:
+    def __init__(self, messages=None):
+        self.called = False
+        self.messages = messages
+
+    def _next_async(self, *args, **kwargs):
+        if not self.called:
+            self.called = True
+            return FakeRef(messages=self.messages)
+            if self.return_value:
+                return self.get_val()
+            else:
+                return FakeRef(10)
+        raise StopAsyncIteration
+
+
+class FakeActor:
+    def remote(self, snapshot_ids):
+        return FakeRef()
+
+
+class FakeActorHandler:
+    def __init__(self, actor_id):
+        self._actor_id = actor_id
+
+    @property
+    def listen_for_change(self):
+        return FakeActor()
+
+    def remote(self, *args, **kwargs):
+        return FakeRef()
+
+
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
-@patch("ray.serve._private.http_proxy.ray.get_runtime_context", MagicMock())
-@patch("ray.serve._private.http_proxy.ray.get_actor", MagicMock())
 class TestgRPCProxy:
     """Test methods implemented on gRPCProxy"""
 
@@ -49,6 +108,8 @@ class TestgRPCProxy:
             node_id=node_id,
             node_ip_address=node_ip_address,
             proxy_router_class=MagicMock(),
+            controller_actor=FakeActorHandler("fake_controller_actor"),
+            proxy_actor=FakeActorHandler("fake_proxy_actor"),
         )
 
     def test_subclass_from_generic_proxy(self):
@@ -226,7 +287,6 @@ class TestgRPCProxy:
         )
 
         assert returned_request_id == request_id
-        handle._set_request_protocol.assert_called_with(RequestProtocol.GRPC)
         handle.options.assert_called_with(
             stream=stream,
             multiplexed_model_id=multiplexed_model_id,
@@ -245,20 +305,16 @@ class TestgRPCProxy:
     async def test_streaming_generator_helper(self):
         """Test gRPCProxy _streaming_generator_helper returns a generator."""
         grpc_proxy = self.create_grpc_proxy()
-        obj_ref_generator = MagicMock()
-        obj_ref_generator._next_async.side_effect = StopAsyncIteration()
+        messages = ["foo", "bar", "baz"]
+        obj_ref_generator = FakeRefGenerator(messages=messages)
+
         generator = grpc_proxy._streaming_generator_helper(
             obj_ref_generator=obj_ref_generator,
             proxy_request=AsyncMock(),
             request_id=AsyncMock(),
         )
         assert isinstance(generator, AsyncGenerator)
-        while True:
-            try:
-                obj_ref = await generator.__anext__()
-                _ = await obj_ref
-            except StopAsyncIteration:
-                break
+        assert [pickle.loads(i) async for i in generator] == [messages]
 
     @pytest.mark.asyncio
     async def test_consume_generator_stream(self):
@@ -285,7 +341,7 @@ class TestgRPCProxy:
         response_bytes = b"fake-response-bytes"
         mock_get.return_value = response_bytes
 
-        obj_ref = MagicMock()
+        obj_ref = FakeRef()
         response = await grpc_proxy._consume_generator_unary(obj_ref=obj_ref)
         assert response.status_code == str(grpc_proxy.success_status_code)
         assert response.response == response_bytes
@@ -331,8 +387,6 @@ class TestgRPCProxy:
 
 
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
-@patch("ray.serve._private.http_proxy.ray.get_runtime_context", MagicMock())
-@patch("ray.serve._private.http_proxy.ray.get_actor", MagicMock())
 class TestHTTPProxy:
     """Test methods implemented on HTTPProxy"""
 
@@ -345,6 +399,8 @@ class TestHTTPProxy:
             node_id=node_id,
             node_ip_address=node_ip_address,
             proxy_router_class=MagicMock(),
+            controller_actor=FakeActorHandler("fake_controller_actor"),
+            proxy_actor=FakeActorHandler("fake_proxy_actor"),
         )
 
     def test_subclass_from_generic_proxy(self):
@@ -495,7 +551,6 @@ class TestHTTPProxy:
         mocked_proxy_request.assert_called_once()
 
     @pytest.mark.asyncio
-    # @pytest.mark.skip(reason="WIP: TODO (genesu)")
     @patch("ray.serve._private.http_proxy.receive_http_body")
     async def test_send_request_to_replica_unary(self, mock_receive_http_body):
         """Test HTTPProxy send_request_to_replica_unary returns the correct response."""
@@ -503,22 +558,10 @@ class TestHTTPProxy:
         http_body_bytes = b""
         mock_receive_http_body.return_value = http_body_bytes
 
-        async def async_obj():
-            return "foo"
-
-        MagicMock.__await__ = lambda x: async_obj().__await__()
-        mocked_obj_ref = MagicMock()
-
-        async def async_assignment_task():
-            return mocked_obj_ref
-
         async def receive_message():
             return {"type": "http.disconnect"}
 
-        MagicMock.__await__ = lambda x: async_assignment_task().__await__()
-        mock_assignment_task = MagicMock()
-        handle = MagicMock()
-        handle.remote = mock_assignment_task
+        handle = FakeActorHandler("fake-deployment-handle")
         proxy_request = ASGIProxyRequest(
             scope={},
             receive=receive_message,
@@ -560,19 +603,7 @@ class TestHTTPProxy:
         status_code = "status_code"
         asgi_message = {"type": "http.response.start", "status": status_code}
         asgi_messages = [asgi_message]
-        response_bytes = pickle.dumps(asgi_messages)
-
-        async def async_magic():
-            return response_bytes
-
-        MagicMock.__await__ = lambda x: async_magic().__await__()
-        obj_ref = MagicMock()
-        obj_ref.is_nil = MagicMock(return_value=False)
-        obj_ref_generator = AsyncMock()
-        obj_ref_generator._next_async.side_effect = [
-            obj_ref,
-            StopAsyncIteration(),
-        ]
+        obj_ref_generator = FakeRefGenerator(messages=asgi_messages)
         send = AsyncMock()
         returned_status_code = (
             await http_proxy._consume_and_send_asgi_message_generator(
@@ -618,7 +649,6 @@ class TestHTTPProxy:
         )
 
         assert returned_request_id == request_id
-        handle._set_request_protocol.assert_called_with(RequestProtocol.HTTP)
         handle.options.assert_called_with(
             multiplexed_model_id=multiplexed_model_id,
         )
@@ -649,13 +679,7 @@ class TestHTTPProxy:
             receive=AsyncMock(),
             send=AsyncMock(),
         )
-        response_bytes = b"fake-response-bytes"
-
-        async def async_magic():
-            return response_bytes
-
-        MagicMock.__await__ = lambda x: async_magic().__await__()
-        response = MagicMock()
+        response = FakeRefGenerator()
         mocked_assign_request_with_timeout = AsyncMock(return_value=response)
         mocked_consume_and_send_asgi_message_generator = AsyncMock(
             return_value=status_code
