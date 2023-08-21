@@ -339,7 +339,8 @@ def _get_visible_ids(env_var: str) -> Optional[List[str]]:
     """Get the device IDs from defined environment variable.
     Args:
         env_var: Environment variable (e.g., CUDA_VISIBLE_DEVICES,
-        NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS) to set based on the accelerator runtime.
+        NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS) to set based
+        on the accelerator runtime.
 
     Returns:
         devices (List[str]): If environment variable is set, returns a
@@ -461,7 +462,7 @@ def set_tpu_visible_ids_and_bounds(tpu_chips: List[str]) -> None:
     """Set TPU_VISIBLE_CHIPS and TPU_CHIPS_PER_HOST_BOUNDS based on
     provided tpu_chips.
 
-    To access a subset of the TPU visible chips 
+    To access a subset of the TPU visible chips
 
     See: https://github.com/google/jax/issues/14977 for more details.
 
@@ -473,14 +474,22 @@ def set_tpu_visible_ids_and_bounds(tpu_chips: List[str]) -> None:
     global last_set_tpu_chips
     if last_set_tpu_chips == tpu_chips:
         return  # optimization: already set
-    _set_visible_ids(tpu_ids, ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR)
+    _set_visible_ids(tpu_chips, ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR)
     num_chips = len(tpu_chips)
     if num_chips == 1:
-        os.environ[ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
-        os.environ[ray_constants.TPU_HOST_BOUNDS_ENV_VAR] = ray_constants.TPU_SINGLE_HOST_BOUNDS
+        os.environ[
+            ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
+        ] = ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+        os.environ[
+            ray_constants.TPU_HOST_BOUNDS_ENV_VAR
+        ] = ray_constants.TPU_SINGLE_HOST_BOUNDS
     elif num_chips == 2:
-        os.environ[ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
-        os.environ[ray_constants.TPU_HOST_BOUNDS_ENV_VAR] = ray_constants.TPU_SINGLE_HOST_BOUNDS
+        os.environ[
+            ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
+        ] = ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
+        os.environ[
+            ray_constants.TPU_HOST_BOUNDS_ENV_VAR
+        ] = ray_constants.TPU_SINGLE_HOST_BOUNDS
     last_set_tpu_chips = tpu_chips
 
 

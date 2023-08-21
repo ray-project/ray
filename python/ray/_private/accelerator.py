@@ -4,6 +4,7 @@ import glob
 import subprocess
 import sys
 import requests
+import logging
 from typing import Optional
 from ray._private import ray_constants
 
@@ -135,9 +136,9 @@ def autodetect_num_tpus() -> int:
 def autodetect_tpu_version() -> Optional[str]:
     """Attempt to detect the TPU version.
 
-    The intuition here is that individual TPU VMs within
-    a TPU pod must know what type of pod it is a part of.
-    This is necessary for the ML framework to work properly.
+    Individual TPU VMs within a TPU pod must know what type
+    of pod it is a part of. This is necessary for the
+    ML framework to work properly.
 
     The logic is different if the TPU was provisioned via:
     ```
@@ -152,20 +153,27 @@ def autodetect_tpu_version() -> Optional[str]:
         e.g. "V2", "V3", "V4" if applicable, else None.
 
     """
+
     def accelerator_type_to_version(accelerator_type: str) -> str:
         print(accelerator_type)
         return str(accelerator_type.split("-")[0]).upper()
 
     # GKE-based check
-    accelerator_type = os.getenv(ray_constants.RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, None)
+    accelerator_type = os.getenv(
+        ray_constants.RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, None
+    )
     if accelerator_type is not None:
         return accelerator_type_to_version(accelerator_type)
 
     # GCE-based VM check
-    accelerator_type_request = requests.get(
-        ray_constants.RAY_GCE_TPU_ACCELERATOR_ENDPOINT,
-        headers=ray_constants.RAY_GCE_TPU_HEADERS)
-    if accelerator_type_request.status_code == 200:
-        return accelerator_type_to_version(accelerator_type_request.text)
+    try:
+        accelerator_type_request = requests.get(
+            ray_constants.RAY_GCE_TPU_ACCELERATOR_ENDPOINT,
+            headers=ray_constants.RAY_GCE_TPU_HEADERS,
+        )
+        if accelerator_type_request.status_code == 200:
+            return accelerator_type_to_version(accelerator_type_request.text)
+    except requests.RequestException as e:
+        logging.info("Unable to poll TPU GCE metadata: %s", e)
 
     return None

@@ -494,7 +494,8 @@ RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
 RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONNECTIONS"
 RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
 RAY_GCE_TPU_ACCELERATOR_ENDPOINT = (
-    "http://metadata.google.internal/computeMetadata/v1/instance/attributes/accelerator-type"
+    "http://metadata.google.internal/computeMetadata/"
+    "v1/instance/attributes/accelerator-type"
 )
 RAY_GCE_TPU_HEADERS = {"Metadata-Flavor": "Google"}
 

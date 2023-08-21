@@ -1,9 +1,14 @@
 import mock
 import pytest
 
+from unittest.mock import patch
+import requests
+
 import ray._private.accelerator as accelerator
 import ray._private.utils as utils
 import ray._private.ray_constants as ray_constants
+from ray._private.ray_option_utils import _validate_accelerators
+from ray.util.accelerators.accelerators import AWS_NEURON_CORE
 
 
 def test_configured_aws_neuron_core():
@@ -91,12 +96,17 @@ def test_get_neuron_core_count_failure_with_empty_results(mock_subprocess):
 
 @mock.patch("glob.glob")
 def test_autodetect_num_tpus_accel(mock_glob):
-    mock_glob.return_value = ["/dev/accel0", "/dev/accel1", "/dev/accel2", "/dev/accel3"]
+    mock_glob.return_value = [
+        "/dev/accel0",
+        "/dev/accel1",
+        "/dev/accel2",
+        "/dev/accel3",
+    ]
     assert accelerator.autodetect_num_tpus() == 4
 
 
 @mock.patch("glob.glob")
-def test_autodetect_num_tpus_accel(mock_glob):
+def test_autodetect_num_tpus_vfio(mock_glob):
     mock_glob.return_value = [f"/dev/vfio/{i}" for i in range(4)]
     assert accelerator.autodetect_num_tpus() == 4
 
@@ -110,7 +120,7 @@ def test_autodetect_num_tpus_accel(mock_glob):
         ("v3-128", "V3"),
         ("v4-8", "V4"),
         ("v4-2048", "V4"),
-    ]
+    ],
 )
 @mock.patch("requests.get")
 def test_autodetect_tpu_version_gce(mock_request, accelerator_type_version_tuple):
@@ -131,13 +141,53 @@ def test_autodetect_tpu_version_gce(mock_request, accelerator_type_version_tuple
         ("v3-128", "V3"),
         ("v4-8", "V4"),
         ("v4-2048", "V4"),
-    ]
+    ],
 )
 @mock.patch("os.getenv")
 def test_autodetect_tpu_version_gke_v2(mock_os, accelerator_type_version_tuple):
     accelerator_type, expected_version = accelerator_type_version_tuple
     mock_os.return_value = accelerator_type
     assert accelerator.autodetect_tpu_version() == expected_version
+
+
+def test_autodetect_tpu_fails_gracefully():
+    with patch("requests.get") as mock_get:
+        mock_get.side_effect = requests.exceptions.RequestException
+        tpu_result = accelerator.autodetect_tpu_version()
+        assert tpu_result is None
+
+
+@pytest.mark.parametrize(
+    "test_config",
+    [
+        (1, 0, 0, False, False),
+        (0, 1, 0, False, False),
+        (0, 0, 1, False, False),
+        (0, 0, 0, True, False),
+        (1, 1, 0, False, True),
+        (0, 1, 1, False, True),
+        (0, 1, 0, True, True),
+        (1, 0, 0, True, True),
+    ],
+)
+def test_validate_accelerator_options(test_config):
+    num_gpus, num_tpus, num_neuron_cores, use_neuron_acc, expect_error = test_config
+    options = {
+        "num_tpus": num_tpus,
+        "num_gpus": num_gpus,
+    }
+
+    if use_neuron_acc:
+        options["accelerator_type"] = AWS_NEURON_CORE
+    if num_neuron_cores > 0:
+        options["resources"] = {"neuron_cores": 1}
+
+    if expect_error:
+        with pytest.raises(ValueError):
+            _validate_accelerators(options)
+    else:
+        # Should run without raising an error
+        _validate_accelerators(options)
 
 
 if __name__ == "__main__":

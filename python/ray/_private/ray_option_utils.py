@@ -108,9 +108,12 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
     return None
 
 
-def _validate_neuron_core_accelerator(options: Dict[str, Any]):
-    """Validate options for NeuronCore accelerator/ neuron_cores and GPU,
-     supports only one or the other (Either NeuronCore or GPU).
+def _validate_accelerators(options: Dict[str, Any]):
+    """Validate options for accelerators - support only one out of multiple options.
+
+    GPUs, NeuronCore accelerators (neuron_cores), and TPUs are valid options, but
+    individual nodes do not support heterogeneous accelerators. This function
+    guards against this.
 
     Args:
         options: The options to be validated.
@@ -119,34 +122,31 @@ def _validate_neuron_core_accelerator(options: Dict[str, Any]):
         ValueError: If the options are invalid.
     """
     num_gpus = options.get("num_gpus", None)
-    if num_gpus is not None and num_gpus > 0:
-        resources = options["resources"] if "resources" in options else None
-        accelerator_type_value: str = options.get("accelerator_type", "")
-        if resources is not None:
-            neuron_cores: int = resources.get(ray_constants.NEURON_CORES, 0)
-            if neuron_cores > 0:
-                raise ValueError(
-                    "'num_gpus' cannot be used together with "
-                    "neuron_cores/accelerator_type:aws-neuron-core."
-                )
-        elif accelerator_type_value == accelerators.AWS_NEURON_CORE:
-            raise ValueError(
-                "'num_gpus' cannot be used together with "
-                "neuron_cores/accelerator_type:aws-neuron-core."
-            )
-
-
-def _validate_tpu_accelerator(options: Dict[str, Any]):
-    """Validate options for TPU.
-
-    Args:
-        options: The options to be validated.
-
-    Raises:
-        ValueError: If the options are invalid.
-    
-    """
     num_tpus = options.get("num_tpus", None)
+    non_zero_gpus = num_gpus is not None and num_gpus > 0
+    non_zero_tpus = num_tpus is not None and num_tpus > 0
+
+    resources = options["resources"] if "resources" in options else None
+    accelerator_type_value: str = options.get("accelerator_type", "")
+
+    if resources is not None:
+        neuron_cores: int = resources.get(ray_constants.NEURON_CORES, 0)
+        if neuron_cores > 0:
+            non_zero_neuron_cores = True
+    elif accelerator_type_value == accelerators.AWS_NEURON_CORE:
+        non_zero_neuron_cores = True
+    else:
+        non_zero_neuron_cores = False
+
+    num_configured_accelerators = sum(
+        [non_zero_gpus, non_zero_tpus, non_zero_neuron_cores]
+    )
+    if num_configured_accelerators > 1:
+        raise ValueError(
+            "Only one of 'num_gpus', 'neuron_cores/accelerator_type:aws-neuron-core' "
+            f"and 'num_tpus' can be set. Detected {num_configured_accelerators} "
+            "options were configured."
+        )
 
 
 _common_options = {
@@ -334,7 +334,7 @@ def validate_task_options(options: Dict[str, Any], in_options: bool):
     if in_options and "max_calls" in options:
         raise ValueError("Setting 'max_calls' is not supported in '.options()'.")
     _check_deprecate_placement_group(options)
-    _validate_neuron_core_accelerator(options)
+    _validate_accelerators(options)
 
 
 def validate_actor_options(options: Dict[str, Any], in_options: bool):
@@ -379,7 +379,7 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
         )
 
     _check_deprecate_placement_group(options)
-    _validate_neuron_core_accelerator(options)
+    _validate_accelerators(options)
 
 
 def update_options(

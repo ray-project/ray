@@ -1,7 +1,6 @@
 import importlib.util
 import logging
 import os
-import glob
 import re
 import subprocess
 import sys
@@ -235,7 +234,7 @@ class ResourceSpec(
             # Don't use more TPUs than allowed by TPU_VISIBLE_DEVICES.
             if tpu_ids is not None:
                 num_tpus = min(num_tpus, len(tpu_ids))
-        
+
         tpu_version = accelerator.autodetect_tpu_version()
         if tpu_version is not None:
             # Update with, e.g. {"V2": 1}
@@ -315,7 +314,13 @@ class ResourceSpec(
                 )
 
         spec = ResourceSpec(
-            num_cpus, num_gpus, num_tpus, memory, object_store_memory, resources, redis_max_memory
+            num_cpus,
+            num_gpus,
+            num_tpus,
+            memory,
+            object_store_memory,
+            resources,
+            redis_max_memory,
         )
         assert spec.resolved()
         return spec
