@@ -1,6 +1,6 @@
 import itertools
 from enum import Enum
-from typing import Any, Callable, Dict, Iterable, List, Optional, Self, TypeVar, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
 
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -286,21 +286,21 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
             yield output_buffer.next()
 
     @classmethod
-    def for_rows(cls) -> Self:
+    def for_rows(cls) -> "BuildOutputBlocksMapTransformFn":
         """Return a BuildOutputBlocksMapTransformFn for row input."""
         if cls._rows_instance is None:
             cls._rows_instance = cls(MapTransformFnDataType.Row)
         return cls._rows_instance
 
     @classmethod
-    def for_batches(cls) -> Self:
+    def for_batches(cls) -> "BuildOutputBlocksMapTransformFn":
         """Return a BuildOutputBlocksMapTransformFn for batch input."""
         if cls._batches_instance is None:
             cls._batches_instance = cls(MapTransformFnDataType.Batch)
         return cls._batches_instance
 
     @classmethod
-    def for_blocks(cls) -> Self:
+    def for_blocks(cls) -> "BuildOutputBlocksMapTransformFn":
         """Return a BuildOutputBlocksMapTransformFn for block input."""
         if cls._blocks_instance is None:
             cls._blocks_instance = cls(MapTransformFnDataType.Block)
