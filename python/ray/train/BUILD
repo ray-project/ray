@@ -244,7 +244,7 @@ py_test(
     size = "medium",
     main = "examples/tf/tune_tensorflow_mnist_example.py",
     srcs = ["examples/tf/tune_tensorflow_mnist_example.py"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
