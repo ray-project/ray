@@ -925,7 +925,7 @@ Synthetic datasets can be useful for testing and benchmarking.
             ------  ----
             data    numpy.ndarray(shape=(64, 64), dtype=int64)
 
-Loading other data sources
+Loading other datasources
 ==========================
 
 If Ray Data can't load your data, subclass

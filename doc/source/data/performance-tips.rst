@@ -36,7 +36,7 @@ Tuning read resources
 ~~~~~~~~~~~~~~~~~~~~~
 
 By default, Ray requests 1 CPU per read task, which means one read tasks per CPU can execute concurrently.
-For data sources that benefit from more IO parallelism, you can specify a lower ``num_cpus`` value for the read function with the ``ray_remote_args`` parameter.
+For datasources that benefit from more IO parallelism, you can specify a lower ``num_cpus`` value for the read function with the ``ray_remote_args`` parameter.
 For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
 
 Parquet column pruning

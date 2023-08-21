@@ -40,7 +40,7 @@ task reads one or more files and produces an output block:
 ..
   https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
 
-To handle transient errors from remote data sources, Ray Data retries application-level
+To handle transient errors from remote datasources, Ray Data retries application-level
 exceptions.
 
 For more information on loading data, see :ref:`Loading data <loading_data>`.
