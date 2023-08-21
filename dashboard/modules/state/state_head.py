@@ -40,126 +40,6 @@ from ray.util.state.util import convert_string_to_type
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
-# {job id hex(str): {event id(str): event dict}}
-MOCK_DATA = {
-    "64000000": {
-        "event1": {
-            "eventId": "event1",
-            "sourceType": "GCS",
-            "hostName": "host1",
-            "pid": 12345,
-            "label": "",
-            "message": "Message 1",
-            "timestamp": 1691979376.490715,
-            "severity": "INFO",
-            "customFields": {"jobId": "64000000", "nodeId": "node1", "taskId": "task1"},
-        },
-        "event2": {
-            "eventId": "event2",
-            "sourceType": "RAYLET",
-            "hostName": "host2",
-            "pid": 67890,
-            "label": "",
-            "message": "Message 2",
-            "timestamp": 1691979376.4938798,
-            "severity": "ERROR",
-            "customFields": {"jobId": "64000000", "nodeId": "node2", "taskId": "task2"},
-        },
-        "event3": {
-            "eventId": "event3",
-            "sourceType": "GCS",
-            "hostName": "host3",
-            "pid": 54321,
-            "label": "",
-            "message": "Message 3",
-            "timestamp": 1691979376.4941854,
-            "severity": "DEBUG",
-            "customFields": {"jobId": "64000000", "nodeId": "node3", "taskId": "task3"},
-        },
-        "event4": {
-            "eventId": "event4",
-            "sourceType": "RAYLET",
-            "hostName": "host4",
-            "pid": 23456,
-            "label": "",
-            "message": "Message 4",
-            "timestamp": 1691979376.490715,
-            "severity": "INFO",
-            "customFields": {"jobId": "64000000", "nodeId": "node4", "taskId": "task4"},
-        },
-        "event5": {
-            "eventId": "event5",
-            "sourceType": "GCS",
-            "hostName": "host5",
-            "pid": 78901,
-            "label": "",
-            "message": "Message 5",
-            "timestamp": 1691979376.4938798,
-            "severity": "ERROR",
-            "customFields": {"jobId": "64000000", "nodeId": "node5", "taskId": "task5"},
-        },
-        "event6": {
-            "eventId": "event6",
-            "sourceType": "RAYLET",
-            "hostName": "host6",
-            "pid": 43210,
-            "label": "",
-            "message": "Message 6",
-            "timestamp": 1691979376.4941854,
-            "severity": "DEBUG",
-            "customFields": {"jobId": "64000000", "nodeId": "node6", "taskId": "task6"},
-        },
-        "event7": {
-            "eventId": "event7",
-            "sourceType": "GCS",
-            "hostName": "host7",
-            "pid": 98765,
-            "label": "",
-            "message": "Message 7",
-            "timestamp": 1691979376.490715,
-            "severity": "INFO",
-            "customFields": {"jobId": "64000000", "nodeId": "node7", "taskId": "task7"},
-        },
-        "event8": {
-            "eventId": "event8",
-            "sourceType": "RAYLET",
-            "hostName": "host8",
-            "pid": 56789,
-            "label": "",
-            "message": "Message 8",
-            "timestamp": 1691979376.4938798,
-            "severity": "ERROR",
-            "customFields": {"jobId": "64000000", "nodeId": "node8", "taskId": "task8"},
-        },
-        "event9": {
-            "eventId": "event9",
-            "sourceType": "GCS",
-            "hostName": "host9",
-            "pid": 10987,
-            "label": "",
-            "message": "Message 9",
-            "timestamp": 1691979376.4941854,
-            "severity": "DEBUG",
-            "customFields": {"jobId": "64000000", "nodeId": "node9", "taskId": "task9"},
-        },
-        "event10": {
-            "eventId": "event10",
-            "sourceType": "RAYLET",
-            "hostName": "host10",
-            "pid": 54321,
-            "label": "",
-            "message": "Message 10",
-            "timestamp": 1691979376.490715,
-            "severity": "INFO",
-            "customFields": {
-                "jobId": "64000000",
-                "nodeId": "node10",
-                "taskId": "task10",
-            },
-        },
-    }
-}
-
 
 class RateLimitedModule(ABC):
     """Simple rate limiter
@@ -392,7 +272,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         self, list_api_fn: Callable[[ListApiOptions], dict], req: aiohttp.web.Request
     ):
         try:
-            result = await list_api_fn(option=self._options_from_req(req), req=req)
+            result = await list_api_fn(option=self._options_from_req(req))
             return self._reply(
                 success=True,
                 error_message="",
@@ -459,80 +339,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS, "1")
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 
-
-    def filter_events(
-        events: Dict[str, Dict[str, dict]],
-        severity_levels: list,
-        source_type: str,
-        custom_field: dict,
-        count: int,
-    ) -> Dict[str, dict]:
-        filtered_events = {}
-        for job_id, job_events in events.items():
-            filtered_job_events = []
-            for event_id, event in job_events.items():
-                if (
-                    event["severity"] in severity_levels
-                    and event["source_type"] == source_type
-                    and custom_field.items() <= event["custom_fields"].items()
-                ):
-                    filtered_job_events.append(event)
-
-            filtered_job_events.sort(key=lambda x: x["timestamp"], reverse=True)
-            filtered_events[job_id] = filtered_job_events[:count]
-
-        return filtered_events
-
-    def filterEvents(events, severity_levels, source_types, count=200, job_id,  **params):
-        filtered_events = []
-
-        # Apply filter 1: severity_level and source_type
-        for event in events:
-            if (
-                event["severity_level"] in severity_levels
-                and event["source_type"] in source_types
-            ):
-                filtered_events.append(event)
-
-        # Apply filter 2: custom_fields matching entity parameters
-        if params:
-            for event in filtered_events[:]:
-                custom_fields = event.get("custom_fields", {})
-                if all(
-                    custom_fields.get(key) == str(value)
-                    for key, value in params.items()
-                ):
-                    continue
-                filtered_events.remove(event)
-
-        # Apply filter 3: Limit the number of events
-        filtered_events = filtered_events[:count]
-
-        return filtered_events
-
     @routes.get("/api/v0/cluster_events")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_cluster_events(
         self, req: aiohttp.web.Request
     ) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
-        job_id = req.query.get("job_id", None)
-        source_types = req.query.getall("sourceType")
-        severity_levels = req.query.getall("severity_level")
-
-        # Filtering out specified keys from the query parameters
-        excluded_keys = ["job_id", "sourceType", "severity_level", "count"]
-        rest_of_query = {
-            key: value for key, value in req.query.items() if key not in excluded_keys
-        }
-        all_events = await self._client.get_all_cluster_events()
-        for _, events in all_events.items():
-            for _, event in events.items():
-                event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
-                result.append(event)
-        return await self._handle_list_api(
-            self._state_api.list_cluster_events(req=req), req
-        )
+        return await self._handle_list_api(self._state_api.list_cluster_events, req)
 
     @routes.get("/api/v0/logs")
     @RateLimitedModule.enforce_max_concurrent_calls
