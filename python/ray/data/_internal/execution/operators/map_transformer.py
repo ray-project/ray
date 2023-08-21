@@ -289,9 +289,9 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
     @classmethod
     def for_rows(cls) -> "BuildOutputBlocksMapTransformFn":
         """Return a BuildOutputBlocksMapTransformFn for row input."""
-        if getattr(cls, "instance_for_rows", None) is None:
-            cls.instance_for_rows = cls(MapTransformFnDataType.Row)
-        return cls.instance_for_rows
+        if getattr(cls, "_instance_for_rows", None) is None:
+            cls._instance_for_rows = cls(MapTransformFnDataType.Row)
+        return cls._instance_for_rows
 
     @classmethod
     def for_batches(cls) -> "BuildOutputBlocksMapTransformFn":
