@@ -10,6 +10,7 @@ from starlette.requests import Request
 
 import ray
 from ray._private.test_utils import wait_for_condition, run_string_as_driver
+from ray._private.usage import usage_lib
 
 from ray import serve
 from ray.dag.input_node import InputNode
@@ -18,7 +19,6 @@ from ray.serve.http_adapters import json_request
 from ray.serve._private.constants import SERVE_NAMESPACE, SERVE_DEFAULT_APP_NAME
 from ray.serve.context import get_global_client
 from ray.serve._private.common import ApplicationStatus
-from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray.serve.schema import ServeDeploySchema
 
 
@@ -54,6 +54,10 @@ def manage_ray(monkeypatch):
         # Call Python API shutdown() methods to clear global variable state
         serve.shutdown()
         ray.shutdown()
+
+        # Reset global state (any keys that may have been set and cached while the
+        # workload was running).
+        usage_lib.reset_global_state()
 
         # Shut down Ray cluster with CLI
         subprocess.check_output(["ray", "stop", "--force"])
@@ -108,45 +112,6 @@ def start_telemetry_app():
     storage = TelemetryStorage.remote()
     serve.run(receiver_app, name="telemetry", route_prefix=TELEMETRY_ROUTE_PREFIX)
     return storage
-
-
-# NOTE(zcin): This test needs to be run first because calls to serve.status()
-# in this file will affect the telemetry collected.
-@pytest.mark.parametrize("location", ["driver", "deployment", None])
-def test_status_api_detected(manage_ray, location):
-    """Check that serve.status is detected correctly by telemetry."""
-
-    subprocess.check_output(["ray", "start", "--head"])
-    wait_for_condition(check_ray_started, timeout=5)
-
-    storage_handle = start_telemetry_app()
-    wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
-    )
-
-    @serve.deployment
-    class Model:
-        async def __call__(self):
-            return serve.status()
-
-    def check_telemetry():
-        report = ray.get(storage_handle.get_report.remote())
-        assert report["extra_usage_tags"]["serve_status_api_used"] == "1"
-        return True
-
-    if location:
-        if location == "deployment":
-            handle = serve.run(Model.bind(), route_prefix="/model")
-            handle.remote()
-        elif location == "driver":
-            run_string_as_driver("from ray import serve; serve.status()")
-
-        wait_for_condition(check_telemetry)
-    else:
-        for _ in range(3):
-            report = ray.get(storage_handle.get_report.remote())
-            assert report["extra_usage_tags"].get("serve_status_api_used") != "1"
-            time.sleep(1)
 
 
 def test_fastapi_detected(manage_ray):
@@ -376,7 +341,7 @@ def test_rest_api(manage_ray, tmp_dir, version):
     elif version == "v2":
         # Assert num of deployments from controller
         assert len(client.get_all_deployment_statuses()) == 2
-        result = get_extra_usage_tags_to_report(
+        result = usage_lib.get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
         assert int(result["serve_num_deployments"]) == 2
@@ -524,8 +489,197 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
             assert tagkey not in report["extra_usage_tags"]
 
 
+@pytest.mark.parametrize("use_new_handle_api", [False, True])
+@pytest.mark.parametrize("call_in_deployment", [False, True])
+def test_handle_apis_detected(manage_ray, use_new_handle_api, call_in_deployment):
+    """Check that the various handles are detected correctly by telemetry."""
+
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(check_ray_started, timeout=5)
+
+    storage_handle = start_telemetry_app()
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+
+    report = ray.get(storage_handle.get_report.remote())
+    print(report["extra_usage_tags"])
+    assert "serve_deployment_handle_api_used" not in report["extra_usage_tags"]
+    assert "serve_ray_serve_handle_api_used" not in report["extra_usage_tags"]
+    assert "serve_ray_serve_sync_handle_api_used" not in report["extra_usage_tags"]
+
+    @serve.deployment
+    class Downstream:
+        def __call__(self):
+            return "hi"
+
+    @serve.deployment
+    class Caller:
+        def __init__(self, h):
+            self._h = h.options(use_new_handle_api=use_new_handle_api)
+
+        async def __call__(self, call_downstream=True):
+            if call_downstream:
+                await self._h.remote()
+            return "ok"
+
+    handle = serve.run(Caller.bind(Downstream.bind()))
+
+    if call_in_deployment:
+        result = requests.get("http://localhost:8000").text
+    elif use_new_handle_api:
+        result = (
+            handle.options(use_new_handle_api=True)
+            .remote(call_downstream=False)
+            .result()
+        )
+    else:
+        result = ray.get(handle.remote(call_downstream=False))
+
+    assert result == "ok"
+
+    def check_telemetry():
+        report = ray.get(storage_handle.get_report.remote())
+        print(report["extra_usage_tags"])
+        if use_new_handle_api:
+            assert (
+                report["extra_usage_tags"].get("serve_deployment_handle_api_used", "0")
+                == "1"
+            )
+        elif call_in_deployment:
+            assert (
+                report["extra_usage_tags"].get("serve_ray_serve_handle_api_used", "0")
+                == "1"
+            )
+        else:
+            assert (
+                report["extra_usage_tags"].get(
+                    "serve_ray_serve_sync_handle_api_used", "0"
+                )
+                == "1"
+            )
+        return True
+
+    wait_for_condition(check_telemetry)
+
+
+@pytest.mark.parametrize("mode", ["http", "outside_deployment", "inside_deployment"])
+def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
+    """Check that the handle to_object_ref API is detected correctly by telemetry."""
+
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(check_ray_started, timeout=5)
+
+    storage_handle = start_telemetry_app()
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+
+    report = ray.get(storage_handle.get_report.remote())
+    print(report["extra_usage_tags"])
+    assert (
+        "serve_deployment_handle_to_object_ref_api_used"
+        not in report["extra_usage_tags"]
+    )
+
+    @serve.deployment
+    class Downstream:
+        def __call__(self):
+            return "hi"
+
+    @serve.deployment
+    class Caller:
+        def __init__(self, h):
+            self._h = h.options(use_new_handle_api=True)
+
+        async def __call__(self, call_downstream=False):
+            if call_downstream:
+                await self._h.remote()._to_object_ref()
+            return "ok"
+
+    handle = serve.run(Caller.bind(Downstream.bind()))
+
+    if mode == "http":
+        result = requests.get("http://localhost:8000").text
+    elif mode == "outside_deployment":
+        result = ray.get(
+            handle.options(use_new_handle_api=True).remote()._to_object_ref_sync()
+        )
+    else:
+        result = (
+            handle.options(
+                use_new_handle_api=True,
+            )
+            .remote(call_downstream=True)
+            .result()
+        )
+
+    assert result == "ok"
+
+    def check_telemetry(tag_should_be_set: bool):
+        report = ray.get(storage_handle.get_report.remote())
+        print(report["extra_usage_tags"])
+        if tag_should_be_set:
+            assert (
+                report["extra_usage_tags"].get(
+                    "serve_deployment_handle_to_object_ref_api_used", "0"
+                )
+                == "1"
+            )
+        else:
+            assert (
+                "serve_deployment_handle_to_object_ref_api_used"
+                not in report["extra_usage_tags"]
+            )
+
+        return True
+
+    if mode == "http":
+        for _ in range(20):
+            check_telemetry(tag_should_be_set=False)
+    else:
+        wait_for_condition(check_telemetry, tag_should_be_set=True)
+
+
 @pytest.mark.parametrize("location", ["driver", "deployment", None])
-def test_get_app_handle_api_detected_1(manage_ray, location):
+def test_status_api_detected(manage_ray, location):
+    """Check that serve.status is detected correctly by telemetry."""
+
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(check_ray_started, timeout=5)
+
+    storage_handle = start_telemetry_app()
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+
+    @serve.deployment
+    class Model:
+        async def __call__(self):
+            return serve.status()
+
+    def check_telemetry():
+        report = ray.get(storage_handle.get_report.remote())
+        assert report["extra_usage_tags"]["serve_status_api_used"] == "1"
+        return True
+
+    if location:
+        if location == "deployment":
+            handle = serve.run(Model.bind(), route_prefix="/model")
+            handle.remote()
+        elif location == "driver":
+            run_string_as_driver("from ray import serve; serve.status()")
+
+        wait_for_condition(check_telemetry)
+    else:
+        for _ in range(3):
+            report = ray.get(storage_handle.get_report.remote())
+            assert report["extra_usage_tags"].get("serve_status_api_used") != "1"
+            time.sleep(1)
+
+
+@pytest.mark.parametrize("location", ["driver", "deployment", None])
+def test_get_app_handle_api_detected(manage_ray, location):
     """Check that serve.get_app_handle is detected correctly by telemetry."""
 
     subprocess.check_output(["ray", "start", "--head"])
