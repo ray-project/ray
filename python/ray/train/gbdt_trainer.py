@@ -129,6 +129,8 @@ class GBDTTrainer(BaseTrainer):
         preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
         **train_kwargs: Additional kwargs passed to framework ``train()`` function.
     """
 
@@ -161,6 +163,7 @@ class GBDTTrainer(BaseTrainer):
         run_config: Optional[RunConfig] = None,
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         **train_kwargs,
     ):
         self.label_column = label_column
@@ -176,6 +179,7 @@ class GBDTTrainer(BaseTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )
 
         # Datasets should always use distributed loading.

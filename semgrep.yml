@@ -32,6 +32,8 @@ rules:
         - "doc/source/train/user-guides/using-gpus.rst"
         - "doc/source/train/distributed-tensorflow-keras.rst"
         - "doc/source/train/horovod.rst"
+        - "doc/source/train/deepspeed.rst"
+        - "doc/source/train/huggingface-accelerate.rst"
 
     languages:
       - generic
