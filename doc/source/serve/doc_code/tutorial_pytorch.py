@@ -2,6 +2,7 @@
 # __doc_import_begin__
 from ray import serve
 
+from contextlib import contextmanager
 from io import BytesIO
 from PIL import Image
 from starlette.requests import Request
@@ -52,3 +53,38 @@ class ImageModel:
 # __doc_deploy_begin__
 image_model = ImageModel.bind()
 # __doc_deploy_end__
+
+
+@contextmanager
+def serve_session(deployment):
+    handle = serve.run(deployment)
+    try:
+        yield handle
+    finally:
+        serve.shutdown()
+
+
+if __name__ == "__main__":
+    import ray
+
+    ray.init(
+        runtime_env={
+            "pip": [
+                "torch==2.0.0",
+                "torchvision==0.14.0",
+            ]
+        }
+    )
+
+    with serve_session(image_model):
+        # __example_client_start__
+        import requests
+
+        ray_logo_bytes = requests.get(
+            "https://raw.githubusercontent.com/ray-project/"
+            "ray/master/doc/source/images/ray_header_logo.png"
+        ).content
+
+        resp = requests.post("http://localhost:8000/", data=ray_logo_bytes)
+        print(resp.json())
+        # __example_client_end__
