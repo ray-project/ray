@@ -16,7 +16,7 @@ import numpy as np
 import psutil
 import ray
 from ray.air.checkpoint import Checkpoint
-from ray.air._internal.remote_storage import delete_at_uri
+from ray.air._internal.remote_storage import delete_at_uri, _is_local_windows_path
 from ray.air.util.node import _get_node_id_from_node_ip, _force_on_node
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.air._internal.json import SafeFallbackEncoder  # noqa
@@ -182,7 +182,7 @@ def _split_remote_local_path(
 
     """
     parsed = urllib.parse.urlparse(path)
-    if parsed.scheme:
+    if parsed.scheme and not _is_local_windows_path(path):
         # If a scheme is set, this means it's not a local path.
         # Note that we also treat `file://` as a URI.
         remote_path = path

@@ -26,7 +26,7 @@ This is useful for training torch models with batches from your dataset. For con
     import ray
     import torch
 
-    ds = ray.data.read_images("example://image-datasets/simple")
+    ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
     for batch in ds.iter_torch_batches(batch_size=2):
         print(batch)
@@ -47,7 +47,8 @@ Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for 
     import torch
     from torch import nn
     import ray
-    from ray.air import session, ScalingConfig
+    from ray import train
+    from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func(config):
@@ -56,7 +57,7 @@ Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for 
         optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
 
         # Datasets can be accessed in your train_func via ``get_dataset_shard``.
-        train_data_shard = session.get_dataset_shard("train")
+        train_data_shard = train.get_dataset_shard("train")
 
         for epoch_idx in range(2):
             for batch in train_data_shard.iter_torch_batches(batch_size=128, dtypes=torch.float32):
@@ -81,7 +82,7 @@ Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for 
 
     ...
 
-For more details, see the :ref:`Ray Train user guide <train-datasets>`.
+For more details, see the :ref:`Ray Train user guide <data-ingest-torch>`.
 
 .. _transform_pytorch:
 
@@ -104,7 +105,7 @@ Transformations applied with `map` or `map_batches` can return torch tensors.
             import torch
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             def convert_to_torch(row: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
                 return {"tensor": torch.as_tensor(row["image"])}
@@ -135,7 +136,7 @@ Transformations applied with `map` or `map_batches` can return torch tensors.
             import torch
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             def convert_to_torch(batch: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
                 return {"tensor": torch.as_tensor(batch["image"])}
@@ -177,7 +178,7 @@ You can use built-in torch transforms from `torchvision`, `torchtext`, and `torc
             import ray
 
             # Create the Dataset.
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             # Define the torchvision transform.
             transform = transforms.Compose(
@@ -213,7 +214,7 @@ You can use built-in torch transforms from `torchvision`, `torchtext`, and `torc
             import ray
 
             # Create the Dataset.
-            ds = ray.data.read_text("example://simple.txt")
+            ds = ray.data.read_text("s3://anonymous@ray-example-data/simple.txt")
 
             # Define the torchtext transform.
             VOCAB_FILE = "https://huggingface.co/bert-base-uncased/resolve/main/vocab.txt"

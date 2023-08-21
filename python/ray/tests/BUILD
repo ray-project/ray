@@ -61,6 +61,7 @@ py_test_module_list(
     "test_healthcheck.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
+    "test_node_label_scheduling_strategy.py",
     "test_protobuf_compatibility.py"
   ],
   size = "medium",
@@ -90,10 +91,10 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_client_builder.py",
-    "test_client_compat.py",
     "test_client_init.py",
-    "test_client_multi.py",
     "test_client_proxy.py",
+    "test_client_compat.py",
+    "test_client_multi.py",
     "test_client_references.py",
     "test_client_warnings.py",
     "test_client_library_integration.py",
@@ -120,11 +121,12 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
+    "test_actor_bounded_threads.py",
+    "test_autoscaler_fake_scaledown.py",
+    "test_accelerator.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
-    "test_memory_pressure.py",
     "test_nested_task.py",
     "test_metrics.py",
     "test_task_events.py",
@@ -172,6 +174,7 @@ py_test_module_list(
     "test_scheduling.py",
     "test_traceback.py",
     "test_queue.py",
+    "test_draining.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
@@ -201,6 +204,7 @@ py_test_module_list(
     "test_mini.py",
     "test_minimal_install.py",
     "test_numba.py",
+    "test_runtime_env_agent.py",
     "test_redis_tls.py",
     "test_raylet_output.py",
     "test_scheduling_performance.py",
@@ -208,7 +212,6 @@ py_test_module_list(
     "test_unhandled_error.py",
     "test_utils.py",
     "test_widgets.py",
-    "test_node_labels.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
@@ -218,14 +221,17 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
+    "test_memory_pressure.py",
+    "test_node_labels.py",
   ],
   size = "medium",
-  tags = ["exclusive", "ray_ha", "team:core"],
+  tags = ["exclusive", "team:core", "xcommit"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test_module_list(
   files = [
+    "test_autoscaler_e2e.py",
     "test_monitor_service.py",
   ],
   size = "medium",
@@ -235,11 +241,10 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_autoscaler.py",
     "test_batch_node_provider_unit.py",
     "test_batch_node_provider_integration.py",
-    "test_autoscaler.py",
     "test_autoscaler_drain_node_api.py",
-    "test_autoscaler_e2e.py",
     "test_autoscaler_util.py",
     "test_autoscaler_gcp.py",
     "test_cli_logger.py",
@@ -424,6 +429,22 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test(
+    name = "test_gcp_tpu_command_runner",
+    size = "small",
+    srcs = ["gcp/test_gcp_tpu_command_runner.py"],
+    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "vsphere/test_vsphere_node_provider",
+    size = "small",
+    srcs = ["vsphere/test_vsphere_node_provider.py"],
+    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 # Note(simon): typing tests are not included in module list
 #    because they requires globs and it might be refactored in the future.
 py_test(
@@ -494,18 +515,18 @@ py_test_module_list(
   files = [
     "test_actor.py",
     "test_advanced.py",
+    "test_asyncio.py",
     "test_basic.py",
     "test_basic_2.py",
     "test_basic_3.py",
     "test_basic_4.py",
     "test_basic_5.py",
-    "test_asyncio.py",
-    "test_object_assign_owner.py",
     "test_multiprocessing.py",
     "test_list_actors.py",
     "test_list_actors_2.py",
     "test_list_actors_3.py",
     "test_list_actors_4.py",
+    "test_object_assign_owner.py",
   ],
   size = "large",
   name_suffix = "_client_mode",

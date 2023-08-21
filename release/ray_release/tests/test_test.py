@@ -37,7 +37,7 @@ def test_is_byod_cluster():
     assert _stub_test({"cluster": {"byod": {}}}).is_byod_cluster()
     assert _stub_test({"cluster": {"byod": {"type": "gpu"}}}).is_byod_cluster()
     with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "1"}):
-        assert not _stub_test({"cluster": {"byod": {}}}).is_byod_cluster()
+        assert _stub_test({"cluster": {"byod": {}}}).is_byod_cluster()
     with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "false"}):
         assert _stub_test({"cluster": {"byod": {}}}).is_byod_cluster()
 
@@ -52,8 +52,8 @@ def test_convert_env_list_to_dict():
 
 
 def test_get_python_version():
-    assert _stub_test({}).get_python_version() == "3.7"
-    assert _stub_test({"python": "3.8"}).get_python_version() == "3.8"
+    assert _stub_test({}).get_python_version() == "3.8"
+    assert _stub_test({"python": "3.9"}).get_python_version() == "3.9"
 
 
 def test_get_ray_image():
@@ -62,16 +62,16 @@ def test_get_ray_image():
     assert (
         _stub_test(
             {
-                "python": "3.8",
+                "python": "3.9",
                 "cluster": {"byod": {}},
             }
         ).get_ray_image()
-        == "rayproject/ray:123456-py38"
+        == "rayproject/ray:123456-py39-cpu"
     )
     assert (
         _stub_test(
             {
-                "python": "3.8",
+                "python": "3.9",
                 "cluster": {
                     "byod": {
                         "type": "gpu",
@@ -79,13 +79,23 @@ def test_get_ray_image():
                 },
             }
         ).get_ray_image()
-        == "rayproject/ray-ml:123456-py38-gpu"
+        == "rayproject/ray-ml:123456-py39-gpu"
     )
     os.environ["BUILDKITE_BRANCH"] = "releases/1.0.0"
     assert (
         _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-        == "rayproject/ray:1.0.0.123456-py37"
+        == "rayproject/ray:1.0.0.123456-py38-cpu"
     )
+    with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "123"}):
+        assert (
+            _stub_test({"cluster": {"byod": {}}}).get_ray_image()
+            == "rayproject/ray:pr-123.123456-py38-cpu"
+        )
+    with mock.patch.dict(os.environ, {"RAY_IMAGE_TAG": "my_tag"}):
+        assert (
+            _stub_test({"cluster": {"byod": {}}}).get_ray_image()
+            == "rayproject/ray:my_tag"
+        )
 
 
 def test_get_anyscale_byod_image():
@@ -93,7 +103,7 @@ def test_get_anyscale_byod_image():
     os.environ["BUILDKITE_COMMIT"] = "1234567890"
     assert (
         _stub_test({"python": "3.7", "cluster": {"byod": {}}}).get_anyscale_byod_image()
-        == f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_REPO}:123456-py37"
+        == f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_REPO}:123456-py37-cpu"
     )
     assert _stub_test(
         {

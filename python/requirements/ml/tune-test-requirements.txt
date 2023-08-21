@@ -8,7 +8,6 @@ jupyterlab==3.6.1
 matplotlib!=3.4.3
 
 pytest-remotedata==0.3.2
-lightning-bolts==0.4.0
 pytorch-lightning==1.6.5
 fairscale==0.4.6
 shortuuid==1.0.1

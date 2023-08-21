@@ -195,18 +195,11 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
 
 export const Metrics = () => {
   const classes = useStyles();
-  const {
-    grafanaHost,
-    sessionName,
-    prometheusHealth,
-    dashboardUids,
-    dashboardDatasource,
-  } = useContext(GlobalContext);
+  const { grafanaHost, sessionName, prometheusHealth, dashboardUids } =
+    useContext(GlobalContext);
 
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";
-
-  const grafanaDefaultDatasource = dashboardDatasource ?? "Prometheus";
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.FIVE_MINS,
@@ -239,7 +232,7 @@ export const Metrics = () => {
         <div>
           <Paper className={classes.topBar}>
             <Button
-              href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?var-datasource=${grafanaDefaultDatasource}`}
+              href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}`}
               target="_blank"
               rel="noopener noreferrer"
               endIcon={<RiExternalLinkLine />}
@@ -281,7 +274,7 @@ export const Metrics = () => {
                   {contents.map(({ title, pathParams }) => {
                     const path =
                       `/d-solo/${grafanaDefaultDashboardUid}?${pathParams}` +
-                      `&refresh${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
+                      `&refresh${timeRangeParams}&var-SessionName=${sessionName}`;
                     return (
                       <Paper
                         key={pathParams}
@@ -338,7 +331,7 @@ export const GrafanaNotRunningAlert = ({
       Time-series charts are hidden because either Prometheus or Grafana server
       is not detected. Follow{" "}
       <a
-        href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
+        href="https://docs.ray.io/en/latest/cluster/metrics.html"
         target="_blank"
         rel="noreferrer"
       >

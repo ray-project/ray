@@ -1,7 +1,7 @@
 GRAFANA_DATASOURCE_TEMPLATE = """apiVersion: 1
 
 datasources:
-  - name: {prometheus_name}
+  - name: Prometheus
     url: {prometheus_host}
     type: prometheus
     isDefault: true

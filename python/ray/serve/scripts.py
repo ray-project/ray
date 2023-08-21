@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from dataclasses import asdict
 import os
 import pathlib
 import sys
@@ -124,7 +125,7 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
 
 @click.group(
     help="CLI for managing Serve applications on a Ray cluster.",
-    context_settings=dict(help_option_names=["-h", "--help"]),
+    context_settings=dict(help_option_names=["--help", "-h"]),
 )
 def cli():
     pass
@@ -570,26 +571,21 @@ def status(address: str, name: Optional[str]):
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
+    status = asdict(serve_details._get_status())
 
     # Ensure multi-line strings in app_status is dumped/printed correctly
     yaml.SafeDumper.add_representer(str, str_presenter)
 
     if name is None:
-        if len(serve_details.applications) == 0:
-            print("There are no applications running on this cluster.")
-        else:
-            print(
-                "\n---\n\n".join(
-                    yaml.safe_dump(
-                        # Ensure exception traceback in app_status are printed correctly
-                        process_dict_for_yaml_dump(application.get_status_dict()),
-                        default_flow_style=False,
-                        sort_keys=False,
-                    )
-                    for application in serve_details.applications.values()
-                ),
-                end="",
-            )
+        print(
+            yaml.safe_dump(
+                # Ensure exception traceback in app_status are printed correctly
+                process_dict_for_yaml_dump(status),
+                default_flow_style=False,
+                sort_keys=False,
+            ),
+            end="",
+        )
     else:
         if name not in serve_details.applications:
             cli_logger.error(f'Application "{name}" does not exist.')
@@ -597,9 +593,7 @@ def status(address: str, name: Optional[str]):
             print(
                 yaml.safe_dump(
                     # Ensure exception tracebacks in app_status are printed correctly
-                    process_dict_for_yaml_dump(
-                        serve_details.applications.get(name).get_status_dict()
-                    ),
+                    process_dict_for_yaml_dump(status["applications"][name]),
                     default_flow_style=False,
                     sort_keys=False,
                 ),
@@ -710,7 +704,7 @@ def build(
                 f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        app = build_app(app)
+        app = build_app(app, name)
         schema = ServeApplicationSchema(
             import_path=import_path,
             runtime_env={},
@@ -746,7 +740,9 @@ def build(
             )
 
         config_str += yaml.dump(
-            build_app_config(import_paths[0], kubernetes_format),
+            build_app_config(
+                import_paths[0], kubernetes_format, SERVE_DEFAULT_APP_NAME
+            ),
             Dumper=ServeApplicationSchemaDumper,
             default_flow_style=False,
             sort_keys=False,

@@ -404,7 +404,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   bool GetCurrentTaskRetryExceptions() const {
     if (!options_.is_local_mode) {
-      return worker_context_.GetCurrentTask()->GetMessage().retry_exceptions();
+      return worker_context_.GetCurrentTask()->ShouldRetryExceptions();
     } else {
       return false;
     }
@@ -449,6 +449,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       memory_store_->Delete(deleted);
     }
   }
+
+  int GetMemoryStoreSize() { return memory_store_->Size(); }
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
   /// (local, submitted_task) reference counts. For debugging purposes.
@@ -979,6 +981,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_id Object ID of the return value.
   /// \param[in] data_size Size of the return value.
   /// \param[in] metadata Metadata buffer of the return value.
+  /// \param[in] caller_address The address of the caller of the method.
   /// \param[in] contained_object_id ID serialized within each return object.
   /// \param[in][out] task_output_inlined_bytes Store the total size of all inlined
   /// objects of a task. It is used to decide if the current object should be inlined. If
@@ -989,6 +992,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                               const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
+                              const rpc::Address &caller_address,
                               int64_t *task_output_inlined_bytes,
                               std::shared_ptr<RayObject> *return_object);
 
@@ -1004,7 +1008,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// objects.
   Status SealReturnObject(const ObjectID &return_id,
                           std::shared_ptr<RayObject> return_object,
-                          const ObjectID &generator_id);
+                          const ObjectID &generator_id,
+                          const rpc::Address &caller_address);
 
   /// Pin the local copy of the return object, if one exists.
   ///
@@ -1520,6 +1525,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
+  /// Wait until the worker is initialized.
+  void WaitUntilInitialized() override {
+    absl::MutexLock lock(&initialize_mutex_);
+    while (!initialized_) {
+      intialize_cv_.WaitWithTimeout(&initialize_mutex_, absl::Seconds(1));
+    }
+  }
+
   const CoreWorkerOptions options_;
 
   /// Callback to get the current language (e.g., Python) call site.
@@ -1547,6 +1560,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   TaskID main_thread_task_id_ GUARDED_BY(mutex_);
 
   std::string main_thread_task_name_ GUARDED_BY(mutex_);
+
+  /// States that used for initialization.
+  absl::Mutex initialize_mutex_;
+  absl::CondVar intialize_cv_;
+  bool initialized_ GUARDED_BY(initialize_mutex_) = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context io_service_;

@@ -109,7 +109,7 @@ of the returned batch, set ``batch_format``.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             batch = ds.take_batch(batch_size=2, batch_format="numpy")
             print("Batch:", batch)

@@ -25,6 +25,7 @@ from ray.rllib.models.tf.tf_action_dist import (
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical,
     TorchDeterministic,
+    TorchDirichlet,
     TorchDiagGaussian,
     TorchMultiActionDistribution,
     TorchMultiCategorical,
@@ -331,12 +332,7 @@ class ModelCatalog:
             )
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
-            if framework == "torch":
-                # TODO(sven): implement
-                raise NotImplementedError(
-                    "Simplex action spaces not supported for torch."
-                )
-            dist_cls = Dirichlet
+            dist_cls = TorchDirichlet if framework == "torch" else Dirichlet
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, MultiDiscrete):
             dist_cls = (
@@ -351,7 +347,7 @@ class ModelCatalog:
                 "Unsupported args: {} {}".format(action_space, dist_type)
             )
 
-        return dist_cls, dist_cls.required_model_output_shape(action_space, config)
+        return dist_cls, int(dist_cls.required_model_output_shape(action_space, config))
 
     @staticmethod
     @DeveloperAPI

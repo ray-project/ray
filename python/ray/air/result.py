@@ -98,6 +98,7 @@ class Result:
     def _repr(self, indent: int = 0) -> str:
         """Construct the representation with specified number of space indent."""
         from ray.tune.result import AUTO_RESULT_KEYS
+        from ray.tune.experimental.output import BLACKLISTED_KEYS
 
         shown_attributes = {k: getattr(self, k) for k in self._items_to_repr}
         if self.error:
@@ -106,8 +107,10 @@ class Result:
             shown_attributes.pop("error")
 
         if self.metrics:
+            exclude = set(AUTO_RESULT_KEYS)
+            exclude.update(BLACKLISTED_KEYS)
             shown_attributes["metrics"] = {
-                k: v for k, v in self.metrics.items() if k not in AUTO_RESULT_KEYS
+                k: v for k, v in self.metrics.items() if k not in exclude
             }
 
         cls_indent = " " * indent
@@ -223,7 +226,7 @@ class Result:
             mode: One of ["min", "max"].
 
         Returns:
-            :class:`Checkpoint <ray.air.Checkpoint>` object, or None if there is
+            :class:`Checkpoint <ray.train.Checkpoint>` object, or None if there is
             no valid checkpoint associated with the metric.
         """
         if not self.best_checkpoints:

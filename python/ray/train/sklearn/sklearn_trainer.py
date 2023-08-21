@@ -75,7 +75,7 @@ class SklearnTrainer(BaseTrainer):
         trainer = SklearnTrainer(
             estimator=RandomForestRegressor(),
             label_column="y",
-            scaling_config=ray.air.config.ScalingConfig(
+            scaling_config=ray.train.ScalingConfig(
                 trainer_resources={"CPU": 4}
             ),
             datasets={"train": train_dataset}
@@ -154,8 +154,8 @@ class SklearnTrainer(BaseTrainer):
             Only the ``trainer_resources`` key can be provided,
             as the training is not distributed.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
         **fit_params: Additional kwargs passed to ``estimator.fit()``
             method.
     """
@@ -174,9 +174,18 @@ class SklearnTrainer(BaseTrainer):
         set_estimator_cpus: bool = True,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        # Deprecated.
         preprocessor: Optional["Preprocessor"] = None,
         **fit_params,
     ):
+
+        warnings.warn(
+            "This SklearnTrainer will be deprecated in Ray 2.8. "
+            "It is recommended to write your own training loop instead.",
+            DeprecationWarning,
+        )
+
         if fit_params.pop("resume_from_checkpoint", None):
             raise AttributeError(
                 "SklearnTrainer does not support resuming from checkpoints. "
@@ -198,6 +207,7 @@ class SklearnTrainer(BaseTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=None,
+            metadata=metadata,
         )
 
     def _validate_attributes(self):

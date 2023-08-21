@@ -102,10 +102,6 @@ cdef class Config:
         return RayConfig.instance().start_python_importer_thread()
 
     @staticmethod
-    def use_ray_syncer():
-        return RayConfig.instance().use_ray_syncer()
-
-    @staticmethod
     def REDIS_CA_CERT():
         return RayConfig.instance().REDIS_CA_CERT()
 
@@ -160,7 +156,3 @@ cdef class Config:
     @staticmethod
     def grpc_client_keepalive_timeout_ms():
         return RayConfig.instance().grpc_client_keepalive_timeout_ms()
-
-    @staticmethod
-    def enable_autoscaler_v2():
-        return RayConfig.instance().enable_autoscaler_v2()

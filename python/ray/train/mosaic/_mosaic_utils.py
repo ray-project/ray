@@ -5,7 +5,7 @@ from composer.loggers import Logger
 from composer.loggers.logger_destination import LoggerDestination
 from composer.core.state import State
 
-from ray.air import session
+import ray.train
 
 
 class RayLogger(LoggerDestination):
@@ -55,7 +55,7 @@ class RayLogger(LoggerDestination):
     def epoch_checkpoint(self, state: State, logger: Logger) -> None:
         del logger  # unused
         self.should_report_fit_end = False
-        session.report(self.data)
+        ray.train.report(self.data)
 
         # flush the data
         self.data = {}
@@ -65,4 +65,4 @@ class RayLogger(LoggerDestination):
         # this may be double counted with epoch checkpoint.
         del logger  # unused
         if self.should_report_fit_end:
-            session.report(self.data)
+            ray.train.report(self.data)

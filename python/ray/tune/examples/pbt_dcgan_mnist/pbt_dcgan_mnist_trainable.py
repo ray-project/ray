@@ -4,7 +4,7 @@ Example of training DCGAN on MNIST using PBT with Tune's Trainable Class
 API.
 """
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.tune.schedulers import PopulationBasedTraining
 
 import argparse
@@ -19,7 +19,7 @@ import torch.utils.data
 import numpy as np
 
 from common import beta1, MODEL_PATH
-from common import demo_gan, get_data_loader, plot_images, train, weights_init
+from common import demo_gan, get_data_loader, plot_images, train_func, weights_init
 from common import Discriminator, Generator, Net
 
 
@@ -44,7 +44,7 @@ class PytorchTrainable(tune.Trainable):
         self.mnist_model_ref = config["mnist_model_ref"]
 
     def step(self):
-        lossG, lossD, is_score = train(
+        lossG, lossD, is_score = train_func(
             self.netD,
             self.netG,
             self.optimizerG,
@@ -141,11 +141,11 @@ if __name__ == "__main__":
     tune_iter = 10 if args.smoke_test else 300
     tuner = tune.Tuner(
         PytorchTrainable,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="pbt_dcgan_mnist",
             stop={"training_iteration": tune_iter},
             verbose=1,
-            checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
+            checkpoint_config=train.CheckpointConfig(checkpoint_at_end=True),
         ),
         tune_config=tune.TuneConfig(
             metric="is_score",

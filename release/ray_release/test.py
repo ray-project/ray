@@ -20,7 +20,7 @@ from ray_release.util import dict_hash
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
 DEFAULT_PYTHON_VERSION = tuple(
-    int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
+    int(v) for v in os.environ.get("RELEASE_PY", "3.8").split(".")
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
@@ -114,13 +114,16 @@ class Test(dict):
         """
         return self.get("stable", True)
 
+    def is_gce(self) -> bool:
+        """
+        Returns whether this test is running on GCE.
+        """
+        return self.get("env") == "gce"
+
     def is_byod_cluster(self) -> bool:
         """
         Returns whether this test is running on a BYOD cluster.
         """
-        if os.environ.get("BUILDKITE_PULL_REQUEST", "false") != "false":
-            # Do not run BYOD tests on PRs
-            return False
         return self["cluster"].get("byod") is not None
 
     def get_byod_type(self) -> Optional[str]:
@@ -210,6 +213,12 @@ class Test(dict):
         """
         Returns the byod image tag to use for this test.
         """
+        byod_image_tag = os.environ.get("RAY_IMAGE_TAG")
+        if byod_image_tag:
+            # Use the image tag specified in the environment variable.
+            # TODO(can): this is a temporary backdoor that should be removed
+            # once civ2 is fully rolled out.
+            return byod_image_tag
         commit = os.environ.get(
             "COMMIT_TO_TEST",
             os.environ["BUILDKITE_COMMIT"],
@@ -218,17 +227,18 @@ class Test(dict):
             "BRANCH_TO_TEST",
             os.environ["BUILDKITE_BRANCH"],
         )
-        ray_version = commit[:6]
-        assert branch == "master" or branch.startswith(
-            "releases/"
+        pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
+        assert (
+            pr != "false" or branch == "master" or branch.startswith("releases/")
         ), f"Invalid branch name {branch}"
-        if branch.startswith("releases/"):
+        ray_version = commit[:6]
+        if pr != "false":
+            ray_version = f"pr-{pr}.{ray_version}"
+        elif branch.startswith("releases/"):
             release_name = branch[len("releases/") :]
             ray_version = f"{release_name}.{ray_version}"
-        byod_type = self.get_byod_type()
-        image_suffix = f"-{byod_type}" if byod_type != "cpu" else ""
         python_version = f"py{self.get_python_version().replace('.',   '')}"
-        return f"{ray_version}-{python_version}{image_suffix}"
+        return f"{ray_version}-{python_version}-{self.get_byod_type()}"
 
     def get_byod_image_tag(self) -> str:
         """
@@ -251,13 +261,29 @@ class Test(dict):
             else DATAPLANE_ECR_ML_REPO
         )
 
+    def get_byod_ecr(self) -> str:
+        """
+        Returns the anyscale byod ecr to use for this test.
+        """
+        if self.is_gce():
+            return get_global_config()["byod_gcp_cr"]
+        byod_ecr = get_global_config()["byod_aws_cr"]
+        if byod_ecr:
+            return byod_ecr
+        return get_global_config()["byod_ecr"]
+
     def get_ray_image(self) -> str:
         """
         Returns the ray docker image to use for this test.
         """
-        ray_project = "ray" if self.get_byod_type() == "cpu" else "ray-ml"
+        config = get_global_config()
+        ray_project = (
+            config["byod_ray_cr_repo"]
+            if self.get_byod_type() == "cpu"
+            else config["byod_ray_ml_cr_repo"]
+        )
         return (
-            f"{get_global_config()['byod_ray_ecr']}/"
+            f"{config['byod_ray_ecr']}/"
             f"{ray_project}:{self.get_byod_base_image_tag()}"
         )
 
@@ -266,7 +292,7 @@ class Test(dict):
         Returns the anyscale byod image to use for this test.
         """
         return (
-            f"{get_global_config()['byod_ecr']}/"
+            f"{self.get_byod_ecr()}/"
             f"{self.get_byod_repo()}:{self.get_byod_base_image_tag()}"
         )
 
@@ -281,7 +307,7 @@ class Test(dict):
         Returns the anyscale byod image to use for this test.
         """
         return (
-            f"{get_global_config()['byod_ecr']}/"
+            f"{self.get_byod_ecr()}/"
             f"{self.get_byod_repo()}:{self.get_byod_image_tag()}"
         )
 
