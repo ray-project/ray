@@ -23,16 +23,6 @@ from ray.train.lightning._lightning_utils import (
     RayTrainReportCallback,
 )
 
-from packaging.version import Version
-
-LIGHTNING_VERSION = Version(pytorch_lightning.__version__)
-if LIGHTNING_VERSION < Version("1.6.0"):
-    raise ImportError(
-        "Ray Train requires pytorch_lightning >= 1.6.0,"
-        f"but {LIGHTNING_VERSION} is installed."
-        "Please update by `pip install -U pytorch_lightning`."
-    )
-
 __all__ = [
     "LightningTrainer",
     "LightningConfigBuilder",
