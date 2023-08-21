@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Type
 
 import yaml
 from ray.air._internal.json import SafeFallbackEncoder
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.callback import Callback
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
@@ -167,7 +168,7 @@ class LoggerCallback(Callback):
         self.log_trial_end(trial, failed=True)
 
     def _restore_from_remote(self, file_name: str, trial: "Trial") -> None:
-        if not trial.storage:
+        if not _use_storage_context():
             return  # Legacy code path.
 
         local_file = os.path.join(trial.local_path, file_name)

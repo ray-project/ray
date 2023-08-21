@@ -397,12 +397,12 @@ class _ExperimentCheckpointManager:
         for name in matches:
             remote_path = os.path.join(self._storage.experiment_fs_path, name)
             local_path = os.path.join(self._storage.experiment_local_path, name)
-            logger.info(f"Copying {remote_path} to {local_path}")
             pyarrow.fs.copy_files(
                 remote_path,
                 local_path,
                 source_filesystem=self._storage.storage_filesystem,
             )
+        logger.debug(f"Copied {matches} from:\n{remote_path}\n-> {local_path}")
 
     def sync_down(self, force: bool = False, wait: bool = False) -> bool:
         assert not _use_storage_context()
@@ -478,17 +478,17 @@ class _ExperimentCheckpointManager:
                 f"Trying to find and download experiment checkpoint at "
                 f"{experiment_fs_path}"
             )
-            # Todo: This syncs the entire experiment including trial
-            # checkpoints. We should exclude these in the future.
             try:
                 if _use_storage_context():
                     self.sync_down_experiment_state()
                 else:
+                    # Todo: This syncs the entire experiment including trial
+                    # checkpoints. We should exclude these in the future.
                     syncer.sync_down_if_needed(
                         remote_dir=experiment_fs_path,
                         local_dir=experiment_local_path,
                     )
-                syncer.wait()
+                    syncer.wait()
             except Exception:
                 logger.exception(
                     "Got error when trying to sync down.\n"
