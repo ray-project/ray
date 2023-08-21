@@ -177,15 +177,6 @@ const useEventTable = (props: EventTableProps) => {
     getEvent();
   }, [filters]);
 
-  const realLen = events.filter(filterFunc).length;
-  useEffect(() => {
-    setPagination((p) => ({
-      ...p,
-      total: Math.ceil(realLen / p.pageSize),
-      pageNo: 1,
-    }));
-  }, [realLen, pageSize]);
-
   const range = [
     (pagination.pageNo - 1) * pagination.pageSize,
     pagination.pageNo * pagination.pageSize,
