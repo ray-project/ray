@@ -284,7 +284,7 @@ def test_serve_num_replica_idle_node():
 
         wait_for_condition(verify)
 
-        # Downscale to 1 replicas, 1 workers nodes should be idle.
+        # Downscale to 1 replicas, 4 workers nodes should be idle.
         serve.run(Deployment.options(num_replicas=1).bind())
 
         def verify():
