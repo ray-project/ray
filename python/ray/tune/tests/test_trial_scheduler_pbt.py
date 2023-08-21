@@ -72,10 +72,11 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
 
                 with open(file_path, "wb") as fp:
                     pickle.dump((self.large_object, self.iter, self.a), fp)
-                return file_path
 
-            def load_checkpoint(self, path):
-                with open(path, "rb") as fp:
+            def load_checkpoint(self, checkpoint_dir):
+                file_path = os.path.join(checkpoint_dir, "model.mock")
+
+                with open(file_path, "rb") as fp:
                     self.large_object, self.iter, self.a = pickle.load(fp)
 
         class CheckObjectMemoryUsage(Callback):
@@ -130,10 +131,11 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
 
                 with open(file_path, "wb") as fp:
                     pickle.dump((self.iter, self.a), fp)
-                return file_path
 
-            def load_checkpoint(self, path):
-                with open(path, "rb") as fp:
+            def load_checkpoint(self, checkpoint_dir):
+                file_path = os.path.join(checkpoint_dir, "model.mock")
+
+                with open(file_path, "rb") as fp:
                     self.iter, self.a = pickle.load(fp)
 
         from ray.tune.callback import Callback
@@ -306,9 +308,8 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
 
             def save_checkpoint(self, checkpoint_dir):
                 checkpoint = Checkpoint.from_dict({"a": self.a})
-                checkpoint_path = checkpoint.to_directory(path=checkpoint_dir)
+                checkpoint.to_directory(path=checkpoint_dir)
                 time.sleep(self.saving_time)
-                return checkpoint_path
 
             def load_checkpoint(self, checkpoint_dir):
                 checkpoint_dict = Checkpoint.from_directory(checkpoint_dir).to_dict()
@@ -449,7 +450,6 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                 checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")
                 with open(checkpoint_path, "wb") as fp:
                     pickle.dump((self.a, self.b, self.iter), fp)
-                return tmp_checkpoint_dir
 
             def load_checkpoint(self, tmp_checkpoint_dir):
                 checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")

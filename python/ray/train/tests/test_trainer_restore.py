@@ -19,7 +19,7 @@ from ray.train.data_parallel_trainer import (
     _DataParallelCheckpointManager,
     DataParallelTrainer,
 )
-from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.train.torch import TorchTrainer, LegacyTorchCheckpoint
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.train.huggingface import TransformersTrainer
@@ -227,6 +227,26 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     assert result.metrics["training_iteration"] == 5
     assert result.metrics["iterations_since_restore"] == 3
     assert tmpdir / exp_name in result.log_dir.parents
+
+
+def test_restore_from_uri_s3(ray_start_4_cpus, tmpdir, mock_s3_bucket_uri):
+    """Restoration from S3 should work."""
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=lambda config: train.report({"score": 1}),
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(name="restore_from_uri", local_dir=tmpdir),
+    )
+    trainer._save(tmpdir)
+
+    # Restore from local dir
+    DataParallelTrainer.restore(str(tmpdir))
+
+    # Upload to S3
+    uri = mock_s3_bucket_uri
+    upload_to_uri(tmpdir, uri)
+
+    # Restore from S3
+    DataParallelTrainer.restore(uri)
 
 
 def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
@@ -501,7 +521,7 @@ def test_clear_lazy_ckpt_markers(ray_start_4_cpus):
 
         if not train.get_checkpoint():
             train.report(
-                metrics={"a": 1}, checkpoint=TorchCheckpoint.from_dict({"a": 1})
+                metrics={"a": 1}, checkpoint=LegacyTorchCheckpoint.from_dict({"a": 1})
             )
             raise RuntimeError
 

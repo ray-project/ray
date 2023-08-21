@@ -4,12 +4,10 @@ import torch
 import ray
 import torch.nn as nn
 from ray.train.examples.pytorch.torch_linear_example import LinearDataset
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.torch import TorchPredictor
 from ray.train import ScalingConfig
 import ray.train as train
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
 from ray.train.huggingface import AccelerateTrainer
 from accelerate import Accelerator
 
@@ -242,7 +240,9 @@ def linear_train_func(accelerator: Accelerator, config):
 
         result = dict(loss=loss)
         results.append(result)
-        train.report(result, checkpoint=TorchCheckpoint.from_state_dict(state_dict))
+        train.report(
+            result, checkpoint=LegacyTorchCheckpoint.from_state_dict(state_dict)
+        )
 
     return results
 
@@ -308,7 +308,7 @@ def test_accelerate_e2e(ray_start_4_cpus, num_workers):
         assert accelerator.process_index == train.get_context().get_world_rank()
         model = torch.nn.Linear(3, 1)
         model = accelerator.prepare(model)
-        train.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
     scaling_config = ScalingConfig(num_workers=num_workers)
     trainer = AccelerateTrainer(
@@ -319,13 +319,6 @@ def test_accelerate_e2e(ray_start_4_cpus, num_workers):
     )
     result = trainer.fit()
     assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
-
-    predict_dataset = ray.data.range(9)
-    batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
-    predictions = batch_predictor.predict(
-        predict_dataset, batch_size=3, dtype=torch.float
-    )
-    assert predictions.count() == 3
 
 
 if __name__ == "__main__":

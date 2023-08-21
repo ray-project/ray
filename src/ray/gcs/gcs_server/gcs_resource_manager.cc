@@ -69,6 +69,23 @@ void GcsResourceManager::HandleGetResources(rpc::GetResourcesRequest request,
   ++counts_[CountType::GET_RESOURCES_REQUEST];
 }
 
+void GcsResourceManager::HandleGetDrainingNodes(
+    rpc::GetDrainingNodesRequest request,
+    rpc::GetDrainingNodesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto local_scheduling_node_id = scheduling::NodeID(local_node_id_.Binary());
+  for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
+    if (node_resources_entry.first == local_scheduling_node_id) {
+      continue;
+    }
+    const auto &node_resources = node_resources_entry.second.GetLocalView();
+    if (node_resources.is_draining) {
+      *reply->add_node_ids() = node_resources_entry.first.Binary();
+    }
+  }
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::GetAllAvailableResourcesRequest request,
     rpc::GetAllAvailableResourcesReply *reply,
@@ -118,8 +135,8 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
-    if (!cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
-            scheduling::NodeID(node_id.Binary()), data)) {
+    if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
+                                              data)) {
       RAY_LOG(INFO)
           << "[UpdateFromResourceReport]: received resource usage from unknown node id "
           << node_id;
@@ -256,9 +273,9 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
     if (resources.resources_total_size() > 0) {
       (*iter->second.mutable_resources_total()) = resources.resources_total();
     }
-    if (resources.resources_available_changed()) {
-      (*iter->second.mutable_resources_available()) = resources.resources_available();
-    }
+
+    (*iter->second.mutable_resources_available()) = resources.resources_available();
+
     if (resources.resources_normal_task_changed()) {
       (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
     }

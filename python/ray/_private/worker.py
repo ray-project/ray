@@ -426,8 +426,10 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # CUDA_VISIBLE_DEVICES environment variable.
-        self.original_gpu_ids = ray._private.utils.get_cuda_visible_devices()
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) environment variables.
+        self.original_gpu_and_accelerator_runtime_ids = (
+            ray._private.utils.get_gpu_and_accelerator_runtime_ids()
+        )
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
@@ -832,6 +834,54 @@ class Worker:
             # Close the pubsub client to avoid leaking file descriptors.
             subscriber.close()
 
+    def get_resource_ids_for_resource(
+        self, resource_name: str, resource_regex: str
+    ) -> Union[List[str], List[int]]:
+        """Get the resource IDs that are assigned to the given resource.
+
+        Args:
+            resource_name: The name of the resource.
+            resource_regex: The regex of the resource.
+
+        Returns:
+            (List[str]) The IDs that are assigned to the given resource pre-configured.
+            (List[int]) The IDs that are assigned to the given resource.
+
+        """
+        resource_ids = self.core_worker.resource_ids()
+        assigned_ids = set()
+        # Handle both normal and placement group GPU, accelerator resources.
+        # Note: We should only get the GPU, accelerator ids from the placement
+        # group resource that does not contain the bundle index!
+        import re
+
+        for resource, assignment in resource_ids.items():
+            if resource == resource_name or re.match(resource_regex, resource):
+                for resource_id, _ in assignment:
+                    assigned_ids.add(resource_id)
+
+        # If the user had already set the environment variables
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) then respect that
+        # in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
+        # NEURON_RT_VISIBLE_CORES, ..) should be returned.
+        if (
+            self.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
+            is not None
+        ):
+            runtime_ids = self.original_gpu_and_accelerator_runtime_ids[resource_name]
+            assigned_ids = [str(runtime_ids[i]) for i in assigned_ids]
+            # Give all accelerator ids local_mode.
+            if self.mode == LOCAL_MODE:
+                if resource_name == ray_constants.GPU:
+                    max_runtime_ids = self.node.get_resource_spec().num_gpus
+                else:
+                    max_runtime_ids = self.node.get_resource_spec().resources.get(
+                        resource_name, None
+                    )
+                if max_runtime_ids:
+                    assigned_ids = runtime_ids[:max_runtime_ids]
+        return list(assigned_ids)
+
 
 @PublicAPI
 @client_mode_hook
@@ -848,42 +898,9 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-
-    if worker.mode != WORKER_MODE:
-        if log_once("worker_get_gpu_ids_empty_from_driver"):
-            logger.warning(
-                "`ray.get_gpu_ids()` will always return the empty list when "
-                "called from the driver. This is because Ray does not manage "
-                "GPU allocations to the driver process."
-            )
-
-    # TODO(ilr) Handle inserting resources in local mode
-    all_resource_ids = global_worker.core_worker.resource_ids()
-    assigned_ids = set()
-    for resource, assignment in all_resource_ids.items():
-        # Handle both normal and placement group GPU resources.
-        # Note: We should only get the GPU ids from the placement
-        # group resource that does not contain the bundle index!
-        import re
-
-        if resource == "GPU" or re.match(r"^GPU_group_[0-9A-Za-z]+$", resource):
-            for resource_id, _ in assignment:
-                assigned_ids.add(resource_id)
-
-    assigned_ids = list(assigned_ids)
-    # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
-    # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
-    # returned).
-    if global_worker.original_gpu_ids is not None:
-        assigned_ids = [
-            global_worker.original_gpu_ids[gpu_id] for gpu_id in assigned_ids
-        ]
-        # Give all GPUs in local_mode.
-        if global_worker.mode == LOCAL_MODE:
-            max_gpus = global_worker.node.get_resource_spec().num_gpus
-            assigned_ids = global_worker.original_gpu_ids[:max_gpus]
-
-    return assigned_ids
+    return worker.get_resource_ids_for_resource(
+        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+    )
 
 
 @Deprecated(
@@ -1153,7 +1170,7 @@ def init(
 
     To connect to an existing remote cluster, use this as follows (substituting
     in the appropriate address). Note the addition of "ray://" at the beginning
-    of the address.
+    of the address. This requires `ray[client]`.
 
     .. testcode::
         :skipif: True
@@ -1391,6 +1408,9 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
+    if job_config is None:
+        job_config = ray.job_config.JobConfig()
+
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
         if runtime_env:
             logger.warning(
@@ -1399,16 +1419,26 @@ def init(
                 "job_config. Please ensure no runtime_env is used in driver "
                 "script's ray.init() when using job submission API."
             )
-        # Set runtime_env in job_config if passed as env variable, such as
-        # ray job submission with driver script executed in subprocess
-        job_config_json = json.loads(os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR))
-        job_config = ray.job_config.JobConfig.from_json(job_config_json)
+        injected_job_config_json = json.loads(
+            os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR)
+        )
+        injected_job_config: ray.job_config.JobConfig = (
+            ray.job_config.JobConfig.from_json(injected_job_config_json)
+        )
+        # NOTE: We always prefer runtime_env injected via RAY_JOB_CONFIG_JSON_ENV_VAR,
+        #       as compared to via ray.init(runtime_env=...) to make sure runtime_env
+        #       specified via job submission API takes precedence
+        runtime_env = injected_job_config.runtime_env
 
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 job_config.runtime_env
             )
-            job_config.set_runtime_env(runtime_env)
+
+        job_config.set_runtime_env(runtime_env)
+        # Similarly, we prefer metadata provided via job submission API
+        for key, value in injected_job_config.metadata.items():
+            job_config.set_metadata(key, value)
 
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
     # higher priority in case user also provided runtime_env for ray.init()
@@ -1420,8 +1450,6 @@ def init(
 
         if runtime_env:
             # Set runtime_env in job_config if passed in as part of ray.init()
-            if job_config is None:
-                job_config = ray.job_config.JobConfig()
             job_config.set_runtime_env(runtime_env)
 
     redis_address, gcs_address = None, None
@@ -1581,7 +1609,7 @@ def init(
                 spawn_reaper=False,
                 connect_only=True,
             )
-        except ConnectionError:
+        except (ConnectionError, RuntimeError):
             if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
                 logger.info(
                     "Failed to connect to the default Ray cluster address at "
@@ -1590,7 +1618,7 @@ def init(
                     "address to connect to, run `ray stop` or restart Ray with "
                     "`ray start`."
                 )
-            raise
+            raise ConnectionError
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
@@ -2243,6 +2271,7 @@ def connect(
         logs_dir = ""
     else:
         logs_dir = node.get_logs_dir_path()
+
     worker.core_worker = ray._raylet.CoreWorker(
         mode,
         node.plasma_store_socket_name,
@@ -2262,6 +2291,7 @@ def connect(
         runtime_env_hash,
         startup_token,
         session_name,
+        node.cluster_id,
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
@@ -2314,7 +2344,7 @@ def connect(
         b"tracing_startup_hook", ray_constants.KV_NAMESPACE_TRACING
     )
     if tracing_hook_val is not None:
-        ray.util.tracing.tracing_helper._enbale_tracing()
+        ray.util.tracing.tracing_helper._enable_tracing()
         if not getattr(ray, "__traced__", False):
             _setup_tracing = _import_from_string(tracing_hook_val.decode("utf-8"))
             _setup_tracing()
@@ -2841,7 +2871,7 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
 
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
-            "ray.cancel() only supported for non-actor object refs. "
+            "ray.cancel() only supported for object refs. "
             f"For actors, try ray.kill(). Got: {type(object_ref)}."
         )
     return worker.core_worker.cancel_task(object_ref, force, recursive)

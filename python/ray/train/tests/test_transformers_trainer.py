@@ -4,17 +4,15 @@ from datasets import Dataset
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
-    AutoTokenizer,
     Trainer,
     TrainingArguments,
 )
 
 import ray.data
-from ray.train.batch_predictor import BatchPredictor
 from ray.train.huggingface import (
     TransformersPredictor,
     TransformersTrainer,
-    TransformersCheckpoint,
+    LegacyTransformersCheckpoint,
 )
 from ray.train.trainer import TrainingFailedError
 from ray.train import ScalingConfig
@@ -105,7 +103,7 @@ def test_deprecations(ray_start_4_cpus):
 
     with pytest.warns(DeprecationWarning):
         obj = HuggingFaceCheckpoint.from_dict({"foo": "bar"})
-    assert isinstance(obj, TransformersCheckpoint)
+    assert isinstance(obj, LegacyTransformersCheckpoint)
 
     with pytest.warns(DeprecationWarning):
         obj = HuggingFacePredictor()
@@ -135,7 +133,7 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result.metrics["epoch"] == 4
     assert result.metrics["training_iteration"] == 4
     assert result.checkpoint
-    assert isinstance(result.checkpoint, TransformersCheckpoint)
+    assert isinstance(result.checkpoint, LegacyTransformersCheckpoint)
     assert "eval_loss" in result.metrics
 
     trainer2 = TransformersTrainer(
@@ -153,18 +151,8 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result2.metrics["epoch"] == 5
     assert result2.metrics["training_iteration"] == 1
     assert result2.checkpoint
-    assert isinstance(result2.checkpoint, TransformersCheckpoint)
+    assert isinstance(result2.checkpoint, LegacyTransformersCheckpoint)
     assert "eval_loss" in result2.metrics
-
-    predictor = BatchPredictor.from_checkpoint(
-        result2.checkpoint,
-        TransformersPredictor,
-        task="text-generation",
-        tokenizer=AutoTokenizer.from_pretrained(tokenizer_checkpoint),
-    )
-
-    predictions = predictor.predict(ray.data.from_pandas(prompts))
-    assert predictions.count() == 3
 
 
 def test_training_local_dataset(ray_start_4_cpus):
@@ -179,7 +167,7 @@ def test_training_local_dataset(ray_start_4_cpus):
     assert result.metrics["epoch"] == 1
     assert result.metrics["training_iteration"] == 1
     assert result.checkpoint
-    assert isinstance(result.checkpoint, TransformersCheckpoint)
+    assert isinstance(result.checkpoint, LegacyTransformersCheckpoint)
     assert "eval_loss" in result.metrics
 
 
