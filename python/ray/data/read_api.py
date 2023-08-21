@@ -2177,6 +2177,7 @@ def from_huggingface(
 
     if isinstance(dataset, datasets.IterableDataset):
         # For an IterableDataset, we use a streaming implementation to read data.
+        raise Exception(f"datasets version is: {datasets.__version__}, {datasets.__file__}")
         return read_datasource(
             HuggingFaceDatasource(),
             parallelism=parallelism,
