@@ -1,13 +1,11 @@
 from timeit import default_timer as timer
 
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
 import torch
 import torchvision
 
-from ray.air import session
-
 import ray.train as train
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 
 
@@ -41,7 +39,7 @@ def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
                 train.torch.backward(loss)
                 optimizer.step()
         end_time = timer()
-        session.report({"latency": end_time - start_time})
+        train.report({"latency": end_time - start_time})
 
     def latency(amp: bool) -> float:
         trainer = TorchTrainer(
@@ -65,7 +63,7 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
         model = torchvision.models.resnet101()
         model = train.torch.prepare_model(model)
 
-        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)

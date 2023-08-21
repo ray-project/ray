@@ -11,30 +11,50 @@ from ray.util.annotations import DeveloperAPI
 @DeveloperAPI
 def register_pydantic_serializer(serialization_context):
     try:
-        import pydantic.fields
+        from pydantic import fields
     except ImportError:
-        return
+        fields = None
 
-    # Pydantic's Cython validators are not serializable.
-    # https://github.com/cloudpipe/cloudpickle/issues/408
-    serialization_context._register_cloudpickle_serializer(
-        pydantic.fields.ModelField,
-        custom_serializer=lambda o: {
-            "name": o.name,
-            # outer_type_ is the original type for ModelFields,
-            # while type_ can be updated later with the nested type
-            # like int for List[int].
-            "type_": o.outer_type_,
-            "class_validators": o.class_validators,
-            "model_config": o.model_config,
-            "default": o.default,
-            "default_factory": o.default_factory,
-            "required": o.required,
-            "alias": o.alias,
-            "field_info": o.field_info,
-        },
-        custom_deserializer=lambda kwargs: pydantic.fields.ModelField(**kwargs),
-    )
+    try:
+        from pydantic.v1 import fields as pydantic_v1_fields
+    except ImportError:
+        pydantic_v1_fields = None
+
+    if hasattr(fields, "ModelField"):
+        ModelField = fields.ModelField
+    elif pydantic_v1_fields:
+        ModelField = pydantic_v1_fields.ModelField
+    else:
+        ModelField = None
+
+    if ModelField is not None:
+        # In Pydantic 2.x, ModelField has been removed so this serialization
+        # strategy no longer works. We keep this code around to allow support
+        # for users with pydantic 1.x installed or users using pydantic.v1
+        # import within the pydantic 2.x package.
+        # TODO(aguo): Figure out how to enable cloudpickle serialization for
+        # pydantic 2.x
+
+        # Pydantic's Cython validators are not serializable.
+        # https://github.com/cloudpipe/cloudpickle/issues/408
+        serialization_context._register_cloudpickle_serializer(
+            ModelField,
+            custom_serializer=lambda o: {
+                "name": o.name,
+                # outer_type_ is the original type for ModelFields,
+                # while type_ can be updated later with the nested type
+                # like int for List[int].
+                "type_": o.outer_type_,
+                "class_validators": o.class_validators,
+                "model_config": o.model_config,
+                "default": o.default,
+                "default_factory": o.default_factory,
+                "required": o.required,
+                "alias": o.alias,
+                "field_info": o.field_info,
+            },
+            custom_deserializer=lambda kwargs: ModelField(**kwargs),
+        )
 
 
 @DeveloperAPI

@@ -1,6 +1,7 @@
 import logging
 import os
 import socket
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple, Union
 
@@ -360,26 +361,34 @@ class WorkerGroup:
         for i in range(len(new_actors)):
             self.workers.append(Worker(actor=new_actors[i], metadata=metadata[i]))
 
-    def _move_workers_with_ip_to_front(self, ip):
-        # Hack to avoid OOMs.
-        # This is just a temporary solution for Train loading entire checkpoints
-        # into memory by ensuring that the rank 0 worker is on the same node as
-        # trainable, thus allowing for lazy checkpoint transfer to be used.
-        # See https://github.com/ray-project/ray/issues/33073
-        # for more context.
-        # TODO remove
-        workers_with_ip = []
-        indices_to_remove = set()
-        for i, worker in enumerate(self.workers):
-            if worker.metadata.node_ip == ip:
-                workers_with_ip.append(worker)
-                indices_to_remove.add(i)
-        if workers_with_ip:
-            self.workers = workers_with_ip + [
-                worker
-                for i, worker in enumerate(self.workers)
-                if i not in indices_to_remove
-            ]
+    def group_workers_by_ip(self, _first_ip: Optional[str] = None):
+        """Groups workers by IP.
+
+        This is useful for collocating workers on the same node.
+
+        Args:
+            _first_ip: The first IP to group by.
+                Hack to avoid OOMs.
+                This is just a temporary solution for Train loading entire checkpoints
+                into memory by ensuring that the rank 0 worker is on the same node as
+                trainable, thus allowing for lazy checkpoint transfer to be used.
+                See https://github.com/ray-project/ray/issues/33073
+                for more context.
+                TODO remove this argument.
+        """
+        ip_to_workers = defaultdict(list)
+
+        if _first_ip is not None:
+            ip_to_workers[_first_ip] = []
+
+        for worker in self.workers:
+            ip_to_workers[worker.metadata.node_ip].append(worker)
+
+        sorted_workers = []
+        for workers in ip_to_workers.values():
+            sorted_workers.extend(workers)
+
+        self.workers = sorted_workers
 
     def __len__(self):
         return len(self.workers)

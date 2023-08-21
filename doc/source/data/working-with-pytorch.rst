@@ -17,7 +17,7 @@ This guide describes how to:
 
 Iterating over torch tensors for training
 -----------------------------------------
-To iterate over batches of data in torch format, call :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`. Each batch is represented as `Dict[str, torch.Tensor]`, with one tensor per column in the dataset. 
+To iterate over batches of data in torch format, call :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`. Each batch is represented as `Dict[str, torch.Tensor]`, with one tensor per column in the dataset.
 
 This is useful for training torch models with batches from your dataset. For configuration details such as providing a `collate_fn` for customizing the conversion, see `the API reference <ray.data.Dataset.iter_torch_batches>`.
 
@@ -26,7 +26,7 @@ This is useful for training torch models with batches from your dataset. For con
     import ray
     import torch
 
-    ds = ray.data.read_images("example://image-datasets/simple")
+    ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
     for batch in ds.iter_torch_batches(batch_size=2):
         print(batch)
@@ -43,20 +43,21 @@ Integration with Ray Train
 Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for data parallel training, with support for PyTorch, PyTorch Lightning, or Huggingface training.
 
 .. testcode::
-    
+
     import torch
     from torch import nn
     import ray
-    from ray.air import session, ScalingConfig
+    from ray import train
+    from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func(config):
         model = nn.Sequential(nn.Linear(30, 1), nn.Sigmoid())
         loss_fn = torch.nn.BCELoss()
         optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
-        
+
         # Datasets can be accessed in your train_func via ``get_dataset_shard``.
-        train_data_shard = session.get_dataset_shard("train")
+        train_data_shard = train.get_dataset_shard("train")
 
         for epoch_idx in range(2):
             for batch in train_data_shard.iter_torch_batches(batch_size=128, dtypes=torch.float32):
@@ -66,7 +67,7 @@ Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for 
                 train_loss.backward()
                 optimizer.step()
 
-        
+
     train_dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
     trainer = TorchTrainer(
@@ -81,16 +82,16 @@ Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for 
 
     ...
 
-For more details, see the :ref:`Ray Train user guide <train-datasets>`.
-    
+For more details, see the :ref:`Ray Train user guide <data-ingest-torch>`.
+
 .. _transform_pytorch:
 
 Transformations with torch tensors
 ----------------------------------
-Transformations applied with `map` or `map_batches` can return torch tensors. 
+Transformations applied with `map` or `map_batches` can return torch tensors.
 
 .. caution::
-    
+
     Under the hood, Ray Data automatically converts torch tensors to numpy arrays. Subsequent transformations accept numpy arrays as input, not torch tensors.
 
 .. tab-set::
@@ -98,17 +99,17 @@ Transformations applied with `map` or `map_batches` can return torch tensors.
     .. tab-item:: map
 
         .. testcode::
-            
+
             from typing import Dict
             import numpy as np
             import torch
             import ray
-            
-            ds = ray.data.read_images("example://image-datasets/simple")
+
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             def convert_to_torch(row: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
                 return {"tensor": torch.as_tensor(row["image"])}
-            
+
             # The tensor gets converted into a Numpy array under the hood
             transformed_ds = ds.map(convert_to_torch)
             print(transformed_ds.schema())
@@ -117,11 +118,11 @@ Transformations applied with `map` or `map_batches` can return torch tensors.
             def check_numpy(row: Dict[str, np.ndarray]):
                 assert isinstance(row["tensor"], np.ndarray)
                 return row
-            
+
             transformed_ds.map(check_numpy).take_all()
 
         .. testoutput::
-            
+
             Column  Type
             ------  ----
             tensor  numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
@@ -129,17 +130,17 @@ Transformations applied with `map` or `map_batches` can return torch tensors.
     .. tab-item:: map_batches
 
         .. testcode::
-            
+
             from typing import Dict
             import numpy as np
             import torch
             import ray
-            
-            ds = ray.data.read_images("example://image-datasets/simple")
+
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             def convert_to_torch(batch: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
                 return {"tensor": torch.as_tensor(batch["image"])}
-            
+
             # The tensor gets converted into a Numpy array under the hood
             transformed_ds = ds.map_batches(convert_to_torch, batch_size=2)
             print(transformed_ds.schema())
@@ -148,11 +149,11 @@ Transformations applied with `map` or `map_batches` can return torch tensors.
             def check_numpy(batch: Dict[str, np.ndarray]):
                 assert isinstance(batch["tensor"], np.ndarray)
                 return batch
-            
+
             transformed_ds.map_batches(check_numpy, batch_size=2).take_all()
 
         .. testoutput::
-            
+
             Column  Type
             ------  ----
             tensor  numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
@@ -169,15 +170,15 @@ You can use built-in torch transforms from `torchvision`, `torchtext`, and `torc
     .. tab-item:: torchvision
 
         .. testcode::
-            
+
             from typing import Dict
             import numpy as np
             import torch
             from torchvision import transforms
             import ray
-            
+
             # Create the Dataset.
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             # Define the torchvision transform.
             transform = transforms.Compose(
@@ -191,18 +192,18 @@ You can use built-in torch transforms from `torchvision`, `torchtext`, and `torc
             def transform_image(row: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
                 row["transformed_image"] = transform(row["image"])
                 return row
-            
+
             # Apply the transform over the dataset.
             transformed_ds = ds.map(transform_image)
             print(transformed_ds.schema())
-        
+
         .. testoutput::
 
             Column             Type
             ------             ----
             image              numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
             transformed_image  numpy.ndarray(shape=(3, 10, 10), dtype=float)
-        
+
     .. tab-item:: torchtext
 
         .. testcode::
@@ -211,9 +212,9 @@ You can use built-in torch transforms from `torchvision`, `torchtext`, and `torc
             import numpy as np
             from torchtext import transforms
             import ray
-            
+
             # Create the Dataset.
-            ds = ray.data.read_text("example://simple.txt")
+            ds = ray.data.read_text("s3://anonymous@ray-example-data/simple.txt")
 
             # Define the torchtext transform.
             VOCAB_FILE = "https://huggingface.co/bert-base-uncased/resolve/main/vocab.txt"
@@ -223,11 +224,11 @@ You can use built-in torch transforms from `torchvision`, `torchtext`, and `torc
             def tokenize_text(batch: Dict[str, np.ndarray]) -> Dict[str, List[str]]:
                 batch["tokenized_text"] = transform(list(batch["text"]))
                 return batch
-            
+
             # Apply the transform over the dataset.
             transformed_ds = ds.map_batches(tokenize_text, batch_size=2)
             print(transformed_ds.schema())
-        
+
         .. testoutput::
 
             Column          Type
@@ -296,7 +297,7 @@ For more details, see the :ref:`Batch inference user guide <batch_inference_home
 Saving Datasets containing torch tensors
 ----------------------------------------
 
-Datasets containing torch tensors can be saved to files, like parquet or numpy. 
+Datasets containing torch tensors can be saved to files, like parquet or numpy.
 
 For more information on saving data, read
 :ref:`Saving data <saving-data>`.
@@ -310,7 +311,7 @@ For more information on saving data, read
     .. tab-item:: Parquet
 
         .. testcode::
-            
+
             import torch
             import ray
 
@@ -322,7 +323,7 @@ For more information on saving data, read
     .. tab-item:: Numpy
 
         .. testcode::
-            
+
             import torch
             import ray
 
@@ -356,11 +357,16 @@ If you are using built-in PyTorch datasets, for example from `torchvision`, thes
 
     mnist = torchvision.datasets.MNIST(root="/tmp/", download=True)
     ds = ray.data.from_torch(mnist)
-    
-    # The data for each item of the torch dataset is under the "item" key. 
+
+    # The data for each item of the torch dataset is under the "item" key.
     print(ds.schema())
 
+..
+    The following `testoutput` is mocked to avoid illustrating download logs like
+    "Downloading http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz".
+
 .. testoutput::
+    :options: +MOCK
 
     Column  Type
     ------  ----
@@ -369,7 +375,7 @@ If you are using built-in PyTorch datasets, for example from `torchvision`, thes
 Custom PyTorch Datasets
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-If you have a custom PyTorch Dataset, you can migrate to Ray Data by converting the logic in ``__getitem__`` to Ray Data read and transform operations. 
+If you have a custom PyTorch Dataset, you can migrate to Ray Data by converting the logic in ``__getitem__`` to Ray Data read and transform operations.
 
 Any logic for reading data from cloud storage and disk can be replaced by one of the Ray Data ``read_*`` APIs, and any transformation logic can be applied as a :meth:`map <ray.data.Dataset.map>` call on the Dataset.
 
@@ -399,7 +405,7 @@ The following example shows a custom PyTorch Dataset, and what the analagous wou
                     self.s3 = boto3.resource("s3", config=Config(signature_version=UNSIGNED))
                     self.bucket = self.s3.Bucket(bucket_name)
                     self.files = [obj.key for obj in self.bucket.objects.filter(Prefix=dir_path)]
-                    
+
                     self.transform = transforms.Compose([
                         transforms.ToTensor(),
                         transforms.Resize((128, 128)),
@@ -458,12 +464,12 @@ The following example shows a custom PyTorch Dataset, and what the analagous wou
                             transforms.Resize((128, 128)),
                             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
                         ])
-            
+
             # Preprocess the images.
             def transform_image(row: dict):
                 row["transformed_image"] = transform(row["image"])
                 return row
-            
+
             # Map the transformations over the dataset.
             ds = ds.map(extract_label).map(transform_image)
 

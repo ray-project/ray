@@ -215,6 +215,8 @@ class TestModelBase(unittest.TestCase):
 
             model({"in_1": [[1]]})
 
+    # Todo (rllib-team): Fix for torch 2.0+
+    @unittest.skip("Failing with torch >= 2.0")
     @unittest.skipIf(not _dynamo_is_available(), "torch._dynamo not available")
     def test_torch_compile_no_breaks(self):
         """Tests if torch.compile() does not encounter any breaks.

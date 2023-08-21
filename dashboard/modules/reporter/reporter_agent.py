@@ -509,21 +509,30 @@ class ReporterAgent(
             # Remove the current process (reporter agent), which is also a child of
             # the Raylet.
             self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
-            return [
-                w.as_dict(
-                    attrs=[
-                        "pid",
-                        "create_time",
-                        "cpu_percent",
-                        "cpu_times",
-                        "cmdline",
-                        "memory_info",
-                        "memory_full_info",
-                    ]
+
+            result = []
+            for w in self._workers.values():
+                try:
+                    if w.status() == psutil.STATUS_ZOMBIE:
+                        continue
+                except psutil.NoSuchProcess:
+                    # the process may have terminated due to race condition.
+                    continue
+
+                result.append(
+                    w.as_dict(
+                        attrs=[
+                            "pid",
+                            "create_time",
+                            "cpu_percent",
+                            "cpu_times",
+                            "cmdline",
+                            "memory_info",
+                            "memory_full_info",
+                        ]
+                    )
                 )
-                for w in self._workers.values()
-                if w.status() != psutil.STATUS_ZOMBIE
-            ]
+            return result
 
     def _get_raylet_proc(self):
         try:

@@ -4,13 +4,13 @@ import pytorch_lightning as pl
 from copy import copy
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
-from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 from ray.air import session
-from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
 from ray.air.constants import MODEL_KEY
 from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
+from ray.train import DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
@@ -19,10 +19,10 @@ from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
     RayFSDPStrategy,
     RayDeepSpeedStrategy,
-    RayEnvironment,
+    RayLightningEnvironment,
     RayDataModule,
     RayModelCheckpoint,
-    get_worker_root_device,
+    prepare_trainer,
 )
 
 
@@ -182,17 +182,17 @@ class LightningConfigBuilder:
         with the kwargs. It handles checkpointing and metrics logging logics.
 
         Specifically, the callback periodically reports the latest metrics
-        and checkpoint to the AIR session via
-        :meth:`session.report() <ray.air.session.report>`.
+        and checkpoint via
+        :meth:`ray.train.report() <ray.train.report>`.
         The report frequency matches the checkpointing frequency here.
         You have to make sure that the target metrics (e.g. metrics defined in
         :class:`TuneConfig <ray.tune.TuneConfig>` or
-        :class:`CheckpointConfig <ray.air.config.CheckpointConfig>`)
+        :class:`CheckpointConfig <ray.train.CheckpointConfig>`)
         are ready when a new checkpoint is being saved.
 
         Note that this method is not a replacement for the
-        ``ray.air.configs.CheckpointConfig``. You still need to specify your
-        AIR checkpointing strategy in ``CheckpointConfig``. Otherwise, AIR stores
+        ``ray.train.CheckpointConfig``. You still need to specify your
+        checkpointing strategy in ``CheckpointConfig``. Otherwise, AIR stores
         all the reported checkpoints by default.
 
         Args:
@@ -242,8 +242,8 @@ class LightningTrainer(TorchTrainer):
 
     The trainer also creates a ModelCheckpoint callback based on the configuration
     provided in ``LightningConfigBuilder.checkpointing()``. In addition to
-    checkpointing, this callback also calls ``session.report()`` to report the
-    latest metrics along with the checkpoint to the AIR session.
+    checkpointing, this callback also calls ``train.report()`` to report the
+    latest metrics along with the checkpoint.
 
     For logging, users can continue to use Lightning's native loggers, such as
     WandbLogger, TensorboardLogger, etc. LightningTrainer will also log the latest
@@ -273,7 +273,7 @@ class LightningTrainer(TorchTrainer):
                     self.fc1 = torch.nn.Linear(28 * 28, feature_dim)
                     self.fc2 = torch.nn.Linear(feature_dim, 10)
                     self.lr = lr
-                    self.accuracy = Accuracy()
+                    self.accuracy = Accuracy(task="multiclass", num_classes=10, top_k=1)
                     self.val_loss = []
                     self.val_acc = []
 
@@ -384,9 +384,9 @@ class LightningTrainer(TorchTrainer):
             Note that if you provide a ``datasets`` parameter, you must always specify
             ``datasets_iter_config`` for it.
 
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -395,12 +395,13 @@ class LightningTrainer(TorchTrainer):
         *,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         datasets_iter_config: Optional[Dict[str, Any]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         run_config = copy(run_config) or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()
@@ -439,6 +440,7 @@ class LightningTrainer(TorchTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )
 
     def _unify_checkpoint_configs(
@@ -487,42 +489,22 @@ class LightningTrainer(TorchTrainer):
         else:
             return air_ckpt_config
 
-    @PublicAPI(stability="alpha")
-    @classmethod
-    def restore(
-        cls: Type["LightningTrainer"],
-        path: str,
-        datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
-        scaling_config: Optional[ScalingConfig] = None,
-        **kwargs,
-    ) -> "LightningTrainer":
-        """Restores a LightningTrainer from a previously interrupted/failed run.
-
-        See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
-        for descriptions of the arguments.
-
-        Returns:
-            LightningTrainer: A restored instance of `LightningTrainer`
-        """
-        return super(LightningTrainer, cls).restore(
-            path=path,
-            datasets=datasets,
-            preprocessor=preprocessor,
-            scaling_config=scaling_config,
-            **kwargs,
-        )
-
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
-    # Change the working directory for all workers to the same directory.
-    # This aligns with Lightning's settings and avoids inconsistency. Otherwise,
-    # each worker will have a different log and checkpoint directory if they are
-    # using relative paths.
-    working_dir = os.path.join(session.get_trial_dir(), "rank_all")
-    os.makedirs(working_dir, exist_ok=True)
-    os.chdir(working_dir)
+    from ray.train._internal.storage import _use_storage_context
+
+    # TODO(justinvyu)/NOTE: This is no longer needed, because we do not switch to
+    # a rank-specific working directory in the new persistence mode.
+    # Lightning requires each worker to be in the same working directory.
+    if not _use_storage_context():
+        # Change the working directory for all workers to the same directory.
+        # This aligns with Lightning's settings and avoids inconsistency. Otherwise,
+        # each worker will have a different log and checkpoint directory if they are
+        # using relative paths.
+        working_dir = os.path.join(session.get_trial_dir(), "rank_all")
+        os.makedirs(working_dir, exist_ok=True)
+        os.chdir(working_dir)
 
     if not config["lightning_config"]:
         raise RuntimeError("'lightning_config' not specified in LightningTrainer!")
@@ -569,17 +551,12 @@ def _lightning_train_loop_per_worker(config):
 
     # Prepare Lightning Trainer
     # Setup trainer's parallel devices
-    if trainer_config.get("accelerator", None) == "gpu":
-        current_device = get_worker_root_device()
-        trainer_config["devices"] = [current_device.index]
+    trainer_config["devices"] = "auto"
 
     # Setup ray cluster environment info
-    trainer_config["plugins"] = [
-        plugin
-        for plugin in trainer_config.get("plugins", [])
-        if not isinstance(plugin, ClusterEnvironment)
-    ]
-    trainer_config["plugins"].append(RayEnvironment())
+    if "plugins" not in trainer_config:
+        trainer_config["plugins"] = []
+    trainer_config["plugins"].append(RayLightningEnvironment())
 
     # Setup ddp strategy for ray orchestration
     if "strategy" in trainer_config:
@@ -605,6 +582,8 @@ def _lightning_train_loop_per_worker(config):
     ]
 
     trainer = pl.Trainer(**trainer_config)
+
+    trainer = prepare_trainer(trainer)
 
     checkpoint = session.get_checkpoint()
     if checkpoint:

@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from contextlib import redirect_stderr
+import tempfile
 from unittest.mock import patch
 
 import pandas as pd
@@ -10,9 +11,8 @@ import numpy as np
 import pytest
 
 import ray
-from ray import tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import train, tune
+from ray.train import Checkpoint, ScalingConfig
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.data.context import DataContext
 from ray.data.preprocessor import Preprocessor
@@ -21,8 +21,8 @@ from ray.tune.impl import tuner_internal
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
-from ray.air.config import ScalingConfig
 from ray.util.placement_group import get_current_placement_group
+from ray.train._internal.storage import _use_storage_context
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ class DummyGBDTTrainer(GBDTTrainer):
 
 def test_trainer_fit(ray_start_4_cpus):
     def training_loop(self):
-        session.report(dict(my_metric=1))
+        train.report(dict(my_metric=1))
 
     trainer = DummyTrainer(train_loop=training_loop)
     result = trainer.fit()
@@ -400,7 +400,7 @@ def test_large_params(ray_start_4_cpus):
     array_size = int(1e8)
 
     def training_loop(self):
-        checkpoint = self.resume_from_checkpoint.to_dict()["ckpt"]
+        checkpoint = self.starting_checkpoint.to_dict()["ckpt"]
         assert len(checkpoint) == array_size
 
     checkpoint = Checkpoint.from_dict({"ckpt": np.zeros(shape=array_size)})
@@ -413,7 +413,7 @@ def test_preprocess_datasets_context(ray_start_4_cpus):
 
     def training_loop(self):
         assert self.datasets["my_dataset"].take() == [{"a": i} for i in range(2, 5)]
-        session.report(dict(my_metric=1))
+        train.report(dict(my_metric=1))
 
     target_max_block_size = 100
 
@@ -431,6 +431,57 @@ def test_preprocess_datasets_context(ray_start_4_cpus):
     trainer = DummyTrainer(training_loop, datasets=datasets, preprocessor=preprocessor)
     result = trainer.fit()
     assert result.metrics["my_metric"] == 1
+
+
+def test_metadata_propagation_base(ray_start_4_cpus):
+    if not _use_storage_context():
+        print("Not implemented in old backend")
+        return
+
+    from ray.train._checkpoint import Checkpoint as NewCheckpoint
+
+    class MyTrainer(BaseTrainer):
+        def training_loop(self):
+            assert train.get_context().get_metadata() == {"a": 1, "b": 1}
+            with tempfile.TemporaryDirectory() as path:
+                checkpoint = NewCheckpoint.from_directory(path)
+                checkpoint.set_metadata({"b": 2, "c": 3})
+                train.report(
+                    dict(
+                        my_metric=1,
+                    ),
+                    checkpoint=checkpoint,
+                )
+
+    trainer = MyTrainer(metadata={"a": 1, "b": 1})
+    result = trainer.fit()
+    meta_out = result.checkpoint.get_metadata()
+    assert meta_out == {"a": 1, "b": 2, "c": 3}, meta_out
+
+
+def test_metadata_propagation_data_parallel(ray_start_4_cpus):
+    if not _use_storage_context():
+        print("Not implemented in old backend")
+        return
+
+    from ray.train._checkpoint import Checkpoint as NewCheckpoint
+
+    def training_loop(self):
+        assert train.get_context().get_metadata() == {"a": 1, "b": 1}
+        with tempfile.TemporaryDirectory() as path:
+            checkpoint = NewCheckpoint.from_directory(path)
+            checkpoint.set_metadata({"b": 2, "c": 3})
+            train.report(
+                dict(
+                    my_metric=1,
+                ),
+                checkpoint=checkpoint,
+            )
+
+    trainer = DummyTrainer(training_loop, metadata={"a": 1, "b": 1})
+    result = trainer.fit()
+    meta_out = result.checkpoint.get_metadata()
+    assert meta_out == {"a": 1, "b": 2, "c": 3}, meta_out
 
 
 if __name__ == "__main__":

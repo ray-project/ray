@@ -5,7 +5,7 @@ import ray
 from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.serve.deployment_graph import InputNode
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve.http_adapters import json_request
 
 # These imports are used only for type hints:
@@ -16,9 +16,9 @@ from typing import Dict
 class FruitMarket:
     def __init__(
         self,
-        mango_stand: RayServeDeploymentHandle,
-        orange_stand: RayServeDeploymentHandle,
-        pear_stand: RayServeDeploymentHandle,
+        mango_stand: RayServeHandle,
+        orange_stand: RayServeHandle,
+        pear_stand: RayServeHandle,
     ):
         self.directory = {
             "MANGO": mango_stand,
@@ -128,10 +128,10 @@ def check_fruit_deployment_graph_updates():
 
 # Test behavior from this documentation example
 serve.start(detached=True)
-app = build(deployment_graph)
+app = build(deployment_graph, "default")
 for deployment in app.deployments.values():
     deployment.set_options(ray_actor_options={"num_cpus": 0.1})
-serve.run(app)
+serve.run(app, name="default")
 check_fruit_deployment_graph()
 print("Example ran successfully from the file.")
 serve.shutdown()
