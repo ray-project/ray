@@ -88,6 +88,7 @@ steps:
           limit: 1
 
   - group: "wheels and container images (aarch64)"
+    if: build.env("RUNTIME_BUILD_ALL") == "true"
     steps:
     - name: "forge (aarch64)"
       key: "forge-aarch64"
@@ -198,7 +199,7 @@ steps:
           limit: 1
 
     - name: "{{matrix.py}} {{matrix.type}} base image"
-      if: build.env("RUNTIME_BUILD_ALL") != null
+      if: build.env("RUNTIME_BUILD_ALL") == "true"
       command:
         - source anyscale/ci/setup-env.sh
         - /bin/bash anyscale/ci/build-ray-base-image.sh {{matrix.py}} {{matrix.type}}
@@ -257,7 +258,7 @@ steps:
     - wait: ~
 
     - name: "{{matrix.py}} {{matrix.type}} image"
-      if: build.env("RUNTIME_BUILD_ALL") != null
+      if: build.env("RUNTIME_BUILD_ALL") == "true"
       command:
         - source anyscale/ci/setup-env.sh
         - /bin/bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.type}}
