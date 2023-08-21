@@ -16,6 +16,7 @@ from ray.serve.context import (
     get_internal_replica_context,
 )
 from ray.serve._private.common import MultiplexedReplicaInfo
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import MetricsPusher
 from ray.serve import metrics
 
@@ -52,6 +53,9 @@ class _ModelMultiplexWrapper:
                 current replica. If it is -1, there is no limit for the number of models
                 per replica.
         """
+
+        ServeUsageTag.MULTIPLEXED_API_USED.record("1")
+
         self.models = OrderedDict()
         self._func: Callable = model_load_func
         self.self_arg: Any = self_arg

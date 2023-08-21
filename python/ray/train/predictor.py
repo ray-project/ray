@@ -53,8 +53,8 @@ class Predictor(abc.ABC):
 
     - The input batch is converted into a pandas DataFrame. Tensor input (like a
       ``np.ndarray``) will be converted into a single column Pandas Dataframe.
-    - If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided
-      :ref:`Checkpoint <checkpoint-api-ref>`, the preprocessor will be used to
+    - If there is a :ref:`Preprocessor <preprocessor-ref>` saved in the provided
+      :class:`Checkpoint <ray.train.Checkpoint>`, the preprocessor will be used to
       transform the DataFrame.
     - The transformed DataFrame will be passed to the model for inference (via the
       ``predictor._predict_pandas`` method).
@@ -69,7 +69,7 @@ class Predictor(abc.ABC):
     1. ``_predict_pandas``: Given a pandas.DataFrame input, return a
        pandas.DataFrame containing predictions.
     2. ``from_checkpoint``: Logic for creating a Predictor from a
-       :ref:`Checkpoint <checkpoint-api-ref>`.
+       :class:`Checkpoint <ray.train.Checkpoint>`.
     3. Optionally ``_predict_numpy`` for better performance when working with
        tensor data to avoid extra copies from Pandas conversions.
     """
