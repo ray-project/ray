@@ -2124,7 +2124,6 @@ def from_spark(
 @PublicAPI
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
-    parallelism: Optional[int] = -1,
 ) -> Union[MaterializedDataset, Dataset]:
     """Create a :class:`~ray.data.MaterializedDataset` from a
     `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
@@ -2177,10 +2176,8 @@ def from_huggingface(
 
     if isinstance(dataset, datasets.IterableDataset):
         # For an IterableDataset, we use a streaming implementation to read data.
-        raise Exception(f"datasets version is: {datasets.__version__}, {datasets.__file__}")
         return read_datasource(
             HuggingFaceDatasource(),
-            parallelism=parallelism,
             dataset=dataset,
         )
     if isinstance(dataset, datasets.Dataset):
