@@ -1,5 +1,5 @@
 name: "oss-ci-base_build"
-froms: ["@oss-ci-base_test"]
+froms: ["cr.ray.io/rayproject/oss-ci-base_test"]
 dockerfile: ci/docker/base.build.Dockerfile
 srcs:
   - .bazelrc

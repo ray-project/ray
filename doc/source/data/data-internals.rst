@@ -170,7 +170,7 @@ The following code is a hello world example which invokes the execution with
    for _ in (
        ray.data.range_tensor(5000, shape=(80, 80, 3), parallelism=200)
        .map_batches(sleep, num_cpus=2)
-       .map_batches(sleep, compute=ray.data.ActorPoolStrategy(2, 4))
+       .map_batches(sleep, compute=ray.data.ActorPoolStrategy(min_size=2, max_size=4))
        .map_batches(sleep, num_cpus=1)
        .iter_batches()
    ):

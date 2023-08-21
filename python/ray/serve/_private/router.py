@@ -97,7 +97,11 @@ class Query:
     metadata: RequestMetadata
 
     async def resolve_async_tasks(self):
-        """Find all unresolved asyncio.Task and gather them all at once."""
+        """Find all unresolved asyncio.Task and gather them all at once.
+
+        This is used for the old serve handle API and should be removed once that API
+        is fully deprecated & removed.
+        """
         scanner = _PyObjScanner(source_type=asyncio.Task)
 
         try:
@@ -106,6 +110,38 @@ class Query:
             if len(tasks) > 0:
                 resolved = await asyncio.gather(*tasks)
                 replacement_table = dict(zip(tasks, resolved))
+                self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+        finally:
+            # Make the scanner GC-able to avoid memory leaks.
+            scanner.clear()
+
+    async def resolve_deployment_handle_results_to_object_refs(self):
+        """Replace DeploymentHandleResults with their resolved ObjectRefs.
+
+        DeploymentResponseGenerators are rejected (not currently supported).
+        """
+        from ray.serve.handle import (
+            _DeploymentResponseBase,
+            DeploymentResponseGenerator,
+        )
+
+        scanner = _PyObjScanner(source_type=_DeploymentResponseBase)
+
+        try:
+            result_to_object_ref_coros = []
+            results = scanner.find_nodes((self.args, self.kwargs))
+            for result in results:
+                result_to_object_ref_coros.append(result._to_object_ref())
+                if isinstance(result, DeploymentResponseGenerator):
+                    raise RuntimeError(
+                        "Streaming deployment handle results cannot be passed to "
+                        "downstream handle calls. If you have a use case requiring "
+                        "this feature, please file a feature request on GitHub."
+                    )
+
+            if len(results) > 0:
+                obj_refs = await asyncio.gather(*result_to_object_ref_coros)
+                replacement_table = dict(zip(results, obj_refs))
                 self.args, self.kwargs = scanner.replace_nodes(replacement_table)
         finally:
             # Make the scanner GC-able to avoid memory leaks.
@@ -1100,7 +1136,7 @@ class Router:
             and len(self._replica_scheduler.curr_replicas) == 0
             and self.num_queued_queries == 1
         ):
-            self.push_metrics_to_controller({self.deployment_name: 1}, time.time())
+            self.push_metrics_to_controller({str(self.deployment_id): 1}, time.time())
 
         try:
             query = Query(
@@ -1109,10 +1145,10 @@ class Router:
                 metadata=request_meta,
             )
             await query.resolve_async_tasks()
+            await query.resolve_deployment_handle_results_to_object_refs()
             await query.buffer_starlette_requests_and_warn()
-            result = await self._replica_scheduler.assign_replica(query)
 
-            return result
+            return await self._replica_scheduler.assign_replica(query)
         finally:
             # If the query is disconnected before assignment, this coroutine
             # gets cancelled by the caller and an asyncio.CancelledError is
