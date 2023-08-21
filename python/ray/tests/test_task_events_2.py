@@ -474,6 +474,79 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
     )
 
 
+def test_ray_intentional_errors(shutdown_only):
+    """
+    Test in the below cases, ray task should not be marked as failure:
+    1. ray.actor_exit_actor()
+    2. __ray_terminate__.remote()
+    3. max calls reached.
+    """
+
+    # Test `exit_actor`
+    @ray.remote
+    class Actor:
+        def ready(self):
+            pass
+
+        def exit(self):
+            ray.actor.exit_actor()
+
+    ray.init(num_cpus=1)
+
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+
+    a.exit.remote()
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "Actor.exit")])
+        assert len(ts) == 1
+        t = ts[0]
+
+        assert t["state"] == "FINISHED"
+        return True
+
+    wait_for_condition(verify)
+
+    # Test `__ray_terminate__`
+    b = Actor.remote()
+
+    ray.get(b.ready.remote())
+
+    b.__ray_terminate__.remote()
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "Actor.__ray_terminate__")])
+        assert len(ts) == 1
+        t = ts[0]
+
+        assert t["state"] == "FINISHED"
+        return True
+
+    wait_for_condition(verify)
+
+    # Test max calls reached exiting workers should not fail the task.
+    @ray.remote(max_calls=1)
+    def f():
+        pass
+
+    for _ in range(3):
+        ray.get(f.remote())
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "f")])
+        assert len(ts) == 3
+        workers = set()
+        for t in ts:
+            assert t["state"] == "FINISHED"
+            workers.add(t["worker_id"])
+
+        assert len(workers) == 3
+        return True
+
+    wait_for_condition(verify)
+
+
 @pytest.mark.parametrize(
     "exit_type",
     ["exit_kill", "exit_exception"],
