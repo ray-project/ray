@@ -219,7 +219,7 @@
     # Todo (krfricke): Move mosaicml to train-test-requirements.txt
     # TODO(scottjlee): Move datasets to train/data-test-requirements.txt 
     # (see https://github.com/ray-project/ray/pull/38432/)
-    - pip install "mosaicml==0.12.1" "datasets==2.14.0"
+    - pip install "mosaicml==0.12.1" "datasets==2.10.0"
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
