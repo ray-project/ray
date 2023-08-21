@@ -61,6 +61,7 @@ transformed_ds.write_parquet("local:///tmp/iris/")
 ```{testoutput}
 :hide:
 
+...
 ```
 
 ```{button-ref}  ../data/data
