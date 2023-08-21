@@ -109,11 +109,6 @@ def func(*args):
     return do_something_with_my_gpu()
 ```
 
-```{testoutput}
-:hide:
-
-```
-
 (serve-fractional-resources-guide)=
 
 ### Fractional CPUs and Fractional GPUs
@@ -140,11 +135,6 @@ def func_2(*args):
     return do_something_with_my_gpu()
 ```
 
-```{testoutput}
-:hide:
-
-```
-
 In this example, each replica of each deployment will be allocated 0.5 GPUs.  The same can be done to multiplex over CPUs, using `"num_cpus"`.
 
 ### Custom Resources, Accelerator types, and more
@@ -162,11 +152,6 @@ def do_something_with_my_custom_resource():
 @serve.deployment(ray_actor_options={"resources": {"custom_resource": 2}})
 def func(*args):
     return do_something_with_my_custom_resource()
-```
-
-```{testoutput}
-:hide:
-
 ```
 
 You can also specify {ref}`accelerator types <accelerator-types>` via the `accelerator_type` parameter in `ray_actor_options`.

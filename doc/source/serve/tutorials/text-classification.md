@@ -35,16 +35,12 @@ You should see the following messages in the logs:
 ```
 
 Use the following code to send requests:
-```python
-import requests
-
-prompt = "This was a masterpiece. Not completely faithful to the books, but enthralling from beginning to end. Might be my favorite of the three."
-input = "%20".join(prompt.split(" "))
-resp = requests.get(f"http://127.0.0.1:8000/classify?sentence={prompt}")
-print(resp.status_code, resp.json())
+```{literalinclude} ../doc_code/distilbert.py
+:language: python
+:start: __example_client_start__
+:end-before: __example_client_end__
 ```
 The output of the client code is the response status code, the label (positive in this example), and the label's score.
 ```text
 200 [{'label': 'LABEL_1', 'score': 0.9994940757751465}]
 ```
-

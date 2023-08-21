@@ -124,11 +124,6 @@ class Silenced:
         logger.setLevel(logging.ERROR)
 ```
 
-```{testoutput}
-:hide:
-
-```
-
 This controls which logs are written to STDOUT or files on disk.
 In addition to the standard Python logger, Serve supports custom logging. Custom logging lets you control what messages are written to STDOUT/STDERR, files on disk, or both.
 

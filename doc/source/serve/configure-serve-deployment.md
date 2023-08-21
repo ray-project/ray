@@ -90,11 +90,6 @@ class ExampleDeployment:
     pass
 ```
 
-```{testoutput}
-:hide:
-
-```
-
 and the following config file:
 
 ```yaml
@@ -133,11 +128,6 @@ from typing import Any, Dict
 class Model:
     def reconfigure(self, config: Dict[str, Any]):
         self.threshold = config["threshold"]
-```
-
-```{testoutput}
-:hide:
-
 ```
 
 If the `user_config` is set when the deployment is created (e.g., in the decorator or the Serve config file), this `reconfigure` method is called right after the deployment's `__init__` method, and the `user_config` is passed in as an argument. You can also trigger the `reconfigure` method by updating your Serve config file with a new `user_config` and reapplying it to your Ray cluster. See [In-place Updates](serve-inplace-updates) for more information.

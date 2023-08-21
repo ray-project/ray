@@ -184,11 +184,6 @@ async def json_resolver(request: starlette.requests.Request):
     return await request.json()
 ```
 
-```{testoutput}
-:hide:
-
-```
-
 The input arguments to an HTTP adapter should be type-annotated. At a minimum, the adapter should accept a `starlette.requests.Request` type (https://www.starlette.io/requests/#request),
 but it can also accept any type that's recognized by [FastAPI's dependency injection framework](https://fastapi.tiangolo.com/tutorial/dependencies/).
 
@@ -202,11 +197,6 @@ class YourDataClass:
 
 def parse_query_args(field_a: int, field_b: str):
     return YourDataClass(field_a, field_b)
-```
-
-```{testoutput}
-:hide:
-
 ```
 
 You can specify different type signatures to facilitate the extraction of HTTP fields, including
@@ -244,11 +234,6 @@ with InputNode() as input_node:
     dag = DAGDriver.bind(other_node, http_adapter=json_request)
 ```
 
-```{testoutput}
-:hide:
-
-```
-
 ### Embedded in your existing `FastAPI` Application
 
 You can also bring the adapter to your own FastAPI app using
@@ -264,11 +249,6 @@ app = FastAPI()
 @app.post("/endpoint")
 async def endpoint(np_array = Depends(json_to_ndarray)):
     return np_array[0]
-```
-
-```{testoutput}
-:hide:
-
 ```
 
 ### Pydantic models as adapters
@@ -293,11 +273,6 @@ class User(BaseModel):
 
 other_node = func1.bind(input_node)
 DAGDriver.bind(other_node, http_adapter=User)
-```
-
-```{testoutput}
-:hide:
-
 ```
 
 ### List of built-in adapters
