@@ -206,7 +206,7 @@ def test_grpc_detected(manage_ray):
     # Check that Serve telemetry not relevant to the running apps is omitted
     assert ServeUsageTag.DAG_DRIVER_USED.get_value_from_report(report) is None
     assert ServeUsageTag.HTTP_ADAPTER_USED.get_value_from_report(report) is None
-    assert ServeUsageTag.GRPC_INGRESS_USED.get_value_from_report(report) is None
+    assert ServeUsageTag.FASTAPI_USED.get_value_from_report(report) is None
     assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) is None
 
 
