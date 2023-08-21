@@ -82,6 +82,20 @@ def get_tokenizer(model_name, special_tokens):
     return tokenizer
 
 
+def create_ray_dataset(path):
+    # jsonl file
+    with open(path, "r") as json_file:
+        items = [json.loads(x) for x in json_file]
+
+    dataset = {"input": []}
+    for item in items:
+        assert set(item.keys()) == {"input"}
+        dataset["input"].append(item["input"])
+
+    df = pd.DataFrame.from_dict(dataset)
+    return ray.data.from_pandas(df)
+
+
 def evaluate(
     *, model, eval_ds, accelerator, bsize, ds_kwargs, as_test: bool = False
 ) -> Tuple[float, float]:
@@ -563,9 +577,9 @@ def main():
     )
 
     # Read data
-    train_ds = ray.data.read_json(args.train_path)
+    train_ds = create_ray_dataset(args.train_path)
     if args.test_path is not None:
-        valid_ds = ray.data.read_json(args.test_path)
+        valid_ds = create_ray_dataset(args.test_path)
     else:
         valid_ds = None
 
