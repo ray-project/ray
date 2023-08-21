@@ -48,10 +48,10 @@ if __name__ == "__main__":
     )
     ray.get(
         [
-            assert_file_content.options(strategy=strategy).remote(
+            assert_file_content.options(scheduling_strategy=strategy).remote(
                 args.file_name, args.expected_content
             ),
-            assert_n_files_in_working_dir.options(strategy=strategy).remote(
+            assert_n_files_in_working_dir.options(scheduling_strategy=strategy).remote(
                 args.expected_file_count_in_working_dir
             ),
         ]
