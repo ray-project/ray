@@ -494,3 +494,10 @@ control over their native Lightning code.
                 )
             )
             ray_trainer.fit()
+
+Compatibility Notice:
+---------------------
+
+We advise using Ray Train with ``pytorch_lightning>=1.6.5`` for full compatibility and reliability. Our integrations are tested for `pytorch_lightning` version `1.6.5` and `2.0.4`. 
+Using earlier versions is at your own risk and may result in unexpected issues. If you met any compatibility issues, please try to upgrade your PyTorch Lightning versions or 
+`file an issue <https://github.com/ray-project/ray/issues>`_. 
