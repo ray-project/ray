@@ -9,7 +9,7 @@ import click
 from ci.ray_ci.container import (
     run_tests,
     run_script_in_docker,
-    docker_login,
+    setup_test_environment,
     shard_tests,
 )
 from ci.ray_ci.utils import logger
@@ -65,7 +65,7 @@ def main(
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
 
-    docker_login()
+    setup_test_environment(team)
     if run_flaky_tests:
         test_targets = _get_flaky_test_targets(team)
     else:
@@ -126,7 +126,8 @@ def _get_all_test_targets(
 
     test_targets = (
         run_script_in_docker(
-            f'bazel query "{_get_all_test_query(targets, team, except_tags)}"'
+            f'bazel query "{_get_all_test_query(targets, team, except_tags)}"',
+            team,
         )
         .decode("utf-8")
         .split("\n")
