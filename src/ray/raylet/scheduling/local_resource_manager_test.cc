@@ -14,11 +14,10 @@
 
 // Don't know why macro redefinition happens, but this is failing windows
 // build.
-#pragma warning(disable : 4005)
-
 #include "ray/raylet/scheduling/local_resource_manager.h"
 
 #include "gtest/gtest.h"
+#include "ray/common/grpc_util.h"
 
 namespace ray {
 
