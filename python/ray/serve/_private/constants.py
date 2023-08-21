@@ -24,6 +24,9 @@ DEFAULT_HTTP_HOST = "127.0.0.1"
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
+#: Uvicorn timeout_keep_alive Config
+DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 5
+
 #: gRPC Port
 DEFAULT_GRPC_PORT = 9000
 
@@ -218,6 +221,11 @@ RAY_SERVE_ENABLE_NEW_ROUTING = (
     or RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 )
 
+# Feature flag to enable new handle API.
+RAY_SERVE_ENABLE_NEW_HANDLE_API = (
+    os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "0") == "1"
+)
+
 # Serve HTTP proxy callback import path.
 RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH = os.environ.get(
     "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH", None
@@ -244,4 +252,9 @@ RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = float(
 # Enable memray in all Serve actors.
 RAY_SERVE_ENABLE_MEMORY_PROFILING = (
     os.environ.get("RAY_SERVE_ENABLE_MEMORY_PROFILING", "0") == "1"
+)
+
+# Enable cProfile in all Serve actors.
+RAY_SERVE_ENABLE_CPU_PROFILING = (
+    os.environ.get("RAY_SERVE_ENABLE_CPU_PROFILING", "0") == "1"
 )

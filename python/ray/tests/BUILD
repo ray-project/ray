@@ -44,6 +44,7 @@ py_test_module_list(
     "test_basic_4.py",
     "test_basic_5.py",
     "test_cancel.py",
+    "test_actor_cancel.py",
     "test_dashboard_profiler.py",
     "test_gcs_fault_tolerance.py",
     "test_gcs_utils.py",
@@ -121,7 +122,9 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_actor_bounded_threads.py",
     "test_autoscaler_fake_scaledown.py",
+    "test_accelerator.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
@@ -182,7 +185,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_out_of_order.py",
-    "test_actor_bounded_threads.py",
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
     "test_annotations.py",
     "test_args.py",
@@ -424,6 +426,22 @@ py_test(
     name = "test_gcp_node_provider",
     size = "small",
     srcs = ["gcp/test_gcp_node_provider.py"],
+    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_gcp_tpu_command_runner",
+    size = "small",
+    srcs = ["gcp/test_gcp_tpu_command_runner.py"],
+    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "vsphere/test_vsphere_node_provider",
+    size = "small",
+    srcs = ["vsphere/test_vsphere_node_provider.py"],
     tags = ["exclusive", "small_size_python_tests", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )

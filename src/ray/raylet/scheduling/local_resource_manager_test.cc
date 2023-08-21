@@ -149,8 +149,8 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
 
   // Make the node idle so that the node is drained and terminated.
   std::shared_ptr<TaskResourceInstances> task_allocation =
-      std::make_shared<TaskResourceInstances>(ResourceRequest(
-          ResourceMapToResourceRequest({{ResourceID::CPU(), 1.0}}, false)));
+      std::make_shared<TaskResourceInstances>(
+          ResourceSet({{ResourceID::CPU(), FixedPoint(1.0)}}));
   EXPECT_DEATH(manager->ReleaseWorkerResources(task_allocation), ".*");
 }
 
@@ -226,8 +226,8 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
   /// Test that deallocate some resources (not all) should not make it idle.
   {
     std::shared_ptr<TaskResourceInstances> task_allocation =
-        std::make_shared<TaskResourceInstances>(ResourceRequest(
-            ResourceMapToResourceRequest({{ResourceID::CPU(), 1.0}}, false)));
+        std::make_shared<TaskResourceInstances>(
+            ResourceSet({{ResourceID::CPU(), FixedPoint(1.0)}}));
     manager->FreeTaskResourceInstances(task_allocation, /* record_idle_resource */ true);
 
     auto idle_time = manager->GetResourceIdleTime();
@@ -238,7 +238,7 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
   {
     std::shared_ptr<TaskResourceInstances> task_allocation =
         std::make_shared<TaskResourceInstances>(
-            ResourceMapToResourceRequest({{ResourceID("CUSTOM"), 1.}}, false));
+            ResourceSet({{ResourceID("CUSTOM"), FixedPoint(1.)}}));
     manager->FreeTaskResourceInstances(task_allocation, /* record_idle_resource */
                                        true);
 
@@ -278,7 +278,7 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     {
       std::shared_ptr<TaskResourceInstances> task_allocation =
           std::make_shared<TaskResourceInstances>(
-              ResourceMapToResourceRequest({{ResourceID::CPU(), 1.}}, false));
+              ResourceSet({{ResourceID::CPU(), FixedPoint(1.)}}));
       manager->FreeTaskResourceInstances(task_allocation, /* record_idle_resource */
                                          true);
     }

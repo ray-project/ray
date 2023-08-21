@@ -3,9 +3,10 @@ import os
 from pathlib import Path
 import pickle
 import pytest
+import re
 import tempfile
 import time
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import pyarrow.fs
 
@@ -18,11 +19,15 @@ from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.tune.trainable.trainable import _DICT_CHECKPOINT_FILE_NAME
 
 from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
 
 
 _SCORE_KEY = "score"
+NUM_ITERATIONS = 6  # == num_checkpoints == num_artifacts
+NUM_TRIALS = 2
+NUM_WORKERS = 3
 
 
 @contextmanager
@@ -128,6 +133,23 @@ def _convert_path_to_fs_path(
     return path
 
 
+def _get_checkpoint_index(checkpoint_dir_name: str) -> int:
+    """Gets the checkpoint index from the checkpoint directory name."""
+    return int(checkpoint_dir_name.split("_")[-1])
+
+
+def _create_checkpoint_shard_filename(rank_str: str) -> str:
+    return f"checkpoint_shard-rank={rank_str}.pkl"
+
+
+def _get_checkpoint_shard_rank(checkpoint_shard_filename: str) -> int:
+    """Get the checkpoint shard rank from the filename."""
+    pattern = _create_checkpoint_shard_filename(r"(\d+)")
+    match = re.search(pattern, checkpoint_shard_filename)
+    assert match
+    return int(match.group(1))
+
+
 def train_fn(config):
     in_trainer = config.get("in_trainer", False)
     if in_trainer:
@@ -156,28 +178,82 @@ def train_fn(config):
     for i in range(start, config.get("num_iterations", 5)):
         time.sleep(0.25)
 
-        temp_dir = tempfile.mkdtemp()
-        with open(os.path.join(temp_dir, "checkpoint.pkl"), "wb") as f:
-            pickle.dump({"iter": i}, f)
+        metrics = {"iter": i, _SCORE_KEY: i}
 
-        artifact_file_name = f"artifact-iter={i}.txt"
-        if in_trainer:
-            rank = train.get_context().get_world_rank()
-            artifact_file_name = f"artifact-rank={rank}-iter={i}.txt"
+        if in_trainer and train.get_context().get_world_rank() in config.get(
+            "no_checkpoint_ranks", []
+        ):
+            train.report(metrics)
+        else:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                with open(os.path.join(temp_dir, "checkpoint.pkl"), "wb") as f:
+                    pickle.dump({"iter": i}, f)
 
-            checkpoint_file_name = f"checkpoint_shard-rank={rank}.pkl"
-            with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
-                pickle.dump({"iter": i}, f)
+                # artifact_file_name = f"artifact-iter={i}.txt"
+                if in_trainer:
+                    rank = train.get_context().get_world_rank()
+                    # artifact_file_name = f"artifact-rank={rank}-iter={i}.txt"
 
-        with open(artifact_file_name, "w") as f:
-            f.write(f"{i}")
+                    checkpoint_file_name = _create_checkpoint_shard_filename(str(rank))
+                    with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
+                        pickle.dump({"iter": i}, f)
 
-        train.report(
-            {"iter": i, _SCORE_KEY: i},
-            checkpoint=NewCheckpoint.from_directory(temp_dir),
-        )
+                # with open(artifact_file_name, "w") as f:
+                #     f.write(f"{i}")
+
+                train.report(metrics, checkpoint=NewCheckpoint.from_directory(temp_dir))
+                # `train.report` should not have deleted this!
+                assert os.path.exists(temp_dir)
+
         if i in config.get("fail_iters", []):
             raise RuntimeError(f"Failing on iter={i}!!")
+
+
+class ClassTrainable(tune.Trainable):
+    """Implement (almost) the same thing as `train_fn` but as a class."""
+
+    def setup(self, config):
+        # Save some markers in the trial dir.
+        tmp_path = config.get("tmp_path")
+        self.fail_markers = {
+            i: tmp_path / f"fail_marker_{self.trial_id}_iter={i}"
+            for i in config.get("fail_iters", [])
+        }
+        setup_marker = tmp_path / f"setup_marker_{self.trial_id}"
+        if not setup_marker.exists():
+            for marker in self.fail_markers.values():
+                marker.touch()
+            setup_marker.touch()
+
+        self.save_as_dict = config.get("save_checkpoint_as_dict", False)
+
+    def step(self) -> dict:
+        if self.iteration in self.fail_markers:
+            marker = self.fail_markers[self.iteration]
+            if marker.exists():
+                marker.unlink()
+                raise RuntimeError(f"Failing on iter={self.iteration}")
+        return {
+            "score": 1,
+            "done": self.iteration >= self.config.get("num_iterations") - 1,
+            "should_checkpoint": True,
+        }
+
+    def save_checkpoint(self, temp_checkpoint_dir) -> str:
+        if self.save_as_dict:
+            return {"dummy": "data"}
+        (Path(temp_checkpoint_dir) / "checkpoint.pkl").write_text("dummy")
+        return temp_checkpoint_dir
+
+    def load_checkpoint(self, checkpoint_dict_or_path):
+        print("Loading state from:", checkpoint_dict_or_path)
+        print("At iteration =", self.iteration)
+        if self.save_as_dict:
+            assert checkpoint_dict_or_path == {"dummy": "data"}
+        else:
+            assert (
+                Path(checkpoint_dict_or_path) / "checkpoint.pkl"
+            ).read_text() == "dummy"
 
 
 def _resume_from_checkpoint(checkpoint: NewCheckpoint, expected_state: dict):
@@ -212,21 +288,87 @@ def _resume_from_checkpoint(checkpoint: NewCheckpoint, expected_state: dict):
     ).name == StorageContext._make_checkpoint_dir_name(0)
 
 
+def _assert_storage_contents(
+    local_inspect_dir: Path,
+    exp_name: str,
+    checkpoint_config: train.CheckpointConfig,
+    trainable_name: str,
+    test_trainer: bool,
+    no_checkpoint_ranks: List[int] = None,
+):
+    # Second, inspect the contents of the storage path
+    storage_path_ls = list(local_inspect_dir.glob("*"))
+    assert len(storage_path_ls) == 1  # Only expect 1 experiment dir
+    exp_dir = storage_path_ls[0]
+    assert exp_dir.name == exp_name
+
+    # Files synced by the driver
+    assert len(list(exp_dir.glob("tuner.pkl"))) == 1
+    if test_trainer:
+        assert len(list(exp_dir.glob("trainer.pkl"))) == 1
+    # 2 copies of these files:
+    # 1 for the initial run, and 1 for the manually restored run.
+    assert len(list(exp_dir.glob("basic-variant-state-*"))) == 2
+    assert len(list(exp_dir.glob("experiment_state-*"))) == 2
+
+    # Files synced by the worker
+    assert (
+        len(list(exp_dir.glob(f"{trainable_name}*"))) == 1
+        if test_trainer
+        else NUM_TRIALS
+    )
+    for trial_dir in exp_dir.glob(f"{trainable_name}*"):
+        # If set, expect num_to_keep. Otherwise, expect to see all of them.
+        expected_num_checkpoints = checkpoint_config.num_to_keep or NUM_ITERATIONS
+
+        assert len(list(trial_dir.glob("checkpoint_*"))) == expected_num_checkpoints
+        checkpoint_idxs = sorted(
+            [
+                _get_checkpoint_index(checkpoint_dir.name)
+                for checkpoint_dir in trial_dir.glob("checkpoint_*")
+            ]
+        )
+        # Ex: If num_to_keep=2 out of 6 total checkpoints,
+        # expect checkpoint_004 and checkpoint_005.
+        assert checkpoint_idxs == list(
+            range(NUM_ITERATIONS - expected_num_checkpoints, NUM_ITERATIONS)
+        )
+
+        for checkpoint_dir in trial_dir.glob("checkpoint_*"):
+            # 1 shared checkpoint.pkl file, written by the trainable / all workers.
+            assert (
+                len(list(checkpoint_dir.glob("checkpoint.pkl"))) == 1
+                # NOTE: Dict checkpoint is only for the ClassTrainable.
+                or len(list(checkpoint_dir.glob(_DICT_CHECKPOINT_FILE_NAME))) == 1
+            )
+            if test_trainer:
+                # 1 checkpoint shard per worker.
+                # Unless the worker did not report a checkpoint (no_checkpoint_ranks).
+                assert {
+                    _get_checkpoint_shard_rank(checkpoint_shard.name)
+                    for checkpoint_shard in checkpoint_dir.glob(
+                        "checkpoint_shard-*.pkl"
+                    )
+                } == {i for i in range(NUM_WORKERS) if i not in no_checkpoint_ranks}
+
+        # NOTE: These next 2 are technically synced by the driver.
+        assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
+        # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
+        # assert len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS * NUM_WORKER
+
+
+@pytest.mark.parametrize("trainable", [train_fn, ClassTrainable])
 @pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
 @pytest.mark.parametrize(
     "checkpoint_config",
-    [
-        train.CheckpointConfig(),
-        train.CheckpointConfig(num_to_keep=2),
-        train.CheckpointConfig(
-            num_to_keep=1,
-            checkpoint_score_attribute=_SCORE_KEY,
-            checkpoint_score_order="max",
-        ),
-    ],
+    [train.CheckpointConfig(), train.CheckpointConfig(num_to_keep=2)],
 )
 def test_tuner(
-    monkeypatch, tmp_path, storage_path_type, checkpoint_config: train.CheckpointConfig
+    monkeypatch,
+    tmp_path,
+    trainable,
+    storage_path_type,
+    checkpoint_config: train.CheckpointConfig,
 ):
     """End-to-end test that the new persistence mode works with the Tuner API.
     This test covers many `storage_path_type` options:
@@ -266,11 +408,15 @@ def test_tuner(
         storage_path,
         storage_filesystem,
     ):
-        NUM_ITERATIONS = 6  # == num_checkpoints == num_artifacts
-        NUM_TRIALS = 2
         tuner = tune.Tuner(
-            train_fn,
-            param_space={"num_iterations": NUM_ITERATIONS, "fail_iters": [2, 4]},
+            trainable,
+            param_space={
+                "num_iterations": NUM_ITERATIONS,
+                "fail_iters": [2, 4],
+                # NOTE: This param is only used in the ClassTrainable.
+                "save_checkpoint_as_dict": tune.grid_search([True, False]),
+                "tmp_path": tmp_path,
+            },
             run_config=train.RunConfig(
                 storage_path=storage_path,
                 storage_filesystem=storage_filesystem,
@@ -279,17 +425,15 @@ def test_tuner(
                 failure_config=train.FailureConfig(max_failures=1),
                 checkpoint_config=checkpoint_config,
             ),
-            # 2 samples, running 1 at at time to test with actor reuse
-            tune_config=tune.TuneConfig(
-                num_samples=NUM_TRIALS, max_concurrent_trials=1
-            ),
+            # 2 samples (from the grid search). Run 1 at at time to test actor reuse
+            tune_config=tune.TuneConfig(num_samples=1, max_concurrent_trials=1),
         )
         result_grid = tuner.fit()
         assert result_grid.errors
 
         restored_tuner = tune.Tuner.restore(
             path=str(URI(storage_path or str(LOCAL_CACHE_DIR)) / exp_name),
-            trainable=train_fn,
+            trainable=trainable,
             storage_filesystem=storage_filesystem,
             resume_errored=True,
         )
@@ -304,6 +448,7 @@ def test_tuner(
         )
 
     # First, check that the ResultGrid returns the correct paths.
+    print(result_grid)
     experiment_fs_path = _convert_path_to_fs_path(
         result_grid.experiment_path, storage_filesystem
     )
@@ -316,31 +461,13 @@ def test_tuner(
             assert checkpoint.path.startswith(trial_fs_path)
 
     # Next, inspect the storage path contents.
-    assert len(list(local_inspect_dir.glob("*"))) == 1  # Only expect 1 experiment dir
-    exp_dir = local_inspect_dir / exp_name
-
-    # Files synced by the driver
-    assert (exp_dir / "tuner.pkl").exists()
-    # 2 copies of these files:
-    # 1 for the initial run, and 1 for the manually restored run.
-    assert len(list(exp_dir.glob("basic-variant-state-*"))) == 2
-    assert len(list(exp_dir.glob("experiment_state-*"))) == 2
-
-    # Files synced by the worker
-    assert len(list(exp_dir.glob("train_fn_*"))) == NUM_TRIALS
-    for trial_dir in exp_dir.glob("train_fn_*"):
-        # If set, expect num_to_keep. Otherwise, expect to see all of them.
-        expected_num_checkpoints = checkpoint_config.num_to_keep or NUM_ITERATIONS
-
-        assert len(list(trial_dir.glob("checkpoint_*"))) == expected_num_checkpoints
-        for checkpoint_dir in trial_dir.glob("checkpoint_*"):
-            # 1 shared checkpoint.pkl file, written by all workers.
-            assert len(list(checkpoint_dir.glob("checkpoint.pkl"))) == 1
-
-        # NOTE: These next 2 are technically synced by the driver.
-        # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
-        assert len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS
-        assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
+    _assert_storage_contents(
+        local_inspect_dir,
+        exp_name,
+        checkpoint_config,
+        trainable_name=trainable.__name__,
+        test_trainer=False,
+    )
 
 
 @pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
@@ -348,7 +475,6 @@ def test_tuner(
     "checkpoint_config",
     [
         train.CheckpointConfig(),
-        train.CheckpointConfig(num_to_keep=2),
         train.CheckpointConfig(
             num_to_keep=1,
             checkpoint_score_attribute=_SCORE_KEY,
@@ -392,20 +518,24 @@ def test_trainer(
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
     exp_name = "trainer_new_persistence"
 
+    no_checkpoint_ranks = [0]
+
     with _resolve_storage_type(storage_path_type, tmp_path) as (
         storage_path,
         storage_filesystem,
     ):
-        NUM_ITERATIONS = 6
-        NUM_WORKERS = 2
         trainer = DataParallelTrainer(
             train_fn,
             train_loop_config={
                 "in_trainer": True,
                 "num_iterations": NUM_ITERATIONS,
                 "fail_iters": [2, 4],
+                # TODO(justinvyu): This should be separated into its own test once
+                # CI has been fully migrated.
+                # Test that global rank 0 is not required to checkpoint.
+                "no_checkpoint_ranks": no_checkpoint_ranks,
             },
-            scaling_config=train.ScalingConfig(num_workers=2),
+            scaling_config=train.ScalingConfig(num_workers=NUM_WORKERS),
             run_config=train.RunConfig(
                 storage_path=storage_path,
                 storage_filesystem=storage_filesystem,
@@ -444,42 +574,20 @@ def test_trainer(
         )
 
     # First, inspect that the result object returns the correct paths.
+    print(result)
     trial_fs_path = _convert_path_to_fs_path(result.path, storage_filesystem)
     assert trial_fs_path.startswith(storage_fs_path)
     for checkpoint, _ in result.best_checkpoints:
         assert checkpoint.path.startswith(trial_fs_path)
 
-    # Second, inspect the contents of the storage path
-    assert len(list(local_inspect_dir.glob("*"))) == 1  # Only expect 1 experiment dir
-    exp_dir = local_inspect_dir / exp_name
-
-    # Files synced by the driver
-    assert len(list(exp_dir.glob("tuner.pkl"))) == 1
-    assert len(list(exp_dir.glob("trainer.pkl"))) == 1
-    # 2 copies of these files:
-    # 1 for the initial run, and 1 for the manually restored run.
-    assert len(list(exp_dir.glob("basic-variant-state-*"))) == 2
-    assert len(list(exp_dir.glob("experiment_state-*"))) == 2
-
-    # Files synced by the worker
-    assert len(list(exp_dir.glob("DataParallelTrainer_*"))) == 1
-    for trial_dir in exp_dir.glob("DataParallelTrainer_*"):
-        # If set, expect num_to_keep. Otherwise, expect to see all of them.
-        expected_num_checkpoints = checkpoint_config.num_to_keep or NUM_ITERATIONS
-
-        assert len(list(trial_dir.glob("checkpoint_*"))) == expected_num_checkpoints
-        for checkpoint_dir in trial_dir.glob("checkpoint_*"):
-            # 1 shared checkpoint.pkl file, written by all workers.
-            assert len(list(checkpoint_dir.glob("checkpoint.pkl"))) == 1
-            # 1 checkpoint shard per worker.
-            assert (
-                len(list(checkpoint_dir.glob("checkpoint_shard-*.pkl"))) == NUM_WORKERS
-            )
-
-        # NOTE: These next 2 are technically synced by the driver.
-        # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
-        assert len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS * NUM_WORKERS
-        assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
+    _assert_storage_contents(
+        local_inspect_dir,
+        exp_name,
+        checkpoint_config,
+        trainable_name="DataParallelTrainer",
+        test_trainer=True,
+        no_checkpoint_ranks=no_checkpoint_ranks,
+    )
 
 
 if __name__ == "__main__":

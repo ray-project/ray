@@ -31,7 +31,12 @@ from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 from ray._private.utils import make_asyncio_event_version_compat, load_class
 
-from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
+from ray.serve._private.common import (
+    DeploymentID,
+    DeploymentInfo,
+    RequestProtocol,
+    RunningReplicaInfo,
+)
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     HANDLE_METRIC_PUSH_INTERVAL_S,
@@ -61,9 +66,6 @@ class RequestMetadata:
     endpoint: str
     call_method: str = "__call__"
 
-    # This flag is set if the request is made from the HTTP proxy to a replica.
-    is_http_request: bool = False
-
     # HTTP route path of the request.
     route: str = ""
 
@@ -76,6 +78,17 @@ class RequestMetadata:
     # If this request expects a streaming response.
     is_streaming: bool = False
 
+    # The protocol to serve this request
+    _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
+
+    @property
+    def is_http_request(self) -> bool:
+        return self._request_protocol == RequestProtocol.HTTP
+
+    @property
+    def is_grpc_request(self) -> bool:
+        return self._request_protocol == RequestProtocol.GRPC
+
 
 @dataclass
 class Query:
@@ -84,7 +97,11 @@ class Query:
     metadata: RequestMetadata
 
     async def resolve_async_tasks(self):
-        """Find all unresolved asyncio.Task and gather them all at once."""
+        """Find all unresolved asyncio.Task and gather them all at once.
+
+        This is used for the old serve handle API and should be removed once that API
+        is fully deprecated & removed.
+        """
         scanner = _PyObjScanner(source_type=asyncio.Task)
 
         try:
@@ -93,6 +110,38 @@ class Query:
             if len(tasks) > 0:
                 resolved = await asyncio.gather(*tasks)
                 replacement_table = dict(zip(tasks, resolved))
+                self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+        finally:
+            # Make the scanner GC-able to avoid memory leaks.
+            scanner.clear()
+
+    async def resolve_deployment_handle_results_to_object_refs(self):
+        """Replace DeploymentHandleResults with their resolved ObjectRefs.
+
+        DeploymentResponseGenerators are rejected (not currently supported).
+        """
+        from ray.serve.handle import (
+            _DeploymentResponseBase,
+            DeploymentResponseGenerator,
+        )
+
+        scanner = _PyObjScanner(source_type=_DeploymentResponseBase)
+
+        try:
+            result_to_object_ref_coros = []
+            results = scanner.find_nodes((self.args, self.kwargs))
+            for result in results:
+                result_to_object_ref_coros.append(result._to_object_ref())
+                if isinstance(result, DeploymentResponseGenerator):
+                    raise RuntimeError(
+                        "Streaming deployment handle results cannot be passed to "
+                        "downstream handle calls. If you have a use case requiring "
+                        "this feature, please file a feature request on GitHub."
+                    )
+
+            if len(results) > 0:
+                obj_refs = await asyncio.gather(*result_to_object_ref_coros)
+                replacement_table = dict(zip(results, obj_refs))
                 self.args, self.kwargs = scanner.replace_nodes(replacement_table)
         finally:
             # Make the scanner GC-able to avoid memory leaks.
@@ -254,6 +303,10 @@ class ReplicaScheduler(ABC):
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         pass
 
+    @property
+    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+        pass
+
 
 @dataclass
 class PendingRequest:
@@ -295,10 +348,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     def __init__(
         self,
         event_loop: asyncio.AbstractEventLoop,
-        deployment_name: str,
+        deployment_id: DeploymentID,
     ):
         self._loop = event_loop
-        self._deployment_name = deployment_name
+        self._deployment_id = deployment_id
 
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
@@ -375,8 +428,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         if self._replica_id_set != new_replica_id_set:
             logger.info(
-                "Got updated replicas for deployment "
-                f"{self._deployment_name}: {new_replica_id_set}.",
+                f"Got updated replicas for deployment '{self._deployment_id.name}' "
+                f"in application '{self._deployment_id.app}': {new_replica_id_set}.",
                 extra={"log_to_stderr": False},
             )
 
@@ -460,14 +513,16 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             while len(self._replicas) == 0:
                 logger.info(
                     "Tried to assign replica for deployment "
-                    f"{self._deployment_name} but none are available. "
-                    "Waiting for new replicas to be added.",
+                    f"'{self._deployment_id.name}' in application "
+                    f"'{self._deployment_id.app}' but none are available. Waiting for "
+                    "new replicas to be added.",
                     extra={"log_to_stderr": False},
                 )
                 self._replicas_updated_event.clear()
                 await self._replicas_updated_event.wait()
                 logger.info(
-                    "Got replicas for deployment {self._deployment_name}, waking up.",
+                    f"Got replicas for deployment '{self._deployment_id.name}' in "
+                    f"application '{self._deployment_id.app}', waking up.",
                     extra={"log_to_stderr": False},
                 )
 
@@ -750,6 +805,12 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
             str, List[RunningReplicaInfo]
         ] = defaultdict(list)
 
+    @property
+    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+        return {
+            r.replica_tag: ActorReplicaWrapper(r) for r in self.in_flight_queries.keys()
+        }
+
     def _reset_replica_iterator(self):
         """Reset the iterator used to load balance replicas.
 
@@ -961,7 +1022,7 @@ class Router:
     def __init__(
         self,
         controller_handle: ActorHandle,
-        deployment_name: str,
+        deployment_id: DeploymentID,
         event_loop: asyncio.BaseEventLoop = None,
         _use_new_routing: bool = False,
         _router_cls: Optional[str] = None,
@@ -975,11 +1036,11 @@ class Router:
 
         if _router_cls:
             self._replica_scheduler = load_class(_router_cls)(
-                event_loop=event_loop, deployment_name=deployment_name
+                event_loop=event_loop, deployment_id=deployment_id
             )
         elif _use_new_routing:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-                event_loop, deployment_name
+                event_loop, deployment_id
             )
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
@@ -994,7 +1055,8 @@ class Router:
             description="The number of requests processed by the router.",
             tag_keys=("deployment", "route", "application"),
         )
-        self.num_router_requests.set_default_tags({"deployment": deployment_name})
+        # TODO(zcin): use deployment name and application name instead of deployment id
+        self.num_router_requests.set_default_tags({"deployment": str(deployment_id)})
 
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(
@@ -1005,38 +1067,47 @@ class Router:
             ),
             tag_keys=("deployment", "application"),
         )
-        self.num_queued_queries_gauge.set_default_tags({"deployment": deployment_name})
+        # TODO(zcin): use deployment name and application name instead of deployment id
+        self.num_queued_queries_gauge.set_default_tags(
+            {"deployment": str(deployment_id)}
+        )
 
         self.long_poll_client = LongPollClient(
             controller_handle,
             {
                 (
                     LongPollNamespace.RUNNING_REPLICAS,
-                    deployment_name,
+                    deployment_id,
                 ): self._replica_scheduler.update_running_replicas,
             },
             call_in_event_loop=event_loop,
         )
 
         # Start the metrics pusher if autoscaling is enabled.
-        self.deployment_name = deployment_name
+        self.deployment_id = deployment_id
         deployment_route = DeploymentRoute.FromString(
-            ray.get(controller_handle.get_deployment_info.remote(self.deployment_name))
+            ray.get(controller_handle.get_deployment_info.remote(*deployment_id))
         )
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
         self.metrics_pusher = None
         if deployment_info.deployment_config.autoscaling_config:
+            self.autoscaling_enabled = True
+            self.push_metrics_to_controller = (
+                controller_handle.record_handle_metrics.remote
+            )
             self.metrics_pusher = MetricsPusher()
             self.metrics_pusher.register_task(
                 self._collect_handle_queue_metrics,
                 HANDLE_METRIC_PUSH_INTERVAL_S,
-                controller_handle.record_handle_metrics.remote,
+                self.push_metrics_to_controller,
             )
 
             self.metrics_pusher.start()
+        else:
+            self.autoscaling_enabled = False
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
-        return {self.deployment_name: self.num_queued_queries}
+        return {str(self.deployment_id): self.num_queued_queries}
 
     async def assign_request(
         self,
@@ -1057,6 +1128,16 @@ class Router:
             },
         )
 
+        # Optimization: if there are currently zero replicas for a deployment,
+        # push handle metric to controller to allow for fast cold start time.
+        # Only do it for the first query to arrive on the router.
+        if (
+            self.autoscaling_enabled
+            and len(self._replica_scheduler.curr_replicas) == 0
+            and self.num_queued_queries == 1
+        ):
+            self.push_metrics_to_controller({str(self.deployment_id): 1}, time.time())
+
         try:
             query = Query(
                 args=list(request_args),
@@ -1064,10 +1145,10 @@ class Router:
                 metadata=request_meta,
             )
             await query.resolve_async_tasks()
+            await query.resolve_deployment_handle_results_to_object_refs()
             await query.buffer_starlette_requests_and_warn()
-            result = await self._replica_scheduler.assign_replica(query)
 
-            return result
+            return await self._replica_scheduler.assign_replica(query)
         finally:
             # If the query is disconnected before assignment, this coroutine
             # gets cancelled by the caller and an asyncio.CancelledError is

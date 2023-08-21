@@ -7,7 +7,6 @@ Ray AIR API
     :maxdepth: 2
 
     Preprocessor (Ray Data + Ray Train)<preprocessor.rst>
-    Dataset Ingest (Ray Data + Ray Train)<dataset-ingest.rst>
     AIR Configurations (Ray Train + Ray Tune)<configs.rst>
     Trainers (Ray Train)<../../train/api/api>
     Tuner (Ray Tune)<../../tune/api/execution>

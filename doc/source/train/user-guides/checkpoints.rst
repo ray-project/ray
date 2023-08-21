@@ -25,7 +25,7 @@ training function. This will saves the checkpoint from the distributed workers t
 tied to the checkpoint and are used to filter the top k checkpoints. 
 
 The latest saved checkpoint can be accessed through the ``checkpoint`` attribute of
-the :py:class:`~ray.air.result.Result`, and the best saved checkpoints can be accessed by the ``best_checkpoints``
+the :py:class:`~ray.train.Result`, and the best saved checkpoints can be accessed by the ``best_checkpoints``
 attribute.
 
 Concrete examples are provided to demonstrate how checkpoints (model weights but not models) are saved
@@ -41,7 +41,7 @@ appropriately in distributed training.
 
             import ray.train.torch
             from ray import train
-            from ray.air import Checkpoint, ScalingConfig
+            from ray.train import Checkpoint, ScalingConfig
             from ray.train.torch import TorchTrainer
 
             import torch
@@ -184,8 +184,8 @@ appropriately in distributed training.
         **Option 1: Use Ray Train's default report callback**
         
         We provide a simple callback implementation :class:`~ray.train.huggingface.transformers.RayTrainReportCallback` that 
-        reports on checkpoint save. It collects the latest logged metrics and report them together with the 
-        latest saved checkpoint.
+        reports on checkpoint save. You can change the checkpointing frequency by `save_strategy` and `save_steps`. 
+        It collects the latest logged metrics and report them together with the latest saved checkpoint.
 
         .. code-block:: python
             :emphasize-lines: 21-24
@@ -339,10 +339,10 @@ Loading checkpoints
 Checkpoints can be loaded into the training function in 2 steps:
 
 1. From the training function, :func:`ray.train.get_checkpoint` can be used to access
-   the most recently saved :py:class:`~ray.air.checkpoint.Checkpoint`. This is useful to continue training even
+   the most recently saved :py:class:`~ray.train.Checkpoint`. This is useful to continue training even
    if there's a worker failure.
 2. The checkpoint to start training with can be bootstrapped by passing in a
-   :py:class:`~ray.air.checkpoint.Checkpoint` to ``Trainer`` as the ``resume_from_checkpoint`` argument.
+   :py:class:`~ray.train.Checkpoint` to ``Trainer`` as the ``resume_from_checkpoint`` argument.
 
 
 .. tab-set::
@@ -354,7 +354,7 @@ Checkpoints can be loaded into the training function in 2 steps:
 
             import ray.train.torch
             from ray import train
-            from ray.air import Checkpoint, ScalingConfig
+            from ray.train import Checkpoint, ScalingConfig
             from ray.train.torch import TorchTrainer
 
             import torch

@@ -178,14 +178,47 @@ def test_callable_classes(shutdown_only):
             return x
 
     # map_batches with args & kwargs
-    ds.map_batches(
+    result = ds.map_batches(
         StatefulFnWithArgs,
         compute=ray.data.ActorPoolStrategy(),
         fn_args=(1,),
         fn_kwargs={"kwarg": 2},
         fn_constructor_args=(1,),
         fn_constructor_kwargs={"kwarg": 2},
-    ).take() == list(range(10))
+    ).take()
+    assert sorted(extract_values("id", result)) == list(range(10)), result
+
+    class StatefulFlatMapFnWithInitArg:
+        def __init__(self, arg):
+            self._arg = arg
+            assert arg == 1
+
+        def __call__(self, x):
+            return [x] * self._arg
+
+    # flat_map with args
+    result = ds.flat_map(
+        StatefulFlatMapFnWithInitArg,
+        compute=ray.data.ActorPoolStrategy(),
+        fn_constructor_args=(1,),
+    ).take()
+    assert sorted(extract_values("id", result)) == list(range(10)), result
+
+    class StatefulMapFnWithInitArg:
+        def __init__(self, arg):
+            self._arg = arg
+            assert arg == 1
+
+        def __call__(self, x):
+            return x
+
+    # map with args
+    result = ds.map(
+        StatefulMapFnWithInitArg,
+        compute=ray.data.ActorPoolStrategy(),
+        fn_constructor_args=(1,),
+    ).take()
+    assert sorted(extract_values("id", result)) == list(range(10)), result
 
 
 def test_concurrent_callable_classes(shutdown_only):
@@ -445,9 +478,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_args=(put(1),),
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [2, 3, 4]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [3, 4, 5]
 
     # Test kwargs.
@@ -463,9 +496,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_kwargs={"b": put(2)},
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [2, 4, 6]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [4, 6, 8]
 
     # Test both.
@@ -483,9 +516,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_kwargs={"b": put(2)},
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [3, 5, 7]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [5, 7, 9]
 
     # Test constructor UDF args.
@@ -507,9 +540,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_constructor_args=(put(1),),
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [2, 3, 4]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [3, 4, 5]
 
     # Test kwarg.
@@ -530,9 +563,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_constructor_kwargs={"b": put(2)},
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [2, 4, 6]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [4, 6, 8]
 
     # Test both.
@@ -556,9 +589,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_constructor_kwargs={"b": put(2)},
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [3, 5, 7]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [5, 7, 9]
 
     # Test callable chain.
@@ -585,9 +618,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         )
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [7, 11, 15]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [11, 15, 19]
 
     # Test function + callable chain.
@@ -614,9 +647,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         )
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [7, 11, 15]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [11, 15, 19]
 
 
@@ -879,7 +912,9 @@ def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
 
     block_refs = ds.get_internal_block_refs()
     assert len(block_refs) == 1
-    assert type(ray.get(block_refs)[0]) == pd.DataFrame
+    block = ray.get(block_refs[0])
+    assert type(block) == pd.DataFrame
+    assert block.columns == df.columns
 
 
 def test_random_sample(ray_start_regular_shared):

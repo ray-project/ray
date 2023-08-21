@@ -330,6 +330,39 @@ def test_initial_num_replicas(mock, serve_instance):
     assert len(get_running_replicas(controller, "A")) == 2
 
 
+def test_cold_start_time(serve_instance):
+    """Send 100 requests and check that we autoscale up, and then back down."""
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 0,
+            "max_replicas": 1,
+            "look_back_period_s": 0.2,
+        },
+    )
+    class A:
+        def __call__(self):
+            return "hello"
+
+    handle = serve.run(A.bind())
+
+    def check_running():
+        assert serve.status().applications["default"].status == "RUNNING"
+        return True
+
+    wait_for_condition(check_running)
+
+    start = time.time()
+    result = ray.get(handle.remote())
+    cold_start_time = time.time() - start
+    assert cold_start_time < 2
+    print(
+        "Time taken for deployment at 0 replicas to serve first request:",
+        cold_start_time,
+    )
+    assert result == "hello"
+
+
 def test_smoothing_factor_scale_up_from_0_replicas():
     """Test that the smoothing factor is respected when scaling up from 0 replicas."""
 
@@ -737,6 +770,7 @@ def test_e2e_bursty(serve_instance):
     # it back to 0. This bursty behavior should be smoothed by the delay
     # parameters.
     for _ in range(5):
+        ray.get(signal.send.remote(clear=True))
         assert check_autoscale_num_replicas(controller, "A") == num_replicas
         refs = [handle.remote() for _ in range(100)]
         signal.send.remote()
@@ -960,8 +994,8 @@ def test_e2e_raise_min_replicas(serve_instance):
 
     assert check_autoscale_num_replicas(controller, "A") == 0
 
-    handle = serve.get_deployment("default_A").get_handle()
-    [handle.remote() for _ in range(1)]
+    handle = serve.get_deployment_handle("A", "default")
+    handle.remote()
     print("Issued one request.")
 
     time.sleep(2)
@@ -1205,7 +1239,9 @@ app = g.bind()
     }
 
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
+    wait_for_condition(
+        lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "RUNNING"
+    )
 
     # Step 3: Verify that it can scale from 0 to 1.
     @ray.remote
@@ -1236,7 +1272,9 @@ app = g.bind()
     # Step 4: Change the max replicas to 2
     app_config["deployments"][0]["autoscaling_config"]["max_replicas"] = 2
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
+    wait_for_condition(
+        lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "RUNNING"
+    )
     wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=1)
 
     # Step 5: Make sure it is the same replica (lightweight change).
@@ -1249,7 +1287,9 @@ app = g.bind()
     app_config["deployments"][0]["autoscaling_config"]["initial_replicas"] = 3
     app_config["deployments"][0]["autoscaling_config"]["upscale_delay"] = 600
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
+    wait_for_condition(
+        lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "RUNNING"
+    )
     wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=3)
 
     # Step 7: Make sure original replica is still running (lightweight change)

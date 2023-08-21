@@ -23,6 +23,7 @@ from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
 from ray.train._internal.storage import StorageContext, _use_storage_context
+from ray.train.constants import CHECKPOINT_DIR_NAME
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError, _TuneRestoreError
 from ray.tune.execution.class_cache import _ActorClassCache
@@ -252,6 +253,20 @@ class TuneController:
                 os.makedirs(self._legacy_local_experiment_path, exist_ok=True)
 
             self._legacy_remote_experiment_path = remote_experiment_path
+
+            if (
+                self._legacy_local_experiment_path
+                and self._legacy_remote_experiment_path
+                and Path(self._legacy_local_experiment_path)
+                == Path(self._legacy_remote_experiment_path)
+            ):
+                warnings.warn(
+                    "The local experiment path is the same as the remote "
+                    "experiment path. Set a different `storage_path` or raise an "
+                    "issue on GitHub if this issue persists. Deactivating the"
+                    "remote experiment path."
+                )
+                self._legacy_remote_experiment_path = None
 
         self._metric = metric
 
@@ -1131,7 +1146,7 @@ class TuneController:
 
         assert trial.status == Trial.PENDING
 
-        trial.init_logdir()
+        trial.init_local_path()
         # We checkpoint metadata here to try mitigating logdir duplication
         self._mark_trial_to_checkpoint(trial)
 
@@ -1605,6 +1620,36 @@ class TuneController:
             self._schedule_trial_stop(trial)
 
     def _schedule_trial_pause(self, trial: Trial, should_checkpoint: bool = True):
+        if _use_storage_context():
+            if trial not in self._trial_to_actor:
+                logger.debug(
+                    f"Trial PAUSE requested for trial {trial} but trial is already "
+                    f"stopping. Ignoring."
+                )
+                return
+
+            if should_checkpoint:
+                # We need to wait for the save to finish before stopping the trial.
+                def stop_after_save_result(*args, **kwargs):
+                    self._on_saving_result(*args, **kwargs)
+                    self._schedule_trial_stop(trial)
+                    self._set_trial_status(trial, Trial.PAUSED)
+
+                # NOTE: Ensure that the trial is PAUSED while it's saving a checkpoint.
+                self._set_trial_status(trial, Trial.PAUSED)
+                self._schedule_trial_task(
+                    trial=trial,
+                    method_name="save",
+                    on_result=stop_after_save_result,
+                    on_error=self._trial_task_failure,
+                )
+                trial.temporary_state.saving_to = True
+            else:
+                self._schedule_trial_stop(trial)
+                self._set_trial_status(trial, Trial.PAUSED)
+
+            return
+
         if should_checkpoint:
             self._schedule_trial_save(trial, storage=CheckpointStorage.MEMORY)
         self._schedule_trial_stop(trial)
@@ -1709,6 +1754,14 @@ class TuneController:
             result = trial.last_result
             result.update(done=True)
 
+        # NOTE: This checkpoint dir name metric should only be auto-filled
+        # after we know the trial will save a checkpoint.
+        if _use_storage_context() and not is_duplicate:
+            trial_will_checkpoint = trial.should_checkpoint() or force_checkpoint
+            result[CHECKPOINT_DIR_NAME] = (
+                trial.storage.checkpoint_dir_name if trial_will_checkpoint else None
+            )
+
         self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
         flat_result = flatten_dict(result)
@@ -1746,7 +1799,16 @@ class TuneController:
         # the scheduler decision is STOP or PAUSE. Note that
         # PAUSE only checkpoints to memory and does not update
         # the global checkpoint state.
-        self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
+        if _use_storage_context():
+            if decision != TrialScheduler.PAUSE:
+                # TODO(justinvyu): This is a temporary hack to fix pausing trials.
+                # We already schedule a save task in `pause_trial`, so no need
+                # to do it again here.
+                self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
+        else:
+            # NOTE: The legacy path is different because this saves a persistent
+            # checkpoint while `pause_trial` saves an in-memory one.
+            self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
 
         if trial.is_saving:
             logger.debug(f"Caching trial decision for trial {trial}: {decision}")
@@ -1928,7 +1990,23 @@ class TuneController:
 
         try:
             if _use_storage_context() and isinstance(checkpoint_value, _TrainingResult):
-                # TODO(justinvyu): Update callbacks to take in a _TrainingResult
+                try:
+                    self._callbacks.on_checkpoint(
+                        iteration=self._iteration,
+                        trials=self._trials,
+                        trial=trial,
+                        checkpoint=checkpoint_value.checkpoint,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Error encountered during processing of callbacks. "
+                        "Ray Train/Tune recently changed the checkpoint interface "
+                        "that is passed to callbacks. If you implemented your own "
+                        "callback with an `on_checkpoint` handler, please review "
+                        "the checkpoint interface and adjust your code accordingly."
+                    )
+                    raise
+
                 trial.on_checkpoint(checkpoint_value)
 
                 self._checkpoint_manager.on_trial_checkpoint(trial)
@@ -2143,7 +2221,7 @@ class TuneController:
 
         logger_creator = partial(
             _noop_logger_creator,
-            logdir=trial.logdir,
+            logdir=trial.local_path,
             should_chdir=self._chdir_to_trial_dir,
         )
 
