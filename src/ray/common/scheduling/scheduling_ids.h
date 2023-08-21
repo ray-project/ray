@@ -172,8 +172,7 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
   }
 
   bool IsImplicitResource() const {
-    return !IsPredefinedResource() &&
-           absl::StartsWith(Binary(), kNodeImplicitResourcePrefix);
+    return !IsPredefinedResource() && absl::StartsWith(Binary(), kImplicitResourcePrefix);
   }
 
   /// Resource ID of CPU.
