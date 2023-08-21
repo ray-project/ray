@@ -8,10 +8,10 @@ from ray.rllib.utils.schedules import PiecewiseSchedule
 torch, nn = try_import_torch()
 
 
+@DeveloperAPI
 class LearningRateSchedule:
     """Mixin for TorchPolicy that adds a learning rate schedule."""
 
-    @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self._lr_schedule = None
         # Disable any scheduling behavior related to learning if Learner API is active.
@@ -34,10 +34,10 @@ class LearningRateSchedule:
                     p["lr"] = self.cur_lr
 
 
+@DeveloperAPI
 class EntropyCoeffSchedule:
     """Mixin for TorchPolicy that adds entropy coeff decay."""
 
-    @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self._entropy_coeff_schedule = None
         # Disable any scheduling behavior related to learning if Learner API is active.
@@ -72,6 +72,7 @@ class EntropyCoeffSchedule:
             )
 
 
+@DeveloperAPI
 class KLCoeffMixin:
     """Assigns the `update_kl()` method to a TorchPolicy.
 
@@ -110,6 +111,7 @@ class KLCoeffMixin:
         super().set_state(state)
 
 
+@DeveloperAPI
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TorchPolicy.
 
@@ -169,6 +171,7 @@ class ValueNetworkMixin:
         }
 
 
+@DeveloperAPI
 class TargetNetworkMixin:
     """Mixin class adding a method for (soft) target net(s) synchronizations.
 

@@ -302,7 +302,7 @@ class AlphaStar(appo.APPO):
                     # RolloutWorkers (no GPUs).
                     "CPU": cf.num_cpus_per_worker,
                 }
-                for _ in range(cf.num_workers)
+                for _ in range(cf.num_rollout_workers)
             ]
             + [
                 {

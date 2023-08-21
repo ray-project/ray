@@ -61,6 +61,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class TorchPolicy(Policy):
     """PyTorch specific Policy class to use with RLlib."""
 

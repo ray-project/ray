@@ -144,6 +144,7 @@ def _check_too_many_retraces(obj):
     return _func
 
 
+@DeveloperAPI
 class EagerTFPolicy(Policy):
     """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
 
