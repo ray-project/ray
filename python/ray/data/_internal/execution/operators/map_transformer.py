@@ -173,7 +173,7 @@ class InputBlocksToRowsMapTransformFn(MapTransformFn):
     @classmethod
     def instance(cls) -> "InputBlocksToRowsMapTransformFn":
         """Returns a singleton instance of InputBlocksToRowsMapTransformFn."""
-        if cls._instance is None:
+        if getattr(cls, "_instance", None) is None:
             cls._instance = cls()
         return cls._instance
 
@@ -288,20 +288,20 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
     @classmethod
     def for_rows(cls) -> "BuildOutputBlocksMapTransformFn":
         """Return a BuildOutputBlocksMapTransformFn for row input."""
-        if cls._rows_instance is None:
-            cls._rows_instance = cls(MapTransformFnDataType.Row)
-        return cls._rows_instance
+        if getattr(cls, "instance_for_rows", None) is None:
+            cls.instance_for_rows = cls(MapTransformFnDataType.Row)
+        return cls.instance_for_rows
 
     @classmethod
     def for_batches(cls) -> "BuildOutputBlocksMapTransformFn":
         """Return a BuildOutputBlocksMapTransformFn for batch input."""
-        if cls._batches_instance is None:
-            cls._batches_instance = cls(MapTransformFnDataType.Batch)
-        return cls._batches_instance
+        if getattr(cls, "_instance_for_batches", None) is None:
+            cls._instance_for_batches = cls(MapTransformFnDataType.Batch)
+        return cls._instance_for_batches
 
     @classmethod
     def for_blocks(cls) -> "BuildOutputBlocksMapTransformFn":
         """Return a BuildOutputBlocksMapTransformFn for block input."""
-        if cls._blocks_instance is None:
-            cls._blocks_instance = cls(MapTransformFnDataType.Block)
-        return cls._blocks_instance
+        if getattr(cls, "_instance_for_blocks", None) is None:
+            cls._instance_for_blocks = cls(MapTransformFnDataType.Block)
+        return cls._instance_for_blocks
