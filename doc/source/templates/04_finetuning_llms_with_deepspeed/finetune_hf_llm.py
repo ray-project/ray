@@ -615,11 +615,6 @@ def main():
             ),
         ),
         scaling_config=train.ScalingConfig(
-            # This forces the trainer + Rank 0 worker to get scheduled on the large cpu
-            # RAM instance, making the checkpointing easier.
-            # "large_cpu_mem" is the tag used to identify this machine type in the
-            # cluster config.
-            trainer_resources={"large_cpu_mem": 0.01},
             num_workers=args.num_devices,
             use_gpu=True,
             resources_per_worker={"GPU": 1},
