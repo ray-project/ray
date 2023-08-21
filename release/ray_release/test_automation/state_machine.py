@@ -14,7 +14,7 @@ RAY_REPO = "ray-project/ray"
 AWS_SECRET_GITHUB = "ray_ci_github_token"
 AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
 MAX_BISECT_PER_DAY = 10  # Max number of bisects to run per day for all tests
-CONTINUOUS_FAILURE_TO_JAIL = 5  # Number of continuous failures before jailing
+CONTINUOUS_FAILURE_TO_JAIL = 3  # Number of continuous failures before jailing
 BUILDKITE_ORGANIZATION = "ray-project"
 BUILDKITE_BISECT_PIPELINE = "release-tests-bisect"
 
@@ -106,16 +106,12 @@ class TestStateMachine:
             self._create_github_issue()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.PASSING):
             self._close_github_issue()
-            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
-        elif change == (TestState.FAILING, TestState.PASSING):
-            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
         elif change == (TestState.PASSING, TestState.FAILING):
             self._trigger_bisect()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.JAILED):
             self._jail_test()
         elif change == (TestState.JAILED, TestState.PASSING):
             self._close_github_issue()
-            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
 
     def _state_hook(self, state: TestState) -> None:
         """
@@ -125,6 +121,9 @@ class TestStateMachine:
         """
         if state == TestState.JAILED:
             self._keep_github_issue_open()
+        if state == TestState.PASSING:
+            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
+            self.test.pop(Test.KEY_BISECT_BLAMED_COMMIT, None)
 
     def _jail_test(self) -> None:
         """

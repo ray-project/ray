@@ -12,11 +12,11 @@ from ray.data.datasource import (
     FastFileMetadataProvider,
     Partitioning,
     PartitionStyle,
-    PathPartitionEncoder,
     PathPartitionFilter,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.data.tests.util import Counter, extract_values
 from ray.tests.conftest import *  # noqa
 
@@ -276,8 +276,8 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds = ray.data.range_tensor(10, parallelism=2)
     ds._set_uuid("data")
     ds.write_numpy(data_path, filesystem=fs, column="data")
-    file_path1 = os.path.join(data_path, "data_000000.npy")
-    file_path2 = os.path.join(data_path, "data_000001.npy")
+    file_path1 = os.path.join(data_path, "data_000000_000000.npy")
+    file_path2 = os.path.join(data_path, "data_000001_000000.npy")
     if endpoint_url is None:
         arr1 = np.load(file_path1)
         arr2 = np.load(file_path2)
@@ -308,18 +308,18 @@ def test_numpy_write_block_path_provider(
     fs,
     data_path,
     endpoint_url,
-    test_block_write_path_provider,
+    mock_block_write_path_provider,
 ):
     ds = ray.data.range_tensor(10, parallelism=2)
     ds._set_uuid("data")
     ds.write_numpy(
         data_path,
         filesystem=fs,
-        block_path_provider=test_block_write_path_provider,
+        block_path_provider=mock_block_write_path_provider,
         column="data",
     )
-    file_path1 = os.path.join(data_path, "000000_05_data.test.npy")
-    file_path2 = os.path.join(data_path, "000001_05_data.test.npy")
+    file_path1 = os.path.join(data_path, "000000_000000_data.test.npy")
+    file_path2 = os.path.join(data_path, "000001_000000_data.test.npy")
     if endpoint_url is None:
         arr1 = np.load(file_path1)
         arr2 = np.load(file_path2)

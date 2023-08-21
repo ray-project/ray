@@ -13,11 +13,11 @@ from ray.data.datasource import (
     FastFileMetadataProvider,
     Partitioning,
     PartitionStyle,
-    PathPartitionEncoder,
     PathPartitionFilter,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.data.tests.util import Counter, extract_values, gen_bin_files
 from ray.tests.conftest import *  # noqa
 

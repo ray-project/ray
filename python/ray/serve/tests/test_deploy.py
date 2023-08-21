@@ -12,11 +12,10 @@ from ray._private.test_utils import SignalActor
 from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.utils import get_random_letters
-from ray.serve.context import get_global_client
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
-def test_deploy(serve_instance, use_handle):
+def test_deploy_basic(serve_instance, use_handle):
     @serve.deployment(version="1")
     def d(*args):
         return f"1|{os.getpid()}"
@@ -211,8 +210,8 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     @ray.remote
     def call(block=False):
         if use_handle:
-            handle = serve.get_deployment(f"app_{name}").get_handle()
-            ret = ray.get(handle.handler.remote(block))
+            handle = serve.get_deployment_handle(name, "app")
+            ret = handle.handler.remote(block).result()
         else:
             ret = requests.get(
                 f"http://localhost:8000/{name}", params={"block": block}
@@ -302,8 +301,8 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     @ray.remote(num_cpus=0)
     def call(block=False):
         if use_handle:
-            handle = serve.get_deployment(f"app_{name}").get_handle()
-            ret = ray.get(handle.handler.remote(block))
+            handle = serve.get_deployment_handle(name, "app")
+            ret = handle.handler.remote(block).result()
         else:
             ret = requests.get(
                 f"http://localhost:8000/{name}", params={"block": block}
@@ -398,8 +397,8 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
     @ray.remote(num_cpus=0)
     def call():
         if use_handle:
-            handle = serve.get_deployment(name).get_handle()
-            ret = ray.get(handle.handler.remote())
+            handle = serve.get_deployment_handle(name, "app")
+            ret = handle.handler.remote().result()
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
 
@@ -450,20 +449,20 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 
         return responses, blocking
 
-    V1.options(user_config={"test": "1"}).deploy()
+    serve.run(V1.options(user_config={"test": "1"}).bind(), name="app")
     responses1, _ = make_nonblocking_calls({"1": 2})
     pids1 = responses1["1"]
 
     # Reconfigure should block one replica until the signal is sent. Check that
     # some requests are now blocking.
-    V1.options(user_config={"test": "2"}).deploy(_blocking=False)
+    serve.run(V1.options(user_config={"test": "2"}).bind(), name="app", _blocking=False)
     responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
     # Signal reconfigure to finish. Now the goal should complete and both
     # replicas should have the updated config.
     ray.get(signal.send.remote())
-    client._wait_for_deployment_healthy(V1.name)
+    client._wait_for_application_running("app")
     make_nonblocking_calls({"2": 2})
 
 
@@ -512,8 +511,8 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     @ray.remote(num_cpus=0)
     def call():
         if use_handle:
-            handle = get_global_client().get_handle(f"app_{name}", sync=True)
-            ret = ray.get(handle.remote())
+            handle = serve.get_app_handle("app")
+            ret = handle.remote().result()
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
 
@@ -563,8 +562,8 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     @ray.remote(num_cpus=0)
     def call():
         if use_handle:
-            handle = get_global_client().get_handle(f"app_{name}", sync=True)
-            ret = ray.get(handle.remote())
+            handle = serve.get_app_handle("app")
+            ret = handle.remote().result()
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
 

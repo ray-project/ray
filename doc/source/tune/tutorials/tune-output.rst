@@ -198,7 +198,7 @@ You can save trial artifacts directly in the trainable, as shown below:
         .. code-block:: python
 
             import logging_library  # ex: mlflow, wandb
-            from ray.air import session
+            from ray import train
 
             def trainable(config):
                 logging_library.init(
@@ -220,7 +220,7 @@ You can save trial artifacts directly in the trainable, as shown below:
                     with open(f"./artifact_{step}.txt", "w") as f:
                         f.write("Artifact Data")
 
-                    session.report(results)
+                    train.report(results)
 
 
     .. tab-item:: Class API
@@ -269,9 +269,11 @@ should be configured to log to the Trainable's *working directory.* By default,
 the current working directory of both functional and class trainables is set to the
 corresponding trial directory once it's been launched as a remote Ray actor.
 
-When running with multiple nodes using the :ref:`default syncing method <tune-default-syncing>`,
-trial artifacts are synchronized to the driver node under the specified path.
-This will allow you to visualize and analyze logs of all distributed training workers on a single machine.
+.. warning::
+
+    When running in a multi-node cluster using the *deprecated* :ref:`head node storage option <tune-default-syncing>`,
+    trial artifacts are synchronized to the driver node under the specified path.
+    This will allow you to visualize and analyze logs of all distributed training workers on a single machine.
 
 When :ref:`specifying a cloud upload directory <tune-cloud-checkpointing>`, trial artifacts are uploaded to that cloud bucket
 for later analysis. Note that the driver node does not necessarily contain
@@ -322,7 +324,7 @@ You can create a custom logger by inheriting the LoggerCallback interface (:ref:
     class CustomLoggerCallback(LoggerCallback):
         """Custom logger interface"""
 
-        def __init__(self, filename: str = "log.txt):
+        def __init__(self, filename: str = "log.txt"):
             self._trial_files = {}
             self._filename = filename
 

@@ -1,3 +1,4 @@
+import os
 from typing import Dict, Any, Optional, Tuple, Union, TYPE_CHECKING
 
 try:
@@ -6,9 +7,10 @@ except ImportError:
     from distutils.version import LooseVersion as Version
 
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import MODEL_KEY
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.util.annotations import PublicAPI
-from ray.train.lightgbm.lightgbm_checkpoint import LightGBMCheckpoint
+from ray.train.lightgbm.lightgbm_checkpoint import LegacyLightGBMCheckpoint
 
 import lightgbm
 import lightgbm_ray
@@ -43,7 +45,7 @@ class LightGBMTrainer(GBDTTrainer):
             import ray
 
             from ray.train.lightgbm import LightGBMTrainer
-            from ray.air.config import ScalingConfig
+            from ray.train import ScalingConfig
 
             train_dataset = ray.data.from_items(
                 [{"x": x, "y": x + 1} for x in range(32)])
@@ -61,7 +63,7 @@ class LightGBMTrainer(GBDTTrainer):
             ...
 
     Args:
-        datasets: Datasets to use for training and validation. Must include a
+        datasets: The Ray Datasets to use for training and validation. Must include a
             "train" key denoting the training dataset. If a ``preprocessor``
             is provided and has not already been fit, it will be fit on the training
             dataset. All datasets will be transformed by the ``preprocessor`` if
@@ -75,7 +77,7 @@ class LightGBMTrainer(GBDTTrainer):
         dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
             :class:`xgboost_ray.RayDMatrix` initializations, which in turn are passed
             to ``lightgbm.Dataset`` objects created on each worker. For example, this
-            can be used to add sample weights with the ``weights`` parameter.
+            can be used to add sample weights with the ``weight`` parameter.
         num_boost_round: Target number of boosting iterations (trees in the model).
             Note that unlike in ``lightgbm.train``, this is the target number
             of trees, meaning that if you set ``num_boost_round=10`` and pass a model
@@ -83,9 +85,9 @@ class LightGBMTrainer(GBDTTrainer):
             iterations more, instead of 10 more.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
         **train_kwargs: Additional kwargs passed to ``lightgbm.train()`` function.
     """
 
@@ -104,13 +106,20 @@ class LightGBMTrainer(GBDTTrainer):
     }
     _init_model_arg_name: str = "init_model"
 
+    @staticmethod
+    def get_model(checkpoint: Checkpoint) -> lightgbm.Booster:
+        """Retrieve the LightGBM model stored in this checkpoint."""
+        with checkpoint.as_directory() as checkpoint_path:
+            return lightgbm.Booster(model_file=os.path.join(checkpoint_path, MODEL_KEY))
+
     def _train(self, **kwargs):
         return lightgbm_ray.train(**kwargs)
 
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
-        checkpoint = LightGBMCheckpoint.from_checkpoint(checkpoint)
+        # TODO(matt): Replace this when preprocessor arg is removed.
+        checkpoint = LegacyLightGBMCheckpoint.from_checkpoint(checkpoint)
         return checkpoint.get_model(), checkpoint.get_preprocessor()
 
     def _save_model(self, model: lightgbm.LGBMModel, path: str):

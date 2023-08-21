@@ -15,7 +15,7 @@ from ray.train.constants import (
     EVALUATION_DATASET_KEY,
     TRAIN_DATASET_KEY,
 )
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
@@ -132,7 +132,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
 
             import ray
             from ray.train.huggingface import TransformersTrainer
-            from ray.air.config import ScalingConfig
+            from ray.train import ScalingConfig
 
             # If using GPUs, set this to True.
             use_gpu = True
@@ -240,9 +240,9 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be
             transformed by the ``preprocessor`` if one is provided.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -258,8 +258,10 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
     ):
 
         if TRANSFORMERS_IMPORT_ERROR is not None:
@@ -290,6 +292,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )
 
     @classmethod

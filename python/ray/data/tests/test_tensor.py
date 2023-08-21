@@ -223,7 +223,7 @@ def test_batch_tensors(ray_start_regular_shared):
         ")"
     )
     assert str(ds) == res, str(ds)
-    df = next(ds.iter_batches(batch_format="pandas"))
+    df = next(iter(ds.iter_batches(batch_format="pandas")))
     assert df.to_dict().keys() == {"item"}
 
 

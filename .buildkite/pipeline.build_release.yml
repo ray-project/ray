@@ -1,27 +1,5 @@
 #ci:group=:ferris_wheel: Wheels and containers
 
-- label: ":ferris_wheel: Wheels and Jars"
-  conditions:
-    [
-        "RAY_CI_LINUX_WHEELS_AFFECTED",
-        "RAY_CI_JAVA_AFFECTED",
-    ]
-  instance_size: medium
-  commands:
-    # Build the wheels and jars
-    - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
-    # Upload the wheels and jars
-    # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
-    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
-    - pip install -q docker aws_requests_auth boto3
-    - ./ci/env/env_info.sh
-    # Upload to branch directory.
-    - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
-    - python .buildkite/copy_files.py --destination branch_jars --path ./.jar/linux
-    # Upload to latest directory.
-    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
-    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/linux; fi
-
 - label: ":ferris_wheel: Post-wheel tests"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: medium
@@ -76,7 +54,7 @@
     - py310
     - py311
 
-- label: ":docker: Build Images: {{matrix}} - cu117/cu118"
+- label: ":docker: Build Images: {{matrix}} - cu117/cu118/cu121"
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
@@ -84,11 +62,10 @@
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [[ "${BUILDKITE_PULL_REQUEST}" == "false" ]]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions {{matrix}} -T cu117 -T cu118 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions {{matrix}} -T cu117 -T cu118 -T cu121 --build-type BUILDKITE --build-base
   matrix:
     - py37
     - py38
     - py39
     - py310
     - py311
-

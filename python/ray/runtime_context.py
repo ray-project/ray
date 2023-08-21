@@ -1,8 +1,10 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import ray._private.worker
+from ray._private import ray_constants
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private.utils import pasre_pg_formatted_resources_to_original
 from ray.runtime_env import RuntimeEnv
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -323,7 +325,7 @@ class RuntimeContext(object):
             res: sum(amt for _, amt in mapping)
             for res, mapping in resource_id_map.items()
         }
-        return resource_map
+        return pasre_pg_formatted_resources_to_original(resource_map)
 
     def get_runtime_env_string(self):
         """Get the runtime env string used for the current driver or worker.
@@ -379,6 +381,27 @@ class RuntimeContext(object):
         worker = self.worker
         worker.check_connected()
         return worker.core_worker.get_actor_call_stats()
+
+    def get_resource_ids(self) -> Dict[str, List[str]]:
+        """
+        Get the current worker's GPU and accelerator ids.
+
+        Returns:
+            A dictionary keyed by the resource name. The values are list
+             of ids `{'GPU': ['0', '1'], 'neuron_cores': ['0', '1']}`.
+        """
+        worker = self.worker
+        worker.check_connected()
+        ids_dict: Dict[str, List[str]] = {}
+        for name in [ray_constants.GPU, ray_constants.NEURON_CORES]:
+            resource_ids = worker.get_resource_ids_for_resource(
+                name, f"^{name}_group_[0-9A-Za-z]+$"
+            )
+            # Convert resource_ids to strings as they can be user-configured
+            # or system-generated.
+            resource_ids = [str(i) for i in resource_ids]
+            ids_dict[name] = resource_ids
+        return ids_dict
 
 
 _runtime_context = None

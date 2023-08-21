@@ -19,23 +19,23 @@ class CustomTorchCategorical(Distribution):
     def __init__(self, logits):
         self.torch_dist = torch.distributions.categorical.Categorical(logits=logits)
 
-    def sample(self, sample_shape=torch.Size()):
+    def sample(self, sample_shape=torch.Size(), **kwargs):
         return self.torch_dist.sample(sample_shape)
 
-    def rsample(self, sample_shape=torch.Size()):
+    def rsample(self, sample_shape=torch.Size(), **kwargs):
         return self._dist.rsample(sample_shape)
 
-    def logp(self, value):
+    def logp(self, value, **kwargs):
         return self.torch_dist.log_prob(value)
 
     def entropy(self):
         return self.torch_dist.entropy()
 
-    def kl(self, other):
+    def kl(self, other, **kwargs):
         return torch.distributions.kl.kl_divergence(self.torch_dist, other.torch_dist)
 
     @staticmethod
-    def required_input_dim(space):
+    def required_input_dim(space, **kwargs):
         return int(space.n)
 
     @classmethod

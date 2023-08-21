@@ -95,9 +95,7 @@ if __name__ == "__main__":
 
     # Create the environment that we would like to receive
     # served actions for.
-    env = FrameStack(
-        WarpFrame(gym.make("GymV26Environment-v0", env_id="ALE/MsPacman-v5"), 84), 4
-    )
+    env = FrameStack(WarpFrame(gym.make("ALE/MsPacman-v5"), 84), 4)
     obs, info = env.reset()
 
     while True:

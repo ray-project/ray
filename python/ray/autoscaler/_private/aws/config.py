@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+from collections import Counter
 from functools import lru_cache, partial
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -766,6 +767,8 @@ def _get_vpc_id_or_die(ec2, subnet_id: str):
 
 @lru_cache()
 def _get_subnets_or_die(ec2, subnet_ids: Tuple[str]):
+    # Remove any duplicates as multiple interfaces are allowed to use same subnet
+    subnet_ids = tuple(Counter(subnet_ids).keys())
     subnets = list(
         ec2.subnets.filter(Filters=[{"Name": "subnet-id", "Values": list(subnet_ids)}])
     )

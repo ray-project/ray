@@ -5,7 +5,7 @@ from pytorch_lightning.loggers.csv_logs import CSVLogger
 
 import ray
 import ray.tune as tune
-from ray.air.config import CheckpointConfig, ScalingConfig
+from ray.train import CheckpointConfig, ScalingConfig
 from ray.train.lightning import LightningTrainer, LightningConfigBuilder
 from ray.tune.schedulers import ASHAScheduler
 
@@ -52,7 +52,8 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         lightning_trainer,
         param_space={"lightning_config": lightning_config},
-        run_config=ray.air.RunConfig(
+        run_config=ray.train.RunConfig(
+            storage_path="/mnt/cluster_storage",
             name="release-tuner-test",
             verbose=2,
             checkpoint_config=CheckpointConfig(

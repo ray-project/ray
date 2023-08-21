@@ -782,7 +782,9 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
     deployment = schema_to_deployment(deployment_to_schema(f))
     deployment.set_options(func_or_class="ray.serve.tests.test_schema.global_f")
 
-    assert len(deployment.ray_actor_options) == 0
+    # Serve will set num_cpus to 1 if it's not set.
+    assert len(deployment.ray_actor_options) == 1
+    assert deployment.ray_actor_options["num_cpus"] == 1
 
 
 def test_status_schema_helpers():

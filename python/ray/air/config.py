@@ -17,6 +17,8 @@ from typing import (
     Tuple,
 )
 
+import pyarrow.fs
+
 from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.constants import WILDCARD_KEY
@@ -103,9 +105,9 @@ class ScalingConfig:
             worker can be overridden with the ``resources_per_worker``
             argument.
         resources_per_worker: If specified, the resources
-            defined in this Dict will be reserved for each worker. The
-            ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
-            override the number of CPU/GPUs used by each worker.
+            defined in this Dict is reserved for each worker.
+            Define the ``"CPU"`` and ``"GPU"`` keys (case-sensitive) to
+            override the number of CPU or GPUs used by each worker.
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
@@ -297,12 +299,12 @@ class ScalingConfig:
 @Deprecated(
     message="Use `ray.train.DataConfig` instead of DatasetConfig to "
     "configure data ingest for training. "
-    "See https://docs.ray.io/en/master/ray-air/check-ingest.html for more details."
+    "See https://docs.ray.io/en/master/ray-air/check-ingest.html#migrating-from-the-legacy-datasetconfig-api for more details."  # noqa: E501
 )
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
-    See :ref:`the AIR Dataset configuration guide <air-ingest>` for
+    See :ref:`the AIR Dataset configuration guide <data-ingest-torch>` for
     usage examples.
 
     This config defines how the Dataset should be read into the DataParallelTrainer.
@@ -546,7 +548,7 @@ class FailureConfig:
         if self.fail_fast and self.max_failures != 0:
             raise ValueError("max_failures must be 0 if fail_fast=True.")
 
-        # Same check as in TrialRunner
+        # Same check as in TuneController
         if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() == "RAISE"):
             raise ValueError(
                 "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
@@ -750,6 +752,7 @@ class RunConfig:
 
     name: Optional[str] = None
     storage_path: Optional[str] = None
+    storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
     callbacks: Optional[List["Callback"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure_config: Optional[FailureConfig] = None

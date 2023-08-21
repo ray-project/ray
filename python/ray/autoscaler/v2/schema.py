@@ -1,7 +1,13 @@
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, List, Optional
 
-NODE_DEATH_CAUSE_RAYLET_DIED = "RayletUnexpectedlyDied"
+# TODO(rickyx): once we have graceful shutdown, we could populate
+# the failure detail with the actual termination message. As of now,
+# we will use a more generic message to include cases such as:
+# (idle termination, node death, crash, preemption, etc)
+NODE_DEATH_CAUSE_RAYLET_DIED = "NodeTerminated"
 
 
 @dataclass
@@ -24,37 +30,46 @@ class NodeUsage:
 
 @dataclass
 class NodeInfo:
-
     # The instance type name, e.g. p3.2xlarge
     instance_type_name: str
-    # The detailed state of the node/request.
-    # E.g. idle, running, etc.
-    node_status: str
-    # ray node id.
-    node_id: str
     # ray node type name.
     ray_node_type_name: str
     # Cloud instance id.
     instance_id: str
     # Ip address of the node when alive.
     ip_address: str
-    # Resource usage breakdown.
-    resource_usage: Optional[NodeUsage]
+    # The status of the node. Optional for pending nodes.
+    node_status: Optional[str] = None
+    # ray node id in hex. None if still pending.
+    node_id: Optional[str] = None
+    # Resource usage breakdown if node is running.
+    resource_usage: Optional[NodeUsage] = None
     # Failure detail if the node failed.
-    failure_detail: Optional[str]
+    failure_detail: Optional[str] = None
+    # Descriptive details.
+    details: Optional[str] = None
 
 
 @dataclass
-class PendingNode:
+class LaunchRequest:
+    class Status(Enum):
+        FAILED = "FAILED"
+        PENDING = "PENDING"
+
     # The instance type name, e.g. p3.2xlarge
     instance_type_name: str
     # ray node type name.
     ray_node_type_name: str
-    # The current status of the request.
-    # e.g. setting-up-ssh, launching.
-    details: str
-    # IP address if available.
-    ip_address: Optional[str]
+    # count.
+    count: int
+    # State: (e.g. PENDING, FAILED)
+    state: Status
+    # When the launch request was made in unix timestamp in secs.
+    request_ts_s: int
+    # When the launch request failed unix timestamp in secs if failed.
+    failed_ts_s: Optional[int] = None
+    # Request details, e.g. error reason if the launch request failed.
+    details: Optional[str] = None
 
 
 @dataclass
@@ -64,17 +79,43 @@ class ResourceRequestByCount:
     # Number of bundles with the same shape.
     count: int
 
+    def __str__(self) -> str:
+        return f"[{self.count} {self.bundle}]"
+
 
 @dataclass
 class ResourceDemand:
     # The bundles in the demand with shape and count info.
-    bundles: List[ResourceRequestByCount]
+    bundles_by_count: List[ResourceRequestByCount]
 
 
 @dataclass
 class PlacementGroupResourceDemand(ResourceDemand):
-    # Placement group strategy.
-    strategy: str
+    # Details string (parsed into below information)
+    details: str
+    # Placement group's id.
+    pg_id: Optional[str] = None
+    # Strategy, e.g. STRICT_SPREAD
+    strategy: Optional[str] = None
+    # Placement group's state, e.g. PENDING
+    state: Optional[str] = None
+
+    def __post_init__(self):
+        if not self.details:
+            return
+
+        # Details in the format of <pg_id>:<strategy>|<state>, parse
+        # it into the above fields.
+        pattern = r"^.*:.*\|.*$"
+        match = re.match(pattern, self.details)
+        if not match:
+            return
+
+        pg_id, details = self.details.split(":")
+        strategy, state = details.split("|")
+        self.pg_id = pg_id
+        self.strategy = strategy
+        self.state = state
 
 
 @dataclass
@@ -88,26 +129,58 @@ class ClusterConstraintDemand(ResourceDemand):
 
 
 @dataclass
+class ResourceDemandSummary:
+    # Placement group demand.
+    placement_group_demand: List[PlacementGroupResourceDemand] = field(
+        default_factory=list
+    )
+    # Ray task actor demand.
+    ray_task_actor_demand: List[RayTaskActorDemand] = field(default_factory=list)
+    # Cluster constraint demand.
+    cluster_constraint_demand: List[ClusterConstraintDemand] = field(
+        default_factory=list
+    )
+
+
+@dataclass
 class Stats:
     # How long it took to get the GCS request.
+    # This is required when initializing the Stats since it should be calculated before
+    # the request was made.
     gcs_request_time_s: float
+    # How long it took to get all live instances from node provider.
+    none_terminated_node_request_time_s: Optional[float] = None
+    # How long for autoscaler to process the scaling decision.
+    autoscaler_iteration_time_s: Optional[float] = None
+    # The last seen autoscaler state version from Ray.
+    autoscaler_version: Optional[str] = None
+    # The last seen cluster state resource version.
+    cluster_resource_state_version: Optional[str] = None
+    # Request made time unix timestamp: when the data was pulled from GCS.
+    request_ts_s: Optional[int] = None
 
 
 @dataclass
 class ClusterStatus:
     # Healthy nodes information (alive)
-    healthy_nodes: List[NodeInfo]
-    # Pending nodes requests.
-    pending_nodes: List[PendingNode]
+    healthy_nodes: List[NodeInfo] = field(default_factory=list)
+    # Pending launches.
+    pending_launches: List[LaunchRequest] = field(default_factory=list)
+    # Failed launches.
+    failed_launches: List[LaunchRequest] = field(default_factory=list)
+    # Pending nodes.
+    pending_nodes: List[NodeInfo] = field(default_factory=list)
     # Failures
-    failed_nodes: List[NodeInfo]
+    failed_nodes: List[NodeInfo] = field(default_factory=list)
     # Resource usage summary for entire cluster.
-    cluster_resource_usage: List[ResourceUsage]
+    cluster_resource_usage: List[ResourceUsage] = field(default_factory=list)
     # Demand summary.
-    resource_demands: List[ResourceDemand]
+    resource_demands: ResourceDemandSummary = field(
+        default_factory=ResourceDemandSummary
+    )
     # Query metics
-    stats: Stats
+    stats: Stats = field(default_factory=Stats)
 
-    def format_str(self, verbose_lvl=0):
-        # This could be what the `ray status` is getting.
-        return "not implemented"
+    # TODO(rickyx): we don't show infeasible requests as of now.
+    # (They will just be pending forever as part of the demands)
+    # We should show them properly in the future.
