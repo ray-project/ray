@@ -624,6 +624,10 @@ class _BackgroundSyncer(Syncer):
     def sync_down(
         self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
     ) -> bool:
+        from ray.train._internal.storage import _use_storage_context
+
+        assert not _use_storage_context(), "Should never be used in this mode."
+
         if self._should_continue_existing_sync():
             logger.warning(
                 f"Last sync still in progress, "
