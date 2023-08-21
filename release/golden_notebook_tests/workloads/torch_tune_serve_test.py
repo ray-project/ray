@@ -9,7 +9,6 @@ import subprocess
 import ray
 from ray.train import ScalingConfig, RunConfig
 from ray.train._checkpoint import Checkpoint
-from ray.air.util.node import _force_on_current_node
 from ray.tune.tune_config import TuneConfig
 import requests
 import torch
