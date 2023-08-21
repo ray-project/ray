@@ -20,8 +20,6 @@ import ray.train as train
 from unittest.mock import patch
 from ray.cluster_utils import Cluster
 
-from ray.train.tests.dummy_preprocessor import DummyPreprocessor
-
 
 @pytest.fixture
 def ray_start_4_cpus():
@@ -76,7 +74,6 @@ def test_torch_e2e(ray_start_4_cpus, prepare_model):
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
-        preprocessor=DummyPreprocessor(),
     )
     trainer.fit()
 
@@ -93,7 +90,6 @@ def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
-        preprocessor=DummyPreprocessor(),
     )
     result = trainer.fit()
 
