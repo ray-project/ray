@@ -100,6 +100,9 @@ def _pyarrow_fs_copy_files(
         # https://github.com/apache/arrow/issues/32372
         kwargs.setdefault("use_threads", False)
 
+    # Use a large chunk size to speed up large checkpoint transfers.
+    kwargs.setdefault("chunk_size", 64 * 1024 * 1024)
+
     return pyarrow.fs.copy_files(
         source,
         destination,
