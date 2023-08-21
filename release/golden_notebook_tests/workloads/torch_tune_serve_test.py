@@ -126,7 +126,11 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
         ),
         run_config=RunConfig(
             verbose=1,
-            storage_path="/mnt/cluster_storage",
+            storage_path=(
+                "/mnt/cluster_storage"
+                if os.path.exists("/mnt/cluster_storage")
+                else None
+            ),
         ),
     )
 
@@ -268,7 +272,7 @@ if __name__ == "__main__":
     best_result = result_grid.get_best_result()
     best_checkpoint = best_result.get_best_checkpoint(metric="val_loss", mode="min")
     with best_checkpoint.as_directory() as checkpoint_dir:
-        model = get_model(model_checkpoint_path=checkpoint_dir)
+        model = get_model(checkpoint_dir)
 
     print("Setting up Serve.")
     setup_serve(model, use_gpu)
