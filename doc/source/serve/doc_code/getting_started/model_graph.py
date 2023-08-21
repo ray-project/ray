@@ -47,13 +47,17 @@ class Summarizer:
         english_text: str = await http_request.json()
         summary = self.summarize(english_text)
 
+        # __summary_start__
         translation_ref = await self.translator.translate.remote(summary)
         translation = await translation_ref
+        # __summary_end__
 
         return translation
 
 
+# __summarizer_start__
 app = Summarizer.bind(Translator.bind())
+# __summarizer_end__
 # __end_graph__
 
 serve.run(app)

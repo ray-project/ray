@@ -210,17 +210,20 @@ Here's an application that chains the two models together. The graph takes Engli
 
 This script contains our `Summarizer` class converted to a deployment and our `Translator` class with some modifications. In this script, the `Summarizer` class contains the `__call__` method since requests are sent to it first. It also takes in the `Translator` as one of its constructor arguments, so it can forward summarized texts to the `Translator` deployment. The `__call__` method also contains some new code:
 
-```python
-translation_ref = await self.translator.translate.remote(summary)
-translation = await translation_ref
+```{literalinclude} ../serve/doc_code/getting_started/model_graph.py
+:start-after: __summary_start__
+:end-before: __summary_end__
+:language: python
 ```
 
 `self.translator.translate.remote(summary)` issues an asynchronous call to the `Translator`'s `translate` method. The line immediately returns a reference to the method's output, then the next line `await translation_ref` waits for `translate` to execute and returns the value of that execution.
 
 We define the full application as follows:
 
-```python
-app = Summarizer.bind(Translator.bind())
+```{literalinclude} ../serve/doc_code/getting_started/model_graph.py
+:start-after: __summarizer_start__
+:end-before: __summarizer_end__
+:language: python
 ```
 
 Here, we bind `Translator` to its (empty) constructor arguments, and then we pass in the bound `Translator` as the constructor argument for the `Summarizer`. We can run this deployment graph using the `serve run` CLI command. Make sure to run this command from a directory containing a local copy of the `serve_quickstart_composed.py` code:
