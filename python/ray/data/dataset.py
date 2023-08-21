@@ -67,11 +67,13 @@ from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan, OneToOneStage
-from ray.data._internal.planner.filter import generate_filter_fn
-from ray.data._internal.planner.flat_map import generate_flat_map_fn
-from ray.data._internal.planner.map_batches import generate_map_batches_fn
-from ray.data._internal.planner.map_rows import generate_map_rows_fn
-from ray.data._internal.planner.write import generate_write_fn
+from ray.data._internal.planner.plan_udf_map_op import (
+    generate_filter_fn,
+    generate_flat_map_fn,
+    generate_map_batches_fn,
+    generate_map_rows_fn,
+)
+from ray.data._internal.planner.plan_write_op import generate_write_fn
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import SortKey
@@ -286,6 +288,7 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         **ray_remote_args,
@@ -336,6 +339,9 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
@@ -353,7 +359,7 @@ class Dataset:
             :meth:`~Dataset.map_batches`
                 Call this method to transform batches of data.
         """  # noqa: E501
-        validate_compute(fn, compute)
+        validate_compute(fn, compute, fn_constructor_args)
 
         transform_fn = generate_map_rows_fn()
 
@@ -370,6 +376,7 @@ class Dataset:
                 compute,
                 ray_remote_args,
                 fn=fn,
+                fn_constructor_args=fn_constructor_args,
             )
         )
 
@@ -378,6 +385,7 @@ class Dataset:
             map_op = MapRows(
                 logical_plan.dag,
                 fn,
+                fn_constructor_args=fn_constructor_args,
                 compute=compute,
                 ray_remote_args=ray_remote_args,
             )
@@ -552,22 +560,20 @@ class Dataset:
                 f"{batch_format}"
             )
 
-        validate_compute(fn, compute)
+        validate_compute(fn, compute, fn_constructor_args)
 
-        if fn_constructor_args is not None or fn_constructor_kwargs is not None:
+        if fn_constructor_kwargs is not None:
             if compute is None or (
                 compute != "actors" and not isinstance(compute, ActorPoolStrategy)
             ):
                 raise ValueError(
-                    "fn_constructor_args and fn_constructor_kwargs can only be "
-                    "specified if using the actor pool compute strategy, but got: "
-                    f"{compute}"
+                    "fn_constructor_kwargs can only be specified if using the actor "
+                    f"pool compute strategy, but got: {compute}"
                 )
             if not isinstance(fn, CallableClass):
                 raise ValueError(
-                    "fn_constructor_args and fn_constructor_kwargs can only be "
-                    "specified if providing a CallableClass instance for fn, but got: "
-                    f"{fn}"
+                    "fn_constructor_kwargs can only be specified if providing a "
+                    f"CallableClass instance for fn, but got: {fn}"
                 )
 
         transform_fn = generate_map_batches_fn(
@@ -789,6 +795,7 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         **ray_remote_args,
@@ -833,6 +840,9 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
@@ -848,7 +858,7 @@ class Dataset:
             :meth:`~Dataset.map`
                 Call this method to transform one row at time.
         """
-        validate_compute(fn, compute)
+        validate_compute(fn, compute, fn_constructor_args)
 
         transform_fn = generate_flat_map_fn()
 
@@ -859,7 +869,14 @@ class Dataset:
             ray_remote_args["num_gpus"] = num_gpus
 
         plan = self._plan.with_stage(
-            OneToOneStage("FlatMap", transform_fn, compute, ray_remote_args, fn=fn)
+            OneToOneStage(
+                "FlatMap",
+                transform_fn,
+                compute,
+                ray_remote_args,
+                fn=fn,
+                fn_constructor_args=fn_constructor_args,
+            )
         )
 
         logical_plan = self._logical_plan
@@ -867,6 +884,7 @@ class Dataset:
             op = FlatMap(
                 input_op=logical_plan.dag,
                 fn=fn,
+                fn_constructor_args=fn_constructor_args,
                 compute=compute,
                 ray_remote_args=ray_remote_args,
             )

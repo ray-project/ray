@@ -166,6 +166,52 @@ result = trainer.fit()
 # Print metrics
 print("Observed metrics:", result.metrics)
 
-checkpoint_data = result.checkpoint.to_dict()
-print("Checkpoint data:", checkpoint_data["step"])
-# __results_end__
+
+# __result_dataframe_start__
+df = result.metrics_dataframe
+print("Minimum loss", min(df["loss"]))
+# __result_dataframe_end__
+
+
+# __result_checkpoint_start__
+print("Last checkpoint:", result.checkpoint)
+
+with result.checkpoint.as_directory() as tmpdir:
+    # Load model from directory
+    ...
+# __result_checkpoint_end__
+
+# __result_best_checkpoint_start__
+# Print available checkpoints
+for checkpoint, metrics in result.best_checkpoints:
+    print("Loss", metrics["loss"], "checkpoint", checkpoint)
+
+# Get checkpoint with minimal loss
+best_checkpoint = min(result.best_checkpoints, key=lambda bc: bc[1]["loss"])[0]
+
+with best_checkpoint.as_directory() as tmpdir:
+    # Load model from directory
+    ...
+# __result_best_checkpoint_end__
+
+# __result_path_start__
+result_path = result.path
+print("Results location", result_path)
+# __result_path_end__
+
+
+# TODO(justinvyu): Re-enable this after updating all of doc_code.
+# __result_restore_start__
+# from ray.train import Result
+
+# restored_result = Result.from_path(result_path)
+print("Restored loss", result.metrics["loss"])
+# __result_restore_end__
+
+
+# __result_error_start__
+if result.error:
+    assert isinstance(result.error, Exception)
+
+    print("Got exception:", result.error)
+# __result_error_end__
