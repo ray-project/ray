@@ -57,11 +57,11 @@ from ray.serve.schema import (
     ServeActorDetails,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     call_function_from_import_path,
     get_all_live_placement_group_names,
     get_head_node_id,
-    record_serve_tag,
 )
 from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.default_impl import (
@@ -718,7 +718,7 @@ class ServeController:
             deployment_time: set deployment_timestamp. If not provided, time.time() is
                 used to indicate the deployment time.
         """
-        record_serve_tag("SERVE_API_VERSION", "v2")
+        ServeUsageTag.API_VERSION.record("v2")
         # TODO (zcin): We should still support single-app mode, i.e.
         # ServeApplicationSchema. Eventually, after migration is complete, we should
         # deprecate such usage.
