@@ -1,3 +1,3 @@
-from ray.air.integrations.mlflow import MlflowLoggerCallback
+from ray.air.integrations.mlflow import MLflowLoggerCallback
 
-MlflowLoggerCallback.__module__ = "ray.tune.logger.mlflow"
+MLflowLoggerCallback.__module__ = "ray.tune.logger.mlflow"
