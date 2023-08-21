@@ -3,9 +3,11 @@ import json
 import numpy as np
 import os
 import pickle
+import tempfile
 import time
 
-from ray import tune
+from ray import train, tune
+from ray.train._checkpoint import Checkpoint
 from ray.tune.callback import Callback
 from ray._private.test_utils import safe_write_to_results_json
 
@@ -81,19 +83,22 @@ def function_trainable(config):
     checkpoint_num_files = config["checkpoint_num_files"]
 
     for i in range(num_iters):
+        metrics = {"score": i + score}
         if (
             checkpoint_iters >= 0
             and checkpoint_size_b > 0
             and i % checkpoint_iters == 0
         ):
-            with tune.checkpoint_dir(step=i) as dir:
+            with tempfile.TemporaryDirectory() as tmpdir:
                 for i in range(checkpoint_num_files):
-                    checkpoint_file = os.path.join(dir, f"bogus_{i}.ckpt")
+                    checkpoint_file = os.path.join(tmpdir, f"bogus_{i}.ckpt")
                     checkpoint_data = np.random.uniform(0, 1, size=checkpoint_num_items)
                     with open(checkpoint_file, "wb") as fp:
                         pickle.dump(checkpoint_data, fp)
+                train.report(metrics, checkpoint=Checkpoint.from_directory(tmpdir))
+        else:
+            train.report(metrics)
 
-        tune.report(score=i + score)
         time.sleep(sleep_time)
 
 
