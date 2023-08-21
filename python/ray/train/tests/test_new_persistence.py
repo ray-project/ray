@@ -448,9 +448,7 @@ def test_tuner(
         )
 
     # First, check that the ResultGrid returns the correct paths.
-    experiment_fs_path = _convert_path_to_fs_path(
-        result_grid.experiment_path, storage_filesystem
-    )
+    experiment_fs_path = result_grid.experiment_path
     assert experiment_fs_path == os.path.join(storage_fs_path, exp_name)
     assert len(result_grid) == NUM_TRIALS
     for result in result_grid:
