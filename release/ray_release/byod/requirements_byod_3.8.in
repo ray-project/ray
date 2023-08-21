@@ -32,3 +32,5 @@ wandb
 xarray
 xgboost
 zarr
+pydantic==1.9.2
+fastapi==0.99.1
