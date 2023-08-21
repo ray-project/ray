@@ -63,6 +63,7 @@ class LongestPrefixRouter(ProxyRouter):
                         RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
                         and not info.app_is_cross_language
                     ),
+                    use_new_handle_api=True,
                 )
 
         # Clean up any handles that are no longer used.
@@ -147,6 +148,7 @@ class EndpointRouter(ProxyRouter):
                         RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
                         and not info.app_is_cross_language
                     ),
+                    use_new_handle_api=True,
                 )
 
         # Clean up any handles that are no longer used.
