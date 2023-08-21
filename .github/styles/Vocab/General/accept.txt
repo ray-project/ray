@@ -1,14 +1,14 @@
-[Ii]nteroperates
-CPU[s]
-GPU[s]
 # Use 'API' judiciously: https://developers.google.com/style/word-list#api.
 API[s]
-[Aa]pplication
+CPU[s]
+GPU[s]
 NumPy
-[Pp]erformant
-[Cc]odec
 URI[s]
+[Aa]pplication
+[Cc]odec
+[Dd]ict(s)?
+[Ii]nteroperates
 [Ii]nterpretability
 [Pp]arallelization
+[Pp]erformant
 [Ss]ubclassing
-[Dd]ict(s)?
