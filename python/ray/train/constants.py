@@ -18,8 +18,8 @@ from ray.air.constants import (  # noqa: F401
 )
 
 # Autofilled ray.train.report() metrics. Keys should be consistent with Tune.
+CHECKPOINT_DIR_NAME = "checkpoint_dir_name"
 TIME_TOTAL_S = "_time_total_s"
-
 WORKER_HOSTNAME = "_hostname"
 WORKER_NODE_IP = "_node_ip"
 WORKER_PID = "_pid"
