@@ -1,6 +1,8 @@
 import mock
 import pytest
 
+import os
+
 from unittest.mock import patch
 import requests
 
@@ -18,9 +20,7 @@ def test_configured_aws_neuron_core():
     assert resources.get(ray_constants.NEURON_CORES) == 4
 
 
-@mock.patch(
-    "ray._private.utils.get_aws_neuron_core_visible_ids", return_value=[0, 1, 2]
-)
+@patch("ray._private.utils.get_aws_neuron_core_visible_ids", return_value=[0, 1, 2])
 def test_aws_neuron_core_with_more_user_configured(mock_get_nc_ids):
     resources = {"CPU": 1, "neuron_cores": 4}
     with pytest.raises(ValueError):
@@ -28,7 +28,7 @@ def test_aws_neuron_core_with_more_user_configured(mock_get_nc_ids):
     assert mock_get_nc_ids.called
 
 
-@mock.patch("ray._private.accelerator._autodetect_aws_neuron_cores", return_value=2)
+@patch("ray._private.accelerator._autodetect_aws_neuron_cores", return_value=2)
 def test_auto_detect_aws_neuron_core(mock_autodetect_aws_neuron_cores):
     resources = {"CPU": 1}
     accelerator.update_resources_with_accelerator_type(resources)
@@ -37,10 +37,8 @@ def test_auto_detect_aws_neuron_core(mock_autodetect_aws_neuron_cores):
     assert resources.get(ray_constants.NEURON_CORES) == 2
 
 
-@mock.patch(
-    "ray._private.utils.get_aws_neuron_core_visible_ids", return_value=[0, 1, 2]
-)
-@mock.patch("ray._private.accelerator._autodetect_aws_neuron_cores", return_value=4)
+@patch("ray._private.utils.get_aws_neuron_core_visible_ids", return_value=[0, 1, 2])
+@patch("ray._private.accelerator._autodetect_aws_neuron_cores", return_value=4)
 def test_auto_detect_nc_with_more_user_configured(
     mock_get_nc_ids, mock_autodetect_aws_neuron_cores
 ):
@@ -52,7 +50,7 @@ def test_auto_detect_nc_with_more_user_configured(
     assert resources.get(ray_constants.NEURON_CORES) == 3
 
 
-@mock.patch("subprocess.run")
+@patch("subprocess.run")
 def test_get_neuron_core_count_single_device(mock_subprocess):
     mock_subprocess.return_value.returncode = 0
     mock_subprocess.return_value.stdout = (
@@ -64,7 +62,7 @@ def test_get_neuron_core_count_single_device(mock_subprocess):
     assert mock_subprocess.called
 
 
-@mock.patch("subprocess.run")
+@patch("subprocess.run")
 def test_get_neuron_core_count_multiple_devices(mock_subprocess):
     mock_subprocess.return_value.returncode = 0
     mock_subprocess.return_value.stdout = (
@@ -78,7 +76,7 @@ def test_get_neuron_core_count_multiple_devices(mock_subprocess):
     assert mock_subprocess.called
 
 
-@mock.patch("subprocess.run")
+@patch("subprocess.run")
 def test_get_neuron_core_count_failure_with_error(mock_subprocess):
     mock_subprocess.return_value.returncode = 1
     mock_subprocess.return_value.stderr = b"AccessDenied"
@@ -86,7 +84,7 @@ def test_get_neuron_core_count_failure_with_error(mock_subprocess):
     assert mock_subprocess.called
 
 
-@mock.patch("subprocess.run")
+@patch("subprocess.run")
 def test_get_neuron_core_count_failure_with_empty_results(mock_subprocess):
     mock_subprocess.return_value.returncode = 0
     mock_subprocess.return_value.stdout = b"[{}]"
@@ -94,7 +92,7 @@ def test_get_neuron_core_count_failure_with_empty_results(mock_subprocess):
     assert mock_subprocess.called
 
 
-@mock.patch("glob.glob")
+@patch("glob.glob")
 def test_autodetect_num_tpus_accel(mock_glob):
     mock_glob.return_value = [
         "/dev/accel0",
@@ -105,7 +103,7 @@ def test_autodetect_num_tpus_accel(mock_glob):
     assert accelerator.autodetect_num_tpus() == 4
 
 
-@mock.patch("glob.glob")
+@patch("glob.glob")
 def test_autodetect_num_tpus_vfio(mock_glob):
     mock_glob.return_value = [f"/dev/vfio/{i}" for i in range(4)]
     assert accelerator.autodetect_num_tpus() == 4
@@ -122,7 +120,7 @@ def test_autodetect_num_tpus_vfio(mock_glob):
         ("v4-2048", "V4"),
     ],
 )
-@mock.patch("requests.get")
+@patch("requests.get")
 def test_autodetect_tpu_version_gce(mock_request, accelerator_type_version_tuple):
     accelerator_type, expected_version = accelerator_type_version_tuple
     mock_response = mock.MagicMock()
@@ -143,7 +141,7 @@ def test_autodetect_tpu_version_gce(mock_request, accelerator_type_version_tuple
         ("v4-2048", "V4"),
     ],
 )
-@mock.patch("os.getenv")
+@patch("os.getenv")
 def test_autodetect_tpu_version_gke_v2(mock_os, accelerator_type_version_tuple):
     accelerator_type, expected_version = accelerator_type_version_tuple
     mock_os.return_value = accelerator_type
@@ -190,9 +188,48 @@ def test_validate_accelerator_options(test_config):
         _validate_accelerators(options)
 
 
+@pytest.mark.parametrize(
+    "tpu_chips",
+    [
+        ["1"],
+        ["1", "2"],
+        ["1", "2", "3", "4"],
+    ],
+)
+def test_set_tpu_visible_ids_and_bounds(tpu_chips):
+    with patch.dict("os.environ", {}, clear=True):
+        utils.set_tpu_visible_ids_and_bounds(tpu_chips=tpu_chips)
+        assert os.environ[ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(
+            tpu_chips
+        )
+        if len(tpu_chips) == 1:
+            assert (
+                os.environ[ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
+                == ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+            )
+            assert (
+                os.environ[ray_constants.TPU_HOST_BOUNDS_ENV_VAR]
+                == ray_constants.TPU_SINGLE_HOST_BOUNDS
+            )
+        elif len(tpu_chips) == 2:
+            assert (
+                os.environ[ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
+                == ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
+            )
+            assert (
+                os.environ[ray_constants.TPU_HOST_BOUNDS_ENV_VAR]
+                == ray_constants.TPU_SINGLE_HOST_BOUNDS
+            )
+        else:  # len(tpu_chips) == 4
+            # Check that nothing is set, let the ML framework use the defaults.
+            assert (
+                os.environ.get(ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) is None
+            )
+            assert os.environ.get(ray_constants.TPU_SINGLE_HOST_BOUNDS, None) is None
+
+
 if __name__ == "__main__":
     import sys
-    import os
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

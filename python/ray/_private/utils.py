@@ -278,7 +278,7 @@ def compute_driver_id_from_job(job_id):
 
 def get_gpu_and_accelerator_runtime_ids() -> Mapping[str, Optional[List[str]]]:
     """
-    Get the device IDs of GPUs (CUDA), accelerators(NeuronCore) and TPUs
+    Get the device IDs of GPUs (CUDA), accelerators(NeuronCore and TPUs)
     using (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS)
     environment variables.
 
@@ -459,12 +459,15 @@ def set_aws_neuron_core_visible_ids(neuron_core_ids: List[str]) -> None:
 
 
 def set_tpu_visible_ids_and_bounds(tpu_chips: List[str]) -> None:
-    """Set TPU_VISIBLE_CHIPS and TPU_CHIPS_PER_HOST_BOUNDS based on
-    provided tpu_chips.
+    """Set TPU environment variables based on the provided tpu_chips.
 
-    To access a subset of the TPU visible chips
+    To access a subset of the TPU visible chips, we must use a combination of
+    environment variables that tells the compiler (via ML framework) the:
+    - Visible chips
+    - The physical bounds of chips per host
+    - The host bounds within the context of a TPU pod.
 
-    See: https://github.com/google/jax/issues/14977 for more details.
+    See: https://github.com/google/jax/issues/14977 for an example/more details.
 
     Args:
         tpu_chips (List[str]): List of int representing TPU chips.

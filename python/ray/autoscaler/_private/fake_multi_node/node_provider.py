@@ -335,9 +335,6 @@ class FakeMultiNodeProvider(NodeProvider):
                     ray_constants.LABELS_ENVIRONMENT_VARIABLE: json.dumps(labels),
                 },
             )
-            print("DEBUG: params CPU: ", ray_params.num_cpus)
-            print("DEBUG: params GPU: ", ray_params.num_gpus)
-            print("DEBUG: params TPU: ", ray_params.num_tpus)
             node = ray._private.node.Node(
                 ray_params, head=False, shutdown_at_exit=False, spawn_reaper=False
             )

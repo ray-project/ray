@@ -130,7 +130,7 @@ def autodetect_num_tpus() -> int:
 
     vfio_entries = os.listdir("/dev/vfio")
     numeric_entries = [int(entry) for entry in vfio_entries if entry.isdigit()]
-    return max(numeric_entries, default=0)
+    return len(numeric_entries)
 
 
 def autodetect_tpu_version() -> Optional[str]:
@@ -155,7 +155,6 @@ def autodetect_tpu_version() -> Optional[str]:
     """
 
     def accelerator_type_to_version(accelerator_type: str) -> str:
-        print(accelerator_type)
         return str(accelerator_type.split("-")[0]).upper()
 
     # GKE-based check
