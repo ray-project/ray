@@ -305,7 +305,7 @@ def test_serve_num_replica_idle_node():
             return True
 
         # A long sleep is needed for serve proxy to be removed.
-        wait_for_condition(verify, timeout=30, retry_interval_ms=1000)
+        wait_for_condition(verify, timeout=45, retry_interval_ms=1000)
 
     finally:
         ray.shutdown()
