@@ -64,12 +64,17 @@ class MostBasicIngress:
     async def __call__(self, request: starlette.requests.Request) -> str:
         name = await request.json()["name"]
         return f"Hello {name}"
+
+
 # __most_basic_ingress_end__
 
 
 # __request_get_start__
 import requests
-print(requests.get("http://127.0.0.1:8000/", json={"name": "Corey"}).text)  # Hello Corey!
+
+print(
+    requests.get("http://127.0.0.1:8000/", json={"name": "Corey"}).text
+)  # Hello Corey!
 # __request_get_end__
 
 
@@ -85,4 +90,6 @@ class MostBasicIngress:
     @app.get("/{name}")
     async def say_hi(self, name: str) -> str:
         return f"Hello {name}"
+
+
 # __fastapi_end__

@@ -187,7 +187,6 @@ async def json_resolver(request: starlette.requests.Request):
 ```{testoutput}
 :hide:
 
-...
 ```
 
 The input arguments to an HTTP adapter should be type-annotated. At a minimum, the adapter should accept a `starlette.requests.Request` type (https://www.starlette.io/requests/#request),
@@ -208,7 +207,6 @@ def parse_query_args(field_a: int, field_b: str):
 ```{testoutput}
 :hide:
 
-...
 ```
 
 You can specify different type signatures to facilitate the extraction of HTTP fields, including
@@ -249,7 +247,6 @@ with InputNode() as input_node:
 ```{testoutput}
 :hide:
 
-...
 ```
 
 ### Embedded in your existing `FastAPI` Application
@@ -272,7 +269,6 @@ async def endpoint(np_array = Depends(json_to_ndarray)):
 ```{testoutput}
 :hide:
 
-...
 ```
 
 ### Pydantic models as adapters
@@ -302,7 +298,6 @@ DAGDriver.bind(other_node, http_adapter=User)
 ```{testoutput}
 :hide:
 
-...
 ```
 
 ### List of built-in adapters

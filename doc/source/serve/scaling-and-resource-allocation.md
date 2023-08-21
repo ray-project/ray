@@ -112,7 +112,6 @@ def func(*args):
 ```{testoutput}
 :hide:
 
-...
 ```
 
 (serve-fractional-resources-guide)=
@@ -144,7 +143,6 @@ def func_2(*args):
 ```{testoutput}
 :hide:
 
-...
 ```
 
 In this example, each replica of each deployment will be allocated 0.5 GPUs.  The same can be done to multiplex over CPUs, using `"num_cpus"`.
@@ -169,7 +167,6 @@ def func(*args):
 ```{testoutput}
 :hide:
 
-...
 ```
 
 You can also specify {ref}`accelerator types <accelerator-types>` via the `accelerator_type` parameter in `ray_actor_options`.

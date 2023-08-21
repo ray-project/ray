@@ -127,7 +127,6 @@ class Silenced:
 ```{testoutput}
 :hide:
 
-...
 ```
 
 This controls which logs are written to STDOUT or files on disk.
