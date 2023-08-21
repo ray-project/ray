@@ -6,7 +6,8 @@ import {
   NodeStatusCard,
   ResourceStatusCard,
 } from "../../components/AutoscalerStatusCards";
-import NewEventTable, { SeverityLevel } from "../../components/NewEventTable";
+import NewEventTable from "../../components/NewEventTable";
+import { SeverityLevel } from "../../type/event";
 import { useRayStatus } from "../job/hook/useClusterStatus";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { ClusterUtilizationCard } from "./cards/ClusterUtilizationCard";

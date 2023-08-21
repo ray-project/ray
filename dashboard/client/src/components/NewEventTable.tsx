@@ -20,27 +20,9 @@ import Pagination from "@material-ui/lab/Pagination";
 import dayjs from "dayjs";
 import React, { useEffect, useState } from "react";
 import { getEvents } from "../service/event";
-import { Event } from "../type/event";
+import { Align, Event, Filters, SeverityLevel } from "../type/event";
 import { useFilter } from "../util/hook";
 import { StatusChip } from "./StatusChip";
-
-export enum SeverityLevel {
-  INFO = "INFO",
-  DEBUG = "DEBUG",
-  WARNING = "WARNING",
-  ERROR = "ERROR",
-  TRACING = "TRACING",
-} // to maintain and sync with event.proto
-export enum SourceType {
-  COMMON = "COMMON",
-  CORE_WORKER = "CORE_WORKER",
-  GCS = "GCS",
-  RAYLET = "RAYLET",
-  CLUSTER_LIFECYCLE = "CLUSTER_LIFECYCLE",
-  AUTOSCALER = "AUTOSCALER",
-  JOBS = "JOBS",
-  SERVE = "SERVE",
-} // to maintain and sync with event.proto
 
 type EventTableProps = {
   defaultSeverityLevels?: SeverityLevel[];
@@ -49,10 +31,6 @@ type EventTableProps = {
 };
 
 const transformFiltersToParams = (filters: Filters) => {
-  if (!filters) {
-    return null;
-  }
-
   const params = new URLSearchParams();
 
   if (filters.entityName && filters.entityId) {
@@ -63,13 +41,17 @@ const transformFiltersToParams = (filters: Filters) => {
   }
 
   for (const key in filters) {
+    // Skip entityName and entityId
+    if (key === "entityName" || key === "entityId") {
+      continue;
+    }
     if (key === "sourceType" || key === "severityLevel") {
       const filterArray = filters[key as keyof Filters] as string[];
       filterArray.forEach((value) => {
         params.append(encodeURIComponent(key), encodeURIComponent(value));
       });
     } else {
-      // key === 'limit' or other key to add in the future
+      // key === 'count' or other key to add in the future
       params.append(
         encodeURIComponent(key),
         encodeURIComponent(filters[key as keyof Filters] as string),
@@ -109,7 +91,7 @@ const useStyles = makeStyles((theme) => ({
     marginLeft: theme.spacing(1),
   },
   message: {
-    maxWidth: "200",
+    maxWidth: 200,
   },
   pagination: {
     marginTop: theme.spacing(3),
@@ -136,14 +118,6 @@ const COLUMNS = [
   { label: "Custom Fields", align: "left" },
   { label: "Message", align: "left" },
 ];
-type Align = "inherit" | "left" | "center" | "right" | "justify";
-
-type Filters = {
-  sourceType: string[]; // TODO: Chao, multi-select severity level in filters button is a P1
-  severityLevel: string[]; // TODO: Chao, multi-select severity level in filters button is a P1
-  entityName: string | undefined;
-  entityId: string | undefined;
-};
 
 const useEventTable = (props: EventTableProps) => {
   const { defaultSeverityLevels, entityName, entityId } = props;
@@ -190,7 +164,7 @@ const useEventTable = (props: EventTableProps) => {
       try {
         const params = transformFiltersToParams(filters);
         const rsp = await getEvents(params); // We don't useSWR since we need to get real time events data once filters changed
-        const events = rsp?.data?.data?.result?.result;
+        const events = rsp?.data?.data?.result;
         if (events) {
           setEvents(events); // We sort the event by timestamp in the backend
         }
