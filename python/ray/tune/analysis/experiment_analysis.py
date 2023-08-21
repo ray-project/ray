@@ -144,49 +144,59 @@ class NewExperimentAnalysis:
             trials.append(trial)
         return trials
 
-    def fetch_trial_dataframes(self) -> Dict[str, Optional[DataFrame]]:
+    def _fetch_trial_dataframe(self, trial: Trial) -> DataFrame:
+        force_dtype = {"trial_id": str}  # Never convert trial_id to float.
+
+        # If there were no reported results, there will be no files into a DataFrame
+        if trial.last_result is None:
+            return DataFrame()
+
+        json_fs_path = os.path.join(trial.storage.trial_fs_path, EXPR_RESULT_FILE)
+        csv_fs_path = os.path.join(trial.storage.trial_fs_path, EXPR_PROGRESS_FILE)
+        # Prefer reading the JSON if it exists.
+        if _exists_at_fs_path(trial.storage.storage_filesystem, json_fs_path):
+            with trial.storage.storage_filesystem.open_input_stream(json_fs_path) as f:
+                json_list = [
+                    json.loads(json_row)
+                    for json_row in f.readall().decode("utf-8").rstrip("\n").split("\n")
+                ]
+            df = pd.json_normalize(json_list, sep="/")
+        # Fallback to reading the CSV.
+        elif _exists_at_fs_path(trial.storage.storage_filesystem, csv_fs_path):
+            with trial.storage.storage_filesystem.open_input_stream(csv_fs_path) as f:
+                csv_str = f.readall().decode("utf-8")
+            df = pd.read_csv(io.StringIO(csv_str), dtype=force_dtype)
+        else:
+            raise FileNotFoundError(
+                f"Could not fetch metrics for {trial}: both {EXPR_RESULT_FILE} and "
+                f"{EXPR_PROGRESS_FILE} were not found at {trial.storage.trial_fs_path}"
+            )
+
+        return df
+
+    def fetch_trial_dataframes(self) -> Dict[str, DataFrame]:
         """Fetches trial dataframes from files.
 
         Returns:
             A dictionary mapping trial_id -> pd.DataFrame
         """
-        force_dtype = {"trial_id": str}  # Never convert trial_id to float.
+        unreadable = []
 
         trial_dfs = {}
         for trial in self.trials:
-            # If there were no reported results, there will be no files into a DataFrame
-            if trial.last_result is None:
+            try:
+                trial_dfs[trial.trial_id] = self._fetch_trial_dataframe(trial)
+            except Exception as e:
+                unreadable.append((trial, e))
                 trial_dfs[trial.trial_id] = DataFrame()
                 continue
 
-            json_fs_path = os.path.join(trial.storage.trial_fs_path, EXPR_RESULT_FILE)
-            csv_fs_path = os.path.join(trial.storage.trial_fs_path, EXPR_PROGRESS_FILE)
-            # Prefer reading the JSON if it exists.
-            if _exists_at_fs_path(trial.storage.storage_filesystem, json_fs_path):
-                with trial.storage.storage_filesystem.open_input_stream(
-                    json_fs_path
-                ) as f:
-                    json_list = [
-                        json.loads(json_row)
-                        for json_row in f.readall()
-                        .decode("utf-8")
-                        .rstrip("\n")
-                        .split("\n")
-                    ]
-                df = pd.json_normalize(json_list, sep="/")
-            # Fallback to reading the CSV.
-            elif _exists_at_fs_path(trial.storage.storage_filesystem, csv_fs_path):
-                with trial.storage.storage_filesystem.open_input_stream(
-                    csv_fs_path
-                ) as f:
-                    csv_str = f.readall().decode("utf-8")
-                df = pd.read_csv(io.StringIO(csv_str), dtype=force_dtype)
-            else:
-                # TODO(justinvyu): Log a warning here?
-                df = DataFrame()
-
-            trial_dfs[trial.trial_id] = df
-
+        fail_str = "\n".join(
+            [f"- {trial}: {repr(error)}" for trial, error in unreadable]
+        )
+        logger.warning(
+            f"Failed to fetch metrics for {len(unreadable)} trial(s):\n{fail_str}"
+        )
         return trial_dfs
 
     def get_all_configs(self, prefix: bool = False) -> Dict[str, Dict]:
