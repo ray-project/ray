@@ -24,6 +24,9 @@ def _cursor_to_block(cursor) -> Block:
 
 @PublicAPI(stability="alpha")
 class SQLDatasource(Datasource):
+
+    MAX_ROWS_PER_WRITE = 128
+
     def __init__(self, connection_factory: Callable[[], Connection]):
         self.connection_factory = connection_factory
 
@@ -39,9 +42,17 @@ class SQLDatasource(Datasource):
         with _connect(self.connection_factory) as cursor:
             for block in blocks:
                 block_accessor = BlockAccessor.for_block(block)
-                rows = list(block_accessor.iter_rows(public_row_format=True))
-                values = [tuple(row.values()) for row in rows]
-                cursor.executemany(sql, values)
+
+                values = []
+                for row in block_accessor.iter_rows(public_row_format=False):
+                    values.append(tuple(row.values()))
+                    assert len(values) <= self.MAX_ROWS_PER_WRITE, len(values)
+                    if len(values) == self.MAX_ROWS_PER_WRITE:
+                        cursor.executemany(sql, values)
+                        values = []
+
+                if values:
+                    cursor.executemany(sql, values)
 
         return "ok"
 
@@ -87,11 +98,12 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
         except Exception as e:
             # Each connector implements its own `NotSupportError` class, so we check
             # the exception's name instead of using `isinstance`.
-            if not (
+            if (
                 isinstance(e, AttributeError)
                 or e.__class__.__name__ == "NotSupportedError"
             ):
-                raise e from None
+                pass
+        raise
     finally:
         connection.close()
 

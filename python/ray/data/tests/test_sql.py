@@ -48,3 +48,25 @@ def test_write_sql(temp_database: str):
 
     result = connection.cursor().execute("SELECT * FROM test ORDER BY number")
     assert result.fetchall() == [("spam", 0), ("ham", 1)]
+
+
+@pytest.mark.parametrize("num_blocks", (1, 20))
+def test_write_sql_many_rows(num_blocks: int, temp_database: str):
+    connection = sqlite3.connect(temp_database)
+    connection.cursor().execute("CREATE TABLE test(id)")
+    dataset = ray.data.range(1000).repartition(num_blocks)
+
+    dataset.write_sql(
+        "INSERT INTO test VALUES(?)", lambda: sqlite3.connect(temp_database)
+    )
+
+    result = connection.cursor().execute("SELECT * FROM test ORDER BY id")
+    assert result.fetchall() == [(i,) for i in range(1000)]
+
+
+def test_write_sql_nonexistant_table(temp_database: str):
+    dataset = ray.data.range(1)
+    with pytest.raises(sqlite3.OperationalError):
+        dataset.write_sql(
+            "INSERT INTO test VALUES(?)", lambda: sqlite3.connect(temp_database)
+        )
