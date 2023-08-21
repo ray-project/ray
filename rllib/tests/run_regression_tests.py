@@ -246,7 +246,6 @@ if __name__ == "__main__":
                     param_space=exp["config"],
                     run_config=air.RunConfig(
                         name=exp_name,
-                        storage_path="https://dreamerv3-experiments.s3.eu-north-1.amazonaws.com/flappy-bird/",
                         callbacks=callbacks,
                         stop=exp.get("stop", {}),
                         verbose=args.verbose,
