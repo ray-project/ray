@@ -6,7 +6,10 @@ from ray import cloudpickle
 
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_NEW_HANDLE_API,
+    SERVE_DEFAULT_APP_NAME,
+)
 from ray.serve._private.deployment_method_node import DeploymentMethodNode
 from ray.serve._private.deployment_node import DeploymentNode
 from ray.serve._private.deployment_function_node import DeploymentFunctionNode
@@ -17,7 +20,7 @@ from ray.serve._private.deployment_method_executor_node import (
 from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle, RayServeHandle
 from ray.serve.schema import DeploymentSchema
 
 
@@ -177,7 +180,10 @@ def transform_ray_dag_to_serve_dag(
             if isinstance(node, DeploymentNode) or isinstance(
                 node, DeploymentFunctionNode
             ):
-                return RayServeHandle(node._deployment.name, app_name)
+                if RAY_SERVE_ENABLE_NEW_HANDLE_API:
+                    return DeploymentHandle(node._deployment.name, app_name)
+                else:
+                    return RayServeHandle(node._deployment.name, app_name)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
 
@@ -252,7 +258,7 @@ def transform_ray_dag_to_serve_dag(
         # TODO: (jiaodong) Need to capture DAGNodes in the parent node
         parent_deployment_node = other_args_to_resolve[PARENT_CLASS_NODE_KEY]
 
-        parent_class = parent_deployment_node._deployment._func_or_class
+        parent_class = parent_deployment_node._deployment.func_or_class
         method = getattr(parent_class, dag_node._method_name)
         if "return" in method.__annotations__:
             other_args_to_resolve["result_type_string"] = type_to_string(
