@@ -66,6 +66,15 @@ enum TagKey {
   SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED = 16;
   // Whether autoscaling_config changed as a lightweight config update
   SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED = 17;
+  // Whether the `RayServeHandle` API was used.
+  SERVE_RAY_SERVE_HANDLE_API_USED = 18;
+  // Whether the `RayServeSyncHandle` API was used.
+  SERVE_RAY_SERVE_SYNC_HANDLE_API_USED = 19;
+  // Whether the `DeploymentHandle` API was used.
+  SERVE_DEPLOYMENT_HANDLE_API_USED = 20;
+  // Whether the `to_object_ref` or any of its variants were used in the
+  // `DeploymentHandle` API.
+  SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED = 21;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of
