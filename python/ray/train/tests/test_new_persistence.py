@@ -448,6 +448,7 @@ def test_tuner(
         )
 
     # First, check that the ResultGrid returns the correct paths.
+    print(result_grid)
     experiment_fs_path = result_grid.experiment_path
     assert experiment_fs_path == os.path.join(storage_fs_path, exp_name)
     assert len(result_grid) == NUM_TRIALS
@@ -571,6 +572,7 @@ def test_trainer(
         )
 
     # First, inspect that the result object returns the correct paths.
+    print(result)
     trial_fs_path = _convert_path_to_fs_path(result.path, storage_filesystem)
     assert trial_fs_path.startswith(storage_fs_path)
     for checkpoint, _ in result.best_checkpoints:
