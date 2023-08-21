@@ -1,5 +1,6 @@
 import abc
 import collections
+import pickle
 import warnings
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
@@ -326,3 +327,14 @@ class Preprocessor(abc.ABC):
         path is the most optimal.
         """
         return BatchFormat.PANDAS
+
+    @DeveloperAPI
+    def pickle(self) -> str:
+        """Return this preprocessor pickled as a string."""
+        return pickle.dumps(self, 0).decode("ascii")
+
+    @DeveloperAPI
+    @staticmethod
+    def unpickle(serialized: str) -> "Preprocessor":
+        """Load the original preprocessor serialized via `self.pickle()`."""
+        return pickle.loads(serialized.encode("ascii"))
