@@ -247,9 +247,17 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/data/doc_code/*.py"],
-    exclude = [
-        "source/data/doc_code/loading_data_untested.py",
-    ],
+    extra_srcs = [],
+    tags = ["exclusive", "team:data"],
+)
+
+# --------------------------------------------------------------------
+# Test all doc/source/ray-more-libs/doc_code code included in rst/md files.
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/ray-more-libs/doc_code/*.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:data"],
 )
