@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from ray.train._checkpoint import Checkpoint
 
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 
 
 def _use_storage_context() -> bool:
@@ -544,7 +544,7 @@ class StorageContext:
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train._checkpoint import Checkpoint
 
-        logger.debug(
+        logger.info(
             "Copying checkpoint files to storage path:\n"
             "({source_fs}, {source}) -> ({dest_fs}, {destination})".format(
                 source=checkpoint.path,
@@ -572,7 +572,7 @@ class StorageContext:
             filesystem=self.storage_filesystem,
             path=self.checkpoint_fs_path,
         )
-        logger.debug(f"Checkpoint successfully created at: {persisted_checkpoint}")
+        logger.info(f"Checkpoint successfully created at: {persisted_checkpoint}")
         return persisted_checkpoint
 
     @property
@@ -626,10 +626,12 @@ class StorageContext:
         The user of this class is responsible for setting the `current_checkpoint_index`
         (e.g., incrementing when needed).
         """
-        checkpoint_dir_name = StorageContext._make_checkpoint_dir_name(
-            self.current_checkpoint_index
-        )
-        return os.path.join(self.trial_fs_path, checkpoint_dir_name)
+        return os.path.join(self.trial_fs_path, self.checkpoint_dir_name)
+
+    @property
+    def checkpoint_dir_name(self) -> str:
+        """The current checkpoint directory name, based on the checkpoint index."""
+        return StorageContext._make_checkpoint_dir_name(self.current_checkpoint_index)
 
     @staticmethod
     def get_experiment_dir_name(run_obj: Union[str, Callable, Type]) -> str:
