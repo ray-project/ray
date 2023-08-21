@@ -183,6 +183,13 @@ NodeResourceSet::NodeResourceSet(
   }
 }
 
+NodeResourceSet::NodeResourceSet(
+    const absl::flat_hash_map<ResourceID, FixedPoint> &resource_map) {
+  for (auto const &[id, quantity] : resource_map) {
+    Set(id, quantity);
+  }
+}
+
 NodeResourceSet &NodeResourceSet::Set(ResourceID resource_id, FixedPoint value) {
   if (value == ResourceDefaultValue(resource_id)) {
     resources_.erase(resource_id);
@@ -288,6 +295,10 @@ NodeResourceInstanceSet::NodeResourceInstanceSet(const NodeResourceSet &total) {
     }
     Set(resource_id, instances);
   }
+}
+
+bool NodeResourceInstanceSet::Has(ResourceID resource_id) const {
+  return !(Get(resource_id).empty());
 }
 
 void NodeResourceInstanceSet::Remove(ResourceID resource_id) {

@@ -66,6 +66,8 @@ class ResourceRequest {
 
   bool IsEmpty() const { return resources_.IsEmpty(); }
 
+  size_t Size() const { return resources_.Size(); }
+
   void Clear() { resources_.Clear(); }
 
   bool operator==(const ResourceRequest &other) const {

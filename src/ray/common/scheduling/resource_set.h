@@ -98,6 +98,9 @@ class ResourceSet {
   /// Check whether a particular resource exist.
   bool Has(ResourceID resource_id) const { return resources_.contains(resource_id); }
 
+  /// Return the number of resources in this set.
+  size_t Size() const { return resources_.size(); }
+
   /// Clear the whole set.
   void Clear() { resources_.clear(); }
 
@@ -146,6 +149,9 @@ class NodeResourceSet {
 
   explicit NodeResourceSet(const absl::flat_hash_map<ResourceID, double> &resource_map);
 
+  explicit NodeResourceSet(
+      const absl::flat_hash_map<ResourceID, FixedPoint> &resource_map);
+
   NodeResourceSet &Set(ResourceID resource_id, FixedPoint value);
 
   FixedPoint Get(ResourceID resource_id) const;
@@ -157,6 +163,8 @@ class NodeResourceSet {
   bool operator>=(const ResourceSet &other) const;
 
   bool operator==(const NodeResourceSet &other) const;
+
+  bool operator!=(const NodeResourceSet &other) const { return !(*this == other); }
 
   /// Remove the negative values in this set.
   void RemoveNegative();
@@ -182,6 +190,8 @@ class NodeResourceInstanceSet {
 
   /// Construct a TaskResourceInstances from a node total resources.
   NodeResourceInstanceSet(const NodeResourceSet &total);
+
+  bool Has(ResourceID resource_id) const;
 
   const std::vector<FixedPoint> &Get(ResourceID resource_id) const;
 

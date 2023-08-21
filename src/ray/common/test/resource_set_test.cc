@@ -18,11 +18,10 @@
 #include "ray/common/scheduling/cluster_resource_data.h"
 
 namespace ray {
-class ResourceSetTest : public ::testing::Test {};
+class NodeResourceSetTest : public ::testing::Test {};
 
-TEST_F(ResourceSetTest, TestRemoveNegative) {
-  ResourceSet r1 = ResourceSet(
-      {{"CPU", FixedPoint(-1)}, {"custom1", FixedPoint(2)}, {"custom2", FixedPoint(-2)}});
+TEST_F(NodeResourceSetTest, TestRemoveNegative) {
+  NodeResourceSet r1 = NodeResourceSet({{"CPU", -1}, {"custom1", 2}, {"custom2", -2}});
   r1.RemoveNegative();
   absl::flat_hash_map<std::string, double> expected = {{"custom1", 2}};
   ASSERT_EQ(r1.GetResourceMap(), expected);

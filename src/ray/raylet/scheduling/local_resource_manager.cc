@@ -97,6 +97,9 @@ void LocalResourceManager::FreeTaskResourceInstances(
     std::shared_ptr<TaskResourceInstances> task_allocation, bool record_idle_resource) {
   RAY_CHECK(task_allocation != nullptr);
   for (auto &resource_id : task_allocation->ResourceIds()) {
+    if (!local_resources_.total.Has(resource_id)) {
+      continue;
+    }
     local_resources_.available.Free(resource_id, task_allocation->Get(resource_id));
     const auto &available = local_resources_.available.Get(resource_id);
     const auto &total = local_resources_.total.Get(resource_id);
