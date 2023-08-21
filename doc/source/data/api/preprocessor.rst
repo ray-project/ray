@@ -1,4 +1,4 @@
-.. _air-preprocessor-ref:
+.. _preprocessor-ref:
 
 Preprocessor
 ============
@@ -35,8 +35,6 @@ Generic Preprocessors
 .. autosummary::
     :toctree: doc/
 
-    ~preprocessors.BatchMapper
-    ~preprocessors.Chain
     ~preprocessors.Concatenator
     ~preprocessors.SimpleImputer
 
@@ -73,22 +71,3 @@ K-Bins Discretizers
 
     ~preprocessors.CustomKBinsDiscretizer
     ~preprocessors.UniformKBinsDiscretizer
-
-Image Preprocessors
--------------------
-
-.. autosummary::
-    :toctree: doc/
-
-    ~preprocessors.TorchVisionPreprocessor
-
-Text Encoders
--------------
-
-.. autosummary::
-    :toctree: doc/
-
-    ~preprocessors.CountVectorizer
-    ~preprocessors.FeatureHasher
-    ~preprocessors.HashingVectorizer
-    ~preprocessors.Tokenizer

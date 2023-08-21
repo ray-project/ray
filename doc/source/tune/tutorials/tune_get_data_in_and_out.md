@@ -240,7 +240,7 @@ tuner = Tuner(
 
 ### Logging metrics with Tune callbacks
 
-Every metric logged using `train.report` can be accessed during the tuning run through Tune [Callbacks](tune-logging). Ray AIR provides [several built-in integrations](air-builtin-callbacks) with popular frameworks, such as MLFlow, Weights & Biases, CometML and more. You can also use the [Callback API](tune-callbacks-docs) to create your own callbacks.
+Every metric logged using `train.report` can be accessed during the tuning run through Tune [Callbacks](tune-logging). Ray Tune provides [several built-in integrations](loggers-docstring) with popular frameworks, such as MLFlow, Weights & Biases, CometML and more. You can also use the [Callback API](tune-callbacks-docs) to create your own callbacks.
 
 Callbacks are passed in the `callback` argument of the `Tuner`'s `RunConfig`.
 
@@ -249,7 +249,7 @@ In our example, we'll use the MLFlow callback to track the progress of our tunin
 ```python
 from ray import train
 from ray.train import RunConfig
-from ray.air.integrations.mlflow import MLflowLoggerCallback
+from ray.tune.logger.mlflow import MLflowLoggerCallback
 
 
 def training_function(config, data):
@@ -288,7 +288,7 @@ tuner = Tuner(
 
 Aside from metrics, you may want to save the state of your trained model and any other artifacts to allow resumption from training failure and further inspection and usage. Those cannot be saved as metrics, as they are often far too large and may not be easily serializable. Finally, they should be persisted on disk or cloud storage to allow access after the Tune run is interrupted or terminated.
 
-Ray Train provides a [`Checkpoint`](checkpoint-api-ref) API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage).
+Ray Train provides a {class}`Checkpoint <ray.train.Checkpoint>` API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage).
 
 In Ray Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `train.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](tune-analysis-guide).
 
@@ -301,7 +301,7 @@ The experiment state itself is checkpointed separately. See {ref}`tune-persisted
 In our example, we want to be able to resume the training from the latest checkpoint, and to save the `trained_model` in a checkpoint every iteration. To accomplish this, we will use the `session` and `Checkpoint` APIs.
 
 ```python
-from ray.air import Checkpoint
+from ray.train import Checkpoint
 
 
 def training_function(config, data):
