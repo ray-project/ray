@@ -379,8 +379,18 @@ class StateDataSourceClient:
 
         return list(driver_jobs.values()) + submission_jobs
 
-    async def get_all_cluster_events(self) -> Dictionary:
+    async def get_all_cluster_events(
+        self,
+    ) -> Dictionary:
         return DataSource.events
+
+    async def get_all_events_as_list(self, job_id: Optional[int]) -> Dictionary:
+        if job_id:
+            return list(DataSource.events[job_id].values())
+        events_list = []
+        for _, events in DataSource.events.items():
+            events_list.extend(list(events.values()))
+        return events_list
 
     @handle_grpc_network_errors
     async def get_task_info(

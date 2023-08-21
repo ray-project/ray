@@ -459,54 +459,30 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS, "1")
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 
-
-    def filter_events(
-        events: Dict[str, Dict[str, dict]],
-        severity_levels: list,
-        source_type: str,
-        custom_field: dict,
-        count: int,
-    ) -> Dict[str, dict]:
-        filtered_events = {}
-        for job_id, job_events in events.items():
-            filtered_job_events = []
-            for event_id, event in job_events.items():
-                if (
-                    event["severity"] in severity_levels
-                    and event["source_type"] == source_type
-                    and custom_field.items() <= event["custom_fields"].items()
-                ):
-                    filtered_job_events.append(event)
-
-            filtered_job_events.sort(key=lambda x: x["timestamp"], reverse=True)
-            filtered_events[job_id] = filtered_job_events[:count]
-
-        return filtered_events
-
-    def filterEvents(events, severity_levels, source_types, count=200, job_id,  **params):
+    def filter_events(self, events, severity_levels, source_types, **params):
         filtered_events = []
 
-        # Apply filter 1: severity_level and source_type
+        # If custom field parameters are provided, extract them
+        entity_name, entity_id = list(params.items())[0] if params else (None, None)
+
         for event in events:
-            if (
-                event["severity_level"] in severity_levels
-                and event["source_type"] in source_types
+            # Filter 1: severity_level and source_type
+            if (severity_levels and event["severity_level"] not in severity_levels) or (
+                source_types and event["source_type"] not in source_types
             ):
-                filtered_events.append(event)
+                continue
 
-        # Apply filter 2: custom_fields matching entity parameters
-        if params:
-            for event in filtered_events[:]:
+            # Filter 2: custom_fields matching entity parameters (if provided)
+            if entity_name and entity_id:
                 custom_fields = event.get("custom_fields", {})
-                if all(
-                    custom_fields.get(key) == str(value)
-                    for key, value in params.items()
-                ):
+                if entity_id == "*":
+                    if entity_name not in custom_fields:
+                        continue
+                elif custom_fields.get(entity_name) != entity_id:
                     continue
-                filtered_events.remove(event)
 
-        # Apply filter 3: Limit the number of events
-        filtered_events = filtered_events[:count]
+            # If the event passes both filters, append it
+            filtered_events.append(event)
 
         return filtered_events
 
@@ -516,22 +492,37 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         self, req: aiohttp.web.Request
     ) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
+        return await self._handle_list_api(self._state_api.list_cluster_events, req)
+
+    @routes.get("/api/v1/cluster_events")
+    @RateLimitedModule.enforce_max_concurrent_calls
+    async def list_events(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
+
         job_id = req.query.get("job_id", None)
-        source_types = req.query.getall("sourceType")
-        severity_levels = req.query.getall("severity_level")
+        source_types = req.query.getall("sourceType", [])
+        severity_levels = req.query.getall("severityLevel", [])
+        count = int(req.query.get("count", 200))
 
         # Filtering out specified keys from the query parameters
-        excluded_keys = ["job_id", "sourceType", "severity_level", "count"]
+        excluded_keys = ["job_id", "sourceType", "severityLevel", "count"]
         rest_of_query = {
             key: value for key, value in req.query.items() if key not in excluded_keys
         }
-        all_events = await self._client.get_all_cluster_events()
-        for _, events in all_events.items():
-            for _, event in events.items():
-                event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
-                result.append(event)
-        return await self._handle_list_api(
-            self._state_api.list_cluster_events(req=req), req
+
+        all_events = await self._state_api_data_source_client.get_all_events_as_list(
+            job_id
+        )
+
+        self.filter_events(all_events, severity_levels, source_types, **rest_of_query)
+
+        all_events.sort(key=lambda entry: entry["timestamp"], reverse=True)
+        all_events = all_events[:count]
+
+        return self._reply(
+            success=True,
+            error_message="",
+            result=asdict(all_events),
         )
 
     @routes.get("/api/v0/logs")
