@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from typing import Dict
 
 import pytest
 
@@ -10,6 +11,12 @@ from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.cluster_utils import AutoscalingCluster
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.state.api import list_placement_groups, list_tasks
+
+
+def is_head_node_from_resource_usage(usage: Dict[str, float]) -> bool:
+    if "node:__internal_head__" in usage:
+        return True
+    return False
 
 
 # TODO(rickyx): We are NOT able to counter multi-node inconsistency yet. The problem is
@@ -195,6 +202,111 @@ def test_placement_group_removal_idle_node():
             return True
 
         wait_for_condition(verify)
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+def test_object_store_memory_idle_node(shutdown_only):
+
+    ray.init()
+
+    obj = ray.put("hello")
+
+    def verify():
+        state = get_cluster_status()
+        for node in state.healthy_nodes:
+            assert node.node_status == "RUNNING"
+            assert node.used_resources()["object_store_memory"] > 0
+            return True
+
+    wait_for_condition(verify)
+
+    del obj
+
+    import time
+
+    time.sleep(1)
+
+    def verify():
+        state = get_cluster_status()
+        for node in state.healthy_nodes:
+            assert node.node_status == "IDLE"
+            assert node.used_resources()["object_store_memory"] == 0
+            assert node.resource_usage.idle_time_ms >= 1000
+            return True
+
+    wait_for_condition(verify)
+
+
+def test_serve_num_replica_idle_node():
+    # Test that nodes become idle after serve scaling down.
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "type-1": {
+                "resources": {"CPU": 4},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 30,
+            },
+        },
+        idle_timeout_minutes=1,
+    )
+
+    from ray import serve
+
+    @serve.deployment(ray_actor_options={"num_cpus": 2})
+    class Deployment:
+        def __call__(self):
+            return "hello"
+
+    try:
+        cluster.start()
+        # 5 workers nodes should be busy and have 2(replicas) * 2(cpus per replicas)
+        # = 4 cpus used
+        serve.run(Deployment.options(num_replicas=10).bind())
+
+        expected_num_workers = 5
+
+        def verify():
+            cluster_state = get_cluster_status()
+
+            # Verify that nodes are busy.
+            assert len((cluster_state.healthy_nodes)) == expected_num_workers + 1
+            for node in cluster_state.healthy_nodes:
+                assert node.node_status == "RUNNING"
+                if not is_head_node_from_resource_usage(node.total_resources()):
+                    available = node.available_resources()
+                    assert available["CPU"] == 0
+            return True
+
+        wait_for_condition(verify)
+
+        # Downscale to 1 replicas, 2 workers nodes should be idle.
+        serve.run(Deployment.options(num_replicas=2).bind())
+
+        def verify():
+            cluster_state = get_cluster_status()
+
+            assert len((cluster_state.healthy_nodes)) == expected_num_workers + 1
+            idle_nodes = []
+
+            for node in cluster_state.healthy_nodes:
+                if not is_head_node_from_resource_usage(node.total_resources()):
+                    available = node.available_resources()
+                    if node.node_status == "IDLE":
+                        assert available["CPU"] == 4
+                        idle_nodes.append(node)
+            from rich import print
+
+            print(cluster_state.healthy_nodes)
+            assert len(idle_nodes) == 3
+            return True
+
+        # A long sleep is needed for serve proxy to be removed.
+        wait_for_condition(verify, timeout=30, retry_interval_ms=1000)
+
     finally:
         ray.shutdown()
         cluster.shutdown()
