@@ -38,6 +38,17 @@ def check_ray_started():
     return requests.get("http://localhost:52365/api/ray/version").status_code == 200
 
 
+def check_telemetry_recorded(storage_handle, key, expected_value):
+    report = ray.get(storage_handle.get_report.remote())
+    assert report["extra_usage_tags"][key] == expected_value
+    return True
+
+
+def check_telemetry_not_recorded(storage_handle, key):
+    report = ray.get(storage_handle.get_report.remote())
+    assert key not in report["extra_usage_tags"]
+
+
 @pytest.fixture
 def manage_ray(monkeypatch):
     with monkeypatch.context() as m:
@@ -641,17 +652,6 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
         wait_for_condition(check_telemetry, tag_should_be_set=True)
 
 
-def check_telemetry_recorded(storage_handle, key, expected_value):
-    report = ray.get(storage_handle.get_report.remote())
-    assert report["extra_usage_tags"][key] == expected_value
-    return True
-
-
-def check_telemetry_not_recorded(storage_handle, key, expected_value):
-    report = ray.get(storage_handle.get_report.remote())
-    assert report["extra_usage_tags"].get(key) != expected_value
-
-
 @pytest.mark.parametrize("location", ["driver", "deployment", None])
 def test_status_api_detected(manage_ray, location):
     """Check that serve.status is detected correctly by telemetry."""
@@ -664,7 +664,7 @@ def test_status_api_detected(manage_ray, location):
         lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
     )
     # Check telemetry is not recorded before test starts
-    check_telemetry_not_recorded(storage_handle, "serve_status_api_used", "1")
+    check_telemetry_not_recorded(storage_handle, "serve_status_api_used")
 
     @serve.deployment
     class Model:
@@ -686,7 +686,7 @@ def test_status_api_detected(manage_ray, location):
         )
     else:
         for _ in range(3):
-            check_telemetry_not_recorded(storage_handle, "serve_status_api_used", "1")
+            check_telemetry_not_recorded(storage_handle, "serve_status_api_used")
             time.sleep(1)
 
 
@@ -702,7 +702,7 @@ def test_get_app_handle_api_detected(manage_ray, location):
         lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
     )
     # Check telemetry is not recorded before test starts
-    check_telemetry_not_recorded(storage_handle, "serve_get_app_handle_api_used", "1")
+    check_telemetry_not_recorded(storage_handle, "serve_get_app_handle_api_used")
 
     @serve.deployment
     class Model:
@@ -727,7 +727,7 @@ def test_get_app_handle_api_detected(manage_ray, location):
     else:
         for _ in range(3):
             check_telemetry_not_recorded(
-                storage_handle, "serve_get_app_handle_api_used", "1"
+                storage_handle, "serve_get_app_handle_api_used"
             )
             time.sleep(1)
 
@@ -744,9 +744,7 @@ def test_get_deployment_handle_api_detected(manage_ray, location):
         lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
     )
     # Check telemetry is not recorded before test starts
-    check_telemetry_not_recorded(
-        storage_handle, "serve_get_deployment_handle_api_used", "1"
-    )
+    check_telemetry_not_recorded(storage_handle, "serve_get_deployment_handle_api_used")
 
     @serve.deployment
     class Model:
@@ -772,7 +770,7 @@ def test_get_deployment_handle_api_detected(manage_ray, location):
     else:
         for _ in range(3):
             check_telemetry_not_recorded(
-                storage_handle, "serve_get_deployment_handle_api_used", "1"
+                storage_handle, "serve_get_deployment_handle_api_used"
             )
             time.sleep(1)
 
