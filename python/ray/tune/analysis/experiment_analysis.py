@@ -180,23 +180,24 @@ class NewExperimentAnalysis:
         Returns:
             A dictionary mapping trial_id -> pd.DataFrame
         """
-        unreadable = []
+        failures = []
 
         trial_dfs = {}
         for trial in self.trials:
             try:
                 trial_dfs[trial.trial_id] = self._fetch_trial_dataframe(trial)
             except Exception as e:
-                unreadable.append((trial, e))
+                failures.append((trial, e))
                 trial_dfs[trial.trial_id] = DataFrame()
                 continue
 
-        fail_str = "\n".join(
-            [f"- {trial}: {repr(error)}" for trial, error in unreadable]
-        )
-        logger.warning(
-            f"Failed to fetch metrics for {len(unreadable)} trial(s):\n{fail_str}"
-        )
+        if failures:
+            fail_str = "\n".join(
+                [f"- {trial}: {repr(error)}" for trial, error in failures]
+            )
+            logger.warning(
+                f"Failed to fetch metrics for {len(failures)} trial(s):\n{fail_str}"
+            )
         return trial_dfs
 
     def get_all_configs(self, prefix: bool = False) -> Dict[str, Dict]:
