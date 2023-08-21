@@ -59,7 +59,7 @@ def test_basic(ray_start_4_cpus):
     test = TestBasic(1, True, {"train": 10, "test": -1}, datasets={"train": ds})
     test.fit()
 
-    # Two workers, train split.
+    # Two workers, train and test split.
     test = TestBasic(
         2, True, {"train": 5, "test": 5}, datasets={"train": ds, "test": ds}
     )
