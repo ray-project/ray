@@ -643,6 +643,7 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
     else:
         wait_for_condition(check_telemetry, tag_should_be_set=True)
 
+
 def test_multiplexed_detect(manage_ray):
     """Check that multiplexed api is detected by telemetry."""
 
@@ -688,6 +689,7 @@ def test_multiplexed_detect(manage_ray):
         == 1,
         timeout=5,
     )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
