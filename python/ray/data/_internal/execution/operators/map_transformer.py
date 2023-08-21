@@ -154,6 +154,8 @@ def create_map_transformer_from_block_fn(
 
 
 class InputBlocksToRowsMapTransformFn(MapTransformFn):
+    """A MapTransformFn that converts input blocks to rows."""
+
     def __init__(self):
         super().__init__(
             self._input_blocks_to_rows,
@@ -164,7 +166,6 @@ class InputBlocksToRowsMapTransformFn(MapTransformFn):
     def _input_blocks_to_rows(
         self, blocks: Iterable[Block], _: TaskContext
     ) -> Iterable[Row]:
-        """Converts input blocks to rows."""
         for block in blocks:
             block = BlockAccessor.for_block(block)
             for row in block.iter_rows(public_row_format=True):
@@ -172,7 +173,7 @@ class InputBlocksToRowsMapTransformFn(MapTransformFn):
 
     @classmethod
     def instance(cls) -> "InputBlocksToRowsMapTransformFn":
-        """Returns a singleton instance of InputBlocksToRowsMapTransformFn."""
+        """Returns the singleton instance."""
         if getattr(cls, "_instance", None) is None:
             cls._instance = cls()
         return cls._instance
