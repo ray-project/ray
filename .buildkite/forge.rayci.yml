@@ -16,3 +16,15 @@ steps:
   - name: oss-ci-base_ml
     wanda: ci/docker/base.ml.wanda.yaml
     depends_on: oss-ci-base_test
+
+  - name: corebuild
+    wanda: ci/docker/core.build.wanda.yaml
+    depends_on: oss-ci-base_build
+
+  - name: servebuild
+    wanda: ci/docker/serve.build.wanda.yaml
+    depends_on: oss-ci-base_build
+
+  - name: serverlessbuild
+    wanda: ci/docker/serverless.build.wanda.yaml
+    depends_on: oss-ci-base_build
