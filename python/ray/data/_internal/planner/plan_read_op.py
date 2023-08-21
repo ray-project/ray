@@ -1,5 +1,5 @@
 import functools
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 import ray
 import ray.cloudpickle as cloudpickle
@@ -128,3 +128,39 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         name=op.name,
         ray_remote_args=op._ray_remote_args,
     )
+
+
+def apply_output_block_building_and_additional_splitting_to_read_tasks(
+    read_tasks: List[ReadTask],
+    additional_split_factor: Optional[int],
+):
+    """Apply output block building and additional splitting logic to read tasks.
+
+    This function is only used for compability with the legacy LazyBlockList code path.
+    """
+    transform_fns = [
+        blocks_to_output_blocks,
+    ]
+    if additional_split_factor is not None:
+        transform_fns.append(
+            MapTransformFn(
+                functools.partial(
+                    _do_additional_splits,
+                    additional_output_splits=additional_split_factor,
+                ),
+                MapTransformFnDataType.Block,
+                MapTransformFnDataType.Block,
+            )
+        )
+    map_transformer = MapTransformer(transform_fns)
+
+    for read_task in read_tasks:
+        original_read_fn = read_task._read_fn
+
+        def new_read_fn():
+            blocks = original_read_fn()
+            # We pass None as the TaskContext because we don't have access to it here.
+            # This is okay because the transform functions don't use the TaskContext.
+            return map_transformer.apply_transform(blocks, None)  # type: ignore
+
+        read_task._read_fn = new_read_fn

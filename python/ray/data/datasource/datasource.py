@@ -210,7 +210,6 @@ class ReadTask(Callable[[], Iterable[Block]]):
     def __init__(self, read_fn: Callable[[], Iterable[Block]], metadata: BlockMetadata):
         self._metadata = metadata
         self._read_fn = read_fn
-        self._additional_output_splits = 1
 
     def get_metadata(self) -> BlockMetadata:
         return self._metadata
