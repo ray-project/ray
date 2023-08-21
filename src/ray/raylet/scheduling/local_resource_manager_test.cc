@@ -44,7 +44,7 @@ class LocalResourceManagerTest : public ::testing::Test {
     }
   }
 
-  rpc::ResourcesData GetSyncMessageForResourceReport() const {
+  rpc::ResourcesData GetSyncMessageForResourceReport() {
     auto msg = manager->CreateSyncMessage(0, syncer::MessageType::RESOURCE_VIEW);
     rpc::ResourcesData resources_data;
     resources_data.ParseFromString(msg->sync_message());
