@@ -207,16 +207,16 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   };
 
-  auto cancel_callback = [reply, task_spec](rpc::SendReplyCallback send_reply_callback) {
+  auto cancel_callback = [reply, task_spec](const Status &status,
+                                            rpc::SendReplyCallback send_reply_callback) {
     if (task_spec.IsActorTask()) {
       // We consider cancellation of actor tasks to be a push task RPC failure.
-      send_reply_callback(
-          Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
+      send_reply_callback(status, nullptr, nullptr);
     } else {
       // We consider cancellation of normal tasks to be an in-band cancellation of a
       // successful RPC.
       reply->set_was_cancelled_before_running(true);
-      send_reply_callback(Status::OK(), nullptr, nullptr);
+      send_reply_callback(status, nullptr, nullptr);
     }
   };
 
@@ -287,6 +287,12 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
 
   // Execute as many tasks as there are in the queue, in sequential order.
   normal_scheduling_queue_->ScheduleRequests();
+}
+
+bool CoreWorkerDirectTaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
+                                                         const TaskID &task_id) {
+  auto it = actor_scheduling_queues_.find(caller_worker_id);
+  return it->second->CancelTaskIfFound(task_id);
 }
 
 bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {

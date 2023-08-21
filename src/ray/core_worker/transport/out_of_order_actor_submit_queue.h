@@ -46,6 +46,10 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   void MarkDependencyFailed(uint64_t position) override;
   /// Make a task's dependency is resolved thus ready to send.
   void MarkDependencyResolved(uint64_t position) override;
+  // Mark a task has been canceled.
+  // If a task hasn't been sent yet, this API will guarantee a task won't be
+  // popped via PopNextTaskToSend.
+  void MarkTaskCanceled(uint64_t position) override;
   /// Clear the queue and returns all tasks ids that haven't been sent yet.
   std::vector<TaskID> ClearAllTasks() override;
   /// Find next task to send.
