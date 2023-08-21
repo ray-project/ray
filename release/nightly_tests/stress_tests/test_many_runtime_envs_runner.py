@@ -50,7 +50,7 @@ def create_file_and_assert_n_times(n):
                 " python test_many_runtime_envs.py "
                 f"--file-name {file_name} "
                 f"--expected-content {shlex.quote(content)} "
-                f"--expected-file-count-in-working-dir {i + 2} "
+                f"--expected-file-count-in-working-dir {i + 2}"
                 f"--node_id {next(node_ids)}",
                 shell=True,
             )
