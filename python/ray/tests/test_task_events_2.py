@@ -480,6 +480,7 @@ def test_ray_intentional_errors(shutdown_only):
     1. ray.actor_exit_actor()
     2. __ray_terminate__.remote()
     3. max calls reached.
+    4. task that exit with exit(0)
     """
 
     # Test `exit_actor`
@@ -490,6 +491,9 @@ def test_ray_intentional_errors(shutdown_only):
 
         def exit(self):
             ray.actor.exit_actor()
+
+        def exit_normal(self):
+            exit(0)
 
     ray.init(num_cpus=1)
 
@@ -542,6 +546,34 @@ def test_ray_intentional_errors(shutdown_only):
             workers.add(t["worker_id"])
 
         assert len(workers) == 3
+        return True
+
+    wait_for_condition(verify)
+
+    # Test tasks that fail with exit(0)
+    @ray.remote
+    def g():
+        exit(0)
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "g")])
+        assert len(ts) == 1
+        t = ts[0]
+
+        assert t["state"] == "FINISHED"
+        return True
+
+    c = Actor.remote()
+    ray.get(c.ready.remote())
+
+    c.exit_normal.remote()
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "Actor.exit_normal")])
+        assert len(ts) == 1
+        t = ts[0]
+
+        assert t["state"] == "FINISHED"
         return True
 
     wait_for_condition(verify)
