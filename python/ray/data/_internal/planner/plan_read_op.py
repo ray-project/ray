@@ -89,7 +89,7 @@ def _generate_output_transform_fn(
         return MapTransformFn(
             functools.partial(
                 _do_additional_splits,
-                additional_output_splits=op._additional_split_factor,
+                additional_output_splits=additional_split_factor,
             ),
             MapTransformFnDataType.Block,
             MapTransformFnDataType.Block,
