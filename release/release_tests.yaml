@@ -1046,7 +1046,6 @@
 
   variations:
       - __suffix__: aws
-      TODO (Kourosh): Enable once GCE is ready
       - __suffix__: gce
         env: gce
         frequency: manual
