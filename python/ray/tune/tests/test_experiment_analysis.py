@@ -11,6 +11,8 @@ import pytest
 
 from ray import train, tune
 from ray.air._internal.uri_utils import URI
+from ray.air.constants import EXPR_PROGRESS_FILE, EXPR_RESULT_FILE
+from ray.train._internal.storage import _delete_fs_path
 from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
 from ray.tune.experiment import Trial
 from ray.tune.utils import flatten_dict
@@ -110,9 +112,11 @@ def experiment_analysis(request):
 def test_fetch_trial_dataframes(experiment_analysis, filetype):
     if filetype == "csv":
         # Delete all json files so that we can test fallback to csv loading
-        experiment_path = Path(experiment_analysis.experiment_path)
-        for json_path in experiment_path.glob("*/*.json"):
-            json_path.unlink()
+        for trial in experiment_analysis.trials:
+            _delete_fs_path(
+                fs=trial.storage.storage_filesystem,
+                fs_path=os.path.join(trial.storage.trial_fs_path, EXPR_RESULT_FILE),
+            )
     else:
         assert filetype == "json"
 
@@ -126,6 +130,41 @@ def test_fetch_trial_dataframes(experiment_analysis, filetype):
         assert np.all(
             df["ascending"].to_numpy() == np.arange(1, 8) * trial_config["id"]
         )
+
+
+def test_fetch_trial_dataframes_with_errors(
+    experiment_analysis, tmp_path, propagate_logs, caplog
+):
+    # Add "corrupted" json files)
+    for trial in experiment_analysis.trials:
+        fs = trial.storage.storage_filesystem
+        with fs.open_output_stream(
+            os.path.join(trial.storage.trial_fs_path, EXPR_RESULT_FILE)
+        ) as f:
+            f.write(b"malformed")
+
+    experiment_analysis.fetch_trial_dataframes()
+    assert "Failed to fetch metrics" in caplog.text
+    caplog.clear()
+
+    # Delete ALL metrics files to check that a warning gets logged.
+    for trial in experiment_analysis.trials:
+        fs = trial.storage.storage_filesystem
+
+        # Delete ALL metrics files to check that a warning gets logged.
+        _delete_fs_path(
+            fs=trial.storage.storage_filesystem,
+            fs_path=os.path.join(trial.storage.trial_fs_path, EXPR_RESULT_FILE),
+        )
+        _delete_fs_path(
+            fs=trial.storage.storage_filesystem,
+            fs_path=os.path.join(trial.storage.trial_fs_path, EXPR_PROGRESS_FILE),
+        )
+
+    experiment_analysis.fetch_trial_dataframes()
+    assert "Could not fetch metrics for" in caplog.text
+    assert "FileNotFoundError" in caplog.text
+    caplog.clear()
 
 
 def test_get_all_configs(experiment_analysis):
