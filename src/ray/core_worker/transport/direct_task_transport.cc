@@ -796,6 +796,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
+  request.set_caller_worker_id(task_spec.CallerWorkerId().Binary());
   client->CancelTask(
       request,
       [this, task_spec, scheduling_key, force_kill, recursive](

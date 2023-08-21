@@ -73,26 +73,9 @@ Distributed Training Examples using Ray Train
 
             Fine-tune vicuna-13b-v1.3 with Deepspeed and LightningTrainer
 
-
-Ray Train Examples Using Loggers & Callbacks
---------------------------------------------
-
-
-.. grid:: 1 2 3 4
-    :gutter: 1
-    :class-container: container pb-3
-
-    .. grid-item-card::
-        :img-top: /images/mlflow.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: train_mlflow_example
-
-            Logging Training Runs with MLflow
-
-
 Ray Train & Tune Integration Examples
 -------------------------------------
+
 
 .. grid:: 1 2 3 4
     :gutter: 1

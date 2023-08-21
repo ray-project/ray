@@ -4,6 +4,7 @@ from pathlib import Path
 import pickle
 import pytest
 import re
+import shutil
 import tempfile
 import time
 from typing import List, Optional, Tuple
@@ -431,6 +432,9 @@ def test_tuner(
         result_grid = tuner.fit()
         assert result_grid.errors
 
+        if storage_path:
+            shutil.rmtree(LOCAL_CACHE_DIR, ignore_errors=True)
+
         restored_tuner = tune.Tuner.restore(
             path=str(URI(storage_path or str(LOCAL_CACHE_DIR)) / exp_name),
             trainable=trainable,
@@ -448,6 +452,7 @@ def test_tuner(
         )
 
     # First, check that the ResultGrid returns the correct paths.
+    print(result_grid)
     experiment_fs_path = _convert_path_to_fs_path(
         result_grid.experiment_path, storage_filesystem
     )
@@ -573,6 +578,7 @@ def test_trainer(
         )
 
     # First, inspect that the result object returns the correct paths.
+    print(result)
     trial_fs_path = _convert_path_to_fs_path(result.path, storage_filesystem)
     assert trial_fs_path.startswith(storage_fs_path)
     for checkpoint, _ in result.best_checkpoints:

@@ -2,10 +2,12 @@ from typing import Any, Callable, Dict, List, Union
 
 from ray.dag.dag_node import DAGNode
 from ray.dag.format_utils import get_dag_node_str
+
 from ray.serve.deployment import Deployment, schema_to_deployment
-from ray.serve.config import DeploymentConfig
-from ray.serve.handle import RayServeHandle
+from ray.serve.config import DeploymentConfig, ReplicaConfig
+from ray.serve.handle import DeploymentHandle, RayServeHandle
 from ray.serve.schema import DeploymentSchema
+from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_HANDLE_API
 
 
 class DeploymentFunctionNode(DAGNode):
@@ -55,17 +57,27 @@ class DeploymentFunctionNode(DAGNode):
                 _internal=True,
             )
         else:
-            self._deployment: Deployment = Deployment(
-                func_body,
-                deployment_name,
-                DeploymentConfig(),
+            replica_config = ReplicaConfig.create(
+                deployment_def=func_body,
                 init_args=tuple(),
                 init_kwargs=dict(),
                 ray_actor_options=func_options,
+            )
+            self._deployment: Deployment = Deployment(
+                deployment_name,
+                deployment_config=DeploymentConfig(),
+                replica_config=replica_config,
                 _internal=True,
             )
 
-        self._deployment_handle = RayServeHandle(self._deployment.name, self._app_name)
+        if RAY_SERVE_ENABLE_NEW_HANDLE_API:
+            self._deployment_handle = DeploymentHandle(
+                self._deployment.name, self._app_name
+            )
+        else:
+            self._deployment_handle = RayServeHandle(
+                self._deployment.name, self._app_name
+            )
 
     def _copy_impl(
         self,

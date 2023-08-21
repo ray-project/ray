@@ -269,7 +269,7 @@ def get_deployment_import_path(
         with __main__'s file name if the deployment's module is __main__
     """
 
-    body = deployment._func_or_class
+    body = deployment.func_or_class
 
     if isinstance(body, str):
         # deployment's func_or_class is already an import path
@@ -513,6 +513,13 @@ serve_telemetry_tag_map = {
     "SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED": (
         TagKey.SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED
     ),
+    "SERVE_RAY_SERVE_HANDLE_API_USED": TagKey.SERVE_RAY_SERVE_HANDLE_API_USED,
+    "SERVE_RAY_SERVE_SYNC_HANDLE_API_USED": TagKey.SERVE_RAY_SERVE_SYNC_HANDLE_API_USED,
+    "SERVE_DEPLOYMENT_HANDLE_API_USED": TagKey.SERVE_DEPLOYMENT_HANDLE_API_USED,
+    "SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED": (
+        TagKey.SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED
+    ),
+    "SERVE_MULTIPLEXED_API_USED": TagKey.SERVE_MULTIPLEXED_API_USED,
 }
 
 
