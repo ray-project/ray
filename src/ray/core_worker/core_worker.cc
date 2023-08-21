@@ -948,6 +948,10 @@ void CoreWorker::ExitIfParentRayletDies() {
   if (should_shutdown) {
     RAY_LOG(WARNING) << "Shutting down the core worker because the local raylet failed. "
                      << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
+
+    // Kill child procs so that child processes of the workers do not outlive the workers.
+    KillChildProcs();
+
     QuickExit();
   }
 }
@@ -3708,7 +3712,7 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
     if (!recursive_cancel.ok()) {
       RAY_LOG(ERROR) << recursive_cancel.ToString();
     }
-  }
+  };
 }
 
 void CoreWorker::HandleKillActor(rpc::KillActorRequest request,

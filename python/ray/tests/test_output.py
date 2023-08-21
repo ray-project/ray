@@ -185,9 +185,7 @@ time.sleep(15)
     ],
     indirect=True,
 )
-def test_autoscaler_warn_deadlock(
-    enable_syncer_test, ray_start_cluster_head_with_env_vars
-):
+def test_autoscaler_warn_deadlock(ray_start_cluster_head_with_env_vars):
     script = """
 import ray
 import time

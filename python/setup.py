@@ -256,6 +256,8 @@ if setup_spec.type == SetupType.RAY:
             "py-spy >= 0.2.0",
             "requests",
             "gpustat >= 1.0.0",  # for windows
+            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
             "pydantic < 2",  # 2.0.0 brings breaking changes
             "prometheus_client >= 0.7.1",
@@ -270,7 +272,7 @@ if setup_spec.type == SetupType.RAY:
             else "grpcio",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
-        "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
+        "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
         "observability": [
             "opentelemetry-api",
             "opentelemetry-sdk",
@@ -324,8 +326,6 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
         "click >= 7.0",
         "filelock",
-        "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-        "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",

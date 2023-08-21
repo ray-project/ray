@@ -187,6 +187,7 @@ import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray.core.generated.gcs_pb2 import JobTableData
+from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
     get_new_event_loop,
@@ -218,6 +219,8 @@ OPTIMIZED = __OPTIMIZE__
 GRPC_STATUS_CODE_UNAVAILABLE = CGrpcStatusCode.UNAVAILABLE
 GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
 GRPC_STATUS_CODE_DEADLINE_EXCEEDED = CGrpcStatusCode.DEADLINE_EXCEEDED
+GRPC_STATUS_CODE_RESOURCE_EXHAUSTED = CGrpcStatusCode.RESOURCE_EXHAUSTED
+GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
 logger = logging.getLogger(__name__)
 
@@ -1829,8 +1832,9 @@ cdef execute_task_with_cancellation_handler(
     task_name = name.decode("utf-8")
     title = f"ray::{task_name}"
 
-    # Automatically restrict the GPUs available to this task.
-    ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+    # Automatically restrict the GPUs (CUDA), neuron_core accelerator
+    # runtime_ids to restrict availability to this task.
+    ray._private.utils.set_gpu_and_accelerator_runtime_ids()
 
     # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
     # It will be unset after the task execution if it was overwridden here.
@@ -2573,6 +2577,19 @@ cdef class GcsClient:
             result[job_info.job_id] = job_info
         return result
 
+    @_auto_reconnect
+    def get_all_resource_usage(self, timeout=None) -> GetAllResourceUsageReply:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_string serialized_reply
+
+        with nogil:
+            check_status(self.inner.get().GetAllResourceUsage(
+                timeout_ms, serialized_reply))
+
+        reply = GetAllResourceUsageReply()
+        reply.ParseFromString(serialized_reply)
+        return reply
     ########################################################
     # Interface for rpc::autoscaler::AutoscalerStateService
     ########################################################
@@ -2620,6 +2637,22 @@ cdef class GcsClient:
                 node_id, reason, reason_message, timeout_ms, is_accepted))
 
         return is_accepted
+
+    @_auto_reconnect
+    def drain_nodes(self, node_ids, timeout=None):
+        cdef:
+            c_vector[c_string] c_node_ids
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] c_drained_node_ids
+        for node_id in node_ids:
+            c_node_ids.push_back(node_id)
+        with nogil:
+            check_status(self.inner.get().DrainNodes(
+                c_node_ids, timeout_ms, c_drained_node_ids))
+        result = []
+        for drain_node_id in c_drained_node_ids:
+            result.append(drain_node_id)
+        return result
 
     #############################################################
     # Interface for rpc::autoscaler::AutoscalerStateService ends
