@@ -1,5 +1,4 @@
 import collections
-import functools
 from types import GeneratorType
 from typing import Any, Callable, Iterable, Iterator, Optional
 
