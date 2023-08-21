@@ -15,7 +15,11 @@ from ray import serve
 from ray.dag.input_node import InputNode
 from ray.serve.drivers import DefaultgRPCDriver, DAGDriver
 from ray.serve.http_adapters import json_request
-from ray.serve._private.constants import SERVE_NAMESPACE, SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    SERVE_NAMESPACE,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
+)
 from ray.serve.context import get_global_client
 from ray.serve._private.common import ApplicationStatus
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
@@ -639,6 +643,58 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
             check_telemetry(tag_should_be_set=False)
     else:
         wait_for_condition(check_telemetry, tag_should_be_set=True)
+
+
+def test_multiplexed_detect(manage_ray):
+    """Check that multiplexed api is detected by telemetry."""
+
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(check_ray_started, timeout=5)
+
+    @serve.deployment
+    class Model:
+        @serve.multiplexed(max_num_models_per_replica=1)
+        async def get_model(self, tag):
+            return tag
+
+        async def __call__(self, request):
+            tag = serve.get_multiplexed_model_id()
+            await self.get_model(tag)
+            return tag
+
+    serve.run(Model.bind(), name="app", route_prefix="/app")
+
+    storage_handle = start_telemetry_app()
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+    report = ray.get(storage_handle.get_report.remote())
+    assert "serve_multiplexed_api_used" not in report["extra_usage_tags"]
+
+    client = get_global_client()
+    wait_for_condition(
+        lambda: client.get_serve_status("app").app_status.status
+        == ApplicationStatus.RUNNING,
+        timeout=15,
+    )
+
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+
+    headers = {SERVE_MULTIPLEXED_MODEL_ID: "1"}
+    resp = requests.get("http://localhost:8000/app", headers=headers)
+    assert resp.status_code == 200
+
+    wait_for_condition(
+        lambda: int(
+            ray.get(storage_handle.get_report.remote())["extra_usage_tags"][
+                "serve_multiplexed_api_used"
+            ]
+        )
+        == 1,
+        timeout=5,
+    )
 
 
 class TestProxyTelemetry:
