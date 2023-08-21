@@ -18,6 +18,7 @@ from ray.air.constants import (
     EXPR_RESULT_FILE,
 )
 from ray.cloudpickle import cloudpickle
+from ray.train._checkpoint import Checkpoint
 from ray.tune.logger import (
     CSVLoggerCallback,
     JsonLoggerCallback,
@@ -38,6 +39,7 @@ class Trial:
     experiment_path: Optional[str] = None
     experiment_dir_name: Optional[str] = None
     remote_checkpoint_dir: Optional[str] = None
+    checkpoint: Optional[Checkpoint] = None
 
     @property
     def config(self):
