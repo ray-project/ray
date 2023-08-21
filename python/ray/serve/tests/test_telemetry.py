@@ -647,6 +647,14 @@ class TestProxyTelemetry:
 
         When both HTTP and gRPC proxies are used, both telemetry should be detected.
         """
+        result = get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+
+        # Ensure neither the HTTP nor gRPC proxy telemetry exist.
+        assert "serve_http_proxy_used" not in result
+        assert "serve_grpc_proxy_used" not in result
+
         grpc_servicer_functions = [
             "ray.serve.generated.serve_pb2_grpc."
             "add_UserDefinedServiceServicer_to_server",
@@ -657,7 +665,7 @@ class TestProxyTelemetry:
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
 
-        # Check all telemetry relevant to the Serve apps on this cluster
+        # Ensure both HTTP and gRPC proxy telemetry exist.
         assert int(result["serve_http_proxy_used"]) == 1
         assert int(result["serve_grpc_proxy_used"]) == 1
 
@@ -666,13 +674,21 @@ class TestProxyTelemetry:
 
         When only HTTP proxy is used, only the http proxy telemetry should be detected.
         """
+        result = get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+
+        # Ensure the telemetry does not yet exist.
+        assert "serve_http_proxy_used" not in result
+        assert "serve_grpc_proxy_used" not in result
+
         serve.start()
 
         result = get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
 
-        # Check all telemetry relevant to the Serve apps on this cluster
+        # Ensure only the HTTP proxy telemetry exist.
         assert int(result["serve_http_proxy_used"]) == 1
         assert "serve_grpc_proxy_used" not in result
 
@@ -681,13 +697,21 @@ class TestProxyTelemetry:
 
         When neither HTTP nor gRPC proxy is used, no proxy telemetry should be detected.
         """
+        result = get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+
+        # Ensure neither the HTTP nor gRPC proxy telemetry exist.
+        assert "serve_http_proxy_used" not in result
+        assert "serve_grpc_proxy_used" not in result
+
         serve.start(http_options={"location": "NoServer"})
 
         result = get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
 
-        # Check all telemetry relevant to the Serve apps on this cluster
+        # Ensure neither the HTTP nor gRPC proxy telemetry exist.
         assert "serve_http_proxy_used" not in result
         assert "serve_grpc_proxy_used" not in result
 
