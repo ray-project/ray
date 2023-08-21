@@ -19,6 +19,7 @@ from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 
 import ray
+from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 from ray._private.utils import get_or_create_event_loop
@@ -161,6 +162,8 @@ class GenericProxy(ABC):
         node_ip_address: str,
         proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
+        controller_actor: Optional[ActorHandle] = None,
+        proxy_actor: Optional[ActorHandle] = None,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
@@ -177,7 +180,7 @@ class GenericProxy(ABC):
         # Used only for displaying the route table.
         self.route_info: Dict[str, EndpointTag] = dict()
 
-        self.self_actor_handle = ray.get_runtime_context().current_actor
+        self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
 
         if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
@@ -196,7 +199,8 @@ class GenericProxy(ABC):
 
         self.proxy_router = proxy_router_class(get_handle, self.protocol)
         self.long_poll_client = LongPollClient(
-            ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
+            controller_actor
+            or ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
             },
