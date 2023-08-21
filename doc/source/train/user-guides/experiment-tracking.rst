@@ -1,47 +1,104 @@
-.. _train-experiment-tracking:
-
-Experiment Tracking
-===================
-
-Most experiment tracking libraries work out-of-the box with Ray Train. This means
-you can use the regular tracking library APIs to report your results, models, and
-other artifacts.
-
-Ray Train also exposes logging callbacks that automate some of these tasks.
-
 .. _train-experiment-tracking-native:
 
-Using native experiment tracking libraries
-------------------------------------------
+==================================
+Experiment Tracking with Ray Train
+==================================
 
-.. tab-set::
+.. note::
+    This guide is relevant for all DataParallelTrainer, including TorchTrainer and TensorflowTrainer.
 
-    .. tab-item:: PyTorch
+Most experiment tracking libraries work out-of-the-box with Ray Train. 
+In the following guide, you will learn how to use your favorite experiment tracking libraries 
+while doing distributed data parallel training with Ray Train. 
 
-        You can use experiment tracking libraries such as Weights & Biases, Mlflow, or
-        Comet directly in your Ray Train training loop.
+The guide will be focusing on TorchTrainer although the ideas should apply to DataParallelTrainer
+in general.
 
-        There are two things to keep in mind:
+Ray Train lets you use native experiment tracking libraries by customizing your tracking 
+logic inside ``train_loop_per_worker``. 
+This gives you the highest degree of freedom to decide when and where to log params, metrics, 
+models or even media contents. 
+This also allows you to use some native integrations that these tracking frameworks have with 
+specific training frameworks, for example ``mlflow.pytorch.autolog()``, 
+``lightning.pytorch.loggers.MLFlowLogger`` etc. 
+In this way, you get to port your experiment tracking logic to Ray Train with minimal change. 
 
-        1. Your code is executed in parallel on many workers. However, you often only want to report
-        results from one of these workers (usually the first worker - the "rank 0" worker).
+Mental picture of experiment tracking in Ray Train
+==================================================
 
-        2. When using the native libraries, you should report the results to both Ray Train and
-        the experiment tracking library.
+There are many experiment tracking frameworks out there. So instead of trying to 
+cover every of them with a variety of usages, let’s first look at how to think 
+about experiment tracking with Ray Train DataParallelTrainer, and how it may be 
+different than running native training code in a single process. This mental 
+picture helps you reason about some errors and makes debugging a lot easier.
 
-        Example:
+In Ray Train DataParallelTrainer, interaction with experiment tracking services 
+happens inside of ``train_loop_per_worker``. ``train_loop_per_worker`` is run as a separate process on 
+an arbitrary node. This is different from single process training in one 
+node in the following ways.
+
+``train_loop_per_worker`` needs to have access to the tracking service
+----------------------------------------------------------------------
+
+Usually this is trivial for online externally hosted tracking services. 
+Other than that, sometimes offline mode is easier to configure. 
+For example, for MLflow, you can use file based tracking uri, 
+where the uri points to a shared storage location. For Tensorboard, 
+you can have SummaryWriter point to a shared storage location as well.
+
+Advanced usage:
+Shared storage location for offline mode may not be necessary. 
+If you prefer to not use shared storage in this case, 
+you can log to local and have the logged file transferred to the head node 
+or to the cloud post training. 
+
+``train_loop_per_worker`` needs to have access to credentials
+-------------------------------------------------------------
+
+There are mainly two mechanisms when accessing credentials: 
+checking some env var value, and checking the content of some config file. 
+When applicable, you need to make sure that env var is set in the training 
+function and the file is stored on shared storage to be accessible.
+
+Avoid duplications
+------------------
+
+There are probably multiple ``train_loop_per_worker`` processes running, 
+each corresponding to a Ray Train Worker. For distributed data 
+parallel training, all of them should have the same results. 
+You may want to only log from rank 0 worker to avoid duplications. 
+You may find how to do it in the following code examples.
+
+
+Code Example
+============
+
+In the following session, we will show some examples using Wandb 
+and MLflow but the idea should be easily adaptable to other frameworks.
+
+Pytorch
+-------
+
+Conceptual code snippets
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabs::
+
+    .. tab:: wandb
 
         .. code-block:: python
-
+            
             from ray import train
+            import wandb
 
-            def train_fn(config):
-                context = train.get_context()
+            # assuming passing API key through config
+            def train_func(config):
+                os.environ["WANDB_API_KEY"] = config["wandb_api_key"]
 
                 wandb.init(
-                    id=context.get_trial_id(),
-                    name=context.get_trial_name(),
-                    group=context.get_experiment_name(),
+                    id=..., # or train.get_context().get_trial_id()
+                    name=..., # or train.get_context().get_trial_name(),
+                    group=..., # or train.get_context().get_experiment_name(),
                     # ...
                 )
                 # ...
@@ -49,147 +106,150 @@ Using native experiment tracking libraries
                 loss = optimize()
 
                 metrics = {"loss": loss}
-                # Only report the first worker results to wandb
-                if context.get_world_rank() == 0:
+                # Only report the first worker results to wandb to avoid dup
+                if train.get_context().get_world_rank() == 0:
                     wandb.log(metrics)
 
-                # Also report to Ray Train. Note that this _must_ happen for all workers.
-                train.report(metrics)
-
-    .. tab-item:: PyTorch Lightning
-
-        You can keep using the Lightning's native Logger integrations in the worker 
-        function. They should work out-of-the box with Ray TorchTrainer.
-
-        Example:
+    .. tab:: file based MLflow
 
         .. code-block:: python
             
-            import pytorch_lightning as pl
-            from pytorch_lightning.loggers.wandb import WandbLogger
-            from pytorch_lightning.loggers.comet import CometLogger
-            from pytorch_lightning.loggers.mlflow import MLFlowLogger
+            from ray import train
+            import mlflow
 
-            def train_func_per_worker():
-                ...
+            # assuming passing a save dir through config
+            def train_func(config):
+                save_dir = config["save_dir"]
+                mlflow.start_run(tracking_uri=f"file:{save_dir}")
 
-                wandb_logger = WandbLogger(
-                    name="demo-run", 
-                    project="demo-project", 
-                    id="unique_id",  
-                    offline=offline
-                )
-                
-                comet_logger = CometLogger(
-                    api_key=YOUR_COMET_API_KEY,
-                    experiment_name="demo-experiment",
-                    project_name="demo-project,
-                    offline=offline,
-                )
-                
-                mlflow_logger = MLFlowLogger(
-                    run_name=name,
-                    experiment_name=project_name,
-                    tracking_uri=f"file:{save_dir}/mlflow",
-                )
-                
-                trainer = pl.Trainer(
-                    # ...,
-                    logger=[wandb_logger, comet_logger, mlflow_logger],
-                )
+                # ...
 
-        .. tip::
+                loss = optimize()
 
-            Always make sure to set necessary credentials on each worker.
-            Ray Train will not automatically port environment varaibles 
-            on the head node to workers.
+                metrics = {"loss": loss}
+                # Only report the first worker results to mlflow to avoid dup
+                if train.get_context().get_world_rank() == 0:
+                    mlflow.log_metrics(metrics)
 
-            Taking Wandb as an example, you can manually set `WANDB_API_KEY`
-            on each worker. This allows the ``WandbLogger`` to fetch credentials 
-            from environment variables and automatically login to your Wandb account.
+    .. tab:: MLflow externally hosted by databricks
 
-            .. code-block:: python
-                :emphasize-lines: 5,9
-                
-                import os
-                from pytorch_lightning.loggers.wandb import WandbLogger
-
-                # Grab the api key from the head node
-                WANDB_API_KEY = os.environ["WANDB_API_KEY"]
-
-                def train_func_per_worker():
-                    # Set environment variable on each worker
-                    os.environ["WANDB_API_KEY"] = WANDB_API_KEY
-                    wandb_logger = WandbLogger(...)
-                    ...
-
-                trainer = TorchTrainer(
-                    train_func_per_worker,
-                    ...
-                )
-        
-        .. tip::
+        .. code-block:: python
             
-            When performing **fault-tolerant training** with auto-restoration, be sure 
-            to specify a unique ID for the Loggers, so that the new workers report to
-            the same run after restoration.
+            from ray import train
+            import mlflow
 
-            For example:
-            
-            - `WandbLogger(id=UNIQUE_ID)`
-            - `CometLogger(experiment_key=UNIQUE_ID)`
-            - `MLFlowLogger(run_id=UNIQUE_ID)`
+            # on head node, run the following:
+            # $ databricks configure --token
+            # mv ~/.databrickscfg YOUR_SHARED_STORAGE_PATH
+            # This function is assuming `databricks_config_file` in config
+            def train_func(config):
+                os.environ["DATABRICKS_CONFIG_FILE"] = config["databricks_config_file"]
+                mlflow.start_run(tracking_uri="databricks", experiment_id=...)
+
+                # ...
+
+                loss = optimize()
+
+                metrics = {"loss": loss}
+                # Only report the first worker results to mlflow to avoid dup
+                if train.get_context().get_world_rank() == 0:
+                    mlflow.log_metrics(metrics)
+
+runnable code
+~~~~~~~~~~~~~
+
+.. tabs::
+
+    .. tab:: Log to Wandb
+
+        .. literalinclude:: ../doc_code/wandb_torch_mnist.py
+            :emphasize-lines: 16, 45, 50
+            :language: python
+            :start-after: __start__
+
+    .. tab:: Log to file based MLflow
+
+        .. literalinclude:: ../doc_code/mlflow_torch_mnist.py
+            :emphasize-lines: 18, 19, 48, 52
+            :language: python
+            :start-after: __start__
 
 
+PyTorch Lightning
+-----------------
+
+The native Logger integration in PyTorch Lightning with W&B, CometML, MLFlow, and Tensorboard can still be used seamlessly with Ray Train TorchTrainer.
+
+The following example will walk you through how. The code here is runnable. There is a common shared piece of setting up a dummy model and dataloader
+just for demonstration purposes.
         
-Automatic setup methods
-~~~~~~~~~~~~~~~~~~~~~~~
-Ray Train provides utilities for common experiment tracking libraries to automatically
-setup an experiment with the training run name and ID used by Ray Train. It also
-initializes the library in a way that only the rank 0 worker reports the results per
-default.
+.. dropdown:: Define your model and dataloader (Dummy ones for demonestration purposes)
 
-.. code-block:: python
+    .. literalinclude:: ../doc_code/lightning_experiment_tracking.py
+        :language: python
+        :start-after: __lightning_experiment_tracking_model_data_start__
+        :end-before: __lightning_experiment_tracking_model_data_end__
 
-    from ray import train
-    from ray.air.integrations.wandb import setup_wandb
+.. tabs::
 
-    def train_fn(config):
-        wandb = setup_wandb(config)
+    .. tab:: wandb
 
-        loss = optimize()
+        .. literalinclude:: ../doc_code/lightning_experiment_tracking.py
+            :language: python
+            :start-after: __lightning_experiment_tracking_wandb_start__
+            :end-before: __lightning_experiment_tracking_wandb_end__
 
-        metrics = {"loss": loss}
+    .. tab:: comet
 
-        # No need to guard this behind the rank check anymore - Ray Train does
-        # this automatically in the returned `wandb` object.
-        wandb.log(metrics)
+        .. literalinclude:: ../doc_code/lightning_experiment_tracking.py
+            :language: python
+            :start-after: __lightning_experiment_tracking_comet_start__
+            :end-before: __lightning_experiment_tracking_comet_end__
 
-        # Also report to Ray Train.
-        train.report(metrics)
+    .. tab:: mlflow
 
+        .. literalinclude:: ../doc_code/lightning_experiment_tracking.py
+            :language: python
+            :start-after: __lightning_experiment_tracking_mlflow_start__
+            :end-before: __lightning_experiment_tracking_mlflow_end__
 
-Using Ray Train logger callbacks
---------------------------------
-Ray Train also exposes logging callbacks that automatically report results to
-experiment tracking services. This will use the results reported via the
-:func:`~ray.train.report` API.
+    .. tab:: tensorboard
+        
+        .. literalinclude:: ../doc_code/lightning_experiment_tracking.py
+            :language: python
+            :start-after: __lightning_experiment_tracking_tensorboard_start__
+            :end-before: __lightning_experiment_tracking_tensorboard_end__
+        
+.. tip::
+    
+    When performing **fault-tolerant training** with auto-restoration, be sure 
+    to specify a unique ID for the Loggers, so that the new workers report to
+    the same run after restoration.
 
-Logger callbacks provide a simple tracking integration that don't require changes to your
-training code. If you need access to more fine grained APIs, use
-the :ref:`native integrations directly <train-experiment-tracking-native>`.
+    For example:
+    
+    - `WandbLogger(id=UNIQUE_ID)`
+    - `CometLogger(experiment_key=UNIQUE_ID)`
+    - `MLFlowLogger(run_id=UNIQUE_ID)`
 
-Example: Logging to MLflow and TensorBoard
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Legacy APIs
+===========
 
-**Step 1: Install the necessary packages**
+Should I use ``setup_wandb`` and ``setup_mlflow``?
+--------------------------------------------------
 
-.. code-block:: bash
+``setup_wandb`` and ``setup_mlflow`` are just convenient wrappers on top of
+Weights&Biases and MLflow's native APIs. To spare you from learning yet another
+set of APIs, we recommend you to continue using the native experiment tracking 
+directly.
+Just remember to guard with ``rank==0`` to avoid duplications whenever applicable.
 
-    $ pip install mlflow
-    $ pip install tensorboardX
+Words on ``MLflowLoggerCallback`` and ``WandbLoggerCallback``
+-------------------------------------------------------------
 
-**Step 2: Run the following training script**
-
-.. literalinclude:: /../../python/ray/train/examples/mlflow_simple_example.py
-   :language: python
+More seasoned Ray library users may wonder “Wait, what about `MLflowLoggerCallback
+` and `WandbLoggerCallback`?” 
+These APIs rely on reporting results to Ray Train and then log to experiment training 
+frameworks. The usage scenario is not as versatile and requires some changes to the 
+tracking logic. As a result, we advise users against using these callbacks when using any
+DataParallelTrainer.

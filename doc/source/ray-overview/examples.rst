@@ -620,13 +620,6 @@ Ray Examples
 
         Logging Training Runs with MLflow
 
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tracking
-        :link: lightning_experiment_tracking
-        :link-type: ref
-
-        Using Experiment Tracking Tools in LightningTrainer
-
     .. grid-item-card:: :bdg-info:`Course`
         :class-item: gallery-item rl
         :link: https://applied-rl-course.netlify.app/

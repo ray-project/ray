@@ -53,14 +53,6 @@ Distributed Training Examples using Ray Train
         :img-top: /images/pytorch_lightning_small.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: lightning_mnist_example
-
-            End-to-end PyTorch Lightning Training Example
-
-    .. grid-item-card::
-        :img-top: /images/pytorch_lightning_small.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
         .. button-ref:: lightning_advanced_example
 
             Use LightningTrainer with Ray Data and Batch Predictor
@@ -97,14 +89,6 @@ Ray Train Examples Using Loggers & Callbacks
         .. button-ref:: train_mlflow_example
 
             Logging Training Runs with MLflow
-
-    .. grid-item-card::
-        :img-top: /images/pytorch_lightning_small.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: lightning_experiment_tracking
-
-            Using Experiment Tracking Tools in LightningTrainer
 
 
 Ray Train & Tune Integration Examples
