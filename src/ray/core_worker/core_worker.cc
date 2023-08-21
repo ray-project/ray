@@ -1,3 +1,4 @@
+
 // Copyright 2017 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -2256,23 +2257,42 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
 Status CoreWorker::CancelTask(const ObjectID &object_id,
                               bool force_kill,
                               bool recursive) {
-  if (actor_manager_->CheckActorHandleExists(object_id.TaskId().ActorId())) {
-    return Status::Invalid("Actor task cancellation is not supported.");
-  }
   rpc::Address obj_addr;
   if (!reference_counter_->GetOwner(object_id, &obj_addr)) {
     return Status::Invalid("No owner found for object.");
   }
+
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
+    // We don't have CancelRemoteTask for direct_actor_submitter_
+    // because it requires the same implementation.
+    RAY_LOG(DEBUG) << "Request to cancel a task of object id " << object_id
+                   << " to an owner " << obj_addr.SerializeAsString();
     return direct_task_submitter_->CancelRemoteTask(
         object_id, obj_addr, force_kill, recursive);
   }
 
   auto task_spec = task_manager_->GetTaskSpec(object_id.TaskId());
-  if (task_spec.has_value() && !task_spec.value().IsActorCreationTask()) {
+  if (!task_spec.has_value()) {
+    // Task is already finished.
+    RAY_LOG(DEBUG) << "Cancel request is ignored because the task is already canceled "
+                      "for an object id "
+                   << object_id;
+    return Status::OK();
+  }
+
+  if (task_spec.value().IsActorCreationTask()) {
+    RAY_LOG(FATAL) << "Cannot cancel actor creation tasks";
+  }
+
+  if (task_spec->IsActorTask()) {
+    if (force_kill) {
+      return Status::Invalid("force=True is not supported for actor tasks.");
+    }
+
+    return direct_actor_submitter_->CancelTask(task_spec.value(), recursive);
+  } else {
     return direct_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
   }
-  return Status::OK();
 }
 
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
@@ -3531,6 +3551,51 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
                                   rpc::CancelTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());
+  bool force_kill = request.force_kill();
+  bool recursive = request.recursive();
+  const auto &current_actor_id = worker_context_.GetCurrentActorID();
+  const auto caller_worker_id = WorkerID::FromBinary(request.caller_worker_id());
+
+  auto on_cancel_callback = [this,
+                             reply,
+                             send_reply_callback = std::move(send_reply_callback),
+                             force_kill,
+                             task_id](bool success, bool requested_task_running) {
+    reply->set_attempt_succeeded(success);
+    reply->set_requested_task_running(requested_task_running);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+
+    // Do force kill after reply callback sent.
+    if (force_kill) {
+      // We grab the lock again to make sure that we are force-killing the correct
+      // task. This is guaranteed not to deadlock because ForceExit should not
+      // require any other locks.
+      absl::MutexLock lock(&mutex_);
+      if (main_thread_task_id_ == task_id) {
+        ForceExit(rpc::WorkerExitType::INTENDED_USER_EXIT,
+                  absl::StrCat("The worker exits because the task ",
+                               main_thread_task_name_,
+                               " has received a force ray.cancel request."));
+      }
+    }
+  };
+
+  if (task_id.ActorId() == current_actor_id) {
+    RAY_LOG(INFO) << "Cancel an actor task " << task_id << " for an actor "
+                  << current_actor_id;
+    CancelActorTaskOnExecutor(
+        caller_worker_id, task_id, force_kill, recursive, on_cancel_callback);
+  } else {
+    RAY_CHECK(current_actor_id.IsNil());
+    RAY_LOG(INFO) << "Cancel a normal task " << task_id;
+    CancelTaskOnExecutor(task_id, force_kill, recursive, on_cancel_callback);
+  }
+}
+
+void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
+                                      bool force_kill,
+                                      bool recursive,
+                                      OnCanceledCallback on_canceled) {
   bool requested_task_running;
   {
     absl::MutexLock lock(&mutex_);
@@ -3545,7 +3610,7 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
   // the kill callback runs; the kill callback is responsible for also making
   // sure it cancels the right task.
   // See https://github.com/ray-project/ray/issues/29739.
-  if (requested_task_running && !request.force_kill()) {
+  if (requested_task_running && !force_kill) {
     RAY_LOG(INFO) << "Cancelling a running task with id: " << task_id;
     success = options_.kill_main(task_id);
   } else if (!requested_task_running) {
@@ -3555,29 +3620,84 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
     // normal tasks, and remove it if found.
     success = direct_task_receiver_->CancelQueuedNormalTask(task_id);
   }
-  if (request.recursive()) {
-    auto recursive_cancel = CancelChildren(task_id, request.force_kill());
+  if (recursive) {
+    auto recursive_cancel = CancelChildren(task_id, force_kill);
     if (!recursive_cancel.ok()) {
       RAY_LOG(ERROR) << recursive_cancel.ToString();
     }
   }
 
-  reply->set_attempt_succeeded(success);
-  reply->set_requested_task_running(requested_task_running);
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  on_canceled(/*success*/ success, /*requested_task_running*/ requested_task_running);
+}
 
-  // Do force kill after reply callback sent.
-  if (request.force_kill()) {
-    // We grab the lock again to make sure that we are force-killing the correct
-    // task. This is guaranteed not to deadlock because ForceExit should not
-    // require any other locks.
-    absl::MutexLock lock(&mutex_);
-    if (main_thread_task_id_ == task_id) {
-      ForceExit(rpc::WorkerExitType::INTENDED_USER_EXIT,
-                absl::StrCat("The worker exits because the task ",
-                             main_thread_task_name_,
-                             " has received a force ray.cancel request."));
+void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
+                                           TaskID task_id,
+                                           bool force_kill,
+                                           bool recursive,
+                                           OnCanceledCallback on_canceled) {
+  RAY_CHECK(!force_kill);
+  auto is_async_actor = worker_context_.CurrentActorIsAsync();
+
+  auto cancel = [this,
+                 task_id,
+                 caller_worker_id,
+                 on_canceled = std::move(on_canceled),
+                 is_async_actor]() {
+    bool is_task_running;
+    TaskSpecification spec;
+    RayFunction func;
+    std::string concurrency_group_name;
+
+    bool is_task_queued_or_executing =
+        direct_task_receiver_->CancelQueuedActorTask(caller_worker_id, task_id);
+
+    // If a task is already running, we send a cancel request.
+    // Right now, we can only cancel async actor tasks.
+    if (is_task_queued_or_executing) {
+      {
+        absl::MutexLock lock(&mutex_);
+        auto it = current_tasks_.find(task_id);
+        is_task_running = it != current_tasks_.end();
+        if (is_task_running) {
+          spec = it->second;
+          func = RayFunction(spec.GetLanguage(), spec.FunctionDescriptor());
+          concurrency_group_name = spec.ConcurrencyGroupName();
+        }
+      }
+
+      if (is_task_running && is_async_actor) {
+        options_.cancel_async_task(task_id, func, concurrency_group_name);
+      }
+      // TODO(sang): else support regular actor interrupt.
     }
+
+    // If `is_task_queued_or_executing`is true, task was either queued or run.
+    // If a task is queued, it is guaranteed to be canceled by
+    // CancelQueuedActorTask. If a task is executing, we try canceling
+    // them, but it is not guaranteed. For both cases, we consider cancelation
+    // succeeds. If `is_task_queued_or_executing` is false, it means task is finished
+    // or not received yet. In this case, we mark `success` as false, so that the
+    // caller can retry cancel RPCs. Note that the caller knows exactly when a task is
+    // finished from their end, so it won't infinitely retry cancel RPCs.
+    // requested_task_running is not used, so we just always mark it as false.
+    on_canceled(/*success*/ is_task_queued_or_executing,
+                /*requested_task_running*/ false);
+  };
+
+  if (is_async_actor) {
+    // If it is an async actor, post it to an execution service
+    // to avoid thread issues. Note that when it is an async actor
+    // task_execution_service_ won't actually run a task but it will
+    // just create coroutines.
+    task_execution_service_.post([cancel = std::move(cancel)]() { cancel(); },
+                                 "CoreWorker.CancelActorTaskOnExecutor");
+  } else {
+    // For regular actor, we cannot post it to task_execution_service because
+    // main thread is blocked. Threaded actor can do both (dispatching to
+    // task execution service, or just directly call it in io_service).
+    // There's no special reason why we don't dispatch
+    // cancel to task_execution_service_ for threaded actors.
+    cancel();
   }
 }
 
