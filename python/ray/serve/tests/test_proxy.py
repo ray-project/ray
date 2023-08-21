@@ -36,7 +36,7 @@ else:
 
 
 class FakeRef:
-    def __init__(self, messages=[]):
+    def __init__(self, messages=()):
         self.called = False
         self.messages = messages
 
