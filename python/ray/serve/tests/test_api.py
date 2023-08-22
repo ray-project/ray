@@ -19,7 +19,7 @@ from ray.serve.deployment import Application
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle, RayServeHandle
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
@@ -402,7 +402,7 @@ def test_run_get_ingress_app(serve_instance):
     ingress_handle = serve.run(app)
 
     assert ray.get(ingress_handle.remote()) == "got g"
-    serve_instance.delete_apps(["default"])
+    serve_instance.delete_apps([SERVE_DEFAULT_APP_NAME])
 
 
 def test_run_get_ingress_node(serve_instance):
@@ -447,8 +447,8 @@ class TestSetOptions:
         assert f.num_replicas == 9
         assert f.max_concurrent_queries == 3
         assert f.version == "efgh"
-        assert f.ray_actor_options == {"num_gpus": 3}
-        assert f._config.health_check_timeout_s == 17
+        assert f.ray_actor_options == {"num_cpus": 1, "num_gpus": 3}
+        assert f._deployment_config.health_check_timeout_s == 17
 
     def test_set_options_validation(self):
         @serve.deployment
@@ -462,7 +462,7 @@ class TestSetOptions:
             f.set_options(max_concurrent_queries=-4)
 
 
-def test_deploy_application(serve_instance):
+def test_deploy_application_basic(serve_instance):
     """Test deploy multiple applications"""
 
     @serve.deployment
@@ -937,11 +937,12 @@ def test_status_constructor_error(serve_instance):
     serve.run(A.bind(), _blocking=False)
 
     def check_for_failed_deployment():
-        default_app = serve.status().applications["default"]
+        default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         error_substr = "ZeroDivisionError: division by zero"
         return (
             default_app.status == "DEPLOY_FAILED"
-            and error_substr in default_app.deployments["default_A"].message
+            and error_substr
+            in default_app.deployments[f"{SERVE_DEFAULT_APP_NAME}_A"].message
         )
 
     wait_for_condition(check_for_failed_deployment)
@@ -972,11 +973,11 @@ def test_status_package_unavailable_in_controller(serve_instance):
     )
 
     def check_for_failed_deployment():
-        default_app = serve.status().applications["default"]
+        default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         return (
             default_app.status == "DEPLOY_FAILED"
             and "some_wrong_url"
-            in default_app.deployments["default_MyDeployment"].message
+            in default_app.deployments[f"{SERVE_DEFAULT_APP_NAME}_MyDeployment"].message
         )
 
     wait_for_condition(check_for_failed_deployment, timeout=15)
@@ -1004,10 +1005,10 @@ def test_get_app_handle_basic(serve_instance):
     serve.run(MyDriver.bind(f.bind()), name="B", route_prefix="/b")
 
     handle = serve.get_app_handle("A")
-    assert ray.get(handle.remote(8)) == 9
+    assert handle.remote(8).result() == 9
 
     handle = serve.get_app_handle("B")
-    assert ray.get(handle.remote()) == "hello world"
+    assert handle.remote().result() == "hello world"
 
 
 def test_get_app_handle_dne(serve_instance):
@@ -1035,42 +1036,15 @@ def test_get_app_handle_within_deployment_async(serve_instance):
 
     @serve.deployment
     async def f(val):
-        handle = serve.get_app_handle("default")
-        result = await (await handle.remote(val))
+        handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+        result = await handle.remote(val)
         return f"The answer is {result}"
 
     serve.run(a.bind(b.bind()), route_prefix="/math")
     serve.run(f.bind(), name="call")
 
     handle = serve.get_app_handle("call")
-    assert ray.get(handle.remote(7)) == "The answer is 9"
-
-
-def test_get_app_handle_within_deployment_sync(serve_instance):
-    @serve.deployment()
-    class a:
-        def __init__(self, handle):
-            self.handle = handle
-
-        def __call__(self, val: int):
-            return val + 2
-
-    @serve.deployment()
-    class b:
-        def __call__(self, val: int):
-            return val
-
-    @serve.deployment
-    def f(val):
-        handle = serve.get_app_handle("default", sync=True)
-        result = ray.get(handle.remote(val))
-        return f"The answer is {result}"
-
-    serve.run(a.bind(b.bind()), route_prefix="/math")
-    serve.run(f.bind(), name="call")
-
-    handle = serve.get_app_handle("call")
-    assert ray.get(handle.remote(7)) == "The answer is 9"
+    assert handle.remote(7).result() == "The answer is 9"
 
 
 def test_get_deployment_handle_basic(serve_instance):
@@ -1088,11 +1062,13 @@ def test_get_deployment_handle_basic(serve_instance):
 
     serve.run(MyDriver.bind(f.bind()))
 
-    handle = serve.get_deployment_handle("f", "default")
-    assert ray.get(handle.remote()) == "hello world"
+    handle = serve.get_deployment_handle("f", SERVE_DEFAULT_APP_NAME)
+    assert isinstance(handle, DeploymentHandle)
+    assert handle.remote().result() == "hello world"
 
-    app_handle = serve.get_app_handle("default")
-    assert ray.get(app_handle.remote()) == "hello world!!"
+    app_handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    assert isinstance(app_handle, DeploymentHandle)
+    assert app_handle.remote().result() == "hello world!!"
 
 
 if __name__ == "__main__":

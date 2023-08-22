@@ -16,6 +16,7 @@
 
 #include <ray/api.h>
 
+#include <cassert>
 #include <condition_variable>
 #include <mutex>
 
@@ -57,9 +58,52 @@ class Counter {
     return bytes;
   }
 
-  std::vector<std::byte> echoBytes(const std::vector<std::byte> &bytes) { return bytes; }
+  std::vector<std::byte> EchoBytes(const std::vector<std::byte> &bytes) { return bytes; }
 
-  std::string echoString(const std::string &str) { return str; }
+  std::string EchoString(const std::string &str) { return str; }
+
+  std::vector<std::string> EchoStrings(const std::vector<std::string> &strings) {
+    return strings;
+  }
+
+  std::vector<std::any> EchoAnyArray(const std::vector<std::any> &anys) {
+    assert(anys.size() == 11);
+    // check bool
+    assert(anys[0].type() == typeid(bool));
+    assert(std::any_cast<bool>(anys[0]) == true);
+    // equal to java Byte.MAX_VALUE
+    assert(anys[1].type() == typeid(uint64_t));
+    assert(std::any_cast<uint64_t>(anys[1]) == 127);
+    // equal to java Short.MAX_VALUE
+    assert(anys[2].type() == typeid(uint64_t));
+    assert(std::any_cast<uint64_t>(anys[2]) == 32767);
+    // equal to java Integer.MAX_VALUE
+    assert(anys[3].type() == typeid(uint64_t));
+    assert(std::any_cast<uint64_t>(anys[3]) == 2147483647);
+    // equal to java Short.MAX_VALUE
+    assert(anys[4].type() == typeid(uint64_t));
+    assert(std::any_cast<uint64_t>(anys[4]) == 9223372036854775807);
+    // equal to java Long.MIN_VALUE
+    assert(anys[5].type() == typeid(int64_t));
+    assert(std::any_cast<int64_t>(anys[5]) == -9223372036854775808);
+    // equal to java BigInteger.valueOf(Long.MAX_VALUE)
+    assert(anys[6].type() == typeid(uint64_t));
+    assert(std::any_cast<uint64_t>(anys[6]) == 9223372036854775807);
+    // equal to java string "Hello World!"
+    assert(anys[7].type() == typeid(std::string));
+    assert(std::any_cast<std::string>(anys[7]) == "Hello World!");
+    // equal to java float 1.234f
+    assert(anys[8].type() == typeid(double));
+    assert(std::any_cast<double>(anys[8]) == 1.234);
+    // equal to java double 1.234
+    assert(anys[9].type() == typeid(double));
+    assert(std::any_cast<double>(anys[9]) == 1.234);
+    // equal to java byte[]
+    std::vector<char> bytes = {'b', 'i', 'n', 'a', 'r', 'y'};
+    assert(anys[10].type() == typeid(std::vector<std::byte>));
+    assert(std::any_cast<std::vector<char>>(anys[10]) == bytes);
+    return anys;
+  }
 
   int GetIntVal(ray::ObjectRef<ray::ObjectRef<int>> obj) {
     auto val = *obj.Get();

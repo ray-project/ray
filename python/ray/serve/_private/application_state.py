@@ -15,11 +15,13 @@ from ray.serve.config import DeploymentConfig
 from ray.serve.exceptions import RayServeException
 
 from ray.serve._private.common import (
+    DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
     ApplicationStatusInfo,
     ApplicationStatus,
     EndpointInfo,
+    EndpointTag,
     DeploymentInfo,
 )
 from ray.serve._private.constants import (
@@ -257,8 +259,9 @@ class ApplicationState:
         self._set_target_state(dict(), None, None, True)
 
     def _delete_deployment(self, name):
-        self._endpoint_state.delete_endpoint(name)
-        self._deployment_state_manager.delete_deployment(name)
+        id = EndpointTag(name, self._name)
+        self._endpoint_state.delete_endpoint(id)
+        self._deployment_state_manager.delete_deployment(str(id))
 
     def delete(self):
         """Delete the application"""
@@ -286,20 +289,20 @@ class ApplicationState:
                 f'Invalid route prefix "{route_prefix}", it must start with "/"'
             )
 
-        self._deployment_state_manager.deploy(deployment_name, deployment_info)
+        deployment_id = DeploymentID(deployment_name, self._name)
+        self._deployment_state_manager.deploy(str(deployment_id), deployment_info)
 
         if deployment_info.route_prefix is not None:
             config = deployment_info.deployment_config
             self._endpoint_state.update_endpoint(
-                deployment_name,
+                deployment_id,
                 EndpointInfo(
                     route=deployment_info.route_prefix,
-                    app_name=self._name,
                     app_is_cross_language=config.is_cross_language,
                 ),
             )
         else:
-            self._endpoint_state.delete_endpoint(deployment_name)
+            self._endpoint_state.delete_endpoint(deployment_id)
 
     def deploy(self, deployment_infos: Dict[str, DeploymentInfo]):
         """Deploy application from list of deployment infos.
@@ -388,7 +391,9 @@ class ApplicationState:
             )
 
     def _get_live_deployments(self) -> List[str]:
-        return self._deployment_state_manager.get_deployments_in_application(self._name)
+        deps = self._deployment_state_manager.get_deployments_in_application(self._name)
+        prefix = self._name + DEPLOYMENT_NAME_PREFIX_SEPARATOR
+        return [deployment[len(prefix) :] for deployment in deps]
 
     def _determine_app_status(self) -> Tuple[ApplicationStatus, str]:
         """Check deployment statuses and target state, and determine the
@@ -617,13 +622,16 @@ class ApplicationState:
 
     def get_deployment(self, name: str) -> DeploymentInfo:
         """Get deployment info for deployment by name."""
-        return self._deployment_state_manager.get_deployment(name)
+        deployment_id = DeploymentID(name, self._name)
+        return self._deployment_state_manager.get_deployment(str(deployment_id))
 
     def get_deployments_statuses(self) -> List[DeploymentStatusInfo]:
         """Return all deployment status information"""
-        return self._deployment_state_manager.get_deployment_statuses(
-            self.target_deployments
-        )
+        deployments = [
+            str(DeploymentID(deployment, self._name))
+            for deployment in self.target_deployments
+        ]
+        return self._deployment_state_manager.get_deployment_statuses(deployments)
 
     def get_application_status_info(self) -> ApplicationStatusInfo:
         """Return the application status information"""
@@ -644,9 +652,13 @@ class ApplicationState:
             deployments, or when the application is deleting and some deployments have
             been deleted.
         """
+        deployments = [
+            str(DeploymentID(deployment, self._name))
+            for deployment in self.target_deployments
+        ]
         details = {
             name: self._deployment_state_manager.get_deployment_details(name)
-            for name in self.target_deployments
+            for name in deployments
         }
         return {k: v for k, v in details.items() if v is not None}
 
@@ -911,10 +923,7 @@ def build_serve_application(
 
         # Check that all deployments specified in config are valid
         for deployment_name in config_deployments:
-            unique_deployment_name = (
-                (name + DEPLOYMENT_NAME_PREFIX_SEPARATOR) if len(name) else ""
-            ) + deployment_name
-            if unique_deployment_name not in app.deployments:
+            if deployment_name not in app.deployments:
                 raise KeyError(
                     f'There is no deployment named "{deployment_name}" in the '
                     f'application "{name}".'
@@ -933,8 +942,8 @@ def build_serve_application(
         # happens when deploy_apps() is called.
         logger.info("Existing config deployment request terminated.")
         return None, None
-    except Exception as e:
-        return None, repr(e)
+    except Exception:
+        return None, traceback.format_exc()
 
 
 def override_deployment_info(
@@ -967,10 +976,7 @@ def override_deployment_info(
     # Override options for each deployment listed in the config.
     for options in deployment_override_options:
         deployment_name = options["name"]
-        unique_deployment_name = (
-            (app_name + DEPLOYMENT_NAME_PREFIX_SEPARATOR) if len(app_name) else ""
-        ) + deployment_name
-        info = deployment_infos[unique_deployment_name]
+        info = deployment_infos[deployment_name]
 
         if (
             info.deployment_config.autoscaling_config is not None
@@ -1030,7 +1036,7 @@ def override_deployment_info(
         original_options.update(options)
         override_options["deployment_config"] = DeploymentConfig(**original_options)
 
-        deployment_infos[unique_deployment_name] = info.update(**override_options)
+        deployment_infos[deployment_name] = info.update(**override_options)
 
     # Overwrite ingress route prefix
     app_route_prefix = config_dict.get("route_prefix", DEFAULT.VALUE)

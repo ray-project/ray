@@ -272,28 +272,30 @@ GPUs by setting ``devices="auto"`` and ``acelerator="auto"``.
 
 
 
-Reporting metrics and checkpoints
+Reporting checkpoints and metrics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To monitor progress, you can report intermediate metrics and checkpoints
-using the :class:`ray.train.lightning.RayTrainReportCallback` utility callback.
+To persist your checkpoints and monitor training progress, simply add a 
+:class:`ray.train.lightning.RayTrainReportCallback` utility callback to your Trainer. 
 
                     
 .. code-block:: diff
 
      import pytorch_lightning as pl
+     from ray.train.lightning import RayTrainReportCallback
 
      def train_func(config):
          ...
          trainer = pl.Trainer(
              ...
-    +        callbacks=[ray.train.lightning.RayTrainReportCallback()],
-             ...
+    -        callbacks=[...],
+    +        callbacks=[..., RayTrainReportCallback()],
          )
          ...
 
-Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and fault-tolerant training. For more details, see :ref:`train-checkpointing` and :ref:`train-fault-tolerance`.
 
+Reporting metrics and checkpoints to Ray Train enables you to support :ref:`fault-tolerant training <train-fault-tolerance>` and :ref:`hyperparameter optimization <train-tune>`. 
+Note that the :class:`ray.train.lightning.RayTrainReportCallback` only provides a simple implementation, and can be :ref:`further customized <train-dl-saving-checkpoints>`.
 
 Preparing your Lightning Trainer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -370,6 +372,12 @@ Congratulations! You have successfully converted your PyTorch Lightningtraining 
 * Browse the :ref:`Examples <train-examples>` for end-to-end examples of how to use Ray Train.
 * Dive into the :ref:`API Reference <train-api>` for more details on the classes and methods used in this tutorial.
 
+Version Compatibility
+---------------------
+
+Ray Train is tested with `pytorch_lightning` versions `1.6.5` and `2.0.4`. For full compatibility, we recommend using ``pytorch_lightning>=1.6.5`` . 
+Earlier versions are not prohibited but may result in unexpected issues. If you run into any compatibility issues, consider upgrading your PyTorch Lightning version or 
+`file an issue <https://github.com/ray-project/ray/issues>`_. 
 
 .. _lightning-trainer-migration-guide:
 
