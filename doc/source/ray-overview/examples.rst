@@ -65,7 +65,7 @@ Ray Examples
         :link: /ray-air/examples/gptj_deepspeed_fine_tuning
         :link-type: doc
 
-        GPT-J-6B Fine-Tuning with Ray AIR and DeepSpeed
+        GPT-J-6B Fine-Tuning with Ray Train and DeepSpeed
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item llm gen-ai
