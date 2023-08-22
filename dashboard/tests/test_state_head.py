@@ -1,7 +1,11 @@
 import asyncio
 import sys
+import ray
+from ray._private.test_utils import format_web_url, wait_for_condition
+import requests
 import pytest
 from ray.dashboard.modules.state.state_head import RateLimitedModule
+import os
 
 
 class FailedCallError(Exception):
@@ -67,7 +71,6 @@ async def test_max_concurrent_in_progress_functions(extra_req_num):
     ],
 )
 async def test_max_concurrent_with_exceptions(failures):
-
     max_req = 10
     a = A(max_num_call=max_req)
 
@@ -86,6 +89,34 @@ async def test_max_concurrent_with_exceptions(failures):
 
     assert expected_num_failure == actual_num_failure, "All failures should be captured"
     assert a.num_call_ == 0, "Failure should decrement the counter correctly"
+
+
+def generate_ray_events():
+    @ray.remote
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+    actors = [Actor.remote() for _ in range(10)]
+    for a in actors:
+        pid = ray.get(a.getpid.remote())
+        os.kill(pid, 9)
+
+
+@pytest.mark.asyncio
+async def test_list_events(shutdown_only):
+    addr = ray.init()
+    dashboard_url = addr["webui_url"]
+    webui_url = format_web_url(dashboard_url)
+    generate_ray_events()
+
+    def verify():
+        response = requests.get(f"{webui_url}/api/v1/cluster_events")
+        assert response.status_code == 200
+        assert len(response.json()["data"]["result"]) == 10
+        return True
+
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":
