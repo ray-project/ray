@@ -83,9 +83,6 @@ class NewExperimentAnalysis:
             of [min, max]. Can be overwritten with the ``mode`` parameter
             in the respective functions.
         trials: List of trials that can be accessed via `analysis.trials`.
-
-    Example:
-        TODO(justinvyu)
     """
 
     def __init__(
@@ -113,7 +110,7 @@ class NewExperimentAnalysis:
         )
 
         self.trials = trials or self._load_trials()
-        self._trial_dataframes = self.fetch_trial_dataframes()
+        self._trial_dataframes = self._fetch_trial_dataframes()
         self._configs = self.get_all_configs()
 
     def _get_experiment_fs_and_path(
@@ -183,7 +180,7 @@ class NewExperimentAnalysis:
 
         return df
 
-    def fetch_trial_dataframes(self) -> Dict[str, DataFrame]:
+    def _fetch_trial_dataframes(self) -> Dict[str, DataFrame]:
         """Fetches trial dataframes from files.
 
         Returns:

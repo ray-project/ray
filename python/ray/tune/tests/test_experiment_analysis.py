@@ -120,7 +120,7 @@ def test_fetch_trial_dataframes(experiment_analysis, filetype):
     else:
         assert filetype == "json"
 
-    dfs = experiment_analysis.fetch_trial_dataframes()
+    dfs = experiment_analysis._fetch_trial_dataframes()
     assert len(dfs) == NUM_TRIALS
     assert all(isinstance(df, pd.DataFrame) for df in dfs.values())
     assert {trial.trial_id for trial in experiment_analysis.trials} == set(dfs)
@@ -143,7 +143,7 @@ def test_fetch_trial_dataframes_with_errors(
         ) as f:
             f.write(b"malformed")
 
-    experiment_analysis.fetch_trial_dataframes()
+    experiment_analysis._fetch_trial_dataframes()
     assert "Failed to fetch metrics" in caplog.text
     caplog.clear()
 
@@ -161,7 +161,7 @@ def test_fetch_trial_dataframes_with_errors(
             fs_path=os.path.join(trial.storage.trial_fs_path, EXPR_PROGRESS_FILE),
         )
 
-    experiment_analysis.fetch_trial_dataframes()
+    experiment_analysis._fetch_trial_dataframes()
     assert "Could not fetch metrics for" in caplog.text
     assert "FileNotFoundError" in caplog.text
     caplog.clear()
