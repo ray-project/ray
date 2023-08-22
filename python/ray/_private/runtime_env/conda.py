@@ -219,7 +219,10 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
     """Return `"conda://<hashed_dependencies>"`, or None if no GC required."""
     conda = runtime_env.get("conda")
     if conda is not None:
-        if isinstance(conda, str) or isinstance(conda, dict):
+        if isinstance(conda, str):
+            return None
+
+        if isinstance(conda, dict):
             # User-preinstalled conda env.  We don't garbage collect these, so
             # we don't track them with URIs.
             uri = f"conda://{_get_conda_env_hash(conda_dict=conda)}"
@@ -269,6 +272,12 @@ class CondaPlugin(RuntimeEnvPlugin):
         self._installs_and_deletions_file_lock = os.path.join(
             self._resources_dir, "ray-conda-installs-and-deletions.lock"
         )
+        # A set of named conda environments (instead of yaml or dict)
+        # that are validated to exist.
+        # NOTE: It has to be only used within the same thread, which
+        # is an event loop.
+        # Also, we don't need to GC this field because it is pretty small.
+        self._validated_named_conda_env = set()
 
     def _get_path_from_hash(self, hash: str) -> str:
         """Generate a path from the hash of a conda or pip spec.
@@ -329,6 +338,11 @@ class CondaPlugin(RuntimeEnvPlugin):
                 # The conda env name is given.
                 # In this case, we only verify if the given
                 # conda env exists.
+
+                # If the env is already validated, do nothing.
+                if result in self._validated_named_conda_env:
+                    return 0
+
                 conda_env_list = get_conda_env_list()
                 envs = [Path(env).name for env in conda_env_list]
                 if result not in envs:
@@ -339,6 +353,7 @@ class CondaPlugin(RuntimeEnvPlugin):
                         "You can only specify an env that already exists. "
                         f"Please make sure to create an env {result} "
                     )
+                self._validated_named_conda_env.add(result)
                 return 0
 
             logger.debug(
