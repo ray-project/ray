@@ -288,7 +288,7 @@ py_test(
     name = "test_checkpoint_manager",
     size = "small",
     srcs = ["tests/test_checkpoint_manager.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"]
 )
 
