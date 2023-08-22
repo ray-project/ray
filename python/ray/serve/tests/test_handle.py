@@ -8,21 +8,22 @@ import requests
 import ray
 
 from ray import serve
-from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import HandleOptions, RayServeHandle, RayServeSyncHandle
+from ray.serve.handle import _HandleOptions, RayServeHandle, RayServeSyncHandle
+from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
 from ray.serve._private.constants import (
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.common import RequestProtocol
 
 
 def test_handle_options():
-    default_options = HandleOptions()
+    default_options = _HandleOptions()
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Test setting method name.
     only_set_method = default_options.copy_and_update(method_name="hi")
@@ -34,6 +35,7 @@ def test_handle_options():
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Test setting model ID.
     only_set_model_id = default_options.copy_and_update(multiplexed_model_id="hi")
@@ -45,6 +47,7 @@ def test_handle_options():
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Test setting stream.
     only_set_stream = default_options.copy_and_update(stream=True)
@@ -56,12 +59,14 @@ def test_handle_options():
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Test setting multiple.
     set_multiple = default_options.copy_and_update(method_name="hi", stream=True)
     assert set_multiple.method_name == "hi"
     assert set_multiple.multiplexed_model_id == ""
     assert set_multiple.stream is True
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
 
 @pytest.mark.asyncio
@@ -135,16 +140,13 @@ def test_sync_handle_in_thread(serve_instance):
     handle = serve.run(f.bind())
 
     def thread_get_handle(deploy):
-        deployment_name = (
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}{deploy._name}"
-        )
-        handle = get_global_client().get_handle(deployment_name, sync=True)
+        handle = serve.get_deployment_handle(deploy._name, SERVE_DEFAULT_APP_NAME)
         return handle
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         fut = executor.submit(thread_get_handle, f)
         handle = fut.result()
-        assert ray.get(handle.remote()) == "hello"
+        assert handle.remote().result() == "hello"
 
 
 def test_handle_in_endpoint(serve_instance):
@@ -207,13 +209,16 @@ def test_handle_option_chaining(serve_instance):
             return "__call__"
 
     handle1 = serve.run(MultiMethod.bind())
+    metrics = handle1.request_counter
     assert ray.get(handle1.remote()) == "__call__"
 
     handle2 = handle1.options(method_name="method_a")
     assert ray.get(handle2.remote()) == "method_a"
+    assert handle2.request_counter == metrics
 
     handle3 = handle1.options(method_name="method_b")
     assert ray.get(handle3.remote()) == "method_b"
+    assert handle3.request_counter == metrics
 
 
 def test_repeated_get_handle_cached(serve_instance):
@@ -364,6 +369,65 @@ def test_handle_options_with_same_router(serve_instance):
     handle2 = handle.options(multiplexed_model_id="model2")
     assert handle._router
     assert id(handle2._router) == id(handle._router)
+
+
+class MyRouter(PowerOfTwoChoicesReplicaScheduler):
+    pass
+
+
+@pytest.mark.parametrize("use_new_handle_api", [False, True])
+def test_handle_options_custom_router(serve_instance, use_new_handle_api: bool):
+    @serve.deployment
+    def echo(name: str):
+        return f"Hi {name}"
+
+    handle = serve.run(echo.bind()).options(
+        _router_cls="ray.serve.tests.test_handle.MyRouter",
+        use_new_handle_api=use_new_handle_api,
+    )
+
+    if use_new_handle_api:
+        result = handle.remote("HI").result()
+    else:
+        result = ray.get(handle.remote("HI"))
+
+    assert result == "Hi HI"
+
+    print("Router class used", handle._router._replica_scheduler)
+    assert (
+        "MyRouter" in handle._router._replica_scheduler.__class__.__name__
+    ), handle._router._replica_scheduler
+
+
+def test_set_request_protocol(serve_instance):
+    """Test setting request protocol for a handle.
+
+    When a handle is created, it's _request_protocol is undefined. When calling
+    `_set_request_protocol()`, _request_protocol is set to the specified protocol.
+    When chaining options, the _request_protocol on the new handle is copied over.
+    When calling `_set_request_protocol()` on the new handle, _request_protocol
+    on the new handle is changed accordingly, while _request_protocol on the
+    original handle remains unchanged.
+    """
+
+    @serve.deployment
+    def echo(name: str):
+        return f"Hi {name}"
+
+    handle = serve.run(echo.bind())
+    assert handle.handle_options._request_protocol == RequestProtocol.UNDEFINED
+
+    handle._set_request_protocol(RequestProtocol.HTTP)
+    assert handle.handle_options._request_protocol == RequestProtocol.HTTP
+
+    multiplexed_model_id = "fake-multiplexed_model_id"
+    new_handle = handle.options(multiplexed_model_id=multiplexed_model_id)
+    assert new_handle.handle_options.multiplexed_model_id == multiplexed_model_id
+    assert new_handle.handle_options._request_protocol == RequestProtocol.HTTP
+
+    new_handle._set_request_protocol(RequestProtocol.GRPC)
+    assert new_handle.handle_options._request_protocol == RequestProtocol.GRPC
+    assert handle.handle_options._request_protocol == RequestProtocol.HTTP
 
 
 if __name__ == "__main__":

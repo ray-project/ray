@@ -60,39 +60,34 @@ parts:
         title: Ray Train
         sections:
           - file: train/key-concepts
-            title: "Key Concepts"
-          - file: train/distributed-pytorch
-            sections:
-              - file: train/distributed-pytorch/converting-existing-training-loop
-              - file: train/distributed-pytorch/data-loading-preprocessing
-              - file: train/distributed-pytorch/using-gpus
-              - file: train/distributed-pytorch/persistent-storage
-                title: Configuring Persistent Storage
-              - file: train/distributed-pytorch/monitoring-logging
-              - file: train/distributed-pytorch/checkpoints
-              - file: train/distributed-pytorch/experiment-tracking
-              - file: train/distributed-pytorch/fault-tolerance
-              - file: train/distributed-pytorch/advanced
-                sections:
-                    - file: train/distributed-pytorch/reproducibility
-                    - file: train/distributed-pytorch/automatic-mixed-precision
-                    - file: train/distributed-pytorch/hyperparameter-optimization
-                      title: Hyperparameter optimization
+            title: Key Concepts
+          - file: train/getting-started-pytorch
+            title: PyTorch Guide
+          - file: train/getting-started-pytorch-lightning
+            title: PyTorch Lightning Guide
+          - file: train/getting-started-transformers
+            title: Hugging Face Transformers Guide
           - file: train/more-frameworks
             sections:
+              - file: train/huggingface-accelerate
+                title: Hugging Face Accelerate Guide
+              - file: train/deepspeed
+                title: DeepSpeed Guide
               - file: train/distributed-tensorflow-keras
+                title: TensorFlow and Keras Guide
               - file: train/distributed-xgboost-lightgbm
+                title: XGBoost and LightGBM Guide
               - file: train/horovod
-          - file: train/internals/index
-            sections:
-              - file: train/internals/architecture
-              - file: train/internals/benchmarks
-              - file: train/internals/environment-variables
+                title: Horovod Guide
+          - file: train/user-guides
+            title: User Guides
           - file: train/examples
             title: "Examples"
             sections:
               - file: train/examples/pytorch/torch_fashion_mnist_example
                 title: "PyTorch Fashion MNIST Example"
+              - file: train/examples/transformers/transformers_torch_trainer_basic
+                title: "Hugging Face Transformers Basic Example"
               - file: train/examples/lightning/lightning_mnist_example
                 title: "PyTorch Lightning Basic Example"
               - file: train/examples/lightning/lightning_cola_advanced
@@ -105,8 +100,6 @@ parts:
                 title: "TensorFlow MNIST Example"
               - file: train/examples/horovod/horovod_example
                 title: "Horovod Example"
-              - file: train/examples/mlflow_fashion_mnist_example
-                title: "MLflow Callback Example"
               - file: train/examples/tf/tune_tensorflow_mnist_example
                 title: "Tune & TensorFlow Example"
               - file: train/examples/pytorch/tune_cifar_torch_pbt_example
@@ -117,8 +110,14 @@ parts:
                 title: "PyTorch Finetuning ResNet Example"
               - file: train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune
                 title: "Fine-tune Vicuna-13B with DeepSpeed and PyTorch Lightning"
-          - file: train/faq
+          - file: train/internals/index
+            title: "Internals"
+            sections:
+              - file: train/internals/architecture
+              - file: train/internals/benchmarks
+              - file: train/internals/environment-variables
           - file: train/api/api
+          - file: train/faq
 
       - file: tune/index
         title: Ray Tune

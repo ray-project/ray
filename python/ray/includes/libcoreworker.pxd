@@ -13,6 +13,7 @@ from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CActorID,
+    CClusterID,
     CNodeID,
     CJobID,
     CTaskID,
@@ -348,6 +349,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_string&,
             const c_vector[c_string]&) nogil) run_on_util_worker_handler
         (void(const CRayObject&) nogil) unhandled_exception_handler
+        (void(
+            const CTaskID &c_task_id,
+            const CRayFunction &ray_function,
+            const c_string c_name_of_concurrency_group_to_execute
+        ) nogil) cancel_async_task
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool is_local_mode
         int num_workers
@@ -359,6 +365,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool connect_on_start
         int runtime_env_hash
         int startup_token
+        CClusterID cluster_id
         c_string session_name
         c_string entrypoint
         int64_t worker_launch_time_ms
