@@ -660,7 +660,6 @@ def validate_save_restore(
     trainable_cls: Type,
     config: Optional[Dict] = None,
     num_gpus: int = 0,
-    use_object_store: bool = False,
 ):
     """Helper method to check if your Trainable class will resume correctly.
 
@@ -687,13 +686,7 @@ def validate_save_restore(
         "to be returned."
     )
 
-    if use_object_store:
-        restore_check = trainable_2.restore_from_object.remote(
-            trainable_1.save_to_object.remote()
-        )
-        ray.get(restore_check)
-    else:
-        restore_check = ray.get(trainable_2.restore.remote(trainable_1.save.remote()))
+    restore_check = ray.get(trainable_2.restore.remote(trainable_1.save.remote()))
 
     res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 4

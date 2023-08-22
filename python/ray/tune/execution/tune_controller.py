@@ -1919,9 +1919,11 @@ class TuneController:
             return
 
         if storage == CheckpointStorage.MEMORY:
+            # This is now technically a persistent checkpoint, but
+            # we don't resolve it. Instead, we register it directly.
             future = self._schedule_trial_task(
                 trial=trial,
-                method_name="save_to_object",
+                method_name="save",
                 on_result=None,
                 on_error=self._trial_task_failure,
                 _return_future=True,
@@ -2080,7 +2082,7 @@ class TuneController:
         kwargs = {}
 
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
-            method_name = "restore_from_object"
+            method_name = "restore"
             args = (checkpoint.dir_or_data,)
         elif (
             trial.uses_cloud_checkpointing
@@ -2099,10 +2101,10 @@ class TuneController:
             }
         elif trial.sync_on_checkpoint:
             checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint.dir_or_data)
-            obj = Checkpoint.from_directory(checkpoint_path).to_bytes()
+            checkpoint = Checkpoint.from_directory(checkpoint_path)
 
-            method_name = "restore_from_object"
-            args = (obj,)
+            method_name = "restore"
+            args = (checkpoint,)
         else:
             raise _AbortTrialExecution(
                 "Pass in `sync_on_checkpoint=True` for driver-based trial"
