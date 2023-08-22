@@ -381,7 +381,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         severity_levels = req.query.getall("severityLevel", [])
         count = int(req.query.get("count", 200))
 
-        # Filtering out specified keys from the query parameters and get {entity_name: entity_id}, for example, serve_app_name: "app"
+        # Filtering out specified keys from the query parameters and
+        # get {entity_name: entity_id}, for example, serve_app_name: "app"
         excluded_keys = ["job_id", "sourceType", "severityLevel", "count"]
         rest_of_query = {
             key: value for key, value in req.query.items() if key not in excluded_keys
@@ -391,7 +392,9 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             job_id
         )
 
-        all_events = self.filter_events(all_events, severity_levels, source_types, **rest_of_query)
+        all_events = self.filter_events(
+            all_events, severity_levels, source_types, **rest_of_query
+        )
 
         all_events.sort(key=lambda entry: entry["timestamp"], reverse=True)
         all_events = all_events[:count]
