@@ -1,6 +1,6 @@
 (kuberay-gpu-training-example)=
 
-# ML training with GPUs on Kubernetes
+# Train PyTorch ResNet model with GPUs on Kubernetes
 In this guide, we show you how to run a sample Ray machine learning training workload with GPU on Kubernetes infrastructure. We will run Ray's {ref}`PyTorch image training benchmark <pytorch_gpu_training_benchmark>` with a 1 gigabyte training set.
 
 :::{note}
