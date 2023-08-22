@@ -456,6 +456,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
 
+  /// Return all pending children task ids for a given parent task id.
+  /// The parent task id should exist in the current worker.
+  /// For debugging and testing only.
+  std::vector<TaskID> GetPendingChildrenTasks(const TaskID &task_id) const;
+
   /// Get the RPC address of this worker.
   ///
   /// \param[out] The RPC address of this worker.
@@ -826,6 +831,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// that serves as an allowlist of frontend-language exceptions/errors that should be
   /// retried. Default is an empty string, which will be treated as an allow-all in the
   /// language worker.
+  /// param[in] current_task_id The current task_id that submits the task.
+  /// If Nil() is given, it will be automatically propagated from worker_context.
+  /// This is used when worker_context cannot reliably obtain the curernt task_id
+  /// i.e., Python async actors.
   /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function,
@@ -835,7 +844,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       bool retry_exceptions,
       const rpc::SchedulingStrategy &scheduling_strategy,
       const std::string &debugger_breakpoint,
-      const std::string &serialized_retry_exception_allowlist = "");
+      const std::string &serialized_retry_exception_allowlist = "",
+      const TaskID current_task_id = TaskID::Nil());
 
   /// Create an actor.
   ///
@@ -892,13 +902,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] task_returns The object returned by this task
+  /// param[in] current_task_id The current task_id that submits the task.
+  /// If Nil() is given, it will be automatically propagated from worker_context.
+  /// This is used when worker_context cannot reliably obtain the curernt task_id
+  /// i.e., Python async actors.
   ///
   /// \return Status of this submission
   Status SubmitActorTask(const ActorID &actor_id,
                          const RayFunction &function,
                          const std::vector<std::unique_ptr<TaskArg>> &args,
                          const TaskOptions &task_options,
-                         std::vector<rpc::ObjectReference> &task_returns);
+                         std::vector<rpc::ObjectReference> &task_returns,
+                         const TaskID current_task_id = TaskID::Nil());
 
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///

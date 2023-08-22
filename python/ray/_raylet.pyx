@@ -33,6 +33,7 @@ from typing import (
     AsyncGenerator
 )
 
+import contextvars
 import concurrent
 from concurrent.futures import ThreadPoolExecutor
 
@@ -234,6 +235,15 @@ job_config_initialization_lock = threading.Lock()
 # It is used to indicate optional::nullopt for
 # AllocateDynamicReturnId.
 cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
+# This argument is used to obtain the correct task id inside
+# an asyncio task. It is because task_id can be obtained
+# by the worker_context_ API, which is per thread, not per
+# asyncio task. TODO(sang): We should properly fix it.
+# Note that the context var is recommended to be defined
+# in the top module.
+# https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar
+# It is thread-safe.
+async_task_id = contextvars.ContextVar('async_task_id', default=None)
 
 
 class ObjectRefGenerator:
@@ -3477,6 +3487,11 @@ cdef class CoreWorker:
             CSchedulingStrategy c_scheduling_strategy
             c_vector[CObjectID] incremented_put_arg_ids
             c_string serialized_retry_exception_allowlist
+            CTaskID current_c_task_id
+            TaskID task_id_in_async_context = async_task_id.get()
+            # This task id is incorrect if async task is used.
+            # In this case, we should use task_id_in_async_context
+            TaskID current_task = self.get_current_task_id()
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -3506,6 +3521,15 @@ cdef class CoreWorker:
                 name, num_returns, c_resources,
                 b"",
                 serialized_runtime_env_info)
+
+            # We are in the async context. We have to obtain
+            # the task id from this context var. get_current_task_id()
+            # doesn't contain the correct id for asyncio tasks.
+            if task_id_in_async_context is not None:
+                current_c_task_id = task_id_in_async_context.native()
+            else:
+                current_c_task_id = current_task.native()
+
             with nogil:
                 return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                     ray_function, args_vector, task_options,
@@ -3513,6 +3537,7 @@ cdef class CoreWorker:
                     c_scheduling_strategy,
                     debugger_breakpoint,
                     serialized_retry_exception_allowlist,
+                    current_c_task_id,
                 )
 
             # These arguments were serialized and put into the local object
@@ -3688,6 +3713,11 @@ cdef class CoreWorker:
             c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectReference] return_refs
             c_vector[CObjectID] incremented_put_arg_ids
+            CTaskID current_c_task_id = CTaskID.Nil()
+            TaskID task_id_in_async_context = async_task_id.get()
+            # This task id is incorrect if async task is used.
+            # In this case, we should use task_id_in_async_context
+            TaskID current_task = self.get_current_task_id()
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
@@ -3698,6 +3728,14 @@ cdef class CoreWorker:
                 self, language, args, &args_vector, function_descriptor,
                 &incremented_put_arg_ids)
 
+            # We are in the async context. We have to obtain
+            # the task id from this context var. get_current_task_id()
+            # doesn't contain the correct id for asyncio tasks.
+            if task_id_in_async_context is not None:
+                current_c_task_id = task_id_in_async_context.native()
+            else:
+                current_c_task_id = current_task.native()
+
             with nogil:
                 status = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
                     c_actor_id,
@@ -3705,7 +3743,8 @@ cdef class CoreWorker:
                     args_vector,
                     CTaskOptions(
                         name, num_returns, c_resources, concurrency_group_name),
-                    return_refs)
+                    return_refs,
+                    current_c_task_id)
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
             # ref count initially to ensure that they remain in scope until we
@@ -4209,12 +4248,18 @@ cdef class CoreWorker:
         eventloop, async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
 
-        if inspect.isawaitable(func_or_coro):
-            coroutine = func_or_coro
-        else:
-            coroutine = func_or_coro(*args, **kwargs)
+        async def async_func():
+            if task_id:
+                async_task_id.set(task_id)
 
-        future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
+            if inspect.isawaitable(func_or_coro):
+                coroutine = func_or_coro
+            else:
+                coroutine = func_or_coro(*args, **kwargs)
+
+            return await coroutine
+
+        future = asyncio.run_coroutine_threadsafe(async_func(), eventloop)
         if task_id:
             with self.task_id_to_future_lock:
                 self.task_id_to_future[task_id] = asyncio.wrap_future(
@@ -4290,6 +4335,25 @@ cdef class CoreWorker:
     cdef yield_current_fiber(self, CFiberEvent &fiber_event):
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().YieldCurrentFiber(fiber_event)
+
+    def get_pending_children_task_ids(self, parent_task_id: TaskID):
+        cdef:
+            CTaskID c_parent_task_id = parent_task_id.native()
+            c_vector[CTaskID] ret
+            c_vector[CTaskID].iterator it
+
+        result = []
+
+        with nogil:
+            ret = CCoreWorkerProcess.GetCoreWorker().GetPendingChildrenTasks(
+                c_parent_task_id)
+
+        it = ret.begin()
+        while it != ret.end():
+            result.append(TaskID(dereference(it).Binary()))
+            postincrement(it)
+
+        return result
 
     def get_all_reference_counts(self):
         cdef:
