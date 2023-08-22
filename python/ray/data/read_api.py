@@ -2308,7 +2308,11 @@ def _get_reader(
         OOM, the estimated inmemory data size, and the reader generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
-    if local_uri:
+    # NOTE: `ParquetDatasource` has separate steps to fetch metadata and sample rows,
+    # so it needs `local_uri` parameter for now.
+    # TODO(chengsu): stop passing `local_uri` parameter to
+    # `ParquetDatasource.create_reader()`.
+    if local_uri and isinstance(ds, ParquetDatasource):
         kwargs["local_uri"] = local_uri
     DataContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
