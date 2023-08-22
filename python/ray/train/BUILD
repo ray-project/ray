@@ -223,7 +223,7 @@ py_test(
     size = "medium",
     main = "examples/pytorch/torch_regression_example.py",
     srcs = ["examples/pytorch/torch_regression_example.py"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
