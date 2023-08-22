@@ -24,6 +24,9 @@ from ray.train.examples.pytorch.torch_linear_example import (
 )
 
 
+MAX_RETRIES = 3
+
+
 @pytest.fixture(autouse=True, scope="module")
 def patch_tune_session():
     tempdir = tempfile.mkdtemp()
@@ -98,15 +101,9 @@ def create_iterator(
     train_func = construct_train_func(train_func, None)
 
     backend_executor = backend_executor_cls(
-        backend_config=backend_config, num_workers=num_workers
+        backend_config=backend_config, num_workers=num_workers, max_retries=MAX_RETRIES
     )
     backend_executor.start(init_hook)
-
-    class _CheckpointConfig(CheckpointConfig):
-        def __post_init__(self):
-            pass
-
-    checkpoint_strategy = _CheckpointConfig(num_to_keep=0)
 
     return TrainingIterator(
         backend_executor=backend_executor,
@@ -116,9 +113,9 @@ def create_iterator(
         datasets={},
         metadata={},
         data_config=DataConfig(),
-        checkpoint_manager=CheckpointManager(checkpoint_strategy=checkpoint_strategy),
         checkpoint=None,
-        checkpoint_strategy=checkpoint_strategy,
+        checkpoint_strategy=CheckpointConfig(),
+        checkpoint_manager=CheckpointManager(),
     )
 
 
@@ -139,24 +136,6 @@ def test_run_iterator(ray_start_4_cpus):
 
     assert count == 3
     assert iterator.is_finished()
-    assert iterator.get_final_results() == [1, 1]
-
-    with pytest.raises(StopIteration):
-        next(iterator)
-
-
-def test_run_iterator_returns(ray_start_4_cpus):
-    config = BackendConfig()
-
-    def train_func():
-        for i in range(3):
-            train.report(dict(index=i))
-        return 1
-
-    iterator = create_iterator(train_func, config)
-
-    assert iterator.get_final_results() is None
-    assert iterator.get_final_results(force=True) == [1, 1]
 
     with pytest.raises(StopIteration):
         next(iterator)
@@ -178,29 +157,12 @@ def test_run_iterator_error(ray_start_4_cpus):
         exc.value.__cause__,
     )
 
-    assert iterator.get_final_results() is None
     assert iterator.is_finished()
-
-
-def test_no_exhaust(ray_start_4_cpus, tmp_path):
-    """Tests if training can finish even if queue is not exhausted."""
-
-    def train_func():
-        for _ in range(2):
-            train.report(dict(loss=1))
-        return 2
-
-    config = BackendConfig()
-
-    iterator = create_iterator(train_func, config)
-    output = iterator.get_final_results(force=True)
-
-    assert output == [2, 2]
 
 
 def test_worker_failure_1(ray_start_4_cpus):
     def train_func():
-        return 1
+        train.report({"test": 1})
 
     def train_actor_failure():
         import sys
@@ -214,16 +176,14 @@ def test_worker_failure_1(ray_start_4_cpus):
     iterator = create_iterator(
         train_func, config, backend_executor_cls=new_backend_executor_cls
     )
-    output = iterator.get_final_results(force=True)
-
-    assert output == [1, 1]
+    for worker_results in iterator:
+        assert all(result.metrics["test"] == 1 for result in worker_results)
 
 
 def test_worker_failure_2(ray_start_4_cpus):
     def train_func():
         for _ in range(2):
             train.report(dict(loss=1))
-        return 1
 
     def train_actor_failure():
         for _ in range(2):
@@ -239,20 +199,18 @@ def test_worker_failure_2(ray_start_4_cpus):
     iterator = create_iterator(
         train_func, config, backend_executor_cls=new_backend_executor_cls
     )
-    output = iterator.get_final_results(force=True)
-
-    assert output == [1, 1]
+    for worker_results in iterator:
+        assert all(result.metrics["loss"] == 1 for result in worker_results)
 
 
 def test_worker_failure_local_rank(ray_start_4_cpus):
     def train_func():
-        return train.get_context().get_local_rank()
+        train.report({"rank": train.get_context().get_local_rank()})
 
     def train_actor_failure():
         import sys
 
         sys.exit(1)
-        return train.get_context().get_local_rank()
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
@@ -261,9 +219,8 @@ def test_worker_failure_local_rank(ray_start_4_cpus):
     iterator = create_iterator(
         train_func, config, backend_executor_cls=new_backend_executor_cls
     )
-    output = iterator.get_final_results(force=True)
-
-    assert output == [0, 1]
+    for worker_results in iterator:
+        assert {result.metrics["rank"] for result in worker_results} == {0, 1}
 
 
 def test_worker_start_failure(ray_start_4_cpus):
@@ -289,8 +246,6 @@ def test_worker_start_failure(ray_start_4_cpus):
         backend_executor_cls=TestBackendExecutor,
         init_hook=init_hook_fail,
     )
-    iterator.get_final_results(force=True)
-
     assert len(iterator._backend_executor.get_worker_group()) == 2
 
 
@@ -304,8 +259,9 @@ def test_max_failures(ray_start_4_cpus):
 
     iterator = create_iterator(train_func, config)
     with pytest.raises(RuntimeError):
-        iterator.get_final_results(force=True)
-    assert iterator._backend_executor._get_num_failures() == 3
+        for _ in iterator:
+            pass
+    assert iterator._backend_executor._get_num_failures() == MAX_RETRIES
 
 
 def test_start_max_failures(ray_start_4_cpus):
@@ -368,7 +324,6 @@ def test_worker_kill(ray_start_4_cpus, backend):
         # Run 3: iter=0, counter=2, Successful
         # Run 4: iter=1, counter=3, Successful
         kill_callback.handle_result()
-    iterator.get_final_results()
     assert kill_callback.counter == 3
 
     iterator = create_iterator(train_func, test_config)
@@ -380,7 +335,6 @@ def test_worker_kill(ray_start_4_cpus, backend):
         # Run 4: iter=0, counter=3, Successful
         # Run 5: iter=1, counter=4, Successful
         kill_callback.handle_result()
-    iterator.get_final_results()
     assert kill_callback.counter == 4
 
 
@@ -408,7 +362,6 @@ def test_worker_kill_checkpoint(ray_start_4_cpus):
         # *Worker is killed*
         # Run 2: epoch=1, counter=2, Successful
         kill_callback.handle_result()
-    iterator.get_final_results()
     assert kill_callback.counter == 2
 
 
@@ -433,8 +386,11 @@ def test_tensorflow_mnist_fail(ray_start_4_cpus):
 
     results = kill_callback.results
     assert len(results) == epochs
-    assert results[-1][0]["loss"] < results[0][0]["loss"]
-    assert results[-1][0]["accuracy"] > results[0][0]["accuracy"]
+    last_iter_result = results[-1][0].metrics
+    first_iter_result = results[0][0].metrics
+
+    assert last_iter_result["loss"] < first_iter_result["loss"]
+    assert last_iter_result["accuracy"] > first_iter_result["accuracy"]
 
 
 def test_torch_linear_failure(ray_start_4_cpus):
@@ -459,7 +415,9 @@ def test_torch_linear_failure(ray_start_4_cpus):
     results = kill_callback.results
     assert len(results) == epochs
     for i in range(num_workers):
-        assert results[-1][i]["loss"] < results[0][i]["loss"]
+        last_result = results[-1][i].metrics
+        first_result = results[0][i].metrics
+        assert last_result["loss"] < first_result["loss"]
 
 
 if __name__ == "__main__":
