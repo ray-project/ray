@@ -69,7 +69,7 @@ py_test(
     size = "small",
     main = "examples/pytorch/torch_quick_start.py",
     srcs = ["examples/pytorch/torch_quick_start.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"]
 )
 
