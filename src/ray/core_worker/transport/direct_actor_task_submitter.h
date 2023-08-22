@@ -278,8 +278,9 @@ class CoreWorkerDirectActorTaskSubmitter
     /// notification, in this case we'll wait for a fixed timeout value and then mark it
     /// as failed.
     /// pair key: timestamp in ms when this task should be considered as timeout.
-    /// pair value: task specification
-    std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
+    /// pair value: task specification, and associated task execution status.
+    std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>
+        wait_for_death_info_tasks;
 
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
