@@ -85,6 +85,9 @@ class TuneReportCheckpointCallback(TuneCallback):
     """
 
     _checkpoint_callback_cls = None
+    # ATTN: There's a typo here (callback_s_) compared to lightgbm.
+    # The property is used in e.g. XGBoost-Ray, so we can't just rename it.
+    # Just be aware of it when changing logic in both xgboost + lightgbm
     _report_callbacks_cls = None
 
     def __init__(
