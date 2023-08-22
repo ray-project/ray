@@ -223,7 +223,7 @@ class RayClusterOnSpark:
 def _convert_ray_node_option(key, value):
     converted_key = f"--{key.replace('_', '-')}"
     if key in ["system_config", "resources", "labels"]:
-        return f"{converted_key}='{json.dumps(value)}'"
+        return f"{converted_key}={json.dumps(value)}"
     if value is None:
         return converted_key
     return f"{converted_key}={str(value)}"
