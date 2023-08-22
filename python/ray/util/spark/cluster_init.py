@@ -229,17 +229,18 @@ def _convert_ray_node_option(key, value):
     return f"{converted_key}={str(value)}"
 
 
-def _convert_ray_node_options(options, *, object_spilling_path):
-    if "system_config" not in options:
-        options["system_config"] = {}
-    sys_conf = options["system_config"]
-    if "object_spilling_config" not in sys_conf:
-        sys_conf["object_spilling_config"] = json.dumps({
-          "type": "filesystem",
-          "params": {
-            "directory_path": object_spilling_path,
-          }
-        })
+def _convert_ray_node_options(options, *, object_spilling_path=None):
+    if object_spilling_path is not None:
+        if "system_config" not in options:
+            options["system_config"] = {}
+        sys_conf = options["system_config"]
+        if "object_spilling_config" not in sys_conf:
+            sys_conf["object_spilling_config"] = json.dumps({
+              "type": "filesystem",
+              "params": {
+                "directory_path": object_spilling_path,
+              }
+            })
     return [
         _convert_ray_node_option(k, v)
         for k, v in options.items()
