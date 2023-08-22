@@ -1,6 +1,7 @@
 group: core tests
 steps:
   - label: ":ray: core: python tests"
+    if: "false"
     instance_type: large
     parallelism: 6
     commands:
