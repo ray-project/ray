@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Ty
 
 import ray
 import ray.cloudpickle as ray_pickle
+from pyarrow._fs import FileType
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
@@ -903,7 +904,7 @@ class Trainable:
 
         """
         if _use_storage_context():
-            checkpoint_result = checkpoint_path
+            checkpoint_result: _TrainingResult = checkpoint_path
             assert isinstance(checkpoint_result, _TrainingResult)
 
             checkpoint_metrics = checkpoint_result.metrics
@@ -917,12 +918,22 @@ class Trainable:
             self._timesteps_since_restore = 0
             self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
 
+            checkpoint = checkpoint_result.checkpoint
+            file_info = checkpoint.filesystem.get_file_info(checkpoint.path)
+            if file_info.type == FileType.NotFound:
+                raise ValueError(
+                    f"Could not recover from checkpoint as it does not exist on "
+                    f"storage anymore. "
+                    f"Got storage fs type `{checkpoint.filesystem.type_name}` and "
+                    f"path: {checkpoint.path}"
+                )
+
             # TODO(justinvyu): [cls_trainable_support]
             # This is to conform to the public class Trainable `load_checkpoint` API.
             if not isinstance(self, ray.tune.trainable.FunctionTrainable):
                 # Need to convert Checkpoint -> local path or dict
                 # (depending on what the output of save_checkpoint was)
-                with checkpoint_result.checkpoint.as_directory() as checkpoint_dir:
+                with checkpoint.as_directory() as checkpoint_dir:
                     checkpoint_path = Path(checkpoint_dir)
                     dict_checkpoint_file = checkpoint_path / _DICT_CHECKPOINT_FILE_NAME
                     if dict_checkpoint_file.exists():

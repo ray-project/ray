@@ -5,6 +5,7 @@ import math
 import os
 import random
 import shutil
+import warnings
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
@@ -471,6 +472,19 @@ class PopulationBasedTraining(FIFOScheduler):
                 )
             )
 
+        checkpoint_config = trial.run_metadata.checkpoint_manager.checkpoint_config
+        if (
+            checkpoint_config.num_to_keep
+            and checkpoint_config.checkpoint_config <= 2
+            and log_once("pbt_num_to_keep")
+        ):
+            warnings.warn(
+                "Using `CheckpointConfig.num_to_keep <= 2` with PBT can lead to "
+                "restoration problems when checkpoint are deleted too early for "
+                "other trials to exploit them. If this happens, increase the value "
+                "of `num_to_keep`."
+            )
+
         self._trial_state[trial] = _PBTTrialState(trial)
 
         for attr in self._hyperparam_mutations.keys():
@@ -531,12 +545,19 @@ class PopulationBasedTraining(FIFOScheduler):
 
         # Continue training if burn-in period has not been reached, yet.
         if time < self._burn_in_period:
+            logger.debug(f"Still in burn-in period: {time} < {self._burn_in_period}")
             return TrialScheduler.CONTINUE
 
         # Continue training if perturbation interval has not been reached, yet.
-        if time - state.last_perturbation_time < self._perturbation_interval:
+        time_since_perturb = time - state.last_perturbation_time
+        if time_since_perturb < self._perturbation_interval:
+            logger.debug(
+                f"Perturbation interval not reached: "
+                f"{time_since_perturb} < {self._perturbation_interval}"
+            )
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
+        logger.debug(f"Updating trial state for trial {trial} at time {time}")
         self._save_trial_state(state, time, result, trial)
 
         if not self._synch:
@@ -558,21 +579,33 @@ class PopulationBasedTraining(FIFOScheduler):
                 and t != trial
                 for t in tune_controller.get_live_trials()
             ):
-                logger.debug("Pausing trial {}".format(trial))
+                logger.debug(
+                    f"Sync: Other trials are not at perturb time, yet. "
+                    f"Pausing trial {trial} to wait."
+                )
             else:
                 # All trials are synced at the same timestep.
+                logger.debug("Sync: All trials are at perturb time.")
                 lower_quantile, upper_quantile = self._quantiles()
                 all_trials = tune_controller.get_trials()
                 not_in_quantile = []
                 for t in all_trials:
                     if t not in lower_quantile and t not in upper_quantile:
                         not_in_quantile.append(t)
+
+                logger.debug(
+                    "Trial statistics\n"
+                    f"Upper quantile: {upper_quantile}\n"
+                    f"Lower quantile: {lower_quantile}\n"
+                    f"Not in quantile: {not_in_quantile}"
+                )
+
                 # Move upper quantile trials to beginning and lower quantile
                 # to end. This ensures that checkpointing of strong trials
                 # occurs before exploiting of weaker ones.
                 all_trials = upper_quantile + not_in_quantile + lower_quantile
                 for t in all_trials:
-                    logger.debug("Perturbing Trial {}".format(t))
+                    logger.debug(f"Perturbing trial {t}")
                     self._trial_state[t].last_perturbation_time = time
                     self._checkpoint_or_exploit(
                         t, tune_controller, upper_quantile, lower_quantile
@@ -587,6 +620,7 @@ class PopulationBasedTraining(FIFOScheduler):
                     self._next_perturbation_sync + self._perturbation_interval,
                     max_last_train_time,
                 )
+                logger.debug(f"Next perturb at time {self._next_perturbation_sync}")
             # In sync mode we should pause all trials once result comes in.
             # Once a perturbation step happens for all trials, they should
             # still all be paused.
@@ -630,12 +664,22 @@ class PopulationBasedTraining(FIFOScheduler):
         if trial in upper_quantile:
             # The trial last result is only updated after the scheduler
             # callback. So, we override with the current result.
-            logger.debug("Trial {} is in upper quantile".format(trial))
-            logger.debug("Checkpointing {}".format(trial))
+            logger.debug(f"Trial {trial} is in upper quantile. Saving checkpoint.")
             if trial.status == Trial.PAUSED:
-                # Paused trial will always have an in-memory checkpoint.
-                state.last_checkpoint = trial.checkpoint
+                if trial.temporary_state.saving_to and isinstance(
+                    trial.temporary_state.saving_to, _FutureTrainingResult
+                ):
+                    logger.debug(f"Trial {trial} is still saving.")
+                    state.last_checkpoint = trial.temporary_state.saving_to
+                else:
+                    # Paused trial will always have an in-memory checkpoint.
+                    logger.debug(
+                        f"Trial {trial} is paused. Use last available "
+                        f"checkpoint {trial.checkpoint}."
+                    )
+                    state.last_checkpoint = trial.checkpoint
             else:
+                logger.debug(f"Instructing {trial} to save.")
                 state.last_checkpoint = tune_controller._schedule_trial_save(
                     trial, CheckpointStorage.PERSISTENT, result=state.last_result
                 )
@@ -644,11 +688,15 @@ class PopulationBasedTraining(FIFOScheduler):
             state.last_checkpoint = None  # not a top trial
 
         if trial in lower_quantile:
-            logger.debug("Trial {} is in lower quantile".format(trial))
             trial_to_clone = random.choice(upper_quantile)
             assert trial is not trial_to_clone
             clone_state = self._trial_state[trial_to_clone]
             last_checkpoint = clone_state.last_checkpoint
+
+            logger.debug(
+                f"Trial {trial} is in lower quantile. "
+                f"Exploiting trial {trial_to_clone}."
+            )
 
             if isinstance(last_checkpoint, _FutureTrainingResult):
                 training_result = last_checkpoint.resolve()
@@ -658,6 +706,11 @@ class PopulationBasedTraining(FIFOScheduler):
                     clone_state.last_checkpoint = training_result.checkpoint
                     last_checkpoint = clone_state.last_checkpoint
                 else:
+                    logger.debug(
+                        "PBT-scheduled checkpoint save resolved to None. Trial "
+                        f"{trial_to_clone} didn't save any checkpoint before "
+                        f"and can't be exploited."
+                    )
                     last_checkpoint = None
 
             if not last_checkpoint:

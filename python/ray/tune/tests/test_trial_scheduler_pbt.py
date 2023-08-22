@@ -173,7 +173,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
         )
 
         checkpoint_config = CheckpointConfig(
-            num_to_keep=1,
+            num_to_keep=2,
             checkpoint_frequency=2,
         )
 
