@@ -19,6 +19,7 @@ import numpy as np
 import ray
 from ray.rllib.algorithms.dreamerv3 import dreamerv3
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -68,20 +69,35 @@ class TestDreamerV3(unittest.TestCase):
                 print("Env={}".format(env))
                 config.environment(env)
                 algo = config.build()
+                obs_space = algo.workers.local_worker().env.single_observation_space
+                act_space = algo.workers.local_worker().env.single_action_space
                 rl_module = algo.workers.local_worker().module
 
                 for i in range(num_iterations):
                     results = algo.train()
                     print(results)
-                    # Test dream trajectory w/ recreated observations.
-                    sample = algo.replay_buffer.sample()
-                    rl_module.dreamer_model.dream_trajectory_with_burn_in(
-                        start_states=sample["obs"],
-                        timesteps_burn_in=5,
-                        timesteps_H=45,
-
-                    )
-
+                # Test dream trajectory w/ recreated observations.
+                sample = algo.replay_buffer.sample()
+                dream = rl_module.dreamer_model.dream_trajectory_with_burn_in(
+                    start_states=rl_module.dreamer_model.get_initial_state(),
+                    timesteps_burn_in=5,
+                    timesteps_H=45,
+                    observations=sample["obs"][:1],  # B=1
+                    actions=one_hot(
+                        sample["actions"],
+                        depth=act_space.n,
+                    )[
+                        :1
+                    ],  # B=1
+                )
+                self.assertTrue(
+                    dream["actions_dreamed_t0_to_H_BxT"].shape == (46, 1, act_space.n)
+                )
+                self.assertTrue(dream["continues_dreamed_t0_to_H_BxT"].shape == (46, 1))
+                self.assertTrue(
+                    dream["observations_dreamed_t0_to_H_BxT"].shape
+                    == [46, 1] + list(obs_space.shape)
+                )
                 algo.stop()
 
     def test_dreamerv3_dreamer_model_sizes(self):

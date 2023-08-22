@@ -5,7 +5,7 @@ An RLlib-based implementation of the
 [DreamerV3 model-based reinforcement learning algorithm](https://arxiv.org/pdf/2301.04104v1.pdf)
 by D. Hafner et al. (Google DeepMind) 2023, in TensorFlow/Keras. 
 
-This implementation allows scaling up the training by using multi-GPU machines for
+This implementation allows scaling up training by using multi-GPU machines for
 neural network updates (see below for tips and tricks, example configs, and command lines).
 
 DreamerV3 trains a world model in supervised fashion using real environment
@@ -16,8 +16,7 @@ continuation flag.
 Just like in a standard policy gradient algorithm (e.g. REINFORCE), the critic tries to
 predict a correct value function and the actor tries to come up with good actions
 choices that maximize accumulated rewards over time.
-Both these RL components of the model (actor and critic) are never
-trained on real environment data, but on dreamed trajectories produced by the world model.
+Both actor and critic are never trained on real environment data, but on dreamed trajectories produced by the world model.
 
 For more specific details about the algorithm refer to the
 [original paper](https://arxiv.org/pdf/2301.04104v1.pdf) (see below for all references).
@@ -43,13 +42,13 @@ adjustments should be made on top of the default config.
 - Multiply the number of environments you sample from in parallel by the number of GPUs you are using.
   Use the `DreamerV3Config.rollouts(num_envs_per_worker=..)` for this.
   For example, for 4 GPUs and a default environment count of 8 (the single-GPU default for
-  this setting depends on the benchmark you are running), use 32 parallel environments instead.
-- Use a learning rate schedule for all learning rates (world model, actor, critic) with "priming".
-  - In particular, the first ~10% of total env step needed for the experiment should use low
-    rates of `0.4` times of the published rates (i.e. world model: `4e-5`, critic and actor: `1.2e-5`). 
-  - Over the course of the next ~10% of total env steps, linearly increase all rates to
-    n times their published values, where `n=max(4, [num GPUs])`.
-  - For examples on how to set these LR-schedules within your `DreamerV3Config`, see below.
+  this setting depends on the benchmark you are running), use 32
+  parallel environments instead.
+- Roughly use learning rates that are the default values multiplied by the square root of the number of GPUs.
+  For example, when using 4 GPUs, multiply all default learning rates (for world model, critic, and actor) by 2.
+  - Additionally, a "priming"-style warmup schedule might help. Thereby, increase the learning rates from 0.0
+    to the final value(s) over the first ~10% of total env steps needed for the experiment.
+  - For examples on how to set such schedules within your `DreamerV3Config`, see below.
   - [See here](https://aws.amazon.com/blogs/machine-learning/the-importance-of-hyperparameter-tuning-for-scaling-deep-learning-training-to-multiple-gpus/) for more details on learning rate "priming".
 
 

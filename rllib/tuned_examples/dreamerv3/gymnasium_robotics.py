@@ -22,13 +22,11 @@ w = config.world_model_lr
 c = config.critic_lr
 
 config = (
-    config
-    .environment(
+    config.environment(
         # Android hand and hammer.
         "GRB/AdroitHandHammer-v1",
         # W/ sparse rewards.
         # "GRB/AdroitHandHammerSparse-v1",
-
         # Franka Kitchen.
         # "GRB/FrankaKitchen-v1",
         # env_config={
@@ -54,8 +52,8 @@ config = (
         model_size="XL",
         training_ratio=64,
         batch_size_B=16 * (num_gpus or 1),
-        world_model_lr=[[0, 0.4*w], [50000, 0.4*w], [100000, 3*w]],
-        critic_lr=[[0, 0.4*c], [50000, 0.4*c], [100000, 3*c]],
-        actor_lr=[[0, 0.4*c], [50000, 0.4*c], [100000, 3*c]],
+        world_model_lr=[[0, 0.4 * w], [50000, 0.4 * w], [100000, 3 * w]],
+        critic_lr=[[0, 0.4 * c], [50000, 0.4 * c], [100000, 3 * c]],
+        actor_lr=[[0, 0.4 * c], [50000, 0.4 * c], [100000, 3 * c]],
     )
 )

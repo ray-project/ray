@@ -71,7 +71,9 @@ class DreamerModel(tf.keras.Model):
 
         self.horizon = horizon
         self.gamma = gamma
-        self._comp_dtype = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
+        self._comp_dtype = (
+            tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
+        )
 
         self.disagree_nets = None
         if self.use_curiosity:
@@ -471,6 +473,7 @@ class DreamerModel(tf.keras.Model):
             actions: The batch (B, T, ...) of actions to use during a) burn-in over the
                 first `timesteps_burn_in` timesteps and - possibly - b) during
                 actual dreaming, iff use_sampled_actions_in_dream=True.
+                If applicable, actions must already be one-hot'd.
             use_sampled_actions_in_dream: If True, instead of using our actor network
                 to compute fresh actions, we will use the one provided via the `actions`
                 argument. Note that in the latter case, the `actions` time dimension
@@ -522,7 +525,8 @@ class DreamerModel(tf.keras.Model):
                     a = tf.one_hot(
                         a,
                         depth=self.action_space.n,
-                        dtype=tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32,
+                        dtype=tf.keras.mixed_precision.global_policy().compute_dtype
+                        or tf.float32,
                     )
                 # TODO: Support cont. action spaces with bound other than 0.0 and 1.0.
                 else:
@@ -550,6 +554,14 @@ class DreamerModel(tf.keras.Model):
 
         a_t0_to_H_B = tf.stack(a_t0_to_H, axis=0)
 
+        # Compute o using decoder.
+        o_dreamed_t0_to_HxB = self.world_model.decoder(
+            h=h_states_t0_to_HxB,
+            z=z_states_prior_t0_to_HxB,
+        )
+        if self.world_model.symlog_obs:
+            o_dreamed_t0_to_HxB = inverse_symlog(o_dreamed_t0_to_HxB)
+
         # Compute r using reward predictor.
         r_dreamed_t0_to_HxB, _ = self.world_model.reward_predictor(
             h=h_states_t0_to_HxB,
@@ -570,6 +582,9 @@ class DreamerModel(tf.keras.Model):
             "h_states_t0_to_H_BxT": h_states_t0_to_H_B,
             "z_states_prior_t0_to_H_BxT": z_states_prior_t0_to_H_B,
             # Unfold time-ranks in predictions.
+            "observations_dreamed_t0_to_H_BxT": tf.reshape(
+                o_dreamed_t0_to_HxB, [-1, B] + list(observations.shape)[2:]
+            ),
             "rewards_dreamed_t0_to_H_BxT": tf.reshape(r_dreamed_t0_to_HxB, (-1, B)),
             "continues_dreamed_t0_to_H_BxT": tf.reshape(c_dreamed_t0_to_HxB, (-1, B)),
         }

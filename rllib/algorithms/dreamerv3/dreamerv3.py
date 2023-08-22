@@ -601,7 +601,6 @@ class DreamerV3(Algorithm):
         while (
             replayed_steps_this_iter / env_steps_last_regular_sample
         ) < self.config.training_ratio:
-
             # Time individual batch updates.
             with self._timers[LEARN_ON_BATCH_TIMER]:
                 logger.info(f"\tSub-iteration {self.training_iteration}/{sub_iter})")
