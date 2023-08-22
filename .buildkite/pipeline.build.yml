@@ -220,7 +220,7 @@
     # Todo (krfricke): Move mosaicml to train-test-requirements.txt
     # TODO(scottjlee): Move datasets to train/data-test-requirements.txt 
     # (see https://github.com/ray-project/ray/pull/38432/)
-    - pip install "datasets==2.14.0"
+    - pip install "datasets==2.14.0" "mosaicml==0.15.0"
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
@@ -399,7 +399,7 @@
     - ./ci/env/install-horovod.sh
     # See https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
     # Pin urllib to avoid downstream ssl incompatibility issues. This matches requirements-doc.txt.
-    - pip install "mosaicml==0.12.1" "urllib3<1.27" "typing-extensions==4.5.0" --ignore-installed
+    - pip install "mosaicml==0.15.0" "urllib3<1.27" "typing-extensions==4.5.0" --ignore-installed
     - ./ci/env/env_info.sh
     - ./ci/ci.sh build_sphinx_docs
 
