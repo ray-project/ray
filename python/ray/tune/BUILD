@@ -137,18 +137,10 @@ py_test(
 
 py_test(
     name = "test_experiment_analysis",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_experiment_analysis.py"],
     deps = [":tune_lib", ":conftest"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
-)
-
-py_test(
-    name = "test_experiment_analysis_mem",
-    size = "medium",
-    srcs = ["tests/test_experiment_analysis_mem.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
@@ -180,7 +172,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_logger.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml"],
+    tags = ["team:ml", "new_storage"],
 )
 
 py_test(
@@ -239,7 +231,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_result_grid.py"],
     deps = [":tune_lib", ":conftest"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
