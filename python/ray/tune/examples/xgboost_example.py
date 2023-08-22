@@ -9,10 +9,7 @@ import xgboost as xgb
 import ray
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.integration.xgboost import (
-    TuneReportCheckpointCallback,
-    TuneReportCallback,
-)
+from ray.tune.integration.xgboost import TuneReportCheckpointCallback
 
 
 def train_breast_cancer(config: dict):
@@ -58,7 +55,9 @@ def train_breast_cancer_cv(config: dict):
         stratified=True,
         # Checkpointing is not supported for CV
         callbacks=[
-            TuneReportCallback(results_postprocessing_fn=average_cv_folds, frequency=1)
+            TuneReportCheckpointCallback(
+                results_postprocessing_fn=average_cv_folds, frequency=0
+            )
         ],
     )
 
