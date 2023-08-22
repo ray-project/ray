@@ -420,6 +420,9 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
     predictions.show(limit=1)
 
 
+.. _batch_inference_ray_train:
+
+
 Using models from Ray Train
 ---------------------------
 
@@ -476,13 +479,13 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
     import xgboost
 
     from ray.train import Checkpoint
-    from ray.train.xgboost import XGBoostCheckpoint
+    from ray.train.xgboost import LegacyXGBoostCheckpoint
 
     test_dataset = valid_dataset.drop_columns(["target"])
 
     class XGBoostPredictor:
         def __init__(self, checkpoint: Checkpoint):
-            xgboost_checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
+            xgboost_checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(checkpoint)
             self.model = xgboost_checkpoint.get_model()
         
         def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:

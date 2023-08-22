@@ -192,6 +192,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 class RAY_EXPORT PythonGcsClient {
  public:
   explicit PythonGcsClient(const GcsClientOptions &options);
+
   Status Connect(const ClusterID &cluster_id, int64_t timeout_ms, size_t num_retries);
 
   Status CheckAlive(const std::vector<std::string> &raylet_addresses,
@@ -229,7 +230,7 @@ class RAY_EXPORT PythonGcsClient {
   Status PinRuntimeEnvUri(const std::string &uri, int expiration_s, int64_t timeout_ms);
   Status GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &result);
   Status GetAllJobInfo(int64_t timeout_ms, std::vector<rpc::JobTableData> &result);
-
+  Status GetAllResourceUsage(int64_t timeout_ms, std::string &serialized_reply);
   // For rpc::autoscaler::AutoscalerStateService
   Status RequestClusterResourceConstraint(
       int64_t timeout_ms,
@@ -241,6 +242,9 @@ class RAY_EXPORT PythonGcsClient {
                    const std::string &reason_message,
                    int64_t timeout_ms,
                    bool &is_accepted);
+  Status DrainNodes(const std::vector<std::string> &node_ids,
+                    int64_t timeout_ms,
+                    std::vector<std::string> &drained_node_ids);
 
   const ClusterID &GetClusterId() const { return cluster_id_; }
 
@@ -260,6 +264,7 @@ class RAY_EXPORT PythonGcsClient {
   std::unique_ptr<rpc::InternalKVGcsService::Stub> kv_stub_;
   std::unique_ptr<rpc::RuntimeEnvGcsService::Stub> runtime_env_stub_;
   std::unique_ptr<rpc::NodeInfoGcsService::Stub> node_info_stub_;
+  std::unique_ptr<rpc::NodeResourceInfoGcsService::Stub> node_resource_info_stub_;
   std::unique_ptr<rpc::JobInfoGcsService::Stub> job_info_stub_;
   std::unique_ptr<rpc::autoscaler::AutoscalerStateService::Stub> autoscaler_stub_;
   std::shared_ptr<grpc::Channel> channel_;

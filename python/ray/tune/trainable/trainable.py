@@ -12,6 +12,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Type
 
 import ray
+import ray.cloudpickle as ray_pickle
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
@@ -26,6 +27,7 @@ from ray.air.constants import (
 )
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -64,6 +66,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
+
+# File containing dict data returned by user from `Trainable.save_checkpoint`
+_DICT_CHECKPOINT_FILE_NAME = "_dict_checkpoint.pkl"
 
 
 @PublicAPI
@@ -176,7 +181,6 @@ class Trainable:
             assert storage
             assert storage.trial_fs_path
             logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
-            storage._check_validation_file()
 
         self.setup(copy.deepcopy(self.config))
         setup_time = time.time() - self._start_time
@@ -463,6 +467,12 @@ class Trainable:
     def _create_checkpoint_dir(
         self, checkpoint_dir: Optional[str] = None
     ) -> Optional[str]:
+        if _use_storage_context():
+            # NOTE: There's no need to supply the checkpoint directory inside
+            # the local trial dir, since it'll get persisted to the right location.
+            checkpoint_dir = tempfile.mkdtemp()
+            return checkpoint_dir
+
         # Create checkpoint_xxxxx directory and drop checkpoint marker
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             checkpoint_dir or self.logdir, index=self.iteration, override=True
@@ -495,13 +505,45 @@ class Trainable:
         # User saves checkpoint
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
 
-        if _use_storage_context() and isinstance(
-            checkpoint_dict_or_path, _TrainingResult
-        ):
-            checkpoint_result = checkpoint_dict_or_path
-            assert self._last_result
-            # Update the checkpoint result to include auto-filled metrics.
-            checkpoint_result.metrics.update(self._last_result)
+        if _use_storage_context():
+            if not isinstance(self, ray.tune.trainable.FunctionTrainable):
+                # TODO(justinvyu): [cls_trainable_support]
+                # This is to get class Trainables to work in the new persistence mode.
+                # Need to handle checkpoint_dict_or_path == path, dict, or None
+                # Also need to upload to cloud, since `train.report` never gets called.
+                if isinstance(checkpoint_dict_or_path, dict):
+                    with open(
+                        os.path.join(checkpoint_dir, _DICT_CHECKPOINT_FILE_NAME), "wb"
+                    ) as f:
+                        ray_pickle.dump(checkpoint_dict_or_path, f)
+                elif isinstance(checkpoint_dict_or_path, str):
+                    if checkpoint_dict_or_path != checkpoint_dir:
+                        raise ValueError(
+                            "The returned checkpoint path from `save_checkpoint` "
+                            "must be None or the same as the provided path argument."
+                            f"Got {checkpoint_dict_or_path} != {checkpoint_dir}"
+                        )
+
+                local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
+                persisted_checkpoint = self._storage.persist_current_checkpoint(
+                    local_checkpoint
+                )
+                # The checkpoint index needs to be incremented.
+                # NOTE: This is no longer using "iteration" as the folder indexing
+                # to be consistent with fn trainables.
+                self._storage.current_checkpoint_index += 1
+
+                checkpoint_result = _TrainingResult(
+                    checkpoint=persisted_checkpoint, metrics=self._last_result.copy()
+                )
+
+            else:
+                checkpoint_result: _TrainingResult = checkpoint_dict_or_path
+                assert self._last_result
+                # Update the checkpoint result to include auto-filled metrics.
+                checkpoint_result.metrics.update(self._last_result)
+
+            assert isinstance(checkpoint_result, _TrainingResult)
             return checkpoint_result
 
         if checkpoint_dict_or_path is None:
@@ -875,9 +917,25 @@ class Trainable:
             self._timesteps_since_restore = 0
             self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
 
-            # TODO(justinvyu): The Trainable `load_checkpoint` interface
-            # should be updated to take in a `_TrainingResult` / Checkpoint
-            self.load_checkpoint(checkpoint_result)
+            # TODO(justinvyu): [cls_trainable_support]
+            # This is to conform to the public class Trainable `load_checkpoint` API.
+            if not isinstance(self, ray.tune.trainable.FunctionTrainable):
+                # Need to convert Checkpoint -> local path or dict
+                # (depending on what the output of save_checkpoint was)
+                with checkpoint_result.checkpoint.as_directory() as checkpoint_dir:
+                    checkpoint_path = Path(checkpoint_dir)
+                    dict_checkpoint_file = checkpoint_path / _DICT_CHECKPOINT_FILE_NAME
+                    if dict_checkpoint_file.exists():
+                        # If this was a dict checkpoint, load it as a dict
+                        with open(dict_checkpoint_file, "rb") as f:
+                            checkpoint_dict = ray_pickle.load(f)
+                        self.load_checkpoint(checkpoint_dict)
+                    else:
+                        self.load_checkpoint(checkpoint_dir)
+            else:
+                # TODO(justinvyu): The Function Trainable case doesn't conform
+                # to the load_checkpoint API at the moment.
+                self.load_checkpoint(checkpoint_result)
 
             self._restored = True
 
@@ -1312,7 +1370,7 @@ class Trainable:
         """
         raise NotImplementedError
 
-    def save_checkpoint(self, checkpoint_dir: str) -> Optional[Union[str, Dict]]:
+    def save_checkpoint(self, checkpoint_dir: str) -> Optional[Dict]:
         """Subclasses should override this to implement ``save()``.
 
         Warning:
@@ -1336,11 +1394,9 @@ class Trainable:
                 the provided path may be temporary and moved.
 
         Returns:
-            A dict or string. If string, the return value is expected to be
-            prefixed by `checkpoint_dir`. If dict, the return value will
-            be automatically serialized by Tune. In both cases, the return value
-            is exactly what will be passed to ``Trainable.load_checkpoint()``
-            upon restore.
+            A dict or None. If dict, the return value will
+            be automatically serialized by Tune. In that case,
+            ``Trainable.load_checkpoint()`` will receive the dict upon restore.
 
         Example:
             >>> trainable, trainable1, trainable2 = ... # doctest: +SKIP
@@ -1353,7 +1409,7 @@ class Trainable:
         """
         raise NotImplementedError
 
-    def load_checkpoint(self, checkpoint: Union[Dict, str]):
+    def load_checkpoint(self, checkpoint: Optional[Dict]):
         """Subclasses should override this to implement restore().
 
         Warning:
@@ -1403,10 +1459,8 @@ class Trainable:
 
         Args:
             checkpoint: If dict, the return value is as
-                returned by `save_checkpoint`. If a string, then it is
-                a checkpoint path that may have a different prefix than that
-                returned by `save_checkpoint`. The directory structure
-                underneath the `checkpoint_dir` from `save_checkpoint` is preserved.
+                returned by ``save_checkpoint``. Otherwise, the directory
+                the checkpoint was stored in.
         """
         raise NotImplementedError
 

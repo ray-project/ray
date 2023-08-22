@@ -62,7 +62,7 @@ In the above code snippet:
         :end-before: __function_api_checkpointing_periodic_end__
 
 
-See :ref:`here for more information on creating checkpoints <checkpoint-api-ref>`.
+See :class:`here for more information on creating checkpoints <ray.train.Checkpoint>`.
 If using framework-specific trainers from Ray AIR, see :ref:`here <air-trainer-ref>` for
 references to framework-specific checkpoints such as `TensorflowCheckpoint`.
 
@@ -153,9 +153,9 @@ Summary
 =======
 
 In this user guide, we covered how to save and load trial checkpoints in Tune. Once checkpointing is enabled,
-move onto one of the following guides to  find out how to:
+move onto one of the following guides to find out how to:
 
-- :doc:`Extract checkpoints from Tune experiment results </tune/examples/tune_analyze_results>`
+- :ref:`Extract checkpoints from Tune experiment results <tune-analysis-guide>`
 - :ref:`Configure persistent storage options <tune-storage-options>` for a :ref:`distributed Tune experiment <tune-distributed-ref>`
 
 .. _tune-persisted-experiment-data:

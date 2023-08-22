@@ -352,8 +352,8 @@ void LocalResourceManager::ReleaseWorkerResources(
 
 NodeResources LocalResourceManager::ToNodeResources() const {
   NodeResources node_resources;
-  node_resources.available = local_resources_.available.ToResourceRequest();
-  node_resources.total = local_resources_.total.ToResourceRequest();
+  node_resources.available = local_resources_.available.ToResourceSet();
+  node_resources.total = local_resources_.total.ToResourceSet();
   node_resources.labels = local_resources_.labels;
   node_resources.is_draining = is_local_node_draining_;
   return node_resources;
@@ -392,52 +392,6 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
   }
 }
 
-void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data) {
-  UpdateAvailableObjectStoreMemResource();
-
-  NodeResources resources = ToNodeResources();
-
-  // Initialize if last report resources is empty.
-  if (!last_report_resources_) {
-    NodeResources node_resources = ResourceMapToNodeResources({{}}, {{}});
-    last_report_resources_.reset(new NodeResources(node_resources));
-  }
-
-  for (auto entry : resources.total.ToMap()) {
-    auto resource_id = entry.first;
-    auto label = ResourceID(resource_id).Binary();
-    auto total = entry.second;
-    auto available = resources.available.Get(resource_id);
-    auto last_total = last_report_resources_->total.Get(resource_id);
-    auto last_available = last_report_resources_->available.Get(resource_id);
-
-    // Note: available may be negative, but only report positive to GCS.
-    if (available != last_available && available > 0) {
-      resources_data.set_resources_available_changed(true);
-      (*resources_data.mutable_resources_available())[label] = available.Double();
-    }
-    if (total != last_total) {
-      (*resources_data.mutable_resources_total())[label] = total.Double();
-    }
-  }
-
-  if (get_pull_manager_at_capacity_ != nullptr) {
-    resources.object_pulls_queued = get_pull_manager_at_capacity_();
-    if (last_report_resources_->object_pulls_queued != resources.object_pulls_queued) {
-      resources_data.set_object_pulls_queued(resources.object_pulls_queued);
-      resources_data.set_resources_available_changed(true);
-    }
-  }
-
-  if (resources != *last_report_resources_.get()) {
-    last_report_resources_.reset(new NodeResources(resources));
-  }
-
-  if (!RayConfig::instance().enable_light_weight_resource_report()) {
-    resources_data.set_resources_available_changed(true);
-  }
-}
-
 double LocalResourceManager::GetLocalAvailableCpus() const {
   return local_resources_.available.Sum(ResourceID::CPU()).Double();
 }
@@ -461,13 +415,11 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
   NodeResources resources = ToNodeResources();
 
-  for (auto entry : resources.total.ToMap()) {
-    auto resource_id = entry.first;
-    auto label = ResourceID(resource_id).Binary();
-    auto total = entry.second;
+  for (auto resource_id : resources.total.ResourceIds()) {
+    auto label = resource_id.Binary();
+    auto total = resources.total.Get(resource_id);
     auto available = resources.available.Get(resource_id);
 
-    resources_data.set_resources_available_changed(true);
     (*resources_data.mutable_resources_available())[label] = available.Double();
     (*resources_data.mutable_resources_total())[label] = total.Double();
   }
@@ -475,14 +427,16 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   if (get_pull_manager_at_capacity_ != nullptr) {
     resources.object_pulls_queued = get_pull_manager_at_capacity_();
     resources_data.set_object_pulls_queued(resources.object_pulls_queued);
-    resources_data.set_resources_available_changed(true);
   }
 
-  resources_data.set_resources_available_changed(true);
-
-  const auto now = absl::Now();
-  resources_data.set_idle_duration_ms(
-      absl::ToInt64Milliseconds(now - GetResourceIdleTime().value_or(now)));
+  auto idle_time = GetResourceIdleTime();
+  if (idle_time.has_value()) {
+    // We round up the idle duration to the nearest millisecond such that the idle
+    // reporting would be correct even if it's less than 1 millisecond.
+    const auto now = absl::Now();
+    resources_data.set_idle_duration_ms(std::max(
+        static_cast<int64_t>(1), absl::ToInt64Milliseconds(now - idle_time.value())));
+  }
 
   resources_data.set_is_draining(IsLocalNodeDraining());
 
@@ -493,24 +447,6 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
   msg.set_sync_message(std::move(serialized_msg));
   return std::make_optional(std::move(msg));
-}
-
-ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourceTotals(
-    const absl::flat_hash_map<std::string, double> &resource_map_filter) const {
-  ray::gcs::NodeResourceInfoAccessor::ResourceMap map;
-  for (auto &resource_id : local_resources_.total.ResourceIds()) {
-    auto resource_name = resource_id.Binary();
-    if (!resource_map_filter.contains(resource_name)) {
-      continue;
-    }
-    auto resource_total = local_resources_.total.Sum(resource_id);
-    if (resource_total > 0) {
-      auto data = std::make_shared<rpc::ResourceTableData>();
-      data->set_resource_capacity(resource_total.Double());
-      map.emplace(resource_name, std::move(data));
-    }
-  }
-  return map;
 }
 
 void LocalResourceManager::OnResourceOrStateChanged() {
@@ -539,10 +475,10 @@ bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) co
 absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>
 LocalResourceManager::GetResourceUsageMap() const {
   const auto &local_resources = GetLocalResources();
-  const auto &avail_map =
-      local_resources.GetAvailableResourceInstances().ToResourceRequest().ToResourceMap();
-  const auto &total_map =
-      local_resources.GetTotalResourceInstances().ToResourceRequest().ToResourceMap();
+  const auto avail_map =
+      local_resources.GetAvailableResourceInstances().ToResourceSet().GetResourceMap();
+  const auto total_map =
+      local_resources.GetTotalResourceInstances().ToResourceSet().GetResourceMap();
 
   absl::flat_hash_map<std::string, ResourceUsage> resource_usage_map;
   for (const auto &it : total_map) {

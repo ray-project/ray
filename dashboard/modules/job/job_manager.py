@@ -415,7 +415,8 @@ class JobSupervisor:
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
-                [polling_task, self._stop_event.wait()], return_when=FIRST_COMPLETED
+                [polling_task, create_task(self._stop_event.wait())],
+                return_when=FIRST_COMPLETED,
             )
 
             if self._stop_event.is_set():
