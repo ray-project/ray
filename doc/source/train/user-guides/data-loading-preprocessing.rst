@@ -211,6 +211,12 @@ The datasets passed into the Trainer's ``datasets`` can be accessed inside of th
 
 All datasets are split (i.e. sharded) across the training workers by default. :meth:`~ray.train.get_dataset_shard` will return ``1/n`` of the dataset, where ``n`` is the number of training workers.
 
+.. note::
+
+    Please be aware that as the evaluation dataset is split, users have to aggregate the evaluation results across workers. 
+    You might consider using `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_ (:ref:`example <deepspeed_example>`) or 
+    utilities available in other frameworks that you can explore.
+
 This behavior can be overwritten by passing in the ``dataset_config`` argument. For more information on configuring splitting logic, see :ref:`Splitting datasets <train-datasets-split>`.
 
 .. _train-datasets-consume:
@@ -296,12 +302,6 @@ For more details, see the following sections for each framework.
 Splitting datasets
 ------------------
 By default, Ray Train splits all datasets across workers using :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. Each worker sees a disjoint subset of the data, instead of iterating over the entire dataset. Unless randomly shuffled, the same splits are used for each iteration of the dataset. 
-
-.. note::
-
-    Please be aware that as the evaluation dataset is split, users have to aggregate the evaluation results across workers. 
-    You might consider using `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_ (:ref:`example <deepspeed_example>`) or 
-    utilities available in other frameworks that you can explore.
 
 If want to customize which datasets are split, pass in a :class:`DataConfig <ray.train.DataConfig>` to the Trainer constructor. 
 
