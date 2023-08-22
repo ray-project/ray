@@ -18,7 +18,6 @@ from ray.tune.trainable import (
     with_parameters,
     wrap_function,
     FuncCheckpointUtil,
-    FunctionTrainable,
 )
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers import ResourceChangingScheduler

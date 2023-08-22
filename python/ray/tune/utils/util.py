@@ -686,7 +686,7 @@ def validate_save_restore(
         "to be returned."
     )
 
-    restore_check = ray.get(trainable_2.restore.remote(trainable_1.save.remote()))
+    ray.get(trainable_2.restore.remote(trainable_1.save.remote()))
 
     res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 4

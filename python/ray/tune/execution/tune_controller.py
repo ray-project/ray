@@ -2101,10 +2101,10 @@ class TuneController:
             }
         elif trial.sync_on_checkpoint:
             checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint.dir_or_data)
-            checkpoint = Checkpoint.from_directory(checkpoint_path)
+            obj = Checkpoint.from_directory(checkpoint_path)
 
             method_name = "restore"
-            args = (checkpoint,)
+            args = (obj,)
         else:
             raise _AbortTrialExecution(
                 "Pass in `sync_on_checkpoint=True` for driver-based trial"
