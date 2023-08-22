@@ -1,4 +1,5 @@
 import abc
+import base64
 import collections
 import pickle
 import warnings
@@ -329,12 +330,14 @@ class Preprocessor(abc.ABC):
         return BatchFormat.PANDAS
 
     @DeveloperAPI
-    def pickle(self) -> str:
-        """Return this preprocessor pickled as a string."""
-        return pickle.dumps(self, 0).decode("ascii")
+    def serialize(self) -> str:
+        """Return this preprocessor serialized as a string."""
+        # Convert it to a plain string so that it can be included as JSON metadata
+        # in Trainer checkpoints.
+        return base64.b64encode(pickle.dumps(self)).decode("ascii")
 
     @staticmethod
     @DeveloperAPI
-    def unpickle(serialized: str) -> "Preprocessor":
-        """Load the original preprocessor serialized via `self.pickle()`."""
-        return pickle.loads(serialized.encode("ascii"))
+    def deserialize(serialized: str) -> "Preprocessor":
+        """Load the original preprocessor serialized via `self.serialize()`."""
+        return pickle.loads(base64.b64decode(serialized))
