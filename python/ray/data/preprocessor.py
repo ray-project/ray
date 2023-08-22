@@ -333,8 +333,8 @@ class Preprocessor(abc.ABC):
         """Return this preprocessor pickled as a string."""
         return pickle.dumps(self, 0).decode("ascii")
 
-    @DeveloperAPI
     @staticmethod
+    @DeveloperAPI
     def unpickle(serialized: str) -> "Preprocessor":
         """Load the original preprocessor serialized via `self.pickle()`."""
         return pickle.loads(serialized.encode("ascii"))

@@ -518,12 +518,15 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
 .. testcode::
 
     import numpy as np
+    from tempfile import TemporaryDirectory
 
     import ray
     from ray import train
     from ray.train import ScalingConfig
+    from ray.train._checkpoint import Checkpoint
     from ray.train.torch import TorchTrainer
-    from ray.data.preprocessors import Preprocessor, Concatenator, Chain, StandardScaler
+    from ray.data import Preprocessor
+    from ray.data.preprocessors import Concatenator, Chain, StandardScaler
 
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
@@ -547,6 +550,13 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
             for batch in it.iter_batches(batch_size=128, prefetch_batches=10):
                 print("Do some training on batch", batch)
 
+        # Save a checkpoint.
+        with TemporaryDirectory() as temp_dir:
+            train.report(
+                {"score": 2.0},
+                checkpoint=Checkpoint.from_directory(temp_dir),
+            )
+
     my_trainer = TorchTrainer(
         train_loop_per_worker,
         scaling_config=ScalingConfig(num_workers=2),
@@ -555,7 +565,7 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
     )
 
     # Get the original preprocessor back from the result metadata.
-    metadata = my_trainer.fit().get_best_result().checkpoint.get_metadata()
+    metadata = my_trainer.fit().checkpoint.get_metadata()
     print(Preprocessor.unpickle(metadata["preprocessor_pkl"]))
 
 
