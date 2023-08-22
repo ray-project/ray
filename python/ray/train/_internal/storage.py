@@ -626,10 +626,12 @@ class StorageContext:
         The user of this class is responsible for setting the `current_checkpoint_index`
         (e.g., incrementing when needed).
         """
-        checkpoint_dir_name = StorageContext._make_checkpoint_dir_name(
-            self.current_checkpoint_index
-        )
-        return os.path.join(self.trial_fs_path, checkpoint_dir_name)
+        return os.path.join(self.trial_fs_path, self.checkpoint_dir_name)
+
+    @property
+    def checkpoint_dir_name(self) -> str:
+        """The current checkpoint directory name, based on the checkpoint index."""
+        return StorageContext._make_checkpoint_dir_name(self.current_checkpoint_index)
 
     @staticmethod
     def get_experiment_dir_name(run_obj: Union[str, Callable, Type]) -> str:

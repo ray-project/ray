@@ -180,7 +180,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_logger.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml"],
+    tags = ["team:ml", "new_storage"],
 )
 
 py_test(

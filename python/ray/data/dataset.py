@@ -2844,7 +2844,7 @@ class Dataset:
             column: The column containing the data you want to write to images.
             file_format: The image file format to write with. For available options,
                 see `Image file formats <https://pillow.readthedocs.io/en/latest\
-                /handbook/image-file-formats.html>`.
+                /handbook/image-file-formats.html>`_.
             filesystem: The pyarrow filesystem implementation to write to.
                 These filesystems are specified in the
                 `pyarrow docs <https://arrow.apache.org/docs\
