@@ -12,7 +12,7 @@ from ray.air.util.data_batch_conversion import (
     _convert_batch_type_to_pandas,
 )
 from ray.train.predictor import TYPE_TO_ENUM
-from ray.train.torch import LegacyTorchCheckpoint, TorchPredictor
+from ray.train.torch import TorchCheckpoint, TorchPredictor
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
@@ -190,7 +190,7 @@ def test_predict_array_with_different_dtypes(
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array_no_training(model, use_gpu):
-    checkpoint = LegacyTorchCheckpoint.from_model(model)
+    checkpoint = TorchCheckpoint.from_model(model)
     predictor = TorchPredictor.from_checkpoint(checkpoint, use_gpu=use_gpu)
 
     data_batch = np.array([1, 2, 3])

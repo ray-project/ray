@@ -544,7 +544,7 @@ py_test(
     name = "test_torch_predictor",
     size = "medium",
     srcs = ["tests/test_torch_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
