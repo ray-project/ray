@@ -14,6 +14,12 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve._private.utils import DEFAULT
 from ray.serve.generated.serve_pb2_grpc import add_UserDefinedServiceServicer_to_server
 from ray.serve._private.constants import DEFAULT_GRPC_PORT
+from ray.serve.schema import (
+    ServeDeploySchema,
+    HTTPOptionsSchema,
+    ServeApplicationSchema,
+    DeploymentSchema,
+)
 
 
 def test_autoscaling_config_validation():
@@ -341,6 +347,27 @@ class TestReplicaConfig:
         assert config.deployment_def() == "Check this out!"
         assert config.init_args == tuple()
         assert config.init_kwargs == dict()
+
+
+def test_input_config_schemas_forward_compatible():
+    ServeDeploySchema(
+        http_options=HTTPOptionsSchema(
+            new_version_config="this config is from newer version of Ray"
+        ),
+        applications=[
+            ServeApplicationSchema(
+                import_path="module.app",
+                deployments=[
+                    DeploymentSchema(
+                        name="deployment",
+                        new_version_config="this config is from newer version of Ray",
+                    )
+                ],
+                new_version_config="this config is from newer version of Ray",
+            ),
+        ],
+        new_version_config="this config is from newer version of Ray",
+    )
 
 
 def test_http_options():
