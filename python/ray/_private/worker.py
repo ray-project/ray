@@ -2868,7 +2868,7 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
 
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
-            "ray.cancel() only supported for non-actor object refs. "
+            "ray.cancel() only supported for object refs. "
             f"For actors, try ray.kill(). Got: {type(object_ref)}."
         )
     return worker.core_worker.cancel_task(object_ref, force, recursive)
