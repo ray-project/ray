@@ -33,7 +33,7 @@ def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
     start = time.time()
     while len(pids) < expected:
         if len(refs) == 0:
-            refs = [handle.remote() for _ in range(10)]
+            refs = [handle.remote()._to_object_ref_sync() for _ in range(10)]
 
         done, pending = ray.wait(refs)
         pids = pids.union(set(ray.get(done)))
