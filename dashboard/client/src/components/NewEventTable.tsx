@@ -137,7 +137,6 @@ const useEventTable = (props: EventTableProps) => {
   const [pagination, setPagination] = useState({
     pageNo: 1, // first page is PageNo 1
     pageSize: 10,
-    total: 0,
   });
 
   const changePage = (key: string, value: number) => {
@@ -205,6 +204,7 @@ const NewEventTable = (props: EventTableProps) => {
   if (loading) {
     return <LinearProgress />;
   }
+  const eventsLen = events.length;
   return (
     <div>
       <header className={classes.filterContainer}>
@@ -320,7 +320,7 @@ const NewEventTable = (props: EventTableProps) => {
       <footer>
         <Pagination
           className={classes.pagination}
-          count={pagination.total}
+          count={eventsLen > 0 ? Math.ceil(eventsLen / pagination.pageSize) : 0}
           page={pagination.pageNo}
           onChange={(event: React.ChangeEvent<unknown>, value: number) => {
             changePage("pageNo", value);
