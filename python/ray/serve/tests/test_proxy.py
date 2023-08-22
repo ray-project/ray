@@ -71,10 +71,6 @@ class FakeRefGenerator:
         if not self.called:
             self.called = True
             return FakeRef(messages=self.messages)
-            if self.return_value:
-                return self.get_val()
-            else:
-                return FakeRef(10)
         raise StopAsyncIteration
 
 
