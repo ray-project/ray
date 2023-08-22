@@ -51,7 +51,7 @@ py_test(
     size = "small",
     main = "examples/mlflow_simple_example.py",
     srcs = ["examples/mlflow_simple_example.py"],
-    tags = ["team:ml", "exclusive", "no_main"],
+    tags = ["team:ml", "exclusive", "no_main", "new_storage"],
     deps = [":train_lib"],
 )
 
