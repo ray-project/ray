@@ -9,4 +9,4 @@ action:
     - remove
     - ' '
 tokens:
-  - '\s[—–]\s'
+  - '\s-{2,3}\s'
