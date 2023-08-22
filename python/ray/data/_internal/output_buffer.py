@@ -1,7 +1,7 @@
-from typing import Any, Callable, Optional
+from typing import Any
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.data.block import Block, DataBatch
 
 
 class BlockOutputBuffer:
@@ -30,9 +30,7 @@ class BlockOutputBuffer:
         ...     yield output.next() # doctest: +SKIP
     """
 
-    def __init__(
-        self, target_max_block_size: int
-    ):
+    def __init__(self, target_max_block_size: int):
         self._target_max_block_size = target_max_block_size
         self._buffer = DelegatingBlockBuilder()
         self._returned_at_least_one_block = False

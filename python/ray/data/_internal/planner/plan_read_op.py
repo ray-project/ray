@@ -156,11 +156,9 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     ]
     if hasattr(op._reader, "_block_udf"):
         transform_fns.append(
-            _generate_block_udf_transform_fn(op._reader._block_udf) # type: ignore
+            _generate_block_udf_transform_fn(op._reader._block_udf)  # type: ignore
         )
-    transform_fns.append(
-        _generate_output_transform_fn(op._additional_split_factor)
-    )
+    transform_fns.append(_generate_output_transform_fn(op._additional_split_factor))
 
     map_transformer = MapTransformer(transform_fns)
 
@@ -183,11 +181,9 @@ def apply_output_blocks_handling_to_read_task(
     transform_fns = []
     if hasattr(read_task, "_block_udf"):
         transform_fns.append(
-            _generate_block_udf_transform_fn(read_task._block_udf) # type: ignore
+            _generate_block_udf_transform_fn(read_task._block_udf)  # type: ignore
         )
-    transform_fns.append(
-        _generate_output_transform_fn(additional_split_factor)
-    )
+    transform_fns.append(_generate_output_transform_fn(additional_split_factor))
     map_transformer = MapTransformer(transform_fns)
 
     original_read_fn = read_task._read_fn
