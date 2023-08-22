@@ -32,34 +32,34 @@ type EventTableProps = {
   entityId?: string; // It could be a specific or "*" to represent all entities
 };
 
+const appendToParams = (
+  params: URLSearchParams,
+  key: string,
+  value: string | string[],
+) => {
+  if (Array.isArray(value)) {
+    value.forEach((val) =>
+      params.append(encodeURIComponent(key), encodeURIComponent(val)),
+    );
+  } else {
+    params.append(encodeURIComponent(key), encodeURIComponent(value));
+  }
+};
+
 const transformFiltersToParams = (filters: Filters) => {
   const params = new URLSearchParams();
 
+  // Handling special cases for entityName and entityId
   if (filters.entityName && filters.entityId) {
-    params.append(
-      encodeURIComponent(filters.entityName),
-      encodeURIComponent(filters.entityId),
-    );
+    appendToParams(params, filters.entityName, filters.entityId);
   }
 
-  for (const key in filters) {
-    // Skip entityName and entityId
-    if (key === "entityName" || key === "entityId") {
-      continue;
+  // Handling general cases, for key like "count", "sourceType", "severityLevel"
+  Object.entries(filters).forEach(([key, value]) => {
+    if (key !== "entityName" && key !== "entityId") {
+      appendToParams(params, key, value as string | string[]);
     }
-    if (key === "sourceType" || key === "severityLevel") {
-      const filterArray = filters[key as keyof Filters] as string[];
-      filterArray.forEach((value) => {
-        params.append(encodeURIComponent(key), encodeURIComponent(value));
-      });
-    } else {
-      // key === 'count' or other key to add in the future
-      params.append(
-        encodeURIComponent(key),
-        encodeURIComponent(filters[key as keyof Filters] as string),
-      );
-    }
-  }
+  });
 
   return params.toString();
 };
@@ -101,17 +101,17 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const SOURCE_TYPE_OPTIONS = [
-  "common",
-  "core_worker",
-  "gcs",
-  "raylet",
-  "jobs",
-  "serve",
-  "cluster_lifecycle",
-  "autoscaler",
+  "COMMON",
+  "CORE_WORKER",
+  "GCS",
+  "RAYLET",
+  "JOBS",
+  "SERVE",
+  "CLUSTER_LIFECYCLE",
+  "AUTOSCALER",
 ];
 
-const SEVERITY_LEVEL_OPTIONS = ["info", "debug", "warning", "error", "tracing"];
+const SEVERITY_LEVEL_OPTIONS = ["INFO", "DEBUG", "WARNING", "ERROR", "TRACING"];
 
 const COLUMNS = [
   { label: "Severity", align: "center" },
@@ -266,6 +266,7 @@ const NewEventTable = (props: EventTableProps) => {
             <TableBody>
               {events.map(
                 ({
+                  event_id,
                   severity,
                   source_type,
                   timestamp,
@@ -281,7 +282,7 @@ const NewEventTable = (props: EventTableProps) => {
                       : "-";
                   return (
                     <React.Fragment>
-                      <TableRow>
+                      <TableRow key={event_id}>
                         <TableCell align="center">
                           <StatusChip status={severity} type={severity} />
                         </TableCell>
