@@ -1,4 +1,3 @@
-from enum import Enum
 import logging
 import pathlib
 import json
@@ -16,29 +15,6 @@ from google.protobuf.json_format import MessageToDict, Parse
 from ray.core.generated.event_pb2 import Event
 
 global_logger = logging.getLogger(__name__)
-
-eventNameToProtoMap = {
-    "COMMON": Event.SourceType.COMMON,
-    "CORE_WORKER": Event.SourceType.CORE_WORKER,
-    "GCS": Event.SourceType.GCS,
-    "RAYLET": Event.SourceType.RAYLET,
-    "CLUSTER_LIFECYCLE": Event.SourceType.CLUSTER_LIFECYCLE,
-    "AUTOSCALER": Event.SourceType.AUTOSCALER,
-    "JOBS": Event.SourceType.JOBS,
-    "SERVE": Event.SourceType.SERVE,
-}
-
-
-## Should be sync with eventNameToProtoMap
-class EventSource(Enum):
-    COMMON = "COMMON"
-    CORE_WORKER = "CORE_WORKER"
-    GCS = "GCS"
-    RAYLET = "RAYLET"
-    CLUSTER_LIFECYCLE = "CLUSTER_LIFECYCLE"
-    AUTOSCALER = "AUTOSCALER"
-    JOBS = "JOBS"
-    SERVE = "SERVE"
 
 
 def get_event_id():
@@ -149,7 +125,7 @@ _event_logger_lock = threading.Lock()
 _event_logger = {}
 
 
-def get_event_logger(source: EventSource, sink_dir: str):
+def get_event_logger(source: Event.SourceType, sink_dir: str):
     """Get the event logger of the current process.
 
     There's only 1 event logger per (process, source).
@@ -159,13 +135,12 @@ def get_event_logger(source: EventSource, sink_dir: str):
                 file-based logging impl.
 
     Args:
-        source: The source of the even in string.
+        source: The source of the event.
         sink_dir: The directory to sink event logs.
     """
     with _event_logger_lock:
         global _event_logger
-        source_type = eventNameToProtoMap[source]
-        source_name = Event.SourceType.Name(source_type)
+        source_name = Event.SourceType.Name(source)
         if source_name not in _event_logger:
             logger = _build_event_file_logger(source_name, sink_dir)
             _event_logger[source_name] = EventLoggerAdapter(source, logger)

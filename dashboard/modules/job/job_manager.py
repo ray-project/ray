@@ -41,7 +41,8 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.utils import file_tail_iterator
 from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
-from ray._private.event.event_logger import EventSource, get_event_logger
+from ray._private.event.event_logger import get_event_logger
+from ray.core.generated.event_pb2 import Event
 
 logger = logging.getLogger(__name__)
 
@@ -534,7 +535,7 @@ class JobManager:
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self.monitored_jobs = set()
         try:
-            self.event_logger = get_event_logger(EventSource.JOBS, logs_dir)
+            self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
         except Exception:
             self.event_logger = None
 
