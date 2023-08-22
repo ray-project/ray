@@ -139,6 +139,7 @@ RayClientBidiReactor::RayClientBidiReactor(
       cleanup_cb_(std::move(cleanup_cb)),
       stub_(std::move(stub)) {
   client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
+  client_context_.set_wait_for_ready(true);
   stub_->async()->StartSync(&client_context_, this);
   // Prevent this call from being terminated.
   // Check https://github.com/grpc/proposal/blob/master/L67-cpp-callback-api.md

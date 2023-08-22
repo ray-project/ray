@@ -87,6 +87,8 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   auto deadline =
       std::chrono::system_clock::now() + std::chrono::milliseconds(manager_->timeout_ms_);
   context_.set_deadline(deadline);
+  context_.set_wait_for_ready(true);
+
   stub_->async()->Check(
       &context_, &request_, &response_, [this, now = absl::Now()](::grpc::Status status) {
         // This callback is done in gRPC's thread pool.

@@ -246,6 +246,7 @@ Status PythonGcsPublisher::DoPublishWithRetries(const rpc::GcsPublishRequest &re
       context.set_deadline(std::chrono::system_clock::now() +
                            std::chrono::milliseconds(timeout_ms));
     }
+    context.set_wait_for_ready(true);
     status = pubsub_stub_->GcsPublish(&context, request, &reply);
     if (status.error_code() == grpc::StatusCode::OK) {
       if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
@@ -318,6 +319,7 @@ Status PythonGcsSubscriber::Subscribe() {
   }
 
   grpc::ClientContext context;
+  context.set_wait_for_ready(true);
 
   rpc::GcsSubscriberCommandBatchRequest request;
   request.set_subscriber_id(subscriber_id_);
@@ -349,6 +351,7 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
       current_polling_context_->set_deadline(std::chrono::system_clock::now() +
                                              std::chrono::milliseconds(timeout_ms));
     }
+    current_polling_context_->set_wait_for_ready(true);
     rpc::GcsSubscriberPollRequest request;
     request.set_subscriber_id(subscriber_id_);
     request.set_max_processed_sequence_id(max_processed_sequence_id_);
@@ -448,6 +451,7 @@ Status PythonGcsSubscriber::Close() {
   }
 
   grpc::ClientContext context;
+  context.set_wait_for_ready(true);
 
   rpc::GcsSubscriberCommandBatchRequest request;
   request.set_subscriber_id(subscriber_id_);

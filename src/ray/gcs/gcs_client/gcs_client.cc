@@ -601,6 +601,7 @@ Status PythonCheckGcsHealth(const std::string &gcs_address,
     context.set_deadline(std::chrono::system_clock::now() +
                          std::chrono::milliseconds(timeout_ms));
   }
+  context.set_wait_for_ready(true);
   rpc::CheckAliveRequest request;
   rpc::CheckAliveReply reply;
   grpc::Status status = stub->CheckAlive(&context, request, &reply);

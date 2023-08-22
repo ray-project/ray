@@ -82,6 +82,7 @@ class ClientCallImpl : public ClientCall {
     if (!cluster_id.IsNil()) {
       context_.AddMetadata(kClusterIdKey, cluster_id.Hex());
     }
+    context_.set_wait_for_ready(true);
   }
 
   Status GetStatus() override {
