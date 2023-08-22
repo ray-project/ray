@@ -153,14 +153,14 @@ runnable code
     .. tab:: Log to Wandb
 
         .. literalinclude:: ../doc_code/wandb_torch_mnist.py
-            :emphasize-lines: 16, 45, 50, 52, 56
+            :emphasize-lines: 16, 45, 47, 52
             :language: python
             :start-after: __start__
 
     .. tab:: Log to file based MLflow
 
         .. literalinclude:: ../doc_code/mlflow_torch_mnist.py
-            :emphasize-lines: 18, 19, 48, 52
+            :emphasize-lines: 18, 19, 48, 53
             :language: python
             :start-after: __start__
 
