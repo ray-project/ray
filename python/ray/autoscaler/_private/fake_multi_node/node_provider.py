@@ -338,7 +338,6 @@ class FakeMultiNodeProvider(NodeProvider):
             node = ray._private.node.Node(
                 ray_params, head=False, shutdown_at_exit=False, spawn_reaper=False
             )
-            print("DEBUG: node: ", node)
             self._nodes[next_id] = {
                 "tags": {
                     TAG_RAY_NODE_KIND: NODE_KIND_WORKER,

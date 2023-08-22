@@ -477,6 +477,9 @@ def set_tpu_visible_ids_and_bounds(tpu_chips: List[str]) -> None:
     global last_set_tpu_chips
     if last_set_tpu_chips == tpu_chips:
         return  # optimization: already set
+    if len(tpu_chips) == ray_constants.RAY_TPU_NUM_CHIPS_PER_HOST:
+        # Let the ML framework use the defaults
+        return
     _set_visible_ids(tpu_chips, ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR)
     num_chips = len(tpu_chips)
     if num_chips == 1:
