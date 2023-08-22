@@ -326,6 +326,7 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
   if (instances.size() == 0) {
     resources_.erase(resource_id);
   } else if (resource_id.IsImplicitResource() && instances[0] == FixedPoint(1)) {
+    // This is the default value so there is no need to store it.
     resources_.erase(resource_id);
   } else {
     resources_[resource_id] = std::move(instances);

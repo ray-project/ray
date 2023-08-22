@@ -84,7 +84,7 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
       local_resources_.available.TryAllocate(resource_request.GetResourceSet());
   if (allocation) {
     *task_allocation = TaskResourceInstances(*allocation);
-    for (auto &resource_id : resource_request.ResourceIds()) {
+    for (const auto &resource_id : resource_request.ResourceIds()) {
       SetResourceNonIdle(resource_id);
     }
     return true;
@@ -168,6 +168,8 @@ std::vector<double> LocalResourceManager::SubtractResourceInstances(
 }
 
 void LocalResourceManager::SetResourceNonIdle(const scheduling::ResourceID &resource_id) {
+  // Implicit resources are not used by users directly
+  // and don't affect idleness.
   if (resource_id.IsImplicitResource()) {
     return;
   }
@@ -340,7 +342,7 @@ void LocalResourceManager::ResetLastReportResourceUsage(
 }
 
 bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {
-  return !local_resources_.total.Get(resource_id).empty();
+  return local_resources_.total.Has(resource_id);
 }
 
 absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>

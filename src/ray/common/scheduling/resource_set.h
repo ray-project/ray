@@ -27,8 +27,7 @@ namespace ray {
 using scheduling::ResourceID;
 
 /// Represents a set of resources and their values.
-/// NOTE: negative values are valid in this set, while 0 is not. This means if any
-/// resource value is changed to 0, the resource will be removed.
+/// If any resource value is changed to 0, the resource will be removed.
 class ResourceSet {
  public:
   using ResourceIdIterator =
@@ -110,6 +109,7 @@ class ResourceSet {
   /// Return a boost::range object that can be used as an iterator of the resource IDs.
   ResourceIdIterator ResourceIds() const { return boost::adaptors::keys(resources_); }
 
+  /// Returns the underlying resource map.
   const absl::flat_hash_map<ResourceID, FixedPoint> &Resources() const {
     return resources_;
   }
@@ -145,37 +145,50 @@ class NodeResourceSet {
 
   NodeResourceSet(){};
 
+  /// Constructs NodeResourceSet from the specified resource map.
   explicit NodeResourceSet(const absl::flat_hash_map<std::string, double> &resource_map);
-
   explicit NodeResourceSet(const absl::flat_hash_map<ResourceID, double> &resource_map);
-
   explicit NodeResourceSet(
       const absl::flat_hash_map<ResourceID, FixedPoint> &resource_map);
 
+  /// Set a node resource to the given value.
   NodeResourceSet &Set(ResourceID resource_id, FixedPoint value);
 
+  /// Get the value of a node resource.
   FixedPoint Get(ResourceID resource_id) const;
 
+  /// Check whether a particular node resource exist (value != 0).
   bool Has(ResourceID resource_id) const;
 
+  /// Subtract other's resources from this node resource set.
   NodeResourceSet &operator-=(const ResourceSet &other);
 
+  /// Check whether this set is a super set of other.
+  /// If A >= B, it means for each resource, its value in A is larger than or equqal to
+  /// that in B.
   bool operator>=(const ResourceSet &other) const;
 
+  /// Check whether two node resource sets are equal meaning
+  /// they have the same resources and values.
   bool operator==(const NodeResourceSet &other) const;
 
+  /// Check whether two node resource sets are not equal.
   bool operator!=(const NodeResourceSet &other) const { return !(*this == other); }
 
   /// Remove the negative values in this set.
   void RemoveNegative();
 
+  /// Return a map of the node resource and value in doubles.
   absl::flat_hash_map<std::string, double> GetResourceMap() const;
 
+  /// Return all the ids of explicit resources that this set has.
   std::set<ResourceID> ExplicitResourceIds() const;
 
   std::string DebugString() const;
 
  private:
+  /// Return the default value for a resource depending on whether
+  /// the resource is the explicit or implicit resource.
   FixedPoint ResourceDefaultValue(ResourceID resource_id) const;
 
   /// Map from the resource IDs to the resource values.
@@ -184,30 +197,44 @@ class NodeResourceSet {
   absl::flat_hash_map<ResourceID, FixedPoint> resources_;
 };
 
+/// Represents a node resource set that contains the per-instance resource values.
 class NodeResourceInstanceSet {
  public:
   NodeResourceInstanceSet(){};
 
-  /// Construct a TaskResourceInstances from a node total resources.
+  /// Construct a NodeResourceInstanceSet from a node total resources.
   NodeResourceInstanceSet(const NodeResourceSet &total);
 
+  /// Check whether a particular node resource exist.
   bool Has(ResourceID resource_id) const;
 
+  /// Get the per-instance values of a node resource.
+  /// If the resource doesn't exist, an empty vector is returned.
   const std::vector<FixedPoint> &Get(ResourceID resource_id) const;
 
+  /// Set a node resource to the given per-instance values.
   NodeResourceInstanceSet &Set(ResourceID resource_id, std::vector<FixedPoint> instances);
 
+  /// Remove the specified resource.
   void Remove(ResourceID resource_id);
 
+  /// Get the sum of per-instance values of a particular resource.
+  /// If the resource doesn't exist, return 0.
   FixedPoint Sum(ResourceID resource_id) const;
 
+  /// Check whether two node resource sets are equal meaning
+  /// they have the same resources and instances.
   bool operator==(const NodeResourceInstanceSet &other) const;
 
   std::string DebugString() const;
 
+  /// Try to allocate resources specified by `resource_demands`.
+  /// This operation is all or nothing meaning that if any single resource
+  /// cannot be allocated, the entire allocation fails and std::nullopt is returned.
   std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>> TryAllocate(
       const ResourceSet &resource_demands);
 
+  /// Free allocated resources and add them back to this set.
   void Free(ResourceID resource_id, const std::vector<FixedPoint> &allocation);
 
   /// Add values for each instance of the given resource.
@@ -228,6 +255,7 @@ class NodeResourceInstanceSet {
                                    const std::vector<FixedPoint> &instances,
                                    bool allow_going_negative);
 
+  /// Convert to node resource set with summed per-instance values.
   NodeResourceSet ToNodeResourceSet() const;
 
  private:
