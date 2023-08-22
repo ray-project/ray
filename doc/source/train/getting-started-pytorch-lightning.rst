@@ -372,6 +372,12 @@ Congratulations! You have successfully converted your PyTorch Lightningtraining 
 * Browse the :ref:`Examples <train-examples>` for end-to-end examples of how to use Ray Train.
 * Dive into the :ref:`API Reference <train-api>` for more details on the classes and methods used in this tutorial.
 
+Version Compatibility
+---------------------
+
+Ray Train is tested with `pytorch_lightning` versions `1.6.5` and `2.0.4`. For full compatibility, we recommend using ``pytorch_lightning>=1.6.5`` . 
+Earlier versions are not prohibited but may result in unexpected issues. If you run into any compatibility issues, consider upgrading your PyTorch Lightning version or 
+`file an issue <https://github.com/ray-project/ray/issues>`_. 
 
 .. _lightning-trainer-migration-guide:
 
