@@ -23,6 +23,7 @@ from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
 from ray.train._internal.storage import StorageContext, _use_storage_context
+from ray.train.constants import CHECKPOINT_DIR_NAME
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError, _TuneRestoreError
 from ray.tune.execution.class_cache import _ActorClassCache
@@ -1753,6 +1754,14 @@ class TuneController:
             result = trial.last_result
             result.update(done=True)
 
+        # NOTE: This checkpoint dir name metric should only be auto-filled
+        # after we know the trial will save a checkpoint.
+        if _use_storage_context() and not is_duplicate:
+            trial_will_checkpoint = trial.should_checkpoint() or force_checkpoint
+            result[CHECKPOINT_DIR_NAME] = (
+                trial.storage.checkpoint_dir_name if trial_will_checkpoint else None
+            )
+
         self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
         flat_result = flatten_dict(result)
@@ -1980,9 +1989,24 @@ class TuneController:
         from ray.train._internal.checkpoint_manager import _TrainingResult
 
         try:
-            if _use_storage_context():
-                assert isinstance(checkpoint_value, _TrainingResult), checkpoint_value
-                # TODO(justinvyu): Update callbacks to take in a _TrainingResult
+            if _use_storage_context() and isinstance(checkpoint_value, _TrainingResult):
+                try:
+                    self._callbacks.on_checkpoint(
+                        iteration=self._iteration,
+                        trials=self._trials,
+                        trial=trial,
+                        checkpoint=checkpoint_value.checkpoint,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Error encountered during processing of callbacks. "
+                        "Ray Train/Tune recently changed the checkpoint interface "
+                        "that is passed to callbacks. If you implemented your own "
+                        "callback with an `on_checkpoint` handler, please review "
+                        "the checkpoint interface and adjust your code accordingly."
+                    )
+                    raise
+
                 trial.on_checkpoint(checkpoint_value)
 
                 self._checkpoint_manager.on_trial_checkpoint(trial)

@@ -614,9 +614,7 @@ def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
             ]
         )
         for actor in actors:
-            assert (
-                "app1" not in actor["class_name"] and "app2" not in actor["class_name"]
-            )
+            assert "app1" not in actor["name"] and "app2" not in actor["name"]
         return True
 
     # Deployments from app1 and app2 should be deleted
@@ -699,25 +697,28 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
     # Deploy with pizza graph first
     client.deploy_apps(test_config)
 
-    def check_pizza():
+    def check_app(deployments):
         # Check that the live deployments and actors are what we expect: exactly the
         # set of deployments in the pizza graph
-        actor_class_names = {
-            actor["class_name"]
-            for actor in list_actors(filters=[("state", "=", "ALIVE")])
+        actor_names = {
+            actor["name"] for actor in list_actors(filters=[("state", "=", "ALIVE")])
         }
+        expected_actor_name_prefixes = {
+            "SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR",
+            "SERVE_CONTROLLER_ACTOR",
+        }.union({f"SERVE_REPLICA::app1_{deployment}" for deployment in deployments})
+        for prefix in expected_actor_name_prefixes:
+            assert any(name.startswith(prefix) for name in actor_names)
+
         deployment_replicas = set(
             ray.get(client._controller._all_running_replicas.remote()).keys()
         )
         assert {
-            f"app1_{deployment}" for deployment in pizza_deployments
+            f"app1_{deployment}" for deployment in deployments
         } == deployment_replicas
-        assert {"HTTPProxyActor", "ServeController"}.union(
-            {f"ServeReplica:app1_{deployment}" for deployment in pizza_deployments}
-        ) == actor_class_names
         return True
 
-    wait_for_condition(check_pizza)
+    wait_for_condition(check_app, deployments=pizza_deployments)
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
         == "4 pizzas please!"
@@ -727,25 +728,7 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
     test_config.applications[0].import_path = world_import_path
     client.deploy_apps(test_config)
 
-    def check_world():
-        # Check that the live deployments and actors are what we expect: exactly the
-        # set of deployments in the world graph
-        actor_class_names = {
-            actor["class_name"]
-            for actor in list_actors(filters=[("state", "=", "ALIVE")])
-        }
-        deployment_replicas = set(
-            ray.get(client._controller._all_running_replicas.remote()).keys()
-        )
-        assert {
-            f"app1_{deployment}" for deployment in world_deployments
-        } == deployment_replicas
-        assert {"HTTPProxyActor", "ServeController"}.union(
-            {f"ServeReplica:app1_{deployment}" for deployment in world_deployments}
-        ) == actor_class_names
-        return True
-
-    wait_for_condition(check_world)
+    wait_for_condition(check_app, deployments=world_deployments)
     wait_for_condition(
         lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
     )
@@ -880,8 +863,8 @@ def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
 
     # Start off with signal ready, and send query
-    ray.get(handle.send.remote())
-    pid1 = ray.get(handle.remote())[0]
+    handle.send.remote().result()
+    pid1 = handle.remote().result()[0]
     print("PID of replica after first deployment:", pid1)
 
     # Redeploy with shutdown timeout set to 5 seconds
@@ -889,7 +872,7 @@ def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
     client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
     wait_for_condition(partial(check_running, client), timeout=15)
 
-    pid2 = ray.get(handle.remote())[0]
+    pid2 = handle.remote().result()[0]
     assert pid1 == pid2
     print("PID of replica after redeployment:", pid2)
 
@@ -921,8 +904,8 @@ def test_update_config_max_concurrent_queries(client: ServeControllerClient):
 
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
 
-    responses = ray.get([handle.remote() for _ in range(10)])
-    pids1 = {response[0] for response in responses}
+    refs = [handle.remote() for _ in range(10)]
+    pids1 = {ref.result()[0] for ref in refs}
     assert len(pids1) == 1
 
     # Redeploy with max concurrent queries set to 2.
@@ -931,8 +914,8 @@ def test_update_config_max_concurrent_queries(client: ServeControllerClient):
     wait_for_condition(partial(check_running, client), timeout=15)
 
     # Verify that the PID of the replica didn't change.
-    responses = ray.get([handle.remote() for _ in range(10)])
-    pids2 = {response[0] for response in responses}
+    refs = [handle.remote() for _ in range(10)]
+    pids2 = {ref.result()[0] for ref in refs}
     assert pids2 == pids1
 
 
@@ -949,13 +932,13 @@ def test_update_config_health_check_period(client: ServeControllerClient):
     wait_for_condition(partial(check_running, client), timeout=15)
 
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
-    pid1 = ray.get(handle.remote())[0]
+    pid1 = handle.remote().result()[0]
 
     # The health check counter shouldn't increase beyond any initial health checks
     # done as part of the replica startup sequence.
-    initial_counter = ray.get(handle.get_counter.remote(health_check=True))
+    initial_counter = handle.get_counter.remote(health_check=True).result()
     time.sleep(5)
-    assert ray.get(handle.get_counter.remote(health_check=True)) <= initial_counter + 1
+    assert handle.get_counter.remote(health_check=True).result() <= initial_counter + 1
 
     # Update the deployment's health check period to 0.1 seconds.
     config_template["deployments"][0]["health_check_period_s"] = 0.1
@@ -964,13 +947,13 @@ def test_update_config_health_check_period(client: ServeControllerClient):
 
     # Health check counter should now quickly increase due to the shorter period.
     wait_for_condition(
-        lambda: ray.get(handle.get_counter.remote(health_check=True)) >= 30,
+        lambda: handle.get_counter.remote(health_check=True).result() >= 30,
         retry_interval_ms=1000,
         timeout=10,
     )
 
     # Check that it's the same replica (it wasn't torn down to update the config).
-    pid2 = ray.get(handle.remote())[0]
+    pid2 = handle.remote().result()[0]
     assert pid1 == pid2
 
 
@@ -996,7 +979,7 @@ def test_update_config_health_check_timeout(client: ServeControllerClient):
     wait_for_condition(partial(check_running, client), timeout=15)
 
     handle = serve.get_deployment_handle("f", SERVE_DEFAULT_APP_NAME)
-    pid1 = ray.get(handle.remote())[0]
+    pid1 = handle.remote().result()[0]
 
     # Redeploy with health check timeout reduced to 1 second
     config_template["deployments"][0]["health_check_timeout_s"] = 1
@@ -1006,11 +989,11 @@ def test_update_config_health_check_timeout(client: ServeControllerClient):
     # Check that it's the same replica, it didn't get teared down
     # (needs to be done before the tests below because the replica will be marked
     # unhealthy then stopped and restarted)
-    pid2 = ray.get(handle.remote())[0]
+    pid2 = handle.remote().result()[0]
     assert pid1 == pid2
 
     # Block in health check
-    ray.get(handle.send.remote(clear=True, health_check=True))
+    handle.send.remote(clear=True, health_check=True).result()
     wait_for_condition(
         lambda: serve.status()
         .applications[SERVE_DEFAULT_APP_NAME]
@@ -1308,8 +1291,8 @@ def test_get_app_handle(client: ServeControllerClient):
 
     handle_1 = serve.get_app_handle("app1")
     handle_2 = serve.get_app_handle("app2")
-    assert ray.get(handle_1.predict.remote("ADD", 2)) == "4 pizzas please!"
-    assert ray.get(handle_2.predict.remote("ADD", 2)) == "5 pizzas please!"
+    assert handle_1.predict.remote("ADD", 2).result() == "4 pizzas please!"
+    assert handle_2.predict.remote("ADD", 2).result() == "5 pizzas please!"
 
 
 @pytest.mark.parametrize("heavyweight", [True, False])
