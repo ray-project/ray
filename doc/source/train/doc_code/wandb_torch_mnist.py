@@ -48,6 +48,8 @@ def train_func(config):
             optimizer.step()
             wandb.log({"loss": loss, "epoch": epoch})
 
+    wandb.finish()
+
 
 trainer = TorchTrainer(
     train_func,

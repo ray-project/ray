@@ -11,9 +11,6 @@ Most experiment tracking libraries work out-of-the-box with Ray Train.
 In the following guide, you will learn how to use your favorite experiment tracking libraries 
 while doing distributed data parallel training with Ray Train. 
 
-The guide will be focusing on TorchTrainer although the ideas should apply to DataParallelTrainer
-in general.
-
 Ray Train lets you use native experiment tracking libraries by customizing your tracking 
 logic inside ``train_loop_per_worker``. 
 This gives you the highest degree of freedom to decide when and where to log params, metrics, 
@@ -23,58 +20,49 @@ specific training frameworks, for example ``mlflow.pytorch.autolog()``,
 ``lightning.pytorch.loggers.MLFlowLogger`` etc. 
 In this way, you get to port your experiment tracking logic to Ray Train with minimal change. 
 
-Mental picture of experiment tracking in Ray Train
-==================================================
+How to set up your code to log distributed training experiment
+==============================================================
 
-There are many experiment tracking frameworks out there. So instead of trying to 
-cover every of them with a variety of usages, let’s first look at how to think 
-about experiment tracking with Ray Train DataParallelTrainer, and how it may be 
-different than running native training code in a single process. This mental 
-picture helps you reason about some errors and makes debugging a lot easier.
+Step 1: Decide a tracking service to use
+----------------------------------------
 
-In Ray Train DataParallelTrainer, interaction with experiment tracking services 
-happens inside of ``train_loop_per_worker``. ``train_loop_per_worker`` is run as a separate process on 
-an arbitrary node. This is different from single process training in one 
-node in the following ways.
+For easy configuration, we recommend the following:
+MLflow: file based tracking uri (``mlflow.start_run(tracking_uri=”file:some_shared_storage_location”)``)
+or externally hosted by Databricks(``mlflow.start_run(tracking_uri=”databricks”)``).
+TensorBoard: a shared storage location where all nodes can write to ().
+W&B 
 
-``train_loop_per_worker`` needs to have access to the tracking service
-----------------------------------------------------------------------
+Step 2: Make sure that all nodes and processes have access to credentials
+-------------------------------------------------------------------------
 
-Usually this is trivial for online externally hosted tracking services. 
-Other than that, sometimes offline mode is easier to configure. 
-For example, for MLflow, you can use file based tracking uri, 
-where the uri points to a shared storage location. For Tensorboard, 
-you can have SummaryWriter point to a shared storage location as well.
+See example below.
 
-Advanced usage:
-Shared storage location for offline mode may not be necessary. 
-If you prefer to not use shared storage in this case, 
-you can log to local and have the logged file transferred to the head node 
-or to the cloud post training. 
+Step3: Initialize the run 
+-------------------------
 
-``train_loop_per_worker`` needs to have access to credentials
--------------------------------------------------------------
+Ray Train provides a training context from where you can grab the 
+training id (:meth:`context.get_trial_id() <ray.train.context.TrainContext.get_trial_id>`) 
+and name (:meth:`context.get_trial_name() <ray.train.context.TrainContext.get_trial_name>`) 
+if desired. 
 
-There are mainly two mechanisms when accessing credentials: 
-checking some env var value, and checking the content of some config file. 
-When applicable, you need to make sure that env var is set in the training 
-function and the file is stored on shared storage to be accessible.
+Step4: Log
+----------
 
-Avoid duplications
-------------------
+Dedupe if necessary. Ray Train allows you to only log from rank 0 worker 
+(:meth:`context.get_world_rank() <ray.train.context.TrainContext.get_world_rank>`).
 
-There are probably multiple ``train_loop_per_worker`` processes running, 
-each corresponding to a Ray Train Worker. For distributed data 
-parallel training, all of them should have the same results. 
-You may want to only log from rank 0 worker to avoid duplications. 
-You may find how to do it in the following code examples.
+Step5: Finish the run
+---------------------
 
+Some frameworks requires a call to mark a run as finished. For example, ``wandb.finish()``.
 
 Code Example
 ============
 
-In the following session, we will show some examples using Wandb 
-and MLflow but the idea should be easily adaptable to other frameworks.
+Let's see how the above works with some code.
+
+In the following session, we will use Wandb and MLflow but the idea should be easily 
+adaptable to other frameworks.
 
 Pytorch
 -------
@@ -96,7 +84,7 @@ Conceptual code snippets
                 os.environ["WANDB_API_KEY"] = config["wandb_api_key"]
 
                 wandb.init(
-                    id=..., # or train.get_context().get_trial_id()
+                    id=..., # or train.get_context().get_trial_id(),
                     name=..., # or train.get_context().get_trial_name(),
                     group=..., # or train.get_context().get_experiment_name(),
                     # ...
@@ -109,6 +97,8 @@ Conceptual code snippets
                 # Only report the first worker results to wandb to avoid dup
                 if train.get_context().get_world_rank() == 0:
                     wandb.log(metrics)
+
+                wandb.finish()
 
     .. tab:: file based MLflow
 
@@ -163,7 +153,7 @@ runnable code
     .. tab:: Log to Wandb
 
         .. literalinclude:: ../doc_code/wandb_torch_mnist.py
-            :emphasize-lines: 16, 45, 50
+            :emphasize-lines: 16, 45, 50, 52, 56
             :language: python
             :start-after: __start__
 
@@ -178,9 +168,11 @@ runnable code
 PyTorch Lightning
 -----------------
 
-The native Logger integration in PyTorch Lightning with W&B, CometML, MLFlow, and Tensorboard can still be used seamlessly with Ray Train TorchTrainer.
+The native Logger integration in PyTorch Lightning with W&B, CometML, MLFlow, 
+and Tensorboard can still be used seamlessly with Ray Train TorchTrainer.
 
-The following example will walk you through how. The code here is runnable. There is a common shared piece of setting up a dummy model and dataloader
+The following example will walk you through how. The code here is runnable. 
+There is a common shared piece of setting up a dummy model and dataloader
 just for demonstration purposes.
         
 .. dropdown:: Define your model and dataloader (Dummy ones for demonestration purposes)
@@ -231,25 +223,3 @@ just for demonstration purposes.
     - `WandbLogger(id=UNIQUE_ID)`
     - `CometLogger(experiment_key=UNIQUE_ID)`
     - `MLFlowLogger(run_id=UNIQUE_ID)`
-
-Legacy APIs
-===========
-
-Should I use ``setup_wandb`` and ``setup_mlflow``?
---------------------------------------------------
-
-``setup_wandb`` and ``setup_mlflow`` are just convenient wrappers on top of
-Weights&Biases and MLflow's native APIs. To spare you from learning yet another
-set of APIs, we recommend you to continue using the native experiment tracking 
-directly.
-Just remember to guard with ``rank==0`` to avoid duplications whenever applicable.
-
-Words on ``MLflowLoggerCallback`` and ``WandbLoggerCallback``
--------------------------------------------------------------
-
-More seasoned Ray library users may wonder “Wait, what about `MLflowLoggerCallback
-` and `WandbLoggerCallback`?” 
-These APIs rely on reporting results to Ray Train and then log to experiment training 
-frameworks. The usage scenario is not as versatile and requires some changes to the 
-tracking logic. As a result, we advise users against using these callbacks when using any
-DataParallelTrainer.

@@ -51,6 +51,7 @@ def train_func(config):
             optimizer.step()
             mlflow.log_metrics({"loss": loss.item(), "epoch": epoch})
 
+
 trainer = TorchTrainer(
     train_func,
     train_loop_config={"save_dir": os.environ["SAVE_DIR"]},
