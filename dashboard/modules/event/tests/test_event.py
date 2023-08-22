@@ -20,7 +20,11 @@ import ray
 from ray.util.state import list_cluster_events
 from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
-from ray._private.event.event_logger import filter_event_by_level, get_event_logger
+from ray._private.event.event_logger import (
+    filter_event_by_level,
+    get_event_logger,
+    EventSource,
+)
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.event import event_consts
 from ray.core.generated import event_pb2
