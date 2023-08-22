@@ -1050,9 +1050,22 @@ class DatasetPipeline:
         )
 
     def take(self, limit: int = 20) -> List[Dict[str, Any]]:
-        """Call :py:meth:`Dataset.take <ray.data.Dataset.take>` over the stream of
-        output batches from the pipeline"""
-        return Dataset.take(self, limit)
+        """Replicates the logic of :py:meth:`Dataset.take <ray.data.Dataset.take>`
+        over the stream of output batches from the pipeline, excluding logic
+        of applying a `Limit[batch_size]` before taking rows."""
+        if ray.util.log_once("dataset_take"):
+            logger.info(
+                "Tip: Use `take_batch()` instead of `take() / show()` to return "
+                "records in pandas or numpy batch format."
+            )
+
+        output = []
+        for row in self.iter_rows():
+            output.append(row)
+            if len(output) >= limit:
+                break
+        self._synchronize_progress_bar()
+        return output
 
     def take_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Call :py:meth:`Dataset.take_all <ray.data.Dataset.take_all>` over the stream
@@ -1062,14 +1075,31 @@ class DatasetPipeline:
     def take_batch(
         self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
     ) -> DataBatch:
-        """Call :py:meth:`Dataset.take_batch <ray.data.Dataset.take_batch>`
-        over the stream of output batches from the pipeline"""
-        return Dataset.take_batch(self, batch_size, batch_format=batch_format)
+        """Replicates the logic of :py:meth:`Dataset.take_batch <ray.data.Dataset.take_batch>`
+        over the stream of output batches from the pipeline, excluding logic
+        of applying a `Limit[batch_size]` before taking rows."""
+        batch_format = _apply_strict_mode_batch_format(batch_format)
+        try:
+            res = next(
+                iter(
+                    self.iter_batches(
+                        batch_size=batch_size,
+                        prefetch_batches=0,
+                        batch_format=batch_format,
+                    )
+                )
+            )
+        except StopIteration:
+            raise ValueError("The dataset is empty.")
+        self._synchronize_progress_bar()
+        return res
 
     def show(self, limit: int = 20) -> None:
-        """Call :py:meth:`Dataset.show <ray.data.Dataset.show>` over the stream of
-        output batches from the pipeline"""
-        return Dataset.show(self, limit)
+        """Replicates the logic of :py:meth:`Dataset.show <ray.data.Dataset.show>`
+        over the stream of output batches from the pipeline, excluding logic
+        of applying a `Limit[batch_size]` before taking rows."""
+        for row in self.take(limit):
+            print(row)
 
     def iter_tf_batches(
         self,
