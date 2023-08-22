@@ -46,6 +46,7 @@ class ReplicaSchedulingRequest:
     # These are optional: by default replicas do not have a placement group.
     placement_group_bundles: Optional[List[Dict[str, float]]] = None
     placement_group_strategy: Optional[str] = None
+    max_replicas_per_node: Optional[int] = None
 
 
 @dataclass

@@ -311,6 +311,7 @@ class Deployment:
             ray_actor_options=self._replica_config.ray_actor_options,
             placement_group_bundles=self._replica_config.placement_group_bundles,
             placement_group_strategy=self._replica_config.placement_group_strategy,
+            max_replicas_per_node=self._replica_config.max_replicas_per_node,
         )
 
         return get_global_client().deploy(
@@ -391,6 +392,7 @@ class Deployment:
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
         placement_group_strategy: Optional[str] = DEFAULT.VALUE,
+        max_replicas_per_node: Optional[int] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_concurrent_queries: Default[int] = DEFAULT.VALUE,
         autoscaling_config: Default[
@@ -482,6 +484,9 @@ class Deployment:
         if placement_group_strategy is DEFAULT.VALUE:
             placement_group_strategy = self._replica_config.placement_group_strategy
 
+        if max_replicas_per_node is DEFAULT.VALUE:
+            max_replicas_per_node = self._replica_config.max_replicas_per_node
+
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
 
@@ -511,6 +516,7 @@ class Deployment:
             ray_actor_options=ray_actor_options,
             placement_group_bundles=placement_group_bundles,
             placement_group_strategy=placement_group_strategy,
+            max_replicas_per_node=max_replicas_per_node,
         )
 
         return Deployment(
@@ -640,6 +646,7 @@ def deployment_to_schema(
         "ray_actor_options": ray_actor_options_schema,
         "placement_group_strategy": d._replica_config.placement_group_strategy,
         "placement_group_bundles": d._replica_config.placement_group_bundles,
+        "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "is_driver_deployment": d._is_driver_deployment,
     }
 
@@ -688,6 +695,11 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         placement_group_strategy = s.placement_group_strategy
 
+    if s.max_replicas_per_node is DEFAULT.VALUE:
+        max_replicas_per_node = None
+    else:
+        max_replicas_per_node = s.max_replicas_per_node
+
     if s.is_driver_deployment is DEFAULT.VALUE:
         is_driver_deployment = False
     else:
@@ -714,6 +726,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         ray_actor_options=ray_actor_options,
         placement_group_bundles=placement_group_bundles,
         placement_group_strategy=placement_group_strategy,
+        max_replicas_per_node=max_replicas_per_node,
     )
 
     return Deployment(

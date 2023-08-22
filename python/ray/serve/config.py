@@ -355,6 +355,7 @@ class ReplicaConfig:
         ray_actor_options: Dict,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        max_replicas_per_node: Optional[int] = None,
         needs_pickle: bool = True,
     ):
         """Construct a ReplicaConfig with serialized properties.
@@ -382,6 +383,9 @@ class ReplicaConfig:
         self.placement_group_strategy = placement_group_strategy
         self._validate_placement_group_options()
 
+        self.max_replicas_per_node = max_replicas_per_node
+        self._validate_max_replicas_per_node()
+
         # Create resource_dict. This contains info about the replica's resource
         # needs. It does NOT set the replica's resource usage. That's done by
         # the ray_actor_options.
@@ -402,6 +406,13 @@ class ReplicaConfig:
         self.placement_group_strategy = placement_group_strategy
         self._validate_placement_group_options()
 
+    def update_max_replicas_per_node(
+        self,
+        max_replicas_per_node: Optional[int],
+    ):
+        self.max_replicas_per_node = max_replicas_per_node
+        self._validate_max_replicas_per_node()
+
     @classmethod
     def create(
         cls,
@@ -411,6 +422,7 @@ class ReplicaConfig:
         ray_actor_options: Optional[Dict] = None,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        max_replicas_per_node: Optional[int] = None,
         deployment_def_name: Optional[str] = None,
     ):
         """Create a ReplicaConfig from deserialized parameters."""
@@ -460,6 +472,7 @@ class ReplicaConfig:
             ray_actor_options,
             placement_group_bundles,
             placement_group_strategy,
+            max_replicas_per_node,
         )
 
         config._deployment_def = deployment_def
@@ -499,6 +512,13 @@ class ReplicaConfig:
         # Set Serve replica defaults
         if self.ray_actor_options.get("num_cpus") is None:
             self.ray_actor_options["num_cpus"] = 1
+
+    def _validate_max_replicas_per_node(self) -> None:
+        if self.max_replicas_per_node is not None and self.max_replicas_per_node < 1:
+            raise ValueError(
+                f"Invalid max_replicas_per_node {self.max_replicas_per_node}. "
+                "Valid values are None or a positive integer."
+            )
 
     def _validate_placement_group_options(self) -> None:
         if (
@@ -646,6 +666,7 @@ class ReplicaConfig:
             proto.placement_group_strategy
             if proto.placement_group_strategy != ""
             else None,
+            proto.max_replicas_per_node if proto.max_replicas_per_node else None,
             needs_pickle,
         )
 
@@ -665,6 +686,9 @@ class ReplicaConfig:
             if self.placement_group_bundles is not None
             else "",
             placement_group_strategy=self.placement_group_strategy,
+            max_replicas_per_node=self.max_replicas_per_node
+            if self.max_replicas_per_node is not None
+            else 0,
         )
 
     def to_proto_bytes(self):
