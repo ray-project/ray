@@ -1,13 +1,16 @@
 import os
 import logging
+import tempfile
 import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
-from ray import tune
+from ray import train, tune
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
-from ray.air.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint as LegacyCheckpoint
+from ray.train._checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
+from ray.train._internal.storage import _use_storage_context
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
@@ -145,9 +148,11 @@ class GBDTTrainer(BaseTrainer):
 
     _dmatrix_cls: type
     _ray_params_cls: type
-    _tune_callback_report_cls: type
     _tune_callback_checkpoint_cls: type
-    _default_ray_params: Dict[str, Any] = {"checkpoint_frequency": 1}
+    _default_ray_params: Dict[str, Any] = {
+        "checkpoint_frequency": 1,
+        "checkpoint_at_end": True,
+    }
     _init_model_arg_name: str
     _num_iterations_argument: str = "num_boost_round"
     _default_num_iterations: int = _DEFAULT_NUM_ITERATIONS
@@ -163,7 +168,7 @@ class GBDTTrainer(BaseTrainer):
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         preprocessor: Optional["Preprocessor"] = None,
-        resume_from_checkpoint: Optional[Checkpoint] = None,
+        resume_from_checkpoint: Optional[LegacyCheckpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
         **train_kwargs,
     ):
@@ -219,7 +224,7 @@ class GBDTTrainer(BaseTrainer):
 
     def _load_checkpoint(
         self,
-        checkpoint: Checkpoint,
+        checkpoint: LegacyCheckpoint,
     ) -> Tuple[Any, Optional["Preprocessor"]]:
         raise NotImplementedError
 
@@ -269,9 +274,21 @@ class GBDTTrainer(BaseTrainer):
         for k in list(result_dict):
             result_dict[k] = result_dict[k][-1]
 
-        with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
-            self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
-        tune.report(**result_dict)
+        if getattr(self._tune_callback_checkpoint_cls, "_report_callbacks_cls", None):
+            # Deprecate: Remove in Ray 2.8
+            with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
+                self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
+            tune.report(**result_dict)
+        else:
+            with tempfile.TemporaryDirectory() as checkpoint_dir:
+                self._save_model(model, path=os.path.join(checkpoint_dir, MODEL_KEY))
+
+                if _use_storage_context():
+                    checkpoint = Checkpoint.from_directory(checkpoint_dir)
+                else:
+                    checkpoint = LegacyCheckpoint.from_directory(checkpoint_dir)
+
+                train.report(result_dict, checkpoint=checkpoint)
 
     def training_loop(self) -> None:
         config = self.train_kwargs.copy()
@@ -291,21 +308,16 @@ class GBDTTrainer(BaseTrainer):
         config.setdefault("callbacks", [])
 
         if not any(
-            isinstance(
-                cb, (self._tune_callback_report_cls, self._tune_callback_checkpoint_cls)
-            )
+            isinstance(cb, self._tune_callback_checkpoint_cls)
             for cb in config["callbacks"]
         ):
             # Only add our own callback if it hasn't been added before
             checkpoint_frequency = (
                 self.run_config.checkpoint_config.checkpoint_frequency
             )
-            if checkpoint_frequency > 0:
-                callback = self._tune_callback_checkpoint_cls(
-                    filename=MODEL_KEY, frequency=checkpoint_frequency
-                )
-            else:
-                callback = self._tune_callback_report_cls()
+            callback = self._tune_callback_checkpoint_cls(
+                filename=MODEL_KEY, frequency=checkpoint_frequency
+            )
 
             config["callbacks"] += [callback]
 
