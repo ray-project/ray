@@ -216,11 +216,11 @@
   instance_size: large
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     # Todo (krfricke): Move mosaicml to train-test-requirements.txt
     # TODO(scottjlee): Move datasets to train/data-test-requirements.txt 
     # (see https://github.com/ray-project/ray/pull/38432/)
-    - pip install "mosaicml==0.12.1"
-    - DOC_TESTING=1 ARROW_VERSION=12.* ./ci/env/install-dependencies.sh
+    - pip install "mosaicml==0.12.1" "datasets==2.14.0"
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
