@@ -170,7 +170,7 @@ py_test(
     size = "medium",
     main = "examples/tf/tensorflow_regression_example.py",
     srcs = ["examples/tf/tensorflow_regression_example.py"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -528,7 +528,7 @@ py_test(
     name = "test_tensorflow_trainer",
     size = "medium",
     srcs = ["tests/test_tensorflow_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib"]
 )
 
