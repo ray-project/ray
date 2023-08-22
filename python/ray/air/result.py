@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray.train._internal.storage import _use_storage_context
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
     EXPR_RESULT_FILE,
@@ -58,7 +57,7 @@ class Result:
     _local_path: Optional[str] = None
     _remote_path: Optional[str] = None
     _storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
-    _items_to_repr = ["error", "metrics", "path", "checkpoint"]
+    _items_to_repr = ["error", "metrics", "path", "filesystem", "checkpoint"]
     # Deprecate: raise in 2.5, remove in 2.6
     log_dir: Optional[Path] = None
 
@@ -69,6 +68,8 @@ class Result:
                 "Use `local_path` instead."
             )
             self._local_path = str(self.log_dir)
+
+        from ray.train._internal.storage import _use_storage_context
 
         if _use_storage_context() and not self._storage_filesystem:
             raise ValueError("_storage_filesystem must be set")
@@ -92,7 +93,7 @@ class Result:
 
         This can point to a remote storage location (e.g. S3) or to a local
         location (path on the head node). The path is accessible via the result's
-        associated `storage_filesystem`.
+        associated `filesystem`.
 
         For instance, for a result stored in S3 at ``s3://bucket/location``,
         ``path`` will have the value ``bucket/location`.
@@ -100,7 +101,7 @@ class Result:
         return self._remote_path or self._local_path
 
     @property
-    def storage_filesystem(self) -> pyarrow.fs.FileSystem:
+    def filesystem(self) -> pyarrow.fs.FileSystem:
         """Return the filesystem that can be used to access the result path.
 
         Returns:

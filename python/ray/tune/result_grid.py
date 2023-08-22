@@ -93,13 +93,13 @@ class ResultGrid:
         return self._experiment_analysis.experiment_path
 
     @property
-    def storage_filesystem(self) -> pyarrow.fs.FileSystem:
+    def filesystem(self) -> pyarrow.fs.FileSystem:
         """Return the filesystem that can be used to access the experiment path.
 
         Returns:
             pyarrow.fs.FileSystem implementation.
         """
-        return self._experiment_analysis.storage_filesystem
+        return self._experiment_analysis._fs
 
     def get_best_result(
         self,
@@ -317,7 +317,7 @@ class ResultGrid:
             error=self._populate_exception(trial),
             _local_path=trial.local_path,
             _remote_path=trial.remote_path,
-            _storage_filesystem=self._experiment_analysis.storage_filesystem,
+            _storage_filesystem=self._experiment_analysis._fs,
             metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
         )
