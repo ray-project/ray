@@ -432,7 +432,7 @@ py_test(
     name = "test_lightning_predictor",
     size = "medium",
     srcs = ["tests/test_lightning_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2", "new_storage"],
     deps = [":train_lib"]
 )
 
