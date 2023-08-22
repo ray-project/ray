@@ -12,6 +12,7 @@ from ray.dashboard.modules.job.tests.conftest import (
 from ray.dashboard.modules.job.tests.test_job_manager import check_job_succeeded
 
 
+@pytest.mark.asyncio
 class TestRuntimeEnvStandalone:
     """NOTE: PLEASE READ CAREFULLY BEFORE MODIFYING
     This test is extracted into a standalone module such that it can bootstrap its own (standalone)
@@ -63,8 +64,6 @@ class TestRuntimeEnvStandalone:
             )
 
             logs = job_manager.get_job_logs(job_id)
-
-            print("[DBG] job logs:\n", logs)
 
             assert "Code search path is propagated" in logs, logs
             assert "0xDEEDDEED" in logs, logs
