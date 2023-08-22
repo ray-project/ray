@@ -65,12 +65,14 @@ class Datasource:
     def write(
         self,
         blocks: Iterable[Block],
+        ctx: TaskContext,
         **write_args,
     ) -> WriteResult:
         """Write blocks out to the datasource. This is used by a single write task.
 
         Args:
             blocks: List of data blocks.
+            ctx: ``TaskContext`` for the write task.
             write_args: Additional kwargs to pass to the datasource impl.
 
         Returns:
