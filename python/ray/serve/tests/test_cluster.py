@@ -2,6 +2,7 @@ import os
 import sys
 import time
 from collections import defaultdict
+import requests
 
 import pytest
 
@@ -13,8 +14,9 @@ from ray.cluster_utils import Cluster
 from ray.serve.context import get_global_client
 from ray.serve.handle import RayServeHandle
 from ray.serve._private.constants import SERVE_NAMESPACE, RAY_SERVE_ENABLE_NEW_ROUTING
-from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.common import ReplicaState
+from ray.serve._private.deployment_state import ReplicaStartupStatus
+from ray.serve._private.utils import get_head_node_id
 
 
 @pytest.fixture
@@ -311,6 +313,33 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
 
     ray.get(signal.send.remote())
     assert ray.get(blocked_ref) == outer_node_id
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
+)
+def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster):
+    """Verify that http proxy routes to replicas on the same node when possible."""
+
+    cluster = ray_cluster
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+
+    # Only start one HTTP proxy on the head node.
+    serve.start(http_options={"location": "HeadOnly"})
+    head_node_id = get_head_node_id()
+
+    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+    def f():
+        return ray.get_runtime_context().get_node_id()
+
+    # The deployment's two replicas will be spread across the two nodes
+    serve.run(f.bind())
+
+    # Since they're sent sequentially, all requests should be routed to
+    # the replica on the head node
+    for _ in range(10):
+        assert requests.post("http://localhost:8000").text == head_node_id
 
 
 if __name__ == "__main__":
