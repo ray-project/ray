@@ -220,7 +220,7 @@
     # Todo (krfricke): Move mosaicml to train-test-requirements.txt
     # TODO(scottjlee): Move datasets to train/data-test-requirements.txt 
     # (see https://github.com/ray-project/ray/pull/38432/)
-    - pip install "torch==2.0.1" "mosaicml==0.12.1" "datasets==2.14.0"
+    - pip install "datasets==2.14.0"
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
