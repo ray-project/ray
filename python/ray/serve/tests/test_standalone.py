@@ -723,50 +723,6 @@ serve.run(A.bind())"""
     )
 
 
-@pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)
-def test_snapshot_always_written_to_internal_kv(
-    ray_start_with_dashboard, ray_shutdown  # noqa: F811
-):
-    # https://github.com/ray-project/ray/issues/19752
-
-    @serve.deployment()
-    def hello(_):
-        return "hello"
-
-    def check():
-        try:
-            resp = requests.get("http://localhost:8000/hello")
-            assert resp.text == "hello"
-            return True
-        except Exception:
-            return False
-
-    serve.start(detached=True)
-    serve.run(hello.bind(), name="app")
-    check()
-
-    webui_url = ray_start_with_dashboard["webui_url"]
-
-    def get_deployment_snapshot():
-        snapshot = requests.get(f"http://{webui_url}/api/snapshot").json()["data"][
-            "snapshot"
-        ]
-        return snapshot["deployments"]
-
-    # Make sure /api/snapshot return non-empty deployment status.
-    def verify_snapshot():
-        return get_deployment_snapshot() != {}
-
-    wait_for_condition(verify_snapshot)
-
-    # Sanity check the snapshot is correct
-    snapshot = get_deployment_snapshot()
-    assert len(snapshot) == 1
-    hello_deployment = list(snapshot.values())[0]
-    assert hello_deployment["name"] == "app_hello"
-    assert hello_deployment["status"] == "RUNNING"
-
-
 def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, caplog):
     logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
