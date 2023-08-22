@@ -56,6 +56,8 @@ and macOS by choosing the option that best matches your use case.
             - Core, Tune
           * - `pip install -U "ray[serve]"`
             - Core, Dashboard, Cluster Launcher, Serve
+          * - `pip install -U "ray[serve-grpc]"`
+            - Core, Dashboard, Cluster Launcher, Serve with gRPC support
           * - `pip install -U "ray[rllib]"`
             - Core, Tune, RLlib
           * - `pip install -U "ray[air]"`
@@ -65,7 +67,7 @@ and macOS by choosing the option that best matches your use case.
 
         .. tip::
 
-          You can combine installation extras. 
+          You can combine installation extras.
           For example, to install Ray with Dashboard, Cluster Launcher, and Train support, you can run:
 
           .. code-block:: shell
