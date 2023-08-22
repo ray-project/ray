@@ -201,7 +201,6 @@ class DeploymentConfig(BaseModel):
 
     class Config:
         validate_assignment = True
-        extra = "forbid"
         arbitrary_types_allowed = True
 
     # Dynamic default for max_concurrent_queries
@@ -712,7 +711,6 @@ class HTTPOptions(pydantic.BaseModel):
 
     class Config:
         validate_assignment = True
-        extra = "forbid"
         arbitrary_types_allowed = True
 
 
