@@ -720,6 +720,30 @@ def test_status_package_unavailable_in_controller(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_max_replicas_per_node(ray_start_stop):
+    """Test that max_replicas_per_node can be set via config file."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "max_replicas_per_node.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_application_status():
+        cli_output = subprocess.check_output(
+            ["serve", "status", "-a", "http://localhost:52365/"]
+        )
+        status = yaml.safe_load(cli_output)["applications"]
+        assert (
+            status["valid"]["status"] == "RUNNING"
+            and status["invalid"]["status"] == "DEPLOY_FAILED"
+        )
+        return True
+
+    wait_for_condition(check_application_status, timeout=15)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_replica_placement_group_options(ray_start_stop):
     """Test that placement group options can be set via config file."""
 

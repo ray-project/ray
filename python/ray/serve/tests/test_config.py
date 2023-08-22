@@ -192,6 +192,38 @@ class TestReplicaConfig:
             with pytest.raises(ValueError):
                 ReplicaConfig.create(Class, ray_actor_options={option: None})
 
+    def test_max_replicas_per_node_validation(self):
+        class Class:
+            pass
+
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            max_replicas_per_node=5,
+        )
+
+        # Invalid: non-postive max_replicas_per_node
+        with pytest.raises(
+            ValueError, match="Valid values are None or a positive integer"
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node=0,
+            )
+
+        with pytest.raises(
+            ValueError, match="Valid values are None or a positive integer"
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node=-1,
+            )
+
     def test_placement_group_options_validation(self):
         class Class:
             pass
