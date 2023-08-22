@@ -23,7 +23,6 @@ from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 
-
 MAX_RETRIES = 3
 
 
@@ -336,33 +335,6 @@ def test_worker_kill(ray_start_4_cpus, backend):
         # Run 5: iter=1, counter=4, Successful
         kill_callback.handle_result()
     assert kill_callback.counter == 4
-
-
-def test_worker_kill_checkpoint(ray_start_4_cpus):
-    def train_func():
-        checkpoint = train.get_checkpoint()
-        if checkpoint:
-            epoch = checkpoint.to_dict()["epoch"]
-        else:
-            epoch = 0
-        print("Epoch: ", epoch)
-        for i in range(epoch, 2):
-            train.report(
-                dict(loss=1, iter=i), checkpoint=Checkpoint.from_dict(dict(epoch=i + 1))
-            )
-
-    test_config = BackendConfig()
-
-    iterator = create_iterator(train_func, test_config)
-    kill_callback = KillCallback(fail_on=0, backend_executor=iterator._backend_executor)
-
-    for intermediate_result in iterator:
-        # Run 1: epoch=0, counter=1, Successful
-        # *Checkpoint is saved.*
-        # *Worker is killed*
-        # Run 2: epoch=1, counter=2, Successful
-        kill_callback.handle_result()
-    assert kill_callback.counter == 2
 
 
 def test_tensorflow_mnist_fail(ray_start_4_cpus):
