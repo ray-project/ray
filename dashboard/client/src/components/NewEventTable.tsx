@@ -135,7 +135,7 @@ const useEventTable = (props: EventTableProps) => {
   const [events, setEvents] = useState<Event[]>([]);
 
   const [pagination, setPagination] = useState({
-    pageNo: 1,
+    pageNo: 1, // first page is PageNo 1
     pageSize: 10,
     total: 0,
   });
@@ -159,9 +159,10 @@ const useEventTable = (props: EventTableProps) => {
       pageNo: 1,
     });
   };
+  const { pageNo } = pagination;
 
   const params = transformFiltersToParams(filters);
-  const { data: eventsData, error, isLoading } = useEvents(params);
+  const { data: eventsData, error, isLoading } = useEvents(params, pageNo);
 
   useEffect(() => {
     if (eventsData) {
