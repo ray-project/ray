@@ -360,7 +360,7 @@ py_test(
     name = "test_huggingface",
     size = "small",
     srcs = ["tests/test_huggingface.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"]
 )
 
