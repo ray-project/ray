@@ -663,7 +663,7 @@ def test_multiplexed_detect(manage_ray):
         lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
     )
     report = ray.get(storage_handle.get_report.remote())
-    assert ServeUsageTag.SERVE_MULTIPLEXED_API.get_value_from_report(report) is None
+    assert ServeUsageTag.MULTIPLEXED_API_USED.get_value_from_report(report) is None
 
     client = get_global_client()
     wait_for_condition(
@@ -683,7 +683,7 @@ def test_multiplexed_detect(manage_ray):
 
     wait_for_condition(
         lambda: int(
-            ServeUsageTag.SERVE_MULTIPLEXED_API.get_value_from_report(ray.get(storage_handle.get_report.remote()))
+            ServeUsageTag.MULTIPLEXED_API_USED.get_value_from_report(ray.get(storage_handle.get_report.remote()))
         ) == 1,
         timeout=5,
     )
