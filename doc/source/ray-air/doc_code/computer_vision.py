@@ -97,7 +97,10 @@ def read_images():
     dataset = ray.data.read_images(root, partitioning=partitioning)
     # __read_images1_stop__
 
-    dataset = dataset.limit(32)
+    # The autodetected parallelism is low. As a result, blocks are large and we
+    # unnecessarily read more than a thousand images (even though we limit the dataset
+    # to 32 rows!) To avoid this issue, we manually set the parallelism.
+    dataset = ray.data.read_images(root, partitioning=partitioning, parallelism=1875)
 
     # __read_images2_start__
     from typing import Dict
