@@ -584,7 +584,7 @@ py_test(
     name = "test_transformers_checkpoint",
     size = "small",
     srcs = ["tests/test_transformers_checkpoint.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -592,7 +592,7 @@ py_test(
     name = "test_transformers_predictor",
     size = "medium",
     srcs = ["tests/test_transformers_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
