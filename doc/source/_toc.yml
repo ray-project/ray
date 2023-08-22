@@ -328,6 +328,8 @@ parts:
                   - file: cluster/kubernetes/user-guides/gpu.md
                   - file: cluster/kubernetes/user-guides/experimental.md
                   - file: cluster/kubernetes/user-guides/pod-command.md
+                  - file: cluster/kubernetes/user-guides/pod-security.md
+                  - file: cluster/kubernetes/user-guides/tls.md
                   - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay.md
               - file: cluster/kubernetes/examples
                 sections:

@@ -71,4 +71,4 @@ kubectl delete -f ray-service.text-sumarizer.yaml
 
 ## Step 7: Uninstall your kuberay operator
 
-Follow [this document](../../helm-chart/kuberay-operator/README.md) to uninstall the latest stable KubeRay operator via Helm repository.
+Follow [this document](https://github.com/ray-project/kuberay/tree/master/helm-chart/kuberay-operator) to uninstall the latest stable KubeRay operator via Helm repository.
