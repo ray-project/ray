@@ -54,21 +54,6 @@ The Ray docs present all the information you need to start running Ray workloads
 
     .. grid-item-card::
 
-        **Examples**
-        ^^^
-    
-        Try example Ray workloads on Kubernetes.
-    
-        +++
-        .. button-ref:: kuberay-examples
-            :color: primary
-            :outline:
-            :expand:
-
-            Try example workloads
-        
-    .. grid-item-card::
-
         **User Guides**
         ^^^
     
@@ -81,21 +66,66 @@ The Ray docs present all the information you need to start running Ray workloads
             :expand:
 
             Read the User Guides
-    
+
     .. grid-item-card::
 
-        **API Reference**
+        **Examples**
         ^^^
     
-        Find API references on RayCluster configuration.
+        Try example Ray workloads on Kubernetes.
     
         +++
-        .. button-ref:: kuberay-api-reference
+        .. button-ref:: kuberay-examples
             :color: primary
             :outline:
             :expand:
 
-            Check API references
+            Try example workloads
+
+    .. grid-item-card::
+
+        **Ecosystem**
+        ^^^
+    
+        Integrate KubeRay with 3rd party Kubernetes ecosystem tools.
+    
+        +++
+        .. button-ref:: kuberay-ecosystem-integration
+            :color: primary
+            :outline:
+            :expand:
+
+            Explore Kubernetes ecosystem
+
+    .. grid-item-card::
+
+        **Benchmarks**
+        ^^^
+    
+        Check the KubeRay benchmark results.
+    
+        +++
+        .. button-ref:: kuberay-benchmarks
+            :color: primary
+            :outline:
+            :expand:
+
+            Check the benchmark results
+    
+    .. grid-item-card::
+
+        **Troubleshooting**
+        ^^^
+    
+        Check the KubeRay troubleshooting guides.
+    
+        +++
+        .. button-ref:: kuberay-troubleshooting
+            :color: primary
+            :outline:
+            :expand:
+
+            Check the troubleshooting guides
 ```
 ## About KubeRay
 
