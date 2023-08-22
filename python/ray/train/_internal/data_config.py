@@ -2,6 +2,9 @@ from typing import Optional, Union, Literal, Dict, List
 
 import ray
 from ray.actor import ActorHandle
+
+# TODO(justinvyu): Fix the circular import error
+from ray.train.constants import TRAIN_DATASET_KEY  # noqa
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.air.config import DatasetConfig
@@ -31,21 +34,19 @@ class DataConfig:
         """Construct a DataConfig.
 
         Args:
-            datasets_to_split: Specifies which datasets should be sharded among workers.
-                Can be set to "all", "none", or a list of dataset
-                names. Defaults to "all".
+            datasets_to_split: Specifies which datasets should be split among workers.
+                Can be set to "all" or a list of dataset names. Defaults to "all",
+                i.e. split all datasets.
             execution_options: The execution options to pass to Ray Data. By default,
                 the options will be optimized for data ingest. When overriding this,
                 base your options off of `DataConfig.default_ingest_options()`.
         """
-        if isinstance(datasets_to_split, list) or (
-            isinstance(datasets_to_split, str) and datasets_to_split in ["all", "none"]
-        ):
+        if isinstance(datasets_to_split, list) or datasets_to_split == "all":
             self._datasets_to_split = datasets_to_split
         else:
             raise TypeError(
-                "`datasets_to_split` should be a string ('all' or 'none') or a list "
-                "of strings of dataset names. Received "
+                "`datasets_to_split` should be a 'all' or a list of strings of "
+                "dataset names. Received "
                 f"{type(datasets_to_split).__name__} with value {datasets_to_split}."
             )
 
@@ -78,9 +79,7 @@ class DataConfig:
         """
         output = [{} for _ in range(world_size)]
 
-        if self._datasets_to_split == "none":
-            datasets_to_split = set()
-        elif self._datasets_to_split == "all":
+        if self._datasets_to_split == "all":
             datasets_to_split = set(datasets.keys())
         else:
             datasets_to_split = set(self._datasets_to_split)

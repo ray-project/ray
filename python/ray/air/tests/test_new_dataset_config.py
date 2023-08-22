@@ -99,15 +99,6 @@ def test_split(ray_start_4_cpus):
         dataset_config=DataConfig(datasets_to_split="all"),
     )
 
-    # Test flag "none"
-    test = TestBasic(
-        2,
-        True,
-        {"train": 10, "test": 10},
-        datasets={"train": ds, "test": ds},
-        dataset_config=DataConfig(datasets_to_split="none"),
-    )
-
     # Test split train only.
     test = TestBasic(
         2,
