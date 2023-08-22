@@ -5,10 +5,7 @@ from sklearn.model_selection import train_test_split
 
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.integration.lightgbm import (
-    TuneReportCheckpointCallback,
-    TuneReportCallback,
-)
+from ray.tune.integration.lightgbm import TuneReportCheckpointCallback
 
 
 def train_breast_cancer(config: dict):
@@ -62,13 +59,14 @@ def train_breast_cancer_cv(config: dict):
         # with the cv_agg key. Both mean and standard deviation
         # are provided.
         callbacks=[
-            TuneReportCallback(
+            TuneReportCheckpointCallback(
                 {
                     "binary_error": "cv_agg-binary_error-mean",
                     "binary_logloss": "cv_agg-binary_logloss-mean",
                     "binary_error_stdv": "cv_agg-binary_error-stdv",
                     "binary_logloss_stdv": "cv_agg-binary_logloss-stdv",
                 },
+                frequency=0,
             )
         ],
     )
