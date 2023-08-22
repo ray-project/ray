@@ -133,7 +133,6 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result.metrics["epoch"] == 4
     assert result.metrics["training_iteration"] == 4
     assert result.checkpoint
-    assert isinstance(result.checkpoint, LegacyTransformersCheckpoint)
     assert "eval_loss" in result.metrics
 
     trainer2 = TransformersTrainer(
@@ -151,7 +150,6 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result2.metrics["epoch"] == 5
     assert result2.metrics["training_iteration"] == 1
     assert result2.checkpoint
-    assert isinstance(result2.checkpoint, LegacyTransformersCheckpoint)
     assert "eval_loss" in result2.metrics
 
 
@@ -167,7 +165,6 @@ def test_training_local_dataset(ray_start_4_cpus):
     assert result.metrics["epoch"] == 1
     assert result.metrics["training_iteration"] == 1
     assert result.checkpoint
-    assert isinstance(result.checkpoint, LegacyTransformersCheckpoint)
     assert "eval_loss" in result.metrics
 
 
