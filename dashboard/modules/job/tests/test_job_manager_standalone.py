@@ -15,8 +15,9 @@ from ray.dashboard.modules.job.tests.test_job_manager import check_job_succeeded
 @pytest.mark.asyncio
 class TestRuntimeEnvStandalone:
     """NOTE: PLEASE READ CAREFULLY BEFORE MODIFYING
-    This test is extracted into a standalone module such that it can bootstrap its own (standalone)
-    Ray cluster while avoiding affecting the shared one used by other JobManager tests
+    This test is extracted into a standalone module such that it can bootstrap its own
+    (standalone) Ray cluster while avoiding affecting the shared one used by other
+    JobManager tests
     """
 
     @pytest.mark.parametrize(
