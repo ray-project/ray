@@ -5429,6 +5429,7 @@
 
   frequency: nightly-3x
   team: core
+  stable: false
   cluster:
     byod:
       type: gpu
