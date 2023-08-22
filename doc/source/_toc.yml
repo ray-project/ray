@@ -349,6 +349,9 @@ parts:
                   - file: cluster/kubernetes/k8s-ecosystem/prometheus-grafana.md
                   - file: cluster/kubernetes/k8s-ecosystem/pyspy.md
                   - file: cluster/kubernetes/k8s-ecosystem/kubeflow.md
+              - file: cluster/kubernetes/benchmarks
+                sections:
+                  - file: cluster/kubernetes/benchmarks/memory-scalability-benchmark.md
               - file: cluster/kubernetes/references
           - file: cluster/vms/index
             title: Deploying on VMs
