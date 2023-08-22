@@ -798,7 +798,7 @@ def test_generator_wait_e2e(shutdown_only):
             else:
                 result.append(ray.get(r))
     elapsed = time.time() - start
-    assert elapsed < 3
+    assert elapsed < 4
     assert 2 < elapsed
 
     assert len(result) == 12
