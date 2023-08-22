@@ -11,23 +11,36 @@ https://arxiv.org/pdf/2010.02193.pdf
 # Run with:
 # python run_regression_tests.py --dir [this file]
 
+import flappy_bird_gymnasium
+import gymnasium as gym
+from supersuit.generic_wrappers import resize_v1
+
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
+from ray.rllib.algorithms.dreamerv3.utils.env_runner import NormalizedImageEnv
+from ray import tune
+
 
 # Number of GPUs to run on.
-num_gpus = 4
+num_gpus = 0
 
-#
+# DreamerV3 config and default (1 GPU) learning rates.
 config = DreamerV3Config()
 w = config.world_model_lr
 c = config.critic_lr
 
+
+# Register the FlappyBird-rgb-v0 env including necessary wrappers via the
+# `tune.register_env()` API.
+tune.register_env("flappy-bird", lambda ctx: (
+    NormalizedImageEnv(resize_v1(  # resize to 64x64 and normalize images
+        gym.make("FlappyBird-rgb-v0", {"audio_on": False}), x_size=64, y_size=64
+    ))
+))
+
+
 (
     config
-    .environment(
-        "FlappyBird-rgb-v0",
-        # Audio on seems to break things (at least on Linux).
-        env_config={"audio_on": False}
-    )
+    .environment("flappy-bird")
     .resources(
         num_learner_workers=0 if num_gpus == 1 else num_gpus,
         num_gpus_per_learner_worker=1 if num_gpus else 0,
@@ -53,8 +66,8 @@ c = config.critic_lr
         # Use a well established 4-GPU lr scheduling recipe:
         # ~ 1000 training updates with 0.4x[default rates], then over a few hundred
         # steps, increase to 4x[default rates].
-        world_model_lr=[[0, 0.4*w], [8000, 0.4*w], [10000, 3*w]],
-        critic_lr=[[0, 0.4*c], [8000, 0.4*c], [10000, 3*c]],
-        actor_lr=[[0, 0.4*c], [8000, 0.4*c], [10000, 3*c]],
+        world_model_lr=[[0, 0.4 * w], [8000, 0.4 * w], [10000, 3 * w]],
+        critic_lr=[[0, 0.4 * c], [8000, 0.4 * c], [10000, 3 * c]],
+        actor_lr=[[0, 0.4 * c], [8000, 0.4 * c], [10000, 3 * c]],
     )
 )

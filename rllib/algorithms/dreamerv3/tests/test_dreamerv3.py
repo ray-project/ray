@@ -65,7 +65,7 @@ class TestDreamerV3(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config, frameworks="tf2"):
-            for env in ["ALE/MsPacman-v5", "FrozenLake-v1", "CartPole-v1"]:
+            for env in ["CartPole-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 config.environment(env)
                 algo = config.build()

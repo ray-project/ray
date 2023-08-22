@@ -91,7 +91,8 @@ class CNNAtari(tf.keras.Model):
         input_signature=[
             tf.TensorSpec(
                 shape=[None, 64, 64, 3],
-                dtype=tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32,
+                dtype=tf.keras.mixed_precision.global_policy().compute_dtype
+                or tf.float32,
             )
         ]
     )

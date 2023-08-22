@@ -172,7 +172,6 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         batch: SampleBatch,
         fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
-
         # World model losses.
         prediction_losses = self._compute_world_model_prediction_losses(
             hps=hps,

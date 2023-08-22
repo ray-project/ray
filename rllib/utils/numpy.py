@@ -102,12 +102,18 @@ def concat_aligned(
         if time_major is not None:
             if time_major is True:
                 batch_dim = sum(s.shape[1] for s in items)
-                new_shape = (items[0].shape[0], batch_dim,) + items[
+                new_shape = (
+                    items[0].shape[0],
+                    batch_dim,
+                ) + items[
                     0
                 ].shape[2:]
             else:
                 batch_dim = sum(s.shape[0] for s in items)
-                new_shape = (batch_dim, items[0].shape[1],) + items[
+                new_shape = (
+                    batch_dim,
+                    items[0].shape[1],
+                ) + items[
                     0
                 ].shape[2:]
         else:

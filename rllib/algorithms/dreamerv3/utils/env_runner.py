@@ -20,12 +20,14 @@ from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
+from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 from ray.rllib.utils.numpy import one_hot
+from ray.tune.registry import ENV_CREATOR, _global_registry
 
 _, tf, _ = try_import_tf()
 
@@ -105,13 +107,24 @@ class DreamerV3EnvRunner(EnvRunner):
             )
         # All other (gym) envs.
         else:
-            wrappers = [] if self.config.env != "FrozenLake-v1" else [OneHot]
+            # Register the env in this local context here.
+            gym.register(
+                "dreamerv3-custom-env-v0",
+                partial(
+                    _global_registry.get(ENV_CREATOR, self.config.env),
+                    self.config.env_config,
+                ) if _global_registry.contains(ENV_CREATOR, self.config.env)
+                else partial(
+                    _gym_env_creator,
+                    env_context=self.config.env_config,
+                    env_descriptor=self.config.env,
+                )
+            )
+            # Create the vectorized gymnasium env.
             self.env = gym.vector.make(
-                self.config.env,
-                wrappers=wrappers,
+                "dreamerv3-custom-env-v0",
                 num_envs=self.config.num_envs_per_worker,
-                asynchronous=self.config.remote_worker_envs,
-                **dict(self.config.env_config, **{"render_mode": "rgb_array"}),
+                asynchronous=False,#self.config.remote_worker_envs,
             )
         self.num_envs = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker

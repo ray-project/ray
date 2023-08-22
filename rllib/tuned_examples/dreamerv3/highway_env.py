@@ -23,8 +23,7 @@ w = config.world_model_lr
 c = config.critic_lr
 
 (
-    config
-    .resources(
+    config.resources(
         num_learner_workers=0 if num_gpus == 1 else num_gpus,
         num_gpus_per_learner_worker=1 if num_gpus else 0,
         num_cpus_for_local_worker=1,
@@ -49,8 +48,8 @@ c = config.critic_lr
         # Use a well established 4-GPU lr scheduling recipe:
         # ~ 1000 training updates with 0.4x[default rates], then over a few hundred
         # steps, increase to 4x[default rates].
-        world_model_lr=[[0, 0.4*w], [8000, 0.4*w], [10000, 3*w]],
-        critic_lr=[[0, 0.4*c], [8000, 0.4*c], [10000, 3*c]],
-        actor_lr=[[0, 0.4*c], [8000, 0.4*c], [10000, 3*c]],
+        world_model_lr=[[0, 0.4 * w], [8000, 0.4 * w], [10000, 3 * w]],
+        critic_lr=[[0, 0.4 * c], [8000, 0.4 * c], [10000, 3 * c]],
+        actor_lr=[[0, 0.4 * c], [8000, 0.4 * c], [10000, 3 * c]],
     )
 )
