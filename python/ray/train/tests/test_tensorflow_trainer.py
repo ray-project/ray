@@ -13,7 +13,6 @@ from ray.train.tensorflow import (
     TensorflowTrainer,
     LegacyTensorflowCheckpoint,
 )
-from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
 @pytest.fixture
@@ -56,13 +55,13 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
     scaling_config = ScalingConfig(num_workers=num_workers)
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
     preprocessor = Concatenator(exclude=["", "y"], output_column_name="x")
+    dataset = preprocessor.transform(dataset)
 
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=train_loop_config,
         scaling_config=scaling_config,
         datasets={TRAIN_DATASET_KEY: dataset},
-        preprocessor=preprocessor,
     )
     trainer.fit()
 
@@ -76,10 +75,8 @@ def test_tensorflow_e2e(ray_start_4_cpus):
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
-        preprocessor=DummyPreprocessor(),
     )
-    result = trainer.fit()
-    assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
+    trainer.fit()
 
 
 def test_report_and_load_using_ml_session(ray_start_4_cpus):
@@ -103,21 +100,17 @@ def test_report_and_load_using_ml_session(ray_start_4_cpus):
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
-        preprocessor=DummyPreprocessor(),
     )
     result = trainer.fit()
     checkpoint = result.checkpoint
-    assert isinstance(checkpoint.get_preprocessor(), DummyPreprocessor)
 
     trainer2 = TensorflowTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
         resume_from_checkpoint=checkpoint,
-        preprocessor=DummyPreprocessor(),
     )
     result = trainer2.fit()
     checkpoint = result.checkpoint
-    assert isinstance(checkpoint.get_preprocessor(), DummyPreprocessor)
     with checkpoint.as_directory() as ckpt_dir:
         assert os.path.exists(os.path.join(ckpt_dir, "saved_model.pb"))
     assert result.metrics["iter"] == 1

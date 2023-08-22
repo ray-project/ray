@@ -71,8 +71,6 @@ Ray Data provides a handful of preprocessors out of the box.
 .. autosummary::
   :nosignatures:
 
-    ray.data.preprocessors.BatchMapper
-    ray.data.preprocessors.Chain
     ray.data.preprocessors.Concatenator
     ray.data.preprocessor.Preprocessor
     ray.data.preprocessors.SimpleImputer
@@ -99,16 +97,6 @@ Ray Data provides a handful of preprocessors out of the box.
     ray.data.preprocessors.PowerTransformer
     ray.data.preprocessors.RobustScaler
     ray.data.preprocessors.StandardScaler
-
-**Text encoders**
-
-.. autosummary::
-  :nosignatures:
-
-    ray.data.preprocessors.CountVectorizer
-    ray.data.preprocessors.HashingVectorizer
-    ray.data.preprocessors.Tokenizer
-    ray.data.preprocessors.FeatureHasher
 
 **Utilities**
 
@@ -188,36 +176,12 @@ Additionally, if your model expects a tensor or ``ndarray``, create a tensor usi
 .. tip::
   Built-in feature scalers like :class:`~ray.data.preprocessors.StandardScaler` don't
   work on :class:`~ray.air.util.tensor_extensions.pandas.TensorDtype` columns, so apply
-  :class:`~ray.data.preprocessors.Concatenator` after feature scaling. Combine feature
-  scaling and concatenation into a single preprocessor with
-  :class:`~ray.data.preprocessors.Chain`.
+  :class:`~ray.data.preprocessors.Concatenator` after feature scaling.
 
   .. literalinclude:: doc_code/preprocessors.py
     :language: python
     :start-after: __concatenate_start__
     :end-before: __concatenate_end__
-
-Text data
-~~~~~~~~~
-
-A `document-term matrix <https://en.wikipedia.org/wiki/Document-term_matrix>`_ is a
-table that describes text data, often used in natural language processing.
-
-To generate a document-term matrix from a collection of documents, use
-:class:`~ray.data.preprocessors.HashingVectorizer` or
-:class:`~ray.data.preprocessors.CountVectorizer`. If you already know the frequency of
-tokens and want to store the data in a document-term matrix, use
-:class:`~ray.data.preprocessors.FeatureHasher`.
-
-.. list-table::
-   :header-rows: 1
-
-   * - Requirement
-     - Preprocessor
-   * - You care about memory efficiency
-     - :class:`~ray.data.preprocessors.HashingVectorizer`
-   * - You care about model interpretability
-     - :class:`~ray.data.preprocessors.CountVectorizer`
 
 
 Filling in missing values
@@ -235,14 +199,7 @@ If your dataset contains missing values, replace them with
 Chaining preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~
 
-If you need to apply more than one preprocessor, compose them together with
-:class:`~ray.data.preprocessors.Chain`.
-
-:class:`~ray.data.preprocessors.Chain` applies ``fit`` and ``transform``
-sequentially. For example, if you construct
-``Chain(preprocessorA, preprocessorB)``, then ``preprocessorB.transform`` is applied
-to the result of ``preprocessorA.transform``.
-
+If you need to apply more than one preprocessor, simply apply them in sequence on your dataset.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
@@ -263,12 +220,4 @@ If you want to implement a custom preprocessor that needs to be fit, extend the
     :start-after: __custom_stateful_start__
     :end-before: __custom_stateful_end__
 
-If your preprocessor doesn't need to be fit, construct a
-:class:`~ray.data.preprocessors.BatchMapper` to apply a UDF in parallel over your data.
-:class:`~ray.data.preprocessors.BatchMapper` can drop, add, or modify columns, and you
-can specify a ``batch_size`` to control the size of the data batches provided to your UDF.
-
-.. literalinclude:: doc_code/preprocessors.py
-    :language: python
-    :start-after: __custom_stateless_start__
-    :end-before: __custom_stateless_end__
+If your preprocessor doesn't need to be fit, use :meth:`map_batches() <ray.data.Dataset.map_batches>` to directly transform your dataset. For more details, see :ref:`Transforming Data <transforming_data>`.

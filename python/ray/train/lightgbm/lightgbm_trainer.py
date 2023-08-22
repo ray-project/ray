@@ -29,7 +29,7 @@ class LightGBMTrainer(GBDTTrainer):
     using multiple Ray Actors.
 
     If you would like to take advantage of LightGBM's built-in handling
-    for features with the categorical data type, consider using the
+    for features with the categorical data type, consider applying the
     :class:`Categorizer` preprocessor to set the dtypes in the dataset.
 
     .. note::
@@ -64,11 +64,8 @@ class LightGBMTrainer(GBDTTrainer):
 
     Args:
         datasets: The Ray Datasets to use for training and validation. Must include a
-            "train" key denoting the training dataset. If a ``preprocessor``
-            is provided and has not already been fit, it will be fit on the training
-            dataset. All datasets will be transformed by the ``preprocessor`` if
-            one is provided. All non-training datasets will be used as separate
-            validation sets, each reporting a separate metric.
+            "train" key denoting the training dataset. All non-training datasets will
+            be used as separate validation sets, each reporting a separate metric.
         label_column: Name of the label column. A column with this name
             must be present in the training dataset.
         params: LightGBM training parameters passed to ``lightgbm.train()``.

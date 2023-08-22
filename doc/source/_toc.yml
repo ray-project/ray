@@ -13,7 +13,6 @@ parts:
         title: "Use Cases"
         sections:
           - file: ray-air/getting-started
-          - file: ray-air/computer-vision
 
       - file: ray-overview/examples
         title: "Example Gallery"

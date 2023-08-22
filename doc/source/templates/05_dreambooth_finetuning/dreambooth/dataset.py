@@ -1,8 +1,10 @@
+from typing import Dict
+
+import numpy as np
 import pandas as pd
 import torch
 
 from ray.data import read_images
-from ray.data.preprocessors import TorchVisionPreprocessor
 from torchvision import transforms
 from transformers import AutoTokenizer
 
@@ -66,12 +68,15 @@ def get_train_dataset(args, image_resolution=512):
             transforms.Normalize([0.5], [0.5]),
         ]
     )
-    instance_ds_preprocessor = TorchVisionPreprocessor(
-        columns=["image"], output_columns=["instance_image"], transform=transform
-    )
-    class_ds_preprocessor = TorchVisionPreprocessor(
-        columns=["image"], output_columns=["class_image"], transform=transform
-    )
+
+    def transform_image(
+        batch: Dict[str, np.ndarray], output_column_name: str
+    ) -> Dict[str, np.ndarray]:
+        image_tensors = [torch.as_tensor(array) for array in batch["image"]]
+        transformed_tensors = [transform(tensor).numpy() for tensor in image_tensors]
+        batch[output_column_name] = transformed_tensors
+        return batch
+
     # END: image preprocessing
 
     # START: Apply preprocessing steps as Ray Dataset operations
@@ -80,14 +85,18 @@ def get_train_dataset(args, image_resolution=512):
     # - drop the original image column
     # - add a new column with the tokenized prompts
     instance_dataset = (
-        instance_ds_preprocessor.transform(instance_dataset)
+        instance_dataset.map_batches(
+            transform_image, fn_kwargs={"output_column_name": "instance_image"}
+        )
         .drop_columns(["image"])
         .add_column("instance_prompt_ids", lambda df: [instance_prompt_ids] * len(df))
     )
     # END: Apply preprocessing steps as Ray Dataset operations
 
     class_dataset = (
-        class_ds_preprocessor.transform(class_dataset)
+        class_dataset.map_batches(
+            transform_image, fn_kwargs={"output_column_name": "class_image"}
+        )
         .drop_columns(["image"])
         .add_column("class_prompt_ids", lambda df: [class_prompt_ids] * len(df))
     )

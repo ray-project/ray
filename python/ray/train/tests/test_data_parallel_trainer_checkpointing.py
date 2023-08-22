@@ -6,7 +6,6 @@ import pytest
 import ray
 from ray import train
 from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
-from ray.data.preprocessor import Preprocessor
 from ray.train.constants import (
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     DISABLE_LAZY_CHECKPOINTING_ENV,
@@ -71,49 +70,6 @@ def test_checkpoint(ray_start_4_cpus, checkpoint_type_and_should_copy):
         )
         result = trainer.fit()
     assert result.checkpoint.to_dict()["model"] == 2
-
-    path = result.metrics["path"]
-    if path:
-        if should_copy:
-            assert list(Path(path).glob("*"))
-        else:
-            assert not list(Path(path).glob("*"))
-
-
-@pytest.mark.parametrize(
-    "checkpoint_type_and_should_copy", checkpoint_type_and_should_copy
-)
-def test_preprocessor_in_checkpoint(ray_start_4_cpus, checkpoint_type_and_should_copy):
-    """
-    Test that a checkpoint with a preprocessor is created and accessible.
-
-    - Assert that the data from the returned checkpoint has an expected state.
-    - Assert that the preprocessor keeps its state.
-    - Assert that the directory was moved/copied depending on
-      ``checkpoint_type_and_should_copy``.
-    """
-    checkpoint_type, should_copy = checkpoint_type_and_should_copy
-
-    class DummyPreprocessor(Preprocessor):
-        def __init__(self):
-            super().__init__()
-            self.is_same = True
-
-    with patch.dict(
-        os.environ,
-        {
-            DISABLE_LAZY_CHECKPOINTING_ENV: str(int(checkpoint_type != "lazy_dir")),
-            COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV: str(int(should_copy)),
-        },
-    ):
-        trainer = DataParallelTrainer(
-            train_loop_per_worker=get_checkpoint_train_func(checkpoint_type),
-            scaling_config=scale_config,
-            preprocessor=DummyPreprocessor(),
-        )
-        result = trainer.fit()
-    assert result.checkpoint.to_dict()["model"] == 2
-    assert result.checkpoint.get_preprocessor().is_same
 
     path = result.metrics["path"]
     if path:

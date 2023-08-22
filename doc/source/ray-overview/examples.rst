@@ -131,13 +131,6 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch cv
-        :link: /ray-air/computer-vision
-        :link-type: doc
-
-        Computer Vision User Guide
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch cv
         :link: /ray-air/examples/torch_detection
         :link-type: doc
 

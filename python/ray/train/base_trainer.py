@@ -52,6 +52,15 @@ GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 
 logger = logging.getLogger(__name__)
 
+PREPROCESSOR_DEPRECATION_MESSAGE = (
+    "The `preprocessor` argument to Trainers is deprecated as of Ray 2.7. "
+    "Instead, use the Preprocessor `fit` and `transform` APIs directly on the Ray "
+    "Dataset. For any state that needs to be saved to the trained checkpoint, pass it "
+    "in using the `metadata` argument of the `Trainer`. "
+    "For a full example, see "
+    "https://docs.ray.io/en/master/train/user-guides/data-loading-preprocessing.html#preprocessing-structured-data "  # noqa:E501
+)
+
 
 @PublicAPI(stability="beta")
 class TrainingFailedError(RuntimeError):
@@ -216,13 +225,8 @@ class BaseTrainer(abc.ABC):
 
         air_usage.tag_air_trainer(self)
 
-        if preprocessor:
-            logger.warning(
-                "The `preprocessor` arg to Trainer is deprecated. Apply "
-                "preprocessor transformations ahead of time by calling "
-                "`preprocessor.transform(ds)`. Support for the preprocessor "
-                "arg will be dropped in a future release."
-            )
+        if preprocessor is not None:
+            raise DeprecationWarning(PREPROCESSOR_DEPRECATION_MESSAGE)
 
     @PublicAPI(stability="alpha")
     @classmethod
@@ -250,7 +254,6 @@ class BaseTrainer(abc.ABC):
             import os
             import ray
             from ray import train
-            from ray.data.preprocessors import BatchMapper
             from ray.train.trainer import BaseTrainer
 
             experiment_name = "unique_experiment_name"
@@ -259,7 +262,6 @@ class BaseTrainer(abc.ABC):
 
             # Define some dummy inputs for demonstration purposes
             datasets = {"train": ray.data.from_items([{"a": i} for i in range(10)])}
-            preprocessor = BatchMapper(lambda x: x, batch_format="numpy")
 
             class CustomTrainer(BaseTrainer):
                 def training_loop(self):
@@ -273,7 +275,6 @@ class BaseTrainer(abc.ABC):
             else:
                 trainer = CustomTrainer(
                     datasets=datasets,
-                    preprocessor=preprocessor,
                     run_config=train.RunConfig(
                         name=experiment_name,
                         local_dir=local_dir,
@@ -297,12 +298,6 @@ class BaseTrainer(abc.ABC):
             datasets: Re-specified datasets used in the original training run.
                 This must include all the datasets that were passed in the
                 original trainer constructor.
-            preprocessor: Optionally re-specified preprocessor that was passed in
-                the original trainer constructor. This should be used to re-supply
-                the preprocessor if it is not restorable in a new Ray cluster.
-                This preprocessor will be fit at the start before resuming training.
-                If no preprocessor is passed in restore, then the old preprocessor
-                will be loaded from the latest checkpoint and will not be re-fit.
             scaling_config: Optionally re-specified scaling config. This can be
                 modified to be different from the original spec.
             **kwargs: Other optionally re-specified arguments, passed in by subclasses.
@@ -408,7 +403,6 @@ class BaseTrainer(abc.ABC):
             "scaling_config": ScalingConfig(),
             "run_config": RunConfig(),
             "datasets": {},
-            "preprocessor": None,
             "starting_checkpoint": None,
         }
 
