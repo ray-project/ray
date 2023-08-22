@@ -15,7 +15,7 @@ from abc import abstractmethod
 from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple
 
-from ray._private import ray_constants
+import ray
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_CONSERVE_GPU_NODES,
@@ -934,7 +934,7 @@ def get_bin_pack_residual(
 def _fits(node: ResourceDict, resources: ResourceDict) -> bool:
     for k, v in resources.items():
         if v > node.get(
-            k, 1.0 if k.startswith(ray_constants.IMPLICIT_RESOURCE_PREFIX) else 0.0
+            k, 1.0 if k.startswith(ray._raylet.IMPLICIT_RESOURCE_PREFIX) else 0.0
         ):
             return False
     return True
@@ -947,7 +947,7 @@ def _inplace_subtract(node: ResourceDict, resources: ResourceDict) -> None:
             # do `ray.autoscaler.sdk.request_resources({"GPU": 0}"})`.
             continue
         if k not in node:
-            assert k.startswith(ray_constants.IMPLICIT_RESOURCE_PREFIX), (k, node)
+            assert k.startswith(ray._raylet.IMPLICIT_RESOURCE_PREFIX), (k, node)
             node[k] = 1
         assert k in node, (k, node)
         node[k] -= v

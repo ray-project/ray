@@ -23,6 +23,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/fixed_point.h"
+#include "ray/common/scheduling/resource_instance_set.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
