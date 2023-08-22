@@ -49,6 +49,21 @@ class NodeInfo:
     # Descriptive details.
     details: Optional[str] = None
 
+    def total_resources(self) -> Dict[str, float]:
+        if self.resource_usage is None:
+            return {}
+        return {r.resource_name: r.total for r in self.resource_usage.usage}
+
+    def available_resources(self) -> Dict[str, float]:
+        if self.resource_usage is None:
+            return {}
+        return {r.resource_name: r.total - r.used for r in self.resource_usage.usage}
+
+    def used_resources(self) -> Dict[str, float]:
+        if self.resource_usage is None:
+            return {}
+        return {r.resource_name: r.used for r in self.resource_usage.usage}
+
 
 @dataclass
 class LaunchRequest:
