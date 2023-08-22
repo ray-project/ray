@@ -154,7 +154,7 @@ def apply_output_blocks_handling_to_read_tasks(
 
     This function is only used for compability with the legacy LazyBlockList code path.
     """
-    map_transformer = _generate_output_transform_fn(additional_split_factor)
+    output_transform_fn = _generate_output_transform_fn(additional_split_factor)
 
     for read_task in read_tasks:
         original_read_fn = read_task._read_fn
@@ -163,6 +163,6 @@ def apply_output_blocks_handling_to_read_tasks(
             blocks = original_read_fn()
             # We pass None as the TaskContext because we don't have access to it here.
             # This is okay because the transform functions don't use the TaskContext.
-            return map_transformer.apply_transform(blocks, None)  # type: ignore
+            return output_transform_fn(blocks, None)  # type: ignore
 
         read_task._read_fn = new_read_fn
