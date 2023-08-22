@@ -391,7 +391,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             job_id
         )
 
-        self.filter_events(all_events, severity_levels, source_types, **rest_of_query)
+        all_events = self.filter_events(all_events, severity_levels, source_types, **rest_of_query)
 
         all_events.sort(key=lambda entry: entry["timestamp"], reverse=True)
         all_events = all_events[:count]
