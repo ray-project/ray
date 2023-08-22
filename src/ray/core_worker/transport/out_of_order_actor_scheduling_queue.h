@@ -39,11 +39,11 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   OutOfOrderActorSchedulingQueue(
       instrumented_io_context &main_io_service,
       DependencyWaiter &waiter,
-      std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager =
-          std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
-      bool is_asyncio = false,
-      int fiber_max_concurrency = 1,
-      const std::vector<ConcurrencyGroup> &concurrency_groups = {});
+      std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
+      std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
+      bool is_asyncio,
+      int fiber_max_concurrency,
+      const std::vector<ConcurrencyGroup> &concurrency_groups);
 
   void Stop() override;
 
@@ -55,21 +55,27 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   void Add(int64_t seq_no,
            int64_t client_processed_up_to,
            std::function<void(rpc::SendReplyCallback)> accept_request,
-           std::function<void(rpc::SendReplyCallback)> reject_request,
+           std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback,
            const std::string &concurrency_group_name,
            const ray::FunctionDescriptor &function_descriptor,
            TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) override;
 
-  // We don't allow the cancellation of actor tasks, so invoking CancelTaskIfFound
-  // results in a fatal error.
+  /// Cancel the actor task in the queue.
+  /// Tasks are in the queue if it is either queued, or executing.
+  /// Return true if a task is in the queue. False otherwise.
+  /// This method has to be THREAD-SAFE.
   bool CancelTaskIfFound(TaskID task_id) override;
 
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() override;
 
  private:
+  /// Accept the given InboundRequest or reject it if a task id is canceled via
+  /// CancelTaskIfFound.
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
+
   /// The queue stores all the pending tasks.
   std::deque<InboundRequest> pending_actor_tasks_;
   /// The id of the thread that constructed this scheduling queue.
@@ -78,12 +84,17 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   DependencyWaiter &waiter_;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
+  /// Manage the running fiber states of actors in this worker. It works with
+  /// python asyncio if this is an asyncio actor.
+  std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager_;
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool is_asyncio_ = false;
-  /// Manage the running fiber states of actors in this worker. It works with
-  /// python asyncio if this is an asyncio actor.
-  std::unique_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager_;
+  /// Mutext to protect attributes used for thread safe APIs.
+  absl::Mutex mu_;
+  /// A map of actor task IDs -> is_canceled.
+  // Pending means tasks are queued or running.
+  absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled GUARDED_BY(mu_);
 
   friend class SchedulingQueueTest;
 };

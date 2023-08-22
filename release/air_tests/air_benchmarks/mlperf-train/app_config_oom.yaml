@@ -1,4 +1,4 @@
-base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] }}
 
 env_vars: {"RAY_task_oom_retries": "50", "RAY_min_memory_free_bytes": "1000000000"}
 

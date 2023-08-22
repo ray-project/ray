@@ -42,7 +42,7 @@ class BuiltApplication:
     to production using the Serve CLI or REST API.
     """
 
-    def __init__(self, deployments: List[Deployment]):
+    def __init__(self, deployments: List[Deployment], ingress: str):
         deployment_dict = {}
         for d in deployments:
             if not isinstance(d, Deployment):
@@ -54,47 +54,39 @@ class BuiltApplication:
 
         self._deployments = ImmutableDeploymentDict(deployment_dict)
 
+        if ingress not in self._deployments:
+            raise ValueError(
+                f"Requested ingress deployment '{ingress}' was not found in the "
+                f"deployments passed in: {self._deployments.keys()}. Ingress must be "
+                "one of the deployments passed in."
+            )
+
+        self._ingress = ingress
+
     @property
     def deployments(self) -> ImmutableDeploymentDict:
         return self._deployments
 
     @property
     def ingress(self) -> Optional[Deployment]:
-        """Gets the app's ingress, if one exists.
-
-        The ingress is the single deployment with a non-None route prefix. If more
-        or less than one deployment has a route prefix, no single ingress exists,
-        so returns None.
-        """
-
-        ingress = None
-
-        for deployment in self._deployments.values():
-            if deployment.route_prefix is not None:
-                if ingress is None:
-                    ingress = deployment
-                else:
-                    return None
-
-        return ingress
+        return self._deployments[self._ingress]
 
 
 def _get_deploy_args_from_built_app(app: BuiltApplication):
     """Get list of deploy args from a BuiltApplication."""
     deploy_args_list = []
     for deployment in list(app.deployments.values()):
+        is_ingress = deployment.name == app.ingress.name
         deploy_args_list.append(
             get_deploy_args(
-                deployment._name,
-                deployment._func_or_class,
-                deployment.init_args,
-                deployment.init_kwargs,
-                deployment._ray_actor_options,
-                deployment._config,
-                deployment._version,
-                deployment.route_prefix,
-                deployment._is_driver_deployment,
-                deployment._docs_path,
+                name=deployment._name,
+                replica_config=deployment._replica_config,
+                ingress=is_ingress,
+                deployment_config=deployment._deployment_config,
+                version=deployment.version,
+                route_prefix=deployment.route_prefix,
+                is_driver_deployment=deployment._is_driver_deployment,
+                docs_path=deployment._docs_path,
             )
         )
     return deploy_args_list

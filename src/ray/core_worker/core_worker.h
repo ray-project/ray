@@ -404,7 +404,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   bool GetCurrentTaskRetryExceptions() const {
     if (!options_.is_local_mode) {
-      return worker_context_.GetCurrentTask()->GetMessage().retry_exceptions();
+      return worker_context_.GetCurrentTask()->ShouldRetryExceptions();
     } else {
       return false;
     }
@@ -450,9 +450,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
+  int GetMemoryStoreSize() { return memory_store_->Size(); }
+
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
+
+  /// Return all pending children task ids for a given parent task id.
+  /// The parent task id should exist in the current worker.
+  /// For debugging and testing only.
+  std::vector<TaskID> GetPendingChildrenTasks(const TaskID &task_id) const;
 
   /// Get the RPC address of this worker.
   ///
@@ -824,6 +831,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// that serves as an allowlist of frontend-language exceptions/errors that should be
   /// retried. Default is an empty string, which will be treated as an allow-all in the
   /// language worker.
+  /// param[in] current_task_id The current task_id that submits the task.
+  /// If Nil() is given, it will be automatically propagated from worker_context.
+  /// This is used when worker_context cannot reliably obtain the curernt task_id
+  /// i.e., Python async actors.
   /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function,
@@ -833,7 +844,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       bool retry_exceptions,
       const rpc::SchedulingStrategy &scheduling_strategy,
       const std::string &debugger_breakpoint,
-      const std::string &serialized_retry_exception_allowlist = "");
+      const std::string &serialized_retry_exception_allowlist = "",
+      const TaskID current_task_id = TaskID::Nil());
 
   /// Create an actor.
   ///
@@ -890,13 +902,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] task_returns The object returned by this task
+  /// param[in] current_task_id The current task_id that submits the task.
+  /// If Nil() is given, it will be automatically propagated from worker_context.
+  /// This is used when worker_context cannot reliably obtain the curernt task_id
+  /// i.e., Python async actors.
   ///
   /// \return Status of this submission
   Status SubmitActorTask(const ActorID &actor_id,
                          const RayFunction &function,
                          const std::vector<std::unique_ptr<TaskArg>> &args,
                          const TaskOptions &task_options,
-                         std::vector<rpc::ObjectReference> &task_returns);
+                         std::vector<rpc::ObjectReference> &task_returns,
+                         const TaskID current_task_id = TaskID::Nil());
 
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
@@ -979,6 +996,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_id Object ID of the return value.
   /// \param[in] data_size Size of the return value.
   /// \param[in] metadata Metadata buffer of the return value.
+  /// \param[in] caller_address The address of the caller of the method.
   /// \param[in] contained_object_id ID serialized within each return object.
   /// \param[in][out] task_output_inlined_bytes Store the total size of all inlined
   /// objects of a task. It is used to decide if the current object should be inlined. If
@@ -989,6 +1007,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                               const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
+                              const rpc::Address &caller_address,
                               int64_t *task_output_inlined_bytes,
                               std::shared_ptr<RayObject> *return_object);
 
@@ -1004,7 +1023,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// objects.
   Status SealReturnObject(const ObjectID &return_id,
                           std::shared_ptr<RayObject> return_object,
-                          const ObjectID &generator_id);
+                          const ObjectID &generator_id,
+                          const rpc::Address &caller_address);
 
   /// Pin the local copy of the return object, if one exists.
   ///
@@ -1213,6 +1233,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// The callback expected to be implemented by the client.
   using SetResultCallback =
       std::function<void(std::shared_ptr<RayObject>, ObjectID object_id, void *)>;
+
+  using OnCanceledCallback = std::function<void(bool, bool)>;
 
   /// Perform async get from the object store.
   ///
@@ -1543,6 +1565,31 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   }
 
   Status WaitForActorRegistered(const std::vector<ObjectID> &ids);
+
+  /// Cancel a normal task (non-actor-task) queued or running in the current worker.
+  ///
+  /// \param intended_task_id The ID of a task to cancel.
+  /// \param force_kill If true, kill the worker.
+  /// \param recursive If true, cancel all children tasks of the intended_task_id.
+  /// \param on_canceled Callback called after a task is canceled.
+  /// It has two inputs, which corresponds to requested_task_running (if task is still
+  /// running after a cancelation attempt is done) and attempt_succeeded (if task
+  /// is canceled, and a caller doesn't have to retry).
+  void CancelTaskOnExecutor(TaskID intended_task_id,
+                            bool force_kill,
+                            bool recursive,
+                            OnCanceledCallback on_canceled);
+
+  /// Cancel an actor task queued or running in the current worker.
+  ///
+  /// See params in CancelTaskOnExecutor.
+  /// For the actor task cancel protocol, see the docstring of
+  /// direct_actor_task_submitter.h::CancelTask.
+  void CancelActorTaskOnExecutor(WorkerID caller_worker_id,
+                                 TaskID intended_task_id,
+                                 bool force_kill,
+                                 bool recursive,
+                                 OnCanceledCallback on_canceled);
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make

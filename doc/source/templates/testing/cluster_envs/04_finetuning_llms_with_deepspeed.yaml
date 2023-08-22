@@ -1,0 +1,33 @@
+base_image: anyscale/ray:nightly-py39-cu118
+
+env_vars: {}
+
+debian_packages:
+  - libaio1
+
+python:
+  pip_packages: [
+    torch==2.0.0,
+    torchvision==0.15.1,
+    torchaudio==2.0.1,
+    deepspeed,
+    fairscale,
+    transformers>=4.31.0,
+    dataset,
+    accelerate,
+    evaluate,
+    bitsandbytes,
+    wandb,
+    pytorch-lightning,
+    protobuf<3.21.0,
+    torchmetrics,
+    lm_eval==0.3.0,
+    tiktoken==0.1.2,
+    sentencepiece,
+  ]
+  conda_packages: []
+
+post_build_cmds:
+  # Install Ray
+  - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

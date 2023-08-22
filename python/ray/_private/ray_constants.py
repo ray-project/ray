@@ -39,6 +39,9 @@ def env_set_by_user(key):
 # Whether event logging to driver is enabled. Set to 0 to disable.
 AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
 
+# Filter level under which events will be filtered out, i.e. not printing to driver
+RAY_LOG_TO_DRIVER_EVENT_LEVEL = os.environ.get("RAY_LOG_TO_DRIVER_EVENT_LEVEL", "INFO")
+
 # Internal kv keys for storing monitor debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
@@ -101,6 +104,9 @@ RAY_START_HOOK = "RAY_START_HOOK"
 # Hook that is invoked on `ray job submit`. It will be given all the same args as the
 # job.cli.submit() function gets, passed as kwargs to this function.
 RAY_JOB_SUBMIT_HOOK = "RAY_JOB_SUBMIT_HOOK"
+# Headers to pass when using the Job CLI. It will be given to
+# instantiate a Job SubmissionClient.
+RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -220,6 +226,7 @@ PROCESS_TYPE_LOG_MONITOR = "log_monitor"
 PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_DASHBOARD = "dashboard"
 PROCESS_TYPE_DASHBOARD_AGENT = "dashboard_agent"
+PROCESS_TYPE_RUNTIME_ENV_AGENT = "runtime_env_agent"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
@@ -388,7 +395,27 @@ KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 
+# Accelerator constants
+NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR = (
+    "RAY_EXPERIMENTAL_NOSET_NEURON_RT_VISIBLE_CORES"
+)
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
+CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
+NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
+NEURON_CORES = "neuron_cores"
+GPU = "GPU"
+# https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/inf2-arch.html#aws-inf2-arch
+# https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/trn1-arch.html#aws-trn1-arch
+# Subject to removal after the information is available via public API
+AWS_NEURON_INSTANCE_MAP = {
+    "trn1.2xlarge": 2,
+    "trn1.32xlarge": 32,
+    "trn1n.32xlarge": 32,
+    "inf2.xlarge": 2,
+    "inf2.8xlarge": 2,
+    "inf2.24xlarge": 12,
+    "inf2.48xlarge": 24,
+}
 RAY_WORKER_NICENESS = "RAY_worker_niceness"
 
 # Default max_retries option in @ray.remote for non-actor
@@ -434,6 +461,7 @@ RAY_ALLOWED_CACHED_PORTS = {
     "metrics_agent_port",
     "metrics_export_port",
     "dashboard_agent_listen_port",
+    "runtime_env_agent_port",
     "gcs_server_port",  # the `port` option for gcs port.
 }
 
@@ -449,3 +477,10 @@ RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = (
 )
 
 RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
+
+RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONNECTIONS"
+
+# TPU VMs come with 4 chips per host and 2 tensorcores per chip.
+# For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
+RAY_TPU_NUM_CHIPS_PER_HOST = 4
+RAY_TPU_CORES_PER_CHIP = 2

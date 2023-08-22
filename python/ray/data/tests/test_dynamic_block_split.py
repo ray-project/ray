@@ -1,3 +1,4 @@
+import os
 import time
 
 import numpy as np
@@ -6,6 +7,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data import Dataset
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
@@ -18,14 +20,17 @@ from ray.tests.conftest import *  # noqa
 class RandomBytesDatasource(Datasource):
     def create_reader(self, **read_args):
         return RandomBytesReader(
-            read_args["num_blocks_per_task"], read_args["block_size"]
+            read_args["num_blocks_per_task"],
+            read_args["block_size"],
+            read_args.get("use_bytes", True),
         )
 
 
 class RandomBytesReader(Reader):
-    def __init__(self, num_blocks_per_task: int, block_size: int):
+    def __init__(self, num_blocks_per_task: int, block_size: int, use_bytes=True):
         self.num_blocks_per_task = num_blocks_per_task
         self.block_size = block_size
+        self.use_bytes = use_bytes
 
     def estimate_inmemory_data_size(self):
         return None
@@ -33,7 +38,12 @@ class RandomBytesReader(Reader):
     def get_read_tasks(self, parallelism: int):
         def _blocks_generator():
             for _ in range(self.num_blocks_per_task):
-                yield pd.DataFrame({"one": [np.random.bytes(self.block_size)]})
+                if self.use_bytes:
+                    yield pd.DataFrame({"one": [np.random.bytes(self.block_size)]})
+                else:
+                    yield pd.DataFrame(
+                        {"one": [np.array2string(np.ones(self.block_size, dtype=int))]}
+                    )
 
         return parallelism * [
             ReadTask(
@@ -67,44 +77,21 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     ray.init(num_cpus=8)
     ctx = ray.data.context.DataContext.get_current()
 
-    try:
-        original = ctx.block_splitting_enabled
+    ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
+    if not block_split:
+        # Setting infinite block size effectively disables block splitting.
+        ctx.target_max_block_size = float("inf")
+    ds = ray.data.read_datasource(
+        SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
+    )
 
-        ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
-        if not block_split:
-            # Setting infinite block size effectively disables block splitting.
-            ctx.target_max_block_size = float("inf")
-        ds = ray.data.read_datasource(
-            SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
-        )
+    start = time.time()
+    ds.map(lambda x: x)
+    delta = time.time() - start
 
-        start = time.time()
-        ds.map(lambda x: x)
-        delta = time.time() - start
-
-        print("full read time", delta)
-        # Should run in ~3 seconds. It takes >9 seconds if bulk read is broken.
-        assert delta < 8, delta
-    finally:
-        ctx.block_splitting_enabled = original
-
-
-def test_enable_in_ray_client(ray_start_cluster_enabled):
-    cluster = ray_start_cluster_enabled
-    cluster.add_node(num_cpus=4)
-    cluster.head_node._ray_params.ray_client_server_port = "10004"
-    cluster.head_node.start_ray_client_server()
-    address = "ray://localhost:10004"
-
-    # Import of ray.data.context module, and this triggers the initialization of
-    # default configuration values in DataContext.
-    from ray.data.context import DataContext
-
-    assert DataContext.get_current().block_splitting_enabled
-
-    # Verify Ray client also has dynamic block splitting enabled.
-    ray.init(address)
-    assert DataContext.get_current().block_splitting_enabled
+    print("full read time", delta)
+    # Should run in ~3 seconds. It takes >9 seconds if bulk read is broken.
+    assert delta < 8, delta
 
 
 @pytest.mark.parametrize(
@@ -116,7 +103,6 @@ def test_enable_in_ray_client(ray_start_cluster_enabled):
 )
 def test_dataset(
     shutdown_only,
-    enable_dynamic_block_splitting,
     target_max_block_size,
     compute,
 ):
@@ -187,9 +173,7 @@ def test_dataset(
         assert len(batch["one"]) == 10
 
 
-def test_dataset_pipeline(
-    ray_start_regular_shared, enable_dynamic_block_splitting, target_max_block_size
-):
+def test_dataset_pipeline(ray_start_regular_shared, target_max_block_size):
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
@@ -218,9 +202,7 @@ def test_dataset_pipeline(
     assert len(dsp.take(5)) == 5
 
 
-def test_filter(
-    ray_start_regular_shared, enable_dynamic_block_splitting, target_max_block_size
-):
+def test_filter(ray_start_regular_shared, target_max_block_size):
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
@@ -244,9 +226,7 @@ def test_filter(
     assert ds.num_blocks() == num_blocks_per_task
 
 
-def test_lazy_block_list(
-    shutdown_only, enable_dynamic_block_splitting, target_max_block_size
-):
+def test_lazy_block_list(shutdown_only, target_max_block_size):
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
@@ -345,7 +325,7 @@ def test_lazy_block_list(
         assert block_metadata.schema is not None
 
 
-def test_read_large_data(ray_start_cluster, enable_dynamic_block_splitting):
+def test_read_large_data(ray_start_cluster):
     # Test 20G input with single task
     num_blocks_per_task = 20
     block_size = 1024 * 1024 * 1024
@@ -367,6 +347,91 @@ def test_read_large_data(ray_start_cluster, enable_dynamic_block_splitting):
 
     ds = ds.map_batches(foo, batch_size=None)
     assert ds.count() == num_blocks_per_task
+
+
+def _test_write_large_data(
+    tmp_path, ext, write_fn, read_fn, use_bytes, write_kwargs=None
+):
+    # Test 2G input with single task
+    num_blocks_per_task = 200
+    block_size = 10 * 1024 * 1024
+
+    ds = ray.data.read_datasource(
+        RandomBytesDatasource(),
+        parallelism=1,
+        num_blocks_per_task=num_blocks_per_task,
+        block_size=block_size,
+        use_bytes=use_bytes,
+    )
+
+    # This should succeed without OOM.
+    # https://github.com/ray-project/ray/pull/37966.
+    out_dir = os.path.join(tmp_path, ext)
+    write_kwargs = {} if write_kwargs is None else write_kwargs
+    write_fn(ds, out_dir, **write_kwargs)
+
+    max_heap_memory = ds._write_ds._get_stats_summary().get_max_heap_memory()
+    assert max_heap_memory < (num_blocks_per_task * block_size / 2), (
+        max_heap_memory,
+        ext,
+    )
+
+    # Make sure we can read out a record.
+    if read_fn is not None:
+        assert read_fn(out_dir).count() == num_blocks_per_task
+
+
+def test_write_large_data_parquet(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path,
+        "parquet",
+        Dataset.write_parquet,
+        ray.data.read_parquet,
+        use_bytes=True,
+    )
+
+
+def test_write_large_data_json(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path, "json", Dataset.write_json, ray.data.read_json, use_bytes=False
+    )
+
+
+def test_write_large_data_numpy(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path,
+        "numpy",
+        Dataset.write_numpy,
+        ray.data.read_numpy,
+        use_bytes=False,
+        write_kwargs={"column": "one"},
+    )
+
+
+def test_write_large_data_csv(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path, "csv", Dataset.write_csv, ray.data.read_csv, use_bytes=False
+    )
+
+
+def test_write_large_data_tfrecords(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path,
+        "tfrecords",
+        Dataset.write_tfrecords,
+        ray.data.read_tfrecords,
+        use_bytes=True,
+    )
+
+
+def test_write_large_data_webdataset(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path,
+        "webdataset",
+        Dataset.write_webdataset,
+        ray.data.read_webdataset,
+        use_bytes=True,
+    )
 
 
 if __name__ == "__main__":

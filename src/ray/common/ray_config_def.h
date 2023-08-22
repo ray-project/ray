@@ -456,8 +456,6 @@ RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024
 /// The duration between two checks for grpc status.
 RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
 
-/// Feature flag to use the ray syncer for resource synchronization
-RAY_CONFIG(bool, use_ray_syncer, true)
 /// Due to the protocol drawback, raylet needs to refresh the message if
 /// no message is received for a while.
 /// Refer to https://tinyurl.com/n6kvsp87 for more details
@@ -528,8 +526,8 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 100 * 1000)
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 #endif
 
-/// If the agent manager fails to communicate with the dashboard agent, we will retry
-/// after this interval.
+/// If the agent manager fails to communicate with the dashboard agent or the runtime env
+/// agent, we will retry after this interval.
 RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000)
 
 /// The maximum number of resource shapes included in the resource
@@ -690,9 +688,9 @@ RAY_CONFIG(uint32_t,
 RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 
 /// The scheduler will treat these custom resource types as unit_instance.
-/// Default custom_unit_instance_resources is empty.
-/// When set it to "FPGA", we will treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "")
+/// Default custom_unit_instance_resources is "neuron_cores".
+/// When set it to "neuron_cores,FPGA", we will also treat FPGA as unit_instance.
+RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores")
 
 // Maximum size of the batches when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)

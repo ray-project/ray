@@ -15,6 +15,7 @@ class MNISTClassifier(pl.LightningModule):
         self.fc2 = torch.nn.Linear(feature_dim, 10)
         self.lr = lr
         self.accuracy = Accuracy(task="multiclass", num_classes=10, top_k=1)
+        self.validation_step_outputs = []
 
     def forward(self, x):
         x = x.view(-1, 28 * 28)
@@ -34,11 +35,18 @@ class MNISTClassifier(pl.LightningModule):
         logits = self.forward(x)
         loss = F.nll_loss(logits, y)
         acc = self.accuracy(logits, y)
-        return {"val_loss": loss, "val_accuracy": acc}
+        result = {"val_loss": loss, "val_accuracy": acc}
+        self.validation_step_outputs.append(result)
+        return
 
-    def validation_epoch_end(self, outputs):
-        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
-        avg_acc = torch.stack([x["val_accuracy"] for x in outputs]).mean()
+    def on_validation_epoch_end(self):
+        avg_loss = torch.stack(
+            [x["val_loss"] for x in self.validation_step_outputs]
+        ).mean()
+        avg_acc = torch.stack(
+            [x["val_accuracy"] for x in self.validation_step_outputs]
+        ).mean()
+        self.validation_step_outputs.clear()
 
         # TODO(yunxuanx): change this back to ptl/val_loss after
         # we resolved the metric unpacking issue

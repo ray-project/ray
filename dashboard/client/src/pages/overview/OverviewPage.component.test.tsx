@@ -81,6 +81,7 @@ const Wrapper =
             nodeMap: {},
             nodeMapByIp: {},
             namespaceMap: {},
+            dashboardDatasource: "Prometheus",
           }}
         >
           {children}

@@ -23,6 +23,9 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve.context import get_global_client
+from ray.serve.schema import ServeInstanceDetails
+from ray.serve._private.utils import get_head_node_id
+from ray.serve._private.common import HTTPProxyStatus
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
@@ -56,57 +59,75 @@ def start_and_shutdown_ray_cli_function():
     "ray_instance",
     [
         {
-            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND": "1",
-            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND": "2",
+            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND": "0.1",
+            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND": "0.2",
         },
     ],
     indirect=True,
 )
 def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
-    """Test max_concurrent_queries can be honored with long poll timeout
+    """Test that max_concurrent_queries is respected when there are long poll timeouts.
 
-    issue: https://github.com/ray-project/ray/issues/32652
+    Previously, when a long poll update occurred (e.g., a timeout or new replicas
+    added), ongoing requests would no longer be counted against
+    `max_concurrent_queries`.
+
+    Issue: https://github.com/ray-project/ray/issues/32652
     """
 
+    @ray.remote(num_cpus=0)
+    class CounterActor:
+        def __init__(self):
+            self._count = 0
+
+        def inc(self):
+            self._count += 1
+
+        def get(self):
+            return self._count
+
     signal_actor = SignalActor.remote()
+    counter_actor = CounterActor.remote()
 
     @serve.deployment(max_concurrent_queries=1)
     async def f():
+        await counter_actor.inc.remote()
         await signal_actor.wait.remote()
         return "hello"
 
-    handle = serve.run(f.bind())
-    first_ref = handle.remote()
+    # Issue a blocking request which should occupy the only slot due to
+    # `max_concurrent_queries=1`.
+    serve.run(f.bind())
 
-    # Clear all the internal longpoll client objects within handle
-    # long poll client will receive new updates from long poll host,
-    # this is to simulate the longpoll timeout
-    object_snapshots1 = handle._router.long_poll_client.object_snapshots
-    handle._router.long_poll_client._reset()
-    wait_for_condition(
-        lambda: len(handle._router.long_poll_client.object_snapshots) > 0, timeout=10
-    )
-    object_snapshots2 = handle._router.long_poll_client.object_snapshots
+    @ray.remote
+    def do_req():
+        return requests.get("http://localhost:8000").text
 
-    # Check object snapshots between timeout interval
-    assert object_snapshots1.keys() == object_snapshots2.keys()
-    assert len(object_snapshots1.keys()) == 1
-    key = list(object_snapshots1.keys())[0]
-    assert (
-        object_snapshots1[key][0].actor_handle != object_snapshots2[key][0].actor_handle
-    )
-    assert (
-        object_snapshots1[key][0].actor_handle._actor_id
-        == object_snapshots2[key][0].actor_handle._actor_id
-    )
+    # The request should be hanging waiting on the `SignalActor`.
+    first_ref = do_req.remote()
 
-    # Make sure the first request is still ongoing.
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(first_ref, timeout=1)
+    def check_request_started(num_expected_requests: int) -> bool:
+        with pytest.raises(TimeoutError):
+            ray.get(first_ref, timeout=0.1)
+        assert ray.get(counter_actor.get.remote()) == num_expected_requests
+        return True
 
-    # Unblock the first request.
-    signal_actor.send.remote()
+    wait_for_condition(check_request_started, timeout=5, num_expected_requests=1)
+
+    # Now issue 10 more requests and wait for significantly longer than the long poll
+    # timeout. They should all be queued in the handle due to `max_concurrent_queries`
+    # enforcement (verified via the counter).
+    new_refs = [do_req.remote() for _ in range(10)]
+    ready, _ = ray.wait(new_refs, timeout=1)
+    assert len(ready) == 0
+    assert ray.get(counter_actor.get.remote()) == 1
+
+    # Unblock the first request. Now everything should get executed.
+    ray.get(signal_actor.send.remote())
     assert ray.get(first_ref) == "hello"
+    assert ray.get(new_refs) == ["hello"] * 10
+    assert ray.get(counter_actor.get.remote()) == 11
+
     serve.shutdown()
 
 
@@ -288,10 +309,11 @@ def test_handle_early_detect_failure(shutdown_ray):
 
 
 def test_autoscaler_shutdown_node_http_everynode(
-    shutdown_ray, call_ray_stop_only  # noqa: F811
+    monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
 ):
+    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
     cluster = AutoscalingCluster(
-        head_resources={"CPU": 2},
+        head_resources={"CPU": 4},
         worker_node_types={
             "cpu_node": {
                 "resources": {
@@ -309,20 +331,23 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     serve.start(http_options={"location": "EveryNode"})
 
-    @ray.remote
-    class Placeholder:
-        def ready(self):
-            return 1
+    @serve.deployment(
+        num_replicas=2,
+        ray_actor_options={"num_cpus": 3},
+    )
+    class A:
+        def __call__(self, *args):
+            return "hi"
 
-    a = Placeholder.options(resources={"IS_WORKER": 1}).remote()
-    assert ray.get(a.ready.remote()) == 1
+    serve.run(A.bind(), name="app_f")
 
-    # 2 proxies, 1 controller, and one placeholder.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 4)
+    # 2 proxies, 1 controller, 2 replicas.
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
     assert len(ray.nodes()) == 2
 
-    # Now make sure the placeholder actor exits.
-    ray.kill(a)
+    # Stop all deployment replicas.
+    serve.delete("app_f")
+
     # The http proxy on worker node should exit as well.
     wait_for_condition(
         lambda: len(
@@ -335,9 +360,98 @@ def test_autoscaler_shutdown_node_http_everynode(
         )
         == 2
     )
+    client = get_global_client()
+    serve_details = ServeInstanceDetails(
+        **ray.get(client._controller.get_serve_instance_details.remote())
+    )
+    assert len(serve_details.http_proxies) == 1
+    assert (
+        serve_details.http_proxies[get_head_node_id()].status == HTTPProxyStatus.HEALTHY
+    )
+
     # Only head node should exist now.
     wait_for_condition(
         lambda: len(list(filter(lambda n: n["Alive"], ray.nodes()))) == 1
+    )
+
+    # Clean up serve.
+    serve.shutdown()
+
+
+def test_drain_and_undrain_http_proxy_actors(
+    monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """Test the state transtion of the proxy actor between
+    HEALTHY, DRAINING and DRAINED
+    """
+    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "10")
+
+    cluster = Cluster()
+    head_node = cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=head_node.address)
+    serve.start(http_options={"location": "EveryNode"})
+
+    @serve.deployment
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    serve.run(HelloModel.options(num_replicas=2).bind())
+
+    # 3 proxies, 1 controller, 2 replicas.
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 6)
+    assert len(ray.nodes()) == 3
+
+    client = get_global_client()
+    serve_details = ServeInstanceDetails(
+        **ray.get(client._controller.get_serve_instance_details.remote())
+    )
+    proxy_actor_ids = {
+        proxy.actor_id for _, proxy in serve_details.http_proxies.items()
+    }
+    assert len(proxy_actor_ids) == 3
+
+    serve.run(HelloModel.options(num_replicas=1).bind())
+    # 1 proxy should be draining
+
+    def check_proxy_status(proxy_status_to_count):
+        serve_details = ServeInstanceDetails(
+            **ray.get(client._controller.get_serve_instance_details.remote())
+        )
+        proxy_status_list = [
+            proxy.status for _, proxy in serve_details.http_proxies.items()
+        ]
+        return {
+            status: proxy_status_list.count(status) for status in proxy_status_list
+        } == proxy_status_to_count
+
+    wait_for_condition(
+        condition_predictor=check_proxy_status,
+        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 2, HTTPProxyStatus.DRAINING: 1},
+    )
+
+    serve.run(HelloModel.options(num_replicas=2).bind())
+    # The draining proxy should become healthy.
+    wait_for_condition(
+        condition_predictor=check_proxy_status,
+        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 3},
+    )
+    serve_details = ServeInstanceDetails(
+        **ray.get(client._controller.get_serve_instance_details.remote())
+    )
+    {
+        proxy.actor_id for _, proxy in serve_details.http_proxies.items()
+    } == proxy_actor_ids
+
+    serve.run(HelloModel.options(num_replicas=1).bind())
+    # 1 proxy should be draining and eventually be drained.
+    wait_for_condition(
+        condition_predictor=check_proxy_status,
+        timeout=40,
+        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 2},
     )
 
     # Clean up serve.
@@ -423,7 +537,7 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
 
     # Delete the deployment should bring the active actors down to 3 and drop
     # replicas on all nodes.
-    serve.delete(name="default")
+    serve.delete(name=SERVE_DEFAULT_APP_NAME)
 
     def _check():
         _actors = ray._private.state.actors().values()
