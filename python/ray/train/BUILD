@@ -312,7 +312,7 @@ py_test(
     name = "test_examples",
     size = "large",
     srcs = ["tests/test_examples.py"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -632,7 +632,7 @@ py_test(
     name = "test_e2e_wandb_integration",
     size = "small",
     srcs = ["tests/test_e2e_wandb_integration.py"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"]
 )
 
