@@ -682,13 +682,13 @@ def test_multiplexed_detect(manage_ray):
     resp = requests.get("http://localhost:8000/app", headers=headers)
     assert resp.status_code == 200
 
-
     wait_for_condition(
         lambda: int(
             ServeUsageTag.MULTIPLEXED_API_USED.get_value_from_report(
                 ray.get(storage_handle.get_report.remote())
             )
-        ) == 1,
+        )
+        == 1,
         timeout=5,
     )
 

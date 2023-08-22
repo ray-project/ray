@@ -26,7 +26,7 @@ class ServeUsageTag(Enum):
     DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED = (
         TagKey.SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED
     )
-    SERVE_MULTIPLEXED_API = TagKey.SERVE_MULTIPLEXED_API_USED
+    MULTIPLEXED_API_USED = TagKey.SERVE_MULTIPLEXED_API_USED
 
     def record(self, value: str):
         """Record telemetry value."""
