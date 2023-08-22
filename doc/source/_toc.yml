@@ -337,6 +337,8 @@ parts:
                   - file: cluster/kubernetes/examples/text-summarizer-rayservice.md
               - file: cluster/kubernetes/k8s-ecosystem
                 sections:
+                  - file: cluster/kubernetes/k8s-ecosystem/prometheus-grafana.md
+                  - file: cluster/kubernetes/k8s-ecosystem/pyspy.md
                   - file: cluster/kubernetes/k8s-ecosystem/kubeflow.md
               - file: cluster/kubernetes/references
           - file: cluster/vms/index
