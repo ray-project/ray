@@ -475,7 +475,7 @@ class PopulationBasedTraining(FIFOScheduler):
         checkpoint_config = trial.run_metadata.checkpoint_manager.checkpoint_config
         if (
             checkpoint_config.num_to_keep
-            and checkpoint_config.checkpoint_config <= 2
+            and checkpoint_config.num_to_keep <= 2
             and log_once("pbt_num_to_keep")
         ):
             warnings.warn(
