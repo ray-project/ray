@@ -2173,7 +2173,7 @@
 
   run:
     timeout: 600
-    script: python workloads/torch_tune_serve_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_tune_serve_test.py
     wait_for_nodes:
       num_nodes: 2
 
@@ -3036,6 +3036,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
