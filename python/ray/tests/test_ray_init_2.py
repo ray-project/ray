@@ -284,9 +284,9 @@ def test_non_default_ports_visible_on_init(shutdown_only):
 def test_get_and_write_node_ip_address(shutdown_only):
     ray.init()
     node = ray._private.worker.global_worker.node
-    node_ip = ray._private.services.get_node_ip_address()
+    node_ip = ray.util.get_node_ip_address()
     cached_node_ip_address = node._get_cached_node_ip_address()
-    assert cached_node_ip_address.get(node.unique_id) == node_ip
+    assert cached_node_ip_address == node_ip
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")
