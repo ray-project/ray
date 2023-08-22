@@ -27,7 +27,7 @@ kind create cluster
 
 ### Step 2: Install the KubeRay operator
 
-Follow this [document](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/README.md) to install the latest stable KubeRay operator via Helm repository.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
 
 ### Step 3: Create a RayCluster with `SYS_PTRACE` capability
 

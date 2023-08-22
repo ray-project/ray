@@ -35,7 +35,8 @@ kustomize version --short
     * If you do not want to install all components, you can comment out **KNative**, **Katib**, **Tensorboards Controller**, **Tensorboard Web App**, **Training Operator**, and **KServe** from [example/kustomization.yaml](https://github.com/kubeflow/manifests/blob/v1.6-branch/example/kustomization.yaml).
 
 ## Step 3: Install KubeRay operator
-* Follow this [document](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/README.md) to install the latest stable KubeRay operator via Helm repository.
+
+* Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
 
 ## Step 4: Install RayCluster
 ```sh

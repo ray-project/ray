@@ -50,7 +50,7 @@ kubectl get all -n prometheus-system
 
 ## Step 3: Install a KubeRay operator
 
-* Follow this [document](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/README.md) to install the latest stable KubeRay operator via Helm repository.
+* Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
 
 ## Step 4: Install a RayCluster
 
