@@ -1,5 +1,7 @@
 # DreamerV3
 
+![DreamerV3](../../../doc/source/rllib/images/dreamerv3/dreamerv3.png)
+
 ## Overview
 An RLlib-based implementation of the
 [DreamerV3 model-based reinforcement learning algorithm](https://arxiv.org/pdf/2301.04104v1.pdf)
