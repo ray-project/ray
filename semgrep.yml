@@ -20,6 +20,20 @@ rules:
         # get re-written.
         - "doc/source/train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example.rst"
         - "doc/source/train/dl_guide.rst"
+        # FIXME(@ml-team): These are byproduct from train doc rewritten. Will fix them as a team.
+        - "doc/source/train/getting-started-pytorch-lightning.rst"
+        - "doc/source/train/getting-started-pytorch.rst"
+        - "doc/source/train/getting-started-transformers.rst"
+        - "doc/source/train/user-guides/checkpoints.rst"
+        - "doc/source/train/user-guides/data-loading-preprocessing.rst"
+        - "doc/source/train/user-guides/experiment-tracking.rst"
+        - "doc/source/train/user-guides/monitoring-logging.rst"
+        - "doc/source/train/user-guides/persistent-storage.rst"
+        - "doc/source/train/user-guides/using-gpus.rst"
+        - "doc/source/train/distributed-tensorflow-keras.rst"
+        - "doc/source/train/horovod.rst"
+        - "doc/source/train/deepspeed.rst"
+        - "doc/source/train/huggingface-accelerate.rst"
 
     languages:
       - generic

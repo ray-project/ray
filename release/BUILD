@@ -33,6 +33,16 @@ compile_pip_requirements(
 )
 
 compile_pip_requirements(
+    name = "requirements_byod_3.11",
+    requirements_in = "ray_release/byod/requirements_byod_3.11.in",
+    requirements_txt = "ray_release/byod/requirements_byod_3.11.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+compile_pip_requirements(
     name = "requirements_ml_byod_3.8",
     requirements_in = "ray_release/byod/requirements_ml_byod_3.8.in",
     requirements_txt = "ray_release/byod/requirements_ml_byod_3.8.txt",
@@ -226,6 +236,7 @@ py_test(
     srcs = test_srcs,
     env = {
         "IS_SMOKE_TEST": "1",
+        "RAY_AIR_NEW_PERSISTENCE_MODE": "1",
     },
     main = "golden_notebook_tests/workloads/torch_tune_serve_test.py",
     tags = [

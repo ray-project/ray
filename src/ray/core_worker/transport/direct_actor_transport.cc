@@ -165,6 +165,10 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
             task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
         pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
             task_spec.ConcurrencyGroups(), default_max_concurrency);
+        if (task_spec.IsAsyncioActor()) {
+          fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
+              task_spec.ConcurrencyGroups(), fiber_max_concurrency_);
+        }
         concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
             task_spec.ConcurrencyGroups();
         // Tell raylet that an actor creation task has finished execution, so that
@@ -203,16 +207,16 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   };
 
-  auto cancel_callback = [reply, task_spec](rpc::SendReplyCallback send_reply_callback) {
+  auto cancel_callback = [reply, task_spec](const Status &status,
+                                            rpc::SendReplyCallback send_reply_callback) {
     if (task_spec.IsActorTask()) {
       // We consider cancellation of actor tasks to be a push task RPC failure.
-      send_reply_callback(
-          Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
+      send_reply_callback(status, nullptr, nullptr);
     } else {
       // We consider cancellation of normal tasks to be an in-band cancellation of a
       // successful RPC.
       reply->set_was_cancelled_before_running(true);
-      send_reply_callback(Status::OK(), nullptr, nullptr);
+      send_reply_callback(status, nullptr, nullptr);
     }
   };
 
@@ -230,6 +234,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                               new OutOfOrderActorSchedulingQueue(task_main_io_service_,
                                                                  *waiter_,
                                                                  pool_manager_,
+                                                                 fiber_state_manager_,
                                                                  is_asyncio_,
                                                                  fiber_max_concurrency_,
                                                                  cg_it->second)))
@@ -241,6 +246,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                               new ActorSchedulingQueue(task_main_io_service_,
                                                        *waiter_,
                                                        pool_manager_,
+                                                       fiber_state_manager_,
                                                        is_asyncio_,
                                                        fiber_max_concurrency_,
                                                        cg_it->second)))
@@ -281,6 +287,17 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
 
   // Execute as many tasks as there are in the queue, in sequential order.
   normal_scheduling_queue_->ScheduleRequests();
+}
+
+bool CoreWorkerDirectTaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
+                                                         const TaskID &task_id) {
+  auto it = actor_scheduling_queues_.find(caller_worker_id);
+  if (it != actor_scheduling_queues_.end()) {
+    return it->second->CancelTaskIfFound(task_id);
+  } else {
+    // Queue doesn't exist. It can happen if a task hasn't been received yet.
+    return false;
+  }
 }
 
 bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {

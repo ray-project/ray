@@ -5,7 +5,6 @@ API References
     :maxdepth: 2
     :caption: Ray API References
 
-    ../ray-air/api/api.rst
     ../data/api/api.rst
     ../train/api/api.rst
     ../tune/api/api.rst
