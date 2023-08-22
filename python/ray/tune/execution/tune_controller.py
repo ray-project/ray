@@ -22,6 +22,7 @@ from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedChec
 from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
+from ray.train._internal.session import _FutureTrainingResult
 from ray.train._internal.storage import StorageContext, _use_storage_context
 from ray.train.constants import CHECKPOINT_DIR_NAME
 from ray.exceptions import RayActorError, RayTaskError
@@ -1864,7 +1865,7 @@ class TuneController:
         trial: Trial,
         storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> Optional[_TrackedCheckpoint]:
+    ) -> Optional[Union[_TrackedCheckpoint, _FutureTrainingResult]]:
         if trial not in self._trial_to_actor:
             logger.debug(
                 f"Trial SAVE requested for trial {trial} but trial is already "
@@ -1878,11 +1879,12 @@ class TuneController:
             assert (
                 storage == CheckpointStorage.PERSISTENT
             ), "Memory checkpoints are no longer supported in the new persistence mode."
-            self._schedule_trial_task(
+            future = self._schedule_trial_task(
                 trial=trial,
                 method_name="save",
                 on_result=self._on_saving_result,
                 on_error=self._trial_task_failure,
+                _return_future=True,
             )
             # TODO(justinvyu): `trial.saving_to` is needed in order to prevent
             # a done=True result from executing a STOP decision
@@ -1890,7 +1892,7 @@ class TuneController:
             # Keep this in for now while `train` and `save` are 2 separate steps.
             trial.temporary_state.saving_to = True
             # TODO(justinvyu): Remove the return value?
-            return
+            return _FutureTrainingResult(future)
 
         if storage == CheckpointStorage.MEMORY:
             future = self._schedule_trial_task(

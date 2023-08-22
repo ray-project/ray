@@ -10,6 +10,8 @@ from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.air.constants import TRAINING_ITERATION
+from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search import SearchGenerator
@@ -645,10 +647,23 @@ class PopulationBasedTraining(FIFOScheduler):
             logger.debug("Trial {} is in lower quantile".format(trial))
             trial_to_clone = random.choice(upper_quantile)
             assert trial is not trial_to_clone
-            if not self._trial_state[trial_to_clone].last_checkpoint:
+            clone_state = self._trial_state[trial_to_clone]
+            last_checkpoint = clone_state.last_checkpoint
+
+            if isinstance(last_checkpoint, _FutureTrainingResult):
+                training_result = last_checkpoint.resolve()
+
+                if training_result:
+                    clone_state.last_result = training_result.metrics
+                    clone_state.last_checkpoint = training_result.checkpoint
+                    last_checkpoint = clone_state.last_checkpoint
+                else:
+                    last_checkpoint = None
+
+            if not last_checkpoint:
                 logger.info(
-                    "[pbt]: no checkpoint for trial."
-                    " Skip exploit for Trial {}".format(trial)
+                    f"[pbt]: no checkpoint for trial {trial_to_clone}."
+                    f" Skip exploit for Trial {trial}"
                 )
                 return
             self._exploit(tune_controller, trial, trial_to_clone)
@@ -859,13 +874,23 @@ class PopulationBasedTraining(FIFOScheduler):
         trial.set_experiment_tag(new_tag)
         # Clone hyperparameters from the `trial_to_clone`
         trial.set_config(new_config)
-        # Resume training from a shallow copy of `trial_to_clone`'s latest checkpoint
+
+        # Resume training from a shallow copy of `trial_to_clone`'s latest
+        # checkpoint
         checkpoint_to_exploit = copy.copy(new_state.last_checkpoint)
         # NOTE: Clear the checkpoint id (which was set by the other trial's
         # checkpoint manager) so that the current trial's checkpoint manager marks
         # the checkpoint as the most recent to use upon trial resume
         checkpoint_to_exploit.id = None
-        trial.on_checkpoint(checkpoint_to_exploit)
+
+        if _use_storage_context():
+            exploit = _TrainingResult(
+                checkpoint=checkpoint_to_exploit, metrics=new_state.last_result
+            )
+        else:
+            exploit = checkpoint_to_exploit
+
+        trial.on_checkpoint(exploit)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
@@ -1088,9 +1113,14 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
             "Configuration will be changed to {}.".format(step, new_config)
         )
 
-        checkpoint = tune_controller._schedule_trial_save(
+        result = tune_controller._schedule_trial_save(
             trial, CheckpointStorage.PERSISTENT, result=result
         )
+        if _use_storage_context():
+            training_result = result.resolve()
+            checkpoint = training_result.checkpoint
+        else:
+            checkpoint = result
 
         new_tag = _make_experiment_tag(self.experiment_tag, new_config, new_config)
 

@@ -14,8 +14,8 @@ from unittest.mock import MagicMock
 
 
 import ray
-from ray import cloudpickle, tune
-from ray.train import Checkpoint
+from ray import cloudpickle, train, tune
+from ray.train._checkpoint import Checkpoint
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
 from ray.tune import Trainable, Callback
@@ -195,32 +195,37 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
 
-        def MockTrainingFuncSync(config, checkpoint_dir=None):
+        def train_fn_sync(config):
             iter = 0
 
-            if checkpoint_dir:
-                checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
-                with open(checkpoint_path, "rb") as fp:
-                    a, iter = pickle.load(fp)
+            checkpoint = train.get_checkpoint()
+            if checkpoint:
+                with checkpoint.as_directory() as checkpoint_dir:
+                    checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
+                    with open(checkpoint_path, "rb") as fp:
+                        a, iter = pickle.load(fp)
 
             a = config["a"]  # Use the new hyperparameter if perturbed.
 
             while True:
                 iter += 1
-                with tune.checkpoint_dir(step=iter) as checkpoint_dir:
+                with tempfile.TemporaryDirectory() as checkpoint_dir:
                     checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, iter), fp)
-                # Different sleep times so that asynch test runs do not
-                # randomly succeed. If well performing trials finish later,
-                # then bad performing trials will already have continued
-                # to train, which is exactly what we want to test when
-                # comparing sync vs. async.
-                time.sleep(a / 20)
-                # Score gets better every iteration.
-                tune.report(mean_accuracy=iter + a, a=a)
+                    # Different sleep times so that asynch test runs do not
+                    # randomly succeed. If well performing trials finish later,
+                    # then bad performing trials will already have continued
+                    # to train, which is exactly what we want to test when
+                    # comparing sync vs. async.
+                    time.sleep(a / 20)
+                    # Score gets better every iteration.
+                    train.report(
+                        {"mean_accuracy": iter + a, "a": a},
+                        checkpoint=Checkpoint.from_directory(checkpoint_dir),
+                    )
 
-        self.MockTrainingFuncSync = MockTrainingFuncSync
+        self.MockTrainingFuncSync = train_fn_sync
 
     def tearDown(self):
         ray.shutdown()
