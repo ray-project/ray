@@ -44,9 +44,9 @@ class PytorchTrainable(tune.Trainable):
     def save_checkpoint(self, checkpoint_dir):
         checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
         torch.save(self.model.state_dict(), checkpoint_path)
-        return checkpoint_path
 
-    def load_checkpoint(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_dir):
+        checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
         self.model.load_state_dict(torch.load(checkpoint_path))
 
     def reset_config(self, new_config):

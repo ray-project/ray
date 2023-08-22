@@ -1,6 +1,6 @@
 from timeit import default_timer as timer
 
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
 import torch
 import torchvision
 
@@ -63,7 +63,7 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
         model = torchvision.models.resnet101()
         model = train.torch.prepare_model(model)
 
-        train.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)

@@ -34,12 +34,14 @@ if TYPE_CHECKING:
     from ray.train._checkpoint import Checkpoint
 
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 
 
 def _use_storage_context() -> bool:
     # Whether to enable the new simple persistence mode.
-    return bool(int(os.environ.get("RAY_AIR_NEW_PERSISTENCE_MODE", "0")))
+    from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
+
+    return bool(int(os.environ.get(RAY_AIR_NEW_PERSISTENCE_MODE, "0")))
 
 
 class _ExcludingLocalFilesystem(LocalFileSystem):
@@ -113,8 +115,13 @@ def _pyarrow_fs_copy_files(
 def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
     assert not is_uri(fs_path), fs_path
 
+    is_dir = _is_directory(fs, fs_path)
+
     try:
-        fs.delete_dir(fs_path)
+        if is_dir:
+            fs.delete_dir(fs_path)
+        else:
+            fs.delete_file(fs_path)
     except Exception:
         logger.exception(f"Caught exception when deleting path at ({fs}, {fs_path}):")
 
@@ -167,7 +174,7 @@ def _download_from_fs_path(
         else:
             _pyarrow_fs_copy_files(fs_path, local_path, source_filesystem=fs)
     except Exception as e:
-        # Clean up the directory if downloading was unsuccessful.
+        # Clean up the directory if downloading was unsuccessful
         if not exists_before:
             shutil.rmtree(local_path, ignore_errors=True)
         raise e
@@ -240,7 +247,7 @@ def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     """Returns True if (fs, fs_path) exists."""
     assert not is_uri(fs_path), fs_path
 
-    valid = fs.get_file_info([fs_path])[0]
+    valid = fs.get_file_info(fs_path)
     return valid.type != pyarrow.fs.FileType.NotFound
 
 
@@ -251,7 +258,11 @@ def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
     assert not is_uri(fs_path), fs_path
+
     file_info = fs.get_file_info(fs_path)
+    if file_info.type == pyarrow.fs.FileType.NotFound:
+        raise FileNotFoundError(f"Path not found: ({fs}, {fs_path})")
+
     return not file_info.is_file
 
 
@@ -434,8 +445,8 @@ class StorageContext:
     def __init__(
         self,
         storage_path: Optional[str],
-        sync_config: SyncConfig,
         experiment_dir_name: str,
+        sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
         current_checkpoint_index: int = 0,
@@ -450,7 +461,9 @@ class StorageContext:
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
-        self.sync_config = dataclasses.replace(sync_config)
+        self.sync_config = (
+            dataclasses.replace(sync_config) if sync_config else SyncConfig()
+        )
 
         self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
             self.storage_path, storage_filesystem
@@ -526,9 +539,9 @@ class StorageContext:
         "Current" is defined by the `current_checkpoint_index` attribute of the
         storage context.
 
-        This method copies the checkpoint files to the storage location,
-        drops a marker at the storage path to indicate that the checkpoint
-        is completely uploaded, then deletes the original checkpoint directory.
+        This method copies the checkpoint files to the storage location.
+        It's up to the user to delete the original checkpoint files if desired.
+
         For example, the original directory is typically a local temp directory.
 
         Args:
@@ -540,7 +553,7 @@ class StorageContext:
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train._checkpoint import Checkpoint
 
-        logger.debug(
+        logger.info(
             "Copying checkpoint files to storage path:\n"
             "({source_fs}, {source}) -> ({dest_fs}, {destination})".format(
                 source=checkpoint.path,
@@ -549,6 +562,13 @@ class StorageContext:
                 dest_fs=self.storage_filesystem,
             )
         )
+
+        # Raise an error if the storage path is not accessible when
+        # attempting to upload a checkpoint from a remote worker.
+        # Ex: If storage_path is a local path, then a validation marker
+        # will only exist on the head node but not the worker nodes.
+        self._check_validation_file()
+
         self.storage_filesystem.create_dir(self.checkpoint_fs_path)
         _pyarrow_fs_copy_files(
             source=checkpoint.path,
@@ -557,17 +577,12 @@ class StorageContext:
             destination_filesystem=self.storage_filesystem,
         )
 
-        # Delete local checkpoint files.
-        # TODO(justinvyu): What if checkpoint.path == self.checkpoint_fs_path?
-        # TODO(justinvyu): What if users don't want to delete the local checkpoint?
-        checkpoint.filesystem.delete_dir(checkpoint.path)
-
-        uploaded_checkpoint = Checkpoint(
+        persisted_checkpoint = Checkpoint(
             filesystem=self.storage_filesystem,
             path=self.checkpoint_fs_path,
         )
-        logger.debug(f"Checkpoint successfully created at: {uploaded_checkpoint}")
-        return uploaded_checkpoint
+        logger.info(f"Checkpoint successfully created at: {persisted_checkpoint}")
+        return persisted_checkpoint
 
     @property
     def experiment_fs_path(self) -> str:
@@ -620,10 +635,12 @@ class StorageContext:
         The user of this class is responsible for setting the `current_checkpoint_index`
         (e.g., incrementing when needed).
         """
-        checkpoint_dir_name = StorageContext._make_checkpoint_dir_name(
-            self.current_checkpoint_index
-        )
-        return os.path.join(self.trial_fs_path, checkpoint_dir_name)
+        return os.path.join(self.trial_fs_path, self.checkpoint_dir_name)
+
+    @property
+    def checkpoint_dir_name(self) -> str:
+        """The current checkpoint directory name, based on the checkpoint index."""
+        return StorageContext._make_checkpoint_dir_name(self.current_checkpoint_index)
 
     @staticmethod
     def get_experiment_dir_name(run_obj: Union[str, Callable, Type]) -> str:
@@ -642,24 +659,3 @@ class StorageContext:
     def _make_checkpoint_dir_name(index: int):
         """Get the name of the checkpoint directory, given an index."""
         return f"checkpoint_{index:06d}"
-
-
-_storage_context: Optional[StorageContext] = None
-
-
-def init_shared_storage_context(storage_context: StorageContext):
-    """StorageContext can be made a global singleton by calling this method.
-
-    This singleton is only created on the initialization of remote Trainable actors.
-    On the driver, there is no global singleton, since each trial has its own
-    trial_dir_name."""
-    global _storage_context
-    _storage_context = storage_context
-
-
-def get_storage_context() -> StorageContext:
-    assert _storage_context, (
-        "You must first call `init_shared_storage_context` in order to access a "
-        "global shared copy of StorageContext."
-    )
-    return _storage_context

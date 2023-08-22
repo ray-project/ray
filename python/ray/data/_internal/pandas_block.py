@@ -1,4 +1,3 @@
-import bisect
 import collections
 import heapq
 from typing import (
@@ -18,6 +17,7 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.util import find_partitions
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -373,38 +373,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         if len(boundaries) == 0:
             return [table]
 
-        partitions = []
-        # For each boundary value, count the number of items that are less
-        # than it. Since the block is sorted, these counts partition the items
-        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
-        # partition[i]. If `descending` is true, `boundaries` would also be
-        # in descending order and we only need to count the number of items
-        # *greater than* the boundary value instead.
-
-        def find_partition_index(records, boundary, sort_key):
-            if sort_key.get_descending():
-                return len(records) - bisect.bisect_left(records[::-1], boundary)
-            else:
-                return bisect.bisect_left(records, boundary)
-
-        def searchsorted(table, boundaries, sort_key):
-            records = list(
-                table[sort_key.get_columns()].itertuples(index=False, name=None)
-            )
-
-            return [
-                find_partition_index(records, boundary, sort_key)
-                for boundary in boundaries
-            ]
-
-        bounds = searchsorted(table, boundaries, sort_key)
-
-        last_idx = 0
-        for idx in bounds:
-            partitions.append(table[last_idx:idx])
-            last_idx = idx
-        partitions.append(table[last_idx:])
-        return partitions
+        return find_partitions(table, boundaries, sort_key)
 
     def combine(
         self, key: Union[str, List[str]], aggs: Tuple["AggregateFn"]

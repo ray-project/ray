@@ -85,7 +85,7 @@ that you can setup like this:
 
 .. code-block:: python
 
-    from ray.air import ScalingConfig
+    from ray.train import ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
     # For GPU Training, set `use_gpu` to True.
     use_gpu = False
@@ -99,7 +99,7 @@ To customize the backend setup, you can pass a
 
 .. code-block:: python
 
-    from ray.air import ScalingConfig
+    from ray.train import ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer, TensorflowConfig
 
     trainer = TensorflowTrainer(
@@ -189,7 +189,7 @@ Reporting results
 During training, the training loop should report intermediate results and checkpoints
 to Ray Train. This will log the results to the console output and append them to
 local log files. It can also be used to report results to
-:ref:`experiment tracking services <train-monitoring>` and it will trigger
+:ref:`experiment tracking services <train-experiment-tracking>` and it will trigger
 :ref:`checkpoint bookkeeping <train-dl-configure-checkpoints>`.
 
 The easiest way to report your results with Keras is by using the
@@ -219,12 +219,12 @@ control over that, consider implementing a `custom training loop <https://www.te
 Saving and loading checkpoints
 ------------------------------
 
-:ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``train.report(metrics, checkpoint=Checkpoint(...))`` in the
+:class:`Checkpoints <ray.train.Checkpoint>` can be saved by calling ``train.report(metrics, checkpoint=Checkpoint(...))`` in the
 training function. This will cause the checkpoint state from the distributed
 workers to be saved on the ``Trainer`` (where your python script is executed).
 
 The latest saved checkpoint can be accessed through the ``checkpoint`` attribute of
-the :py:class:`~ray.air.result.Result`, and the best saved checkpoints can be accessed by the ``best_checkpoints``
+the :py:class:`~ray.train.Result`, and the best saved checkpoints can be accessed by the ``best_checkpoints``
 attribute.
 
 Concrete examples are provided to demonstrate how checkpoints (model weights but not models) are saved
@@ -235,7 +235,7 @@ appropriately in distributed training.
     :emphasize-lines: 23
 
     from ray import train
-    from ray.air import Checkpoint, ScalingConfig
+    from ray.train import Checkpoint, ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
 
     import numpy as np
@@ -285,7 +285,7 @@ Loading checkpoints
     :emphasize-lines: 15, 21, 22, 25, 26, 27, 30
 
     from ray import train
-    from ray.air import Checkpoint, ScalingConfig
+    from ray.train import Checkpoint, ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
 
     import numpy as np
@@ -347,12 +347,8 @@ Loading checkpoints
 
 Further reading
 ---------------
-We explore more topics in our :ref:`PyTorch guide <train-pytorch-overview>`.
-Ray Train is a generic library and the concepts explained there are applicable
-to TensorFlow, too.
+We explore more topics in our :ref:`User Guides <train-user-guides>`. You may want to look into:
 
-You may want to look into:
-
-- :ref:`Experiment tracking and callbacks <train-monitoring>`
+- :ref:`Experiment tracking and callbacks <train-experiment-tracking>`
 - :ref:`Fault tolerance and training on spot instances <train-fault-tolerance>`
 - :ref:`Hyperparameter optimization <train-tune>`

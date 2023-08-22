@@ -34,6 +34,7 @@ from ray.train._internal.storage import (
     get_fs_and_path,
 )
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
+from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
 from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.tune import _Config
 from ray.tune.registry import is_function_trainable
@@ -444,11 +445,18 @@ class TunerInternal:
 
         # Load the experiment results at the point where it left off.
         try:
-            self._experiment_analysis = ExperimentAnalysis(
-                experiment_checkpoint_path=path_or_uri,
-                default_metric=self._tune_config.metric,
-                default_mode=self._tune_config.mode,
-            )
+            if _use_storage_context():
+                self._experiment_analysis = NewExperimentAnalysis(
+                    experiment_checkpoint_path=path_or_uri,
+                    default_metric=self._tune_config.metric,
+                    default_mode=self._tune_config.mode,
+                )
+            else:
+                self._experiment_analysis = ExperimentAnalysis(
+                    experiment_checkpoint_path=path_or_uri,
+                    default_metric=self._tune_config.metric,
+                    default_mode=self._tune_config.mode,
+                )
         except Exception:
             self._experiment_analysis = None
 
@@ -462,7 +470,7 @@ class TunerInternal:
             Tuple of (downloaded from remote, local_dir)
         """
         if not is_non_local_path_uri(restore_path):
-            return False, os.path.abspath(os.path.expanduser(restore_path))
+            return False, Path(restore_path).expanduser().absolute().as_posix()
 
         tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
 
@@ -542,7 +550,9 @@ class TunerInternal:
                 run_config.name or StorageContext.get_experiment_dir_name(trainable)
             )
             storage_local_path = _get_defaults_results_dir()
-            experiment_path = os.path.join(storage_local_path, experiment_dir_name)
+            experiment_path = (
+                Path(storage_local_path).joinpath(experiment_dir_name).as_posix()
+            )
         else:
             experiment_path = Experiment.get_experiment_checkpoint_dir(
                 trainable,
