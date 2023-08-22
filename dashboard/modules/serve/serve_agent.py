@@ -295,9 +295,9 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         if divergent_http_options:
             logger.warning(
-                f"Serve is already running on this Ray cluster and it's not possible to update "
-                f"its HTTP options without restarting it. Following options are attempted to be updated: "
-                f"{divergent_http_options}."
+                f"Serve is already running on this Ray cluster and it's not possible "
+                f"to update its HTTP options without restarting it. Following options "
+                f"are attempted to be updated: {divergent_http_options}."
             )
 
     async def get_serve_controller(self):

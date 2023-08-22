@@ -803,7 +803,9 @@ def test_put_with_http_options(ray_start_stop, option, override):
     updated_serve_config_json = copy.deepcopy(original_serve_config_json)
     updated_serve_config_json[option] = override
 
-    put_response = requests.put(GET_OR_PUT_URL_V2, json=updated_serve_config_json, timeout=5)
+    put_response = requests.put(
+        GET_OR_PUT_URL_V2, json=updated_serve_config_json, timeout=5
+    )
     assert put_response.status_code == 200
 
     # Fetch Serve status and confirm that HTTP options are unchanged
