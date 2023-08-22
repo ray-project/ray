@@ -1,6 +1,8 @@
 Configuration and Persistent Storage
 ====================================
 
+.. _persistent-storage-guide:
+
 .. _train-run-config:
 
 Run Configuration in Train (``RunConfig``)

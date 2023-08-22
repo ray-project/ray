@@ -3,7 +3,7 @@
 Key Concepts
 ============
 
-Learn about :class:`Dataset <ray.data.Dataset>` and the functionality it provides.
+Learn about :class:`Dataset <ray.data.Dataset>` and the capabilities it provides.
 
 This guide provides a lightweight introduction to:
 
