@@ -4,7 +4,6 @@ import lightgbm
 import pandas as pd
 from pandas.api.types import is_object_dtype
 
-from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
