@@ -1,5 +1,4 @@
 import sys
-
 from typing import TYPE_CHECKING, Iterable, List, Optional, Union
 
 from ray.data._internal.dataset_logger import DatasetLogger
@@ -12,7 +11,6 @@ logger = DatasetLogger(__name__)
 
 if TYPE_CHECKING:
     import datasets
-
 
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
@@ -48,6 +46,7 @@ try:
         spec.loader.exec_module(datasets_modules)
 except ImportError as e:
     TRANSFORMERS_IMPORT_ERROR = e
+
 
 @DeveloperAPI
 class HuggingFaceDatasource(Datasource):
