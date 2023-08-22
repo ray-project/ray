@@ -4,7 +4,7 @@
 
 In this section we cover how to execute your distributed Ray programs on a Kubernetes cluster.
 
-Using the [KubeRay Operator](https://ray-project.github.io/kuberay/) is the
+Using the [KubeRay Operator](https://github.com/ray-project/kuberay) is the
 recommended way to do so. The operator provides a Kubernetes-native way to manage Ray clusters.
 Each Ray cluster consists of a head node pod and a collection of worker node pods. Optional
 autoscaling support allows the KubeRay Operator to size your Ray clusters according to the
