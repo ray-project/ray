@@ -81,15 +81,16 @@ Can I run DreamerV3 with any gym or custom environments? Yes, you can!
 
 Let's try the "Flappy Bird" gymnasium env. It's image space is a cellphone-style
 288 x 512 (RGB), very different from the DreamerV3 Atari benchmark "norm", which is 64x64 (RGB).
-So we will have to custom-wrap observations to resize this ``Box(0.0, 255.0, (288, 512, 3), float32)``
-space.
+So we will have to custom-wrap observations to resize FlappyBird's ``Box(0.0, 255.0, (288, 512, 3), f32)``
+space into a ``Box(-1.0, 1.0, (64, 64, 3), f32)``.
 
-First quickly run:
+First quickly install ``flappy_bird_gymnasium`` in your dev environment:
 ```shell
 $ pip install flappy_bird_gymnasium 
 ```
 
-Now, let's create a new python config file for this experiment and call it ``flappy_bird.py``:
+Now, let's create a new RLlib python config file for this experiment and call it ``flappy_bird.py``:
+
 ```python
 # Import flappy bird and gymnasium
 import flappy_bird_gymnasium  # we must import this for the gym.make below to work
@@ -111,6 +112,7 @@ tune.register_env("flappy-bird", lambda ctx: (
 # Import our DreamerV3 algorithm config class:
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 
+# Define the `config` variable.
 config = (
     DreamerV3Config()
     # set the env to the pre-registered string
@@ -123,13 +125,15 @@ config = (
 )
 ```
 
-Great! Now, let's use this config and start our experiment run. We will use the exact same
-command lines as above (for Atari100k and DM Control Suite):
+Great! Now, let's use this config file and start our experiment. We will use the exact same
+command line as the ones introduced above (for Atari100k and the DM Control Suite benchmarks):
 
 ```shell
 $ rllib train file flappy_bird.py
 ```
 
+This should be it. Feel free to try out running this on multiple GPUs using these
+more advanced config examples [here (Atari100k)](../../tuned_examples/dreamerv3/atari_100k.py) and [here (DM Control Suite)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py).
 
 ## Results
 Our results on the Atari 100k and (visual) DeepMind Control Suite benchmarks match those
