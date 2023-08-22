@@ -18,7 +18,11 @@ from ray.serve.drivers import DefaultgRPCDriver, DAGDriver
 from ray.serve.http_adapters import json_request
 from ray.serve.schema import ServeDeploySchema
 from ray.serve._private.common import ApplicationStatus
-from ray.serve._private.constants import (SERVE_DEFAULT_APP_NAME, SERVE_MULTIPLEXED_MODEL_ID, SERVE_NAMESPACE)
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
+    SERVE_NAMESPACE,
+)
 
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
