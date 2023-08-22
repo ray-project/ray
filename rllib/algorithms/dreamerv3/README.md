@@ -18,54 +18,41 @@ continuation flag.
 Just like in a standard policy gradient algorithm (e.g. REINFORCE), the critic tries to
 predict a correct value function and the actor tries to come up with good actions
 choices that maximize accumulated rewards over time.
-Both actor and critic are never trained on real environment data, but on dreamed trajectories produced by the world model.
+However, both actor and critic are never trained on real environment data, but solely on
+dreamed trajectories produced by the world model.
 
-For more specific details about the algorithm refer to the
+For more specific details about DreamerV3 architecture and math refer to the
 [original paper](https://arxiv.org/pdf/2301.04104v1.pdf) (see below for all references).
 
 ## Note on Hyperparameter Tuning for DreamerV3
 DreamerV3 is an extremely versatile and stable algorithm that not only works well on
 different action- and observation spaces (i.e. discrete and continuous actions, as well
-as image and vector observations), but also has very little hyperparameters that require tuning.
+as image and vector observations) and reward functions (sparse or dense),
+but also has very little hyperparameters that require tuning.
+
 All you need is a simple "model size" setting (from "XS" to "XL") and a value for the training ratio, which
 specifies how many steps to replay from the buffer for a training update vs how many
 steps to take in the actual environment.
 
-For examples on how to set these config settings within your `DreamerV3Config`, see below.
-
-
-## Note on multi-GPU Training with DreamerV3
-We found that when using multiple GPUs for DreamerV3 training, the following simple
-adjustments should be made on top of the default config.
-
-- Multiply the batch size (default `B=16`) by the number of GPUs you are using.
-  Use the `DreamerV3Config.training(batch_size_B=..)` API for this. For example, for 2 GPUs,
-  use a batch size of `B=32`.
-- Multiply the number of environments you sample from in parallel by the number of GPUs you are using.
-  Use the `DreamerV3Config.rollouts(num_envs_per_worker=..)` for this.
-  For example, for 4 GPUs and a default environment count of 8 (the single-GPU default for
-  this setting depends on the benchmark you are running), use 32
-  parallel environments instead.
-- Roughly use learning rates that are the default values multiplied by the square root of the number of GPUs.
-  For example, when using 4 GPUs, multiply all default learning rates (for world model, critic, and actor) by 2.
-  - Additionally, a "priming"-style warmup schedule might help. Thereby, increase the learning rates from 0.0
-    to the final value(s) over the first ~10% of total env steps needed for the experiment.
-  - For examples on how to set such schedules within your `DreamerV3Config`, see below.
-  - [See here](https://aws.amazon.com/blogs/machine-learning/the-importance-of-hyperparameter-tuning-for-scaling-deep-learning-training-to-multiple-gpus/) for more details on learning rate "priming".
-
+For examples on how to set these config settings within your `DreamerV3Config` objects,
+see below.
 
 ## Example Configs and Command Lines
-Use the config examples and templates in
-[the tuned_examples folder here](https://github.com/ray-project/ray/tree/master/rllib/tuned_examples/dreamerv3)
+
+<b>Note:</b> For a quick setup guide on how to get started with RLlib, refer to this
+[documentation page here](https://docs.ray.io/en/latest/rllib/index.html#rllib-in-60-seconds).
+
+Use the config examples and templates in the
+[tuned_examples folder](../../tuned_examples/dreamerv3)
 in combination with the following scripts and command lines in order to run RLlib's DreamerV3 algorithm in your experiments:
 
-### Atari100k
+### [Atari100k](../../tuned_examples/dreamerv3/atari_100k.py)
 ```shell
 $ cd ray/rllib
 $ rllib train file tuned_examples/dreamerv3/atari_100k.py --env ALE/Pong-v5 
 ```
 
-### DeepMind Control Suite (vision)
+### [DeepMind Control Suite (vision)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py)
 ```shell
 $ cd ray/rllib
 $ rllib train file tuned_examples/dreamerv3/dm_control_suite_vision.py --env DMC/cartpole/swingup 
@@ -79,12 +66,12 @@ Can I run DreamerV3 with any gym or custom environments? Yes, you can!
 
 <img src="../../../doc/source/rllib/images/dreamerv3/flappy_bird_env.png" alt="Flappy Bird gymnasium env" width="300" height="300" />
 
-Let's try the "Flappy Bird" gymnasium env. It's image space is a cellphone-style
-288 x 512 (RGB), very different from the DreamerV3 Atari benchmark "norm", which is 64x64 (RGB).
-So we will have to custom-wrap observations to resize FlappyBird's ``Box(0.0, 255.0, (288, 512, 3), f32)``
-space into a ``Box(-1.0, 1.0, (64, 64, 3), f32)``.
+Let's try the Flappy Bird gymnasium env. It's image space is a cellphone-style
+288 x 512 RGB, very different from DreamerV3's Atari benchmark norm (which is 64x64 RGB).
+So we will have to custom-wrap observations to resize/normalize FlappyBird's ``Box(0, 255, (288, 512, 3), f32)``
+space into a new ``Box(-1, 1, (64, 64, 3), f32)``.
 
-First quickly install ``flappy_bird_gymnasium`` in your dev environment:
+First we quickly install ``flappy_bird_gymnasium`` in our dev environment:
 ```shell
 $ pip install flappy_bird_gymnasium 
 ```
@@ -93,10 +80,10 @@ Now, let's create a new RLlib python config file for this experiment and call it
 
 ```python
 # Import flappy bird and gymnasium
-import flappy_bird_gymnasium  # we must import this for the gym.make below to work
+import flappy_bird_gymnasium  # we must import this for the `gym.make()` below to work
 import gymnasium as gym
 
-# Our two env wrappers for resizing and normalizing.
+# Our two env wrappers for a) resizing and b) image normalization.
 from supersuit.generic_wrappers import resize_v1
 from ray.rllib.algorithms.dreamerv3.utils.env_runner import NormalizedImageEnv
 
@@ -133,7 +120,48 @@ $ rllib train file flappy_bird.py
 ```
 
 This should be it. Feel free to try out running this on multiple GPUs using these
-more advanced config examples [here (Atari100k)](../../tuned_examples/dreamerv3/atari_100k.py) and [here (DM Control Suite)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py).
+more advanced config examples [here (Atari100k)](../../tuned_examples/dreamerv3/atari_100k.py) and
+[here (DM Control Suite)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py).
+See the notes below on good recipes for running on multiple GPUs.
+
+Note that DreamerV3 out-of-the-box only supports image observation spaces of shape 64x64x3
+as well as any vector observations (any 1D float32 Box).
+Should you require a special encoder- and decoder for other observation spaces, you
+will have to subclass [DreamerV3's catalog class](dreamerv3_catalog.py) and then
+configure your own catalog via your ``DreamerV3Config`` object:
+
+```python
+from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import DreamerV3TfRLModule
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec 
+
+config.rl_module(
+    rl_module_spec=SingleAgentRLModuleSpec(
+        module_class=DreamerV3TfRLModule,
+        catalog_class=[your DreamerV3Catalog subclass],
+    )
+)
+```
+
+
+## Note on multi-GPU Training with DreamerV3
+We found that when using multiple GPUs for DreamerV3 training, the following simple
+adjustments should be made on top of the default config.
+
+- Multiply the batch size (default `B=16`) by the number of GPUs you are using.
+  Use the `DreamerV3Config.training(batch_size_B=..)` API for this. For example, for 2 GPUs,
+  use a batch size of `B=32`.
+- Multiply the number of environments you sample from in parallel by the number of GPUs you are using.
+  Use the `DreamerV3Config.rollouts(num_envs_per_worker=..)` for this.
+  For example, for 4 GPUs and a default environment count of 8 (the single-GPU default for
+  this setting depends on the benchmark you are running), use 32
+  parallel environments instead.
+- Roughly use learning rates that are the default values multiplied by the square root of the number of GPUs.
+  For example, when using 4 GPUs, multiply all default learning rates (for world model, critic, and actor) by 2.
+  - Additionally, a "priming"-style warmup schedule might help. Thereby, increase the learning rates from 0.0
+    to the final value(s) over the first ~10% of total env steps needed for the experiment.
+  - For examples on how to set such schedules within your `DreamerV3Config`, see below.
+  - [See here](https://aws.amazon.com/blogs/machine-learning/the-importance-of-hyperparameter-tuning-for-scaling-deep-learning-training-to-multiple-gpus/) for more details on learning rate "priming".
+
 
 ## Results
 Our results on the Atari 100k and (visual) DeepMind Control Suite benchmarks match those
@@ -154,6 +182,6 @@ For more algorithm details, see the original Dreamer-V3 paper:
 
 [1] [Mastering Diverse Domains through World Models - 2023 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap](https://arxiv.org/pdf/2301.04104v1.pdf)
 
-.. and the Dreamer-V2 paper:
+.. and the (predecessor) Dreamer-V2 paper:
 
 [2] [Mastering Atari with Discrete World Models - 2021 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba](https://arxiv.org/pdf/2010.02193.pdf)
