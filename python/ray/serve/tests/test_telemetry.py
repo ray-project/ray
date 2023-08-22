@@ -19,7 +19,9 @@ from ray.serve.http_adapters import json_request
 from ray.serve.schema import ServeDeploySchema
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import (
-    SERVE_MULTIPLEXED_MODEL_ID, SERVE_NAMESPACE, SERVE_DEFAULT_APP_NAME
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.usage import ServeUsageTag
 
@@ -683,7 +685,9 @@ def test_multiplexed_detect(manage_ray):
 
     wait_for_condition(
         lambda: int(
-            ServeUsageTag.MULTIPLEXED_API_USED.get_value_from_report(ray.get(storage_handle.get_report.remote()))
+            ServeUsageTag.MULTIPLEXED_API_USED.get_value_from_report(
+                ray.get(storage_handle.get_report.remote())
+            )
         ) == 1,
         timeout=5,
     )
