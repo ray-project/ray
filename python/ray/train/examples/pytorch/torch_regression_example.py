@@ -1,8 +1,10 @@
 import argparse
+import os
+import tempfile
 from typing import Tuple
 
 import pandas as pd
-from ray.train import Checkpoint
+from ray.train._checkpoint import Checkpoint
 
 import torch
 import torch.nn as nn
@@ -101,7 +103,10 @@ def train_func(config):
         else:
             result = {}
         results.append(result)
-        train.report(result, checkpoint=Checkpoint.from_dict(dict(model=model)))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.module.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report(result, checkpoint=Checkpoint.from_directory(tmpdir))
 
     return results
 
