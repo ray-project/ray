@@ -1,8 +1,6 @@
 (kuberay-mem-scalability)=
 
-# KubeRay memory benchmark
-
-# Running benchmark experiments on a Google GKE Cluster
+# KubeRay memory & scalability benchmark
 
 ## Architecture
 
