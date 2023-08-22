@@ -143,7 +143,7 @@ def get_node_type(node: dict) -> GCPNodeType:
         "acceleratorType" in node or "acceleratorConfig" in node
     ):
         _validate_tpu_config(node)
-        if _is_single_host_tpu(node):
+        if not _is_single_host_tpu(node):
             # Remove once proper autoscaling support is added.
             logger.warning(
                 "TPU pod detected. Note that while the cluster launcher can create "
