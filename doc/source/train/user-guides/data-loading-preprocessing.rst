@@ -297,6 +297,12 @@ Splitting datasets
 ------------------
 By default, Ray Train splits all datasets across workers using :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. Each worker sees a disjoint subset of the data, instead of iterating over the entire dataset. Unless randomly shuffled, the same splits are used for each iteration of the dataset. 
 
+.. note::
+
+    Please be aware that as the evaluation dataset is split, users have to aggregate the evaluation results across workers. 
+    You might consider using `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_ (:ref:`example <deepspeed_example>`) or 
+    utilities available in other frameworks that you can explore.
+
 If want to customize which datasets are split, pass in a :class:`DataConfig <ray.train.DataConfig>` to the Trainer constructor. 
 
 For example, to split only the training dataset, do the following:
