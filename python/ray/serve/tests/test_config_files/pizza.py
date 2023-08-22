@@ -24,7 +24,7 @@ class Router:
             amount = await (await self.adder.add.remote(input))
         elif op == Operation.MULTIPLICATION:
             amount = await (await self.multiplier.multiply.remote(input))
-        
+
         return f"{amount} pizzas please!"
 
     async def __call__(self, request: starlette.requests.Request) -> str:
