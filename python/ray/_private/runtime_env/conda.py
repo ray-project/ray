@@ -220,9 +220,8 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
     conda = runtime_env.get("conda")
     if conda is not None:
         if isinstance(conda, str):
-            return None
-
-        if isinstance(conda, dict):
+            uri = None
+        elif isinstance(conda, dict):
             # User-preinstalled conda env.  We don't garbage collect these, so
             # we don't track them with URIs.
             uri = f"conda://{_get_conda_env_hash(conda_dict=conda)}"
