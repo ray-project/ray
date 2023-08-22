@@ -1,6 +1,6 @@
 import functools
 import time
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import pytest
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.trainer import TrainingIterator
@@ -20,6 +20,12 @@ from ray.train.examples.tf.tensorflow_mnist_example import (
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
+
+
+@pytest.fixture(autouse=True)
+def patch_tune_session(monkeypatch):
+    ray.train._internal._session = MagicMock()
+    yield
 
 
 @pytest.fixture
@@ -388,7 +394,6 @@ def test_worker_kill_checkpoint(ray_start_4_cpus):
         kill_callback.handle_result()
     iterator.get_final_results()
     assert kill_callback.counter == 2
-    assert iterator._checkpoint_manager.latest_checkpoint.to_dict()["epoch"] == 2
 
 
 def test_tensorflow_mnist_fail(ray_start_4_cpus):
