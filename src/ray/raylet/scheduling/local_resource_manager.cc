@@ -429,9 +429,14 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
     resources_data.set_object_pulls_queued(resources.object_pulls_queued);
   }
 
-  const auto now = absl::Now();
-  resources_data.set_idle_duration_ms(
-      absl::ToInt64Milliseconds(now - GetResourceIdleTime().value_or(now)));
+  auto idle_time = GetResourceIdleTime();
+  if (idle_time.has_value()) {
+    // We round up the idle duration to the nearest millisecond such that the idle
+    // reporting would be correct even if it's less than 1 millisecond.
+    const auto now = absl::Now();
+    resources_data.set_idle_duration_ms(std::max(
+        static_cast<int64_t>(1), absl::ToInt64Milliseconds(now - idle_time.value())));
+  }
 
   resources_data.set_is_draining(IsLocalNodeDraining());
 
