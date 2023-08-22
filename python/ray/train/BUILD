@@ -648,7 +648,7 @@ py_test(
     name = "test_xgboost_predictor",
     size = "small",
     srcs = ["tests/test_xgboost_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
