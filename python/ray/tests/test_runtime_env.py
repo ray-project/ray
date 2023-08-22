@@ -759,6 +759,7 @@ def test_runtime_env_interface():
     assert runtime_env.has_conda()
     assert runtime_env.conda_env_name() == conda_name
     assert runtime_env.conda_config() is None
+    assert runtime_env.conda_create_env_executable() is None
     runtime_env["conda"] = modify_conda_name
     runtime_env_dict["conda"] = modify_conda_name
     assert runtime_env_dict == runtime_env.to_dict()
@@ -771,6 +772,10 @@ def test_runtime_env_interface():
     assert runtime_env.has_conda()
     assert runtime_env.conda_env_name() is None
     assert runtime_env.conda_config() == json.dumps(conda_config, sort_keys=True)
+    conda_config = {"create_env_exe": "mamba", "dependencies": ["dep1", "dep2"]}
+    runtime_env["conda"] = conda_config
+    runtime_env_dict["conda"] = conda_config
+    assert runtime_env.conda_create_env_executable() == "mamba"
 
     runtime_env.pop("conda")
     assert runtime_env.to_dict() == {"_ray_commit": "{{RAY_COMMIT_SHA}}"}

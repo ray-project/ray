@@ -84,9 +84,8 @@ def _get_conda_env_name(conda_env_path: str) -> str:
     conda_env_contents = open(conda_env_path).read()
     return "ray-%s" % hashlib.sha1(conda_env_contents.encode("utf-8")).hexdigest()
 
-
 def create_conda_env_if_needed(
-    conda_yaml_file: str, prefix: str, logger: Optional[logging.Logger] = None
+    conda_yaml_file: str, conda_exe: str, prefix: str, logger: Optional[logging.Logger] = None
 ) -> None:
     """
     Given a conda YAML, creates a conda environment containing the required
@@ -100,7 +99,7 @@ def create_conda_env_if_needed(
     """
     if logger is None:
         logger = logging.getLogger(__name__)
-    conda_path = get_conda_bin_executable("conda")
+    conda_path = get_conda_bin_executable(conda_exe)
     try:
         exec_cmd([conda_path, "--help"], throw_on_error=False)
     except (EnvironmentError, FileNotFoundError):

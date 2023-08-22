@@ -457,6 +457,11 @@ class RuntimeEnv(dict):
             return None
         return json.dumps(self["conda"], sort_keys=True)
 
+    def conda_create_env_executable(self) -> str:
+        if not self.has_conda() or not isinstance(self["conda"], dict):
+            return None
+        return self["conda"].get("create_env_exe", "conda")
+
     def has_pip(self) -> bool:
         if self.get("pip"):
             return True
