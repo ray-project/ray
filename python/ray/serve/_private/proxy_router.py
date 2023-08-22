@@ -10,6 +10,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    RAY_SERVE_ENABLE_PROXY_LOCALITY_ROUTING,
 )
 from ray.serve.handle import RayServeHandle
 
@@ -64,7 +65,7 @@ class LongestPrefixRouter(ProxyRouter):
                         and not info.app_is_cross_language
                     ),
                     use_new_handle_api=True,
-                    _locality_routing=True,
+                    _locality_routing=RAY_SERVE_ENABLE_PROXY_LOCALITY_ROUTING,
                 )
 
         # Clean up any handles that are no longer used.
@@ -150,7 +151,7 @@ class EndpointRouter(ProxyRouter):
                         and not info.app_is_cross_language
                     ),
                     use_new_handle_api=True,
-                    _locality_routing=True,
+                    _locality_routing=RAY_SERVE_ENABLE_PROXY_LOCALITY_ROUTING,
                 )
 
         # Clean up any handles that are no longer used.
