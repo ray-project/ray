@@ -8,6 +8,7 @@ import ci.ray_ci.bazel_sharding as bazel_sharding
 
 DOCKER_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
 DOCKER_REPO = "rayproject/citemp"
+_PIPELINE_POSTMERGE = "0189e759-8c96-4302-b6b5-b4274406bf89"
 
 
 def run_tests(
@@ -46,14 +47,14 @@ def setup_test_environment(team: str) -> None:
 
 
 def _run_tests_in_docker(test_targets: List[str], team: str) -> subprocess.Popen:
-    commands = (
-        [
-            "cleanup() { ./ci/build/upload_build_info.sh; }",
-            "trap cleanup EXIT",
-        ]
-        if os.environ.get("BUILDKITE_BRANCH") == "master"
-        else []
-    )
+    commands = []
+    if os.environ.get("BUILDKITE_BRANCH", "") == "master":
+        commands.extend(
+            [
+                "cleanup() { ./ci/build/upload_build_info.sh; }",
+                "trap cleanup EXIT",
+            ]
+        )
     commands.append(
         "bazel test --config=ci $(./ci/run/bazel_export_options) "
         f"{' '.join(test_targets)}",
@@ -91,6 +92,8 @@ def _get_docker_run_command(team) -> List[str]:
         "BUILDKITE_BUILD_URL",
         "--env",
         "BUILDKITE_BRANCH",
+        "--env",
+        "BUILDKITE_PIPELINE_ID",
         "--env",
         "BUILDKITE_COMMIT",
         "--env",
