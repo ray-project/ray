@@ -292,6 +292,35 @@ def test_async_callback(ray_start_regular_shared):
     wait_for_condition(lambda: "completed-2" in global_set)
 
 
+@pytest.parametrize("raise_in_callback", [False, True])
+def test_async_callback_refcount(ray_start_regular_shared, raise_in_callback: bool):
+    """Check that the _on_completed callback is ref counted properly."""
+    signal = SignalActor.remote()
+
+    def callback(result):
+        if raise_in_callback:
+            raise Exception("ruh-roh")
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+
+    ref = wait.remote()
+
+    initial_refcount = sys.getrefcount(callback)
+    ref._on_completed(callback)
+
+    # Python ref count should be incremented to avoid the callback being GC'd while the
+    # C++ core worker holds a ref to it.
+    assert sys.getrefcount(callback) > initial_refcount
+
+    # Trigger the task to finish so the callback should execute.
+    ray.get(signal.send.remote())
+
+    # Now the refcount should drop back down to the initial count.
+    wait_for_condition(lambda: sys.getrefcount(callback) == initial_refcount)
+
+
 def test_async_function_errored(ray_start_regular_shared):
     with pytest.raises(ValueError):
 
