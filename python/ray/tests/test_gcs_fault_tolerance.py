@@ -12,6 +12,7 @@ import ray._private.gcs_utils as gcs_utils
 from ray._private import ray_constants
 from ray._private.test_utils import (
     convert_actor_state,
+    enable_external_redis,
     generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
@@ -828,6 +829,9 @@ print("DONE")
     wait_for_pid_to_exit(gcs_server_pid, 10000)
 
 
+@pytest.mark.skipif(
+    enable_external_redis(), reason="Only valid when started without external redis"
+)
 def test_cluster_id(ray_start_regular):
     raylet_proc = ray._private.worker._global_node.all_processes[
         ray_constants.PROCESS_TYPE_RAYLET
