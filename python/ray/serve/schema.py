@@ -57,7 +57,7 @@ def _route_prefix_format(cls, v):
 
 
 @PublicAPI(stability="beta")
-class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
+class RayActorOptionsSchema(BaseModel):
     """Options with which to start a replica actor."""
 
     runtime_env: dict = Field(
@@ -137,9 +137,7 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="beta")
-class DeploymentSchema(
-    BaseModel, extra=Extra.forbid, allow_population_by_field_name=True
-):
+class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     """
     Specifies options for one deployment within a Serve application. For each deployment
     this can optionally be included in `ServeApplicationSchema` to override deployment
