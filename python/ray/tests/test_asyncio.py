@@ -292,8 +292,8 @@ def test_async_callback(ray_start_regular_shared):
     wait_for_condition(lambda: "completed-2" in global_set)
 
 
-@pytest.parametrize("raise_in_callback", [False, True])
-def test_async_callback_refcount(ray_start_regular_shared, raise_in_callback: bool):
+@pytest.mark.parametrize("raise_in_callback", [False, True])
+def test_on_completed_callback_refcount(ray_start_regular_shared, raise_in_callback):
     """Check that the _on_completed callback is ref counted properly."""
     signal = SignalActor.remote()
 
