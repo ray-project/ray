@@ -67,11 +67,13 @@ from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan, OneToOneStage
-from ray.data._internal.planner.filter import generate_filter_fn
-from ray.data._internal.planner.flat_map import generate_flat_map_fn
-from ray.data._internal.planner.map_batches import generate_map_batches_fn
-from ray.data._internal.planner.map_rows import generate_map_rows_fn
-from ray.data._internal.planner.write import generate_write_fn
+from ray.data._internal.planner.plan_udf_map_op import (
+    generate_filter_fn,
+    generate_flat_map_fn,
+    generate_map_batches_fn,
+    generate_map_rows_fn,
+)
+from ray.data._internal.planner.plan_write_op import generate_write_fn
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import SortKey
@@ -2320,10 +2322,12 @@ class Dataset:
             ``ValueError``: if the dataset is empty.
         """
         batch_format = _apply_strict_mode_batch_format(batch_format)
+        limited_ds = self.limit(batch_size)
+
         try:
             res = next(
                 iter(
-                    self.iter_batches(
+                    limited_ds.iter_batches(
                         batch_size=batch_size,
                         prefetch_batches=0,
                         batch_format=batch_format,
@@ -2333,6 +2337,9 @@ class Dataset:
         except StopIteration:
             raise ValueError("The dataset is empty.")
         self._synchronize_progress_bar()
+
+        # Save the computed stats to the original dataset.
+        self._plan._snapshot_stats = limited_ds._plan.stats()
         return res
 
     @ConsumptionAPI
@@ -2373,11 +2380,16 @@ class Dataset:
                 "records in pandas or numpy batch format."
             )
         output = []
-        for row in self.iter_rows():
+
+        limited_ds = self.limit(limit)
+        for row in limited_ds.iter_rows():
             output.append(row)
             if len(output) >= limit:
                 break
         self._synchronize_progress_bar()
+
+        # Save the computed stats to the original dataset.
+        self._plan._snapshot_stats = limited_ds._plan.stats()
         return output
 
     @ConsumptionAPI
@@ -2842,7 +2854,7 @@ class Dataset:
             column: The column containing the data you want to write to images.
             file_format: The image file format to write with. For available options,
                 see `Image file formats <https://pillow.readthedocs.io/en/latest\
-                /handbook/image-file-formats.html>`.
+                /handbook/image-file-formats.html>`_.
             filesystem: The pyarrow filesystem implementation to write to.
                 These filesystems are specified in the
                 `pyarrow docs <https://arrow.apache.org/docs\

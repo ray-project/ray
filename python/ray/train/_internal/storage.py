@@ -115,8 +115,13 @@ def _pyarrow_fs_copy_files(
 def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
     assert not is_uri(fs_path), fs_path
 
+    is_dir = _is_directory(fs, fs_path)
+
     try:
-        fs.delete_dir(fs_path)
+        if is_dir:
+            fs.delete_dir(fs_path)
+        else:
+            fs.delete_file(fs_path)
     except Exception:
         logger.exception(f"Caught exception when deleting path at ({fs}, {fs_path}):")
 
@@ -242,7 +247,7 @@ def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     """Returns True if (fs, fs_path) exists."""
     assert not is_uri(fs_path), fs_path
 
-    valid = fs.get_file_info([fs_path])[0]
+    valid = fs.get_file_info(fs_path)
     return valid.type != pyarrow.fs.FileType.NotFound
 
 
@@ -253,7 +258,11 @@ def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
     assert not is_uri(fs_path), fs_path
+
     file_info = fs.get_file_info(fs_path)
+    if file_info.type == pyarrow.fs.FileType.NotFound:
+        raise FileNotFoundError(f"Path not found: ({fs}, {fs_path})")
+
     return not file_info.is_file
 
 
@@ -626,10 +635,12 @@ class StorageContext:
         The user of this class is responsible for setting the `current_checkpoint_index`
         (e.g., incrementing when needed).
         """
-        checkpoint_dir_name = StorageContext._make_checkpoint_dir_name(
-            self.current_checkpoint_index
-        )
-        return os.path.join(self.trial_fs_path, checkpoint_dir_name)
+        return os.path.join(self.trial_fs_path, self.checkpoint_dir_name)
+
+    @property
+    def checkpoint_dir_name(self) -> str:
+        """The current checkpoint directory name, based on the checkpoint index."""
+        return StorageContext._make_checkpoint_dir_name(self.current_checkpoint_index)
 
     @staticmethod
     def get_experiment_dir_name(run_obj: Union[str, Callable, Type]) -> str:
