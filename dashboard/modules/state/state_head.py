@@ -340,32 +340,28 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 
     def filter_events(self, events, severity_levels, source_types, **params):
-        filtered_events = []
-
         # If custom field parameters are provided, extract them
         entity_name, entity_id = list(params.items())[0] if params else (None, None)
 
-        for event in events:
+        def event_filter(event):
             # Filter 1: severity_level and source_type
             if severity_levels and event["severity"] not in severity_levels:
-                continue
+                return False
             if source_types and event["source_type"] not in source_types:
-                continue
+                return False
 
             # Filter 2: custom_fields matching entity parameters (if provided)
             if entity_name and entity_id:
                 custom_fields = event.get("custom_fields", {})
                 if entity_id == "*":
                     if entity_name not in custom_fields:
-                        continue
+                        return False
                 elif custom_fields.get(entity_name) != entity_id:
-                    continue
+                    return False
 
-            # If the event passes both filters, append it
-            filtered_events.append(event)
+            return True
 
-        return filtered_events
-
+        return list(filter(event_filter, events))
     @routes.get("/api/v0/cluster_events")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_cluster_events(
