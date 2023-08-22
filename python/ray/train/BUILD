@@ -480,7 +480,7 @@ py_test(
     name = "test_session",
     size = "small",
     srcs = ["tests/test_session.py"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
