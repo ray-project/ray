@@ -89,12 +89,8 @@ class ResultGrid:
         """Path pointing to the experiment directory on persistent storage.
 
         This can point to a remote storage location (e.g. S3) or to a local
-        location (path on the head node).
-
-        For instance, if your remote storage path is ``s3://bucket/location``,
-        this will point to ``s3://bucket/location/experiment_name``.
-        """
-        return self._remote_path or self._local_path
+        location (path on the head node)."""
+        return self._experiment_analysis.experiment_path
 
     @property
     def storage_filesystem(self) -> pyarrow.fs.FileSystem:
@@ -308,6 +304,13 @@ class ResultGrid:
                 for checkpoint in trial.get_trial_checkpoints()
             ]
 
+        if _use_storage_context():
+            metrics_df = self._experiment_analysis.trial_dataframes.get(trial.trial_id)
+        else:
+            metrics_df = self._experiment_analysis.trial_dataframes.get(
+                trial.local_path
+            )
+
         result = Result(
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
@@ -315,11 +318,7 @@ class ResultGrid:
             _local_path=trial.local_path,
             _remote_path=trial.remote_path,
             _storage_filesystem=self._experiment_analysis.storage_filesystem,
-            metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
-                trial.local_path
-            )
-            if self._experiment_analysis.trial_dataframes
-            else None,
+            metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
         )
         return result
