@@ -151,7 +151,7 @@ py_test(
     name = "horovod_tune_example",
     size = "small",
     srcs = ["examples/horovod/horovod_tune_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
