@@ -1,5 +1,5 @@
 export type Event = {
-  eventId: string;
+  event_id: string;
   source_type: SourceType;
   message: string;
   timestamp: number;
