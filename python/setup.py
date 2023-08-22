@@ -292,6 +292,17 @@ if setup_spec.type == SetupType.RAY:
         set(setup_spec.extras["serve"] + setup_spec.extras["default"])
     )
 
+    # Ensure gRPC library exists for Ray Serve gRPC support.
+    setup_spec.extras["serve-grpc"] = list(
+        set(
+            setup_spec.extras["serve"]
+            + [
+                "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+                "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+            ]
+        )
+    )
+
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
