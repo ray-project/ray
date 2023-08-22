@@ -32,7 +32,7 @@ The :class:`Preprocessor <ray.data.preprocessor.Preprocessor>` class has four pu
 #. :meth:`transform_batch() <ray.data.preprocessor.Preprocessor.transform_batch>`: Apply a transformation to a single :class:`batch <ray.train.predictor.DataBatchType>` of data. This method is typically called on online or offline inference data.
 #. :meth:`fit_transform() <ray.data.preprocessor.Preprocessor.fit_tranform>`: Syntactic sugar for calling both :meth:`fit() <ray.data.preprocessor.Preprocessor.fit>` and :meth:`transform() <ray.data.preprocessor.Preprocessor.transform>` on a :class:`Dataset <ray.data.Dataset>`.
 
-To show these methods in action, walk through a basic example. First, you'll set up two simple Ray ``Dataset``\s.
+To show these methods in action, walk through a basic example. First, set up two simple Ray ``Dataset``\s.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python

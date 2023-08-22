@@ -22,6 +22,8 @@ exceptions:
   - ETL
   - FAQ
   - GCC
+  - GCE
+  - GCP
   - GDB
   - GET
   - GPU

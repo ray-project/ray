@@ -5,3 +5,4 @@ ignorecase: true
 level: warning
 tokens:
   - will
+  - "'ll"
