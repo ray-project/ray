@@ -189,14 +189,14 @@ class Node:
         self._init_temp()
 
         node_ip_address = ray_params.node_ip_address
-        if connect_only:
-            node_ip_address = self._wait_for_node_address()
-        else:
-            if node_ip_address is None:
+        if node_ip_address is None:
+            if connect_only:
+                node_ip_address = self._wait_for_node_address()
+            else:
                 node_ip_address = ray._private.services.resolve_ip_for_localhost(
                     ray_constants.NODE_DEFAULT_IP
                 )
-        
+
         assert node_ip_address is not None
         ray_params.update_if_absent(
             node_ip_address=node_ip_address, raylet_ip_address=node_ip_address
@@ -260,6 +260,7 @@ class Node:
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet"
             )
+            self._write_node_ip_address(ray_params.node_ip_address)
 
         self.metrics_agent_port = self._get_cached_port(
             "metrics_agent_port", default_port=ray_params.metrics_agent_port
@@ -275,13 +276,6 @@ class Node:
             "runtime_env_agent_port",
             default_port=ray_params.runtime_env_agent_port,
         )
-
-        # Write a node_ip_address to a file so that
-        # ray.init can pick up.
-        # This has to be done here because it requires
-        # self.unique_id to exist.
-        if not connect_only:
-            self._write_node_ip_address(ray_params.node_ip_address)
 
         ray_params.update_if_absent(
             metrics_agent_port=self.metrics_agent_port,
@@ -992,34 +986,39 @@ class Node:
 
         If a ray instance is started by `ray start --node-ip-address`,
         the node ip address is cached to a file node_ip_address.json.
+        Otherwise, the file exists, but it is emptyl.
 
         This API is process-safe, meaning the file access is protected by
         a file lock.
 
         Returns:
             node_ip_address cached on the current node. None if the node
-            ip addrss is not written to a file or the file doesn't exist.
+            the file doesn't exist, meaning ray instance hasn't been
+            started on a current node. If node_ip_address is not written
+            to a file, it means --node-ip-address is not given, and in this
+            case, we find the IP address ourselves.
         """
         assert hasattr(self, "_session_dir")
         file_path = Path(
             os.path.join(self.get_session_dir_path(), "node_ip_address.json")
         )
         cached_node_ip_address = {}
-        
-        if not file_path.exists():
-            return None
 
         with FileLock(str(file_path.absolute()) + ".lock"):
-            with file_path.open() as f:
-                cached_node_ip_address.update(json.load(f))
-            
-            if self.unique_id in cached_node_ip_address:
-                return cached_node_ip_address[self.unique_id]
-            else:
+            if not file_path.exists():
                 return None
 
+            with file_path.open() as f:
+                cached_node_ip_address.update(json.load(f))
 
-    def _write_node_ip_address(self, node_ip_address: str) -> None:
+            if "node_ip_address" in cached_node_ip_address:
+                return cached_node_ip_address["node_ip_address"]
+            else:
+                return ray._private.services.resolve_ip_for_localhost(
+                    ray_constants.NODE_DEFAULT_IP
+                )
+
+    def _write_node_ip_address(self, node_ip_address: Optional[str]) -> None:
         """Write a node ip address of the current session to
         node_ip_address.json.
 
@@ -1029,10 +1028,22 @@ class Node:
         This API is process-safe, meaning the file access is protected by
         a file lock.
 
+        The file contains a single string node_ip_address. It nothing
+        is written, --node-ip-address is not given. In this case, Ray
+        resolves the IP address on its own. It assumes in a single node,
+        you can have only 1 IP address (which is the assumption ray
+        has in general).
+
+        node_ip_address is the ip address of the current node.
+
         Args:
             node_ip_address: The node IP address of the current node.
+                If None, it means the node ip address is not given
+                by --node-ip-address. In this case, we don't write
+                anything to a file.
         """
         assert hasattr(self, "_session_dir")
+
         file_path = Path(
             os.path.join(self.get_session_dir_path(), "node_ip_address.json")
         )
@@ -1046,8 +1057,8 @@ class Node:
             with file_path.open() as f:
                 cached_node_ip_address.update(json.load(f))
 
-            if self.unique_id not in cached_node_ip_address:
-                cached_node_ip_address[self.unique_id] = node_ip_address
+            if node_ip_address is not None:
+                cached_node_ip_address["node_ip_address"] = node_ip_address
                 with file_path.open(mode="w") as f:
                     json.dump(cached_node_ip_address, f)
 
