@@ -138,14 +138,13 @@ def _validate_accelerators(options: Dict[str, Any]):
     resources = options["resources"] if "resources" in options else None
     accelerator_type_value: str = options.get("accelerator_type", "")
 
+    non_zero_neuron_cores = False
     if resources is not None:
         neuron_cores: int = resources.get(ray_constants.NEURON_CORES, 0)
         if neuron_cores > 0:
             non_zero_neuron_cores = True
     elif accelerator_type_value == accelerators.AWS_NEURON_CORE:
         non_zero_neuron_cores = True
-    else:
-        non_zero_neuron_cores = False
 
     num_configured_accelerators = sum(
         [non_zero_gpus, non_zero_tpus, non_zero_neuron_cores]

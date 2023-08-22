@@ -210,9 +210,6 @@ def test_validate_accelerator_options(test_config):
 def test_set_tpu_visible_ids_and_bounds(tpu_chips):
     with patch.dict("os.environ", {}, clear=True):
         utils.set_tpu_visible_ids_and_bounds(tpu_chips=tpu_chips)
-        assert os.environ[ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(
-            tpu_chips
-        )
         if len(tpu_chips) == 1:
             assert (
                 os.environ[ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
@@ -221,6 +218,9 @@ def test_set_tpu_visible_ids_and_bounds(tpu_chips):
             assert (
                 os.environ[ray_constants.TPU_HOST_BOUNDS_ENV_VAR]
                 == ray_constants.TPU_SINGLE_HOST_BOUNDS
+            )
+            assert os.environ[ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(
+                tpu_chips
             )
         elif len(tpu_chips) == 2:
             assert (
@@ -231,12 +231,16 @@ def test_set_tpu_visible_ids_and_bounds(tpu_chips):
                 os.environ[ray_constants.TPU_HOST_BOUNDS_ENV_VAR]
                 == ray_constants.TPU_SINGLE_HOST_BOUNDS
             )
+            assert os.environ[ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(
+                tpu_chips
+            )
         else:  # len(tpu_chips) == 4
             # Check that nothing is set, let the ML framework use the defaults.
             assert (
-                os.environ.get(ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) is None
+                os.environ.get(ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
             )
             assert os.environ.get(ray_constants.TPU_SINGLE_HOST_BOUNDS, None) is None
+            assert os.environ.get(ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None
 
 
 @pytest.mark.parametrize("num_tpus", [3, 8, 10, 0.3, 0.2])
