@@ -41,7 +41,7 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.utils import file_tail_iterator
 from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
-from ray._private.event.event_logger import get_event_logger
+from ray._private.event.event_logger import EventSource, get_event_logger
 from ray.core.generated.event_pb2 import Event
 
 logger = logging.getLogger(__name__)
@@ -415,8 +415,7 @@ class JobSupervisor:
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
-                [polling_task, create_task(self._stop_event.wait())],
-                return_when=FIRST_COMPLETED,
+                [polling_task, self._stop_event.wait()], return_when=FIRST_COMPLETED
             )
 
             if self._stop_event.is_set():
@@ -466,10 +465,6 @@ class JobSupervisor:
                 assert len(finished) == 1, "Should have only one coroutine done"
                 [child_process_task] = finished
                 return_code = child_process_task.result()
-                logger.info(
-                    f"Job {self._job_id} entrypoint command "
-                    f"exited with code {return_code}"
-                )
                 if return_code == 0:
                     await self._job_info_client.put_status(
                         self._job_id, JobStatus.SUCCEEDED
@@ -478,16 +473,12 @@ class JobSupervisor:
                     log_tail = self._log_client.get_last_n_log_lines(self._job_id)
                     if log_tail is not None and log_tail != "":
                         message = (
-                            "Job entrypoint command "
-                            f"failed with exit code {return_code}, "
+                            "Job failed due to an application error, "
                             "last available logs (truncated to 20,000 chars):\n"
                             + log_tail
                         )
                     else:
-                        message = (
-                            "Job entrypoint command "
-                            f"failed with exit code {return_code}"
-                        )
+                        message = None
                     await self._job_info_client.put_status(
                         self._job_id, JobStatus.FAILED, message=message
                     )
@@ -530,12 +521,12 @@ class JobManager:
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
-        self._gcs_address = gcs_aio_client.address
+        self._gcs_address = gcs_aio_client._channel._gcs_address
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self.monitored_jobs = set()
         try:
-            self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
+            self.event_logger = get_event_logger(EventSource.JOBS, logs_dir)
         except Exception:
             self.event_logger = None
 
