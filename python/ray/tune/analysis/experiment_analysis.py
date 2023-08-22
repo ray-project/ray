@@ -708,6 +708,33 @@ class NewExperimentAnalysis:
         state["trials"] = [make_stub_if_needed(t) for t in state["trials"]]
         return state
 
+    # TODO(ml-team): [Deprecated] Remove in 2.8
+    @property
+    def best_logdir(self) -> str:
+        raise DeprecationWarning(
+            "`best_logdir` is deprecated. Use `best_trial.local_path` instead."
+        )
+
+    def get_best_logdir(
+        self,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        scope: str = "last",
+    ) -> Optional[str]:
+        raise DeprecationWarning(
+            "`get_best_logdir` is deprecated. "
+            "Use `get_best_trial(...).local_path` instead."
+        )
+
+    def get_trial_checkpoints_paths(
+        self, trial: Trial, metric: Optional[str] = None
+    ) -> List[Tuple[str, Number]]:
+        raise DeprecationWarning(
+            "`get_trial_checkpoints_paths` is deprecated. "
+            "Use `get_best_checkpoint` or wrap this `ExperimentAnalysis` in a "
+            "`ResultGrid` and use `Result.best_checkpoints` instead."
+        )
+
 
 @PublicAPI(stability="beta")
 class ExperimentAnalysis:
