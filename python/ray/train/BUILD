@@ -161,7 +161,7 @@ py_test (
     size = "medium",
     srcs = ["examples/huggingface/huggingface_basic_language_modeling_example.py"],
     args = ["--smoke-test", "--num-epochs 3"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"]
 )
 
