@@ -72,6 +72,62 @@ Other `--env` options for the DM Control Suite would be `--env DMC/hopper/hop`, 
 Note that you can also switch on WandB logging with the above script via the options
 `--wandb-key=[your WandB API key] --wandb-project=[some project name] --wandb-run-name=[some run name]`
 
+## Running DreamerV3 with arbitrary Envs and Configs
+Can I run DreamerV3 with any gym or custom environments? Yes, you can!
+
+![Flappy Bird gymnasium env](../../../doc/source/rllib/images/dreamerv3/flappy_bird_env.png)
+
+Let's try the "Flappy Bird" gymnasium env. It's image space is a cellphone-style
+288 x 512 (RGB), very different from the DreamerV3 Atari benchmark "norm", which is 64x64 (RGB).
+So we will have to custom-wrap observations to resize this ``Box(0.0, 255.0, (288, 512, 3), float32)``
+space.
+
+First quickly run:
+```shell
+$ pip install flappy_bird_gymnasium 
+```
+
+Now, let's create a new python config file for this experiment and call it ``flappy_bird.py``:
+```python
+# Import flappy bird and gymnasium
+import flappy_bird_gymnasium  # we must import this for the gym.make below to work
+import gymnasium as gym
+
+# Our two env wrappers for resizing and normalizing.
+from supersuit.generic_wrappers import resize_v1
+from ray.rllib.algorithms.dreamerv3.utils.env_runner import NormalizedImageEnv
+
+# Register the FlappyBird-rgb-v0 env including necessary wrappers via the
+# `tune.register_env()` API.
+from ray import tune
+tune.register_env("flappy-bird", lambda ctx: (
+    NormalizedImageEnv(resize_v1(  # resize to 64x64 and normalize images
+        gym.make("FlappyBird-rgb-v0", {"audio_on": False}), x_size=64, y_size=64
+    ))
+))
+
+# Import our DreamerV3 algorithm config class:
+from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
+
+config = (
+    DreamerV3Config()
+    # set the env to the pre-registered string
+    .environment("flappy-bird")
+    # play around with the insanely high number of hyperparameters for DreamerV3 ;) 
+    .training(
+        model_size="S",
+        training_ratio=1024,
+    )
+)
+```
+
+Great! Now, let's use this config and start our experiment run. We will use the exact same
+command lines as above (for Atari100k and DM Control Suite):
+
+```shell
+$ rllib train file flappy_bird.py
+```
+
 
 ## Results
 Our results on the Atari 100k and (visual) DeepMind Control Suite benchmarks match those
