@@ -288,9 +288,8 @@ def deployment(
             is set, `num_replicas` cannot be set.
         init_args: [DEPRECATED] These should be passed to `.bind()` instead.
         init_kwargs: [DEPRECATED] These should be passed to `.bind()` instead.
-        route_prefix: Requests to paths under this HTTP path prefix are routed
-            to this deployment. Defaults to '/'. This can only be set for the
-            ingress (top-level) deployment of an application.
+        route_prefix: [DEPRECATED] Route prefix should be set per-application
+            through `serve.run()`.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
