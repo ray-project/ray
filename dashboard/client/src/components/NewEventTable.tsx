@@ -179,6 +179,7 @@ const useEventTable = (props: EventTableProps) => {
   ];
 
   return {
+    total: events.filter(filterFunc).length,
     events: events.filter(filterFunc).slice(range[0], range[1]),
     filters,
     setFilters,
@@ -199,12 +200,12 @@ const NewEventTable = (props: EventTableProps) => {
     pagination,
     changePage,
     loading,
+    total,
   } = useEventTable(props);
 
   if (loading) {
     return <LinearProgress />;
   }
-  const eventsLen = events.length;
   return (
     <div>
       <header className={classes.filterContainer}>
@@ -320,7 +321,7 @@ const NewEventTable = (props: EventTableProps) => {
       <footer>
         <Pagination
           className={classes.pagination}
-          count={eventsLen > 0 ? Math.ceil(eventsLen / pagination.pageSize) : 0}
+          count={total > 0 ? Math.ceil(total / pagination.pageSize) : 0}
           page={pagination.pageNo}
           onChange={(event: React.ChangeEvent<unknown>, value: number) => {
             changePage("pageNo", value);
