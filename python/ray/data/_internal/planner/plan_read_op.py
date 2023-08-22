@@ -146,23 +146,21 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     )
 
 
-def apply_output_blocks_handling_to_read_tasks(
-    read_tasks: List[ReadTask],
+def apply_output_blocks_handling_to_read_task(
+    read_task: ReadTask,
     additional_split_factor: Optional[int],
 ):
-    """Patch the read tasks and apply output blocks handling logic.
+    """Patch the read task and apply output blocks handling logic.
 
     This function is only used for compability with the legacy LazyBlockList code path.
     """
+    original_read_fn = read_task._read_fn
     output_transform_fn = _generate_output_transform_fn(additional_split_factor)
 
-    for read_task in read_tasks:
-        original_read_fn = read_task._read_fn
+    def new_read_fn():
+        blocks = original_read_fn()
+        # We pass None as the TaskContext because we don't have access to it here.
+        # This is okay because the transform functions don't use the TaskContext.
+        return output_transform_fn(blocks, None)  # type: ignore
 
-        def new_read_fn():
-            blocks = original_read_fn()
-            # We pass None as the TaskContext because we don't have access to it here.
-            # This is okay because the transform functions don't use the TaskContext.
-            return output_transform_fn(blocks, None)  # type: ignore
-
-        read_task._read_fn = new_read_fn
+    read_task._read_fn = new_read_fn

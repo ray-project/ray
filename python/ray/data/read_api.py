@@ -31,7 +31,7 @@ from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.plan_read_op import (
-    apply_output_blocks_handling_to_read_tasks,
+    apply_output_blocks_handling_to_read_task,
 )
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -414,10 +414,11 @@ def read_datasource(
     else:
         estimated_num_blocks = 0
 
-    apply_output_blocks_handling_to_read_tasks(
-        read_tasks,
-        additional_split_factor,
-    )
+    for read_task in read_tasks:
+        apply_output_blocks_handling_to_read_task(
+            read_task,
+            additional_split_factor,
+        )
 
     read_stage_name = f"Read{datasource.get_name()}"
     available_cpu_slots = ray.available_resources().get("CPU", 1)
