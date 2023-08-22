@@ -99,6 +99,7 @@ def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
     from ray.train._internal.storage import _use_storage_context
+
     if not _use_storage_context():
         # TODO(justinvyu): [skipped_test]
         pytest.skip("Skipping for now.")

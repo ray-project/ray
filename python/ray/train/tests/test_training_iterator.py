@@ -8,7 +8,7 @@ from ray.train.trainer import TrainingIterator
 
 import ray
 from ray import train
-from ray.train import Checkpoint, CheckpointConfig, DataConfig
+from ray.train import CheckpointConfig, DataConfig
 from ray.air._internal.util import StartTraceback
 from ray.train.backend import BackendConfig
 from ray.train._internal.session import init_session, get_session
