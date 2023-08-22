@@ -1,4 +1,4 @@
-from typing import Optional, Union, Dict, List
+from typing import Optional, Union, Literal, Dict, List
 
 import ray
 from ray.actor import ActorHandle
