@@ -364,20 +364,8 @@ class ReplicaName:
         assert ReplicaName.is_replica_name(actor_name)
         # TODO(simon): this currently conforms the tag and suffix logic. We
         # can try to keep the internal name always hard coded with the prefix.
-        replica_name = actor_name.replace(cls.prefix, "")
-        parsed = replica_name.split(cls.delimiter)
-        if len(parsed) == 3:
-            return cls(
-                app_name=parsed[0], deployment_name=parsed[1], replica_suffix=parsed[2]
-            )
-        elif len(parsed) == 2:
-            return cls("", deployment_name=parsed[0], replica_suffix=parsed[1])
-        else:
-            raise ValueError(
-                f"Given replica name {replica_name} didn't match pattern, please "
-                "ensure it has either two or three fields with delimiter "
-                f"{cls.delimiter}"
-            )
+        replica_tag = actor_name.replace(cls.prefix, "")
+        return ReplicaName.from_replica_tag(replica_tag)
 
     @classmethod
     def from_replica_tag(cls, tag):
