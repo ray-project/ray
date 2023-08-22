@@ -392,7 +392,7 @@ py_test(
     name = "test_lightgbm_predictor",
     size = "small",
     srcs = ["tests/test_lightgbm_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
