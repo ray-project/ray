@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
 from torch.utils.data import Dataset as TorchDataset
 
+from ray import train
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
@@ -474,7 +475,7 @@ def _huggingface_train_loop_per_worker(config):
 
     trainer.add_callback(TrainReportCallback)
 
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_path:
             trainer.train(resume_from_checkpoint=checkpoint_path)

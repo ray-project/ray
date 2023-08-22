@@ -52,7 +52,7 @@ class AccelerateTrainer(TorchTrainer):
     as you would without Ray.
 
     Inside the ``train_loop_per_worker`` function, In addition to Accelerate APIs, you
-    can use any of the :ref:`Ray AIR session methods <air-session-ref>`.
+    can use any of the :ref:`Ray Train loop methods <train-loop-api>`.
     See full example code below.
 
     .. testcode::

@@ -14,7 +14,7 @@ from ray.util.annotations import PublicAPI
 
 import xgboost
 import xgboost_ray
-from xgboost_ray.tune import TuneReportCheckpointCallback, TuneReportCallback
+from xgboost_ray.tune import TuneReportCheckpointCallback
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -85,7 +85,6 @@ class XGBoostTrainer(GBDTTrainer):
 
     _dmatrix_cls: type = xgboost_ray.RayDMatrix
     _ray_params_cls: type = xgboost_ray.RayParams
-    _tune_callback_report_cls: type = TuneReportCallback
     _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
     _default_ray_params: Dict[str, Any] = {
         "num_actors": 1,
