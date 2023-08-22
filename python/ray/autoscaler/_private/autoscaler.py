@@ -1037,7 +1037,8 @@ class StandardAutoscaler:
                         exc_info=e,
                     )
             logger.debug(
-                f"New config after validation: {new_config}, of type: {type(new_config)}"
+                f"New config after validation: {new_config},"
+                f" of type: {type(new_config)}"
             )
             (new_runtime_hash, new_file_mounts_contents_hash) = hash_runtime_conf(
                 new_config["file_mounts"],
