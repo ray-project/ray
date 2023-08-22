@@ -130,7 +130,7 @@ def _validate_accelerators(options: Dict[str, Any]):
     # TPU-specific check
     if non_zero_tpus and num_tpus not in ray_constants.TPU_VALID_CHIP_OPTIONS:
         logging.warning(
-            f"'num_tpus' was set to f{num_tpus} which is not a "
+            f"'num_tpus' was set to {num_tpus} which is not a "
             "supported chip configuration. Supported configs: "
             f"{ray_constants.TPU_VALID_CHIP_OPTIONS}"
         )

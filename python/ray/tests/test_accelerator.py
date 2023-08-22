@@ -105,9 +105,19 @@ def test_autodetect_num_tpus_accel(mock_glob):
 
 
 @patch("glob.glob")
-def test_autodetect_num_tpus_vfio(mock_glob):
-    mock_glob.return_value = [f"/dev/vfio/{i}" for i in range(4)]
+@patch("os.listdir")
+def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
+    mock_glob.return_value = []
+    mock_list.return_value = [f"{i}" for i in range(4)]
     assert accelerator.autodetect_num_tpus() == 4
+
+
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
+    mock_list.side_effect = FileNotFoundError
+    mock_glob.return_value = []
+    assert accelerator.autodetect_num_tpus() == 0
 
 
 @pytest.mark.parametrize(

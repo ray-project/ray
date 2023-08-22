@@ -134,6 +134,7 @@ def autodetect_num_tpus() -> int:
         return len(numeric_entries)
     except Exception:
         logging.info("Failed to detect number of TPUs.")
+        return 0
 
 
 def autodetect_tpu_version() -> Optional[str]:

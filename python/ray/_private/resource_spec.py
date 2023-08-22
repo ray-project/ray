@@ -214,10 +214,11 @@ class ResourceSpec(
         # TPUs only processes running on 1, 2, or 4 chips per TPU VM host.
         if tpu_ids is not None:
             num_visible_tpus = len(tpu_ids)
-            if num_visible_tpus not in (1, 2, 4):
-                raise ValueError(
-                    f"Tried to set TPU_VISIBLE_CHIPS to use {num_visible_tpus} chips. "
-                    "The only supported configuration can access 1, 2, or 4 chips. "
+            if num_visible_tpus not in ray_constants.TPU_VALID_CHIP_OPTIONS:
+                logger.exception(
+                    f"Tried to set TPU_VISIBLE_CHIPS to use {num_visible_tpus} chips  "
+                    "which is not a supported chip configuration. Supported "
+                    f"configurations: {ray_constants.TPU_VALID_CHIP_OPTIONS}. "
                     f"Got TPU_VISIBLE_CHIPS={tpu_ids}."
                 )
 
@@ -237,7 +238,7 @@ class ResourceSpec(
 
         tpu_version = accelerator.autodetect_tpu_version()
         if tpu_version is not None:
-            # Update with, e.g. {"V2": 1}
+            # Update with, e.g. {"TPU-V2": 1}
             resources.update({tpu_version: 1})
 
         accelerator.update_resources_with_accelerator_type(resources)
