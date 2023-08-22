@@ -6,7 +6,6 @@ import torch.nn as nn
 from ray.train.examples.pytorch.torch_linear_example import LinearDataset
 from ray.train import ScalingConfig
 import ray.train as train
-from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
 from ray.train.huggingface import AccelerateTrainer
 from accelerate import Accelerator
@@ -315,10 +314,8 @@ def test_accelerate_e2e(ray_start_4_cpus, num_workers):
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
         accelerate_config={},
-        preprocessor=DummyPreprocessor(),
     )
-    result = trainer.fit()
-    assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
+    trainer.fit()
 
 
 if __name__ == "__main__":

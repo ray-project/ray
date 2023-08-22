@@ -61,9 +61,3 @@ The following highlights feature companies leveraging Ray's unified API to build
 
 .. Deployments on Ray.
 .. include:: /ray-air/deployment.rst
-
-
-What's Next
------------
-
-* Take a look at how to use Ray for end-to-end :ref:`computer vision workloads <computer-vision>`.

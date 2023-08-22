@@ -59,11 +59,8 @@ class XGBoostTrainer(GBDTTrainer):
 
     Args:
         datasets: The Ray Datasets to use for training and validation. Must include a
-            "train" key denoting the training dataset. If a ``preprocessor``
-            is provided and has not already been fit, it will be fit on the training
-            dataset. All datasets will be transformed by the ``preprocessor`` if
-            one is provided. All non-training datasets will be used as separate
-            validation sets, each reporting a separate metric.
+            "train" key denoting the training dataset. All non-training datasets will
+            be used as separate validation sets, each reporting a separate metric.
         label_column: Name of the label column. A column with this name
             must be present in the training dataset.
         params: XGBoost training parameters.

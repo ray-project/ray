@@ -172,9 +172,11 @@ class TestToTF:
             multi_worker_model.fit(dataset)
 
         dataset = ray.data.from_items(8 * [{"X0": 0, "X1": 0, "Y": 0}])
+        concatenator = Concatenator(exclude=["Y"], output_column_name="X")
+        dataset = concatenator.transform(dataset)
+
         trainer = TensorflowTrainer(
             train_loop_per_worker=train_func,
-            preprocessor=Concatenator(exclude=["Y"], output_column_name="X"),
             scaling_config=ScalingConfig(num_workers=2),
             datasets={"train": dataset},
         )
