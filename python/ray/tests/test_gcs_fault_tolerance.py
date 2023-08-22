@@ -828,6 +828,23 @@ print("DONE")
     wait_for_pid_to_exit(gcs_server_pid, 10000)
 
 
+def test_cluster_id(ray_start_regular):
+    raylet_proc = ray._private.worker._global_node.all_processes[
+        ray_constants.PROCESS_TYPE_RAYLET
+    ][0].process
+
+    def check_raylet_healthy():
+        return raylet_proc.poll() is None
+
+    wait_for_condition(lambda: check_raylet_healthy())
+
+    ray._private.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
+
+    # Waiting for raylet to become unhealthy
+    wait_for_condition(lambda: not check_raylet_healthy())
+
+
 @pytest.mark.parametrize(
     "ray_start_regular_with_external_redis",
     [
