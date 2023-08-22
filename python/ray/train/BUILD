@@ -546,7 +546,7 @@ py_test(
     name = "test_torch_checkpoint",
     size = "small",
     srcs = ["tests/test_torch_checkpoint.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
