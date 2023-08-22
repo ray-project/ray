@@ -47,16 +47,6 @@ py_library(
 )
 
 py_test(
-    name = "mlflow_fashion_mnist_example",
-    size = "medium",
-    main = "examples/mlflow_fashion_mnist_example.py",
-    srcs = ["examples/mlflow_fashion_mnist_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "mlflow_simple_example",
     size = "small",
     main = "examples/mlflow_simple_example.py",

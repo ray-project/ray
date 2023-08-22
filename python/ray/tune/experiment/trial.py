@@ -26,6 +26,7 @@ from ray.air.constants import (
 
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
+from ray.train._checkpoint import Checkpoint
 from ray.train._internal.checkpoint_manager import (
     _TrainingResult,
     _CheckpointManager as _NewCheckpointManager,
@@ -832,15 +833,15 @@ class Trial:
         return config.checkpoint_frequency
 
     @property
-    def checkpoint(self):
-        """Returns the most recent checkpoint.
-
-        If the trial is in ERROR state, the most recent PERSISTENT checkpoint
-        is returned.
-        """
+    def checkpoint(self) -> Optional[Checkpoint]:
+        """Returns the most recent checkpoint if one has been saved."""
         if _use_storage_context():
+            checkpoint_manager = self.run_metadata.checkpoint_manager
+            latest_checkpoint_result = checkpoint_manager.latest_checkpoint_result
             return (
-                self.run_metadata.checkpoint_manager.latest_checkpoint_result.checkpoint
+                latest_checkpoint_result.checkpoint
+                if latest_checkpoint_result
+                else None
             )
 
         if self.status == Trial.ERROR:
