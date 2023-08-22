@@ -281,7 +281,7 @@ class Node:
         # This has to be done here because it requires
         # self.unique_id to exist.
         if not connect_only:
-            self._write_node_ip_address(node_ip_address)
+            self._write_node_ip_address(ray_params.node_ip_address)
 
         ray_params.update_if_absent(
             metrics_agent_port=self.metrics_agent_port,
