@@ -1,16 +1,10 @@
-import { SeverityLevel, SourceType } from "../components/NewEventTable";
-
 export type Event = {
   eventId: string;
-  sourceType: SourceType;
-  sourceHostname: string;
-  hostName: string;
-  sourcePid: number;
-  pid: number;
+  source_type: SourceType;
   message: string;
   timestamp: number;
   severity: SeverityLevel;
-  customFields: {
+  custom_fields: {
     [key: string]: any;
   };
 };
@@ -19,9 +13,15 @@ export type EventRsp = {
   result: boolean;
   msg: string;
   data: {
-    result: {
-      total: number;
-      result: Event[];
-    };
+    result: Event[];
   };
+};
+
+export type Align = "inherit" | "left" | "center" | "right" | "justify";
+
+export type Filters = {
+  sourceType: string[]; // TODO: Chao, multi-select severity level in filters button is a P1
+  severityLevel: string[]; // TODO: Chao, multi-select severity level in filters button is a P1
+  entityName: string | undefined;
+  entityId: string | undefined;
 };
