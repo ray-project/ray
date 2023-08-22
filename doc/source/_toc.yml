@@ -320,6 +320,10 @@ parts:
             title: Deploying on Kubernetes
             sections:
               - file: cluster/kubernetes/getting-started
+                sections:
+                  - file: cluster/kubernetes/getting-started/raycluster-quick-start.md
+                  - file: cluster/kubernetes/getting-started/rayjob-quick-start.md
+                  - file: cluster/kubernetes/getting-started/rayservice-quick-start.md
               - file: cluster/kubernetes/user-guides
                 sections:
                   - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
