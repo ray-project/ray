@@ -472,7 +472,7 @@ py_test(
     name = "test_new_persistence",
     size = "large",
     srcs = ["tests/test_new_persistence.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 

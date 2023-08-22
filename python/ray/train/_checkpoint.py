@@ -85,7 +85,7 @@ class Checkpoint:
         self._uuid = uuid.uuid4()
 
     def __repr__(self):
-        return f"Checkpoint(filesystem={self.filesystem}, path={self.path})"
+        return f"Checkpoint(filesystem={self.filesystem.type_name}, path={self.path})"
 
     def get_metadata(self) -> Dict[str, Any]:
         """Return the metadata dict stored with the checkpoint.
