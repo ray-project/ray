@@ -25,14 +25,14 @@ class DataConfig:
 
     def __init__(
         self,
-        datasets_to_split: Union[str, List[str]] = "all",
+        datasets_to_split: Union[Literal["all"], List[str]] = "all",
         execution_options: Optional[ExecutionOptions] = None,
     ):
         """Construct a DataConfig.
 
         Args:
-            datasets_to_split: List of datasets to be sharded among workers.
-                Acceptable values are "all", "none", or a list of dataset
+            datasets_to_split: Specifies which datasets should be sharded among workers.
+                Can be set to "all", "none", or a list of dataset
                 names. Defaults to "all".
             execution_options: The execution options to pass to Ray Data. By default,
                 the options will be optimized for data ingest. When overriding this,
