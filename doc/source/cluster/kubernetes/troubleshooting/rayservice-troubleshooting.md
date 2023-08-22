@@ -26,7 +26,7 @@ You can check the status and events of the RayService CR to see if there are any
 
 ### Method 3: Check logs of Ray Pods
 
-You can also check the Ray Serve logs directly by accessing the log files on the pods. These log files contain system level logs from the Serve controller and HTTP proxy as well as access logs and user-level logs. See [Ray Serve Logging](https://docs.ray.io/en/latest/serve/production-guide/monitoring.html#ray-logging) and [Ray Logging](https://docs.ray.io/en/latest/ray-observability/user-guides/configure-logging.html#configure-logging) for more details.
+You can also check the Ray Serve logs directly by accessing the log files on the pods. These log files contain system level logs from the Serve controller and HTTP proxy as well as access logs and user-level logs. See [Ray Serve Logging](serve-logging) and [Ray Logging](configure-logging) for more details.
 
 ```bash
 kubectl exec -it $RAY_POD -n $YOUR_NAMESPACE -- bash
@@ -40,11 +40,11 @@ kubectl port-forward $RAY_POD -n $YOUR_NAMESPACE --address 0.0.0.0 8265:8265
 # Check $YOUR_IP:8265 in your browser
 ```
 
-For more details about Ray Serve observability on the dashboard, you can refer to [the documentation](https://docs.ray.io/en/latest/ray-observability/getting-started.html#serve-view) and [the YouTube video](https://youtu.be/eqXfwM641a4).
+For more details about Ray Serve observability on the dashboard, you can refer to [the documentation](dash-serve-view) and [the YouTube video](https://youtu.be/eqXfwM641a4).
 
 ### Method 5: Ray State CLI
 
-You can use the [Ray State CLI](https://docs.ray.io/en/latest/ray-observability/reference/cli.html) on the head Pod to check the status of Ray Serve applications.
+You can use the [Ray State CLI](state-api-cli-ref) on the head Pod to check the status of Ray Serve applications.
 
 ```bash
 # Log into the head Pod
@@ -88,7 +88,7 @@ For the sake of flexibility, we have set `serveConfigV2` as a YAML multi-line st
 This implies that there is no strict type checking for the Ray Serve configurations in `serveConfigV2` field.
 Some tips to help you debug the `serveConfigV2` field:
 
-* Check [the documentation](https://docs.ray.io/en/latest/serve/api/#put-api-serve-applications) for the schema about
+* Check [the documentation](put-api-serve-applications) for the schema about
 the Ray Serve Multi-application API `PUT "/api/serve/applications/"`.
 * Unlike `serveConfig`, `serveConfigV2` adheres to the snake case naming convention. For example, `numReplicas` is used in `serveConfig`, while `num_replicas` is used in `serveConfigV2`. 
 
@@ -99,16 +99,16 @@ You have two options to resolve this issue:
 * Build your own Ray image with the required dependencies.
 * Specify the required dependencies via `runtime_env` in `serveConfigV2` field.
   * For example, the MobileNet example requires `python-multipart`, which is not included in the Ray image `rayproject/ray-ml:2.5.0`.
-Therefore, the YAML file includes `python-multipart` in the runtime environment. For more details, refer to [the MobileNet example](mobilenet-rayservice.md).
+Therefore, the YAML file includes `python-multipart` in the runtime environment. For more details, refer to [the MobileNet example](kuberay-mobilenet-rayservice-example).
 
 ### Issue 3-2: Examples for troubleshooting dependency issues.
 
 > Note: We highly recommend testing your Ray Serve script locally or in a RayCluster before deploying it to a RayService. This helps identify any dependency issues in the early stages. Please refer to [rayserve-dev-doc.md](https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayserve-dev-doc.md) for more details.
 
-In the [MobileNet example](mobilenet-rayservice.md), the [mobilenet.py](https://github.com/ray-project/serve_config_examples/blob/master/mobilenet/mobilenet.py) consists of two functions: `__init__()` and `__call__()`.
+In the [MobileNet example](kuberay-mobilenet-rayservice-example), the [mobilenet.py](https://github.com/ray-project/serve_config_examples/blob/master/mobilenet/mobilenet.py) consists of two functions: `__init__()` and `__call__()`.
 The function `__call__()` will only be called when the Serve application receives a request.
 
-* Example 1: Remove `python-multipart` from the runtime environment in [the MobileNet YAML](../../ray-operator/config/samples/ray-service.mobilenet.yaml).
+* Example 1: Remove `python-multipart` from the runtime environment in [the MobileNet YAML](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.mobilenet.yaml).
   * The `python-multipart` library is only required for the `__call__` method. Therefore, we can only observe the dependency issue when we send a request to the application.
   * Example error message:
     ```bash
@@ -123,7 +123,7 @@ The function `__call__()` will only be called when the Serve application receive
     AssertionError: The `python-multipart` library must be installed to use form parsing..
     ```
 
-* Example 2: Update the image from `rayproject/ray-ml:2.5.0` to `rayproject/ray:2.5.0` in [the MobileNet YAML](../../ray-operator/config/samples/ray-service.mobilenet.yaml). The latter image does not include `tensorflow`.
+* Example 2: Update the image from `rayproject/ray-ml:2.5.0` to `rayproject/ray:2.5.0` in [the MobileNet YAML](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.mobilenet.yaml). The latter image does not include `tensorflow`.
   * The `tensorflow` library is imported in the [mobilenet.py](https://github.com/ray-project/serve_config_examples/blob/master/mobilenet/mobilenet.py).
   * Example error message:
     ```bash
@@ -145,7 +145,7 @@ The function `__call__()` will only be called when the Serve application receive
 ### Issue 4: Incorrect `import_path`.
 
 You can refer to [the documentation](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.schema.ServeApplicationSchema.html#ray.serve.schema.ServeApplicationSchema.import_path) for more details about the format of `import_path`.
-Taking [the MobileNet YAML file](../../ray-operator/config/samples/ray-service.mobilenet.yaml) as an example,
+Taking [the MobileNet YAML file](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.mobilenet.yaml) as an example,
 the `import_path` is `mobilenet.mobilenet:app`. The first `mobilenet` is the name of the directory in the `working_dir`,
 the second `mobilenet` is the name of the Python file in the directory `mobilenet/`,
 and `app` is the name of the variable representing Ray Serve application within the Python file.
