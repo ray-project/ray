@@ -1,4 +1,4 @@
-from typing import Optional, Union, Literal, Dict, List
+from typing import Optional, Union, Dict, List
 
 import ray
 from ray.actor import ActorHandle
@@ -16,6 +16,13 @@ from ray.data import (
     NodeIdStr,
 )
 from ray.data.preprocessor import Preprocessor
+
+import sys
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 
 @PublicAPI
