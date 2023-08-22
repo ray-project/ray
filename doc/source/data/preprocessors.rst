@@ -6,7 +6,7 @@ Using Preprocessors
 Data preprocessing is a common technique for transforming raw data into features for a machine learning model.
 In general, you may want to apply the same preprocessing logic to your offline training data and online inference data.
 
-This page covers *preprocessors*, which are a higher level API on top of existing Ray Data operations like `map_batches`,
+This page covers *preprocessors*, which are a higher level API on top of existing Ray Data operations like ``map_batches``,
 targeted towards tabular and structured data use cases.
 
 If you are working with tabular data, you should use Ray Data preprocessors. However, the recommended way to perform preprocessing 
@@ -23,7 +23,7 @@ Overview
 
 The :class:`Preprocessor <ray.data.preprocessor.Preprocessor>` class has four public methods:
 
-#. :meth:`fit() <ray.data.preprocessor.Preprocessor.fit>`: Compute state information about a :class:`Dataset <ray.data.Dataset>` (e.g., the mean or standard deviation of a column)
+#. :meth:`fit() <ray.data.preprocessor.Preprocessor.fit>`: Compute state information about a :class:`Dataset <ray.data.Dataset>` (for example, the mean or standard deviation of a column)
    and save it to the :class:`Preprocessor <ray.data.preprocessor.Preprocessor>`. This information is used to perform :meth:`transform() <ray.data.preprocessor.Preprocessor.transform>`, and the method is typically called on a
    training dataset.
 #. :meth:`transform() <ray.data.preprocessor.Preprocessor.transform>`: Apply a transformation to a :class:`Dataset <ray.data.Dataset>`.
@@ -32,7 +32,7 @@ The :class:`Preprocessor <ray.data.preprocessor.Preprocessor>` class has four pu
 #. :meth:`transform_batch() <ray.data.preprocessor.Preprocessor.transform_batch>`: Apply a transformation to a single :class:`batch <ray.train.predictor.DataBatchType>` of data. This method is typically called on online or offline inference data.
 #. :meth:`fit_transform() <ray.data.preprocessor.Preprocessor.fit_tranform>`: Syntactic sugar for calling both :meth:`fit() <ray.data.preprocessor.Preprocessor.fit>` and :meth:`transform() <ray.data.preprocessor.Preprocessor.transform>` on a :class:`Dataset <ray.data.Dataset>`.
 
-To show these methods in action, let's walk through a basic example. First, we'll set up two simple Ray ``Dataset``\s.
+To show these methods in action, walk through a basic example. First, set up two simple Ray ``Dataset``\s.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
