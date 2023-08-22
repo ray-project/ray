@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 import sys
@@ -219,15 +220,28 @@ class RayClusterOnSpark:
         self.shutdown()
 
 
-def _convert_ray_node_option_key(key):
-    return f"--{key.replace('_', '-')}"
+def _convert_ray_node_option(key, value):
+    converted_key = f"--{key.replace('_', '-')}"
+    if key in ["system_config", "resources", "labels"]:
+        return f"{converted_key}='{json.dumps(value)}'"
+    if value is None:
+        return converted_key
+    return f"{converted_key}={str(value)}"
 
 
-def _convert_ray_node_options(options):
+def _convert_ray_node_options(options, *, object_spilling_path):
+    if "system_config" not in options:
+        options["system_config"] = {}
+    sys_conf = options["system_config"]
+    if "object_spilling_config" not in sys_conf:
+        sys_conf["object_spilling_config"] = json.dumps({
+          "type": "filesystem",
+          "params": {
+            "directory_path": object_spilling_path,
+          }
+        })
     return [
-        f"{_convert_ray_node_option_key(k)}"
-        if v is None
-        else f"{_convert_ray_node_option_key(k)}={str(v)}"
+        _convert_ray_node_option(k, v)
         for k, v in options.items()
     ]
 
@@ -468,6 +482,8 @@ def _setup_ray_cluster(
         ray_temp_root_dir, f"ray-{ray_head_port}-{cluster_unique_id}"
     )
     os.makedirs(ray_temp_dir, exist_ok=True)
+    object_spilling_dir = os.path.join(ray_temp_dir, "spill")
+    os.makedirs(object_spilling_dir, exist_ok=True)
 
     ray_head_node_cmd = [
         sys.executable,
@@ -485,7 +501,9 @@ def _setup_ray_cluster(
         f"--memory={heap_memory_head_node}",
         f"--object-store-memory={object_store_memory_head_node}",
         *dashboard_options,
-        *_convert_ray_node_options(head_node_options),
+        *_convert_ray_node_options(
+            head_node_options, object_spilling_path=object_spilling_dir
+        ),
     ]
 
     _logger.info(f"Starting Ray head, command: {' '.join(ray_head_node_cmd)}")
