@@ -816,7 +816,8 @@ def test_implicit_resource(ray_start_regular):
     a1 = Actor.remote()
     ray.get(a1.ping.remote())
 
-    # The second actor will be pending since only one such actor can run on a single node.
+    # The second actor will be pending since
+    # only one such actor can run on a single node.
     a2 = Actor.remote()
     time.sleep(2)
     actors = list_actors(filters=[("actor_id", "=", a2._actor_id.hex())])
