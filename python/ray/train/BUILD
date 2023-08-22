@@ -520,7 +520,7 @@ py_test(
     name = "test_tensorflow_predictor",
     size = "small",
     srcs = ["tests/test_tensorflow_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 

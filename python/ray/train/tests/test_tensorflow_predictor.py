@@ -4,7 +4,6 @@ import pandas as pd
 import pytest
 import tensorflow as tf
 
-from ray.train import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import (
     _convert_pandas_to_batch_type,
@@ -12,7 +11,7 @@ from ray.air.util.data_batch_conversion import (
 )
 from ray.data.preprocessor import Preprocessor
 from ray.train.predictor import TYPE_TO_ENUM
-from ray.train.tensorflow import LegacyTensorflowCheckpoint, TensorflowPredictor
+from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
 from typing import Tuple
 
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
@@ -70,9 +69,9 @@ def test_repr():
     assert pattern.match(representation)
 
 
-def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
+def create_checkpoint_preprocessor() -> Tuple[TensorflowCheckpoint, Preprocessor]:
     preprocessor = DummyPreprocessor()
-    checkpoint = LegacyTensorflowCheckpoint.from_model(
+    checkpoint = TensorflowCheckpoint.from_model(
         build_model(), preprocessor=preprocessor
     )
 
@@ -97,18 +96,13 @@ def test_tensorflow_checkpoint():
     model.build(input_shape=(1,))
     preprocessor = DummyPreprocessor()
 
-    checkpoint = LegacyTensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
-    assert (
-        checkpoint.get_model(model=build_raw_model).get_weights() == model.get_weights()
-    )
+    checkpoint = TensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
+    assert checkpoint.get_model().get_weights() == model.get_weights()
 
     with checkpoint.as_directory() as path:
-        checkpoint = LegacyTensorflowCheckpoint.from_directory(path)
+        checkpoint = TensorflowCheckpoint.from_directory(path)
         checkpoint_preprocessor = checkpoint.get_preprocessor()
-        assert (
-            checkpoint.get_model(model=build_raw_model).get_weights()
-            == model.get_weights()
-        )
+        assert checkpoint.get_model().get_weights() == model.get_weights()
         assert checkpoint_preprocessor == preprocessor
 
 
