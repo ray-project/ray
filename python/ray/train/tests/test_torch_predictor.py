@@ -61,12 +61,15 @@ def test_repr(model):
 def test_init(model, preprocessor):
     predictor = TorchPredictor(model=model, preprocessor=preprocessor)
 
-    checkpoint = {MODEL_KEY: model, PREPROCESSOR_KEY: preprocessor}
     checkpoint_predictor = TorchPredictor.from_checkpoint(
-        Checkpoint.from_dict(checkpoint)
+        TorchCheckpoint.from_model(model, preprocessor=preprocessor)
     )
 
-    assert checkpoint_predictor.model == predictor.model
+    data_batch = np.array([1, 2, 3])
+    np.testing.assert_array_equal(
+        predictor.predict(data_batch)["predictions"],
+        checkpoint_predictor.predict(data_batch)["predictions"],
+    )
     assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
 
 
