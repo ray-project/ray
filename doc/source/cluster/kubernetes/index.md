@@ -19,12 +19,14 @@ different Ray versions in the same Kubernetes cluster.
   Find source document here: https://docs.google.com/drawings/d/1E3FQgWWLuj8y2zPdKXjoWKrfwgYXw6RV_FWRwK8dVlg/edit
 ```
 
+KubeRay introduces three distinct Kubernetes Custom Resource Definitions (CRDs): **RayCluster**, **RayJob**, and **RayService**.
+These are designed to assist users in efficiently managing Ray clusters tailored to various use cases.
 
-Concretely, you will learn how to:
+Check out the [Getting Started](kuberay-quickstart) page to learn the basics of KubeRay and follow the quick start guides to run your first Ray application on Kubernetes with KubeRay!
 
-- Set up and configure Ray on a Kubernetes cluster
-- Deploy and monitor Ray applications
-- Integrate Ray applications with Kubernetes networking
+* [RayCluster Quick Start](kuberay-raycluster-quickstart)
+* [RayJob Quick Start](kuberay-rayjob-quickstart)
+* [RayService Quick Start](kuberay-rayservice-quickstart)
 
 ## Learn More
 
@@ -101,18 +103,3 @@ Ray's Kubernetes support is developed at the [KubeRay GitHub repository](https:/
 
 - Visit the [KubeRay GitHub repo](https://github.com/ray-project/kuberay) to track progress, report bugs, propose new features, or contribute to
 the project.
-- Check out the [KubeRay docs](https://ray-project.github.io/kuberay/) for further technical information, developer guides,
-and discussion of new and upcoming features.
-
-```{note}
-The KubeRay operator replaces the older Ray operator previously hosted in the [Ray repository](https://github.com/ray-project/ray/tree/releases/2.1.0/python/ray/ray_operator).
-The legacy Ray operator is compatible with Ray versions up to Ray 2.1.0.
-However, **the legacy Ray operator cannot be used with Ray 2.2.0 or newer.**
-Check the linked README for migration notes.
-
-If you have used the legacy Ray operator in the past,
-make sure to de-register that operator's CRD before
-using KubeRay:
-```shell
-kubectl delete crd rayclusters.cluster.ray.io
-```
