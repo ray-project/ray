@@ -292,8 +292,8 @@ def serve_start(
               internal Serve HTTP proxy actor.  Defaults to 0.
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
-        grpc_options (Optional[Union[dict, gRPCOptions]]): Configuration options
-            for gRPC proxy. You can pass in a gRPCOptions object with fields:
+        grpc_options (Optional[Union[dict, gRPCOptions]]): [Experimental] Configuration
+            options for gRPC proxy. You can pass in a gRPCOptions object with fields:
                 - port(int): Port for gRPC server. Defaults to 9000.
                 - grpc_servicer_functions(list): The list of functions that will be used
                     to add custom service methods to the gRPC server. Defaults to [].
