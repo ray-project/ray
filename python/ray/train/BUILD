@@ -376,7 +376,7 @@ py_test(
     name = "test_horovod_trainer",
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib"]
 )
 
@@ -668,7 +668,7 @@ py_test(
         "exclusive",
         "ray_air",
         "team:ml",
-        "no_new_storage",
+        "new_storage",
     ],
     deps = [":train_lib", ":conftest"],
 )
