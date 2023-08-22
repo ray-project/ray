@@ -360,7 +360,8 @@ def test_config_schemas_forward_compatible():
                 deployments=[
                     DeploymentSchema(
                         name="deployment",
-                        new_version_config_key="this config is from newer version of Ray",
+                        new_version_config_key="this config is from newer version"
+                        " of Ray",
                     )
                 ],
                 new_version_config_key="this config is from newer version of Ray",
