@@ -362,6 +362,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             return True
 
         return list(filter(event_filter, events))
+
     @routes.get("/api/v0/cluster_events")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_cluster_events(
@@ -376,10 +377,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
 
         job_id = req.query.get("job_id", None)
-        source_types = [s.capitalize() for s in req.query.getall("sourceType", [])]
-        severity_levels = [
-            s.capitalize() for s in req.query.getall("severityLevel", [])
-        ]
+        source_types = req.query.getall("sourceType", [])
+        severity_levels = req.query.getall("severityLevel", [])
         count = int(req.query.get("count", 200))
 
         # Filtering out specified keys from the query parameters and get {entity_name: entity_id}, for example, serve_app_name: "app"
