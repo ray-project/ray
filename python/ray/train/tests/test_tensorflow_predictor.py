@@ -83,9 +83,7 @@ def test_init():
 
     predictor = TensorflowPredictor(model=build_model(), preprocessor=preprocessor)
 
-    checkpoint_predictor = TensorflowPredictor.from_checkpoint(
-        checkpoint, model_definition=build_raw_model
-    )
+    checkpoint_predictor = TensorflowPredictor.from_checkpoint(checkpoint)
 
     assert checkpoint_predictor._model.get_weights() == predictor._model.get_weights()
     assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
