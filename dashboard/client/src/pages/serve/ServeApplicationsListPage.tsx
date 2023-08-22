@@ -21,11 +21,11 @@ import {
   MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
 import { Section } from "../../common/Section";
+import { SeverityLevel } from "../../components/event";
 import Loading from "../../components/Loading";
 import NewEventTable from "../../components/NewEventTable";
 
 import { HelpInfo } from "../../components/Tooltip";
-import { SeverityLevel } from "../../type/event";
 import { ServeSystemActor } from "../../type/serve";
 import { useFetchActor } from "../actor/hook/useActorDetail";
 import { useServeApplications } from "./hook/useServeApplications";

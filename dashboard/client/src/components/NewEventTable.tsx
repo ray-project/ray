@@ -19,10 +19,12 @@ import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import dayjs from "dayjs";
 import React, { useEffect, useState } from "react";
-import { getEvents } from "../service/event";
-import { Align, Event, Filters, SeverityLevel } from "../type/event";
+import { Align, Event, Filters } from "../type/event";
+
 import { useFilter } from "../util/hook";
+import { SeverityLevel } from "./event";
 import { StatusChip } from "./StatusChip";
+import { useEvents } from "./useEvents";
 
 type EventTableProps = {
   defaultSeverityLevels?: SeverityLevel[];
@@ -137,7 +139,6 @@ const useEventTable = (props: EventTableProps) => {
     pageSize: 10,
     total: 0,
   });
-  const { pageSize } = pagination;
 
   const changePage = (key: string, value: number) => {
     setPagination({ ...pagination, [key]: value });
@@ -159,23 +160,18 @@ const useEventTable = (props: EventTableProps) => {
     });
   };
 
+  const params = transformFiltersToParams(filters);
+  const { data: eventsData, error, isLoading } = useEvents(params);
+
   useEffect(() => {
-    const getEvent = async () => {
-      try {
-        const params = transformFiltersToParams(filters);
-        const rsp = await getEvents(params); // We don't useSWR since we need to get real time events data once filters changed
-        const events = rsp?.data?.data?.result;
-        if (events) {
-          setEvents(events); // We sort the event by timestamp in the backend
-        }
-      } catch (e) {
-        console.error("getEvent error: ", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    getEvent();
-  }, [filters]);
+    if (eventsData) {
+      setEvents(eventsData);
+    }
+    if (error) {
+      console.error("getEvent error: ", error);
+    }
+    setLoading(isLoading);
+  }, [eventsData, error, isLoading]);
 
   const range = [
     (pagination.pageNo - 1) * pagination.pageSize,
@@ -270,17 +266,17 @@ const NewEventTable = (props: EventTableProps) => {
               {events.map(
                 ({
                   severity,
-                  sourceType,
+                  source_type,
                   timestamp,
                   message,
-                  customFields,
+                  custom_fields,
                 }) => {
                   const realTimestamp = dayjs(
                     Math.floor(timestamp * 1000),
                   ).format("YYYY-MM-DD HH:mm:ss");
                   const customFieldsDisplay =
-                    customFields && Object.keys(customFields).length > 0
-                      ? JSON.stringify(customFields)
+                    custom_fields && Object.keys(custom_fields).length > 0
+                      ? JSON.stringify(custom_fields)
                       : "-";
                   return (
                     <React.Fragment>
@@ -289,7 +285,7 @@ const NewEventTable = (props: EventTableProps) => {
                           <StatusChip status={severity} type={severity} />
                         </TableCell>
                         <TableCell align="center">{realTimestamp}</TableCell>
-                        <TableCell align="center">{sourceType}</TableCell>
+                        <TableCell align="center">{source_type}</TableCell>
                         <TableCell align="left">
                           <Tooltip
                             className={classes.overflowCell}
