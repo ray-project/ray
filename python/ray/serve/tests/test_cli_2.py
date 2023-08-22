@@ -214,12 +214,12 @@ def test_run_multi_app(ray_start_stop):
     )
     print('Application "app1" is reachable over HTTP.')
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "12 pizzas please!",
         timeout=15,
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).text
         == "20 pizzas please!",
         timeout=15,
     )

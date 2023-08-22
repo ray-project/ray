@@ -86,12 +86,12 @@ def test_put_get(ray_start_stop):
         print("Sending PUT request for config1.")
         deploy_and_check_config(config1)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
             == "3 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).text
             == "-4 pizzas please!",
             timeout=15,
         )
@@ -100,7 +100,7 @@ def test_put_get(ray_start_stop):
         print("Sending PUT request for config2.")
         deploy_and_check_config(config2)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
             == "4 pizzas please!",
             timeout=15,
         )
@@ -174,12 +174,12 @@ def test_put_get_multi_app(ray_start_stop):
         print("Sending PUT request for config1.")
         deploy_config_multi_app(config1)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
             == "5 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).json()
+            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).text
             == "8 pizzas please!",
             timeout=15,
         )
@@ -194,7 +194,7 @@ def test_put_get_multi_app(ray_start_stop):
         print("Sending PUT request for config2.")
         deploy_config_multi_app(config2)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
             == "4 pizzas please!",
             timeout=15,
         )
@@ -672,12 +672,12 @@ def test_put_multi_then_single(ray_start_stop):
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
             == "4 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).text
             == "6 pizzas please!",
             timeout=15,
         )
@@ -786,9 +786,7 @@ def test_put_with_http_options(ray_start_stop, option, override):
 
     # Wait for deployments to be up
     wait_for_condition(
-        lambda: requests.post(
-            "http://localhost:8000/serve/app1", json=["ADD", 2]
-        ).json()
+        lambda: requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).text
         == "4 pizzas please!",
         timeout=15,
     )
@@ -806,7 +804,7 @@ def test_put_with_http_options(ray_start_stop, option, override):
 
     # Deployments should still be up
     assert (
-        requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).json()
+        requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
     assert requests.post("http://localhost:8000/serve/app2").text == "wonderful world"
