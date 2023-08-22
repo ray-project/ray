@@ -57,7 +57,7 @@ def test_status_multi_app(ray_start_stop):
         status = yaml.safe_load(status_response)["applications"]
         return len(status["app1"]["deployments"]) and len(status["app2"]["deployments"])
 
-    wait_for_condition(lambda: num_live_deployments() == 5, timeout=15)
+    wait_for_condition(lambda: num_live_deployments() == 3, timeout=15)
     print("All deployments are live.")
 
     status_response = subprocess.check_output(
@@ -68,11 +68,9 @@ def test_status_multi_app(ray_start_stop):
     expected_deployments = {
         "app1_f",
         "app1_BasicDriver",
-        "app2_DAGDriver",
         "app2_Multiplier",
         "app2_Adder",
         "app2_Router",
-        "app2_create_order",
     }
     for status in statuses.values():
         for deployment_name, deployment in status["deployments"].items():

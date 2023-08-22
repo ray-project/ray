@@ -86,12 +86,12 @@ def test_put_get(ray_start_stop):
         print("Sending PUT request for config1.")
         deploy_and_check_config(config1)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
             == "3 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).text
+            lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
             == "-4 pizzas please!",
             timeout=15,
         )
@@ -100,7 +100,7 @@ def test_put_get(ray_start_stop):
         print("Sending PUT request for config2.")
         deploy_and_check_config(config2)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
+            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
             == "4 pizzas please!",
             timeout=15,
         )
@@ -174,12 +174,12 @@ def test_put_get_multi_app(ray_start_stop):
         print("Sending PUT request for config1.")
         deploy_config_multi_app(config1)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
             == "5 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).text
+            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).json()
             == "8 pizzas please!",
             timeout=15,
         )
@@ -194,7 +194,7 @@ def test_put_get_multi_app(ray_start_stop):
         print("Sending PUT request for config2.")
         deploy_config_multi_app(config2)
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
             == "4 pizzas please!",
             timeout=15,
         )
