@@ -63,9 +63,8 @@ const std::vector<FixedPoint> &NodeResourceInstanceSet::Get(
 
 NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
                                                       std::vector<FixedPoint> instances) {
-  if (instances.size() == 0) {
-    resources_.erase(resource_id);
-  } else if (resource_id.IsImplicitResource() && instances[0] == FixedPoint(1)) {
+  RAY_CHECK(!instances.empty());
+  if (resource_id.IsImplicitResource() && instances[0] == FixedPoint(1)) {
     // This is the default value so there is no need to store it.
     resources_.erase(resource_id);
   } else {

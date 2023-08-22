@@ -21,6 +21,12 @@
 namespace ray {
 class NodeResourceSetTest : public ::testing::Test {};
 
+TEST_F(NodeResourceSetTest, TestImplicitResourcePrefix) {
+  // Test to make sure we don't accidentally change this constant
+  // as autoscaler depends on it.
+  ASSERT_EQ(kImplicitResourcePrefix, "node:__internal_implicit_resource_");
+}
+
 TEST_F(NodeResourceSetTest, TestRemoveNegative) {
   NodeResourceSet r1 = NodeResourceSet({{"CPU", -1}, {"custom1", 2}, {"custom2", -2}});
   r1.RemoveNegative();

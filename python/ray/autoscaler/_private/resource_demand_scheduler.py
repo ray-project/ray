@@ -933,6 +933,8 @@ def get_bin_pack_residual(
 
 def _fits(node: ResourceDict, resources: ResourceDict) -> bool:
     for k, v in resources.items():
+        # TODO(jjyao): Change ResourceDict to a class so we can
+        # hide the implicit resource handling.
         if v > node.get(
             k, 1.0 if k.startswith(ray._raylet.IMPLICIT_RESOURCE_PREFIX) else 0.0
         ):

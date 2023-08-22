@@ -102,4 +102,5 @@ constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
 /// NOTE: DON'T CHANGE THIS since autoscaler depends on it.
 /// Ideally we want to define the constant in autoscaler.proto so it
 /// can be shared but protobuf doesn't support defining string constants.
+/// https://docs.google.com/document/d/151T4VnknX_5EtPy6E-LbpL-r1T4ZSO0UBvSgWdSjx4Q/edit#heading=h.2ews5m5fmz
 constexpr char kImplicitResourcePrefix[] = "node:__internal_implicit_resource_";
