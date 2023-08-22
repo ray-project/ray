@@ -60,7 +60,7 @@ py_test(
     size = "medium",
     main = "examples/tf/tensorflow_quick_start.py",
     srcs = ["examples/tf/tensorflow_quick_start.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"]
 )
 
