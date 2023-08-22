@@ -382,11 +382,18 @@ class ReplicaName:
     @classmethod
     def from_replica_tag(cls, tag):
         parsed = tag.split(cls.delimiter)
-        assert len(parsed) == 2, (
-            f"Given replica name {tag} didn't match pattern, please "
-            f"ensure it has exactly two fields with delimiter {cls.delimiter}"
-        )
-        return cls(deployment_tag=parsed[0], replica_suffix=parsed[1])
+        if len(parsed) == 3:
+            return cls(
+                app_name=parsed[0], deployment_name=parsed[1], replica_suffix=parsed[2]
+            )
+        elif len(parsed) == 2:
+            return cls("", deployment_name=parsed[0], replica_suffix=parsed[1])
+        else:
+            raise ValueError(
+                f"Given replica tag {tag} didn't match pattern, please "
+                "ensure it has either two or three fields with delimiter "
+                f"{cls.delimiter}"
+            )
 
     def __str__(self):
         return self.replica_tag
