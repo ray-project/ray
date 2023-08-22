@@ -7,29 +7,53 @@ import time
 from typing import Any, List, Tuple
 
 import ray
+from ray._raylet import GcsClient
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve._private.common import HTTPProxyStatus
 from ray.serve._private.http_state import HTTPProxyStateManager, HTTPProxyState
 from ray.serve._private.http_proxy import HTTPProxyActor
-from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
+    PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+)
 from ray.serve.controller import ServeController
+from ray.serve._private.utils import get_head_node_id
+from ray.serve._private.default_impl import (
+    create_cluster_node_info_cache,
+)
+from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 
 
 HEAD_NODE_ID = "node_id-index-head"
 
 
+class MockClusterNodeInfoCache:
+    def __init__(self):
+        self.alive_nodes = []
+
+    def get_alive_nodes(self):
+        return self.alive_nodes
+
+    def get_alive_node_ids(self):
+        return {node_id for node_id, _ in self.alive_nodes}
+
+
 def _make_http_proxy_state_manager(
     http_options: HTTPOptions,
     head_node_id: str = HEAD_NODE_ID,
-) -> HTTPProxyStateManager:
-    return HTTPProxyStateManager(
-        SERVE_CONTROLLER_NAME,
-        detached=True,
-        config=http_options,
-        head_node_id=head_node_id,
-        gcs_client=None,
-        _start_proxies_on_init=False,
+    cluster_node_info_cache=MockClusterNodeInfoCache(),
+) -> (HTTPProxyStateManager, ClusterNodeInfoCache):
+    return (
+        HTTPProxyStateManager(
+            SERVE_CONTROLLER_NAME,
+            detached=True,
+            config=http_options,
+            head_node_id=head_node_id,
+            cluster_node_info_cache=cluster_node_info_cache,
+        ),
+        cluster_node_info_cache,
     )
 
 
@@ -44,13 +68,6 @@ def all_nodes(number_of_worker_nodes) -> List[Tuple[str, str]]:
         (f"worker-node-id-{i}", f"fake-worker-ip-{i}")
         for i in range(number_of_worker_nodes)
     ]
-
-
-@pytest.fixture()
-def mock_get_all_node_ids(all_nodes):
-    with patch("ray.serve._private.http_state.get_all_node_ids") as func:
-        func.return_value = all_nodes
-        yield
 
 
 @pytest.fixture()
@@ -79,6 +96,9 @@ def setup_controller():
 
 @ray.remote(num_cpus=0)
 class MockHTTPProxyActor:
+    def __init__(self, *args, **kwargs):
+        pass
+
     async def ready(self):
         return json.dumps(["mock_worker_id", "mock_log_file_path"])
 
@@ -95,9 +115,7 @@ def _create_http_proxy_state(
     if kwargs:
         kwargs["node_id"] = node_id
     proxy = proxy_actor_class.options(lifetime="detached").remote(**kwargs)
-    state = HTTPProxyState(
-        proxy, "alice", node_id, "mock_node_ip", SERVE_CONTROLLER_NAME
-    )
+    state = HTTPProxyState(proxy, "alice", node_id, "mock_node_ip")
     state.set_status(status=status)
     print(f"The http proxy state created has the status of: {state.status}")
     return state
@@ -124,30 +142,35 @@ def _update_and_check_http_proxy_state_manager(
     )
 
 
-def test_node_selection(all_nodes, mock_get_all_node_ids):
+def test_node_selection(all_nodes):
+    all_node_ids = {node_id for node_id, _ in all_nodes}
     # Test NoServer
-    manager = _make_http_proxy_state_manager(
+    manager, cluster_node_info_cache = _make_http_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.NoServer)
     )
-    assert manager._get_target_nodes() == []
+    cluster_node_info_cache.alive_nodes = all_nodes
+    assert manager._get_target_nodes(all_node_ids) == []
 
     # Test HeadOnly
-    manager = _make_http_proxy_state_manager(
+    manager, cluster_node_info_cache = _make_http_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.HeadOnly)
     )
-    assert manager._get_target_nodes() == all_nodes[:1]
+    cluster_node_info_cache.alive_nodes = all_nodes
+    assert manager._get_target_nodes(all_node_ids) == all_nodes[:1]
 
     # Test EveryNode
-    manager = _make_http_proxy_state_manager(
+    manager, cluster_node_info_cache = _make_http_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.EveryNode)
     )
-    assert manager._get_target_nodes() == all_nodes
+    cluster_node_info_cache.alive_nodes = all_nodes
+    assert manager._get_target_nodes(all_node_ids) == all_nodes
 
     # Test FixedReplica
-    manager = _make_http_proxy_state_manager(
+    manager, cluster_node_info_cache = _make_http_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.FixedNumber, fixed_number_replicas=5)
     )
-    selected_nodes = manager._get_target_nodes()
+    cluster_node_info_cache.alive_nodes = all_nodes
+    selected_nodes = manager._get_target_nodes(all_node_ids)
 
     # it should have selection a subset of 5 nodes.
     assert len(selected_nodes) == 5
@@ -155,21 +178,31 @@ def test_node_selection(all_nodes, mock_get_all_node_ids):
 
     for _ in range(5):
         # The selection should be deterministic.
-        assert selected_nodes == manager._get_target_nodes()
+        assert selected_nodes == manager._get_target_nodes(all_node_ids)
 
-    another_seed = _make_http_proxy_state_manager(
+    manager, cluster_node_info_cache = _make_http_proxy_state_manager(
         HTTPOptions(
             location=DeploymentMode.FixedNumber,
             fixed_number_replicas=5,
             fixed_number_selection_seed=42,
         )
-    )._get_target_nodes()
+    )
+    cluster_node_info_cache.alive_nodes = all_nodes
+    another_seed = manager._get_target_nodes(all_node_ids)
     assert len(another_seed) == 5
     assert set(all_nodes).issuperset(set(another_seed))
     assert set(another_seed) != set(selected_nodes)
 
+    # Test specific nodes
+    manager, cluster_node_info_cache = _make_http_proxy_state_manager(
+        HTTPOptions(location=DeploymentMode.EveryNode)
+    )
+    cluster_node_info_cache.alive_nodes = all_nodes
+    assert manager._get_target_nodes({HEAD_NODE_ID}) == [(HEAD_NODE_ID, "fake-head-ip")]
 
-def test_http_state_update_restarts_unhealthy_proxies(mock_get_all_node_ids):
+
+@patch("ray.serve._private.http_proxy.HTTPProxyActor", new=MockHTTPProxyActor)
+def test_http_state_update_restarts_unhealthy_proxies(ray_shutdown):
     """Test the update method in HTTPProxyStateManager would
        kill and restart unhealthy proxies.
 
@@ -178,33 +211,42 @@ def test_http_state_update_restarts_unhealthy_proxies(mock_get_all_node_ids):
     by a new proxy with STARTING status.
     The unhealthy proxy state is also shutting down.
     """
-    manager = _make_http_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.HeadOnly)
+    ray.init(num_cpus=5)
+    head_node_id = get_head_node_id()
+
+    manager, cluster_node_info_cache = _make_http_proxy_state_manager(
+        HTTPOptions(location=DeploymentMode.HeadOnly),
+        head_node_id,
+        create_cluster_node_info_cache(
+            GcsClient(address=ray.get_runtime_context().gcs_address)
+        ),
     )
-    manager._proxy_states[HEAD_NODE_ID] = _create_http_proxy_state(
-        status=HTTPProxyStatus.UNHEALTHY
+    cluster_node_info_cache.update()
+    manager._proxy_states[head_node_id] = _create_http_proxy_state(
+        status=HTTPProxyStatus.STARTING
     )
 
-    # Ensure before the update method is called, the status of the proxy is UNHEALTHY.
-    assert manager._proxy_states[HEAD_NODE_ID].status == HTTPProxyStatus.UNHEALTHY
-    old_proxy_state = manager._proxy_states[HEAD_NODE_ID]
+    old_proxy_state = manager._proxy_states[head_node_id]
     old_proxy = old_proxy_state.actor_handle
+
+    # Kill the proxy actor to make it unhealthy.
+    old_proxy.__ray_terminate__.remote()
 
     def _update_state_and_check_proxy_status(
         _manager: HTTPProxyStateManager,
         _status: HTTPProxyStatus,
     ):
         _manager.update()
-        return _manager._proxy_states[HEAD_NODE_ID].status == _status
+        return _manager._proxy_states[head_node_id].status == _status
 
-    # Continuously trigger update and wait for status to be changed to STARTING.
+    # Continuously trigger update and wait for status to be changed to HEALTHY.
     wait_for_condition(
         condition_predictor=_update_state_and_check_proxy_status,
         _manager=manager,
-        _status=HTTPProxyStatus.STARTING,
+        _status=HTTPProxyStatus.HEALTHY,
     )
 
-    new_proxy = manager._proxy_states[HEAD_NODE_ID].actor_handle
+    new_proxy = manager._proxy_states[head_node_id].actor_handle
 
     # Ensure the old proxy is getting shutdown.
     assert old_proxy_state._shutting_down
@@ -483,6 +525,118 @@ def test_http_proxy_state_update_healthy_check_health_always_fails():
     assert proxy_state._consecutive_health_check_failures == 3
 
 
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+def test_http_proxy_state_update_healthy_check_health_sometimes_fails():
+    """Test that the proxy is UNHEALTHY after consecutive health-check failures.
+
+    The proxy state starts with STARTING. Then the proxy fails a few times
+    (less than the threshold needed to set it UNHEALTHY). Then it succeeds, so
+    it becomes HEALTHY. Then it fails a few times again but stays HEALTHY
+    because the failures weren't consecutive with the previous ones. And then
+    it finally fails enough times to become UNHEALTHY.
+    """
+
+    @ray.remote(num_cpus=0)
+    class NewMockHTTPProxyActor:
+        def __init__(self):
+            self._should_succeed = True
+            self.num_health_checks = 0
+
+        def get_num_health_checks(self) -> int:
+            return self.num_health_checks
+
+        def should_succeed(self, value: bool = True):
+            self._should_succeed = value
+
+        async def ready(self):
+            return json.dumps(["mock_worker_id", "mock_log_file_path"])
+
+        async def check_health(self):
+            self.num_health_checks += 1
+            if self._should_succeed:
+                return "Success!"
+            else:
+                raise RuntimeError("self._should_succeed is disabled!")
+
+    proxy_state = _create_http_proxy_state(proxy_actor_class=NewMockHTTPProxyActor)
+
+    # Wait for the proxy to become ready.
+    wait_for_condition(
+        condition_predictor=_update_and_check_proxy_status,
+        state=proxy_state,
+        status=HTTPProxyStatus.HEALTHY,
+    )
+
+    def _update_until_num_health_checks_received(
+        state: HTTPProxyState, num_health_checks: int
+    ):
+        state.update()
+        assert (
+            ray.get(state.actor_handle.get_num_health_checks.remote())
+        ) == num_health_checks
+        return True
+
+    def incur_health_checks(
+        pass_checks: bool, num_checks: int, expected_final_status: HTTPProxyStatus
+    ):
+        """Waits for num_checks health checks to occur.
+
+        Args:
+            pass_checks: whether the health checks should pass.
+            num_checks: number of checks to wait for.
+            expected_final_status: the final status that should be asserted.
+        """
+        ray.get(proxy_state.actor_handle.should_succeed.remote(pass_checks))
+
+        cur_num_health_checks = ray.get(
+            proxy_state.actor_handle.get_num_health_checks.remote()
+        )
+
+        wait_for_condition(
+            condition_predictor=_update_until_num_health_checks_received,
+            state=proxy_state,
+            num_health_checks=cur_num_health_checks + num_checks,
+        )
+        assert (
+            ray.get(proxy_state.actor_handle.get_num_health_checks.remote())
+            == cur_num_health_checks + num_checks
+        )
+
+        if expected_final_status:
+            assert proxy_state.status == expected_final_status
+
+    # Make sure that the proxy_state's status remains HEALTHY as long as
+    # PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD failures don't occur consecutively.
+    for _ in range(3):
+        incur_health_checks(
+            pass_checks=True,
+            num_checks=1,
+            expected_final_status=HTTPProxyStatus.HEALTHY,
+        )
+        incur_health_checks(
+            pass_checks=False,
+            num_checks=PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1,
+            expected_final_status=HTTPProxyStatus.HEALTHY,
+        )
+
+    # Have health check succeed one more time.
+    incur_health_checks(
+        pass_checks=True, num_checks=1, expected_final_status=HTTPProxyStatus.HEALTHY
+    )
+
+    # Check failing the health check PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD + 1
+    # times makes the proxy UNHEALTHY again. We do the `+ 1` to ensure that
+    # at least PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD checks have run and been
+    # processed by the HTTPProxyState. Otherwise, incur_health_checks could
+    # return after the health check failed but before the HTTPProxyState had
+    # time to ray.get() it and update its state.
+    incur_health_checks(
+        pass_checks=False,
+        num_checks=PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD + 1,
+        expected_final_status=HTTPProxyStatus.UNHEALTHY,
+    )
+
+
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_TIMEOUT_S", 0.1)
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 def test_http_proxy_state_check_health_always_timeout_timeout_eq_period():
@@ -575,17 +729,16 @@ def test_http_proxy_state_check_health_always_timeout_timeout_greater_than_perio
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 def test_http_proxy_state_update_unhealthy_check_health_succeed():
-    """Test calling update method on HTTPProxyState when the proxy state is UNHEALTHY
-    and when the check_health call succeeded.
+    """Test calling update method on HTTPProxyState when the proxy state has
+    failed health checks and the next check_health call succeeded.
 
-    The proxy state started with UNHEALTHY. After the next period of check_health
+    The proxy state started with STARTING. After the next period of check_health
     call, the status changes to HEALTHY.
     """
     proxy_state = _create_http_proxy_state()
-    proxy_state.set_status(status=HTTPProxyStatus.UNHEALTHY)
+    proxy_state._consecutive_health_check_failures = 1
 
-    # Ensure the proxy status is UNHEALTHY.
-    assert proxy_state.status == HTTPProxyStatus.UNHEALTHY
+    assert proxy_state.status == HTTPProxyStatus.STARTING
 
     # Continuously trigger update and status should change to HEALTHY.
     wait_for_condition(
@@ -641,9 +794,7 @@ def test_unhealthy_retry_correct_number_of_times():
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 @pytest.mark.parametrize("number_of_worker_nodes", [0, 1, 2, 3])
-def test_update_draining(
-    mock_get_all_node_ids, all_nodes, setup_controller, number_of_worker_nodes
-):
+def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
     """Test update draining logics.
 
     When update nodes to inactive, head node http proxy should never be draining while
@@ -651,9 +802,10 @@ def test_update_draining(
     node http proxy should continue to be healthy while worker node http proxy should
     be healthy.
     """
-    manager = _make_http_proxy_state_manager(
+    manager, cluster_node_info_cache = _make_http_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.EveryNode)
     )
+    cluster_node_info_cache.alive_nodes = all_nodes
 
     for node_id, node_ip_address in all_nodes:
         manager._proxy_states[node_id] = _create_http_proxy_state(
@@ -668,8 +820,8 @@ def test_update_draining(
         )
     node_ids = [node_id for node_id, _ in all_nodes]
 
-    # No active nodes
-    active_nodes = set()
+    # No target proxy nodes
+    http_proxy_nodes = set()
 
     # Head node proxy should continue to be HEALTHY.
     # Worker node proxy should turn DRAINING.
@@ -680,11 +832,11 @@ def test_update_draining(
         node_ids=node_ids,
         statuses=[HTTPProxyStatus.HEALTHY]
         + [HTTPProxyStatus.DRAINING] * number_of_worker_nodes,
-        active_nodes=active_nodes,
+        http_proxy_nodes=http_proxy_nodes,
     )
 
-    # All nodes are active
-    active_nodes = set(node_ids)
+    # All nodes are target proxy nodes
+    http_proxy_nodes = set(node_ids)
 
     # Head node proxy should continue to be HEALTHY.
     # Worker node proxy should turn HEALTHY.
@@ -694,20 +846,89 @@ def test_update_draining(
         http_proxy_state_manager=manager,
         node_ids=node_ids,
         statuses=[HTTPProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
-        active_nodes=active_nodes,
+        http_proxy_nodes=http_proxy_nodes,
     )
 
 
-def test_is_ready_for_shutdown(mock_get_all_node_ids, all_nodes):
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 1)
+@patch("ray.serve._private.http_state.PROXY_DRAIN_CHECK_PERIOD_S", 0.1)
+@pytest.mark.parametrize("number_of_worker_nodes", [1])
+def test_proxy_actor_unhealthy_during_draining(
+    all_nodes, setup_controller, number_of_worker_nodes
+):
+    """Test the state transition from DRAINING to UNHEALTHY for the proxy actor."""
+    manager, cluster_node_info_cache = _make_http_proxy_state_manager(
+        HTTPOptions(location=DeploymentMode.EveryNode)
+    )
+    cluster_node_info_cache.alive_nodes = all_nodes
+
+    worker_node_id = None
+    for node_id, node_ip_address in all_nodes:
+        manager._proxy_states[node_id] = _create_http_proxy_state(
+            proxy_actor_class=HTTPProxyActor,
+            status=HTTPProxyStatus.STARTING,
+            node_id=node_id,
+            host="localhost",
+            port=8000,
+            root_path="/",
+            controller_name=SERVE_CONTROLLER_NAME,
+            node_ip_address=node_ip_address,
+        )
+        if node_id != HEAD_NODE_ID:
+            worker_node_id = node_id
+
+    node_ids = [node_id for node_id, _ in all_nodes]
+
+    # All nodes are target proxy nodes
+    http_proxy_nodes = set(node_ids)
+    wait_for_condition(
+        condition_predictor=_update_and_check_http_proxy_state_manager,
+        timeout=20,
+        http_proxy_state_manager=manager,
+        node_ids=node_ids,
+        statuses=[HTTPProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
+        http_proxy_nodes=http_proxy_nodes,
+    )
+
+    # No target proxy nodes
+    http_proxy_nodes = set()
+
+    # Head node proxy should continue to be HEALTHY.
+    # Worker node proxy should turn DRAINING.
+    wait_for_condition(
+        condition_predictor=_update_and_check_http_proxy_state_manager,
+        timeout=20,
+        http_proxy_state_manager=manager,
+        node_ids=node_ids,
+        statuses=[HTTPProxyStatus.HEALTHY]
+        + [HTTPProxyStatus.DRAINING] * number_of_worker_nodes,
+        http_proxy_nodes=http_proxy_nodes,
+    )
+
+    # Kill the draining proxy actor
+    ray.kill(manager._proxy_states[worker_node_id]._actor_handle, no_restart=True)
+
+    def check_worker_node_proxy_actor_is_removed():
+        manager.update(http_proxy_nodes=http_proxy_nodes)
+        return len(manager._proxy_states) == 1
+
+    wait_for_condition(
+        condition_predictor=check_worker_node_proxy_actor_is_removed, timeout=5
+    )
+    assert manager._proxy_states[HEAD_NODE_ID].status == HTTPProxyStatus.HEALTHY
+
+
+def test_is_ready_for_shutdown(all_nodes):
     """Test `is_ready_for_shutdown()` returns True the correct state.
 
     Before `shutdown()` is called, `is_ready_for_shutdown()` should return false. After
     `shutdown()` is called and all proxy actor are killed, `is_ready_for_shutdown()`
     should return true.
     """
-    manager = _make_http_proxy_state_manager(
+    manager, cluster_node_info_cache = _make_http_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.EveryNode)
     )
+    cluster_node_info_cache.alive_nodes = all_nodes
 
     for node_id, node_ip_address in all_nodes:
         manager._proxy_states[node_id] = _create_http_proxy_state(

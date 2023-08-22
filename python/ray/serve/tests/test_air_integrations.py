@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI
 
 import ray
 from ray import serve
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.serve.air_integrations import _BatchingManager
 from ray.serve.dag import InputNode
 from ray.serve.deployment_graph import RayServeDAGHandle
@@ -266,7 +266,7 @@ def test_air_integrations_in_pipeline(serve_instance):
             checkpoint=Checkpoint.from_uri(uri),
         )
         dag = m1.__call__.bind(dag_input)
-    deployments = build(Ingress.bind(dag))
+    deployments = build(Ingress.bind(dag), "")
     for d in deployments:
         d.deploy()
 
@@ -303,7 +303,7 @@ def test_air_integrations_reconfigure(serve_instance):
             checkpoint=Checkpoint.from_uri(uri),
         )
         dag = m1.__call__.bind(dag_input)
-    deployments = build(Ingress.bind(dag))
+    deployments = build(Ingress.bind(dag), "")
     for d in deployments:
         d.deploy()
 

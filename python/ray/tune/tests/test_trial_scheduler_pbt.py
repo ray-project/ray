@@ -1,4 +1,7 @@
+import tempfile
 from functools import partial
+from typing import List
+
 import numpy as np
 import os
 import pickle
@@ -12,17 +15,16 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import cloudpickle, tune
-from ray.air import Checkpoint
+from ray.train import Checkpoint
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
-from ray.tune import Trainable
+from ray.tune import Trainable, Callback
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import TrialRunner
-from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
 from ray.tune.schedulers.pb2 import PB2
 from ray.tune.schedulers.pb2_utils import UCB
+from ray.tune.tests.execution.utils import create_execution_test_objects
 from ray.tune.tune_config import TuneConfig
 from ray._private.test_utils import object_memory_usage
 from ray.tune.utils.util import flatten_dict
@@ -70,17 +72,18 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
 
                 with open(file_path, "wb") as fp:
                     pickle.dump((self.large_object, self.iter, self.a), fp)
-                return file_path
 
-            def load_checkpoint(self, path):
-                with open(path, "rb") as fp:
+            def load_checkpoint(self, checkpoint_dir):
+                file_path = os.path.join(checkpoint_dir, "model.mock")
+
+                with open(file_path, "rb") as fp:
                     self.large_object, self.iter, self.a = pickle.load(fp)
 
-        class CustomExecutor(RayTrialExecutor):
-            def save(self, *args, **kwargs):
-                checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
+        class CheckObjectMemoryUsage(Callback):
+            def on_trial_save(
+                self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+            ):
                 assert object_memory_usage() <= (12 * 80e6)
-                return checkpoint
 
         param_a = MockParam([1, -1])
 
@@ -101,7 +104,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
             checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
             fail_fast=True,
             config={"a": tune.sample_from(lambda _: param_a())},
-            trial_executor=CustomExecutor(reuse_actors=False),
+            callbacks=[CheckObjectMemoryUsage()],
         )
 
 
@@ -128,10 +131,11 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
 
                 with open(file_path, "wb") as fp:
                     pickle.dump((self.iter, self.a), fp)
-                return file_path
 
-            def load_checkpoint(self, path):
-                with open(path, "rb") as fp:
+            def load_checkpoint(self, checkpoint_dir):
+                file_path = os.path.join(checkpoint_dir, "model.mock")
+
+                with open(file_path, "rb") as fp:
                     self.iter, self.a = pickle.load(fp)
 
         from ray.tune.callback import Callback
@@ -304,9 +308,8 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
 
             def save_checkpoint(self, checkpoint_dir):
                 checkpoint = Checkpoint.from_dict({"a": self.a})
-                checkpoint_path = checkpoint.to_directory(path=checkpoint_dir)
+                checkpoint.to_directory(path=checkpoint_dir)
                 time.sleep(self.saving_time)
-                return checkpoint_path
 
             def load_checkpoint(self, checkpoint_dir):
                 checkpoint_dict = Checkpoint.from_directory(checkpoint_dir).to_dict()
@@ -447,7 +450,6 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                 checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")
                 with open(checkpoint_path, "wb") as fp:
                     pickle.dump((self.a, self.b, self.iter), fp)
-                return tmp_checkpoint_dir
 
             def load_checkpoint(self, tmp_checkpoint_dir):
                 checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")
@@ -540,7 +542,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         )
 
     def testBurnInPeriod(self):
-        runner = TrialRunner(trial_executor=MagicMock())
+        runner, *_ = create_execution_test_objects(tempfile.mkdtemp())
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",

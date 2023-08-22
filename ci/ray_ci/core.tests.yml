@@ -1,14 +1,12 @@
 flaky_tests:
-  - //python/ray/tests:test_runtime_env_working_dir_3
-  - //python/ray/tests:test_placement_group_3
-  - //python/ray/tests:test_memory_pressure
-  - //python/ray/tests:test_placement_group_5
-  - //python/ray/tests:test_runtime_env_2
+  - //python/ray/tests:test_actor_cancel
   - //python/ray/tests:test_gcs_fault_tolerance
-  - //python/ray/tests:test_gcs_ha_e2e
-  - //python/ray/tests:test_plasma_unlimited
-  - //python/ray/tests:test_scheduling_performance
   - //python/ray/tests:test_object_manager
-  - //python/ray/tests:test_tensorflow
+  - //python/ray/tests:test_placement_group_3
+  - //python/ray/tests:test_placement_group_5
+  - //python/ray/tests:test_plasma_unlimited
+  - //python/ray/tests:test_runtime_env_2
+  - //python/ray/tests:test_runtime_env_working_dir_3
+  - //python/ray/tests:test_scheduling_performance
   - //python/ray/tests:test_threaded_actor
   - //python/ray/tests:test_unhandled_error

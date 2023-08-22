@@ -2,20 +2,20 @@ import time
 import os
 import subprocess
 import json
-from typing import Any, Dict
+from typing import Any, List, Dict, Set
 
 import boto3
 
 from ray_release.logger import logger
+from ray_release.test import Test
 
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 DOCKER_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
 DOCKER_PROJECT = "ci_base_images"
-PY_VERSIONS = ["py38", "py39"]
 
 
-def build_ray() -> None:
+def build_ray(tests: List[Test]) -> None:
     """
     Builds ray and ray-ml images for PR builds
     """
@@ -32,15 +32,38 @@ def build_ray() -> None:
             f"Image {base_image} does not exist yet. " f"Wait for another {timeout}s..."
         )
         time.sleep(BASE_IMAGE_WAIT_DURATION)
-    _upload_builds()
+    _upload_builds(_get_py_and_cuda_versions(tests))
 
 
 def _is_pr() -> bool:
     return os.getenv("BUILDKITE_PULL_REQUEST", "false") != "false"
 
 
-def _upload_builds() -> None:
-    builds = {"steps": [_get_build(py_version) for py_version in PY_VERSIONS]}
+def _get_py_and_cuda_versions(tests: List[Test]) -> Dict[str, Set[str]]:
+    """
+    Returns a dict of py_versions and cuda_versions for the given tests.
+    """
+    py_and_cuda_versions = {}
+    for test in tests:
+        py_version = f"py{test.get_python_version().replace('.', '')}"  # 3.8 -> py38
+        cuda_version = test.get_byod_type()
+        if cuda_version == "gpu":
+            # gpu is just an alias for cu118
+            cuda_version = "cu118"
+        if py_version not in py_and_cuda_versions:
+            py_and_cuda_versions[py_version] = set()
+        py_and_cuda_versions[py_version].add(cuda_version)
+
+    return py_and_cuda_versions
+
+
+def _upload_builds(py_and_cuda_versions: Dict[str, Set[str]]) -> None:
+    builds = {
+        "steps": [
+            _get_build(py_version, cuda_versions)
+            for py_version, cuda_versions in py_and_cuda_versions.items()
+        ]
+    }
     subprocess.run(
         ["buildkite-agent", "pipeline", "upload"],
         input=json.dumps(builds).encode(),
@@ -55,18 +78,19 @@ def _get_docker_image_tag() -> str:
     return f"oss-ci-build_{os.environ.get('BUILDKITE_COMMIT', '')}"
 
 
-def _get_build(py_version: str) -> Dict[str, Any]:
+def _get_build(py_version: str, cuda_versions: Set[str]) -> Dict[str, Any]:
+    cuda_args = " ".join([f"-T {cuda_version}" for cuda_version in cuda_versions])
     cmd = [
         f"LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY={py_version} ./ci/ci.sh build",
         "pip install -q docker aws_requests_auth boto3",
         "./ci/env/env_info.sh",
         "python .buildkite/copy_files.py --destination docker_login",
         f"python ./ci/build/build-docker-images.py --py-versions {py_version} "
-        "-T cpu -T cu118 --build-type BUILDKITE --build-base",
+        f"{cuda_args} --build-type BUILDKITE --build-base",
     ]
     return {
         "label": py_version,
-        "agents": {"queue": "release_queue_small"},
+        "agents": {"queue": "runner_queue_medium_branch"},
         "commands": cmd,
         "plugins": [
             {

@@ -8,7 +8,7 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.tune.utils.util import _atomic_save, _load_newest_checkpoint
 
 if TYPE_CHECKING:
-    from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+    from ray.train._checkpoint import Checkpoint
     from ray.tune.experiment import Trial
     from ray.tune.stopper import Stopper
 
@@ -83,7 +83,7 @@ class Callback(metaclass=_CallbackMeta):
 
     .. testcode::
 
-        from ray import air, tune
+        from ray import train, tune
         from ray.tune import Callback
 
 
@@ -93,13 +93,13 @@ class Callback(metaclass=_CallbackMeta):
                 print(f"Got result: {result['metric']}")
 
 
-        def train(config):
+        def train_func(config):
             for i in range(10):
                 tune.report(metric=i)
 
         tuner = tune.Tuner(
-            train,
-            run_config=air.RunConfig(
+            train_func,
+            run_config=train.RunConfig(
                 callbacks=[MyCallback()]
             )
         )
@@ -131,7 +131,7 @@ class Callback(metaclass=_CallbackMeta):
 
         Arguments:
             stop: Stopping criteria.
-                If ``time_budget_s`` was passed to ``air.RunConfig``, a
+                If ``time_budget_s`` was passed to ``train.RunConfig``, a
                 ``TimeoutStopper`` will be passed here, either by itself
                 or as a part of a ``CombinedStopper``.
             num_samples: Number of times to sample from the
@@ -282,7 +282,7 @@ class Callback(metaclass=_CallbackMeta):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: "_TrackedCheckpoint",
+        checkpoint: "Checkpoint",
         **info,
     ):
         """Called after a trial saved a checkpoint with Tune.

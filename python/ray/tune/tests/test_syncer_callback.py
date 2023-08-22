@@ -141,7 +141,7 @@ class MockTrial:
         self._local_ip = runner_ip or ray.util.get_node_ip_address()
         self._on_dead_node = on_dead_node
 
-    def get_runner_ip(self):
+    def get_ray_actor_ip(self):
         if self._on_dead_node:
             raise RayActorError()
         return self._local_ip

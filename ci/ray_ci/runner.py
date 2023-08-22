@@ -1,111 +1,150 @@
 import logging
 import os
-import subprocess
+import sys
 from typing import List, Optional
-from math import ceil
 
 import yaml
 import click
+
+from ci.ray_ci.container import (
+    run_tests,
+    run_script_in_docker,
+    setup_test_environment,
+    shard_tests,
+)
+from ci.ray_ci.utils import logger
 
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 
 @click.command()
-@click.argument("targets", required=True, type=str)
-@click.argument("team", required=True, type=str)
+@click.argument("targets", required=True, type=str, nargs=-1)
+@click.argument("team", required=True, type=str, nargs=1)
 @click.option(
-    "--concurrency",
-    default=3,
+    "--workers",
+    default=1,
     type=int,
     help=("Number of concurrent test jobs to run."),
 )
 @click.option(
-    "--shard",
+    "--worker-id",
     default=0,
     type=int,
     help=("Index of the concurrent shard to run."),
 )
-def main(targets: str, team: str, concurrency: int, shard: int) -> None:
+@click.option(
+    "--parallelism-per-worker",
+    default=1,
+    type=int,
+    help=("Number of concurrent test jobs to run per worker."),
+)
+@click.option(
+    "--except-tags",
+    default="",
+    type=str,
+    help=("Except tests with the given tags."),
+)
+@click.option(
+    "--run-flaky-tests",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("Run flaky tests."),
+)
+def main(
+    targets: List[str],
+    team: str,
+    workers: int,
+    worker_id: int,
+    parallelism_per_worker: int,
+    except_tags: str,
+    run_flaky_tests: bool,
+) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
-
     os.chdir(bazel_workspace_dir)
 
-    test_targets = _get_test_targets(targets, team, concurrency, shard)
+    setup_test_environment(team)
+    if run_flaky_tests:
+        test_targets = _get_flaky_test_targets(team)
+    else:
+        test_targets = _get_test_targets(targets, team, workers, worker_id, except_tags)
     if not test_targets:
         logging.info("No tests to run")
         return
-    logging.info(f"Running tests: {test_targets}")
-    _run_tests(test_targets)
-
-
-def _run_tests(test_targets: List[str]) -> None:
-    """
-    Run tests
-    """
-    bazel_options = (
-        subprocess.check_output([f"{bazel_workspace_dir}/ci/run/bazel_export_options"])
-        .decode("utf-8")
-        .split()
-    )
-    subprocess.check_call(
-        [
-            "bazel",
-            "test",
-            "--config=ci",
-        ]
-        + bazel_options
-        + test_targets
-    )
+    logger.info(f"Running tests: {test_targets}")
+    success = run_tests(team, test_targets, parallelism_per_worker)
+    sys.exit(0 if success else 1)
 
 
 def _get_test_targets(
     targets: str,
     team: str,
-    concurrency: int,
-    shard: int,
+    workers: int,
+    worker_id: int,
+    except_tags: Optional[str] = "",
     yaml_dir: Optional[str] = None,
 ) -> List[str]:
     """
     Get test targets to run for a particular shard
     """
-    if not yaml_dir:
-        yaml_dir = os.path.join(bazel_workspace_dir, "ci/ray_ci")
-
-    return _chunk_into_n(
-        _get_all_test_targets(targets, team, yaml_dir=yaml_dir),
-        concurrency,
-    )[shard]
+    return shard_tests(
+        _get_all_test_targets(targets, team, except_tags, yaml_dir=yaml_dir),
+        workers,
+        worker_id,
+    )
 
 
-def _chunk_into_n(list: List[str], n: int):
-    size = ceil(len(list) / n)
-    return [list[x * size : x * size + size] for x in range(n)]
+def _get_all_test_query(targets: List[str], team: str, except_tags: str) -> str:
+    """
+    Get all test targets that are owned by a particular team, except those that
+    have the given tags
+    """
+    test_query = " union ".join([f"tests({target})" for target in targets])
+    team_query = f"attr(tags, 'team:{team}\\\\b', {test_query})"
+    if not except_tags:
+        # return all tests owned by the team if no except_tags are given
+        return team_query
+
+    # otherwise exclude tests with the given tags
+    except_query = " union ".join(
+        [f"attr(tags, {t}, {test_query})" for t in except_tags.split(",")]
+    )
+    return f"{team_query} except ({except_query})"
 
 
-def _get_all_test_targets(targets: str, team: str, yaml_dir: str) -> List[str]:
+def _get_all_test_targets(
+    targets: str,
+    team: str,
+    except_tags: Optional[str] = "",
+    yaml_dir: Optional[str] = None,
+) -> List[str]:
     """
     Get all test targets that are not flaky
     """
 
     test_targets = (
-        subprocess.check_output(
-            [
-                "bazel",
-                "query",
-                f"attr(tags, team:{team}, tests({targets})) intersect ("
-                # TODO(can): Remove this once we have a better way
-                # to filter out test size
-                f"attr(size, small, tests({targets})) union "
-                f"attr(size, medium, tests({targets}))"
-                ")",
-            ]
+        run_script_in_docker(
+            f'bazel query "{_get_all_test_query(targets, team, except_tags)}"',
+            team,
         )
         .decode("utf-8")
         .split("\n")
     )
+    flaky_tests = _get_flaky_test_targets(team, yaml_dir)
+
+    return [test for test in test_targets if test and test not in flaky_tests]
+
+
+def _get_flaky_test_targets(team: str, yaml_dir: Optional[str] = None) -> List[str]:
+    """
+    Get all test targets that are flaky
+    """
+    if not yaml_dir:
+        yaml_dir = os.path.join(bazel_workspace_dir, "ci/ray_ci")
+
     with open(f"{yaml_dir}/{team}.tests.yml", "rb") as f:
         flaky_tests = yaml.safe_load(f)["flaky_tests"]
 
-    return [test for test in test_targets if test and test not in flaky_tests]
+    return flaky_tests

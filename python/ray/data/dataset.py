@@ -67,11 +67,13 @@ from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan, OneToOneStage
-from ray.data._internal.planner.filter import generate_filter_fn
-from ray.data._internal.planner.flat_map import generate_flat_map_fn
-from ray.data._internal.planner.map_batches import generate_map_batches_fn
-from ray.data._internal.planner.map_rows import generate_map_rows_fn
-from ray.data._internal.planner.write import generate_write_fn
+from ray.data._internal.planner.plan_udf_map_op import (
+    generate_filter_fn,
+    generate_flat_map_fn,
+    generate_map_batches_fn,
+    generate_map_rows_fn,
+)
+from ray.data._internal.planner.plan_write_op import generate_write_fn
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import SortKey
@@ -116,6 +118,7 @@ from ray.data.datasource import (
     CSVDatasource,
     Datasource,
     DefaultBlockWritePathProvider,
+    ImageDatasource,
     JSONDatasource,
     NumpyDatasource,
     ParquetDatasource,
@@ -285,6 +288,7 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         **ray_remote_args,
@@ -335,6 +339,9 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
@@ -352,7 +359,7 @@ class Dataset:
             :meth:`~Dataset.map_batches`
                 Call this method to transform batches of data.
         """  # noqa: E501
-        validate_compute(fn, compute)
+        validate_compute(fn, compute, fn_constructor_args)
 
         transform_fn = generate_map_rows_fn()
 
@@ -369,6 +376,7 @@ class Dataset:
                 compute,
                 ray_remote_args,
                 fn=fn,
+                fn_constructor_args=fn_constructor_args,
             )
         )
 
@@ -377,6 +385,7 @@ class Dataset:
             map_op = MapRows(
                 logical_plan.dag,
                 fn,
+                fn_constructor_args=fn_constructor_args,
                 compute=compute,
                 ray_remote_args=ray_remote_args,
             )
@@ -551,22 +560,20 @@ class Dataset:
                 f"{batch_format}"
             )
 
-        validate_compute(fn, compute)
+        validate_compute(fn, compute, fn_constructor_args)
 
-        if fn_constructor_args is not None or fn_constructor_kwargs is not None:
+        if fn_constructor_kwargs is not None:
             if compute is None or (
                 compute != "actors" and not isinstance(compute, ActorPoolStrategy)
             ):
                 raise ValueError(
-                    "fn_constructor_args and fn_constructor_kwargs can only be "
-                    "specified if using the actor pool compute strategy, but got: "
-                    f"{compute}"
+                    "fn_constructor_kwargs can only be specified if using the actor "
+                    f"pool compute strategy, but got: {compute}"
                 )
             if not isinstance(fn, CallableClass):
                 raise ValueError(
-                    "fn_constructor_args and fn_constructor_kwargs can only be "
-                    "specified if providing a CallableClass instance for fn, but got: "
-                    f"{fn}"
+                    "fn_constructor_kwargs can only be specified if providing a "
+                    f"CallableClass instance for fn, but got: {fn}"
                 )
 
         transform_fn = generate_map_batches_fn(
@@ -788,6 +795,7 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         **ray_remote_args,
@@ -832,6 +840,9 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
@@ -847,7 +858,7 @@ class Dataset:
             :meth:`~Dataset.map`
                 Call this method to transform one row at time.
         """
-        validate_compute(fn, compute)
+        validate_compute(fn, compute, fn_constructor_args)
 
         transform_fn = generate_flat_map_fn()
 
@@ -858,7 +869,14 @@ class Dataset:
             ray_remote_args["num_gpus"] = num_gpus
 
         plan = self._plan.with_stage(
-            OneToOneStage("FlatMap", transform_fn, compute, ray_remote_args, fn=fn)
+            OneToOneStage(
+                "FlatMap",
+                transform_fn,
+                compute,
+                ray_remote_args,
+                fn=fn,
+                fn_constructor_args=fn_constructor_args,
+            )
         )
 
         logical_plan = self._logical_plan
@@ -866,6 +884,7 @@ class Dataset:
             op = FlatMap(
                 input_op=logical_plan.dag,
                 fn=fn,
+                fn_constructor_args=fn_constructor_args,
                 compute=compute,
                 ray_remote_args=ray_remote_args,
             )
@@ -2152,8 +2171,17 @@ class Dataset:
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
-    def sort(self, key: Optional[str] = None, descending: bool = False) -> "Dataset":
-        """Sort the :class:`Dataset` by the specified column.
+    def sort(
+        self,
+        key: Union[str, List[str], None] = None,
+        descending: Union[bool, List[bool]] = False,
+    ) -> "Dataset":
+        """Sort the dataset by the specified key column or key function.
+
+        .. note::
+            The `descending` parameter must be a boolean, or a list of booleans.
+            If it is a list, all items in the list must share the same direction.
+            Multi-directional sort is not supported yet.
 
         Examples:
             >>> import ray
@@ -2164,9 +2192,9 @@ class Dataset:
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: The column to sort by. To sort by multiple columns, call
-                :meth:`Dataset.map` and generate a new column to sort by.
-            descending: Whether to sort in descending order.
+            key: The column or a list of columns to sort by.
+            descending: Whether to sort in descending order. Must be a boolean or a list
+                of booleans matching the number of the columns.
 
         Returns:
             A new, sorted :class:`Dataset`.
@@ -2294,10 +2322,12 @@ class Dataset:
             ``ValueError``: if the dataset is empty.
         """
         batch_format = _apply_strict_mode_batch_format(batch_format)
+        limited_ds = self.limit(batch_size)
+
         try:
             res = next(
                 iter(
-                    self.iter_batches(
+                    limited_ds.iter_batches(
                         batch_size=batch_size,
                         prefetch_batches=0,
                         batch_format=batch_format,
@@ -2307,6 +2337,9 @@ class Dataset:
         except StopIteration:
             raise ValueError("The dataset is empty.")
         self._synchronize_progress_bar()
+
+        # Save the computed stats to the original dataset.
+        self._plan._snapshot_stats = limited_ds._plan.stats()
         return res
 
     @ConsumptionAPI
@@ -2347,11 +2380,16 @@ class Dataset:
                 "records in pandas or numpy batch format."
             )
         output = []
-        for row in self.iter_rows():
+
+        limited_ds = self.limit(limit)
+        for row in limited_ds.iter_rows():
             output.append(row)
             if len(output) >= limit:
                 break
         self._synchronize_progress_bar()
+
+        # Save the computed stats to the original dataset.
+        self._plan._snapshot_stats = limited_ds._plan.stats()
         return output
 
     @ConsumptionAPI
@@ -2786,6 +2824,65 @@ class Dataset:
             block_path_provider=block_path_provider,
             write_args_fn=pandas_json_args_fn,
             **pandas_json_args,
+        )
+
+    @PublicAPI(stability="alpha")
+    @ConsumptionAPI
+    def write_images(
+        self,
+        path: str,
+        column: str,
+        file_format: str = "png",
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Writes the :class:`~ray.data.Dataset` to images.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+            >>> ds.write_images("local:///tmp/images", column="image")
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            path: The path to the destination root directory, where
+                the images are written to.
+            column: The column containing the data you want to write to images.
+            file_format: The image file format to write with. For available options,
+                see `Image file formats <https://pillow.readthedocs.io/en/latest\
+                /handbook/image-file-formats.html>`_.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These filesystems are specified in the
+                `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the ``S3FileSystem`` is used.
+            try_create_dir: If ``True``, attempts to create all directories in the
+                destination path. Does nothing if all directories already
+                exist. Defaults to ``True``.
+            arrow_open_stream_args: kwargs passed to
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to.
+            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+        """  # noqa: E501
+        self.write_datasource(
+            ImageDatasource(),
+            ray_remote_args=ray_remote_args,
+            path=path,
+            dataset_uuid=self._uuid,
+            filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            open_stream_args=arrow_open_stream_args,
+            column=column,
+            file_format=file_format,
         )
 
     @ConsumptionAPI
@@ -3248,6 +3345,7 @@ class Dataset:
             try:
                 import pandas as pd
 
+                datasource.on_write_start(**write_args)
                 self._write_ds = Dataset(
                     plan, self._epoch, self._lazy, logical_plan
                 ).materialize()
@@ -3257,7 +3355,7 @@ class Dataset:
                     for block in blocks
                 )
                 write_results = [block["write_result"][0] for block in blocks]
-                datasource.on_write_complete(write_results)
+                datasource.on_write_complete(write_results, **write_args)
             except Exception as e:
                 datasource.on_write_failed([], e)
                 raise
@@ -4075,7 +4173,7 @@ class Dataset:
 
         Raises:
             ValueError: if the number of rows in the :class:`~ray.data.Dataset` exceeds
-            ``limit``.
+                ``limit``.
         """
         count = self.count()
         if limit is not None and count > limit:

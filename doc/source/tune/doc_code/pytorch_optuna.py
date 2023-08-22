@@ -79,8 +79,7 @@ class ConvNet(nn.Module):
 
 # __pytorch_optuna_start__
 import torch
-from ray import tune, air
-from ray.air import session
+from ray import train, tune
 from ray.tune.search.optuna import OptunaSearch
 
 
@@ -94,7 +93,7 @@ def objective(config):  # <1>
     while True:
         train(model, optimizer, train_loader)  # Train the model
         acc = test(model, test_loader)  # Compute test accuracy
-        session.report({"mean_accuracy": acc})  # Report to Tune
+        train.report({"mean_accuracy": acc})  # Report to Tune
 
 
 search_space = {"lr": tune.loguniform(1e-4, 1e-2), "momentum": tune.uniform(0.1, 0.9)}
@@ -107,7 +106,7 @@ tuner = tune.Tuner(  # <3>
         mode="max",
         search_alg=algo,
     ),
-    run_config=air.RunConfig(
+    run_config=train.RunConfig(
         stop={"training_iteration": 5},
     ),
     param_space=search_space,

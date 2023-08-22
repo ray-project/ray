@@ -6,10 +6,10 @@ import tensorflow as tf
 
 from ray.util import log_once
 from ray.train.predictor import DataBatchType
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.air._internal.tensorflow_utils import convert_ndarray_batch_to_tf_tensor_batch
 from ray.train._internal.dl_predictor import DLPredictor
-from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
+from ray.train.tensorflow.tensorflow_checkpoint import LegacyTensorflowCheckpoint
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -95,10 +95,10 @@ class TensorflowPredictor(DLPredictor):
             model_definition: A callable that returns a TensorFlow Keras model
                 to use. Model weights will be loaded from the checkpoint.
                 This is only needed if the `checkpoint` was created from
-                `TensorflowCheckpoint.from_model`.
+                `LegacyTensorflowCheckpoint.from_model`.
             use_gpu: Whether GPU should be used during prediction.
         """
-        checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
+        checkpoint = LegacyTensorflowCheckpoint.from_checkpoint(checkpoint)
         model = checkpoint.get_model(model_definition)
         preprocessor = checkpoint.get_preprocessor()
         return cls(

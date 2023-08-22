@@ -59,34 +59,35 @@ parts:
       - file: train/train
         title: Ray Train
         sections:
-          - file: train/getting-started
-            title: "Getting Started"
           - file: train/key-concepts
-            title: "Key Concepts"
-          - file: train/user-guides
-            title: "User Guides"
+            title: Key Concepts
+          - file: train/getting-started-pytorch
+            title: PyTorch Guide
+          - file: train/getting-started-pytorch-lightning
+            title: PyTorch Lightning Guide
+          - file: train/getting-started-transformers
+            title: Hugging Face Transformers Guide
+          - file: train/more-frameworks
             sections:
-              - file: train/config_guide
-                title: "Configuring Ray Train"
-              - file: train/dl_guide
-                title: "Deep Learning Guide"
-              - file: train/hf_trainers
-                title: "Hugging Face Trainers"
-              - file: train/gbdt
-                title: "XGBoost/LightGBM guide"
-              - file: train/architecture
-                title: "Ray Train Architecture"
-              - file: train/train-with-tune
-                title: "Using Ray Train with Ray Tune"
-              - file: train/check-ingest
-                title: "Configuring Training Datasets"
-              - file: train/predictors
-              - file: train/benchmarks
+              - file: train/huggingface-accelerate
+                title: Hugging Face Accelerate Guide
+              - file: train/deepspeed
+                title: DeepSpeed Guide
+              - file: train/distributed-tensorflow-keras
+                title: TensorFlow and Keras Guide
+              - file: train/distributed-xgboost-lightgbm
+                title: XGBoost and LightGBM Guide
+              - file: train/horovod
+                title: Horovod Guide
+          - file: train/user-guides
+            title: User Guides
           - file: train/examples
             title: "Examples"
             sections:
               - file: train/examples/pytorch/torch_fashion_mnist_example
                 title: "PyTorch Fashion MNIST Example"
+              - file: train/examples/transformers/transformers_torch_trainer_basic
+                title: "Hugging Face Transformers Basic Example"
               - file: train/examples/lightning/lightning_mnist_example
                 title: "PyTorch Lightning Basic Example"
               - file: train/examples/lightning/lightning_cola_advanced
@@ -99,8 +100,6 @@ parts:
                 title: "TensorFlow MNIST Example"
               - file: train/examples/horovod/horovod_example
                 title: "Horovod Example"
-              - file: train/examples/mlflow_fashion_mnist_example
-                title: "MLflow Callback Example"
               - file: train/examples/tf/tune_tensorflow_mnist_example
                 title: "Tune & TensorFlow Example"
               - file: train/examples/pytorch/tune_cifar_torch_pbt_example
@@ -111,8 +110,14 @@ parts:
                 title: "PyTorch Finetuning ResNet Example"
               - file: train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune
                 title: "Fine-tune Vicuna-13B with DeepSpeed and PyTorch Lightning"
-          - file: train/faq
+          - file: train/internals/index
+            title: "Internals"
+            sections:
+              - file: train/internals/architecture
+              - file: train/internals/benchmarks
+              - file: train/internals/environment-variables
           - file: train/api/api
+          - file: train/faq
 
       - file: tune/index
         title: Ray Tune
@@ -274,6 +279,7 @@ parts:
               - file: rllib/rllib-catalogs
               - file: rllib/rllib-connector
               - file: rllib/rllib-rlmodule
+              - file: rllib/rllib-learner
               - file: rllib/rllib-torch2x
               - file: rllib/rllib-fault-tolerance
               - file: rllib/rllib-dev

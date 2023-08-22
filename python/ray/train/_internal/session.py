@@ -26,7 +26,9 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
 )
 from ray.data import Dataset, DatasetPipeline
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal.accelerator import Accelerator
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train.constants import (
     CHECKPOINT_METADATA_KEY,
     CHECKPOINT_RANK_KEY,
@@ -41,7 +43,6 @@ from ray.train.constants import (
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
-from ray.train._internal.storage import _use_storage_context, StorageContext
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
@@ -79,6 +80,17 @@ class TrainingResult:
     metadata: Optional[Dict] = None
 
 
+class _TrainingResult:
+    """A (checkpoint, metrics) result reported by the user."""
+
+    def __init__(self, checkpoint: Optional[Checkpoint], metrics: Dict[str, Any]):
+        self.checkpoint = checkpoint
+        self.metrics = metrics
+
+    def __repr__(self) -> str:
+        return f"TrainingResult(checkpoint={self.checkpoint}, metrics={self.metrics})"
+
+
 # TODO(xwjiang): This needs a better name.
 @DeveloperAPI
 class _TrainSession:
@@ -95,6 +107,7 @@ class _TrainSession:
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
+        metadata: Dict[str, Any] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Checkpoint] = None,
         # Deprecated
@@ -107,32 +120,40 @@ class _TrainSession:
         checkpoint_keep_all_ranks: bool = False,
         checkpoint_upload_from_workers: bool = False,
         storage: Optional[StorageContext] = None,
+        synchronous_result_reporting: bool = False,
     ):
+        # `synchronous_result_reporting` refers to whether or not the
+        # training function is immediately unblocked to continue running
+        # after the main thread receives its result.
+        # Ex 1: For 2 Ray Train workers with synchronous_result_reporting=True,
+        # the worker that produces a result first will immediately will continue
+        # onto the next iteration.
+        # Ex 2: For a Tune function Trainable with `synchronous_result_reporting=False`,
+        # training will only continue with an explicit call to `session.get_next`.
+        # Synchronous reporting in example 2 is needed for Tune schedulers to
+        # be able to stop the execution of the training function at will,
+        # for advanced pausing schedulers (PBT, BOHB) and actor reuse.
+        self.synchronous_result_reporting = synchronous_result_reporting
 
+        # Ray Train worker properties
         self.dataset_shard = dataset_shard
+        self.metadata = metadata
 
         self.world_rank = world_rank
         self.local_rank = local_rank
         self.node_rank = node_rank
         self.local_world_size = local_world_size
         self.world_size = world_size
-        self.trial_info = trial_info
-        # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        self.loaded_checkpoint = checkpoint
+
+        # Checkpoint configurations
+        # TODO(justinvyu): These should all be removed.
         self.enable_lazy_checkpointing = enable_lazy_checkpointing
         self.checkpoint_keep_all_ranks = checkpoint_keep_all_ranks
         self.checkpoint_upload_from_workers = checkpoint_upload_from_workers
-
-        if _use_storage_context():
-            assert storage
-            logger.debug(f"StorageContext on TRAIN WORKER {world_rank}:\n{storage}")
-            storage._check_validation_file()
-
-        self.storage = storage
-
         # Only used if checkpoint_upload_from_workers is True.
         self.legacy_checkpoint_uri = None
 
+        # TODO(justinvyu): Encode data fn to be removed.
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_data_fn:
 
@@ -142,7 +163,19 @@ class _TrainSession:
             encode_data_fn = noop
         self._encode_data_fn = encode_data_fn
 
+        # NOTE: `reset` will initialize many properties needed to start running the
+        # training_func as a thread.
+        self.reset(
+            training_func=training_func,
+            trial_info=trial_info,
+            storage=storage,
+            loaded_checkpoint=checkpoint,
+        )
+
         if _use_storage_context():
+            assert storage
+            logger.info(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
+
             # Change the working directory to the local trial directory.
             # -> All workers on the same node share a working directory.
             os.makedirs(storage.trial_local_path, exist_ok=True)
@@ -154,8 +187,36 @@ class _TrainSession:
                 os.makedirs(logdir, exist_ok=True)
                 os.chdir(logdir)
 
+        # Autofilled metrics attributes.
+        self.detailed_autofilled_metrics = detailed_autofilled_metrics
+        self.last_report_time = time.time()
+        self.iteration = 0
+        self.time_total = 0.0
+        self.local_ip = self.get_current_ip()
+
+        self.accelerator = None
+
+    def get_current_ip(self):
+        self.local_ip = ray.util.get_node_ip_address()
+        return self.local_ip
+
+    def start(self):
+        """Starts the training thread."""
+        self.training_started = True
+        self.training_thread.start()
+
+    def reset(
+        self,
+        training_func: Callable,
+        trial_info: TrialInfo,
+        storage: StorageContext,
+        loaded_checkpoint=None,
+    ):
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
+
+        # This event is used to signal the training thread to stop.
+        self.stop_event = threading.Event()
 
         # Queue for sending results across threads.
         self.result_queue = queue.Queue(1)
@@ -170,42 +231,36 @@ class _TrainSession:
             target=training_func, daemon=True, error_queue=self.error_queue
         )
 
-        # Autofilled metrics attributes.
-        self.detailed_autofilled_metrics = detailed_autofilled_metrics
-        self.last_report_time = time.time()
-        self.iteration = 0
-        self.time_total = 0.0
-        self.local_ip = self.get_current_ip()
+        # Possibly override with new state
+        self.trial_info = trial_info
+        self.storage = storage
+        self.loaded_checkpoint = loaded_checkpoint
 
+        # Reset state
         self.ignore_report = False
         self.training_started = False
-
-        self.accelerator = None
-
-    def get_current_ip(self):
-        self.local_ip = ray.util.get_node_ip_address()
-        return self.local_ip
-
-    def start(self):
-        """Starts the training thread."""
-        self.training_started = True
-        self.training_thread.start()
+        self._first_report = True
 
     def pause_reporting(self):
         """Ignore all future ``session.report()`` calls."""
         self.ignore_report = True
 
-    def finish(self):
+    def finish(self, timeout: Optional[float] = None):
         """Finishes the training thread.
 
         Either returns the output from training or raises any Exception from
         training.
         """
+        # Set the stop event for the training thread to gracefully exit.
+        self.stop_event.set()
+
+        # Release the lock so that training thread can process this event.
+        self.continue_lock.release()
 
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
         # SystemError
-        func_output = self.training_thread.join()
+        func_output = self.training_thread.join(timeout=timeout)
         # If training finished successfully, then return results.
         return func_output
 
@@ -216,6 +271,16 @@ class _TrainSession:
         """
         if not self.training_started:
             raise RuntimeError("Please call start before calling get_next.")
+
+        if self.synchronous_result_reporting:
+            # There's no need to release the lock on the first report
+            # since `start` already started the training thread.
+            if not self._first_report:
+                # Release the lock to trigger training to continue,
+                # until the next call to report.
+                self.continue_lock.release()
+            self._first_report = False
+
         result = None
         # While training is still ongoing, attempt to get the result.
         while result is None and self.training_thread.is_alive():
@@ -251,8 +316,13 @@ class _TrainSession:
                     )
                 )
 
-        # Release the lock to trigger training to continue.
-        self.continue_lock.release()
+        if not self.synchronous_result_reporting:
+            # At this point, the training thread has reached
+            # the `train.report` and is blocked there.
+            # If performing asynchronous result reporting,
+            # release the lock to allow each worker to keep training
+            # immediately after the coordinator fetches their result.
+            self.continue_lock.release()
 
         # Return None if there are no more results to fetch.
         return result
@@ -369,7 +439,7 @@ class _TrainSession:
             if log_once("keep_all_ranks_dict_checkpoint"):
                 logger.warning(
                     "Saving checkpoints from all ranks does not work with "
-                    "dictionary checkpoints. Set `ray.air.CheckpointConfig"
+                    "dictionary checkpoints. Set `ray.train.CheckpointConfig"
                     "(_checkpoint_keep_all_ranks=False)`, or write checkpoints "
                     "to a directory and report directory checkpoints that "
                     "contain unique files per worker rank. For example, "
@@ -440,6 +510,71 @@ class _TrainSession:
         """
         self.legacy_checkpoint_uri = uri
 
+    def _report_training_result(self, training_result: _TrainingResult) -> None:
+        """Place a training result on the result queue for the main thread to process,
+        then block until the main thread signals that training should continue.
+
+        NOTE: This is used internally to report results from Train to Tune
+        without persisting checkpoints to storage 2 times.
+        `report` is the public API that directly persists to storage, which
+        should only be called by user code.
+        """
+        if training_result.checkpoint:
+            # NOTE: This populates `train.get_checkpoint`
+            self.loaded_checkpoint = training_result.checkpoint
+
+            # NOTE: This is where the coordinator AND workers increment their
+            # checkpoint index.
+            self.storage.current_checkpoint_index += 1
+
+        # Add result to a thread-safe queue.
+        self.result_queue.put(training_result, block=True)
+
+        # Acquire lock to stop the training thread until main thread
+        # triggers resume.
+        self.continue_lock.acquire()
+
+        # If the trial should be terminated, exit gracefully.
+        # NOTE: This is only really useful if `synchronous_result_reporting=True`.
+        # Otherwise, the lock is immediately released on reporting, and this
+        # check is skipped before the main thread decides to set the stop event.
+        if self.stop_event.is_set():
+            self.stop_event.clear()
+            sys.exit(0)
+
+    def new_report(
+        self, metrics: Dict, checkpoint: Optional[NewCheckpoint] = None
+    ) -> None:
+        persisted_checkpoint = None
+        if checkpoint:
+            if not isinstance(checkpoint, NewCheckpoint):
+                raise ValueError(
+                    "You must pass a `ray.train.Checkpoint` "
+                    "object to `train.report`. `ray.air.Checkpoint` is deprecated."
+                )
+
+            # Persist the reported checkpoint files to storage.
+            persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
+
+        metrics = self._auto_fill_metrics(metrics)
+
+        # Set additional user metadata from the Trainer.
+        if persisted_checkpoint and self.metadata:
+            user_metadata = persisted_checkpoint.get_metadata()
+            for k, v in self.metadata.items():
+                # Update keys not already set by the user. This gives user-set keys
+                # precedence over keys set at the Trainer level.
+                if k not in user_metadata:
+                    user_metadata[k] = v
+            persisted_checkpoint.set_metadata(user_metadata)
+
+        result = _TrainingResult(
+            checkpoint=persisted_checkpoint,
+            metrics=metrics,
+        )
+
+        self._report_training_result(result)
+
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.
 
@@ -452,10 +587,13 @@ class _TrainSession:
                     "Passing objects containg Torch tensors as metrics "
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
-                    "to Python objects or use a `TorchCheckpoint` as the "
-                    "`checkpoint` argument of `ray.air.session.report` to "
+                    "to Python objects or use a `LegacyTorchCheckpoint` as the "
+                    "`checkpoint` argument of `ray.train.report` to "
                     "store your Torch objects."
                 )
+
+        if _use_storage_context():
+            return self.new_report(metrics, checkpoint=checkpoint)
 
         if checkpoint:
             self.checkpoint(checkpoint)
@@ -617,16 +755,15 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
 
             import tensorflow as tf
 
-            from ray.air import session
-            from ray.air.checkpoint import Checkpoint
-            from ray.air.config import ScalingConfig
+            from ray import train
+            from ray.train import Checkpoint, ScalingConfig
             from ray.train.tensorflow import TensorflowTrainer
 
             ######## Using it in the *per worker* train loop (TrainSession) #######
             def train_func():
                 model = tf.keras.applications.resnet50.ResNet50()
                 model.save("my_model", overwrite=True)
-                session.report(
+                train.report(
                     metrics={"foo": "bar"},
                     checkpoint=Checkpoint.from_directory("my_model")
                 )
@@ -670,13 +807,12 @@ def get_checkpoint() -> Optional[Checkpoint]:
         import tensorflow as tf
 
         ######## Using it in the *per worker* train loop (TrainSession) ######
-        from ray.air import session
-        from ray.air.checkpoint import Checkpoint
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import Checkpoint, ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer
 
         def train_func():
-            ckpt = session.get_checkpoint()
+            ckpt = train.get_checkpoint()
             if ckpt:
                 with ckpt.as_directory() as loaded_checkpoint_dir:
                     model = tf.keras.models.load_model(loaded_checkpoint_dir)
@@ -684,7 +820,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
                 model = tf.keras.applications.resnet50.ResNet50()
 
             model.save("my_model", overwrite=True)
-            session.report(
+            train.report(
                 metrics={"iter": 1},
                 checkpoint=Checkpoint.from_directory("my_model")
             )
@@ -700,7 +836,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
             train_loop_per_worker=train_func,
             scaling_config=scaling_config,
             # this is ultimately what is accessed through
-            # ``Session.get_checkpoint()``
+            # ``ray.train.get_checkpoint()``
             resume_from_checkpoint=result.checkpoint,
         )
         result2 = trainer2.fit()
@@ -712,6 +848,13 @@ def get_checkpoint() -> Optional[Checkpoint]:
     """
 
     return _get_session().loaded_checkpoint
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse()
+def get_metadata() -> Dict[str, Any]:
+    """User metadata dict passed to the Trainer constructor."""
+    return _get_session().metadata
 
 
 @PublicAPI(stability="beta")
@@ -751,11 +894,10 @@ def get_trial_dir() -> str:
 
     .. testcode::
 
-        from ray import tune
-        from ray.air import session
+        from ray import train, tune
 
         def train_func(config):
-            print(session.get_trial_dir())
+            print(train.get_context().get_trial_dir())
 
         tuner = tune.Tuner(train_func)
         tuner.fit()
@@ -776,14 +918,14 @@ def get_world_size() -> int:
     .. testcode::
 
         import ray
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer
 
         NUM_WORKERS = 2
 
         def train_loop_per_worker(config):
-            assert session.get_world_size() == NUM_WORKERS
+            assert train.get_context().get_world_size() == NUM_WORKERS
 
         train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
         trainer = TensorflowTrainer(
@@ -816,12 +958,12 @@ def get_world_rank() -> int:
     .. testcode::
 
         import ray
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer
 
         def train_loop_per_worker(config):
-            if session.get_world_rank() == 0:
+            if train.get_context().get_world_rank() == 0:
                 print("Worker 0")
 
         train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
@@ -857,13 +999,13 @@ def get_local_rank() -> int:
         import torch
 
         import ray
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.torch import TorchTrainer
 
         def train_loop_per_worker(config):
             if torch.cuda.is_available():
-                torch.cuda.set_device(session.get_local_rank())
+                torch.cuda.set_device(train.get_context().get_local_rank())
             ...
 
         train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
@@ -899,12 +1041,12 @@ def get_local_world_size() -> int:
         .. testcode::
 
             import ray
-            from ray.air import session
-            from ray.air.config import ScalingConfig
+            from ray import train
+            from ray.train import ScalingConfig
             from ray.train.torch import TorchTrainer
 
             def train_loop_per_worker():
-                print(session.get_local_world_size())
+                print(train.get_context().get_local_world_size())
 
             train_dataset = ray.data.from_items(
                 [{"x": x, "y": x + 1} for x in range(32)])
@@ -938,12 +1080,12 @@ def get_node_rank() -> int:
         .. testcode::
 
             import ray
-            from ray.air import session
-            from ray.air.config import ScalingConfig
+            from ray import train
+            from ray.train import ScalingConfig
             from ray.train.torch import TorchTrainer
 
             def train_loop_per_worker():
-                print(session.get_node_rank())
+                print(train.get_context().get_node_rank())
 
             train_dataset = ray.data.from_items(
                 [{"x": x, "y": x + 1} for x in range(32)])
@@ -981,15 +1123,15 @@ def get_dataset_shard(
     .. testcode::
 
         import ray
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.torch import TorchTrainer
 
         def train_loop_per_worker(config):
             ...
             for epoch in range(2):
                 # Trainer will automatically handle sharding.
-                data_shard = session.get_dataset_shard("train")
+                data_shard = train.get_dataset_shard("train")
                 for batch in data_shard.iter_torch_batches():
                     ...
 

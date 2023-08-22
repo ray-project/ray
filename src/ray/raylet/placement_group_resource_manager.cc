@@ -55,6 +55,10 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
     }
   }
 
+  if (cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining()) {
+    return false;
+  }
+
   auto resource_instances = std::make_shared<TaskResourceInstances>();
   bool allocated =
       cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
