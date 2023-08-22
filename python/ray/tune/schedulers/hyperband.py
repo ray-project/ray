@@ -357,7 +357,7 @@ class HyperBandScheduler(FIFOScheduler):
             for bracket in sorted(scrubbed, key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
                     if (
-                        trial.status == Trial.PAUSE
+                        trial.status == Trial.PAUSED
                         and trial in bracket.trials_to_unpause
                     ) or trial.status == Trial.PENDING:
                         return trial
