@@ -193,16 +193,14 @@ class Node:
             if connect_only:
                 node_ip_address = self._wait_for_node_address()
             else:
-                node_ip_address = ray._private.services.resolve_ip_for_localhost(
-                    ray_constants.NODE_DEFAULT_IP
-                )
+                node_ip_address = ray.util.get_node_ip_address()
 
         assert node_ip_address is not None
         ray_params.update_if_absent(
             node_ip_address=node_ip_address, raylet_ip_address=node_ip_address
         )
-
         self._node_ip_address = node_ip_address
+        self._write_node_ip_address(node_ip_address)
 
         if ray_params.raylet_ip_address:
             raylet_ip_address = ray_params.raylet_ip_address
@@ -260,7 +258,6 @@ class Node:
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet"
             )
-            self._write_node_ip_address(ray_params.node_ip_address)
 
         self.metrics_agent_port = self._get_cached_port(
             "metrics_agent_port", default_port=ray_params.metrics_agent_port
@@ -960,7 +957,7 @@ class Node:
             node_ip_address = self._get_cached_node_ip_address()
 
             if node_ip_address is not None:
-                break
+                return node_ip_address
 
             time.sleep(1)
             if i % 10 == 0:
@@ -1012,9 +1009,7 @@ class Node:
             if "node_ip_address" in cached_node_ip_address:
                 return cached_node_ip_address["node_ip_address"]
             else:
-                return ray._private.services.resolve_ip_for_localhost(
-                    ray_constants.NODE_DEFAULT_IP
-                )
+                return ray.util.get_node_ip_address()
 
     def _write_node_ip_address(self, node_ip_address: Optional[str]) -> None:
         """Write a node ip address of the current session to
