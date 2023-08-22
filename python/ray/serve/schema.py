@@ -314,7 +314,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
 
 
 @PublicAPI(stability="beta")
-class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
+class ServeApplicationSchema(BaseModel):
     """
     Describes one Serve application, and currently can also be used as a standalone
     config to deploy a single application to a Ray cluster.
@@ -508,7 +508,12 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
 @PublicAPI(stability="alpha")
 class HTTPOptionsSchema(BaseModel):
-    """Options to start the HTTP Proxy with."""
+    """Options to start the HTTP Proxy with.
+
+    NOTE: This config allows extra parameters to make it forward-compatible (ie
+          older versions of Serve are able to accept configs from a newer versions,
+          simply ignoring new parameters)
+    """
 
     host: str = Field(
         default="0.0.0.0",
@@ -547,13 +552,17 @@ class HTTPOptionsSchema(BaseModel):
 
 
 @PublicAPI(stability="alpha")
-class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+class ServeDeploySchema(BaseModel):
     """
     Multi-application config for deploying a list of Serve applications to the Ray
     cluster.
 
     This is the request JSON schema for the v2 REST API
     `PUT "/api/serve/applications/"`.
+
+    NOTE: This config allows extra parameters to make it forward-compatible (ie
+          older versions of Serve are able to accept configs from a newer versions,
+          simply ignoring new parameters)
     """
 
     proxy_location: DeploymentMode = Field(
