@@ -1097,6 +1097,7 @@ class Trial:
             self.temporary_state.next_restore = None
         else:
             self.run_metadata.checkpoint_manager.on_checkpoint(checkpoint)
+        self.invalidate_json_state()
         self.run_metadata.invalidate_cache()
 
     def on_restore(self):
