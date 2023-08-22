@@ -523,16 +523,17 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
     from ray import train
     from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
-    from ray.data.preprocessors import Concatenator, Chain, StandardScaler
+    from ray.data.preprocessors import Concatenator, StandardScaler
 
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
-    # Create a preprocessor to scale some columns and concatenate the result.
-    preprocessor = Chain(
-        StandardScaler(columns=["mean radius", "mean texture"]),
-        Concatenator(exclude=["target"], dtype=np.float32),
-    )
-    dataset = preprocessor.fit_transform(dataset)  # this will be applied lazily
+    # Create preprocessors to scale some columns and concatenate the results.
+    scaler = StandardScaler(columns=["mean radius", "mean texture"])
+    concatenator = Concatenator(exclude=["target"], dtype=np.float32)
+
+    # Apply both preprocessors. They will be applied lazily.
+    dataset = scaler.fit_transform(dataset)
+    dataset = concatenator.fit_transform(dataset)
 
     def train_loop_per_worker():
         # Get an iterator to the dataset we passed in below.
