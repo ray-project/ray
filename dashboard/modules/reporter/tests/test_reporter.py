@@ -152,7 +152,7 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
-def test_prometheus_physical_stats_record(enable_test_module):
+def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
     addr = addresses["raylet_ip_address"]
@@ -708,7 +708,7 @@ def test_get_task_traceback_running_task(shutdown_only):
     Verify that we throw an error for a non-running task.
 
     """
-    address_info = ray.init(address="auto")
+    address_info = ray.init()
     webui_url = format_web_url(address_info["webui_url"])
 
     @ray.remote
@@ -750,7 +750,7 @@ def test_get_task_traceback_non_running_task(shutdown_only):
     # done when the next test starts. This prevents a previous cluster to be
     # connected the current test session.
 
-    address_info = ray.init(address="auto")
+    address_info = ray.init()
     webui_url = format_web_url(address_info["webui_url"])
 
     @ray.remote
@@ -780,7 +780,7 @@ def test_get_cpu_profile_non_running_task(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
     """
-    address_info = ray.init(address="auto")
+    address_info = ray.init()
     webui_url = format_web_url(address_info["webui_url"])
 
     @ray.remote
