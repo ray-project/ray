@@ -154,9 +154,10 @@ def plan_read_op(op: Read) -> PhysicalOperator:
             do_read, MapTransformFnDataType.Block, MapTransformFnDataType.Block
         ),
     ]
-    if hasattr(op._reader, "_block_udf"):
+    block_udf = getattr(op._reader, "_block_udf", None)
+    if block_udf is not None:
         transform_fns.append(
-            _generate_block_udf_transform_fn(op._reader._block_udf)  # type: ignore
+            _generate_block_udf_transform_fn(block_udf)
         )
     transform_fns.append(_generate_output_transform_fn(op._additional_split_factor))
 
@@ -179,9 +180,10 @@ def apply_output_blocks_handling_to_read_task(
     This function is only used for compability with the legacy LazyBlockList code path.
     """
     transform_fns = []
-    if hasattr(read_task, "_block_udf"):
+    block_udf = getattr(read_task, "_block_udf", None)
+    if block_udf is not None:
         transform_fns.append(
-            _generate_block_udf_transform_fn(read_task._block_udf)  # type: ignore
+            _generate_block_udf_transform_fn(block_udf)
         )
     transform_fns.append(_generate_output_transform_fn(additional_split_factor))
     map_transformer = MapTransformer(transform_fns)
