@@ -286,13 +286,10 @@ class SSHCommandRunner(CommandRunnerInterface):
                     code=e.returncode,
                     command=joined_cmd,
                 )
-
+            fail_msg = "Command failed: \n\n  {}\n".format(joined_cmd)
             if exit_on_fail:
-                raise click.ClickException(
-                    "Command failed:\n\n  {}\n".format(joined_cmd)
-                ) from None
+                raise click.ClickException(fail_msg) from None
             else:
-                fail_msg = "SSH command failed."
                 if is_output_redirected():
                     fail_msg += " See above for the output from the failure."
                 raise click.ClickException(fail_msg) from None
