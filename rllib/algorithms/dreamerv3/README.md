@@ -77,7 +77,7 @@ Note that you can also switch on WandB logging with the above script via the opt
 ## Running DreamerV3 with arbitrary Envs and Configs
 Can I run DreamerV3 with any gym or custom environments? Yes, you can!
 
-![Flappy Bird gymnasium env](../../../doc/source/rllib/images/dreamerv3/flappy_bird_env.png)
+<img src="../../../doc/source/rllib/images/dreamerv3/flappy_bird_env.png" alt="Flappy Bird gymnasium env" width="300" height="300" />
 
 Let's try the "Flappy Bird" gymnasium env. It's image space is a cellphone-style
 288 x 512 (RGB), very different from the DreamerV3 Atari benchmark "norm", which is 64x64 (RGB).
