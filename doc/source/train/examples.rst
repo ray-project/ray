@@ -53,6 +53,14 @@ Distributed Training Examples using Ray Train
         :img-top: /images/pytorch_lightning_small.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
+        .. button-ref:: lightning_mnist_example
+
+            End-to-end PyTorch Lightning Training Example
+
+    .. grid-item-card::
+        :img-top: /images/pytorch_lightning_small.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
         .. button-ref:: lightning_advanced_example
 
             Use LightningTrainer with Ray Data and Batch Predictor
