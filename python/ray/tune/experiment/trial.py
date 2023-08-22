@@ -212,6 +212,7 @@ class _TemporaryTrialState:
 
         self.saving_to = None
         self.restoring_from = None
+        self.next_restore = None
 
         self.num_restore_failures = 0
 
@@ -1091,6 +1092,9 @@ class Trial:
             # This index will get restored when the trial is restored and will
             # be passed to the Trainable as the starting checkpoint index.
             self.storage.current_checkpoint_index += 1
+            # Remove any next restore overrides - instead we should now restore
+            # from trial.checkpoint
+            self.temporary_state.next_restore = None
         else:
             self.run_metadata.checkpoint_manager.on_checkpoint(checkpoint)
         self.run_metadata.invalidate_cache()

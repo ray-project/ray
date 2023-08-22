@@ -2079,7 +2079,7 @@ class TuneController:
             )
             return True
 
-        checkpoint = trial.checkpoint
+        checkpoint = trial.temporary_state.next_restore or trial.checkpoint
 
         if checkpoint.dir_or_data is None:
             logger.debug(f"Not restoring trial {trial}: No checkpoint found.")

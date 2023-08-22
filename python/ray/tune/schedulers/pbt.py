@@ -943,7 +943,8 @@ class PopulationBasedTraining(FIFOScheduler):
         else:
             exploit = checkpoint_to_exploit
 
-        trial.on_checkpoint(exploit)
+        # Next trial restore should use this checkpoint
+        trial.temporary_state.next_restore = exploit
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
