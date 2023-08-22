@@ -6,8 +6,11 @@ from typing import List
 
 import ci.ray_ci.bazel_sharding as bazel_sharding
 
-DOCKER_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
-DOCKER_REPO = "rayproject/citemp"
+_DOCKER_ECR_REPO = os.environ.get(
+    "RAYCI_WORK_REPO",
+    "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp",
+)
+_RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
 _PIPELINE_POSTMERGE = "0189e759-8c96-4302-b6b5-b4274406bf89"
 
 
@@ -117,4 +120,4 @@ def _get_docker_image(team: str) -> str:
     """
     Get docker image for a particular commit
     """
-    return f"{DOCKER_ECR}/{DOCKER_REPO}:{os.environ.get('RAYCI_BUILD_ID')}-{team}build"
+    return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{team}build"
