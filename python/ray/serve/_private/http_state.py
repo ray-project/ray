@@ -128,6 +128,7 @@ class HTTPProxyState:
                 self._health_check_obj_ref = None
                 try:
                     ray.get(finished[0])
+                    self.try_update_status(HTTPProxyStatus.HEALTHY)
                 except ray.exceptions.RayActorError:
                     # The proxy actor dies.
                     self.set_status(HTTPProxyStatus.UNHEALTHY)
