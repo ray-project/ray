@@ -74,7 +74,7 @@ def torch_fashion_mnist(num_workers, use_gpu, num_samples):
     analysis = tuner.fit()._experiment_analysis
 
     # Check that loss decreases in each trial.
-    for path, df in analysis.trial_dataframes.items():
+    for df in analysis.trial_dataframes.values():
         assert df.loc[1, "loss"] < df.loc[0, "loss"]
 
 
@@ -103,7 +103,7 @@ def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
     analysis = tuner.fit()._experiment_analysis
 
     # Check that loss decreases in each trial.
-    for path, df in analysis.trial_dataframes.items():
+    for df in analysis.trial_dataframes.values():
         assert df.loc[1, "loss"] < df.loc[0, "loss"]
 
 
