@@ -480,7 +480,7 @@ py_test(
     name = "test_predictor",
     size = "small",
     srcs = ["tests/test_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib"]
 )
 
