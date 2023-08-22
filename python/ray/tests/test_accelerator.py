@@ -237,7 +237,8 @@ def test_set_tpu_visible_ids_and_bounds(tpu_chips):
         else:  # len(tpu_chips) == 4
             # Check that nothing is set, let the ML framework use the defaults.
             assert (
-                os.environ.get(ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
+                os.environ.get(ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
+                is None
             )
             assert os.environ.get(ray_constants.TPU_SINGLE_HOST_BOUNDS, None) is None
             assert os.environ.get(ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None
