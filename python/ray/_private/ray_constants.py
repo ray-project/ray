@@ -410,13 +410,6 @@ NEURON_CORES = "neuron_cores"
 GPU = "GPU"
 TPU = "TPU"
 
-TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
-TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = "1,1,1"
-TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
-
-TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
-TPU_SINGLE_HOST_BOUNDS = "1,1,1"
-
 # https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/inf2-arch.html#aws-inf2-arch
 # https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/trn1-arch.html#aws-trn1-arch
 # Subject to removal after the information is available via public API
@@ -503,3 +496,15 @@ RAY_GCE_TPU_HEADERS = {"Metadata-Flavor": "Google"}
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
 RAY_TPU_NUM_CHIPS_PER_HOST = 4
 RAY_TPU_CORES_PER_CHIP = 2
+
+# The following defines environment variables that allow
+# us to access a subset of TPU visible chips.
+#
+# See: https://github.com/google/jax/issues/14977 for an example/more details.
+TPU_VALID_CHIP_OPTIONS = (1, 2, 4)
+TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
+TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = "1,1,1"
+TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
+
+TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
+TPU_SINGLE_HOST_BOUNDS = "1,1,1"

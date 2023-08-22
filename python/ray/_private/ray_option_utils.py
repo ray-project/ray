@@ -3,6 +3,7 @@ import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
+import logging
 import ray
 from ray._private import ray_constants
 from ray._private.utils import get_ray_doc_version
@@ -125,6 +126,14 @@ def _validate_accelerators(options: Dict[str, Any]):
     num_tpus = options.get("num_tpus", None)
     non_zero_gpus = num_gpus is not None and num_gpus > 0
     non_zero_tpus = num_tpus is not None and num_tpus > 0
+
+    # TPU-specific check
+    if non_zero_tpus and num_tpus not in ray_constants.TPU_VALID_CHIP_OPTIONS:
+        logging.warning(
+            f"'num_tpus' was set to f{num_tpus} which is not a "
+            "supported chip configuration. Supported configs: "
+            f"{ray_constants.TPU_VALID_CHIP_OPTIONS}"
+        )
 
     resources = options["resources"] if "resources" in options else None
     accelerator_type_value: str = options.get("accelerator_type", "")
