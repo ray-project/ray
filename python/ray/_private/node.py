@@ -965,18 +965,16 @@ class Node:
             time.sleep(1)
             if i % 10 == 0:
                 logger.info(
-                    f"Can't find a `{NODE_IP_FILE_NAME}` file from "
-                    f"{file_path} or can't the unique id "
-                    f"{self.unique_id} from the file. "
+                    "Can't find a `node_ip_address.json` file from "
+                    f"{self.get_session_dir_path()}. "
                     "Have you started Ray instsance using "
                     "`ray start` or `ray.init`?"
                 )
-            if i == MAX_WAIT_S:
+            if i == timeout_s:
                 raise ValueError(
-                    f"Can't find a `{NODE_IP_FILE_NAME}` file from "
-                    f"{file_path} or can't the unique id "
-                    f"{self.unique_id} from the file "
-                    f"for {MAX_WAIT_S} seconds"
+                    "Can't find a `node_ip_address.json` file from "
+                    f"{self.get_session_dir_path()}. "
+                    f"for {timeout_s} seconds"
                     "It means the ray instance hasn't started. "
                     "Did you do `ray start` or `ray.init` on this host?"
                 )
