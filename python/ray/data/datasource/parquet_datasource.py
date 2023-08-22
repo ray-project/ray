@@ -325,8 +325,7 @@ class _ParquetDatasourceReader(Reader):
                 )
             else:
                 default_read_batch_size = PARQUET_READER_ROW_BATCH_SIZE
-            block_udf, reader_args, columns, schema = (
-                self._block_udf,
+            reader_args, columns, schema = (
                 self._reader_args,
                 self._columns,
                 self._schema,
@@ -334,7 +333,6 @@ class _ParquetDatasourceReader(Reader):
             read_tasks.append(
                 ReadTask(
                     lambda p=serialized_pieces: _read_pieces(
-                        block_udf,
                         reader_args,
                         default_read_batch_size,
                         columns,
@@ -345,6 +343,8 @@ class _ParquetDatasourceReader(Reader):
                 )
             )
 
+        for task in read_tasks:
+            task._block_udf = self._block_udf
         return read_tasks
 
     def _estimate_files_encoding_ratio(self) -> float:
@@ -401,7 +401,6 @@ class _ParquetDatasourceReader(Reader):
 
 
 def _read_pieces(
-    block_udf,
     reader_args,
     default_read_batch_size,
     columns,
