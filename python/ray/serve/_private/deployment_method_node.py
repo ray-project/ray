@@ -13,6 +13,7 @@ class DeploymentMethodNode(DAGNode):
         self,
         deployment: Deployment,
         deployment_method_name: str,
+        app_name: str,
         method_args: Tuple[Any],
         method_kwargs: Dict[str, Any],
         method_options: Dict[str, Any],
@@ -20,6 +21,7 @@ class DeploymentMethodNode(DAGNode):
     ):
         self._deployment = deployment
         self._deployment_method_name: str = deployment_method_name
+        self._app_name = app_name
         self._deployment_handle = other_args_to_resolve[PARENT_CLASS_NODE_KEY]
         super().__init__(
             method_args,
@@ -38,6 +40,7 @@ class DeploymentMethodNode(DAGNode):
         return DeploymentMethodNode(
             self._deployment,
             self._deployment_method_name,
+            self._app_name,
             new_args,
             new_kwargs,
             new_options,

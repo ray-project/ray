@@ -18,8 +18,8 @@ from ray.air.constants import (  # noqa: F401
 )
 
 # Autofilled ray.train.report() metrics. Keys should be consistent with Tune.
+CHECKPOINT_DIR_NAME = "checkpoint_dir_name"
 TIME_TOTAL_S = "_time_total_s"
-
 WORKER_HOSTNAME = "_hostname"
 WORKER_NODE_IP = "_node_ip"
 WORKER_PID = "_pid"
@@ -63,6 +63,7 @@ TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
 # PACK to SPREAD. 1 for True, 0 for False.
 TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 
+RAY_AIR_NEW_PERSISTENCE_MODE = "RAY_AIR_NEW_PERSISTENCE_MODE"
 
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
@@ -70,6 +71,7 @@ TRAIN_ENV_VARS = {
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
+    RAY_AIR_NEW_PERSISTENCE_MODE,
 }
 
 # Blacklist virtualized networking.

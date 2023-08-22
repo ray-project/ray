@@ -1,0 +1,10 @@
+name: "serverlessbuild"
+froms: ["cr.ray.io/rayproject/oss-ci-base_build"]
+dockerfile: ci/docker/serverless.build.Dockerfile
+srcs:
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+  - python/requirements/ml/dl-cpu-requirements.txt
+tags:
+  - cr.ray.io/rayproject/serverlessbuild

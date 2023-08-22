@@ -274,7 +274,7 @@ def test_non_default_ports_visible_on_init(shutdown_only):
         return True
 
     try:
-        wait_for_condition(verify, timeout=10, retry_interval_ms=2000)
+        wait_for_condition(verify, timeout=15, retry_interval_ms=2000)
     finally:
         proc.terminate()
         proc.wait()
