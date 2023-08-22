@@ -88,7 +88,6 @@ preprocessor_2 = MinMaxScaler(["id"])
 dataset_transformed = preprocessor_1.fit_transform(dataset)
 dataset_transformed = preprocessor_2.fit_transform(dataset_transformed)
 
-dataset_transformed = preprocessor.fit_transform(dataset)
 print(dataset_transformed.take())
 # [{'id': 0.0}, {'id': 0.3333333333333333}, {'id': 0.6666666666666666}, {'id': 1.0}, {'id': 0.5}]
 # __chain_end__
