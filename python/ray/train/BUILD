@@ -640,7 +640,7 @@ py_test(
     name = "test_worker_group",
     size = "medium",
     srcs = ["tests/test_worker_group.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"]
 )
 
