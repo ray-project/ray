@@ -27,7 +27,11 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import _check_pyarrow_version, _resolve_custom_scheme
+from ray.data._internal.util import (
+    _check_pyarrow_version,
+    _resolve_custom_scheme,
+    get_attribute_from_class_name,
+)
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
@@ -490,6 +494,10 @@ class _FileBasedDatasourceReader(Reader):
                     "'partition_filter' field is set properly."
                 )
 
+        ctx = DataContext.get_current()
+        shuffler_class = get_attribute_from_class_name(ctx.file_metadata_shuffler)
+        self._file_metadata_shuffler = shuffler_class(self._reader_args)
+
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
         for sz in self._file_sizes:
@@ -505,7 +513,11 @@ class _FileBasedDatasourceReader(Reader):
         reader_args = self._reader_args
         partitioning = self._partitioning
 
-        paths, file_sizes = self._paths, self._file_sizes
+        paths_and_sizes = self._file_metadata_shuffler.shuffle_files(
+            list(zip(self._paths, self._file_sizes))
+        )
+        paths, file_sizes = list(map(list, zip(*paths_and_sizes)))
+
         read_stream = self._delegate._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
 

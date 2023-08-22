@@ -61,7 +61,7 @@ Ray Examples
         How OpenAI Uses Ray to Train Tools like ChatGPT
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item llm gen-ai
+        :class-item: gallery-item llm gen-ai huggingface
         :link: /ray-air/examples/gptj_deepspeed_fine_tuning
         :link-type: doc
 
@@ -80,13 +80,6 @@ Ray Examples
 
         Get started with Ray AIR from an existing PyTorch codebase
 
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item tensorflow
-        :link: /ray-air/examples/convert_existing_tf_code_to_ray_air
-        :link-type: doc
-
-        Get started with Ray AIR from an existing Tensorflow/Keras
-
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training
         :link: /ray-air/examples/lightgbm_example
@@ -101,40 +94,12 @@ Ray Examples
 
         Distributed training with XGBoost
 
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item
-        :link: /ray-air/examples/analyze_tuning_results
-        :link-type: doc
-
-        Distributed tuning with XGBoost
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
-        :link: /ray-air/examples/sklearn_example
-        :link-type: doc
-
-        Integrating with Scikit-Learn (non-distributed)
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item ts
-        :link: /ray-air/examples/automl_with_ray_air
-        :link-type: doc
-
-        Build an AutoML system for time-series forecasting with Ray AIR
-
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item data-processing
         :link: /ray-air/examples/batch_tuning
         :link-type: doc
 
         Perform batch tuning on NYC Taxi Dataset with Ray AIR
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing
-        :link: /ray-air/examples/batch_forecasting
-        :link-type: doc
-
-        Perform batch forecasting on NYC Taxi Dataset with Prophet, ARIMA and Ray AIR
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item
@@ -212,34 +177,6 @@ Ray Examples
         :link-type: doc
 
         Image Classification Batch Inference with Huggingface Vision Transformer
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
-        :link: /ray-air/examples/upload_to_comet_ml
-        :link-type: doc
-
-        How to log results and upload models to Comet ML
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
-        :link: /ray-air/examples/upload_to_wandb
-        :link-type: doc
-
-        How to log results and upload models to Weights and Biases
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch
-        :link: /ray-air/examples/torch_incremental_learning
-        :link-type: doc
-
-        Incrementally train and deploy a PyTorch CV model
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training inference
-        :link: /ray-air/examples/feast_example
-        :link-type: doc
-
-        Integrate with Feast feature store in both train and inference
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch tensorflow serving
@@ -675,13 +612,6 @@ Ray Examples
         :link-type: ref
 
         End-to-end Example for Tuning a PyTorch Model with PBT
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training
-        :link: train_mlflow_example
-        :link-type: ref
-
-        Logging Training Runs with MLflow
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tracking
@@ -1465,3 +1395,17 @@ Ray Examples
         :link-type: doc
 
         Fine-tune vicuna-13b-v1.3 with DeepSpeed and LightningTrainer
+    
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item training llm pytorch nlp
+        :link: deepspeed_example
+        :link-type: ref
+
+        Distributed Training with DeepSpeed ZeRO-3 and TorchTrainer
+    
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item training llm pytorch huggingface nlp
+        :link: deepspeed_example
+        :link-type: ref
+
+        Distributed Training with Hugging Face Accelelate and TorchTrainer

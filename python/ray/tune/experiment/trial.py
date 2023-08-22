@@ -26,6 +26,7 @@ from ray.air.constants import (
 
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
+from ray.train._checkpoint import Checkpoint
 from ray.train._internal.checkpoint_manager import (
     _TrainingResult,
     _CheckpointManager as _NewCheckpointManager,
@@ -300,7 +301,7 @@ def _change_working_directory(trial):
     if ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
         old_dir = os.getcwd()
         try:
-            os.chdir(trial.logdir)
+            os.chdir(trial.local_path)
             yield
         finally:
             os.chdir(old_dir)
@@ -832,14 +833,16 @@ class Trial:
         return config.checkpoint_frequency
 
     @property
-    def checkpoint(self):
-        """Returns the most recent checkpoint.
-
-        If the trial is in ERROR state, the most recent PERSISTENT checkpoint
-        is returned.
-        """
+    def checkpoint(self) -> Optional[Checkpoint]:
+        """Returns the most recent checkpoint if one has been saved."""
         if _use_storage_context():
-            return self.run_metadata.checkpoint_manager.latest_checkpoint_result
+            checkpoint_manager = self.run_metadata.checkpoint_manager
+            latest_checkpoint_result = checkpoint_manager.latest_checkpoint_result
+            return (
+                latest_checkpoint_result.checkpoint
+                if latest_checkpoint_result
+                else None
+            )
 
         if self.status == Trial.ERROR:
             checkpoint = (
@@ -1074,7 +1077,7 @@ class Trial:
         self.temporary_state.restoring_from = None
         self.run_metadata.invalidate_cache()
 
-    def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
+    def on_checkpoint(self, checkpoint: Union[_TrackedCheckpoint, _TrainingResult]):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
