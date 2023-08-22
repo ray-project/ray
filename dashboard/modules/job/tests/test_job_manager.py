@@ -32,7 +32,11 @@ from ray.dashboard.consts import (
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
     RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
 )
-from ray.dashboard.modules.job.tests.conftest import create_ray_cluster, create_job_manager, _driver_script_path
+from ray.dashboard.modules.job.tests.conftest import (
+    create_ray_cluster,
+    create_job_manager,
+    _driver_script_path,
+)
 from ray.job_submission import JobStatus
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
 from ray.tests.conftest import call_ray_start  # noqa: F401
