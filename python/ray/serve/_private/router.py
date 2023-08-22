@@ -353,7 +353,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         event_loop: asyncio.AbstractEventLoop,
         deployment_id: DeploymentID,
-        locality_routing: bool,
+        locality_routing: bool = False,
         self_node_id: Optional[str] = None,
     ):
         self._loop = event_loop
