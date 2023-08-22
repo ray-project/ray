@@ -98,9 +98,10 @@ def test_tensorflow_checkpoint_saved_model():
                 tf.keras.layers.Dense(1),
             ]
         )
-        model.save("my_model")
-        checkpoint = TensorflowCheckpoint.from_saved_model("my_model")
-        train.report({"my_metric": 1}, checkpoint=checkpoint)
+        with tempfile.TemporaryDirectory() as tempdir:
+            model.save(tempdir)
+            checkpoint = TensorflowCheckpoint.from_saved_model(tempdir)
+            train.report({"my_metric": 1}, checkpoint=checkpoint)
 
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_fn, scaling_config=ScalingConfig(num_workers=2)
