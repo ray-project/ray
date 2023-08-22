@@ -105,7 +105,7 @@ class DreamerV3EnvRunner(EnvRunner):
                 asynchronous=self.config.remote_worker_envs,
                 **dict(self.config.env_config),
             )
-        # All other (gym) envs.
+        # All other envs (gym or `tune.register_env()`'d by the user).
         else:
             # Register the env in this local context here.
             gym.register(

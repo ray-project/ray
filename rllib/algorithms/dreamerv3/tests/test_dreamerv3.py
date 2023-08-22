@@ -18,9 +18,11 @@ import numpy as np
 
 import ray
 from ray.rllib.algorithms.dreamerv3 import dreamerv3
+from ray.rllib.algorithms.dreamerv3.utils.env_runner import OneHot
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import framework_iterator
+from ray import tune
 
 
 class TestDreamerV3(unittest.TestCase):
@@ -65,8 +67,16 @@ class TestDreamerV3(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config, frameworks="tf2"):
-            for env in ["CartPole-v1", "ALE/MsPacman-v5"]:
+            for env in ["FrozenLake-v1", "CartPole-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
+                # Add one-hot observations for FrozenLake env.
+                if env == "FrozenLake-v1":
+                    tune.register_env(
+                        "frozen-lake-one-hot",
+                        lambda ctx: OneHot(gym.make("FrozenLake-v1")),
+                    )
+                    env = "frozen-lake-one-hot"
+
                 config.environment(env)
                 algo = config.build()
                 obs_space = algo.workers.local_worker().env.single_observation_space
