@@ -281,6 +281,14 @@ def test_non_default_ports_visible_on_init(shutdown_only):
         subprocess.check_output("ray stop --force", shell=True)
 
 
+def test_get_and_write_node_ip_address(shutdown_only):
+    ray.init()
+    node = ray._private.worker.global_worker.node
+    node_ip = ray._private.services.get_node_ip_address()
+    cached_node_ip_address = node._get_cached_node_ip_address()
+    assert cached_node_ip_address.get(node.unique_id) == node_ip
+
+
 @pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")
 def test_ray_init_from_workers(ray_start_cluster):
     cluster = ray_start_cluster

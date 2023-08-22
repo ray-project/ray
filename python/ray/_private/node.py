@@ -190,15 +190,14 @@ class Node:
 
         node_ip_address = ray_params.node_ip_address
         if connect_only:
-            self._wait_for_node_address()
+            node_ip_address = self._wait_for_node_address()
         else:
             if node_ip_address is None:
                 node_ip_address = ray._private.services.resolve_ip_for_localhost(
                     ray_constants.NODE_DEFAULT_IP
                 )
-
-        node_ip_address = self._get_or_write_node_address(node_ip_address)
-
+        
+        assert node_ip_address is not None
         ray_params.update_if_absent(
             node_ip_address=node_ip_address, raylet_ip_address=node_ip_address
         )
@@ -276,6 +275,13 @@ class Node:
             "runtime_env_agent_port",
             default_port=ray_params.runtime_env_agent_port,
         )
+
+        # Write a node_ip_address to a file so that
+        # ray.init can pick up.
+        # This has to be done here because it requires
+        # self.unique_id to exist.
+        if not connect_only:
+            self._write_node_ip_address(node_ip_address)
 
         ray_params.update_if_absent(
             metrics_agent_port=self.metrics_agent_port,
@@ -944,36 +950,78 @@ class Node:
 
         return port
 
-    def _wait_for_node_address(self, timeout_s=60):
+    def _wait_for_node_address(self, timeout_s: int = 60) -> str:
         """Wait until the node_ip_address.json file is avialable.
 
         node_ip_address.json is created when a ray instance is started.
+
+        Args:
+            timeout_s: If the ip address is not found within this
+                timeout, it will raise ValueError.
+        Returns:
+            The node_ip_address of the current session if it finds it
+            within timeout_s.
         """
-        assert hasattr(self, "_session_dir")
-        NODE_IP_FILE_NAME = "node_ip_address.json"
-        file_path = Path(os.path.join(self.get_session_dir_path(), NODE_IP_FILE_NAME))
         for i in range(timeout_s):
-            if file_path.exists():
+            node_ip_address = self._get_cached_node_ip_address()
+
+            if node_ip_address is not None:
                 break
 
             time.sleep(1)
             if i % 10 == 0:
                 logger.info(
                     f"Can't find a `{NODE_IP_FILE_NAME}` file from "
-                    f"{file_path}."
+                    f"{file_path} or can't the unique id "
+                    f"{self.unique_id} from the file. "
                     "Have you started Ray instsance using "
                     "`ray start` or `ray.init`?"
                 )
             if i == MAX_WAIT_S:
                 raise ValueError(
-                    f"Can't find a `{NODE_IP_FILE_NAME}` file from {file_path}"
+                    f"Can't find a `{NODE_IP_FILE_NAME}` file from "
+                    f"{file_path} or can't the unique id "
+                    f"{self.unique_id} from the file "
                     f"for {MAX_WAIT_S} seconds"
                     "It means the ray instance hasn't started. "
                     "Did you do `ray start` or `ray.init` on this host?"
                 )
 
-    def _get_or_write_node_address(self, node_ip_address: str) -> str:
+    def _get_cached_node_ip_address(self) -> str:
         """Get a node address cached on this session.
+
+        If a ray instance is started by `ray start --node-ip-address`,
+        the node ip address is cached to a file node_ip_address.json.
+
+        This API is process-safe, meaning the file access is protected by
+        a file lock.
+
+        Returns:
+            node_ip_address cached on the current node. None if the node
+            ip addrss is not written to a file or the file doesn't exist.
+        """
+        assert hasattr(self, "_session_dir")
+        file_path = Path(
+            os.path.join(self.get_session_dir_path(), "node_ip_address.json")
+        )
+        cached_node_ip_address = {}
+        
+        if not file_path.exists():
+            return None
+
+        with FileLock(str(file_path.absolute()) + ".lock"):
+            with file_path.open() as f:
+                cached_node_ip_address.update(json.load(f))
+            
+            if self.unique_id in cached_node_ip_address:
+                return cached_node_ip_address[self.unique_id]
+            else:
+                return None
+
+
+    def _write_node_ip_address(self, node_ip_address: str) -> None:
+        """Write a node ip address of the current session to
+        node_ip_address.json.
 
         If a ray instance is started by `ray start --node-ip-address`,
         the node ip address is cached to a file node_ip_address.json.
@@ -983,9 +1031,6 @@ class Node:
 
         Args:
             node_ip_address: The node IP address of the current node.
-        Returns:
-            node_ip_address of the current node passed to ray start if it exists.
-            None otherwise.
         """
         assert hasattr(self, "_session_dir")
         file_path = Path(
@@ -1001,15 +1046,10 @@ class Node:
             with file_path.open() as f:
                 cached_node_ip_address.update(json.load(f))
 
-            if "node_ip_address" in cached_node_ip_address:
-                # The port has already been cached at this node, so use it.
-                node_ip_address = cached_node_ip_address["node_ip_address"]
-            else:
-                cached_node_ip_address["node_ip_address"] = node_ip_address
+            if self.unique_id not in cached_node_ip_address:
+                cached_node_ip_address[self.unique_id] = node_ip_address
                 with file_path.open(mode="w") as f:
                     json.dump(cached_node_ip_address, f)
-
-        return node_ip_address
 
     def start_reaper_process(self):
         """
