@@ -95,7 +95,7 @@ def _is_tracing_enabled() -> bool:
     return _global_is_tracing_enabled
 
 
-def _enable_tracing():
+def _enbale_tracing():
     global _global_is_tracing_enabled, _opentelemetry
     _global_is_tracing_enabled = True
     _opentelemetry = _OpenTelemetryProxy()
@@ -339,11 +339,6 @@ def _inject_tracing_into_function(function):
             ),
         ),
     )
-
-    # Skip wrapping if tracing is disabled (still add _ray_trace_ctx however to make
-    # sure _ray_trace_ctx could be passed)
-    if not _is_tracing_enabled():
-        return function
 
     @wraps(function)
     def _function_with_tracing(
