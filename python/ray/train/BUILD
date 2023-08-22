@@ -122,7 +122,7 @@ py_test(
     size = "small",
     main = "examples/pytorch/tune_torch_regression_example.py",
     srcs = ["examples/pytorch/tune_torch_regression_example.py"],
-    tags = ["team:ml", "exclusive", "tune", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "tune", "new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
