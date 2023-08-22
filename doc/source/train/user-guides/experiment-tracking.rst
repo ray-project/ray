@@ -27,10 +27,19 @@ Step 1: Decide a tracking service to use
 ----------------------------------------
 
 For easy configuration, we recommend the following:
-MLflow: file based tracking uri (``mlflow.start_run(tracking_uri=”file:some_shared_storage_location”)``)
+
+MLflow: 
+
+file based tracking uri (``mlflow.start_run(tracking_uri=”file:some_shared_storage_location”)``)
 or externally hosted by Databricks(``mlflow.start_run(tracking_uri=”databricks”)``).
-TensorBoard: a shared storage location where all nodes can write to ().
-W&B 
+
+TensorBoard: 
+
+A shared storage location where all nodes can write to.
+
+W&B:
+
+Should work out-of-the-box.
 
 Step 2: Make sure that all nodes and processes have access to credentials
 -------------------------------------------------------------------------
@@ -145,7 +154,7 @@ Conceptual code snippets
                 if train.get_context().get_world_rank() == 0:
                     mlflow.log_metrics(metrics)
 
-runnable code
+Runnable code
 ~~~~~~~~~~~~~
 
 .. tabs::
