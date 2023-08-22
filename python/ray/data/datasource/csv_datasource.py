@@ -32,10 +32,6 @@ class CSVDatasource(FileBasedDatasource):
         import pyarrow as pa
         from pyarrow import csv
 
-        # Remove local_uri from reader_args to avoid error in open_csv
-        if "local_uri" in reader_args:
-            reader_args.pop("local_uri")
-
         read_options = reader_args.pop(
             "read_options", csv.ReadOptions(use_threads=False)
         )
