@@ -158,7 +158,7 @@ def autodetect_tpu_version() -> Optional[str]:
     """
 
     def accelerator_type_to_version(accelerator_type: str) -> str:
-        return str(accelerator_type.split("-")[0]).upper()
+        return "TPU-" + str(accelerator_type.split("-")[0]).upper()
 
     # GKE-based check
     accelerator_type = os.getenv(

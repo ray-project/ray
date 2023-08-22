@@ -112,12 +112,12 @@ def test_autodetect_num_tpus_vfio(mock_glob):
 @pytest.mark.parametrize(
     "accelerator_type_version_tuple",
     [
-        ("v2-8", "V2"),
-        ("v2-32", "V2"),
-        ("v3-8", "V3"),
-        ("v3-128", "V3"),
-        ("v4-8", "V4"),
-        ("v4-2048", "V4"),
+        ("v2-8", "TPU-V2"),
+        ("v2-32", "TPU-V2"),
+        ("v3-8", "TPU-V3"),
+        ("v3-128", "TPU-V3"),
+        ("v4-8", "TPU-V4"),
+        ("v4-2048", "TPU-V4"),
     ],
 )
 @patch("requests.get")
@@ -133,12 +133,12 @@ def test_autodetect_tpu_version_gce(mock_request, accelerator_type_version_tuple
 @pytest.mark.parametrize(
     "accelerator_type_version_tuple",
     [
-        ("v2-8", "V2"),
-        ("v2-32", "V2"),
-        ("v3-8", "V3"),
-        ("v3-128", "V3"),
-        ("v4-8", "V4"),
-        ("v4-2048", "V4"),
+        ("v2-8", "TPU-V2"),
+        ("v2-32", "TPU-V2"),
+        ("v3-8", "TPU-V3"),
+        ("v3-128", "TPU-V3"),
+        ("v4-8", "TPU-V4"),
+        ("v4-2048", "TPU-V4"),
     ],
 )
 @patch("os.getenv")
