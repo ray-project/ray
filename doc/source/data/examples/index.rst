@@ -26,10 +26,6 @@ Ray Data Examples
 
 .. _data-recipes:
 
-Ray Data is a data processing engine that supports multiple data
-modalities and types. Here you will find a few end-to-end examples of some basic data
-processing with Ray Data on tabular data, text (coming soon), and images.
-
 Computer Vision
 ---------------
 .. grid:: 1 2 2 3

@@ -87,9 +87,9 @@ Ray Data uses Ray Core for execution, and is subject to the same scheduling cons
 Ray Data and placement groups
 -----------------------------
 
-By default, Ray Data configures its tasks and actors to use the cluster-default scheduling strategy ("DEFAULT"). You can inspect this configuration variable here:
+By default, Ray Data configures its tasks and actors to use the cluster-default scheduling strategy (``"DEFAULT"``). You can inspect this configuration variable here:
 :class:`ray.data.DataContext.get_current().scheduling_strategy <ray.data.DataContext>`. This scheduling strategy schedules these Tasks and Actors outside any present
-placement group. To force Ray Data to schedule tasks within the current placement group (i.e., to use current placement group resources specifically for Ray Data), set ``ray.data.DataContext.get_current().scheduling_strategy = None``.
+placement group. To use current placement group resources specifically for Ray Data, set ``ray.data.DataContext.get_current().scheduling_strategy = None``.
 
 Consider this override only for advanced use cases to improve performance predictability. The general recommendation is to let Ray Data run outside placement groups.
 
@@ -98,9 +98,9 @@ Consider this override only for advanced use cases to improve performance predic
 Ray Data and Tune
 -----------------
 
-When using Ray Data in conjunction with :ref:`Ray Tune <tune-main>`, it is important to ensure there are enough free CPUs for Ray Data to run on. By default, Tune will try to fully utilize cluster CPUs. This can prevent Ray Data from scheduling tasks, reducing performance or causing workloads to hang.
+When using Ray Data in conjunction with :ref:`Ray Tune <tune-main>`, it's important to ensure there are enough free CPUs for Ray Data to run on. By default, Tune tries to fully utilize cluster CPUs. This can prevent Ray Data from scheduling tasks, reducing performance or causing workloads to hang.
 
-To ensure CPU resources are always available for Ray Data execution, limit the number of concurrent Tune trials. This can be done using the ``max_concurrent_trials`` Tune option.
+To ensure CPU resources are always available for Ray Data execution, limit the number of concurrent Tune trials with the ``max_concurrent_trials`` Tune option.
 
 .. literalinclude:: ./doc_code/key_concepts.py
   :language: python
@@ -114,11 +114,11 @@ Execution
 
 Ray Data execution by default is:
 
-- **Lazy**: This means that transformations on Dataset are not executed until a
-  consumption operation (e.g. :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`)
-  or :meth:`Dataset.materialize() <ray.data.Dataset.materialize>` is called. This creates
-  opportunities for optimizing the execution plan (e.g. :ref:`stage fusion <datasets_stage_fusion>`).
-- **Streaming**: This means that Dataset transformations will be executed in a
+- **Lazy**: This means that transformations on Dataset aren't executed until you call a
+  consumption operation like :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`
+  or :meth:`Dataset.materialize() <ray.data.Dataset.materialize>`. This creates
+  opportunities for optimizing the execution plan like :ref:`stage fusion <datasets_stage_fusion>`.
+- **Streaming**: This means that Dataset transformations are executed in a
   streaming way, incrementally on the base data, instead of on all of the data
   at once, and overlapping the execution of operations. This can be used for streaming
   data loading into ML training to overlap the data preprocessing and model training,
@@ -139,11 +139,10 @@ writing (:meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`), or manual
 :meth:`ds.materialize() <ray.data.Dataset.materialize>`. There are a few
 exceptions to this rule, where transformations such as :meth:`ds.union()
 <ray.data.Dataset.union>` and
-:meth:`ds.limit() <ray.data.Dataset.limit>` trigger execution; we plan to make these
-operations lazy in the future.
+:meth:`ds.limit() <ray.data.Dataset.limit>` trigger execution.
 
 Check the API docs for Ray Data methods to see if they
-trigger execution. Those that do trigger execution will have a ``Note`` indicating as
+trigger execution. Those that do trigger execution have a ``Note`` indicating as
 much.
 
 .. _streaming_execution:
@@ -152,7 +151,7 @@ Streaming Execution
 -------------------
 
 The following code is a hello world example which invokes the execution with
-:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` consumption. We will also enable verbose progress reporting, which shows per-operator progress in addition to overall progress.
+:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` consumption. The example also enables verbose progress reporting, which shows per-operator progress in addition to overall progress.
 
 .. code-block::
 
@@ -177,19 +176,19 @@ The following code is a hello world example which invokes the execution with
    ):
        pass
 
-This launches a simple 4-stage pipeline. We use different compute args for each stage, which forces them to be run as separate operators instead of getting fused together. You should see a log message indicating streaming execution is being used:
+This launches a simple 4-stage pipeline. The example uses different compute arguments for each stage, which forces them to be run as separate operators instead of getting fused together. You should see a log message indicating streaming execution is being used:
 
 .. code-block::
 
    2023-03-30 16:40:10,076	INFO streaming_executor.py:83 -- Executing DAG InputDataBuffer[Input] -> TaskPoolMapOperator[ReadRange] -> TaskPoolMapOperator[MapBatches(sleep)] -> ActorPoolMapOperator[MapBatches(sleep)] -> TaskPoolMapOperator[MapBatches(sleep)]
 
-The next few lines will show execution progress. Here is how to interpret the output:
+The next few lines shows execution progress. Here is how to interpret the output:
 
 .. code-block::
 
    Running: 7.0/16.0 CPU, 0.0/0.0 GPU, 76.91 MiB/2.25 GiB object_store_memory 65%|██▊ | 130/200 [00:08<00:02, 22.52it/s]
 
-This line tells you how many resources are currently being used by the streaming executor out of the limits, as well as the number of completed output blocks. The streaming executor will attempt to keep resource usage under the printed limits by throttling task executions.
+This line tells you how many resources are currently being used by the streaming executor out of the limits, as well as the number of completed output blocks. The streaming executor attempts to keep resource usage under the printed limits by throttling task executions.
 
 .. code-block::
 
@@ -202,7 +201,7 @@ These lines are only shown when verbose progress reporting is enabled. The `acti
 
 .. tip::
 
-    Avoid returning large outputs from the final operation of a pipeline you are iterating over, since the consumer process will be a serial bottleneck.
+    Avoid returning large outputs from the final operation of a pipeline you are iterating over, since the consumer process is a serial bottleneck.
 
 Fault tolerance
 ---------------
@@ -221,19 +220,19 @@ system failure occurs, Ray Data recreates blocks by re-executing tasks.
 Stage Fusion Optimization
 -------------------------
 
-In order to reduce memory usage and task overheads, Ray Data will automatically fuse together
+In order to reduce memory usage and task overheads, Ray Data automatically fuses together
 lazy operations that are compatible:
 
 * Same compute pattern: embarrassingly parallel map vs. all-to-all shuffle
 * Same compute strategy: Ray tasks vs Ray actors
-* Same resource specification, e.g. ``num_cpus`` or ``num_gpus`` requests
+* Same resource specification, for example, ``num_cpus`` or ``num_gpus`` requests
 
-Read stages and subsequent map-like transformations will usually be fused together.
+Read stages and subsequent map-like transformations are usually fused together.
 All-to-all transformations such as
 :meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>` can be fused with earlier
 map-like stages, but not later stages.
 
-You can tell if stage fusion is enabled by checking the :ref:`Dataset stats <data_performance_tips>` and looking for fused stages (e.g., ``read->map_batches``).
+You can tell if stage fusion is enabled by checking the :ref:`Dataset stats <data_performance_tips>` and looking for fused stages (for example, ``read->map_batches``).
 
 .. code-block::
 
@@ -252,7 +251,7 @@ Execution Memory
 
 During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory via Ray's object store.
 
-Ray Data attempts to bound its heap memory usage to `num_execution_slots * max_block_size`. The number of execution slots is by default equal to the number of CPUs, unless custom resources are specified. The maximum block size is set by the configuration parameter `ray.data.DataContext.target_max_block_size` and is set to 512MiB by default. When a task's output is larger than this value, the worker will automatically split the output into multiple smaller blocks to avoid running out of heap memory.
+Ray Data attempts to bound its heap memory usage to ``num_execution_slots * max_block_size``. The number of execution slots is by default equal to the number of CPUs, unless custom resources are specified. The maximum block size is set by the configuration parameter `ray.data.DataContext.target_max_block_size` and is set to 512MiB by default. When a task's output is larger than this value, the worker automatically splits the output into multiple smaller blocks to avoid running out of heap memory.
 
 Large block size can lead to potential out-of-memory situations. To avoid these issues, make sure no single item in your Ray Data is too large, and always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with batch size small enough such that the output batch can comfortably fit into memory.
 
@@ -262,5 +261,5 @@ Object Store Memory
 Ray Data uses the Ray object store to store data blocks, which means it inherits the memory management features of the Ray object store. This section discusses the relevant features:
 
 * Object Spilling: Since Ray Data uses the Ray object store to store data blocks, any blocks that can't fit into object store memory are automatically spilled to disk. The objects are automatically reloaded when needed by downstream compute tasks:
-* Locality Scheduling: Ray will preferentially schedule compute tasks on nodes that already have a local copy of the object, reducing the need to transfer objects between nodes in the cluster.
+* Locality Scheduling: Ray preferentially schedules compute tasks on nodes that already have a local copy of the object, reducing the need to transfer objects between nodes in the cluster.
 * Reference Counting: Dataset blocks are kept alive by object store reference counting as long as there is any Dataset that references them. To free memory, delete any Python references to the Dataset object.
