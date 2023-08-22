@@ -420,7 +420,6 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
     auto total = resources.total.Get(resource_id);
     auto available = resources.available.Get(resource_id);
 
-    resources_data.set_resources_available_changed(true);
     (*resources_data.mutable_resources_available())[label] = available.Double();
     (*resources_data.mutable_resources_total())[label] = total.Double();
   }
@@ -428,14 +427,16 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   if (get_pull_manager_at_capacity_ != nullptr) {
     resources.object_pulls_queued = get_pull_manager_at_capacity_();
     resources_data.set_object_pulls_queued(resources.object_pulls_queued);
-    resources_data.set_resources_available_changed(true);
   }
 
-  resources_data.set_resources_available_changed(true);
-
-  const auto now = absl::Now();
-  resources_data.set_idle_duration_ms(
-      absl::ToInt64Milliseconds(now - GetResourceIdleTime().value_or(now)));
+  auto idle_time = GetResourceIdleTime();
+  if (idle_time.has_value()) {
+    // We round up the idle duration to the nearest millisecond such that the idle
+    // reporting would be correct even if it's less than 1 millisecond.
+    const auto now = absl::Now();
+    resources_data.set_idle_duration_ms(std::max(
+        static_cast<int64_t>(1), absl::ToInt64Milliseconds(now - idle_time.value())));
+  }
 
   resources_data.set_is_draining(IsLocalNodeDraining());
 
