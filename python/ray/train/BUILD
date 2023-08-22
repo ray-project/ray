@@ -272,7 +272,7 @@ py_test(
     name = "test_checkpoint",
     size = "small",
     srcs = ["tests/test_checkpoint.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"]
 )
 
