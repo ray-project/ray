@@ -81,7 +81,7 @@ Conceptual code snippets
 
             # assuming passing API key through config
             def train_func(config):
-                os.environ["WANDB_API_KEY"] = config["wandb_api_key"]
+                wandb.login(key=config["wandb_api_key"])
 
                 wandb.init(
                     id=..., # or train.get_context().get_trial_id(),
@@ -223,3 +223,21 @@ just for demonstration purposes.
     - `WandbLogger(id=UNIQUE_ID)`
     - `CometLogger(experiment_key=UNIQUE_ID)`
     - `MLFlowLogger(run_id=UNIQUE_ID)`
+
+Common Errors
+-------------
+
+1. I have already called ``wandb login`` cli, but still getting 
+"wandb: ERROR api_key not configured (no-tty). 
+call wandb.login(key=[your_api_key])."
+
+This is probably due to wandb credentials are not set up correctly
+on worker nodes. Make sure that you run ``wandb.login`` inside each
+training function. You can take a look at the example above.
+
+2. "databricks_cli.utils.InvalidConfigurationError: 
+You haven't configured the CLI yet!"
+
+This is usually caused by running ``databricks configure`` which 
+generates ``~/.databrickscfg`` only on head node. Move this file to a shared
+location that can be accessed by all nodes.
