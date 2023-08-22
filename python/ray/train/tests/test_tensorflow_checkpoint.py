@@ -8,7 +8,6 @@ import unittest
 
 from ray.train.tensorflow import (
     TensorflowCheckpoint,
-    LegacyTensorflowCheckpoint,
     TensorflowTrainer,
 )
 from ray import train
@@ -100,14 +99,14 @@ def test_tensorflow_checkpoint_saved_model():
             ]
         )
         model.save("my_model")
-        checkpoint = LegacyTensorflowCheckpoint.from_saved_model("my_model")
+        checkpoint = TensorflowCheckpoint.from_saved_model("my_model")
         train.report({"my_metric": 1}, checkpoint=checkpoint)
 
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_fn, scaling_config=ScalingConfig(num_workers=2)
     )
 
-    _ = trainer.fit().checkpoint
+    assert trainer.fit().checkpoint
 
 
 def test_tensorflow_checkpoint_h5():
@@ -123,14 +122,14 @@ def test_tensorflow_checkpoint_h5():
             ]
         )
         model.save("my_model.h5")
-        checkpoint = LegacyTensorflowCheckpoint.from_h5("my_model.h5")
+        checkpoint = TensorflowCheckpoint.from_h5("my_model.h5")
         train.report({"my_metric": 1}, checkpoint=checkpoint)
 
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func, scaling_config=ScalingConfig(num_workers=2)
     )
 
-    _ = trainer.fit().checkpoint
+    assert trainer.fit().checkpoint
 
 
 if __name__ == "__main__":
