@@ -344,7 +344,7 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     # Ensures the app is not yet deployed.
     app_name = "default"
     deployment_name = "grpc-deployment"
-    replica_name = f"{app_name}_{deployment_name}"
+    replica_name = DeploymentID(deployment_name, app_name)
     assert replica_name not in replicas
 
     channel = grpc.insecure_channel("localhost:9000")
@@ -385,7 +385,8 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
 
     # Ensures the app is deployed.
     deployment_name = "grpc-deployment-model-composition"
-    assert len(replicas[f"{app_name}_{deployment_name}"]) == 1
+    replica_name = DeploymentID(deployment_name, app_name)
+    assert len(replicas[replica_name]) == 1
 
     # Ensure model composition is responding correctly.
     ping_fruit_stand(channel, app_name)
@@ -420,7 +421,7 @@ def test_grpc_proxy_routing_without_metadata(ray_cluster):
 
     # Ensures the app is not yet deployed.
     deployment_name = "grpc-deployment"
-    app1_replica_name = f"{app1}_{deployment_name}"
+    app1_replica_name = DeploymentID(deployment_name, app1)
     replicas = ray.get(
         serve.context._global_client._controller._all_running_replicas.remote()
     )
@@ -452,8 +453,9 @@ def test_grpc_proxy_routing_without_metadata(ray_cluster):
     deployment_name = "grpc-deployment-model-composition"
 
     # Ensure both apps are deployed
-    assert len(replicas[f"{app2}_{deployment_name}"]) == 1
+    app2_replica_name = DeploymentID(deployment_name, app2)
     assert len(replicas[app1_replica_name]) == 1
+    assert len(replicas[app2_replica_name]) == 1
 
     # Ensure the gRPC request without metadata will now return not found response.
     with pytest.raises(grpc.RpcError) as exception_info:
@@ -492,7 +494,7 @@ def test_grpc_proxy_with_request_id(ray_cluster):
 
     # Ensures the app is not yet deployed.
     deployment_name = "grpc-deployment"
-    app1_replica_name = f"{app1}_{deployment_name}"
+    app1_replica_name = DeploymentID(deployment_name, app1)
     replicas = ray.get(
         serve.context._global_client._controller._all_running_replicas.remote()
     )
@@ -696,7 +698,7 @@ def test_grpc_proxy_timeouts(ray_instance):
 
     model = HelloModel.bind()
     app_name = "app1"
-    replica_name = f"{app_name}_HelloModel"
+    replica_name = DeploymentID("HelloModel", app_name)
     serve.run(target=model, name=app_name)
     replicas = ray.get(
         serve.context._global_client._controller._all_running_replicas.remote()
