@@ -29,40 +29,56 @@ scheduling::NodeID NodeLabelSchedulingPolicy::Schedule(
   const auto &node_label_scheduling_strategy =
       scheduling_strategy.node_label_scheduling_strategy();
   // 1. Selet feasible nodes
-  auto candidate_nodes = SelectFeasibleNodes(resource_request);
-  if (candidate_nodes.empty()) {
+  auto hard_match_nodes = SelectFeasibleNodes(resource_request);
+  if (hard_match_nodes.empty()) {
     return scheduling::NodeID::Nil();
   }
   // 2. Filter by hard expressions.
   if (node_label_scheduling_strategy.hard().expressions().size() > 0) {
-    candidate_nodes = FilterNodesByLabelMatchExpressions(
-        candidate_nodes, node_label_scheduling_strategy.hard());
-    if (candidate_nodes.empty()) {
+    hard_match_nodes = FilterNodesByLabelMatchExpressions(
+        hard_match_nodes, node_label_scheduling_strategy.hard());
+    if (hard_match_nodes.empty()) {
       return scheduling::NodeID::Nil();
     }
   }
 
   // 3. Filter by soft expressions.
+  absl::flat_hash_map<scheduling::NodeID, const Node *> hard_and_soft_match_nodes;
   const auto &soft_expressions = node_label_scheduling_strategy.soft();
   if (soft_expressions.expressions().size() > 0) {
-    auto match_nodes =
-        FilterNodesByLabelMatchExpressions(candidate_nodes, soft_expressions);
-    if (!match_nodes.empty()) {
-      candidate_nodes = match_nodes;
-    }
+    hard_and_soft_match_nodes =
+        FilterNodesByLabelMatchExpressions(hard_match_nodes, soft_expressions);
   }
 
-  return SelectBestNode(candidate_nodes, resource_request);
+  return SelectBestNode(hard_match_nodes, hard_and_soft_match_nodes, resource_request);
 }
 
 scheduling::NodeID NodeLabelSchedulingPolicy::SelectBestNode(
-    const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes,
+    const absl::flat_hash_map<scheduling::NodeID, const Node *> &hard_match_nodes,
+    const absl::flat_hash_map<scheduling::NodeID, const Node *>
+        &hard_and_soft_match_nodes,
     const ResourceRequest &resource_request) {
-  auto available_nodes = SelectAvailableNodes(candidate_nodes, resource_request);
-  if (available_nodes.empty()) {
-    return SelectRandomNode(candidate_nodes);
+  // 1. Match hard&soft and available nodes.
+  if (!hard_and_soft_match_nodes.empty()) {
+    auto available_soft_nodes =
+        SelectAvailableNodes(hard_and_soft_match_nodes, resource_request);
+    if (!available_soft_nodes.empty()) {
+      return SelectRandomNode(available_soft_nodes);
+    }
   }
-  return SelectRandomNode(available_nodes);
+
+  // 2. Match hard and available nodes.
+  auto available_nodes = SelectAvailableNodes(hard_match_nodes, resource_request);
+  if (!available_nodes.empty()) {
+    return SelectRandomNode(available_nodes);
+  }
+
+  // 3. Match hard&soft and feasible nodes.
+  if (!hard_and_soft_match_nodes.empty()) {
+    return SelectRandomNode(hard_and_soft_match_nodes);
+  }
+  // 4. Match hard and feasible nodes.
+  return SelectRandomNode(hard_match_nodes);
 }
 
 scheduling::NodeID NodeLabelSchedulingPolicy::SelectRandomNode(
