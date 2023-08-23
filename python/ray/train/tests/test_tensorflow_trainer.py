@@ -77,12 +77,15 @@ def test_report_and_load_using_ml_session(ray_start_4_cpus):
         else:
             model = build_model()
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            model.save(tmp_dir)
-            train.report(
-                metrics={"iter": 1},
-                checkpoint=TensorflowCheckpoint.from_saved_model(tmp_dir),
-            )
+        if train.get_context().get_world_rank() == 0:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                model.save(tmp_dir)
+                train.report(
+                    metrics={"iter": 1},
+                    checkpoint=TensorflowCheckpoint.from_saved_model(tmp_dir),
+                )
+        else:
+            train.report(metrics={"iter": 1})
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TensorflowTrainer(
