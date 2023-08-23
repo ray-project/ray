@@ -375,7 +375,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tune_restore_warm_start.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_new_storage"],
 )
 
 py_test(

@@ -483,7 +483,7 @@ class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
     def get_scheduler(self):
-        return HyperBandForBOHB(max_t=10, metric="loss", mode="min")
+        return HyperBandForBOHB(max_t=100, metric="loss", mode="min")
 
 
 if __name__ == "__main__":
