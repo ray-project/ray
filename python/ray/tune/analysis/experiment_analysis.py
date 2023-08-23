@@ -30,7 +30,6 @@ from ray.train._internal.storage import (
     _is_directory,
     _list_at_fs_path,
     _exists_at_fs_path,
-    get_fs_and_path,
 )
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.tune.execution.tune_controller import TuneController
@@ -121,9 +120,10 @@ class NewExperimentAnalysis:
         """Returns the filesystem and paths to the experiment directory
         + the experiment checkpoint file."""
         if storage_filesystem:
-            fs, experiment_fs_path = storage_filesystem, str(experiment_path)
+            fs = storage_filesystem
         else:
-            fs, experiment_fs_path = get_fs_and_path(experiment_path)
+            fs = pyarrow.fs.LocalFileSystem()
+        experiment_fs_path = str(experiment_path)
 
         if not _is_directory(fs, experiment_fs_path):
             experiment_json_fs_path = experiment_fs_path
