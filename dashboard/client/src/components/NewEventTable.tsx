@@ -170,10 +170,10 @@ const NewEventTable = (props: EventTableProps) => {
       <header className={classes.filterContainer}>
         <Autocomplete
           className={classes.search}
-          style={{ width: 150 }}
+          style={{ width: 300 }}
           options={SEVERITY_LEVEL_OPTIONS}
-          onInputChange={(_: any, value: string) => {
-            setFilters({ ...filters, severityLevel: [value.trim()] });
+          onChange={(_: any, value: string) => {
+            setFilters({ ...filters, severityLevel: [value] });
           }}
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="Severity" />
@@ -181,7 +181,7 @@ const NewEventTable = (props: EventTableProps) => {
         />
         <Autocomplete
           className={classes.search}
-          style={{ width: 150 }}
+          style={{ width: 300 }}
           options={SOURCE_TYPE_OPTIONS}
           onInputChange={(_: any, value: string) => {
             setFilters({ ...filters, sourceType: [value.trim()] });
@@ -193,6 +193,7 @@ const NewEventTable = (props: EventTableProps) => {
         <TextField
           className={classes.search}
           label="Message"
+          style={{ width: 300 }}
           InputProps={{
             onChange: ({ target: { value } }) => {
               changeFilter("message", value.trim()); // TODO: filter the message in the frontend and to filter it in the backend in the future
@@ -205,7 +206,7 @@ const NewEventTable = (props: EventTableProps) => {
           }}
         />
       </header>
-      <body>
+      <div>
         <TableContainer component={Paper}>
           <Table className={classes.tableContainer}>
             <TableHead>
@@ -241,8 +242,8 @@ const NewEventTable = (props: EventTableProps) => {
                       ? JSON.stringify(custom_fields)
                       : "-";
                   return (
-                    <React.Fragment>
-                      <TableRow key={event_id}>
+                    <React.Fragment key={event_id}>
+                      <TableRow>
                         <TableCell align="center">
                           <StatusChip status={severity} type={severity} />
                         </TableCell>
@@ -276,7 +277,7 @@ const NewEventTable = (props: EventTableProps) => {
             </TableBody>
           </Table>
         </TableContainer>
-      </body>
+      </div>
       <footer>
         <Pagination
           className={classes.pagination}
