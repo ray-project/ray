@@ -23,6 +23,7 @@ import { Align, Filters } from "../type/event";
 
 import { useFilter } from "../util/hook";
 import { SeverityLevel } from "./event";
+import Loading from "./Loading";
 import { StatusChip } from "./StatusChip";
 import { useEvents } from "./useEvents";
 
@@ -65,6 +66,10 @@ const useStyles = makeStyles((theme) => ({
   },
   pagination: {
     marginTop: theme.spacing(3),
+  },
+  root: {
+    height: 800,
+    paddingLeft: theme.spacing(1),
   },
 }));
 
@@ -163,49 +168,64 @@ const NewEventTable = (props: EventTableProps) => {
   } = useEventTable(props);
 
   if (loading) {
-    return <LinearProgress />;
+    return <Loading loading={loading} />;
   }
+
+  const controlHeader = (
+    <header className={classes.filterContainer}>
+      <Autocomplete
+        className={classes.search}
+        style={{ width: 150 }}
+        value={filters.severityLevel?.[0]}
+        options={SEVERITY_LEVEL_OPTIONS}
+        onInputChange={(_: any, value: string) => {
+          setFilters({ ...filters, severityLevel: [value.trim()] });
+        }}
+        renderInput={(params: TextFieldProps) => (
+          <TextField {...params} label="Severity" />
+        )}
+      />
+      <Autocomplete
+        className={classes.search}
+        style={{ width: 150 }}
+        value={filters.sourceType?.[0]}
+        options={SOURCE_TYPE_OPTIONS}
+        onInputChange={(_: any, value: string) => {
+          setFilters({ ...filters, sourceType: [value.trim()] });
+        }}
+        renderInput={(params: TextFieldProps) => (
+          <TextField {...params} label="Source" />
+        )}
+      />
+      <TextField
+        className={classes.search}
+        label="Message"
+        InputProps={{
+          onChange: ({ target: { value } }) => {
+            changeFilter("message", value.trim()); // TODO: filter the message in the frontend and to filter it in the backend in the future
+          },
+          endAdornment: (
+            <InputAdornment position="end">
+              <SearchOutlined />
+            </InputAdornment>
+          ),
+        }}
+      />
+    </header>
+  );
+  const eventsLen = events.length;
+  if (eventsLen < 1) {
+    return (
+      <div>
+        {controlHeader}
+        <p className={classes.root}>No events</p>;
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <header className={classes.filterContainer}>
-        <Autocomplete
-          className={classes.search}
-          style={{ width: 300 }}
-          options={SEVERITY_LEVEL_OPTIONS}
-          onChange={(_: any, value: string) => {
-            setFilters({ ...filters, severityLevel: [value] });
-          }}
-          renderInput={(params: TextFieldProps) => (
-            <TextField {...params} label="Severity" />
-          )}
-        />
-        <Autocomplete
-          className={classes.search}
-          style={{ width: 300 }}
-          options={SOURCE_TYPE_OPTIONS}
-          onInputChange={(_: any, value: string) => {
-            setFilters({ ...filters, sourceType: [value.trim()] });
-          }}
-          renderInput={(params: TextFieldProps) => (
-            <TextField {...params} label="Source" />
-          )}
-        />
-        <TextField
-          className={classes.search}
-          label="Message"
-          style={{ width: 300 }}
-          InputProps={{
-            onChange: ({ target: { value } }) => {
-              changeFilter("message", value.trim()); // TODO: filter the message in the frontend and to filter it in the backend in the future
-            },
-            endAdornment: (
-              <InputAdornment position="end">
-                <SearchOutlined />
-              </InputAdornment>
-            ),
-          }}
-        />
-      </header>
+    <div className={classes.root}>
+      {controlHeader}
       <div>
         <TableContainer component={Paper}>
           <Table className={classes.tableContainer}>

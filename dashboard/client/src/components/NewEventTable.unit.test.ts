@@ -1,4 +1,3 @@
-import { Filters } from "../type/event";
 import { appendToParams, transformFiltersToParams } from "./NewEventTableUtils";
 
 describe("appendToParams", () => {
@@ -20,18 +19,20 @@ describe("transformFiltersToParams", () => {
     expect(transformFiltersToParams(null)).toBe("");
   });
 
-  //   it.each([
-  //     [{ entityName: "someEntity", entityId: "12345" }, "someEntity=12345"],
-  //     [
-  //       { count: "10", sourceType: "api", severityLevel: "high" },
-  //       expect.stringContaining("count=10&sourceType=api&severityLevel=high"),
-  //     ],
-  //     [
-  //       { entityName: "someEntity", entityId: "12345", count: "10" },
-  //       expect.stringContaining("someEntity=12345&count=10"),
-  //     ],
-  //   ])("should transform filters: %j", (filters: Filters, expected) => {
-  //     const result = transformFiltersToParams(filters);
-  //     expect(result).toEqual(expected);
-  //   });
+  it.each([
+    [{ entityName: "job_id", entityId: "12345" }, "job_id=12345"],
+    [
+      { count: "10", sourceType: ["GCS"], severityLevel: ["INFO", "ERROR"] },
+      expect.stringContaining(
+        "count=10&sourceType=GCS&severityLevel=INFO&severityLevel=ERROR",
+      ),
+    ],
+    [
+      { entityName: "serve_app_name", entityId: "12345", count: "10" },
+      expect.stringContaining("serve_app_name=12345&count=10"),
+    ],
+  ])("should transform filters: %j", (filters: any, expected) => {
+    const result = transformFiltersToParams(filters);
+    expect(result).toEqual(expected);
+  });
 });
