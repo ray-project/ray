@@ -548,9 +548,11 @@ class Trial:
             )
 
         # Restoration fields
-        self._restore_checkpoint: Optional[_TrainingResult] = None
+        self.restore_path = restore_path
+        self._restore_checkpoint_result: Optional[_TrainingResult] = None
         if restore_path:
-            self._restore_checkpoint = _TrainingResult(
+            # tune.run(restore) passes in a path without metrics.
+            self._restore_checkpoint_result = _TrainingResult(
                 checkpoint=Checkpoint.from_directory(restore_path), metrics={}
             )
 
@@ -838,20 +840,22 @@ class Trial:
 
     @property
     def latest_checkpoint_result(self) -> Optional[_TrainingResult]:
-        return self.run_metadata.checkpoint_manager.latest_checkpoint_result
+        # NOTE: Fallback to the checkpoint passed in from `tune.run(restore)`
+        # if the trial hasn't saved any checkpoints itself yet.
+        return (
+            self.run_metadata.checkpoint_manager.latest_checkpoint_result
+            or self._restore_checkpoint_result
+        )
 
     @property
     def checkpoint(self) -> Optional[Checkpoint]:
         """Returns the most recent checkpoint if one has been saved."""
         if _use_storage_context():
-            latest_checkpoint_result = (
+            return (
                 self.latest_checkpoint_result.checkpoint
                 if self.latest_checkpoint_result
                 else None
             )
-            # NOTE: Fallback to the checkpoint passed in from `tune.run(restore)`
-            # if the trial hasn't saved any checkpoints itself yet.
-            return latest_checkpoint_result or self._restore_checkpoint
 
         if self.status == Trial.ERROR:
             checkpoint = (
@@ -1085,6 +1089,12 @@ class Trial:
         return self.checkpoint.dir_or_data is not None
 
     def clear_checkpoint(self):
+        if _use_storage_context():
+            if self.latest_checkpoint_result:
+                self.latest_checkpoint_result.checkpoint = None
+            self.temporary_state.restoring_from = None
+            self.run_metadata.invalidate_cache()
+
         self.checkpoint.dir_or_data = None
         self.temporary_state.restoring_from = None
         self.run_metadata.invalidate_cache()
