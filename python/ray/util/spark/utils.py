@@ -14,6 +14,7 @@ _logger = logging.getLogger("ray.util.spark.utils")
 def is_in_databricks_runtime():
     return "DATABRICKS_RUNTIME_VERSION" in os.environ
 
+
 def _convert_dbfs_path_to_local_path(dbfs_path):
     parsed_path = urlparse(dbfs_path)
     assert parsed_path.scheme.lower() == "dbfs", "dbfs path is required."

@@ -79,7 +79,11 @@ from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime, _convert_dbfs_path_to_local_path
+from ray.util.spark.utils import (
+    _convert_dbfs_path_to_local_path,
+    get_spark_session,
+    is_in_databricks_runtime,
+)
 
 if TYPE_CHECKING:
     import dask
@@ -819,7 +823,7 @@ def read_delta(
             from deltalake import DeltaTable
         except ImportError as e:
             raise Exception(f"Please install deltalake to use read_delta.") from e
-        
+
         # TODO: check the limitations of DeltaTable and params each version supports
         dt = DeltaTable(uri, version, storage_options)
         paths = dt.file_uris()

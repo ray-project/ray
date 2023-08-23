@@ -1,19 +1,25 @@
-from pyspark.sql import SparkSession
-import pytest
 import os
 import sys
 import tempfile
+
+import pytest
+from pyspark.sql import SparkSession
 
 from ray.data import read_delta
 
 
 @pytest.fixture(scope="module")
 def spark():
-    with (SparkSession.builder
-          .config("spark.jars.packages", "io.delta:delta-core_2.12:2.2.0")
-          .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-          .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-          .getOrCreate()
+    with (
+        SparkSession.builder.config(
+            "spark.jars.packages", "io.delta:delta-core_2.12:2.2.0"
+        )
+        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+        .config(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )
+        .getOrCreate()
     ) as spark:
         yield spark
 
