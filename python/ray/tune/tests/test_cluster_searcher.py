@@ -1,5 +1,6 @@
 import time
 import os
+from pathlib import Path
 
 import pytest
 import subprocess
@@ -7,9 +8,12 @@ import sys
 
 import ray
 from ray.cluster_utils import Cluster
+from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
 from ray.tune.experiment import Trial
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.utils.mock_trainable import MyTrainableClass
+
+from ray.train.tests.util import mock_storage_context
 
 
 def _start_new_cluster():
@@ -73,22 +77,23 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
-    trials = []
+    experiment_path = Path(experiment_path)
+    sleep_time = 3.0
     for i in range(100):
-        if TuneController.checkpoint_exists(experiment_path):
-            # Inspect the internal TuneController
-            runner = TuneController(resume="LOCAL", experiment_path=experiment_path)
-            trials = runner.get_trials()
-            if trials and len(trials) >= 10:
-                break
-        time.sleep(0.5)
-    else:
-        raise ValueError(f"Didn't generate enough trials: {len(trials)}")
+        if not experiment_path.exists():
+            time.sleep(sleep_time)
+            continue
 
-    if not TuneController.checkpoint_exists(experiment_path):
+        ea = NewExperimentAnalysis(experiment_path)
+        if len(ea.trials) >= 10:
+            break
+        time.sleep(sleep_time)
+    else:
+        raise ValueError(f"Didn't generate enough trials: {len(ea.trials)}")
+
+    if not list(experiment_path.glob("*.json")):
         raise RuntimeError(
-            f"Checkpoint file didn't appear in {experiment_path}. "
-            f"Current list: {os.listdir(experiment_path)}."
+            f"No experiment chekcpoint ever found at {experiment_path}..."
         )
 
     ray.shutdown()
@@ -102,24 +107,25 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     register_trainable("trainable", MyTrainableClass)
     reached = False
     for i in range(100):
-        if TuneController.checkpoint_exists(experiment_path):
-            # Inspect the internal TuneController
-            runner = TuneController(resume="LOCAL", experiment_path=experiment_path)
-            trials = runner.get_trials()
+        if not experiment_path.exists():
+            time.sleep(sleep_time)
+            continue
 
-            if len(trials) == 0:
-                continue  # nonblocking script hasn't resumed yet, wait
+        # Inspect the internal TuneController
+        ea = NewExperimentAnalysis(experiment_path)
+        trials = ea.trials
 
-            reached = True
-            assert len(trials) >= 10
-            assert len(trials) <= 20
-            if len(trials) == 20:
-                break
-            else:
-                stop_fn = runner.stop_trial
-                [stop_fn(t) for t in trials if t.status is not Trial.ERROR]
-        time.sleep(0.5)
-    assert reached is True
+        if len(trials) == 0:
+            continue  # nonblocking script hasn't resumed yet, wait
+
+        reached = True
+        assert len(trials) >= 10
+        assert len(trials) <= 20
+        if len(trials) == 20:
+            break
+        time.sleep(3.0)
+
+    assert reached
 
     ray.shutdown()
     cluster.shutdown()
