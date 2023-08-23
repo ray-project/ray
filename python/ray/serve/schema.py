@@ -856,6 +856,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
+    grpc_options: Optional[gRPCOptionsSchema] = Field(description="gRPC Proxy options.")
     http_proxies: Dict[str, HTTPProxyDetails] = Field(
         description=(
             "Mapping from node_id to details about the HTTP Proxy running on that node."

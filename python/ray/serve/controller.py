@@ -52,6 +52,7 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ApplicationDetails,
     ServeInstanceDetails,
+    gRPCOptionsSchema,
     HTTPOptionsSchema,
     ServeActorDetails,
 )
@@ -487,6 +488,12 @@ class ServeController:
             return None
         return self.http_proxy_state_manager.get_config()
 
+    def get_grpc_config(self):
+        """Return the gRPC proxy configuration."""
+        if self.http_proxy_state_manager is None:
+            return None
+        return self.http_proxy_state_manager.get_grpc_config()
+
     def get_root_url(self):
         """Return the root url for the serve instance."""
         if self.http_proxy_state_manager is None:
@@ -858,6 +865,7 @@ class ServeController:
         """
 
         http_config = self.get_http_config()
+        grpc_config = self.get_grpc_config()
         applications = {}
 
         for (
@@ -885,10 +893,12 @@ class ServeController:
         # route_prefix is set instead in each application.
         # Eventually we want to remove route_prefix from DeploymentSchema.
         http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
+        grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
         return ServeInstanceDetails(
             controller_info=self._actor_details,
             proxy_location=http_config.location,
             http_options=http_options,
+            grpc_options=grpc_options,
             http_proxies=self.http_proxy_state_manager.get_http_proxy_details()
             if self.http_proxy_state_manager
             else None,
