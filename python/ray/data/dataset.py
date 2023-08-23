@@ -115,6 +115,7 @@ from ray.data.context import (
 )
 from ray.data.datasource import (
     BlockWritePathProvider,
+    Connection,
     CSVDatasource,
     Datasource,
     DefaultBlockWritePathProvider,
@@ -123,6 +124,7 @@ from ray.data.datasource import (
     NumpyDatasource,
     ParquetDatasource,
     ReadTask,
+    SQLDatasource,
     TFRecordDatasource,
     WriteResult,
 )
@@ -3213,6 +3215,68 @@ class Dataset:
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
+        )
+
+    @ConsumptionAPI
+    def write_sql(
+        self,
+        sql: str,
+        connection_factory: Callable[[], Connection],
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Write to a database that provides a
+        `Python DB API2-compliant <https://peps.python.org/pep-0249/>`_ connector.
+
+        .. note::
+
+            This method writes data in parallel using the DB API2 ``executemany``
+            method. To learn more about this method, see
+            `PEP 249 <https://peps.python.org/pep-0249/#executemany>`_.
+
+        Examples:
+
+            .. testcode::
+
+                import sqlite3
+                import ray
+
+                connection = sqlite3.connect("example.db")
+                connection.cursor().execute("CREATE TABLE movie(title, year, score)")
+                dataset = ray.data.from_items([
+                    {"title": "Monty Python and the Holy Grail", "year": 1975, "score": 8.2},
+                    {"title": "And Now for Something Completely Different", "year": 1971, "score": 7.5}
+                ])
+
+                dataset.write_sql(
+                    "INSERT INTO movie VALUES(?, ?, ?)", lambda: sqlite3.connect("example.db")
+                )
+
+                result = connection.cursor().execute("SELECT * FROM movie ORDER BY year")
+                print(result.fetchall())
+
+            .. testoutput::
+
+                [('And Now for Something Completely Different', 1971, 7.5), ('Monty Python and the Holy Grail', 1975, 8.2)]
+
+            .. testcode::
+                :hide:
+
+                import os
+                os.remove("example.db")
+
+        Arguments:
+            sql: An ``INSERT INTO`` statement that specifies the table to write to. The
+                number of parameters must match the number of columns in the table.
+            connection_factory: A function that takes no arguments and returns a
+                Python DB API2
+                `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
+            ray_remote_args: Keyword arguments passed to :meth:`~ray.remote` in the
+                write tasks.
+        """  # noqa: E501
+        self.write_datasource(
+            SQLDatasource(connection_factory),
+            ray_remote_args=ray_remote_args,
+            sql=sql,
         )
 
     @ConsumptionAPI
