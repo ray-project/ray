@@ -9,6 +9,7 @@ from ray import serve
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.http_proxy import DRAINED_MESSAGE
+from ray.serve.config import gRPCOptions
 from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray.serve.exceptions import RayServeException
 
@@ -318,8 +319,9 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     """Test serving request through gRPC proxy.
 
     When Serve runs with a gRPC deployment, the app should be deployed successfully,
-    both ListApplications and Healthz methods returning success response, and registered
-    gRPC methods are routing to the correct replica and return the correct response.
+    both ListApplications and Healthz methods returning successful responses, and
+    registered gRPC methods are routing to the correct replica and return the correct
+    response.
     """
     cluster = ray_cluster
     cluster.add_node(num_cpus=2)
@@ -332,10 +334,10 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     ]
 
     serve.start(
-        grpc_options={
-            "port": grpc_port,
-            "grpc_servicer_functions": grpc_servicer_functions,
-        },
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
     )
     replicas = ray.get(
         serve.context._global_client._controller._all_running_replicas.remote()
@@ -409,10 +411,10 @@ def test_grpc_proxy_routing_without_metadata(ray_cluster):
     ]
 
     serve.start(
-        grpc_options={
-            "port": grpc_port,
-            "grpc_servicer_functions": grpc_servicer_functions,
-        },
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
     )
 
     app1 = "app1"
@@ -460,7 +462,7 @@ def test_grpc_proxy_routing_without_metadata(ray_cluster):
         _, _ = stub.__call__.with_call(request=request)
     rpc_error = exception_info.value
     assert rpc_error.code() == grpc.StatusCode.NOT_FOUND
-    assert "Application '' not found." in rpc_error.details()
+    assert "Application metadata not set" in rpc_error.details()
 
 
 def test_grpc_proxy_with_request_id(ray_cluster):
@@ -481,10 +483,10 @@ def test_grpc_proxy_with_request_id(ray_cluster):
     ]
 
     serve.start(
-        grpc_options={
-            "port": grpc_port,
-            "grpc_servicer_functions": grpc_servicer_functions,
-        },
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
     )
 
     app1 = "app1"
@@ -554,10 +556,10 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     ]
     serve.start(
         http_options={"location": "EveryNode"},
-        grpc_options={
-            "port": head_node_grpc_port,
-            "grpc_servicer_functions": grpc_servicer_functions,
-        },
+        grpc_options=gRPCOptions(
+            port=head_node_grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
     )
 
     # Deploy 2 replicas, both should be on the worker node.
@@ -672,10 +674,10 @@ def test_grpc_proxy_timeouts(ray_instance):
     ]
 
     serve.start(
-        grpc_options={
-            "port": grpc_port,
-            "grpc_servicer_functions": grpc_servicer_functions,
-        },
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
     )
 
     @serve.deployment()

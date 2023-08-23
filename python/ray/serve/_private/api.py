@@ -295,8 +295,9 @@ def serve_start(
         grpc_options (Optional[Union[dict, gRPCOptions]]): [Experimental] Configuration
             options for gRPC proxy. You can pass in a gRPCOptions object with fields:
                 - port(int): Port for gRPC server. Defaults to 9000.
-                - grpc_servicer_functions(list): The list of functions that will be used
-                    to add custom service methods to the gRPC server. Defaults to [].
+                - grpc_servicer_functions(list): List of import paths for gRPC
+                    `add_servicer_to_server` functions to add to Serve's gRPC proxy.
+                    Default empty list, meaning not to start the gRPC server.
     """
 
     usage_lib.record_library_usage("serve")

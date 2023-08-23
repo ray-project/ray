@@ -638,8 +638,12 @@ class gRPCProxy(GenericProxy):
         return str(grpc.StatusCode.OK)
 
     async def not_found(self, proxy_request: ProxyRequest) -> ProxyResponse:
+        if not proxy_request.app_name:
+            application_message = "Application metadata not set."
+        else:
+            application_message = f"Application '{proxy_request.app_name}' not found."
         not_found_message = (
-            f"Application '{proxy_request.app_name}' not found. Please ping "
+            f"{application_message} Please ping "
             "/ray.serve.RayServeAPIService/ListApplications for available applications."
         )
         status_code = grpc.StatusCode.NOT_FOUND
@@ -1433,17 +1437,17 @@ class HTTPProxyActor:
         """Returns when both HTTP and gRPC proxies are ready to serve traffic.
         Or throw exception when either proxy is not able to serve traffic.
         """
-        setup_task_http = get_or_create_event_loop().create_task(
+        http_setup_complete_wait_task = get_or_create_event_loop().create_task(
             self.http_setup_complete.wait()
         )
-        setup_task_grpc = get_or_create_event_loop().create_task(
+        grpc_setup_complete_wait_task = get_or_create_event_loop().create_task(
             self.grpc_setup_complete.wait()
         )
 
         waiting_tasks_http = [
             # Either the HTTP setup has completed.
             # The event is set inside self.run_http_server.
-            setup_task_http,
+            http_setup_complete_wait_task,
             # Or self.run_http_server errored.
             self.running_task_http,
         ]
@@ -1454,7 +1458,7 @@ class HTTPProxyActor:
         waiting_tasks_grpc = [
             # Either the gRPC setup has completed.
             # The event is set inside self.run_grpc_server.
-            setup_task_grpc,
+            grpc_setup_complete_wait_task,
             # Or self.run_grpc_server errored.
             self.running_task_grpc,
         ]
@@ -1463,7 +1467,8 @@ class HTTPProxyActor:
             return_when=asyncio.FIRST_COMPLETED,
         )
 
-        # Return metadata, or re-throw the exception from self.running_task.
+        # Return metadata, or re-throw the exception from self.running_task_http and
+        # self.running_task_grpc.
         if self.http_setup_complete.is_set() and self.grpc_setup_complete.is_set():
             # NOTE(zcin): We need to convert the metadata to a json string because
             # of cross-language scenarios. Java can't deserialize a Python tuple.
@@ -1510,7 +1515,7 @@ class HTTPProxyActor:
         self._uvicorn_server.install_signal_handlers = lambda: None
 
         logger.info(
-            "Starting HTTP server with on node: "
+            "Starting HTTP server on node: "
             f"{ray.get_runtime_context().get_node_id()} "
             f"listening on port {self.port}"
         )
@@ -1526,13 +1531,23 @@ class HTTPProxyActor:
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
+
+        # Dummy servicer is used to be callable for the gRPC server. Serve have a
+        # custom gRPC server implementation to redirect calls into gRPCProxy.
+        # See: ray/serve/_private/grpc_util.py
         dummy_servicer = DummyServicer()
+
+        # Add Ray Serve gRPC service and methods (e.g. ListApplications and Healthz).
         add_RayServeAPIServiceServicer_to_server(dummy_servicer, grpc_server)
+
+        # Iterate through each of user provided gRPC servicer functions and add user
+        # defined services and methods.
         for grpc_servicer_function in self.grpc_options.grpc_servicer_func_callable:
             grpc_servicer_function(dummy_servicer, grpc_server)
+
         await grpc_server.start()
         logger.info(
-            "Starting gRPC server with on node: "
+            "Starting gRPC server on node: "
             f"{ray.get_runtime_context().get_node_id()} "
             f"listening on port {self.grpc_port}"
         )
