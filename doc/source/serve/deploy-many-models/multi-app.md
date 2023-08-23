@@ -3,12 +3,16 @@
 
 In Ray 2.4+, deploying multiple independent Serve applications is supported. This user guide walks through how to generate a multi-application config file and deploy it using the Serve CLI, and monitor your applications using the CLI and the Ray Serve dashboard.
 
-## When to Use Multiple Applications
+## Context
+### Background 
 With the introduction of multi-application Serve, we walk you through the new concept of applications and when you should choose to deploy a single application versus multiple applications per cluster. 
 
 An application consists of one or more deployments. The deployments in an application are tied into a direct acyclic graph through [model composition](serve-model-composition). An application can be called via HTTP at the specified route prefix, and the ingress deployment handles all such inbound traffic. Due to the dependence between deployments in an application, one application is a unit of upgrade. 
 
-With that in mind, if you have many independent models each behind different endpoints, and you want to be able to easily add, delete, or update these models, then you should use multiple applications. Each model should then be deployed as a separate application. On the other hand, if you have ML logic and business logic distributed among separate deployments that all need to be executed for a single request, then you should use model composition to build a single application consisting of multiple deployments.
+### When to Use Multiple Applications
+Since one application is a unit of upgrade, one of the main benefits of having multiple applications is that you can deploy multiple models or groups of models that communicate with each other, while still being able to upgrade each application independently.
+
+If you have many independent models each behind different endpoints, and you want to be able to easily add, delete, or upgrade these models, then you should use multiple applications. Each model should then be deployed as a separate application. On the other hand, if you have ML logic and business logic distributed among separate deployments that all need to be executed for a single request, then you should use model composition to build a single application consisting of multiple deployments.
 
 
 ## Get Started
@@ -191,6 +195,12 @@ The config submitted to the cluster describes the target state for Ray Serve. Co
 :::{note}
 The update behavior for each application when a config is resubmitted is the same as the old single-application behavior. For how an application reacts to different config changes, see [Updating a Serve Application](serve-inplace-updates).
 :::
+
+## Sending requests to applications using Serve handle
+Sometimes, you may want to send a request to an application without using HTTP. For instance, if you want to invoke one application from within another Serve application, it would be inefficient to send the request through HTTP.
+
+For this situation, you can use the Serve API `serve.get_app_handle` to get a handle to any live Serve application. This handle can be used to directly execute a request on an application. For instance
+
 
 ## New Multi-Application Config
 
