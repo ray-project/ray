@@ -14,7 +14,7 @@ from ray import serve
 from ray.serve.context import get_global_client
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ReplicaStartupStatus
-from ray.serve._private.common import ReplicaState
+from ray.serve._private.common import DeploymentID, ReplicaState
 
 
 @pytest.fixture
@@ -146,8 +146,10 @@ def test_replica_startup_status_transitions(ray_cluster):
     E.deploy(_blocking=False)
 
     def get_replicas(replica_state):
-        controller = client._controller
-        replicas = ray.get(controller._dump_replica_states_for_testing.remote(E.name))
+        controller = serve_instance._controller
+        replicas = ray.get(
+            controller._dump_replica_states_for_testing.remote(DeploymentID(E.name, ""))
+        )
         return replicas.get([replica_state])
 
     # wait for serve to start the replica, and catch a reference to it.

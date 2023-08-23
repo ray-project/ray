@@ -1,4 +1,6 @@
 import os
+import tempfile
+
 import pytest
 
 import ray
@@ -9,10 +11,7 @@ from ray.train.examples.tf.tensorflow_regression_example import (
 )
 from ray.data.preprocessors import Concatenator
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.tensorflow import (
-    TensorflowTrainer,
-    LegacyTensorflowCheckpoint,
-)
+from ray.train.tensorflow import TensorflowTrainer, TensorflowCheckpoint
 
 
 @pytest.fixture
@@ -63,20 +62,8 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
         scaling_config=scaling_config,
         datasets={TRAIN_DATASET_KEY: dataset},
     )
-    trainer.fit()
-
-
-def test_tensorflow_e2e(ray_start_4_cpus):
-    def train_func():
-        model = build_model()
-        train.report({}, checkpoint=LegacyTensorflowCheckpoint.from_model(model))
-
-    scaling_config = ScalingConfig(num_workers=2)
-    trainer = TensorflowTrainer(
-        train_loop_per_worker=train_func,
-        scaling_config=scaling_config,
-    )
-    trainer.fit()
+    result = trainer.fit()
+    assert result.checkpoint
 
 
 def test_report_and_load_using_ml_session(ray_start_4_cpus):
@@ -90,11 +77,15 @@ def test_report_and_load_using_ml_session(ray_start_4_cpus):
         else:
             model = build_model()
 
-        model.save("my_model")
-        train.report(
-            metrics={"iter": 1},
-            checkpoint=LegacyTensorflowCheckpoint.from_saved_model("my_model"),
-        )
+        if train.get_context().get_world_rank() == 0:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                model.save(tmp_dir)
+                train.report(
+                    metrics={"iter": 1},
+                    checkpoint=TensorflowCheckpoint.from_saved_model(tmp_dir),
+                )
+        else:
+            train.report(metrics={"iter": 1})
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TensorflowTrainer(

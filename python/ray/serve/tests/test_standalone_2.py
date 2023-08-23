@@ -15,11 +15,7 @@ from ray.util.state import list_actors
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.constants import (
-    SERVE_NAMESPACE,
-    SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
+from ray.serve._private.constants import SERVE_NAMESPACE, SERVE_DEFAULT_APP_NAME
 from ray.serve.context import get_global_client
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
@@ -200,10 +196,7 @@ def test_get_serve_status(shutdown_ray_and_serve):
     client = get_global_client()
     status_info_1 = client.get_serve_status()
     assert status_info_1.app_status.status == "RUNNING"
-    assert (
-        status_info_1.deployment_statuses[0].name
-        == f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
-    )
+    assert status_info_1.deployment_statuses[0].name == "f"
     assert status_info_1.deployment_statuses[0].status in {"UPDATING", "HEALTHY"}
 
 
@@ -250,7 +243,7 @@ def test_controller_deserialization_deployment_def(
     )
     ray.get(run_graph.remote())
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -370,14 +363,20 @@ serve.run(B.bind())"""
         # Driver 1 (starts Serve controller)
         output = subprocess.check_output(["python", f1.name], stderr=subprocess.STDOUT)
         assert "Connecting to existing Ray cluster" in output.decode("utf-8")
-        assert "Adding 1 replica to deployment default_A" in output.decode("utf-8")
+        assert (
+            "Adding 1 replica to deployment A in application 'default'"
+            in output.decode("utf-8")
+        )
 
         f2.write(file2.encode("utf-8"))
         f2.seek(0)
         # Driver 2 (reconnects to the same Serve controller)
         output = subprocess.check_output(["python", f2.name], stderr=subprocess.STDOUT)
         assert "Connecting to existing Ray cluster" in output.decode("utf-8")
-        assert "Adding 1 replica to deployment default_B" in output.decode("utf-8")
+        assert (
+            "Adding 1 replica to deployment B in application 'default'"
+            in output.decode("utf-8")
+        )
 
 
 if __name__ == "__main__":

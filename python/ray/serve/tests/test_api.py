@@ -21,10 +21,8 @@ from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle, RayServeHandle
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
-from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.common import DeploymentID
 
 
 @serve.deployment()
@@ -329,7 +327,7 @@ def test_delete_deployment_group(serve_instance, blocking):
             )
 
             wait_for_condition(
-                lambda: len(serve_instance.list_deployments()) == 0,
+                lambda: len(serve_instance.list_deployments_v1()) == 0,
                 timeout=5,
             )
 
@@ -550,10 +548,7 @@ def test_deployment_name_with_app_name(serve_instance):
 
     serve.run(g.bind())
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert (
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}g"
-        in deployment_info
-    )
+    assert DeploymentID("g", SERVE_DEFAULT_APP_NAME) in deployment_info
 
     @serve.deployment
     def f():
@@ -561,7 +556,7 @@ def test_deployment_name_with_app_name(serve_instance):
 
     serve.run(f.bind(), route_prefix="/f", name="app1")
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert "app1_f" in deployment_info
+    assert DeploymentID("f", "app1") in deployment_info
 
 
 def test_deploy_application_with_same_name(serve_instance):
@@ -578,7 +573,7 @@ def test_deploy_application_with_same_name(serve_instance):
     assert ray.get(handle.remote()) == "got model"
     assert requests.get("http://127.0.0.1:8000/").text == "got model"
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert "app_Model" in deployment_info
+    assert DeploymentID("Model", "app") in deployment_info
 
     # After deploying a new app with the same name, no Model replicas should be running
     @serve.deployment
@@ -590,8 +585,11 @@ def test_deploy_application_with_same_name(serve_instance):
     assert ray.get(handle.remote()) == "got model1"
     assert requests.get("http://127.0.0.1:8000/").text == "got model1"
     deployment_info = ray.get(controller._all_running_replicas.remote())
-    assert "app_Model1" in deployment_info
-    assert "app_Model" not in deployment_info or deployment_info["app_Model"] == []
+    assert DeploymentID("Model1", "app") in deployment_info
+    assert (
+        DeploymentID("Model", "app") not in deployment_info
+        or deployment_info[DeploymentID("Model", "app")] == []
+    )
 
     # Redeploy with same app to update route prefix
     handle = serve.run(Model1.bind(), name="app", route_prefix="/my_app")
@@ -901,13 +899,10 @@ def test_status_basic(serve_instance):
     assert ray.get(handle_1.remote(8)) == 9
     assert ray.get(handle_2.remote()) == "hello world"
 
-    expected_dep_1 = {"plus_A"}
-    expected_dep_2 = {"hello_MyDriver", "hello_f"}
-
     app_status = serve.status().applications
     assert len(app_status) == 2
-    assert set(app_status["plus"].deployments.keys()) == expected_dep_1
-    assert set(app_status["hello"].deployments.keys()) == expected_dep_2
+    assert set(app_status["plus"].deployments.keys()) == {"A"}
+    assert set(app_status["hello"].deployments.keys()) == {"MyDriver", "f"}
     for d in app_status["plus"].deployments.values():
         assert d.status == "HEALTHY" and d.replica_states == {"RUNNING": 1}
     for d in app_status["plus"].deployments.values():
@@ -934,8 +929,7 @@ def test_status_constructor_error(serve_instance):
         error_substr = "ZeroDivisionError: division by zero"
         return (
             default_app.status == "DEPLOY_FAILED"
-            and error_substr
-            in default_app.deployments[f"{SERVE_DEFAULT_APP_NAME}_A"].message
+            and error_substr in default_app.deployments["A"].message
         )
 
     wait_for_condition(check_for_failed_deployment)
@@ -969,8 +963,7 @@ def test_status_package_unavailable_in_controller(serve_instance):
         default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         return (
             default_app.status == "DEPLOY_FAILED"
-            and "some_wrong_url"
-            in default_app.deployments[f"{SERVE_DEFAULT_APP_NAME}_MyDeployment"].message
+            and "some_wrong_url" in default_app.deployments["MyDeployment"].message
         )
 
     wait_for_condition(check_for_failed_deployment, timeout=15)
