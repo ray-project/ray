@@ -14,6 +14,8 @@ from ray.air.constants import (  # noqa: F401
     EXPR_ERROR_FILE,
 )
 
+from ray.train.constants import CHECKPOINT_DIR_NAME
+
 # fmt: off
 # __sphinx_doc_begin__
 # (Optional/Auto-filled) training is terminated. Filled only if not provided.
@@ -105,6 +107,7 @@ AUTO_RESULT_KEYS = (
     "timesteps_since_restore",
     "iterations_since_restore",
     "config",
+    CHECKPOINT_DIR_NAME,
 )
 
 # __duplicate__ is a magic keyword used internally to
