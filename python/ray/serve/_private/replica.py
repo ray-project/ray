@@ -359,7 +359,7 @@ def create_replica_wrapper(name: str):
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], gRPCRequest
                 )
-                generator = self.replica.call_user_method_with_grpc_unary_request_streaming_response(
+                generator = self.replica.call_user_method_with_grpc_unary_stream(
                     request_metadata, request_args[0]
                 )
             elif request_metadata.is_http_request:
@@ -755,7 +755,7 @@ class RayServeReplica:
             self.error_counter.inc(tags={"route": request_metadata.route})
             raise user_exception from None
 
-    async def call_user_method_with_grpc_unary_request_streaming_response(
+    async def call_user_method_with_grpc_unary_stream(
         self, request_metadata: RequestMetadata, request: gRPCRequest
     ) -> AsyncGenerator[bytes, None]:
         """Call a user method that is expected to be a generator.
