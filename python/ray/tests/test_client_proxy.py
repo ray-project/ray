@@ -88,11 +88,16 @@ def test_proxy_manager_bad_startup(shutdown_only):
     """
     pm, free_ports = start_ray_and_proxy_manager(n_ports=2)
     client = "client1"
+    ctx = ray.init(ignore_reinit_error=True)
+    port_to_conflict = ctx.dashboard_url.split(":")[1]
 
     pm.create_specific_server(client)
-    assert not pm.start_specific_server(
+    # Intentionally bind to the wrong port so that the
+    # server will crash.
+    pm._get_server_for_client(client).port = port_to_conflict
+    pm.start_specific_server(
         client,
-        JobConfig(runtime_env={"conda": "conda-env-that-sadly-does-not-exist"}),
+        JobConfig(),
     )
     # Wait for reconcile loop
     time.sleep(2)
