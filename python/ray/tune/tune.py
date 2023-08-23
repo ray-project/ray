@@ -28,7 +28,7 @@ from ray.air import CheckpointConfig
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
-from ray.train._internal.storage import _use_storage_context
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
 from ray.tune.callback import Callback
@@ -1165,12 +1165,20 @@ def run(
             )
 
     if _use_storage_context():
+        # TODO(ekl) construct the storage context just once at the start of the run.
+        # We need it here to resolve the filesystem relative to the given path.
+        storage = StorageContext(
+            storage_path=storage_path,
+            storage_filesystem=storage_filesystem,
+            sync_config=sync_config,
+            experiment_dir_name=name,
+        )
         return NewExperimentAnalysis(
             experiment_checkpoint_path=runner.experiment_path,
             default_metric=metric,
             default_mode=mode,
             trials=all_trials,
-            storage_filesystem=storage_filesystem,
+            storage_filesystem=storage.storage_filesystem,
         )
     else:
         return ExperimentAnalysis(
