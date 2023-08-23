@@ -42,7 +42,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ## Step 4: Run experiments
 
 * Step 4.1: Make sure the `kubectl` CLI can connect to your GKE cluster. If not, run `gcloud auth login`.
-* Step 4.2: Run an experiment
+* Step 4.2: Run an experiment.
   ```sh
   # You can modify `memory_benchmark_utils` to run the experiment you want to run.
   # (path: benchmark/memory_benchmark/scripts)
@@ -50,9 +50,9 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
   ```
 * Step 4.3: Follow [prometheus-grafana.md](https://github.com/ray-project/kuberay/blob/master/docs/guidance/prometheus-grafana.md#step-2-install-kubernetes-prometheus-stack-via-helm-chart) to access Grafana's dashboard.
   * Sign into the Grafana dashboard.
-  * Click on "Dashboards"
-  * Select "Kubernetes / Compute Resources / Pod"
-  * You will see the "Memory Usage" panel for the KubeRay operator Pod.
+  * Click on "Dashboards".
+  * Select "Kubernetes / Compute Resources / Pod".
+  * Locate the "Memory Usage" panel for the KubeRay operator Pod.
   * Select the time range, then click on "Inspect" followed by "Data" to download the memory usage data of the KubeRay operator Pod.
 * Step 4.4: Delete all RayCluster custom resources.
   ```sh
@@ -62,28 +62,28 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 
 # Experiments
 
-We've designed three benchmark experiments:
+This benchmark is based on three benchmark experiments:
 
 * Experiment 1: Launch a RayCluster with 1 head and no workers. A new cluster is initiated every 20 seconds until there are a total of 150 RayCluster custom resources.
-* Experiment 2: In the Kubernetes cluster, there is only 1 RayCluster. Add 5 new worker Pods to this RayCluster every 60 seconds until the total reaches 150 Pods.
-* Experiment 3: Create a 5-node (1 head + 4 workers) RayCluster every 60 seconds until there are 30 RayCluster custom resources.
+* Experiment 2: Create a Kubernetes cluster, with only 1 RayCluster. Add 5 new worker Pods to this RayCluster every 60 seconds until the total reaches 150 Pods.
+* Experiment 3: Create a 5-node (1 head + 4 workers) RayCluster every 60 seconds up to 30 RayCluster custom resources.
 
-Based on [the survey](https://forms.gle/KtMLzjXcKoeSTj359) for KubeRay users, we decided to set our benchmark target at 150 Ray Pods which can cover most use cases.
+Based on [the survey](https://forms.gle/KtMLzjXcKoeSTj359) for KubeRay users, the benchmark target is set at 150 Ray Pods to cover most use cases.
 
 ## Experiment results (KubeRay v0.6.0)
 
 ![benchmark result](../images/benchmark_result.png)
 
-* You can generate the figure by running:
+* You can generate the above figure by running:
   ```sh
   # (path: benchmark/memory_benchmark/scripts)
   python3 experiment_figures.py
   # The output image `benchmark_result.png` will be stored in `scripts/`.
   ```
 
-* As shown in the figure, the memory usage of the KubeRay operator Pod is highly positively correlated to the number of Pods in the Kubernetes cluster.
-In addition, the number of custom resources in the Kubernetes cluster does not have a big impact on the memory usage.
+* As shown in the figure, the memory usage of the KubeRay operator Pod is highly and positively correlated to the number of Pods in the Kubernetes cluster.
+In addition, the number of custom resources in the Kubernetes cluster does not have a significant impact on the memory usage.
 * Note that the x-axis "Number of Pods" is the number of Pods that are created rather than running.
-If the Kubernetes cluster does not have enough computing resources, the GKE Autopilot will add a new Kubernetes node into the cluster.
+If the Kubernetes cluster does not have enough computing resources, the GKE Autopilot adds a new Kubernetes node into the cluster.
 This process may take a few minutes, so some Pods may be pending in the process.
-This may be the reason why the memory usage is somewhat throttled.
+This lag may can explain why the memory usage is somewhat throttled.
