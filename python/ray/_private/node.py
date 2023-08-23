@@ -953,6 +953,11 @@ class Node:
             The node_ip_address of the current session if it finds it
             within timeout_s.
         """
+        logger.error(f"Read file from {self.get_session_dir_path()}")
+        path = Path(self.get_session_dir_path())
+        file_names = [f.name for f in path.iterdir() if f.is_file()]
+        logger.error(file_names)
+
         for i in range(timeout_s):
             node_ip_address = self._get_cached_node_ip_address()
 
@@ -967,14 +972,14 @@ class Node:
                     "Have you started Ray instsance using "
                     "`ray start` or `ray.init`?"
                 )
-            if i == timeout_s:
-                raise ValueError(
-                    "Can't find a `node_ip_address.json` file from "
-                    f"{self.get_session_dir_path()}. "
-                    f"for {timeout_s} seconds"
-                    "It means the ray instance hasn't started. "
-                    "Did you do `ray start` or `ray.init` on this host?"
-                )
+
+        raise ValueError(
+            "Can't find a `node_ip_address.json` file from "
+            f"{self.get_session_dir_path()}. "
+            f"for {timeout_s} seconds"
+            "It means the ray instance hasn't started. "
+            "Did you do `ray start` or `ray.init` on this host?"
+        )
 
     def _get_cached_node_ip_address(self) -> str:
         """Get a node address cached on this session.
