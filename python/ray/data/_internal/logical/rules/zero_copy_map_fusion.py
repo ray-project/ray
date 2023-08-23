@@ -26,11 +26,11 @@ class ZeroCopyMapFusionRule(Rule):
     def _traverse(self, op):
         if isinstance(op, MapOperator):
             map_transformer = op.get_map_transformer()
-            transform_fns = map_transformer._transform_fns
+            transform_fns = map_transformer.get_transform_fns()
             new_transform_fns = self._optimize(transform_fns)
             # Physical operators won't be shared,
             # so it's safe to modify the transform_fns in place.
-            map_transformer._transform_fns = new_transform_fns
+            map_transformer.set_transform_fns(new_transform_fns)
 
         for input_op in op.input_dependencies:
             self._traverse(input_op)

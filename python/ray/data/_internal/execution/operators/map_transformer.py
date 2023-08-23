@@ -81,6 +81,11 @@ class MapTransformer:
         init_fn: A function that will be called before transforming data.
             Used for the actor-based map operator.
         """
+        self.set_transform_fns(transform_fns)
+        self._init_fn = init_fn if init_fn is not None else lambda: None
+
+    def set_transform_fns(self, transform_fns: List[MapTransformFn]) -> None:
+        """Set the transform functions."""
         assert len(transform_fns) > 0
         assert (
             transform_fns[0].input_type == MapTransformFnDataType.Block
@@ -94,9 +99,11 @@ class MapTransformer:
                 "The output type of the previous transform function must match "
                 "the input type of the next transform function."
             )
-
         self._transform_fns = transform_fns
-        self._init_fn = init_fn if init_fn is not None else lambda: None
+
+    def get_transform_fns(self) -> List[MapTransformFn]:
+        """Get the transform functions."""
+        return self._transform_fns
 
     def init(self) -> None:
         """Initialize the transformer.
