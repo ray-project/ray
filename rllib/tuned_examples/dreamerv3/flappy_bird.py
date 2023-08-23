@@ -11,7 +11,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 # Run with:
 # python run_regression_tests.py --dir [this file]
 
-import flappy_bird_gymnasium
+import flappy_bird_gymnasium  # noqa
 import gymnasium as gym
 from supersuit.generic_wrappers import resize_v1
 
