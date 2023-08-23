@@ -74,30 +74,6 @@ py_test(
 )
 
 py_test(
-    name = "transformers_example_gpu",
-    size = "medium",
-    main = "examples/transformers/transformers_example.py",
-    srcs = ["examples/transformers/transformers_example.py"],
-    tags = ["team:ml", "exclusive", "tune", "gpu_only"],
-    deps = [":train_lib"],
-    args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
-    "--max_length=32", "--per_device_train_batch_size=64",
-    "--max_train_steps=2", "--start_local", "--num_workers=2", "--use_gpu"]
-)
-
-py_test(
-    name = "transformers_example_cpu",
-    size = "medium",
-    main = "examples/transformers/transformers_example.py",
-    srcs = ["examples/transformers/transformers_example.py"],
-    tags = ["team:ml", "exclusive", "tune", "new_storage"],
-    deps = [":train_lib"],
-    args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
-    "--max_length=32", "--per_device_train_batch_size=64",
-    "--max_train_steps=2", "--start_local", "--num_workers=2"]
-)
-
-py_test(
     name = "tune_cifar_torch_pbt_example",
     size = "medium",
     main = "examples/pytorch/tune_cifar_torch_pbt_example.py",
@@ -360,7 +336,7 @@ py_test(
     name = "test_huggingface",
     size = "small",
     srcs = ["tests/test_huggingface.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"]
 )
 
@@ -392,7 +368,7 @@ py_test(
     name = "test_lightgbm_predictor",
     size = "small",
     srcs = ["tests/test_lightgbm_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -432,7 +408,7 @@ py_test(
     name = "test_lightning_predictor",
     size = "medium",
     srcs = ["tests/test_lightning_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2", "new_storage"],
     deps = [":train_lib"]
 )
 
@@ -480,7 +456,7 @@ py_test(
     name = "test_predictor",
     size = "small",
     srcs = ["tests/test_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib"]
 )
 
@@ -496,7 +472,7 @@ py_test(
     name = "test_sklearn_predictor",
     size = "small",
     srcs = ["tests/test_sklearn_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -512,7 +488,7 @@ py_test(
     name = "test_tensorflow_checkpoint",
     size = "small",
     srcs = ["tests/test_tensorflow_checkpoint.py"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"]
 )
 
@@ -520,7 +496,7 @@ py_test(
     name = "test_tensorflow_predictor",
     size = "small",
     srcs = ["tests/test_tensorflow_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -544,7 +520,7 @@ py_test(
     name = "test_torch_predictor",
     size = "medium",
     srcs = ["tests/test_torch_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -552,7 +528,7 @@ py_test(
     name = "test_torch_detection_predictor",
     size = "medium",
     srcs = ["tests/test_torch_detection_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -592,7 +568,7 @@ py_test(
     name = "test_transformers_predictor",
     size = "medium",
     srcs = ["tests/test_transformers_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -648,7 +624,7 @@ py_test(
     name = "test_xgboost_predictor",
     size = "small",
     srcs = ["tests/test_xgboost_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
