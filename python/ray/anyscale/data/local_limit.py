@@ -1,13 +1,18 @@
-from typing import Iterator
+import collections
+from typing import Iterable
 
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    BuildOutputBlocksMapTransformFn,
+    MapTransformer,
+    MapTransformFn,
+    MapTransformFnData,
+    MapTransformFnDataType,
+)
 from ray.data._internal.logical.interfaces.optimizer import Rule
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
 from ray.data._internal.logical.operators.map_operator import (
@@ -15,7 +20,66 @@ from ray.data._internal.logical.operators.map_operator import (
     AbstractUDFMap,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import BlockAccessor
+
+
+class LimitNRowsMapTransformFn(MapTransformFn):
+    """A MapTransformFn that limits the number of rows in the output."""
+
+    def __init__(self, n: int, data_type: MapTransformFnDataType):
+        self._n = n
+        self._data_type = data_type
+
+    def _num_rows(self, data: MapTransformFnData) -> int:
+        """Gets the number of rows in the input data."""
+        if self._data_type == MapTransformFnDataType.Block:
+            return BlockAccessor.for_block(data).num_rows()
+        elif self._data_type == MapTransformFnDataType.Batch:
+            # TODO(hchen): We should have a better abstraction for batch.
+            # to get rid of this type check.
+            if isinstance(data, collections.abc.Mapping):
+                # If the batch is a dict.
+                first_key = list(data.keys())[0]
+                return len(data[first_key])
+            else:
+                # If the batch is not a dict, it must be a block.
+                return BlockAccessor.for_block(data).num_rows()
+        else:
+            assert self._data_type == MapTransformFnDataType.Row
+            return 1
+
+    def __call__(
+        self, input: Iterable[MapTransformFnData], _: TaskContext
+    ) -> Iterable[MapTransformFnData]:
+        """Yields at least n rows from the input data."""
+        if self._n <= 0:
+            return
+
+        consumed_rows = 0
+        for data in input:
+            # For n > 0, we yield at least one row/batch/block.
+            # The subsequent Limit operator takes care of slicing for
+            # the case where n < block_size.
+            yield data
+
+            num_rows = self._num_rows(data)
+            assert num_rows is not None, "Block has unknown number of rows."
+            consumed_rows += num_rows
+
+            # Once we have consumed n rows, stop yielding more blocks.
+            if consumed_rows >= self._n:
+                break
+
+    @property
+    def input_type(self) -> MapTransformFnDataType:
+        return self._data_type
+
+    @property
+    def output_type(self) -> MapTransformFnDataType:
+        return self._data_type
+
+    def __repr__(self) -> str:
+        return f"LimitNRowsMapTransformFn(n={self._n}, data_type={self._data_type})"
 
 
 class ApplyLocalLimitRule(Rule):
@@ -79,57 +143,51 @@ class ApplyLocalLimitRule(Rule):
             f"{type(up_op).__name__} -> {type(down_op).__name__}"
         )
 
-        def _limit_n_rows(blocks: Iterator[Block], n: int):
-            """Yields n rows from the input blocks."""
-            if n <= 0:
-                return
-            consumed_rows = 0
-            for b in blocks:
-                # For n > 0, we yield at least one complete block.
-                # The subsequent Limit operator takes care of slicing for
-                # the case where n < block_size.
-                yield b
-
-                ba = BlockAccessor.for_block(b)
-                num_rows = ba.num_rows()
-                assert num_rows is not None, "Block has unknown number of rows."
-                consumed_rows += num_rows
-
-                # Once we have consumed n rows, stop yielding more blocks.
-                if consumed_rows >= n:
-                    break
-
         n_limit = down_op._limit
-        map_transform_fn = up_op.get_transformation_fn()
+        map_transform_fn = up_op.get_map_transformer()
+        # Create a new list. Do not modify the original list.
+        transform_fns = list(map_transform_fn._transform_fns)
+        init_fn = map_transform_fn._init_fn
 
-        # Wrap the map fn with _limit_n_rows, and use the result
-        # as the new map fn for the replacement MapOperator.
-        def map_transform_fn_limit_n(
-            blocks: Iterator[Block], ctx: TaskContext
-        ) -> Iterator[Block]:
-            blocks = map_transform_fn(blocks, ctx)
-            return _limit_n_rows(blocks, n_limit)
+        insert_index = len(transform_fns)
+        if len(transform_fns) > 1 and isinstance(
+            transform_fns[-1], BuildOutputBlocksMapTransformFn
+        ):
+            # If the last transform_fn is a BuildOutputBlocksMapTransformFn,
+            # we insert the limit transform_fn before it to avoid
+            # building unncessary blocks.
+            insert_index -= 1
+
+        transform_fns.insert(
+            insert_index,
+            LimitNRowsMapTransformFn(
+                n=n_limit,
+                data_type=transform_fns[insert_index - 1].output_type,
+            ),
+        )
+
+        new_map_transfomer = MapTransformer(
+            transform_fns,
+            init_fn,
+        )
 
         # Create the new logical and physical MapOperators.
         up_logical_op = self._op_map.pop(up_op)
+        assert isinstance(up_logical_op, AbstractMap)
+
         down_logical_op = self._op_map.pop(down_op)
         new_map_op_name = f"{up_op._name[:-1]}->Limit[{n_limit}])"
-        init_fn = (
-            up_op.get_init_fn() if isinstance(up_op, ActorPoolMapOperator) else None
-        )
         compute = None
         target_block_size = None
-        ray_remote_args = None
+        ray_remote_args = up_logical_op._ray_remote_args
 
         if isinstance(up_logical_op, AbstractUDFMap):
             compute = get_compute(up_logical_op._compute)
             target_block_size = up_logical_op._target_block_size
-            ray_remote_args = up_logical_op._ray_remote_args
 
         up_op = MapOperator.create(
-            map_transform_fn_limit_n,
+            new_map_transfomer,
             up_op.input_dependency,
-            init_fn=init_fn,
             name=new_map_op_name,
             compute_strategy=compute,
             min_rows_per_bundle=target_block_size,
@@ -151,8 +209,6 @@ class ApplyLocalLimitRule(Rule):
             )
             up_logical_op._name = new_map_op_name
         else:
-            from ray.data._internal.logical.operators.map_operator import AbstractMap
-
             # The downstream op is AbstractMap instead of AbstractUDFMap.
             up_logical_op = AbstractMap(
                 new_map_op_name,
