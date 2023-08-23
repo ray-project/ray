@@ -123,6 +123,7 @@ class HTTPProxyState:
     def _health_check(self):
         """Perform periodic health checks."""
         assert self._status in {HTTPProxyStatus.HEALTHY, HTTPProxyStatus.DRAINING}
+
         if self._health_check_obj_ref:
             finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
             if finished:
