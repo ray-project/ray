@@ -15,7 +15,7 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource import Datasource, DummyOutputDatasource, WriteResult
 from ray.data.datasource.file_based_datasource import (
-    OPEN_FILE_RETRY_MAX_ATTEMPTS,
+    OPEN_FILE_MAX_ATTEMPTS,
     _open_file_with_retry,
 )
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
@@ -183,12 +183,12 @@ def test_open_file_with_retry(ray_start_regular_shared):
     counter = Counter()
     assert _open_file_with_retry("dummy", lambda: counter.foo(3)) == 0
 
-    original_max_attempts = OPEN_FILE_RETRY_MAX_ATTEMPTS
-    ray.data.datasource.file_based_datasource.OPEN_FILE_RETRY_MAX_ATTEMPTS = 3
+    original_max_attempts = OPEN_FILE_MAX_ATTEMPTS
+    ray.data.datasource.file_based_datasource.OPEN_FILE_MAX_ATTEMPTS = 3
     counter = Counter()
     with pytest.raises(OSError):
         _open_file_with_retry("dummy", lambda: counter.foo(4))
-    ray.data.datasource.file_based_datasource.OPEN_FILE_RETRY_MAX_ATTEMPTS = (
+    ray.data.datasource.file_based_datasource.OPEN_FILE_MAX_ATTEMPTS = (
         original_max_attempts
     )
 

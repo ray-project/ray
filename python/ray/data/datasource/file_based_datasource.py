@@ -65,8 +65,8 @@ OPEN_FILE_RETRY_ON_ERRORS = ["AWS Error SLOW_DOWN"]
 # The max retry backoff in seconds for opening file.
 OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
-# The max number of retry attempts for opening file.
-OPEN_FILE_RETRY_MAX_ATTEMPTS = 10
+# The max number of attempts for opening file.
+OPEN_FILE_MAX_ATTEMPTS = 10
 
 
 @DeveloperAPI
@@ -941,7 +941,13 @@ def _open_file_with_retry(
     import random
     import time
 
-    for i in range(OPEN_FILE_RETRY_MAX_ATTEMPTS):
+    if OPEN_FILE_MAX_ATTEMPTS < 1:
+        raise ValueError(
+            "OPEN_FILE_MAX_ATTEMPTS cannot be negative or 0, but get: "
+            f"{OPEN_FILE_MAX_ATTEMPTS}"
+        )
+
+    for i in range(OPEN_FILE_MAX_ATTEMPTS):
         try:
             return open_file()
         except Exception as e:
@@ -949,7 +955,7 @@ def _open_file_with_retry(
             is_retryable = any(
                 [error in error_message for error in OPEN_FILE_RETRY_ON_ERRORS]
             )
-            if is_retryable and i + 1 < OPEN_FILE_RETRY_MAX_ATTEMPTS:
+            if is_retryable and i + 1 < OPEN_FILE_MAX_ATTEMPTS:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min(
                     (2 ** (i + 1)) * random.random(),
