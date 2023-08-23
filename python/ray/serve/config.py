@@ -726,10 +726,10 @@ class gRPCOptions(BaseModel):
             updated once Serve has started running. Serve must be shut down and
             restarted with the new port instead.
         grpc_servicer_functions (List[str]):
-            The servicer functions used to add the method handlers to the gRPC server.
-            Default to empty list, which means no gRPC methods will be added
-            and no gRPC server will be started. The servicer functions need to be
-            importable from the context of where Serve is running.
+            List of import paths for gRPC `add_servicer_to_server` functions to add to
+            Serve's gRPC proxy. Default to empty list, which means no gRPC methods will
+            be added and no gRPC server will be started. The servicer functions need to
+            be importable from the context of where Serve is running.
     """
 
     port: int = DEFAULT_GRPC_PORT

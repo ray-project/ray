@@ -671,6 +671,18 @@ class TestServeDeploySchema:
         with pytest.raises(ValidationError):
             ServeDeploySchema.parse_obj(deploy_config_dict)
 
+    def test_deploy_with_grpc_options(self):
+        """gRPC options can be specified."""
+
+        deploy_config_dict = {
+            "grpc_options": {
+                "port": 9000,
+                "grpc_servicer_functions": ["foo.bar"],
+            },
+            "applications": [],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
+
 
 class TestServeStatusSchema:
     def get_valid_serve_status_schema(self):
