@@ -18,10 +18,10 @@ Note that the YAML file in this example uses `serveConfigV2`, which is supported
 ## Step 3: Install a RayService
 
 ```sh
-# Step 3.1: Download `ray-service.mobilenet.yaml`
+# Download `ray-service.mobilenet.yaml`
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.mobilenet.yaml
 
-# Step 3.2: Create a RayService
+# Create a RayService
 kubectl apply -f ray-service.mobilenet.yaml
 ```
 
