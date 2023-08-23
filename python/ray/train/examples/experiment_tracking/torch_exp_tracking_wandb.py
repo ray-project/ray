@@ -15,6 +15,7 @@ import wandb
 
 assert os.environ.get("WANDB_API_KEY", None), "Please set WANDB_API_KEY env var."
 
+
 # This function is assuming `wandb_api_key` is set in `config`
 def train_func(config):
     if ray.train.get_context().get_world_rank() == 0:

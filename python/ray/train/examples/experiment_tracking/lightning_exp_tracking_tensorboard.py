@@ -28,10 +28,12 @@ scaling_config = ScalingConfig(num_workers=4, use_gpu=False)
 
 assert (
     "SHARED_STORAGE_PATH" in os.environ
-), 'Please do SHARED_STORAGE_PATH=/a/b/c when running this script.'
+), "Please do SHARED_STORAGE_PATH=/a/b/c when running this script."
 trainer = TorchTrainer(
     train_func,
-    train_loop_config={"save_dir": os.path.join(os.environ["SHARED_STORAGE_PATH"], "tensorboard")},
+    train_loop_config={
+        "save_dir": os.path.join(os.environ["SHARED_STORAGE_PATH"], "tensorboard")
+    },
     scaling_config=scaling_config,
 )
 

@@ -9,6 +9,7 @@ from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 import wandb
 
+
 def train_func(config):
 
     # Note this is equivalent to calling `wandb.login` with API key.
@@ -27,6 +28,7 @@ def train_func(config):
     ptl_trainer.fit(model, train_dataloaders=dataloader)
     if ray.train.get_context().get_world_rank() == 0:
         wandb.finish()
+
 
 scaling_config = ScalingConfig(num_workers=4, use_gpu=False)
 

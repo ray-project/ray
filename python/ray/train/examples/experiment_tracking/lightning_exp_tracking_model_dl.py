@@ -14,6 +14,7 @@ dataset = TensorDataset(X, y)
 batch_size = 8
 dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
+
 # Define a dummy model
 class DummyModel(pl.LightningModule):
     def __init__(self):
@@ -35,4 +36,3 @@ class DummyModel(pl.LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=1e-3)
-    

@@ -34,7 +34,9 @@ assert (
 ), "Please do SHARED_STORAGE_PATH=/a/b/c when running this script."
 trainer = TorchTrainer(
     train_func,
-    train_loop_config={"save_dir": os.path.join(os.environ["SHARED_STORAGE_PATH"], "mlruns")},
+    train_loop_config={
+        "save_dir": os.path.join(os.environ["SHARED_STORAGE_PATH"], "mlruns")
+    },
     scaling_config=scaling_config,
 )
 
