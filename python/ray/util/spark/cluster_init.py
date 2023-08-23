@@ -229,22 +229,8 @@ def _convert_ray_node_option(key, value):
     return f"{converted_key}={str(value)}"
 
 
-def _convert_ray_node_options(options, *, object_spilling_path=None):
-    if object_spilling_path is not None:
-        if "system_config" not in options:
-            options["system_config"] = {}
-        sys_conf = options["system_config"]
-        if "object_spilling_config" not in sys_conf:
-            sys_conf["object_spilling_config"] = json.dumps({
-              "type": "filesystem",
-              "params": {
-                "directory_path": object_spilling_path,
-              }
-            })
-    return [
-        _convert_ray_node_option(k, v)
-        for k, v in options.items()
-    ]
+def _convert_ray_node_options(options):
+    return [_convert_ray_node_option(k, v) for k, v in options.items()]
 
 
 _RAY_HEAD_STARTUP_TIMEOUT = 5
@@ -396,6 +382,22 @@ def _prepare_for_ray_worker_node_startup():
     return worker_port_range_begin, worker_port_range_end
 
 
+def _append_default_spilling_dir_config(head_node_options, object_spilling_dir):
+    if "system_config" not in head_node_options:
+        head_node_options["system_config"] = {}
+    sys_conf = head_node_options["system_config"]
+    if "object_spilling_config" not in sys_conf:
+        sys_conf["object_spilling_config"] = json.dumps(
+            {
+                "type": "filesystem",
+                "params": {
+                    "directory_path": object_spilling_dir,
+                },
+            }
+        )
+    return head_node_options
+
+
 def _setup_ray_cluster(
     *,
     num_worker_nodes: int,
@@ -486,6 +488,10 @@ def _setup_ray_cluster(
     object_spilling_dir = os.path.join(ray_temp_dir, "spill")
     os.makedirs(object_spilling_dir, exist_ok=True)
 
+    head_node_options = _append_default_spilling_dir_config(
+        head_node_options, object_spilling_dir
+    )
+
     ray_head_node_cmd = [
         sys.executable,
         "-m",
@@ -502,9 +508,7 @@ def _setup_ray_cluster(
         f"--memory={heap_memory_head_node}",
         f"--object-store-memory={object_store_memory_head_node}",
         *dashboard_options,
-        *_convert_ray_node_options(
-            head_node_options, object_spilling_path=object_spilling_dir
-        ),
+        *_convert_ray_node_options(head_node_options),
     ]
 
     _logger.info(f"Starting Ray head, command: {' '.join(ray_head_node_cmd)}")
