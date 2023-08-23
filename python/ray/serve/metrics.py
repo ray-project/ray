@@ -1,6 +1,7 @@
 from ray.util import metrics
 from typing import Tuple, Optional, Dict, List, Union
 from ray.serve import context
+from ray.serve._private.common import DeploymentID
 import ray
 
 DEPLOYMENT_TAG = "deployment"
@@ -47,7 +48,10 @@ def _add_serve_metric_default_tags(default_tags: Dict[str, str]):
     if APPLICATION_TAG in default_tags:
         raise ValueError(f"'{APPLICATION_TAG}' tag is reserved for Ray Serve metrics")
     replica_context = context.get_internal_replica_context()
-    default_tags[DEPLOYMENT_TAG] = replica_context.deployment
+    # TODO(zcin): use replica_context.deployment for deployment tag
+    default_tags[DEPLOYMENT_TAG] = str(
+        DeploymentID(replica_context.deployment, replica_context.app_name)
+    )
     default_tags[REPLICA_TAG] = replica_context.replica_tag
     if replica_context.app_name:
         default_tags[APPLICATION_TAG] = replica_context.app_name

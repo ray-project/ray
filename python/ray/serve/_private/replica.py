@@ -23,6 +23,7 @@ from ray._private.utils import get_or_create_event_loop
 
 from ray.serve import metrics
 from ray.serve._private.common import (
+    DeploymentID,
     CONTROL_PLANE_CONCURRENCY_GROUP,
     ReplicaTag,
     ServeComponentType,
@@ -71,11 +72,7 @@ from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-def _format_replica_actor_name(deployment_name: str):
-    return f"ServeReplica:{deployment_name}"
-
-
-def create_replica_wrapper(name: str):
+def create_replica_wrapper(actor_class_name: str):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
@@ -473,7 +470,7 @@ def create_replica_wrapper(name: str):
     # Dynamically create a new class with custom name here so Ray picks it up
     # correctly in actor metadata table and observability stack.
     return type(
-        _format_replica_actor_name(name),
+        actor_class_name,
         (RayServeWrappedReplica,),
         dict(RayServeWrappedReplica.__dict__),
     )
@@ -493,7 +490,7 @@ class RayServeReplica:
         controller_handle: ActorHandle,
         app_name: str,
     ) -> None:
-        self.deployment_name = deployment_name
+        self.deployment_id = DeploymentID(deployment_name, app_name)
         self.replica_tag = replica_tag
         self.callable = _callable
         self.is_function = is_function
@@ -501,7 +498,6 @@ class RayServeReplica:
         self.deployment_config: DeploymentConfig = version.deployment_config
         self.rwlock = aiorwlock.RWLock()
         self.delete_lock = asyncio.Lock()
-        self.app_name = app_name
 
         user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
         if not callable(user_health_check):
@@ -589,7 +585,7 @@ class RayServeReplica:
         await self.user_health_check()
 
     def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
-        replica_actor_name = _format_replica_actor_name(self.deployment_name)
+        replica_actor_name = self.deployment_id.to_replica_actor_class_name()
         actor_stats = ray.runtime_context.get_runtime_context()._get_actor_call_stats()
         method_stats = actor_stats.get(f"{replica_actor_name}.handle_request")
         streaming_method_stats = actor_stats.get(
@@ -677,7 +673,7 @@ class RayServeReplica:
                 elif not hasattr(self.callable, RECONFIGURE_METHOD):
                     raise RayServeException(
                         "user_config specified but deployment "
-                        + self.deployment_name
+                        + self.deployment_id
                         + " missing "
                         + RECONFIGURE_METHOD
                         + " method"
@@ -701,7 +697,7 @@ class RayServeReplica:
             ray.serve.context.RequestContext(
                 request_metadata.route,
                 request_metadata.request_id,
-                self.app_name,
+                self.deployment_id.app,
                 request_metadata.multiplexed_model_id,
             )
         )

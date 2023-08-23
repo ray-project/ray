@@ -70,11 +70,11 @@ def get_deployment(name: str, app_name: str = ""):
 
 
 def list_deployments() -> Dict[str, Deployment]:
-    """Returns a dictionary of all active deployments.
+    """Returns a dictionary of all active 1.x deployments.
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = get_global_client().list_deployments()
+    infos = get_global_client().list_deployments_v1()
 
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():

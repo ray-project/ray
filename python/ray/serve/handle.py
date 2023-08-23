@@ -109,7 +109,11 @@ class _DeploymentHandleBase:
 
         # TODO(zcin): Separate deployment_id into deployment and application tags
         self.request_counter.set_default_tags(
-            {"handle": handle_tag, "deployment": str(self.deployment_id)}
+            {
+                "handle": handle_tag,
+                "deployment": str(self.deployment_id),
+                "application": self.deployment_id.app,
+            }
         )
 
         self._router: Optional[Router] = _router
