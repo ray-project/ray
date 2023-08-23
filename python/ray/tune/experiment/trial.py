@@ -548,7 +548,11 @@ class Trial:
             )
 
         # Restoration fields
-        self.restore_path = restore_path
+        self._restore_checkpoint: Optional[_TrainingResult] = None
+        if restore_path:
+            self._restore_checkpoint = _TrainingResult(
+                checkpoint=Checkpoint.from_directory(restore_path), metrics={}
+            )
 
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
@@ -833,16 +837,21 @@ class Trial:
         return config.checkpoint_frequency
 
     @property
+    def latest_checkpoint_result(self) -> Optional[_TrainingResult]:
+        return self.run_metadata.checkpoint_manager.latest_checkpoint_result
+
+    @property
     def checkpoint(self) -> Optional[Checkpoint]:
         """Returns the most recent checkpoint if one has been saved."""
         if _use_storage_context():
-            checkpoint_manager = self.run_metadata.checkpoint_manager
-            latest_checkpoint_result = checkpoint_manager.latest_checkpoint_result
-            return (
-                latest_checkpoint_result.checkpoint
-                if latest_checkpoint_result
+            latest_checkpoint_result = (
+                self.latest_checkpoint_result.checkpoint
+                if self.latest_checkpoint_result
                 else None
             )
+            # NOTE: Fallback to the checkpoint passed in from `tune.run(restore)`
+            # if the trial hasn't saved any checkpoints itself yet.
+            return latest_checkpoint_result or self._restore_checkpoint
 
         if self.status == Trial.ERROR:
             checkpoint = (
@@ -1070,6 +1079,9 @@ class Trial:
         )
 
     def has_checkpoint(self):
+        if _use_storage_context():
+            return self.checkpoint is not None
+
         return self.checkpoint.dir_or_data is not None
 
     def clear_checkpoint(self):
