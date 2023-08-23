@@ -65,7 +65,7 @@ def test_async_actor_cancel(shutdown_only):
         async def f(self, verify_actor):
             try:
                 ray.get(verify_actor.set_running.remote())
-                await asyncio.sleep(1)
+                await asyncio.sleep(10)
             except asyncio.CancelledError:
                 # It is False until this except block is finished.
                 print(asyncio.current_task().cancelled())
