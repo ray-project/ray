@@ -20,8 +20,10 @@ from ray.train._internal.checkpoint import (
 )
 from ray.train._internal.session import (
     _TrainingResult,
+    _TrainSession,
     TrainingResult,
     TrainingResultType,
+    get_session,
 )
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 
@@ -109,12 +111,21 @@ class TrainingIterator:
         if not _use_storage_context():
             checkpoint = self._checkpoint_manager._load_checkpoint(checkpoint)
 
+        storage = None
+        if _use_storage_context():
+            tune_session: _TrainSession = get_session()
+            assert (
+                tune_session
+            ), "`_start_training` should only be called from within Tune"
+            storage = tune_session.storage
+
         self._run_with_error_handling(
             lambda: self._backend_executor.start_training(
                 train_func=train_func,
                 datasets=datasets,
                 metadata=metadata,
                 data_config=data_config,
+                storage=storage,
                 checkpoint=checkpoint,
                 # Workers need to start out with a path to write the first checkpoint to
                 on_session_init=self._send_next_checkpoint_path_to_workers,
