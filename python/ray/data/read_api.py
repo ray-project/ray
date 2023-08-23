@@ -822,7 +822,7 @@ def read_delta(
         try:
             from deltalake import DeltaTable
         except ImportError as e:
-            raise Exception(f"Please install deltalake to use read_delta.") from e
+            raise Exception("Please install deltalake to use read_delta.") from e
 
         # TODO: check the limitations of DeltaTable and params each version supports
         dt = DeltaTable(uri, version, storage_options)
