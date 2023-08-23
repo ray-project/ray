@@ -41,7 +41,6 @@ from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
 from ray._private.utils import import_attr
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 import __main__
@@ -491,56 +490,6 @@ def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
     """Check if ray object reference is ready without waiting for it."""
     finished, _ = ray.wait([obj_ref], timeout=0)
     return len(finished) == 1
-
-
-serve_telemetry_tag_map = {
-    "SERVE_API_VERSION": TagKey.SERVE_API_VERSION,
-    "SERVE_NUM_DEPLOYMENTS": TagKey.SERVE_NUM_DEPLOYMENTS,
-    "GCS_STORAGE": TagKey.GCS_STORAGE,
-    "SERVE_NUM_GPU_DEPLOYMENTS": TagKey.SERVE_NUM_GPU_DEPLOYMENTS,
-    "SERVE_FASTAPI_USED": TagKey.SERVE_FASTAPI_USED,
-    "SERVE_DAG_DRIVER_USED": TagKey.SERVE_DAG_DRIVER_USED,
-    "SERVE_HTTP_ADAPTER_USED": TagKey.SERVE_HTTP_ADAPTER_USED,
-    "SERVE_GRPC_INGRESS_USED": TagKey.SERVE_GRPC_INGRESS_USED,
-    "SERVE_REST_API_VERSION": TagKey.SERVE_REST_API_VERSION,
-    "SERVE_NUM_APPS": TagKey.SERVE_NUM_APPS,
-    "SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED": (
-        TagKey.SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED
-    ),
-    "SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED": (
-        TagKey.SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED
-    ),
-    "SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED": (
-        TagKey.SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED
-    ),
-    "SERVE_RAY_SERVE_HANDLE_API_USED": TagKey.SERVE_RAY_SERVE_HANDLE_API_USED,
-    "SERVE_RAY_SERVE_SYNC_HANDLE_API_USED": TagKey.SERVE_RAY_SERVE_SYNC_HANDLE_API_USED,
-    "SERVE_DEPLOYMENT_HANDLE_API_USED": TagKey.SERVE_DEPLOYMENT_HANDLE_API_USED,
-    "SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED": (
-        TagKey.SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED
-    ),
-    "SERVE_MULTIPLEXED_API_USED": TagKey.SERVE_MULTIPLEXED_API_USED,
-    "SERVE_STATUS_API_USED": TagKey.SERVE_STATUS_API_USED,
-    "SERVE_GET_APP_HANDLE_API_USED": TagKey.SERVE_GET_APP_HANDLE_API_USED,
-    "SERVE_GET_DEPLOYMENT_HANDLE_API_USED": TagKey.SERVE_GET_DEPLOYMENT_HANDLE_API_USED,
-}
-
-
-def record_serve_tag(key: str, value: str):
-    """Record telemetry.
-
-    TagKey objects cannot be pickled, so deployments can't directly record
-    telemetry using record_extra_usage_tag. They can instead call this function
-    which records telemetry for them.
-    """
-
-    if key not in serve_telemetry_tag_map:
-        raise ValueError(
-            f'The TagKey "{key}" does not exist. Expected a key from: '
-            f"{list(serve_telemetry_tag_map.keys())}."
-        )
-
-    record_extra_usage_tag(serve_telemetry_tag_map[key], value)
 
 
 def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
