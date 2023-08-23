@@ -1,7 +1,6 @@
 import random
 from typing import Optional
 
-import numpy as np
 import pytest
 
 import ray
@@ -121,7 +120,6 @@ def test_error(ray_start_4_cpus):
         {"train": 10},
         dataset_config={},
         datasets={"train": ds},
-        preprocessor=BatchMapper(lambda x: x, batch_format="pandas"),
     )
     test.fit()
 
@@ -156,53 +154,6 @@ def test_use_stream_api_config(ray_start_4_cpus):
         {"train": 5, "test": 10},
         dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=1)},
         datasets={"train": ds, "test": ds},
-    )
-    test.fit()
-
-
-def test_fit_transform_config(ray_start_4_cpus):
-    ds = ray.data.range(10)
-
-    def drop_odd_pandas(batch):
-        return batch[batch["id"] % 2 == 0]
-
-    def drop_odd_numpy(batch):
-        arr = batch["id"]
-        return {"id": arr[arr % 2 == 0]}
-
-    prep_pandas = BatchMapper(drop_odd_pandas, batch_format="pandas")
-    prep_numpy = BatchMapper(drop_odd_numpy, batch_format="numpy")
-
-    # Single worker basic case.
-    test = TestBasic(
-        1,
-        True,
-        {"train": 5, "test": 5},
-        dataset_config={},
-        datasets={"train": ds, "test": ds},
-        preprocessor=prep_pandas,
-    )
-    test.fit()
-
-    # Single worker basic case.
-    test = TestBasic(
-        1,
-        True,
-        {"train": 5, "test": 5},
-        dataset_config={},
-        datasets={"train": ds, "test": ds},
-        preprocessor=prep_numpy,
-    )
-    test.fit()
-
-    # No transform for test.
-    test = TestBasic(
-        1,
-        True,
-        {"train": 5, "test": 10},
-        dataset_config={"test": DatasetConfig(transform=False)},
-        datasets={"train": ds, "test": ds},
-        preprocessor=prep_pandas,
     )
     test.fit()
 
@@ -243,85 +194,6 @@ class TestBatch(TestStream):
     _dataset_config = {
         "train": DatasetConfig(split=True, required=True),
     }
-
-
-def test_stream_inf_window_cache_prep(ray_start_4_cpus):
-    def checker(shard, results):
-        results = [sorted(r) for r in results]
-        assert len(results[0]) == 5, results
-        # TODO(swang): Should modify the check to make sure that we are
-        # applying the preprocessor on each epoch.
-        assert results[0] == results[1], results
-        stats = shard.stats()
-        assert (
-            "Stage 1 ReadRange->MapBatches(BatchMapper._transform_pandas): "
-            "1/1 blocks executed " in stats
-        ), stats
-
-    def rand(x):
-        x["id"] = x["id"].multiply(x["id"])
-        return x
-
-    prep = BatchMapper(rand, batch_format="pandas")
-    ds = ray.data.range(5, parallelism=1)
-    test = TestStream(
-        checker,
-        preprocessor=prep,
-        datasets={"train": ds},
-        dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=-1)},
-    )
-    test.fit()
-
-
-def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
-    def rand(x):
-        x["id"] = [random.random() for _ in range(len(x))]
-        return x
-
-    prep = BatchMapper(rand, batch_format="pandas")
-    ds = ray.data.range(5, parallelism=1)
-
-    # Test 50% object store memory..
-    def checker(shard, results):
-        results = [sorted(r) for r in results]
-        assert int(results[0][0]) != results[0][0]
-        assert len(results[0]) == 5, results
-        assert results[0] != results[1], results
-        stats = shard.stats()
-        assert (
-            "Stage 1 ReadRange->RandomizeBlockOrder->"
-            "BatchMapper: 1/1 blocks executed " in stats
-        ), stats
-
-    test = TestStream(
-        checker,
-        preprocessor=prep,
-        datasets={"train": ds},
-        dataset_config={"train": DatasetConfig(max_object_store_memory_fraction=0.5)},
-    )
-    test.fit()
-
-
-def test_stream_transform_config(ray_start_4_cpus):
-    """Tests that the preprocessor's transform config is
-    respected when using the stream API."""
-    batch_size = 2
-
-    def check_batch(batch):
-        assert isinstance(batch, dict)
-        assert isinstance(batch["id"], np.ndarray)
-        assert len(batch["id"]) == batch_size
-        return batch
-
-    prep = BatchMapper(check_batch, batch_format="numpy", batch_size=2)
-    ds = ray.data.range(6, parallelism=1)
-
-    test = TestStream(
-        lambda *args: None,
-        preprocessor=prep,
-        datasets={"train": ds},
-    )
-    test.fit()
 
 
 def test_global_shuffle(ray_start_4_cpus):
