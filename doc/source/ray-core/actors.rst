@@ -380,10 +380,10 @@ If we instantiate an actor, we can pass the handle around to various tasks.
             }
 
 
-Cancelling  actor tasks
------------------------
+Cancelling actor tasks
+----------------------
 
-Actor tasks can be canceled by calling :func:`ray.cancel() <ray.cancel>` on the returned Object ref.
+Actor tasks can be canceled by calling :func:`ray.cancel() <ray.cancel>` on the returned `ObjectRef`.
 
 .. tab-set::
 
@@ -407,9 +407,10 @@ For tasks classified as single threaded actor or a multi-threaded actor,
 Ray offers no mechanism for interruption.
 
 **Running Async Actor Tasks**:
-For tasks classified as `async actors <_async-actors>`, Ray seeks to cancel the associated coroutine. 
+For tasks classified as `async actors <_async-actors>`, Ray seeks to cancel the associated `asyncio.Task`. 
 This cancellation approach aligns with the standards presented in 
 `asyncio task cancellation <https://docs.python.org/3/library/asyncio-task.html#task-cancellation>`__.
+Note that `asyncio.Task` won't be interrupted in the middle of execution if you don't `await` within the async function.
 
 **Cancelation Guarantee**:
 Ray attempts to cancel tasks on a *best-effort* basis, meaning cancellation isn't always guaranteed.

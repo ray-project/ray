@@ -2857,7 +2857,7 @@ def cancel(
         on the execution model of an actor. If it is a regular actor
         or a threaded actor, the execution won't be canceled.
         Actor tasks cannot be interrupted because actors have
-        states. If it is an async actor, Ray cancels a coroutine.
+        states. If it is an async actor, Ray cancels a `asyncio.Task`.
         The semantic of cancelation is equivalent to asyncio's cancelation.
         https://docs.python.org/3/library/asyncio-task.html#task-cancellation
         If the task is already finished, nothing will happen.
@@ -2870,7 +2870,7 @@ def cancel(
         Calling ray.get on a canceled task will raise a `TaskCancelledError` if
         task hasn't been scheduled yet. It will raise `RayTaskError`
         if task has been already scheduled and interrupted. Note that `RayTaskError`
-        can be only raised when a async actor task's coroutine is canceled.
+        can be only raised when `asyncio.Task` is canceled.
 
         If `recursive=True` is given, all the child tasks and actor tasks
         are canceled.
