@@ -501,7 +501,7 @@ RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 1000)
 /// Max number of task attempts being dropped on the worker side to report to GCS.
 /// Setting the value to -1 allows unlimited dropped task attempts in a single
 /// report to GCS.
-RAY_CONFIG(int64_t, task_events_drop_task_attempt_batch_size, 1000)
+RAY_CONFIG(int64_t, task_events_drop_task_attempt_batch_size, 10 * 1000)
 
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by
