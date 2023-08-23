@@ -13,6 +13,7 @@ from ray.serve._private.utils import block_until_http_ready
 import ray.util.state as state_api
 from fastapi import FastAPI
 from ray.serve.metrics import Counter, Histogram, Gauge
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
@@ -658,7 +659,14 @@ class TestRequestContextMetrics:
                 self.histogram.observe(200, tags={"my_runtime_tag": "200"})
                 self.gauge.set(300, tags={"my_runtime_tag": "300"})
                 return [
-                    ray.serve.context._INTERNAL_REPLICA_CONTEXT.deployment,
+                    # NOTE(zcin): this is to match the current implementation in
+                    # Serve's _add_serve_metric_default_tags().
+                    str(
+                        DeploymentID(
+                            ray.serve.context._INTERNAL_REPLICA_CONTEXT.deployment,
+                            ray.serve.context._INTERNAL_REPLICA_CONTEXT.app_name,
+                        )
+                    ),
                     ray.serve.context._INTERNAL_REPLICA_CONTEXT.replica_tag,
                 ]
 
@@ -961,7 +969,7 @@ def test_actor_summary(serve_instance):
     actors = state_api.list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
-        {"ServeController", "HTTPProxyActor", "ServeReplica:app_f"}
+        {"ServeController", "HTTPProxyActor", "ServeReplica:app:f"}
     )
 
 

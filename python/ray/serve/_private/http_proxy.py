@@ -441,7 +441,7 @@ class GenericProxy(ABC):
                 )
                 return proxy_response
 
-            route_prefix, handle, app_name, app_is_cross_language = matched_route
+            route_prefix, handle, app_is_cross_language = matched_route
 
             # Modify the path and root path so that reverse lookups and redirection
             # work as expected. We do this here instead of in replicas so it can be
@@ -453,7 +453,7 @@ class GenericProxy(ABC):
 
             start_time = time.time()
             handle, request_id = self.setup_request_context_and_handle(
-                app_name=app_name,
+                app_name=handle.deployment_id.app,
                 handle=handle,
                 route_path=route_path,
                 proxy_request=proxy_request,
@@ -476,7 +476,7 @@ class GenericProxy(ABC):
                 tags={
                     "route": route_path,
                     "method": method,
-                    "application": app_name,
+                    "application": handle.deployment_id.app,
                     "status_code": proxy_response.status_code,
                 }
             )
@@ -486,7 +486,7 @@ class GenericProxy(ABC):
                 latency_ms,
                 tags={
                     "route": route_path,
-                    "application": app_name,
+                    "application": handle.deployment_id.app,
                     "status_code": proxy_response.status_code,
                 },
             )
@@ -512,7 +512,7 @@ class GenericProxy(ABC):
                         "error_code": proxy_response.status_code,
                         "method": method,
                         "route": route_path,
-                        "application": app_name,
+                        "application": handle.deployment_id.app,
                     }
                 )
         finally:
@@ -941,9 +941,18 @@ class HTTPProxy(GenericProxy):
         return ProxyResponse(status_code=str(status_code))
 
     async def routes_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
-        await starlette.responses.JSONResponse(
-            {route: str(endpoint) for route, endpoint in self.route_info.items()}
-        )(proxy_request.scope, proxy_request.receive, proxy_request.send)
+        resp = dict()
+        for route, endpoint in self.route_info.items():
+            # For 2.x deployments, return {route -> app name}
+            if endpoint.app:
+                resp[route] = endpoint.app
+            # Keep compatibility with 1.x deployments: return {route -> deployment name}
+            else:
+                resp[route] = endpoint.name
+
+        await starlette.responses.JSONResponse(resp)(
+            proxy_request.scope, proxy_request.receive, proxy_request.send
+        )
         return ProxyResponse(status_code=self.success_status_code)
 
     async def health_response(self, proxy_request: ProxyRequest) -> ProxyResponse:

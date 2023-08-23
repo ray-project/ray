@@ -65,19 +65,22 @@ def test_status_multi_app(ray_start_stop):
     )
     statuses = yaml.safe_load(status_response)["applications"]
 
-    expected_deployments = {
-        "app1_f",
-        "app1_BasicDriver",
-        "app2_Multiplier",
-        "app2_Adder",
-        "app2_Router",
+    expected_deployments_1 = {"f", "BasicDriver"}
+    expected_deployments_2 = {
+        "Multiplier",
+        "Adder",
+        "Router",
     }
-    for status in statuses.values():
-        for deployment_name, deployment in status["deployments"].items():
-            expected_deployments.remove(deployment_name)
-            assert deployment["status"] in {"HEALTHY", "UPDATING"}
-            assert "message" in deployment
-    assert len(expected_deployments) == 0
+    for deployment_name, deployment in statuses["app1"]["deployments"].items():
+        expected_deployments_1.remove(deployment_name)
+        assert deployment["status"] in {"HEALTHY", "UPDATING"}
+        assert "message" in deployment
+    for deployment_name, deployment in statuses["app2"]["deployments"].items():
+        expected_deployments_2.remove(deployment_name)
+        assert deployment["status"] in {"HEALTHY", "UPDATING"}
+        assert "message" in deployment
+    assert len(expected_deployments_1) == 0
+    assert len(expected_deployments_2) == 0
     print("All expected deployments are present in the status output.")
 
     for status in statuses.values():

@@ -86,12 +86,12 @@ class LongestPrefixRouter(ProxyRouter):
 
     def match_route(
         self, target_route: str
-    ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
+    ) -> Optional[Tuple[str, RayServeHandle, bool]]:
         """Return the longest prefix match among existing routes for the route.
         Args:
             target_route: route to match against.
         Returns:
-            (route, handle, app_name, is_cross_language) if found, else None.
+            (route, handle, is_cross_language) if found, else None.
         """
 
         for route in self.sorted_routes:
@@ -115,7 +115,6 @@ class LongestPrefixRouter(ProxyRouter):
                     return (
                         route,
                         self.handles[endpoint],
-                        endpoint.app,
                         self.app_to_is_cross_language[endpoint.app],
                     )
 
@@ -167,7 +166,7 @@ class EndpointRouter(ProxyRouter):
 
     def get_handle_for_endpoint(
         self, target_app_name: str
-    ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
+    ) -> Optional[Tuple[str, RayServeHandle, bool]]:
         """Return the handle that matches with endpoint.
 
         Args:
@@ -184,7 +183,6 @@ class EndpointRouter(ProxyRouter):
                 return (
                     endpoint_info.route,
                     handle,
-                    endpoint_tag.app,
                     endpoint_info.app_is_cross_language,
                 )
 
