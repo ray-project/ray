@@ -10,7 +10,6 @@ import time
 import ray
 from ray import train, tune, logger
 from ray.train import CheckpointConfig
-from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 from ray.tune import Trainable, run_experiments, register_trainable
 from ray.tune.error import TuneError
 from ray.tune.result_grid import ResultGrid

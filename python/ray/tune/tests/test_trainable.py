@@ -16,7 +16,7 @@ from ray.air._internal.remote_storage import (
     upload_to_uri,
     delete_at_uri,
 )
-from ray.train._internal.storage import StorageContext, _use_storage_context
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.logger import NoopLogger
 from ray.tune.syncer import _DefaultSyncer
 from ray.tune.trainable import wrap_function
