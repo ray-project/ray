@@ -261,8 +261,8 @@ void TaskEventBufferImpl::GetTaskProfileEventsToSend(
 
   // A lambda function to take profile events from the buffer to the output to send
   // vector.
-  auto take_profile_event_fn = [this, profile_events_to_send, &lock](auto &itr) {
-    RAY_CHECK(profile_events_to_send->size() <
+  auto take_profile_event_fn = [&, this, profile_events_to_send](auto &itr) {
+    RAY_CHECK(profile_events_to_send->size() <=
               static_cast<size_t>(RayConfig::instance().task_events_send_batch_size()));
     auto num_to_add = std::min(
         static_cast<size_t>(RayConfig::instance().task_events_send_batch_size()) -
