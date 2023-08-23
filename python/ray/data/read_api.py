@@ -49,7 +49,6 @@ from ray.data.datasource import (
     Connection,
     CSVDatasource,
     Datasource,
-    HuggingFaceDatasource,
     ImageDatasource,
     JSONDatasource,
     MongoDatasource,
@@ -2178,6 +2177,7 @@ def from_huggingface(
 
     if isinstance(dataset, datasets.IterableDataset):
         # For an IterableDataset, we can use a streaming implementation to read data.
+        from ray.data.datasource import HuggingFaceDatasource
         return read_datasource(
             HuggingFaceDatasource(),
             dataset=dataset,
