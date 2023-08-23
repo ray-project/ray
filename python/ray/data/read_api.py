@@ -30,6 +30,9 @@ from ray.data._internal.logical.operators.from_operators import (
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.planner.plan_read_op import (
+    apply_output_blocks_handling_to_read_task,
+)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
@@ -409,13 +412,18 @@ def read_datasource(
                 f"To satisfy the requested parallelism of {requested_parallelism}, "
                 f"each read task output is split into {k} smaller blocks."
             )
-            for r in read_tasks:
-                r._set_additional_split_factor(k)
             estimated_num_blocks = estimated_num_blocks * k
             additional_split_factor = k
         logger.debug("Estimated num output blocks {estimated_num_blocks}")
+
     else:
         estimated_num_blocks = 0
+
+    for read_task in read_tasks:
+        apply_output_blocks_handling_to_read_task(
+            read_task,
+            additional_split_factor,
+        )
 
     read_stage_name = f"Read{datasource.get_name()}"
     available_cpu_slots = ray.available_resources().get("CPU", 1)
@@ -561,6 +569,7 @@ def read_parquet(
     ray_remote_args: Dict[str, Any] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: Optional[ParquetMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
     **arrow_parquet_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from parquet files.
@@ -663,6 +672,9 @@ def read_parquet(
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
             accurately. In most cases you do not need to set this parameter.
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
+            with a custom callback to read only selected partitions of a dataset.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
@@ -686,6 +698,7 @@ def read_parquet(
         columns=columns,
         ray_remote_args=ray_remote_args,
         meta_provider=meta_provider,
+        partition_filter=partition_filter,
         **arrow_parquet_args,
     )
 
@@ -1267,7 +1280,7 @@ def read_csv(
         variety       string
 
         Convert a date column with a custom format from a CSV file. For more uses of ConvertOptions see https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html  # noqa: #501
-        
+
         >>> from pyarrow import csv
         >>> convert_options = csv.ConvertOptions(
         ...     timestamp_parsers=["%m/%d/%Y"])
@@ -1316,14 +1329,14 @@ def read_csv(
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
-                    #pyarrow.fs.FileSystem.open_input_stream>`_. 
+                    #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this 
+            accurately. In most cases, you do not need to set this. If ``None``, this
             function uses a system-chosen implementation.
-        partition_filter: A 
-            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. 
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset. By default, no files are filtered.
             To filter out all file paths except those whose file extension
@@ -1335,11 +1348,11 @@ def read_csv(
                 hive-style-partitioning/>`_.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
-        arrow_csv_args: CSV read options to pass to 
+        arrow_csv_args: CSV read options to pass to
             `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
-            pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_ 
+            pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
             when opening CSV files.
-        
+
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
@@ -1830,15 +1843,6 @@ def read_sql(
         :ref:`Reading from SQL Databases <reading_sql>`.
 
         .. testcode::
-            :hide:
-
-            import os
-            try:
-                os.remove("example.db")
-            except OSError:
-                pass
-
-        .. testcode::
 
             import sqlite3
 
@@ -1872,6 +1876,12 @@ def read_sql(
             ds = ray.data.read_sql(
                 "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
             )
+
+        .. testcode::
+            :hide:
+
+            import os
+            os.remove("example.db")
 
     Args:
         sql: The SQL query to execute.
@@ -2462,7 +2472,11 @@ def _get_reader(
         OOM, the estimated inmemory data size, and the reader generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
-    if local_uri:
+    # NOTE: `ParquetDatasource` has separate steps to fetch metadata and sample rows,
+    # so it needs `local_uri` parameter for now.
+    # TODO(chengsu): stop passing `local_uri` parameter to
+    # `ParquetDatasource.create_reader()`.
+    if local_uri and isinstance(ds, ParquetDatasource):
         kwargs["local_uri"] = local_uri
     DataContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)

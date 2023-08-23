@@ -1,15 +1,17 @@
 import argparse
+import os
+import tempfile
 from typing import Tuple
 
 import pandas as pd
-from ray.train import Checkpoint
+from ray.train._checkpoint import Checkpoint
 
 import torch
 import torch.nn as nn
 
 import ray
 import ray.train as train
-from ray.train import ScalingConfig
+from ray.train import ScalingConfig, DataConfig
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
 
@@ -101,7 +103,10 @@ def train_func(config):
         else:
             result = {}
         results.append(result)
-        train.report(result, checkpoint=Checkpoint.from_dict(dict(model=model)))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.module.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report(result, checkpoint=Checkpoint.from_directory(tmpdir))
 
     return results
 
@@ -115,6 +120,7 @@ def train_regression(num_workers=2, use_gpu=False):
         train_loop_config=config,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": train_dataset, "validation": val_dataset},
+        dataset_config=DataConfig(datasets_to_split=["train"]),
     )
 
     result = trainer.fit()
