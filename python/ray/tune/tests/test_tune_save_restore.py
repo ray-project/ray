@@ -174,7 +174,6 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
                 return checkpoint_dir
 
         validate_save_restore(MockTrainable)
-        validate_save_restore(MockTrainable, use_object_store=True)
 
 
 if __name__ == "__main__":
