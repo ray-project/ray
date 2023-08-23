@@ -26,14 +26,6 @@ Distributed Training Examples using Ray Train
             PyTorch Fashion MNIST Training Example
 
     .. grid-item-card::
-        :img-top: /images/hugging.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: train_transformers_example
-
-            Transformers with PyTorch Training Example
-
-    .. grid-item-card::
         :img-top: /images/tf_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
