@@ -36,9 +36,9 @@
   parallelism: 4
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     # Todo (krfricke): Move mosaicml to train-test-requirements.txt
     - pip install "mosaicml==0.15.0"
+    - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options)
