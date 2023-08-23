@@ -9,7 +9,6 @@ from typing import Dict, List, Optional, Callable, Tuple
 import ray
 from ray import cloudpickle
 from ray.exceptions import RuntimeEnvSetupError
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.utils import import_attr
 from ray.serve.config import DeploymentConfig
 from ray.serve.exceptions import RayServeException
@@ -32,6 +31,7 @@ from ray.serve._private.deploy_utils import (
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.storage.kv_store import KVStoreBase
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
@@ -740,9 +740,7 @@ class ApplicationStateManager:
                 self._endpoint_state,
                 self._save_checkpoint_func,
             )
-        record_extra_usage_tag(
-            TagKey.SERVE_NUM_APPS, str(len(self._application_states))
-        )
+        ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
         deployment_infos = {
             params["deployment_name"]: deploy_args_to_deployment_info(
@@ -767,9 +765,7 @@ class ApplicationStateManager:
                 endpoint_state=self._endpoint_state,
                 save_checkpoint_func=self._save_checkpoint_func,
             )
-        record_extra_usage_tag(
-            TagKey.SERVE_NUM_APPS, str(len(self._application_states))
-        )
+        ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
         self._application_states[name].deploy_config(
             app_config,
             deployment_time,
@@ -844,9 +840,7 @@ class ApplicationStateManager:
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
                 del self._application_states[app_name]
-            record_extra_usage_tag(
-                TagKey.SERVE_NUM_APPS, str(len(self._application_states))
-            )
+            ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
     def shutdown(self) -> None:
         for app_state in self._application_states.values():

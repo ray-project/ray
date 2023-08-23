@@ -16,7 +16,8 @@ from ray.serve.context import (
     get_internal_replica_context,
 )
 from ray.serve._private.common import DeploymentID, MultiplexedReplicaInfo
-from ray.serve._private.utils import MetricsPusher, record_serve_tag
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve._private.utils import MetricsPusher
 from ray.serve import metrics
 
 
@@ -53,7 +54,7 @@ class _ModelMultiplexWrapper:
                 per replica.
         """
 
-        record_serve_tag("SERVE_MULTIPLEXED_API_USED", "1")
+        ServeUsageTag.MULTIPLEXED_API_USED.record("1")
 
         self.models = OrderedDict()
         self._func: Callable = model_load_func
