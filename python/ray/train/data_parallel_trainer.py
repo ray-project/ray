@@ -15,7 +15,7 @@ from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal import session
-from ray.train._internal.session import _TrainingResult, get_session
+from ray.train._internal.session import TrainingResult, get_session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
 from ray.train._internal.data_config import DataConfig, _LegacyDataConfigWrapper
@@ -432,7 +432,7 @@ class DataParallelTrainer(BaseTrainer):
             # TODO(ml-team): add ability to report results from multiple workers.
             first_worker_result = results[0]
             if _use_storage_context():
-                assert all(isinstance(result, _TrainingResult) for result in results)
+                assert all(isinstance(result, TrainingResult) for result in results)
 
                 tune_session = get_session()
 
@@ -466,7 +466,7 @@ class DataParallelTrainer(BaseTrainer):
                     if at_least_one_reported_checkpoint
                     else None
                 )
-                tracked_training_result = _TrainingResult(
+                tracked_training_result = TrainingResult(
                     checkpoint=checkpoint,
                     metrics=first_worker_result.metrics,
                 )

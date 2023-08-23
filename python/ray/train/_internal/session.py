@@ -74,13 +74,14 @@ class TrialInfo:
 
 
 @dataclass
-class TrainingResult:
+class _InternalTrainingResult:
     type: TrainingResultType
     data: Union[Dict, Checkpoint, str]
     metadata: Optional[Dict] = None
 
 
-class _TrainingResult:
+@DeveloperAPI
+class TrainingResult:
     """A (checkpoint, metrics) result reported by the user."""
 
     def __init__(self, checkpoint: Optional[Checkpoint], metrics: Dict[str, Any]):
@@ -89,6 +90,8 @@ class _TrainingResult:
 
     def __repr__(self) -> str:
         return f"TrainingResult(checkpoint={self.checkpoint}, metrics={self.metrics})"
+
+    __module__ = "ray.train"
 
 
 # TODO(xwjiang): This needs a better name.
@@ -365,7 +368,7 @@ class _TrainSession:
 
         kwargs = self._auto_fill_metrics(kwargs)
 
-        result = TrainingResult(type=TrainingResultType.REPORT, data=kwargs)
+        result = _InternalTrainingResult(type=TrainingResultType.REPORT, data=kwargs)
 
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
@@ -489,7 +492,7 @@ class _TrainSession:
         # Save the rank of the worker that created this checkpoint.
         metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
 
-        result = TrainingResult(
+        result = _InternalTrainingResult(
             type=TrainingResultType.CHECKPOINT,
             data=checkpoint,
             metadata=metadata,
@@ -510,7 +513,7 @@ class _TrainSession:
         """
         self.legacy_checkpoint_uri = uri
 
-    def _report_training_result(self, training_result: _TrainingResult) -> None:
+    def _report_training_result(self, training_result: TrainingResult) -> None:
         """Place a training result on the result queue for the main thread to process,
         then block until the main thread signals that training should continue.
 
@@ -571,7 +574,7 @@ class _TrainSession:
                     user_metadata[k] = v
             persisted_checkpoint.set_metadata(user_metadata)
 
-        result = _TrainingResult(
+        result = TrainingResult(
             checkpoint=persisted_checkpoint,
             metrics=metrics,
         )

@@ -17,7 +17,7 @@ from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
 from ray.air.checkpoint import (
-    Checkpoint,
+    Checkpoint as LegacyCheckpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
 )
 from ray.air.constants import (
@@ -25,7 +25,7 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
     TRAINING_ITERATION,
 )
-from ray.train._internal.checkpoint_manager import _TrainingResult
+from ray.train._internal.checkpoint_manager import TrainingResult
 from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.tune.result import (
@@ -57,8 +57,8 @@ from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
-from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
-from ray.util.annotations import PublicAPI
+from ray.tune.utils.util import Tee
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.tune.logger import Logger
@@ -111,7 +111,7 @@ class Trainable:
 
     """
 
-    _checkpoint_cls: Type[Checkpoint] = Checkpoint
+    _checkpoint_cls: Type[LegacyCheckpoint] = LegacyCheckpoint
 
     def __init__(
         self,
@@ -479,9 +479,10 @@ class Trainable:
         )
         return checkpoint_dir
 
+    @DeveloperAPI
     def save(
         self, checkpoint_dir: Optional[str] = None, prevent_upload: bool = False
-    ) -> str:
+    ) -> TrainingResult:
         """Saves the current model state to a checkpoint.
 
         Subclasses should override ``save_checkpoint()`` instead to save state.
@@ -495,7 +496,7 @@ class Trainable:
             prevent_upload: If True, will not upload the saved checkpoint to cloud.
 
         Returns:
-            The given or created checkpoint directory.
+            The TrainingResult containing the checkpoint and associated metrics.
 
         Note the return path should match up with what is expected of
         `restore()`.
@@ -533,17 +534,17 @@ class Trainable:
                 # to be consistent with fn trainables.
                 self._storage.current_checkpoint_index += 1
 
-                checkpoint_result = _TrainingResult(
+                checkpoint_result = TrainingResult(
                     checkpoint=persisted_checkpoint, metrics=self._last_result.copy()
                 )
 
             else:
-                checkpoint_result: _TrainingResult = checkpoint_dict_or_path
+                checkpoint_result: TrainingResult = checkpoint_dict_or_path
                 assert self._last_result
                 # Update the checkpoint result to include auto-filled metrics.
                 checkpoint_result.metrics.update(self._last_result)
 
-            assert isinstance(checkpoint_result, _TrainingResult)
+            assert isinstance(checkpoint_result, TrainingResult)
             return checkpoint_result
 
         if checkpoint_dict_or_path is None:
@@ -592,7 +593,10 @@ class Trainable:
             # Then, save other artifacts that live in the trial logdir
             self._maybe_save_artifacts_to_cloud()
 
-        return checkpoint_dir
+        return TrainingResult(
+            checkpoint=NewCheckpoint.from_directory(checkpoint_dir),
+            metrics=self._last_result,
+        )
 
     def _get_latest_available_checkpoint(self) -> Optional[str]:
         latest_local_checkpoint = self._get_latest_local_available_checkpoint()
@@ -845,16 +849,19 @@ class Trainable:
             "Use Trainable.save() instead."
         )
 
-    def _restore_from_checkpoint_obj(self, checkpoint: Checkpoint):
+    def _restore_from_checkpoint_obj(
+        self, checkpoint: Union[LegacyCheckpoint, NewCheckpoint]
+    ):
         with checkpoint.as_directory() as converted_checkpoint_path:
             return self.restore(
-                checkpoint_path=converted_checkpoint_path,
+                checkpoint=converted_checkpoint_path,
                 checkpoint_node_ip=None,
             )
 
+    @DeveloperAPI
     def restore(
         self,
-        checkpoint_path: Union[str, Checkpoint],
+        checkpoint: Union[str, NewCheckpoint, TrainingResult],
         checkpoint_node_ip: Optional[str] = None,
         fallback_to_latest: bool = False,
     ):
@@ -884,17 +891,14 @@ class Trainable:
                 path does not exist on the local node, it will be fetched
                 from external (cloud) storage if available, or restored
                 from a remote node.
-            checkpoint_node_ip: If given, try to restore
-                checkpoint from this node if it doesn't exist locally or
-                on cloud storage.
             fallback_to_latest: If True, will try to recover the
                 latest available checkpoint if the given ``checkpoint_path``
                 could not be found.
 
         """
         if _use_storage_context():
-            checkpoint_result = checkpoint_path
-            assert isinstance(checkpoint_result, _TrainingResult)
+            checkpoint_result = checkpoint
+            assert isinstance(checkpoint_result, TrainingResult)
 
             checkpoint_metrics = checkpoint_result.metrics
             self._iteration = checkpoint_metrics[TRAINING_ITERATION]
@@ -935,25 +939,17 @@ class Trainable:
             )
             return True
 
+        if isinstance(checkpoint, TrainingResult):
+            checkpoint = checkpoint.checkpoint
+
         # Ensure Checkpoints are converted
-        if isinstance(checkpoint_path, Checkpoint):
-            return self._restore_from_checkpoint_obj(checkpoint_path)
+        if isinstance(checkpoint, (LegacyCheckpoint, NewCheckpoint)):
+            return self._restore_from_checkpoint_obj(checkpoint)
 
-        synced_from_cloud = self._maybe_load_checkpoint_from_cloud(checkpoint_path)
+        assert isinstance(checkpoint, str), checkpoint
 
-        if not synced_from_cloud and (
-            # If a checkpoint source IP is given
-            checkpoint_node_ip
-            # And the checkpoint does not currently exist on the local node
-            and not os.path.exists(checkpoint_path)
-            # And the source IP is different to the current IP
-            and checkpoint_node_ip != ray.util.get_node_ip_address()
-        ):
-            checkpoint = _get_checkpoint_from_remote_node(
-                checkpoint_path, checkpoint_node_ip
-            )
-            if checkpoint:
-                checkpoint.to_directory(checkpoint_path)
+        checkpoint_path = checkpoint
+        synced_from_cloud = self._maybe_load_checkpoint_from_cloud(checkpoint)
 
         if not os.path.exists(checkpoint_path):
             if fallback_to_latest:
@@ -1030,15 +1026,22 @@ class Trainable:
             "Use Trainable.restore() instead."
         )
 
-    def delete_checkpoint(self, checkpoint_path: Union[str, Checkpoint]):
+    def delete_checkpoint(
+        self, checkpoint_path: Union[str, LegacyCheckpoint, NewCheckpoint]
+    ):
         """Deletes local copy of checkpoint.
 
         Args:
             checkpoint_path: Path to checkpoint.
         """
         # Ensure Checkpoints are converted
-        if isinstance(checkpoint_path, Checkpoint) and checkpoint_path._local_path:
+        if (
+            isinstance(checkpoint_path, LegacyCheckpoint)
+            and checkpoint_path._local_path
+        ):
             checkpoint_path = checkpoint_path._local_path
+        elif isinstance(checkpoint_path, NewCheckpoint):
+            checkpoint_path = checkpoint_path.path
 
         try:
             checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)

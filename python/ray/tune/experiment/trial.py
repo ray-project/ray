@@ -28,7 +28,7 @@ import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.checkpoint_manager import (
-    _TrainingResult,
+    TrainingResult,
     _CheckpointManager as _NewCheckpointManager,
 )
 from ray.train._internal.storage import _use_storage_context, StorageContext
@@ -1077,7 +1077,7 @@ class Trial:
         self.temporary_state.restoring_from = None
         self.run_metadata.invalidate_cache()
 
-    def on_checkpoint(self, checkpoint: Union[_TrackedCheckpoint, _TrainingResult]):
+    def on_checkpoint(self, checkpoint: Union[_TrackedCheckpoint, TrainingResult]):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
@@ -1085,7 +1085,7 @@ class Trial:
         """
         if _use_storage_context():
             checkpoint_result = checkpoint
-            assert isinstance(checkpoint_result, _TrainingResult)
+            assert isinstance(checkpoint_result, TrainingResult)
             self.run_metadata.checkpoint_manager.register_checkpoint(checkpoint_result)
             # Increment the checkpoint index to keep the checkpoint index in sync.
             # This index will get restored when the trial is restored and will
@@ -1101,7 +1101,7 @@ class Trial:
         assert self.is_restoring
 
         if _use_storage_context():
-            assert isinstance(self.temporary_state.restoring_from, _TrainingResult)
+            assert isinstance(self.temporary_state.restoring_from, TrainingResult)
 
         self.run_metadata.last_result = self.temporary_state.restoring_from.metrics
         self.run_metadata.last_result.setdefault("config", self.config)

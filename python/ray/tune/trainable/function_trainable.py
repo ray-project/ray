@@ -20,7 +20,7 @@ from ray.air.constants import (
     _RESULT_FETCH_TIMEOUT,
     TIME_THIS_ITER_S,
 )
-from ray.train._internal.checkpoint_manager import _TrainingResult
+from ray.train._internal.checkpoint_manager import TrainingResult
 from ray.train._internal.storage import _use_storage_context
 from ray.train._internal.session import (
     init_session,
@@ -429,7 +429,7 @@ class FunctionTrainable(Trainable):
             if not session.training_started:
                 session.start()
 
-            training_result: Optional[_TrainingResult] = session.get_next()
+            training_result: Optional[TrainingResult] = session.get_next()
 
             if not training_result:
                 # The `RESULT_DUPLICATE` result should have been the last
@@ -590,7 +590,7 @@ class FunctionTrainable(Trainable):
     def load_checkpoint(self, checkpoint):
         if _use_storage_context():
             checkpoint_result = checkpoint
-            assert isinstance(checkpoint_result, _TrainingResult)
+            assert isinstance(checkpoint_result, TrainingResult)
             session = get_session()
             session.loaded_checkpoint = checkpoint_result.checkpoint
             return

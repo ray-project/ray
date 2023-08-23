@@ -1988,10 +1988,10 @@ class TuneController:
         """
         logger.debug("Trial %s: Processing trial save.", trial)
 
-        from ray.train._internal.checkpoint_manager import _TrainingResult
+        from ray.train._internal.checkpoint_manager import TrainingResult
 
         try:
-            if _use_storage_context() and isinstance(checkpoint_value, _TrainingResult):
+            if _use_storage_context() and isinstance(checkpoint_value, TrainingResult):
                 try:
                     self._callbacks.on_checkpoint(
                         iteration=self._iteration,

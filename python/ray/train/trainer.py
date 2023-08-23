@@ -19,7 +19,6 @@ from ray.train._internal.checkpoint import (
     CheckpointManager,
 )
 from ray.train._internal.session import (
-    _TrainingResult,
     _TrainSession,
     TrainingResult,
     TrainingResultType,
@@ -224,7 +223,7 @@ class TrainingIterator:
             results = self._backend_executor.get_next_results()
             if results is None:
                 return None
-            assert all(isinstance(result, _TrainingResult) for result in results)
+            assert all(isinstance(result, TrainingResult) for result in results)
             return results
 
         while True:

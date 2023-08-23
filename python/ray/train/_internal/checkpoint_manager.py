@@ -7,7 +7,7 @@ from ray.air.config import MAX
 from ray.air._internal.util import is_nan
 from ray.train import CheckpointConfig
 from ray.train._internal.storage import _delete_fs_path
-from ray.train._internal.session import _TrainingResult
+from ray.train._internal.session import TrainingResult
 
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class _CheckpointManager:
     The main purpose of this abstraction is to keep the top K checkpoints based on
     recency/a user-provided metric.
 
-    NOTE: This class interacts with `_TrainingResult` objects, which are
+    NOTE: This class interacts with `TrainingResult` objects, which are
     (checkpoint, metrics) pairs. This is to order checkpoints by metrics.
 
     Args:
@@ -58,12 +58,12 @@ class _CheckpointManager:
         self._checkpoint_config = checkpoint_config or CheckpointConfig()
 
         # List of checkpoints ordered by ascending score.
-        self._checkpoint_results: List[_TrainingResult] = []
+        self._checkpoint_results: List[TrainingResult] = []
 
         # The latest registered checkpoint.
         # This should never be immediately deleted upon registration,
         # even if it's not in the top K checkpoints, based on score.
-        self._latest_checkpoint_result: Optional[_TrainingResult] = None
+        self._latest_checkpoint_result: Optional[TrainingResult] = None
 
         if (
             self._checkpoint_config.num_to_keep is not None
@@ -78,7 +78,7 @@ class _CheckpointManager:
     def checkpoint_config(self):
         return self._checkpoint_config
 
-    def register_checkpoint(self, checkpoint_result: _TrainingResult):
+    def register_checkpoint(self, checkpoint_result: TrainingResult):
         """Register new checkpoint and add to bookkeeping.
 
         This method will register a new checkpoint and add it to the internal
@@ -124,7 +124,7 @@ class _CheckpointManager:
                 _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
     def _get_checkpoint_score(
-        self, checkpoint: _TrainingResult
+        self, checkpoint: TrainingResult
     ) -> Tuple[bool, numbers.Number]:
         """Get the score for a checkpoint, according to checkpoint config.
 
@@ -172,15 +172,15 @@ class _CheckpointManager:
         )
 
     @property
-    def best_checkpoint_result(self) -> Optional[_TrainingResult]:
+    def best_checkpoint_result(self) -> Optional[TrainingResult]:
         return self._checkpoint_results[-1] if self._checkpoint_results else None
 
     @property
-    def latest_checkpoint_result(self) -> Optional[_TrainingResult]:
+    def latest_checkpoint_result(self) -> Optional[TrainingResult]:
         return self._latest_checkpoint_result
 
     @property
-    def best_checkpoint_results(self) -> List[_TrainingResult]:
+    def best_checkpoint_results(self) -> List[TrainingResult]:
         if self._checkpoint_config.num_to_keep is None:
             return self._checkpoint_results
         return self._checkpoint_results[-self._checkpoint_config.num_to_keep :]

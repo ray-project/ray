@@ -7,7 +7,7 @@ import pytest
 from ray.train import CheckpointConfig
 from ray.train._internal.checkpoint_manager import (
     _CheckpointManager,
-    _TrainingResult,
+    TrainingResult,
 )
 from ray.train._checkpoint import Checkpoint
 
@@ -29,7 +29,7 @@ def test_unlimited_checkpoints(checkpoint_paths: List[str]):
 
     for i in range(10):
         manager.register_checkpoint(
-            _TrainingResult(
+            TrainingResult(
                 checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
                 metrics={"iter": i},
             )
@@ -43,7 +43,7 @@ def test_limited_checkpoints(checkpoint_paths: List[str]):
 
     for i in range(10):
         manager.register_checkpoint(
-            _TrainingResult(
+            TrainingResult(
                 checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
                 metrics={"iter": i},
             )
@@ -82,7 +82,7 @@ def test_keep_checkpoints_by_score(order, checkpoint_paths):
     for i in range(10):
         score = random.random()
         manager.register_checkpoint(
-            _TrainingResult(
+            TrainingResult(
                 checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
                 metrics={"iter": i, score_attribute: score},
             )
@@ -118,19 +118,19 @@ def test_keep_latest_checkpoint(checkpoint_paths):
     )
 
     manager.register_checkpoint(
-        _TrainingResult(
+        TrainingResult(
             checkpoint=Checkpoint.from_directory(checkpoint_paths[0]),
             metrics={"score": 3.0},
         )
     )
     manager.register_checkpoint(
-        _TrainingResult(
+        TrainingResult(
             checkpoint=Checkpoint.from_directory(checkpoint_paths[1]),
             metrics={"score": 2.0},
         )
     )
     manager.register_checkpoint(
-        _TrainingResult(
+        TrainingResult(
             checkpoint=Checkpoint.from_directory(checkpoint_paths[2]),
             metrics={"score": 1.0},
         )
@@ -145,7 +145,7 @@ def test_keep_latest_checkpoint(checkpoint_paths):
     assert Path(checkpoint_paths[2]).exists()
 
     manager.register_checkpoint(
-        _TrainingResult(
+        TrainingResult(
             checkpoint=Checkpoint.from_directory(checkpoint_paths[3]),
             metrics={"score": 0.0},
         )
@@ -181,7 +181,7 @@ def test_nested_get_checkpoint_score(metrics):
         )
     )
 
-    tracked_checkpoint = _TrainingResult(checkpoint=None, metrics=metrics)
+    tracked_checkpoint = TrainingResult(checkpoint=None, metrics=metrics)
     assert manager._get_checkpoint_score(tracked_checkpoint) == (True, 5.0)
 
 
