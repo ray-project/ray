@@ -1,6 +1,6 @@
 (kuberay-mem-scalability)=
 
-# KubeRay memory & scalability benchmark
+# KubeRay memory and scalability benchmark
 
 ## Architecture
 
