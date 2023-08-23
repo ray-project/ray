@@ -16,8 +16,7 @@ class ZeroCopyMapFusionRule(Rule):
     """Base class for zero-copy map fusion rules.
 
     Subclasses implement the optimization strategies for different combinations of
-    fused map operators by dropping unnecessary data conversion MapTransformer in the
-    middle of the MapTransformer.
+    fused map operators, by dropping unnecessary data conversion `MapTransformFn`s.
     """
 
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
@@ -29,6 +28,8 @@ class ZeroCopyMapFusionRule(Rule):
             map_transformer = op.get_map_transformer()
             transform_fns = map_transformer._transform_fns
             new_transform_fns = self._optimize(transform_fns)
+            # Physical operators won't be shared,
+            # so it's safe to modify the transform_fns in place.
             map_transformer._transform_fns = new_transform_fns
 
         for input_op in op.input_dependencies:
@@ -36,6 +37,13 @@ class ZeroCopyMapFusionRule(Rule):
 
     @abstractmethod
     def _optimize(self, transform_fns: List[MapTransformFn]) -> List[MapTransformFn]:
+        """Optimize the transform_fns chain of a MapOperator.
+
+        Args:
+            transform_fns: The old transform_fns chain.
+        Returns:
+            The optimized transform_fns chain.
+        """
         pass
 
 
