@@ -2175,7 +2175,7 @@ def from_huggingface(
     import datasets
 
     if isinstance(dataset, datasets.IterableDataset):
-        # For an IterableDataset, we use a streaming implementation to read data.
+        # For an IterableDataset, we can use a streaming implementation to read data.
         return read_datasource(
             HuggingFaceDatasource(),
             dataset=dataset,
