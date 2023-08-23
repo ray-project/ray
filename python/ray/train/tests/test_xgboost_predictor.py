@@ -9,7 +9,6 @@ from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.xgboost import (
     XGBoostCheckpoint,
-    LegacyXGBoostCheckpoint,
     XGBoostPredictor,
 )
 
@@ -75,7 +74,7 @@ def test_predict_feature_columns_pandas():
 
 
 def test_predict_no_preprocessor_no_training():
-    checkpoint = LegacyXGBoostCheckpoint.from_model(booster=model)
+    checkpoint = XGBoostCheckpoint.from_model(booster=model)
     predictor = XGBoostPredictor.from_checkpoint(checkpoint)
 
     data_batch = np.array([[1, 2], [3, 4], [5, 6]])

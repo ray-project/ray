@@ -1,24 +1,18 @@
-import io
 import logging
-import os
-import time
-from contextlib import redirect_stderr
 import tempfile
 from unittest.mock import patch
 
-import numpy as np
 import pytest
 
 import ray
 from ray import train, tune
-from ray.train import Checkpoint, ScalingConfig
+from ray.train import ScalingConfig
+from ray.train._checkpoint import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.tune.impl import tuner_internal
-from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
 from ray.util.placement_group import get_current_placement_group
-from ray.train._internal.storage import _use_storage_context
 
 logger = logging.getLogger(__name__)
 
@@ -261,44 +255,6 @@ def test_setup(ray_start_4_cpus):
     trainer.fit()
 
 
-@patch.dict(os.environ, {"RAY_LOG_TO_STDERR": "1"})
-def _is_trainable_name_overriden(trainer: BaseTrainer):
-    trainable = trainer.as_trainable()
-    output = io.StringIO()
-
-    def say(self):
-        logger.warning("say")
-
-    trainable.say = say
-    with redirect_stderr(output):
-        remote_trainable = ray.remote(trainable)
-        remote_actor = remote_trainable.remote()
-        ray.get(remote_actor.say.remote())
-        time.sleep(1)  # make sure logging gets caught
-    output = output.getvalue()
-    print(output)
-    assert trainable().__repr__() in output
-
-
-def test_trainable_name_is_overriden_data_parallel_trainer(ray_start_4_cpus):
-    trainer = DataParallelTrainer(
-        lambda x: x, scaling_config=ScalingConfig(num_workers=1)
-    )
-
-    _is_trainable_name_overriden(trainer)
-
-
-def test_trainable_name_is_overriden_gbdt_trainer(ray_start_4_cpus):
-    trainer = DummyGBDTTrainer(
-        params={},
-        label_column="__values__",
-        datasets={"train": ray.data.from_items([1, 2, 3])},
-        scaling_config=ScalingConfig(num_workers=1),
-    )
-
-    _is_trainable_name_overriden(trainer)
-
-
 def test_repr(ray_start_4_cpus):
     def training_loop(self):
         pass
@@ -316,38 +272,14 @@ def test_repr(ray_start_4_cpus):
     assert len(representation) < MAX_REPR_LENGTH
 
 
-def test_large_params(ray_start_4_cpus):
-    """Tests if large arguments are can be serialized by the Trainer."""
-    array_size = int(1e8)
-
-    def training_loop(self):
-        checkpoint = self.starting_checkpoint.to_dict()["ckpt"]
-        assert len(checkpoint) == array_size
-
-    checkpoint = Checkpoint.from_dict({"ckpt": np.zeros(shape=array_size)})
-    trainer = DummyTrainer(training_loop, resume_from_checkpoint=checkpoint)
-    trainer.fit()
-
-
 def test_metadata_propagation_base(ray_start_4_cpus):
-    if not _use_storage_context():
-        print("Not implemented in old backend")
-        return
-
-    from ray.train._checkpoint import Checkpoint as NewCheckpoint
-
     class MyTrainer(BaseTrainer):
         def training_loop(self):
             assert train.get_context().get_metadata() == {"a": 1, "b": 1}
             with tempfile.TemporaryDirectory() as path:
-                checkpoint = NewCheckpoint.from_directory(path)
+                checkpoint = Checkpoint.from_directory(path)
                 checkpoint.set_metadata({"b": 2, "c": 3})
-                train.report(
-                    dict(
-                        my_metric=1,
-                    ),
-                    checkpoint=checkpoint,
-                )
+                train.report(dict(my_metric=1), checkpoint=checkpoint)
 
     trainer = MyTrainer(metadata={"a": 1, "b": 1})
     result = trainer.fit()
@@ -356,23 +288,12 @@ def test_metadata_propagation_base(ray_start_4_cpus):
 
 
 def test_metadata_propagation_data_parallel(ray_start_4_cpus):
-    if not _use_storage_context():
-        print("Not implemented in old backend")
-        return
-
-    from ray.train._checkpoint import Checkpoint as NewCheckpoint
-
     def training_loop(self):
         assert train.get_context().get_metadata() == {"a": 1, "b": 1}
         with tempfile.TemporaryDirectory() as path:
-            checkpoint = NewCheckpoint.from_directory(path)
+            checkpoint = Checkpoint.from_directory(path)
             checkpoint.set_metadata({"b": 2, "c": 3})
-            train.report(
-                dict(
-                    my_metric=1,
-                ),
-                checkpoint=checkpoint,
-            )
+            train.report(dict(my_metric=1), checkpoint=checkpoint)
 
     trainer = DummyTrainer(training_loop, metadata={"a": 1, "b": 1})
     result = trainer.fit()
