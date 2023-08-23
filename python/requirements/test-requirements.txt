@@ -119,3 +119,6 @@ sympy==1.10.1; python_version <= '3.7'
 # For test_basic.py::test_omp_threads_set
 threadpoolctl==3.1.0
 numexpr==2.8.4
+
+# For testing read_delta
+deltalake==0.5.8

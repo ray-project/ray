@@ -79,6 +79,7 @@ from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime, _convert_dbfs_path_to_local_path
 
 if TYPE_CHECKING:
     import dask
@@ -680,6 +681,155 @@ def read_parquet(
         filesystem=filesystem,
         columns=columns,
         ray_remote_args=ray_remote_args,
+        meta_provider=meta_provider,
+        **arrow_parquet_args,
+    )
+
+
+@PublicAPI
+def read_delta(
+    uri: str,
+    *,
+    version: Optional[str] = None,
+    storage_options: Optional[Dict[str, str]] = None,
+    without_files: bool = False,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    columns: Optional[List[str]] = None,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    meta_provider: Optional[ParquetMetadataProvider] = None,
+    **arrow_parquet_args,
+) -> Dataset:
+    """Creates a :class:`~ray.data.Dataset` from parquet files.
+
+
+    Examples:
+        Read a file in remote storage.
+
+        >>> import ray
+        >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+        >>> ds.schema()
+        Column        Type
+        ------        ----
+        sepal.length  double
+        sepal.width   double
+        petal.length  double
+        petal.width   double
+        variety       string
+
+
+        Read a directory in remote storage.
+        >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris-parquet/")
+
+        Read multiple local files.
+        >>> ray.data.read_parquet(
+        ...    ["local:///path/to/file1", "local:///path/to/file2"]) # doctest: +SKIP
+
+        Specify a schema for the parquet file.
+        >>> import pyarrow as pa
+        >>> fields = [("sepal.length", pa.float32()),
+        ...           ("sepal.width", pa.float32()),
+        ...           ("petal.length", pa.float32()),
+        ...           ("petal.width", pa.float32()),
+        ...           ("variety", pa.string())]
+        >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet",
+        ...     schema=pa.schema(fields))
+        >>> ds.schema()
+        Column        Type
+        ------        ----
+        sepal.length  float
+        sepal.width   float
+        petal.length  float
+        petal.width   float
+        variety       string
+
+
+        The Parquet reader also supports projection and filter pushdown, allowing column
+        selection and row filtering to be pushed down to the file scan.
+
+        .. testcode::
+
+            import pyarrow as pa
+
+            # Create a Dataset by reading a Parquet file, pushing column selection and
+            # row filtering down to the file scan.
+            ds = ray.data.read_parquet(
+                "s3://anonymous@ray-example-data/iris.parquet",
+                columns=["sepal.length", "variety"],
+                filter=pa.dataset.field("sepal.length") > 5.0,
+            )
+
+            ds.show(2)
+
+        .. testoutput::
+
+            {'sepal.length': 5.1, 'variety': 'Setosa'}
+            {'sepal.length': 5.4, 'variety': 'Setosa'}
+
+        For further arguments you can pass to PyArrow as a keyword argument, see the
+        `PyArrow API reference <https://arrow.apache.org/docs/python/generated/\
+        pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_.
+
+    Args:
+        paths: A single file path or directory, or a list of file paths. Multiple
+            directories are not supported.
+        filesystem: The PyArrow filesystem
+            implementation to read from. These filesystems are specified in the
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
+            used. If ``None``, this function uses a system-chosen implementation.
+        columns: A list of column names to read. Only the specified columns are
+            read during the file scan.
+        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
+            which automatically determines the optimal parallelism for your
+            configuration. You should not need to manually set this value in most cases.
+            For details on how the parallelism is automatically determined and guidance
+            on how to tune it, see :ref:`Tuning read parallelism
+            <read_parallelism>`. Parallelism is upper bounded by the total number of
+            records in all the parquet files.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        tensor_column_schema: A dict of column name to PyArrow dtype and shape
+            mappings for converting a Parquet column containing serialized
+            tensors (ndarrays) as their elements to PyArrow tensors. This function
+            assumes that the tensors are serialized in the raw
+            NumPy array format in C-contiguous order (e.g., via
+            `arr.tobytes()`).
+        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
+            metadata providers may be able to resolve file metadata more quickly and/or
+            accurately. In most cases you do not need to set this parameter.
+        arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
+            set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.dataset.Scanner.html\
+                    #pyarrow.dataset.Scanner.from_fragment>`_
+
+    Returns:
+        :class:`~ray.data.Dataset` producing records read from the specified parquet
+        files.
+    """
+    if is_in_databricks_runtime():
+        spark = get_spark_session()
+        paths = spark.read.load(uri, format="delta").inputFiles()
+        paths = [_convert_dbfs_path_to_local_path(path) for path in paths]
+    else:
+        try:
+            from deltalake import DeltaTable
+        except ImportError as e:
+            raise Exception(f"Please install deltalake to use read_delta.") from e
+        
+        # TODO: check the limitations of DeltaTable and params each version supports
+        dt = DeltaTable(uri, version, storage_options)
+        paths = dt.file_uris()
+    return read_parquet(
+        paths=paths,
+        filesystem=filesystem,
+        columns=columns,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        tensor_column_schema=tensor_column_schema,
         meta_provider=meta_provider,
         **arrow_parquet_args,
     )

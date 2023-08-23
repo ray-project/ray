@@ -5,6 +5,7 @@ import random
 import threading
 import collections
 import logging
+from urllib.parse import urlparse
 
 
 _logger = logging.getLogger("ray.util.spark.utils")
@@ -12,6 +13,11 @@ _logger = logging.getLogger("ray.util.spark.utils")
 
 def is_in_databricks_runtime():
     return "DATABRICKS_RUNTIME_VERSION" in os.environ
+
+def _convert_dbfs_path_to_local_path(dbfs_path):
+    parsed_path = urlparse(dbfs_path)
+    assert parsed_path.scheme.lower() == "dbfs", "dbfs path is required."
+    return "/dbfs" + parsed_path.path
 
 
 def gen_cmd_exec_failure_msg(cmd, return_code, tail_output_deque):
