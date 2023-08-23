@@ -24,15 +24,21 @@ public class RayServeHandle {
 
   private Router router;
 
+  private Boolean isForHttpRequests;
+
+
   public RayServeHandle(
       BaseActorHandle controllerHandle,
       String deploymentName,
       HandleOptions handleOptions,
-      Router router) {
+      Router router,
+      Boolean isForHttpRequests
+      ) {
     this.deploymentName = deploymentName;
     this.handleOptions = handleOptions != null ? handleOptions : new HandleOptions();
     this.handleTag = deploymentName + "#" + RandomStringUtils.randomAlphabetic(6);
     this.router = router != null ? router : new Router(controllerHandle, deploymentName);
+    this.isForHttpRequests = isForHttpRequests;
     RayServeMetrics.execute(
         () ->
             this.requestCounter =

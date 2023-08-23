@@ -72,8 +72,11 @@ public class ServeControllerClient {
    * @param missingOk If true, then Serve won't check the deployment is registered.
    * @return
    */
-  @SuppressWarnings("unchecked")
   public RayServeHandle getHandle(String deploymentName, boolean missingOk) {
+    return getHandle(deploymentName, missingOk, false);
+  }
+  @SuppressWarnings("unchecked")
+  public RayServeHandle getHandle(String deploymentName, boolean missingOk, boolean isForHttpRequests) {
     String cacheKey = deploymentName + "#" + missingOk;
     if (handleCache.containsKey(cacheKey)) {
       return handleCache.get(cacheKey);
@@ -102,7 +105,7 @@ public class ServeControllerClient {
       throw new RayServeException(LogUtil.format("Deployment {} does not exist.", deploymentName));
     }
 
-    RayServeHandle handle = new RayServeHandle(controller, deploymentName, null, null);
+    RayServeHandle handle = new RayServeHandle(controller, deploymentName, null, null, isForHttpRequests);
     handleCache.put(cacheKey, handle);
     return handle;
   }

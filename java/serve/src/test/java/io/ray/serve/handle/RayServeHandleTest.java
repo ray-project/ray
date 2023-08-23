@@ -70,7 +70,7 @@ public class RayServeHandleTest {
 
       // RayServeHandle
       RayServeHandle rayServeHandle =
-          new RayServeHandle(controllerHandle, deploymentName, null, null)
+          new RayServeHandle(controllerHandle, deploymentName, null, null, false)
               .method("getDeploymentName");
       ActorNameList.Builder builder = ActorNameList.newBuilder();
       builder.addNames(actorName);
