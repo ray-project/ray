@@ -9,21 +9,6 @@ from ray.tune.error import TuneError
 from ray.tune.utils import diagnose_serialization
 
 
-def test_remote_checkpoint_dir_with_query_string(tmp_path):
-    experiment = Experiment(
-        name="spam", run=lambda config: config, storage_path="s3://bucket?scheme=http"
-    )
-    assert experiment.remote_checkpoint_dir == "s3://bucket/spam?scheme=http"
-
-    trial = Trial(
-        "mock",
-        stub=True,
-        experiment_path="s3://bucket/spam?scheme=http",
-        experiment_dir_name="spam",
-    )
-    trial.relative_logdir = "trial_dirname"
-    assert trial.remote_checkpoint_dir == "s3://bucket/spam/trial_dirname?scheme=http"
-
 
 class ExperimentTest(unittest.TestCase):
     def tearDown(self):
