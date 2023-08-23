@@ -18,8 +18,8 @@ import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import dayjs from "dayjs";
-import React, { useEffect, useState } from "react";
-import { Align, Event, Filters } from "../type/event";
+import React, { useState } from "react";
+import { Align, Filters } from "../type/event";
 
 import { useFilter } from "../util/hook";
 import { SeverityLevel } from "./event";
@@ -30,38 +30,6 @@ type EventTableProps = {
   defaultSeverityLevels?: SeverityLevel[];
   entityName?: string;
   entityId?: string; // It could be a specific or "*" to represent all entities
-};
-
-const appendToParams = (
-  params: URLSearchParams,
-  key: string,
-  value: string | string[],
-) => {
-  if (Array.isArray(value)) {
-    value.forEach((val) =>
-      params.append(encodeURIComponent(key), encodeURIComponent(val)),
-    );
-  } else {
-    params.append(encodeURIComponent(key), encodeURIComponent(value));
-  }
-};
-
-const transformFiltersToParams = (filters: Filters) => {
-  const params = new URLSearchParams();
-
-  // Handling special cases for entityName and entityId
-  if (filters.entityName && filters.entityId) {
-    appendToParams(params, filters.entityName, filters.entityId);
-  }
-
-  // Handling general cases, for key like "count", "sourceType", "severityLevel"
-  Object.entries(filters).forEach(([key, value]) => {
-    if (key !== "entityName" && key !== "entityId") {
-      appendToParams(params, key, value as string | string[]);
-    }
-  });
-
-  return params.toString();
 };
 
 const useStyles = makeStyles((theme) => ({
@@ -117,13 +85,12 @@ const COLUMNS = [
   { label: "Severity", align: "center" },
   { label: "Timestamp", align: "center" },
   { label: "Source", align: "center" },
-  { label: "Custom Fields", align: "left" },
+  { label: "Custom fields", align: "left" },
   { label: "Message", align: "left" },
 ];
 
 const useEventTable = (props: EventTableProps) => {
   const { defaultSeverityLevels, entityName, entityId } = props;
-  const [loading, setLoading] = useState(true);
   const { changeFilter: _changeFilter, filterFunc } = useFilter();
   const [filters, _setFilters] = useState<Filters>({
     sourceType: [],
@@ -131,8 +98,6 @@ const useEventTable = (props: EventTableProps) => {
     entityName, // We used two fields(entityName, entityId) because we will support select entityName by dropdown and input entityId by TextField in the future.
     entityId, // id or *
   });
-
-  const [events, setEvents] = useState<Event[]>([]);
 
   const [pagination, setPagination] = useState({
     pageNo: 1, // first page is PageNo 1
@@ -160,18 +125,12 @@ const useEventTable = (props: EventTableProps) => {
   };
   const { pageNo } = pagination;
 
-  const params = transformFiltersToParams(filters);
-  const { data: eventsData, error, isLoading } = useEvents(params, pageNo);
-
-  useEffect(() => {
-    if (eventsData) {
-      setEvents(eventsData);
-    }
-    if (error) {
-      console.error("getEvent error: ", error);
-    }
-    setLoading(isLoading);
-  }, [eventsData, error, isLoading]);
+  const {
+    data: eventsData = [],
+    error,
+    isLoading,
+  } = useEvents(filters, pageNo);
+  console.error(error, "getEvents error");
 
   const range = [
     (pagination.pageNo - 1) * pagination.pageSize,
@@ -179,14 +138,14 @@ const useEventTable = (props: EventTableProps) => {
   ];
 
   return {
-    total: events.filter(filterFunc).length,
-    events: events.filter(filterFunc).slice(range[0], range[1]),
+    total: eventsData.filter(filterFunc).length,
+    events: eventsData.filter(filterFunc).slice(range[0], range[1]),
     filters,
     setFilters,
     changeFilter,
     pagination,
     changePage,
-    loading,
+    loading: isLoading,
   };
 };
 
