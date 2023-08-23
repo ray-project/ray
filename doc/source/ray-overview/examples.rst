@@ -65,7 +65,7 @@ Ray Examples
         :link: /ray-air/examples/gptj_deepspeed_fine_tuning
         :link-type: doc
 
-        GPT-J-6B Fine-Tuning with Ray AIR and DeepSpeed
+        GPT-J-6B Fine-Tuning with Ray Train and DeepSpeed
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item llm gen-ai
@@ -128,13 +128,6 @@ Ray Examples
         :link-type: doc
 
         How to fine-tune a dolly-v2-7b model with Ray AIR LightningTrainer and FSDP
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch cv
-        :link: /ray-air/computer-vision
-        :link-type: doc
-
-        Computer Vision User Guide
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch cv
@@ -612,13 +605,6 @@ Ray Examples
         :link-type: ref
 
         End-to-end Example for Tuning a PyTorch Model with PBT
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training
-        :link: train_mlflow_example
-        :link-type: ref
-
-        Logging Training Runs with MLflow
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tracking
@@ -1402,3 +1388,17 @@ Ray Examples
         :link-type: doc
 
         Fine-tune vicuna-13b-v1.3 with DeepSpeed and LightningTrainer
+    
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item training llm pytorch nlp
+        :link: deepspeed_example
+        :link-type: ref
+
+        Distributed Training with DeepSpeed ZeRO-3 and TorchTrainer
+    
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item training llm pytorch huggingface nlp
+        :link: deepspeed_example
+        :link-type: ref
+
+        Distributed Training with Hugging Face Accelelate and TorchTrainer

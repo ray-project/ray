@@ -1,5 +1,0 @@
-#ci:group=:book: lint (civ2)
-
-- label: "annotations"
-  commands:
-    - ./ci/ray_ci/lint.sh annotations

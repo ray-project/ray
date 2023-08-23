@@ -1,4 +1,0 @@
-group: forge
-steps:
-  - name: forge
-    wanda: ci/docker/forge.wanda.yaml

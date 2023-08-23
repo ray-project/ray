@@ -13,7 +13,6 @@ parts:
         title: "Use Cases"
         sections:
           - file: ray-air/getting-started
-          - file: ray-air/computer-vision
 
       - file: ray-overview/examples
         title: "Example Gallery"
@@ -71,6 +70,8 @@ parts:
             sections:
               - file: train/huggingface-accelerate
                 title: Hugging Face Accelerate Guide
+              - file: train/deepspeed
+                title: DeepSpeed Guide
               - file: train/distributed-tensorflow-keras
                 title: TensorFlow and Keras Guide
               - file: train/distributed-xgboost-lightgbm
@@ -98,8 +99,6 @@ parts:
                 title: "TensorFlow MNIST Example"
               - file: train/examples/horovod/horovod_example
                 title: "Horovod Example"
-              - file: train/examples/mlflow_fashion_mnist_example
-                title: "MLflow Callback Example"
               - file: train/examples/tf/tune_tensorflow_mnist_example
                 title: "Tune & TensorFlow Example"
               - file: train/examples/pytorch/tune_cifar_torch_pbt_example

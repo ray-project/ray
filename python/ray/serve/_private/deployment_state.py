@@ -1173,6 +1173,8 @@ class DeploymentState:
             self._name, DeploymentStatus.UPDATING
         )
 
+        self.replica_average_ongoing_requests: Dict[str, float] = dict()
+
         self.health_check_gauge = metrics.Gauge(
             "serve_deployment_replica_healthy",
             description=(
@@ -1435,17 +1437,28 @@ class DeploymentState:
         self._set_target_state(deployment_info)
         return True
 
-    def autoscale(
-        self,
-        current_num_ongoing_requests: List[float],
-        current_handle_queued_queries: int,
-    ):
+    def get_replica_current_ongoing_requests(self) -> List[float]:
+        """Return list of replica average ongoing requests.
+
+        The length of list indicate the number of replicas.
+        """
+
+        running_replicas = self._replicas.get([ReplicaState.RUNNING])
+
+        current_num_ongoing_requests = []
+        for replica in running_replicas:
+            replica_tag = replica.replica_tag
+            if replica_tag in self.replica_average_ongoing_requests:
+                current_num_ongoing_requests.append(
+                    self.replica_average_ongoing_requests[replica_tag]
+                )
+        return current_num_ongoing_requests
+
+    def autoscale(self, current_handle_queued_queries: int):
         """
         Autoscale the deployment based on metrics
 
         Args:
-            current_num_ongoing_requests: a list of number of running requests of all
-                replicas in the deployment
             current_handle_queued_queries: The number of handle queued queries,
                 if there are multiple handles, the max number of queries at
                 a single handle should be passed in
@@ -1453,6 +1466,7 @@ class DeploymentState:
         if self._target_state.deleting:
             return
 
+        current_num_ongoing_requests = self.get_replica_current_ongoing_requests()
         autoscaling_policy = self._target_state.info.autoscaling_policy
         decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
             curr_target_num_replicas=self._target_state.num_replicas,
@@ -1982,6 +1996,13 @@ class DeploymentState:
             stopped = replica.check_stopped()
             if not stopped:
                 self._replicas.add(ReplicaState.STOPPING, replica)
+            else:
+                logger.info(f"Replica {replica.replica_tag} is stopped.")
+                # NOTE(zcin): We need to remove the replica from in-memory metrics store
+                # here instead of _stop_replica because the replica will continue to
+                # send metrics while it's still alive.
+                if replica.replica_tag in self.replica_average_ongoing_requests:
+                    del self.replica_average_ongoing_requests[replica.replica_tag]
 
     def _stop_replicas_on_draining_nodes(self):
         draining_nodes = self._cluster_node_info_cache.get_draining_node_ids()
@@ -2038,6 +2059,11 @@ class DeploymentState:
             upscale=upscale,
             downscale=downscale,
         )
+
+    def record_autoscaling_metrics(self, replica_tag: str, window_avg: float) -> None:
+        """Records average ongoing requests at replicas."""
+
+        self.replica_average_ongoing_requests[replica_tag] = window_avg
 
     def record_multiplexed_model_ids(
         self, replica_name: str, multiplexed_model_ids: List[str]
@@ -2232,7 +2258,6 @@ class DeploymentStateManager:
         )
 
         # TODO(simon): move autoscaling related stuff into a manager.
-        self.replica_average_ongoing_requests = dict()
         self.handle_metrics_store = InMemoryMetricsStore()
 
     def _create_driver_deployment_state(self, name):
@@ -2268,7 +2293,10 @@ class DeploymentStateManager:
     def record_autoscaling_metrics(self, data, send_timestamp: float):
         replica_tag, window_avg = data
         if window_avg is not None:
-            self.replica_average_ongoing_requests[replica_tag] = window_avg
+            replica_name = ReplicaName.from_replica_tag(replica_tag)
+            self._deployment_states[
+                replica_name.deployment_tag
+            ].record_autoscaling_metrics(replica_tag, window_avg)
 
     def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
         self.handle_metrics_store.add_metrics_point(data, send_timestamp)
@@ -2277,7 +2305,10 @@ class DeploymentStateManager:
         """
         Return autoscaling metrics (used for dumping from controller)
         """
-        return self.replica_average_ongoing_requests
+        return {
+            deployment: deployment_state.replica_average_ongoing_requests
+            for deployment, deployment_state in self._deployment_states.items()
+        }
 
     def _map_actor_names_to_deployment(
         self, all_current_actor_names: List[str]
@@ -2570,32 +2601,6 @@ class DeploymentStateManager:
         if deployment_name in self._deployment_states:
             self._deployment_states[deployment_name].delete()
 
-    def get_replica_ongoing_request_metrics(
-        self, deployment_name: str, look_back_period_s
-    ) -> List[float]:
-        """
-        Return replica average ongoing requests
-        Args:
-            deployment_name: deployment name
-            look_back_period_s: the look back time period to collect the requests
-                metrics
-        Returns:
-            List of ongoing requests, the length of list indicate the number
-                of replicas
-        """
-
-        replicas = self._deployment_states[deployment_name]._replicas
-        running_replicas = replicas.get([ReplicaState.RUNNING])
-
-        current_num_ongoing_requests = []
-        for replica in running_replicas:
-            replica_tag = replica.replica_tag
-            if replica_tag in self.replica_average_ongoing_requests:
-                current_num_ongoing_requests.append(
-                    self.replica_average_ongoing_requests[replica_tag]
-                )
-        return current_num_ongoing_requests
-
     def get_handle_queueing_metrics(
         self, deployment_name: str, look_back_period_s
     ) -> int:
@@ -2629,17 +2634,11 @@ class DeploymentStateManager:
 
         for deployment_name, deployment_state in self._deployment_states.items():
             if deployment_state.should_autoscale():
-                current_num_ongoing_requests = self.get_replica_ongoing_request_metrics(
-                    deployment_name,
-                    deployment_state.get_autoscale_metric_lookback_period(),
-                )
                 current_handle_queued_queries = self.get_handle_queueing_metrics(
                     deployment_name,
                     deployment_state.get_autoscale_metric_lookback_period(),
                 )
-                deployment_state.autoscale(
-                    current_num_ongoing_requests, current_handle_queued_queries
-                )
+                deployment_state.autoscale(current_handle_queued_queries)
 
             deployment_state_update_result = deployment_state.update()
             if deployment_state_update_result.upscale:

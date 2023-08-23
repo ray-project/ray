@@ -369,10 +369,6 @@ class LightningTrainer(TorchTrainer):
             dataset. Internally, LightningTrainer shards the training dataset
             across all workers, and creates a PyTorch Dataloader for each shard.
 
-            The datasets will be transformed by ``preprocessor`` if it is provided.
-            If the ``preprocessor`` has not already been fit, it will be fit on the
-            training dataset.
-
             If ``datasets`` is not specified, ``LightningTrainer`` will use datamodule
             or dataloaders specified in ``LightningConfigBuilder.fit_params`` instead.
         datasets_iter_config: Configuration for iterating over the input ray datasets.
@@ -384,9 +380,9 @@ class LightningTrainer(TorchTrainer):
             Note that if you provide a ``datasets`` parameter, you must always specify
             ``datasets_iter_config`` for it.
 
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -401,6 +397,7 @@ class LightningTrainer(TorchTrainer):
         datasets_iter_config: Optional[Dict[str, Any]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         run_config = copy(run_config) or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()
@@ -439,6 +436,7 @@ class LightningTrainer(TorchTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )
 
     def _unify_checkpoint_configs(
