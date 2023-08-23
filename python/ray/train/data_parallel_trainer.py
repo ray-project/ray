@@ -235,8 +235,6 @@ class DataParallelTrainer(BaseTrainer):
         metadata: Dict that should be made available via
             `train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 

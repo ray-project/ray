@@ -1,8 +1,10 @@
-from typing import Optional, Dict, List
+from typing import Optional, Union, Dict, List
 
 import ray
 from ray.actor import ActorHandle
-from ray.train.constants import TRAIN_DATASET_KEY
+
+# TODO(justinvyu): Fix the circular import error
+from ray.train.constants import TRAIN_DATASET_KEY  # noqa
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.air.config import DatasetConfig
@@ -15,6 +17,13 @@ from ray.data import (
 )
 from ray.data.preprocessor import Preprocessor
 
+import sys
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
+
 
 @PublicAPI
 class DataConfig:
@@ -26,21 +35,28 @@ class DataConfig:
 
     def __init__(
         self,
-        datasets_to_split: Optional[List[str]] = None,
+        datasets_to_split: Union[Literal["all"], List[str]] = "all",
         execution_options: Optional[ExecutionOptions] = None,
     ):
         """Construct a DataConfig.
 
         Args:
-            datasets_to_split: The list of dataset names to split between workers.
-                By default, only the "train" dataset will be split.
+            datasets_to_split: Specifies which datasets should be split among workers.
+                Can be set to "all" or a list of dataset names. Defaults to "all",
+                i.e. split all datasets.
             execution_options: The execution options to pass to Ray Data. By default,
                 the options will be optimized for data ingest. When overriding this,
                 base your options off of `DataConfig.default_ingest_options()`.
         """
-        self._datasets_to_split: List[str] = (
-            datasets_to_split if datasets_to_split is not None else [TRAIN_DATASET_KEY]
-        )
+        if isinstance(datasets_to_split, list) or datasets_to_split == "all":
+            self._datasets_to_split = datasets_to_split
+        else:
+            raise TypeError(
+                "`datasets_to_split` should be a 'all' or a list of strings of "
+                "dataset names. Received "
+                f"{type(datasets_to_split).__name__} with value {datasets_to_split}."
+            )
+
         self._execution_options: ExecutionOptions = (
             execution_options or DataConfig.default_ingest_options()
         )
@@ -68,12 +84,17 @@ class DataConfig:
             equal to `world_size`. Each element of the list contains the assigned
             `DataIterator` instances by name for the worker.
         """
-        output = [{} for i in range(world_size)]
+        output = [{} for _ in range(world_size)]
+
+        if self._datasets_to_split == "all":
+            datasets_to_split = set(datasets.keys())
+        else:
+            datasets_to_split = set(self._datasets_to_split)
 
         for name, ds in datasets.items():
             ds = ds.copy(ds)
             ds.context.execution_options = self._execution_options
-            if name in self._datasets_to_split:
+            if name in datasets_to_split:
                 for i, split in enumerate(
                     ds.streaming_split(
                         world_size, equal=True, locality_hints=worker_node_ids
