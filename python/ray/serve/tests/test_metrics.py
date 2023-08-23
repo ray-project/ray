@@ -18,7 +18,7 @@ from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve.config import gRPCOptions
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
-from ray.serve.tests.test_grpc import ping_grpc_list_applications
+from ray.serve.tests.test_grpc import ping_grpc_list_applications, ping_grpc_call_method
 
 
 @pytest.fixture
@@ -79,6 +79,7 @@ def test_serve_metrics_for_successful_connection(serve_start_shutdown):
             # counter
             "serve_num_router_requests",
             "serve_num_http_requests",
+            "serve_num_grpc_requests",
             "serve_deployment_queued_queries",
             "serve_deployment_request_counter",
             "serve_deployment_replica_starts",
@@ -164,15 +165,20 @@ def test_http_metrics(serve_start_shutdown):
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
     # Any updates here should be reflected there too.
-    expected_metrics = ["serve_num_http_requests", "serve_num_http_error_requests"]
+    expected_metrics = [
+        "serve_num_http_requests",
+        "serve_num_grpc_requests",
+        "serve_num_http_error_requests",
+        "serve_num_grpc_error_requests",
+    ]
 
-    def verify_metrics(expected_metrics, do_assert=False):
+    def verify_metrics(_expected_metrics, do_assert=False):
         try:
             resp = requests.get("http://127.0.0.1:9999").text
         # Requests will fail if we are crashing the controller
         except requests.ConnectionError:
             return False
-        for metric in expected_metrics:
+        for metric in _expected_metrics:
             if do_assert:
                 assert metric in resp
             if metric not in resp:
@@ -182,6 +188,12 @@ def test_http_metrics(serve_start_shutdown):
     # Trigger HTTP 404 error
     requests.get("http://127.0.0.1:8000/B/")
     requests.get("http://127.0.0.1:8000/B/")
+
+    # Ping gPRC proxy
+    channel = grpc.insecure_channel("localhost:9000")
+    wait_for_condition(ping_grpc_list_applications, channel=channel, app_names=[])
+    ping_grpc_call_method(channel=channel, app_name="foo", test_not_found=True)
+
     try:
         wait_for_condition(
             verify_metrics,
@@ -197,6 +209,8 @@ def test_http_metrics(serve_start_shutdown):
     # Any updates here should be reflected there too.
     expected_metrics.append("serve_num_deployment_http_error_requests")
     expected_metrics.append("serve_http_request_latency_ms")
+    expected_metrics.append("serve_num_deployment_grpc_error_requests")
+    expected_metrics.append("serve_grpc_request_latency_ms")
 
     @serve.deployment(name="A")
     class A:
@@ -207,9 +221,12 @@ def test_http_metrics(serve_start_shutdown):
             # Trigger RayActorError
             os._exit(0)
 
-    serve.run(A.bind(), name="app")
+    app_name = "app"
+    serve.run(A.bind(), name=app_name)
     requests.get("http://127.0.0.1:8000/A/")
     requests.get("http://127.0.0.1:8000/A/")
+    with pytest.raises(AssertionError):
+        ping_grpc_call_method(channel=channel, app_name=app_name)
     try:
         wait_for_condition(
             verify_metrics,
@@ -237,6 +254,18 @@ def test_http_metrics(serve_start_shutdown):
                 if do_assert:
                     assert 'deployment="app_A"' in metrics and "2.0" in metrics
                 if 'deployment="app_A"' not in metrics or "2.0" not in metrics:
+                    return False
+            elif "serve_num_grpc_error_requests" in metrics:
+                # gRPC pinged "app_A" once
+                if do_assert:
+                    assert "1.0" in metrics
+                if "1.0" not in metrics:
+                    return False
+            elif "serve_num_deployment_grpc_error_requests" in metrics:
+                # gRPC pinged "app_A" once
+                if do_assert:
+                    assert 'deployment="app_A"' in metrics and "1.0" in metrics
+                if 'deployment="app_A"' not in metrics or "1.0" not in metrics:
                     return False
         return True
 
