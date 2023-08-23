@@ -15,7 +15,7 @@ This tutorial requires several files in the repository.
 
 ## Step 1: Create a new Kubernetes cluster
 
-We will create a GKE cluster with autoscaling enabled.
+Create a GKE cluster with autoscaling enabled.
 The following command creates a Kubernetes cluster named `kuberay-benchmark-cluster` on Google GKE.
 The cluster can scale up to 16 nodes, and each node of type `e2-highcpu-16` has 16 CPUs and 16 GB of memory.
 The following experiments may create up to ~150 Pods in the Kubernetes cluster, and each Ray Pod requires 1 CPU and 1 GB of memory.
