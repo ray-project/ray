@@ -8,7 +8,7 @@ from collections import defaultdict, deque
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, Tuple, Set
+from typing import Any, Callable, Dict, List, Optional, Union, Tuple, Set, TYPE_CHECKING
 
 import logging
 import os
@@ -72,6 +72,10 @@ from ray.tune.utils.util import _split_remote_local_path
 from ray.tune.web_server import TuneServer
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.debug import log_once
+
+
+if TYPE_CHECKING:
+    from ray.train._internal.checkpoint_manager import TrainingResult
 
 
 logger = logging.getLogger(__name__)
@@ -1949,7 +1953,9 @@ class TuneController:
 
         return checkpoint
 
-    def _on_saving_result(self, trial, checkpoint_value: Union[ray.ObjectRef, str]):
+    def _on_saving_result(
+        self, trial, checkpoint_value: Union[ray.ObjectRef, "TrainingResult"]
+    ):
         with warn_if_slow("process_trial_save") as _profile:
             self._process_trial_save(trial, checkpoint_value)
         with warn_if_slow("callbacks.on_trial_save"):
@@ -1977,7 +1983,7 @@ class TuneController:
         self._maybe_execute_queued_decision(trial)
 
     def _process_trial_save(
-        self, trial: Trial, checkpoint_value: Union[ray.ObjectRef, str]
+        self, trial: Trial, checkpoint_value: Union[ray.ObjectRef, "TrainingResult"]
     ):
         """Processes a trial save.
 
@@ -2014,6 +2020,9 @@ class TuneController:
                 self._checkpoint_manager.on_trial_checkpoint(trial)
                 self._mark_trial_to_checkpoint(trial)
             else:
+                if isinstance(checkpoint_value, TrainingResult):
+                    checkpoint_value = checkpoint_value.checkpoint.path
+
                 trial.temporary_state.saving_to.dir_or_data = checkpoint_value
                 self._callbacks.on_checkpoint(
                     iteration=self._iteration,
