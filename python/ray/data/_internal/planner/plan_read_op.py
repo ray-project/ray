@@ -1,5 +1,5 @@
 import functools
-from typing import Callable, Iterable, List, Optional
+from typing import Iterable, List, Optional
 
 import ray
 import ray.cloudpickle as cloudpickle
