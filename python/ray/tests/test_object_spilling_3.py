@@ -363,6 +363,29 @@ def test_spill_reconstruction_errors(ray_start_cluster, object_spilling_config):
         ray.get(ref)
 
 
+def test_evict_secondary_before_spill(ray_start_cluster, object_spilling_config):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    ray.init(address=cluster.address)
+    for _ in range(3):
+        cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    # Spread data onto all nodes.
+    @ray.remote
+    def gen():
+        return np.ones(1024 * 1024, dtype=np.uint8)
+
+    refs = [gen.options(scheduling_strategy="SPREAD").remote() for _ in range(100)]  # 100MiB
+
+    # Iterate over the data on the worker nodes from the head node.
+    for i in range(10):
+        for j, r in enumerate(refs):
+            print("Iteration", i, j)
+            ray.get(r)
+
+    _check_spilled()
+
+
 if __name__ == "__main__":
     import os
 
