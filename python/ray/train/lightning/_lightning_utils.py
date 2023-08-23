@@ -9,7 +9,6 @@ import logging
 import shutil
 import torch
 import tempfile
-from tempfile import TemporaryDirectory
 from ray.train import Checkpoint
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal.storage import _use_storage_context
@@ -197,29 +196,36 @@ def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
 class RayTrainReportCallback(Callback):
     """A simple callback that reports checkpoints to Ray on train epoch end."""
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.trial_name = train.get_context().get_trial_name()
+        self.tmpdir_prefix = os.path.join(tempfile.gettempdir(), self.trial_name)
+
     def on_train_epoch_end(self, trainer, pl_module) -> None:
-        with TemporaryDirectory() as tmpdir:
-            # Fetch metrics
-            metrics = trainer.callback_metrics
-            metrics = {k: v.item() for k, v in metrics.items()}
+        # Creates a checkpoint dir with fixed name
+        tmpdir = os.path.join(self.tmpdir_prefix, str(trainer.current_epoch))
+        os.makedirs(tmpdir, exist_ok=True)
 
-            # (Optional) Add customized metrics
-            metrics["epoch"] = trainer.current_epoch
-            metrics["step"] = trainer.global_step
+        # Fetch metrics
+        metrics = trainer.callback_metrics
+        metrics = {k: v.item() for k, v in metrics.items()}
 
-            # Save checkpoint to local
-            ckpt_path = os.path.join(tmpdir, "checkpoint.ckpt")
-            trainer.save_checkpoint(ckpt_path, weights_only=False)
+        # (Optional) Add customized metrics
+        metrics["epoch"] = trainer.current_epoch
+        metrics["step"] = trainer.global_step
 
-            # Ensures all workers already finish writing their checkpoints
-            trainer.strategy.barrier()
+        # Save checkpoint to local
+        ckpt_path = os.path.join(tmpdir, "checkpoint.ckpt")
+        trainer.save_checkpoint(ckpt_path, weights_only=False)
 
-            # Report to train session
-            if _use_storage_context():
-                checkpoint = NewCheckpoint.from_directory(tmpdir)
-            else:
-                checkpoint = Checkpoint.from_directory(tmpdir)
-            train.report(metrics=metrics, checkpoint=checkpoint)
+        # Report to train session
+        if _use_storage_context():
+            checkpoint = NewCheckpoint.from_directory(tmpdir)
+        else:
+            checkpoint = Checkpoint.from_directory(tmpdir)
+        train.report(metrics=metrics, checkpoint=checkpoint)
+
+        shutil.rmtree(tmpdir)
 
 
 class RayIterableDataset(IterableDataset):
