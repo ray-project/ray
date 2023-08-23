@@ -20,6 +20,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
 )
+from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.tests.utils import (
     check_ray_started,
@@ -606,6 +607,87 @@ def test_multiplexed_detect(manage_ray_with_telemetry):
         == 1,
         timeout=5,
     )
+
+
+class TestProxyTelemetry:
+    def test_both_proxies_detected(manage_ray, ray_shutdown):
+        """Test that both HTTP and gRPC proxies are detected by telemetry.
+
+        When both HTTP and gRPC proxies are used, both telemetry should be detected.
+        """
+        result = get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        report = {"extra_usage_tags": result}
+
+        # Ensure neither the HTTP nor gRPC proxy telemetry exist.
+        assert ServeUsageTag.HTTP_PROXY_USED.get_value_from_report(report) is None
+        assert ServeUsageTag.GRPC_PROXY_USED.get_value_from_report(report) is None
+
+        grpc_servicer_functions = [
+            "ray.serve.generated.serve_pb2_grpc."
+            "add_UserDefinedServiceServicer_to_server",
+        ]
+        serve.start(grpc_options={"grpc_servicer_functions": grpc_servicer_functions})
+
+        result = get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        report = {"extra_usage_tags": result}
+
+        # Ensure both HTTP and gRPC proxy telemetry exist.
+        assert int(ServeUsageTag.HTTP_PROXY_USED.get_value_from_report(report)) == 1
+        assert int(ServeUsageTag.GRPC_PROXY_USED.get_value_from_report(report)) == 1
+
+    def test_only_http_proxy_detected(manage_ray, ray_shutdown):
+        """Test that only HTTP proxy is detected by telemetry.
+
+        When only HTTP proxy is used, only the http proxy telemetry should be detected.
+        """
+        result = get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        report = {"extra_usage_tags": result}
+
+        # Ensure the telemetry does not yet exist.
+        assert ServeUsageTag.HTTP_PROXY_USED.get_value_from_report(report) is None
+        assert ServeUsageTag.GRPC_PROXY_USED.get_value_from_report(report) is None
+
+        serve.start()
+
+        result = get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        report = {"extra_usage_tags": result}
+
+        # Ensure only the HTTP proxy telemetry exist.
+        assert int(ServeUsageTag.HTTP_PROXY_USED.get_value_from_report(report)) == 1
+        assert ServeUsageTag.GRPC_PROXY_USED.get_value_from_report(report) is None
+
+    def test_no_proxy_detected(manage_ray, ray_shutdown):
+        """Test that no proxy is detected by telemetry.
+
+        When neither HTTP nor gRPC proxy is used, no proxy telemetry should be detected.
+        """
+        result = get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        report = {"extra_usage_tags": result}
+
+        # Ensure neither the HTTP nor gRPC proxy telemetry exist.
+        assert ServeUsageTag.HTTP_PROXY_USED.get_value_from_report(report) is None
+        assert ServeUsageTag.GRPC_PROXY_USED.get_value_from_report(report) is None
+
+        serve.start(http_options={"location": "NoServer"})
+
+        result = get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        report = {"extra_usage_tags": result}
+
+        # Ensure neither the HTTP nor gRPC proxy telemetry exist.
+        assert ServeUsageTag.HTTP_PROXY_USED.get_value_from_report(report) is None
+        assert ServeUsageTag.GRPC_PROXY_USED.get_value_from_report(report) is None
 
 
 if __name__ == "__main__":
