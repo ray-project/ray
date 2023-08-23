@@ -1,7 +1,6 @@
 import {
   Box,
   InputAdornment,
-  LinearProgress,
   makeStyles,
   Paper,
   Table,
@@ -109,25 +108,32 @@ const useEventTable = (props: EventTableProps) => {
     pageSize: 10,
   });
 
-  const changePage = (key: string, value: number) => {
-    setPagination({ ...pagination, [key]: value });
-  };
+  const changePage = useCallback((key: string, value: number) => {
+    setPagination((prevPagination) => ({ ...prevPagination, [key]: value }));
+  }, []);
 
-  const changeFilter: typeof _changeFilter = (...params) => {
-    _changeFilter(...params);
-    setPagination({
-      ...pagination,
-      pageNo: 1,
-    });
-  };
+  const changeFilter = useCallback(
+    (...params) => {
+      _changeFilter(...params);
+      setPagination((prevPagination) => ({
+        ...prevPagination,
+        pageNo: 1,
+      }));
+    },
+    [_changeFilter],
+  );
 
-  const setFilters: typeof _setFilters = (...params) => {
-    _setFilters(...params);
-    setPagination({
-      ...pagination,
-      pageNo: 1,
-    });
-  };
+  const setFilters = useCallback(
+    (...params) => {
+      _setFilters(...params);
+      setPagination((prevPagination) => ({
+        ...prevPagination,
+        pageNo: 1,
+      }));
+    },
+    [_setFilters],
+  );
+
   const { pageNo } = pagination;
 
   const {
