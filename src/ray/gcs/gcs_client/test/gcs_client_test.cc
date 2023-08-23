@@ -153,8 +153,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
           grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                               grpc::InsecureChannelCredentials());
       auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
-      bool in_memory =
-          RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage;
       grpc::ClientContext context;
       StampContext(context);
       context.set_deadline(std::chrono::system_clock::now() + 1s);
@@ -162,8 +160,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       rpc::CheckAliveReply reply;
       auto status = stub->CheckAlive(&context, request, &reply);
       // If it is in memory, we don't have the new token until we connect again.
-      if (!((!in_memory && status.ok()) ||
-            (in_memory && GrpcStatusToRayStatus(status).IsAuthError()))) {
+      if (!((!no_redis_ && status.ok()) ||
+            (no_redis_ && GrpcStatusToRayStatus(status).IsAuthError()))) {
         RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
                          << status.error_message();
         continue;
@@ -964,10 +962,11 @@ TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
 }
 
 TEST_P(GcsClientTest, TestGcsAuth) {
+  RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
   // Restart GCS.
   RestartGcsServer();
   auto node_info = Mocker::GenNodeInfo();
-  if (RayConfig::instance().gcs_storage() != gcs::GcsServer::kInMemoryStorage) {
+  if (!no_redis_) {
     EXPECT_TRUE(RegisterNode(*node_info));
     return;
   }
@@ -978,6 +977,7 @@ TEST_P(GcsClientTest, TestGcsAuth) {
 }
 
 TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
+  RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
   // Restart GCS.
   RestartGcsServer();
   if (RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage) {

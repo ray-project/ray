@@ -832,7 +832,18 @@ print("DONE")
 @pytest.mark.skipif(
     enable_external_redis(), reason="Only valid when started without external redis"
 )
-def test_cluster_id(ray_start_regular):
+@pytest.mark.parametrize(
+    "ray_start_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_enable_cluster_auth": "1",
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_cluster_id(ray_start_with_env_vars):
     raylet_proc = ray._private.worker._global_node.all_processes[
         ray_constants.PROCESS_TYPE_RAYLET
     ][0].process

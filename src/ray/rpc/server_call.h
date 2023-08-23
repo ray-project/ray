@@ -205,30 +205,32 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequest() override {
     bool auth_success = true;
-    if constexpr (EnableAuth == AuthType::STRICT_AUTH) {
-      RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
-      auto &metadata = context_.client_metadata();
-      if (auto it = metadata.find(kClusterIdKey);
-          it == metadata.end() || it->second != cluster_id_.Hex()) {
-        RAY_LOG(DEBUG) << "Wrong cluster ID token in request! Expected: "
-                       << cluster_id_.Hex() << ", but got: "
-                       << (it == metadata.end() ? "No token!" : it->second);
-        auth_success = false;
-      }
-    } else if constexpr (EnableAuth == AuthType::LAZY_AUTH) {
-      RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
-      auto &metadata = context_.client_metadata();
-      if (auto it = metadata.find(kClusterIdKey);
-          it != metadata.end() && it->second != cluster_id_.Hex()) {
-        RAY_LOG(DEBUG) << "Wrong cluster ID token in request! Expected: "
-                       << cluster_id_.Hex() << ", but got: "
-                       << (it == metadata.end() ? "No token!" : it->second);
-        auth_success = false;
-      }
-    } else {
-      if (!cluster_id_.IsNil()) {
-        RAY_LOG_EVERY_MS(WARNING, 5000)
-            << "Unexpected cluster ID in server call! " << cluster_id_;
+    if (::RayConfig::instance().enable_cluster_auth()) {
+      if constexpr (EnableAuth == AuthType::STRICT_AUTH) {
+        RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
+        auto &metadata = context_.client_metadata();
+        if (auto it = metadata.find(kClusterIdKey);
+            it == metadata.end() || it->second != cluster_id_.Hex()) {
+          RAY_LOG(DEBUG) << "Wrong cluster ID token in request! Expected: "
+                         << cluster_id_.Hex() << ", but got: "
+                         << (it == metadata.end() ? "No token!" : it->second);
+          auth_success = false;
+        }
+      } else if constexpr (EnableAuth == AuthType::LAZY_AUTH) {
+        RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
+        auto &metadata = context_.client_metadata();
+        if (auto it = metadata.find(kClusterIdKey);
+            it != metadata.end() && it->second != cluster_id_.Hex()) {
+          RAY_LOG(DEBUG) << "Wrong cluster ID token in request! Expected: "
+                         << cluster_id_.Hex() << ", but got: "
+                         << (it == metadata.end() ? "No token!" : it->second);
+          auth_success = false;
+        }
+      } else {
+        if (!cluster_id_.IsNil()) {
+          RAY_LOG_EVERY_MS(WARNING, 5000)
+              << "Unexpected cluster ID in server call! " << cluster_id_;
+        }
       }
     }
 

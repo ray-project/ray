@@ -101,6 +101,7 @@ cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
+        "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "@com_github_grpc_grpc//:grpc++",
         "@com_github_grpc_grpc//:grpc++_reflection",
