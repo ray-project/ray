@@ -152,7 +152,7 @@ class TorchCheckpoint(FrameworkCheckpoint):
 
         checkpoint = cls.from_directory(tempdir)
         if preprocessor:
-            checkpoint.set_preprocessor(checkpoint)
+            checkpoint.set_preprocessor(preprocessor)
         return checkpoint
 
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
