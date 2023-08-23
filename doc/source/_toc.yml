@@ -59,8 +59,8 @@ parts:
       - file: train/train
         title: Ray Train
         sections:
-          - file: train/key-concepts
-            title: Key Concepts
+          - file: train/overview
+            title: Overview
           - file: train/getting-started-pytorch
             title: PyTorch Guide
           - file: train/getting-started-pytorch-lightning
