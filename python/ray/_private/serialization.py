@@ -424,6 +424,9 @@ class SerializationContext:
 
         if isinstance(value, RayTaskError):
             if issubclass(value.cause.__class__, TaskCancelledError):
+                # Handle task cancellation errors separately because we never
+                # want to warn about tasks that were intentionally cancelled by
+                # the user.
                 metadata = str(ErrorType.Value("TASK_CANCELLED")).encode("ascii")
                 value = value.to_bytes()
             else:
