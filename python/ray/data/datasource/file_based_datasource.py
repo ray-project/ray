@@ -24,7 +24,6 @@ from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.air._internal.remote_storage import _is_local_windows_path
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
@@ -533,9 +532,6 @@ class _FileBasedDatasourceReader(Reader):
             DataContext._set_current(ctx)
             logger.get_logger().debug(f"Reading {len(read_paths)} files.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
-            output_buffer = BlockOutputBuffer(
-                block_udf=None, target_max_block_size=ctx.target_max_block_size
-            )
             for read_path in read_paths:
                 compression = open_stream_args.pop("compression", None)
                 if compression is None:
@@ -575,13 +571,7 @@ class _FileBasedDatasourceReader(Reader):
                     for data in read_stream(f, read_path, **reader_args):
                         if partitions:
                             data = _add_partitions(data, partitions)
-
-                        output_buffer.add_block(data)
-                        if output_buffer.has_next():
-                            yield output_buffer.next()
-            output_buffer.finalize()
-            if output_buffer.has_next():
-                yield output_buffer.next()
+                        yield data
 
         # fix https://github.com/ray-project/ray/issues/24296
         parallelism = min(parallelism, len(paths))

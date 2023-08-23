@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
-from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version
@@ -423,12 +422,6 @@ def _read_pieces(
     import pyarrow as pa
     from pyarrow.dataset import _get_partition_keys
 
-    ctx = DataContext.get_current()
-    output_buffer = BlockOutputBuffer(
-        block_udf=block_udf,
-        target_max_block_size=ctx.target_max_block_size,
-    )
-
     logger.debug(f"Reading {len(pieces)} parquet pieces")
     use_threads = reader_args.pop("use_threads", False)
     batch_size = reader_args.pop("batch_size", default_read_batch_size)
@@ -452,12 +445,10 @@ def _read_pieces(
                     )
             # If the table is empty, drop it.
             if table.num_rows > 0:
-                output_buffer.add_block(table)
-                if output_buffer.has_next():
-                    yield output_buffer.next()
-    output_buffer.finalize()
-    if output_buffer.has_next():
-        yield output_buffer.next()
+                if block_udf is not None:
+                    yield block_udf(table)
+                else:
+                    yield table
 
 
 def _fetch_metadata_serialization_wrapper(

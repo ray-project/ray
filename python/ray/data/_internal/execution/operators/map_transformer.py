@@ -269,7 +269,7 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
                 must match self._input_type.
         """
         output_buffer = BlockOutputBuffer(
-            None, DataContext.get_current().target_max_block_size
+            DataContext.get_current().target_max_block_size
         )
         if self._input_type == MapTransformFnDataType.Block:
             add_fn = output_buffer.add_block
