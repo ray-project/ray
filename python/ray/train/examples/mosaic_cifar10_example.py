@@ -1,10 +1,12 @@
 import argparse
+from filelock import FileLock
+import os
+import tempfile
+
 import torch
 import torch.utils.data
-
 import torchvision
 from torchvision import transforms, datasets
-
 
 import ray
 from ray import train
@@ -29,19 +31,20 @@ def trainer_init_per_worker(config):
         [transforms.ToTensor(), transforms.Normalize(mean, std)]
     )
 
-    data_directory = "~/data"
-    train_dataset = torch.utils.data.Subset(
-        datasets.CIFAR10(
-            data_directory, train=True, download=True, transform=cifar10_transforms
-        ),
-        list(range(BATCH_SIZE * 10)),
-    )
-    test_dataset = torch.utils.data.Subset(
-        datasets.CIFAR10(
-            data_directory, train=False, download=True, transform=cifar10_transforms
-        ),
-        list(range(BATCH_SIZE * 10)),
-    )
+    data_directory = tempfile.mkdtemp(prefix="cifar_data")
+    with FileLock(os.path.join(data_directory, "data.lock")):
+        train_dataset = torch.utils.data.Subset(
+            datasets.CIFAR10(
+                data_directory, train=True, download=True, transform=cifar10_transforms
+            ),
+            list(range(BATCH_SIZE * 10)),
+        )
+        test_dataset = torch.utils.data.Subset(
+            datasets.CIFAR10(
+                data_directory, train=False, download=True, transform=cifar10_transforms
+            ),
+            list(range(BATCH_SIZE * 10)),
+        )
 
     batch_size_per_worker = BATCH_SIZE // train.get_context().get_world_size()
     train_dataloader = torch.utils.data.DataLoader(
