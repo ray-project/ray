@@ -6,12 +6,12 @@ In this guide, we show you how to manage and interact with Ray clusters on Kuber
 
 ## Preparation
 
-* Install [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) (>= 1.19), [Helm](https://helm.sh/docs/intro/install/) (>= v3.4), and [kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation).
+* Install [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) (>= 1.19), [Helm](https://helm.sh/docs/intro/install/) (>= v3.4), and [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation).
 * Make sure your Kubernetes cluster has at least 4 CPU and 4 GB RAM.
 
 ## Step 1: Create a Kubernetes cluster
 
-This step creates a local Kubernetes cluster using [kind](https://kind.sigs.k8s.io/). If you already have a Kubernetes cluster, you can skip this step.
+This step creates a local Kubernetes cluster using [Kind](https://kind.sigs.k8s.io/). If you already have a Kubernetes cluster, you can skip this step.
 
 ```sh
 kind create cluster --image=kindest/node:v1.23.0
