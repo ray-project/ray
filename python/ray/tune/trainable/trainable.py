@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Ty
 
 import ray
 import ray.cloudpickle as ray_pickle
-from pyarrow._fs import FileType
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
@@ -27,7 +26,11 @@ from ray.air.constants import (
     TRAINING_ITERATION,
 )
 from ray.train._internal.checkpoint_manager import _TrainingResult
-from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._internal.storage import (
+    _use_storage_context,
+    StorageContext,
+    _exists_at_fs_path,
+)
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -909,8 +912,7 @@ class Trainable:
             self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
 
             checkpoint = checkpoint_result.checkpoint
-            file_info = checkpoint.filesystem.get_file_info(checkpoint.path)
-            if file_info.type == FileType.NotFound:
+            if not _exists_at_fs_path(checkpoint.filesystem, checkpoint.path):
                 raise ValueError(
                     f"Could not recover from checkpoint as it does not exist on "
                     f"storage anymore. "

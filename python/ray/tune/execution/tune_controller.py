@@ -1921,7 +1921,8 @@ class TuneController:
             # (which clears all futures) before the save gets processed.
             # Keep this in for now while `train` and `save` are 2 separate steps.
             # TODO(justinvyu): Remove the return value?
-            return _FutureTrainingResult(future)
+            trial.temporary_state.saving_to = _FutureTrainingResult(future)
+            return trial.temporary_state.saving_to
 
         if storage == CheckpointStorage.MEMORY:
             # This is now technically a persistent checkpoint, but

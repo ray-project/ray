@@ -92,6 +92,11 @@ class _FutureTrainingResult:
         self.future = future
 
     def resolve(self, block: bool = True) -> Optional["_TrainingResult"]:
+        """Resolve into ``_TrainingResult``.
+
+        This will return None for function trainables if no checkpoint has been
+        saved before.
+        """
         if block:
             timeout = None
         else:
