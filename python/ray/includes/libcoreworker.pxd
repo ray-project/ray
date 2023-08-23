@@ -108,7 +108,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool retry_exceptions,
             const CSchedulingStrategy &scheduling_strategy,
             c_string debugger_breakpoint,
-            c_string serialized_retry_exception_allowlist)
+            c_string serialized_retry_exception_allowlist,
+            const CTaskID current_task_id)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
@@ -125,7 +126,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options,
-            c_vector[CObjectReference]&)
+            c_vector[CObjectReference] &task_returns,
+            const CTaskID current_task_id)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_restart)
@@ -263,6 +265,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
 
         unordered_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()
+        c_vector[CTaskID] GetPendingChildrenTasks(const CTaskID &task_id) const
 
         void GetAsync(const CObjectID &object_id,
                       ray_callback_function success_callback,
