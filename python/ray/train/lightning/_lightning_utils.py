@@ -204,7 +204,9 @@ class RayTrainReportCallback(Callback):
     def on_train_epoch_end(self, trainer, pl_module) -> None:
         # Creates a checkpoint dir with fixed name
         tmpdir = os.path.join(self.tmpdir_prefix, str(trainer.current_epoch))
-        os.makedirs(tmpdir, exist_ok=True)
+        if os.path.isdir(tmpdir):
+            shutil.rmtree(tmpdir)
+        os.makedirs(tmpdir)
 
         # Fetch metrics
         metrics = trainer.callback_metrics
