@@ -353,6 +353,7 @@ parts:
                   - file: cluster/kubernetes/benchmarks/memory-scalability-benchmark.md
               - file: cluster/kubernetes/troubleshooting
                 sections:
+                  - file: cluster/kubernetes/troubleshooting/troubleshooting.md
                   - file: cluster/kubernetes/troubleshooting/rayservice-troubleshooting.md
               - file: cluster/kubernetes/references
           - file: cluster/vms/index

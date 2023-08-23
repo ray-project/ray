@@ -39,8 +39,10 @@ document.addEventListener("DOMContentLoaded", function() {
             "User Guides", "Examples",
             // Ray Core
             "Ray Core", "Ray Core API",
+            // Ray Cluster
             "Ray Clusters", "Deploying on Kubernetes", "Deploying on VMs",
             "Applications Guide", "Ray Cluster Management API",
+            "KubeRay Ecosystem", "KubeRay Benchmarks", "KubeRay Troubleshooting",
             // Ray AIR
             "Ray AIR API",
             // Ray Data
