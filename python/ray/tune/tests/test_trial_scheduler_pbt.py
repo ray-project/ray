@@ -18,7 +18,7 @@ from ray import cloudpickle, train, tune
 from ray.train._checkpoint import Checkpoint
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
-from ray.train._internal.storage import _use_storage_context
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune import Trainable, Callback
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining
@@ -401,7 +401,7 @@ class PopulationBasedTrainingConfigTest(unittest.TestCase):
             c2 = config["c"]["c2"]
 
             while True:
-                tune.report(mean_accuracy=a * b * (c1 + c2))
+                train.report({"mean_accuracy": a * b * (c1 + c2)})
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -480,7 +480,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         random.seed(100)
         np.random.seed(1000)
         checkpoint_config = CheckpointConfig(
-            num_to_keep=1,
+            num_to_keep=2,
             checkpoint_score_attribute="min-training_iteration",
             checkpoint_frequency=1,
             checkpoint_at_end=True,
@@ -501,23 +501,27 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         )
 
     def testPermutationContinuationFunc(self):
-        def MockTrainingFunc(config, checkpoint_dir=None):
+        def MockTrainingFunc(config):
             iter = 0
             a = config["a"]
             b = config["b"]
 
-            if checkpoint_dir:
-                checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
-                with open(checkpoint_path, "rb") as fp:
-                    a, b, iter = pickle.load(fp)
+            if train.get_checkpoint():
+                with train.get_checkpoint().as_directory() as checkpoint_dir:
+                    checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
+                    with open(checkpoint_path, "rb") as fp:
+                        a, b, iter = pickle.load(fp)
 
             while True:
                 iter += 1
-                with tune.checkpoint_dir(step=iter) as checkpoint_dir:
+                with tempfile.TemporaryDirectory() as checkpoint_dir:
                     checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, b, iter), fp)
-                tune.report(mean_accuracy=(a - iter) * b)
+                    train.report(
+                        {"mean_accuracy": (a - iter) * b},
+                        checkpoint=Checkpoint.from_directory(checkpoint_dir),
+                    )
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -532,7 +536,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         random.seed(100)
         np.random.seed(1000)
         checkpoint_config = CheckpointConfig(
-            num_to_keep=1,
+            num_to_keep=2,
             checkpoint_score_attribute="min-training_iteration",
         )
         tune.run(
@@ -551,7 +555,16 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         )
 
     def testBurnInPeriod(self):
-        runner, *_ = create_execution_test_objects(tempfile.mkdtemp())
+        storage_context = None
+        if _use_storage_context():
+            storage_context = StorageContext(
+                storage_path=str(tempfile.mkdtemp()),
+                experiment_dir_name="test",
+                trial_dir_name="test0",
+            )
+        runner, *_ = create_execution_test_objects(
+            tempfile.mkdtemp(), storage=storage_context
+        )
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -581,10 +594,10 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             def status(self, status):
                 pass
 
-        trial1 = MockTrial("PPO", config=dict(num=1))
-        trial2 = MockTrial("PPO", config=dict(num=2))
-        trial3 = MockTrial("PPO", config=dict(num=3))
-        trial4 = MockTrial("PPO", config=dict(num=4))
+        trial1 = MockTrial("PPO", config=dict(num=1), storage=storage_context)
+        trial2 = MockTrial("PPO", config=dict(num=2), storage=storage_context)
+        trial3 = MockTrial("PPO", config=dict(num=3), storage=storage_context)
+        trial4 = MockTrial("PPO", config=dict(num=4), storage=storage_context)
 
         runner.add_trial(trial1)
         runner.add_trial(trial2)
