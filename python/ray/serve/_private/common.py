@@ -16,7 +16,6 @@ from ray.serve.generated.serve_pb2 import (
     StatusOverview as StatusOverviewProto,
 )
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
-from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
 
 
 class DeploymentID(NamedTuple):
@@ -24,10 +23,18 @@ class DeploymentID(NamedTuple):
     app: str
 
     def __str__(self):
+        # TODO(zcin): remove this once we no longer use the concatenated
+        # string for metrics
         if self.app:
-            return f"{self.app}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}{self.name}"
+            return f"{self.app}_{self.name}"
         else:
             return self.name
+
+    def to_replica_actor_class_name(self):
+        if self.app:
+            return f"ServeReplica:{self.app}:{self.name}"
+        else:
+            return f"ServeReplica:{self.name}"
 
 
 EndpointTag = DeploymentID
@@ -205,7 +212,6 @@ class DeploymentInfo:
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
         is_driver_deployment: Optional[bool] = False,
-        app_name: Optional[str] = None,
         route_prefix: str = None,
         docs_path: str = None,
         ingress: bool = False,
@@ -225,7 +231,6 @@ class DeploymentInfo:
 
         self.is_driver_deployment = is_driver_deployment
 
-        self.app_name = app_name
         self.route_prefix = route_prefix
         self.docs_path = docs_path
         self.ingress = ingress
@@ -271,7 +276,6 @@ class DeploymentInfo:
             is_driver_deployment=is_driver_deployment
             if is_driver_deployment is not None
             else self.is_driver_deployment,
-            app_name=self.app_name,
             route_prefix=route_prefix or self.route_prefix,
             docs_path=self.docs_path,
             ingress=self.ingress,
@@ -309,7 +313,6 @@ class DeploymentInfo:
             "version": proto.version if proto.version != "" else None,
             "end_time_ms": proto.end_time_ms if proto.end_time_ms != 0 else None,
             "deployer_job_id": ray.get_runtime_context().get_job_id(),
-            "app_name": proto.app_name,
         }
 
         return cls(**data)
@@ -320,7 +323,6 @@ class DeploymentInfo:
             "actor_name": self.actor_name,
             "version": self.version,
             "end_time_ms": self.end_time_ms,
-            "app_name": self.app_name,
         }
         if self.deployment_config:
             data["deployment_config"] = self.deployment_config.to_proto()
@@ -331,16 +333,27 @@ class DeploymentInfo:
 
 @dataclass
 class ReplicaName:
-    deployment_tag: str
+    app_name: str
+    deployment_name: str
     replica_suffix: str
     replica_tag: ReplicaTag = ""
     delimiter: str = "#"
     prefix: str = "SERVE_REPLICA::"
 
-    def __init__(self, deployment_tag: str, replica_suffix: str):
-        self.deployment_tag = deployment_tag
+    def __init__(self, app_name: str, deployment_name: str, replica_suffix: str):
+        self.app_name = app_name
+        self.deployment_name = deployment_name
         self.replica_suffix = replica_suffix
-        self.replica_tag = f"{deployment_tag}{self.delimiter}{replica_suffix}"
+        if app_name:
+            self.replica_tag = self.delimiter.join(
+                [app_name, deployment_name, replica_suffix]
+            )
+        else:
+            self.replica_tag = self.delimiter.join([deployment_name, replica_suffix])
+
+    @property
+    def deployment_id(self):
+        return DeploymentID(self.deployment_name, self.app_name)
 
     @staticmethod
     def is_replica_name(actor_name: str) -> bool:
@@ -351,22 +364,24 @@ class ReplicaName:
         assert ReplicaName.is_replica_name(actor_name)
         # TODO(simon): this currently conforms the tag and suffix logic. We
         # can try to keep the internal name always hard coded with the prefix.
-        replica_name = actor_name.replace(cls.prefix, "")
-        parsed = replica_name.split(cls.delimiter)
-        assert len(parsed) == 2, (
-            f"Given replica name {replica_name} didn't match pattern, please "
-            f"ensure it has exactly two fields with delimiter {cls.delimiter}"
-        )
-        return cls(deployment_tag=parsed[0], replica_suffix=parsed[1])
+        replica_tag = actor_name.replace(cls.prefix, "")
+        return ReplicaName.from_replica_tag(replica_tag)
 
     @classmethod
     def from_replica_tag(cls, tag):
         parsed = tag.split(cls.delimiter)
-        assert len(parsed) == 2, (
-            f"Given replica name {tag} didn't match pattern, please "
-            f"ensure it has exactly two fields with delimiter {cls.delimiter}"
-        )
-        return cls(deployment_tag=parsed[0], replica_suffix=parsed[1])
+        if len(parsed) == 3:
+            return cls(
+                app_name=parsed[0], deployment_name=parsed[1], replica_suffix=parsed[2]
+            )
+        elif len(parsed) == 2:
+            return cls("", deployment_name=parsed[0], replica_suffix=parsed[1])
+        else:
+            raise ValueError(
+                f"Given replica tag {tag} didn't match pattern, please "
+                "ensure it has either two or three fields with delimiter "
+                f"{cls.delimiter}"
+            )
 
     def __str__(self):
         return self.replica_tag
@@ -444,7 +459,7 @@ class ServeComponentType(str, Enum):
 
 @dataclass
 class MultiplexedReplicaInfo:
-    deployment_name: str
+    deployment_id: DeploymentID
     replica_tag: str
     model_ids: List[str]
 
