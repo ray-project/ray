@@ -117,28 +117,6 @@ class NewExperimentAnalysis:
         self._trial_dataframes = self._fetch_trial_dataframes()
         self._configs = self.get_all_configs()
 
-    def _get_experiment_fs_and_path(
-        self,
-        experiment_path: Union[str, os.PathLike],
-        storage_filesystem: pyarrow.fs.FileSystem,
-    ) -> Tuple[pyarrow.fs.FileSystem, str, str]:
-        """Returns the filesystem and paths to the experiment directory
-        + the experiment checkpoint file."""
-        assert storage_filesystem is not None
-        experiment_fs_path = str(experiment_path)
-
-        if experiment_fs_path.endswith(".json"):
-            experiment_json_fs_path = experiment_fs_path
-            experiment_fs_path = os.path.dirname(experiment_fs_path)
-        else:
-            experiment_json_fs_path = os.path.join(
-                experiment_fs_path,
-                NewExperimentAnalysis._find_newest_experiment_checkpoint(
-                    storage_filesystem, experiment_fs_path
-                ),
-            )
-        return storage_filesystem, experiment_fs_path, experiment_json_fs_path
-
     def _load_trials(self) -> List[Trial]:
         with self._fs.open_input_stream(self._experiment_json_fs_path) as f:
             experiment_state = json.loads(f.readall(), cls=TuneFunctionDecoder)

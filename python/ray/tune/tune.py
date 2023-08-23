@@ -1165,20 +1165,12 @@ def run(
             )
 
     if _use_storage_context():
-        # TODO(ekl) construct the storage context just once at the start of the run.
-        # We need it here to resolve the filesystem relative to the given path.
-        storage = StorageContext(
-            storage_path=storage_path,
-            storage_filesystem=storage_filesystem,
-            sync_config=sync_config,
-            experiment_dir_name=name,
-        )
         return NewExperimentAnalysis(
             experiment_checkpoint_path=runner.experiment_path,
             default_metric=metric,
             default_mode=mode,
             trials=all_trials,
-            storage_filesystem=storage.storage_filesystem,
+            storage_filesystem=experiments[0].storage.storage_filesystem,
         )
     else:
         return ExperimentAnalysis(
