@@ -42,7 +42,7 @@ document.addEventListener("DOMContentLoaded", function() {
             // Ray Cluster
             "Ray Clusters", "Deploying on Kubernetes", "Deploying on VMs",
             "Applications Guide", "Ray Cluster Management API",
-            "KubeRay Ecosystem", "KubeRay Benchmarks", "KubeRay Troubleshooting",
+            "Getting Started with KubeRay", "KubeRay Ecosystem", "KubeRay Benchmarks", "KubeRay Troubleshooting",
             // Ray AIR
             "Ray AIR API",
             // Ray Data
