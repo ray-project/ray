@@ -5,7 +5,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from functools import wraps
 
 from fastapi import APIRouter, FastAPI
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 import ray
 from ray import cloudpickle
@@ -39,11 +38,12 @@ from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeHandle, RayServeSyncHandle
+from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
 )
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     Default,
@@ -51,7 +51,6 @@ from ray.serve._private.utils import (
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
-    record_serve_tag,
     get_random_letters,
     extract_self_if_method_call,
 )
@@ -112,7 +111,7 @@ def start(
     client = _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
     # Record after Ray has been started.
-    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+    ServeUsageTag.API_VERSION.record("v1")
 
     return client
 
@@ -224,7 +223,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
                 # Call user-defined constructor.
                 cls.__init__(self, *args, **kwargs)
 
-                record_serve_tag("SERVE_FASTAPI_USED", "1")
+                ServeUsageTag.FASTAPI_USED.record("1")
                 install_serve_encoders_to_fastapi()
                 ASGIAppReplicaWrapper.__init__(self, frozen_app)
 
@@ -427,7 +426,7 @@ def get_deployment(name: str) -> Deployment:
     Returns:
         Deployment
     """
-    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+    ServeUsageTag.API_VERSION.record("v1")
     return _private_api.get_deployment(name)
 
 
@@ -438,7 +437,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+    ServeUsageTag.API_VERSION.record("v1")
     return _private_api.list_deployments()
 
 
@@ -482,7 +481,7 @@ def run(
     )
 
     # Record after Ray has been started.
-    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v2")
+    ServeUsageTag.API_VERSION.record("v2")
 
     if isinstance(target, Application):
         deployments = pipeline_build(target._get_internal_dag_node(), name)
@@ -787,18 +786,12 @@ def status() -> ServeStatus:
 
 @PublicAPI(stability="alpha")
 def get_app_handle(
-    name: str, sync: Optional[bool] = None
-) -> Optional[Union[RayServeHandle, RayServeSyncHandle]]:
+    name: str,
+) -> DeploymentHandle:
     """Get a handle to the application's ingress deployment by name.
-
-    When called from within a deployment `sync` will default to `False`.
-    When called from outside a deployment `sync` will default to `True`.
 
     Args:
         name: Name of application to get a handle to.
-        sync: If false, then returns a RayServeHandle, which is
-            asynchronous. If true, then returns a RayServeSyncHandle,
-            which is synchronous.
 
     Raises:
         RayServeException: If no Serve controller is running, or if the
@@ -815,7 +808,7 @@ def get_app_handle(
 
             serve.run(f.bind(), name="my_app")
             handle = serve.get_app_handle("my_app")
-            assert ray.get(handle.remote(3)) == 6
+            assert handle.remote(3).result() == 6
     """
 
     client = get_global_client()
@@ -823,23 +816,19 @@ def get_app_handle(
     if ingress is None:
         raise RayServeException(f"Application '{name}' does not exist.")
 
-    internal_replica_context = get_internal_replica_context()
-    if sync is None:
-        # If sync is unspecified, default to async within a deployment
-        # and default to sync outside a deployment
-        sync = internal_replica_context is None
-
-    return client.get_handle(ingress, name, sync=sync)
+    # Default to async within a deployment and sync outside a deployment.
+    sync = get_internal_replica_context() is None
+    return client.get_handle(ingress, name, sync=sync).options(
+        use_new_handle_api=True,
+    )
 
 
 @DeveloperAPI
 def get_deployment_handle(
-    deployment_name: str, app_name: Optional[str] = None, sync: Optional[bool] = None
-) -> Union[RayServeHandle, RayServeSyncHandle]:
+    deployment_name: str,
+    app_name: Optional[str] = None,
+) -> DeploymentHandle:
     """Get a handle to the named deployment.
-
-    When called from within a deployment `sync` will default to `False`.
-    When called from outside a deployment `sync` will default to `True`.
 
     Args:
         deployment_name: Name of deployment to get a handle to.
@@ -847,9 +836,6 @@ def get_deployment_handle(
             from inside a Serve application and `app_name` is not
             specified, this will default to the application from which
             this API is called.
-        sync: If false, then returns a RayServeHandle, which is
-            asynchronous. If true, then returns a RayServeSyncHandle,
-            which is synchronous.
 
     Raises:
         RayServeException: If no Serve controller is running, or if
@@ -869,9 +855,8 @@ def get_deployment_handle(
         else:
             app_name = internal_replica_context.app_name
 
-    if sync is None:
-        # If sync is unspecified, default to async within a deployment
-        # and default to sync outside a deployment
-        sync = internal_replica_context is None
-
-    return client.get_handle(deployment_name, app_name, sync=sync)
+    # Default to async within a deployment and sync outside a deployment.
+    sync = internal_replica_context is None
+    return client.get_handle(deployment_name, app_name, sync=sync).options(
+        use_new_handle_api=True
+    )
