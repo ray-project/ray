@@ -162,16 +162,7 @@ class DeploymentSchema(
     route_prefix: Union[str, None] = Field(
         default=DEFAULT.VALUE,
         description=(
-            "Requests to paths under this HTTP path "
-            "prefix will be routed to this deployment. When null, no HTTP "
-            "endpoint will be created. When omitted, defaults to "
-            "the deployment's name. Routing is done based on "
-            "longest-prefix match, so if you have deployment A with "
-            'a prefix of "/a" and deployment B with a prefix of "/a/b", '
-            'requests to "/a", "/a/", and "/a/c" go to A and requests '
-            'to "/a/b", "/a/b/", and "/a/b/c" go to B. Routes must not '
-            'end with a "/" unless they\'re the root (just "/"), which '
-            "acts as a catch-all."
+            "[DEPRECATED] Please use route_prefix under ServeApplicationSchema instead."
         ),
     )
     max_concurrent_queries: int = Field(
@@ -343,7 +334,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         default="/",
         description=(
             "Route prefix for HTTP requests. If not provided, it will use"
-            "route_prefix of the ingress deployment. By default, the ingress route"
+            "route_prefix of the ingress deployment. By default, the ingress route "
             "prefix is '/'."
         ),
     )
