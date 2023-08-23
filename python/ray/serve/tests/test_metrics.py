@@ -1,3 +1,4 @@
+import grpc
 import os
 from functools import partial
 from multiprocessing import Pool
@@ -14,8 +15,10 @@ import ray.util.state as state_api
 from fastapi import FastAPI
 from ray.serve.metrics import Counter, Histogram, Gauge
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
+from ray.serve.config import gRPCOptions
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
+from ray.serve.tests.test_grpc import ping_grpc_list_applications
 
 
 @pytest.fixture
@@ -28,7 +31,17 @@ def serve_start_shutdown():
             "task_retry_delay_ms": 50,
         },
     )
-    yield serve.start()
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+    ]
+    yield serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
     serve.shutdown()
     ray.shutdown()
 
@@ -38,12 +51,19 @@ def test_serve_metrics_for_successful_connection(serve_start_shutdown):
     async def f(request):
         return "hello"
 
-    handle = serve.run(f.bind())
+    app_name = "app1"
+    handle = serve.run(target=f.bind(), name=app_name)
 
     # send 10 concurrent requests
     url = "http://127.0.0.1:8000/metrics"
     ray.get([block_until_http_ready.remote(url) for _ in range(10)])
     ray.get([handle.remote(url) for _ in range(10)])
+
+    # Ping gPRC proxy
+    channel = grpc.insecure_channel("localhost:9000")
+    wait_for_condition(
+        ping_grpc_list_applications, channel=channel, app_names=[app_name]
+    )
 
     def verify_metrics(do_assert=False):
         try:
