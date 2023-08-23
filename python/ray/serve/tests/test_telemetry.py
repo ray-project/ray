@@ -10,7 +10,7 @@ from starlette.requests import Request
 
 import ray
 from ray.dag.input_node import InputNode
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
+from ray._private.test_utils import wait_for_condition
 from ray._private.usage import usage_lib
 
 from ray import serve
@@ -51,7 +51,12 @@ def check_telemetry_recorded(storage_handle, key, expected_value):
 
 def check_telemetry_not_recorded(storage_handle, key):
     report = ray.get(storage_handle.get_report.remote())
-    assert key not in report["extra_usage_tags"]
+    assert (
+        ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.get_value_from_report(
+            report
+        )
+        is None
+    )
 
 
 @pytest.fixture
@@ -729,7 +734,7 @@ def test_status_api_detected(manage_ray, location):
             handle = serve.run(Model.bind(), route_prefix="/model")
             handle.remote()
         elif location == "driver":
-            run_string_as_driver("from ray import serve; serve.status()")
+            serve.status()
 
         wait_for_condition(
             check_telemetry_recorded,
@@ -767,9 +772,7 @@ def test_get_app_handle_api_detected(manage_ray, location):
             handle = serve.run(Model.bind(), route_prefix="/model")
             handle.remote()
         elif location == "driver":
-            run_string_as_driver(
-                "from ray import serve; serve.get_app_handle('telemetry')"
-            )
+            serve.get_app_handle("telemetry")
 
         wait_for_condition(
             check_telemetry_recorded,
@@ -809,10 +812,7 @@ def test_get_deployment_handle_api_detected(manage_ray, location):
             handle = serve.run(Model.bind(), route_prefix="/model")
             handle.remote()
         elif location == "driver":
-            run_string_as_driver(
-                "from ray import serve\n"
-                "serve.get_deployment_handle('TelemetryReceiver', 'telemetry')"
-            )
+            serve.get_deployment_handle("TelemetryReceiver", "telemetry")
 
         wait_for_condition(
             check_telemetry_recorded,
