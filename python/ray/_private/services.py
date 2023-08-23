@@ -1055,8 +1055,10 @@ def start_api_server(
 
     Args:
         include_dashboard: If true, this will load all dashboard-related modules
-            when starting the API server. Otherwise, it will only
-            start the modules that are not relevant to the dashboard.
+            when starting the API server, or fail. If None, it will load all
+            dashboard-related modules conditioned on dependencies being present.
+            Otherwise, it will only start the modules that are not relevant to
+            the dashboard.
         raise_on_failure: If true, this will raise an exception
             if we fail to start the API server. Otherwise it will print
             a warning if we fail to start the API server.
@@ -1124,8 +1126,8 @@ def start_api_server(
         # dashboard inclusion, the install is not minimal.
         if include_dashboard and minimal:
             logger.error(
-                "--include-dashboard was specified, but packages are missing. "
-                "Please check dashboard.err for the specific missing modules."
+                "--include-dashboard is not supported when minimal ray is used."
+                "Download ray[default] to use the dashboard."
             )
             raise Exception("Cannot include dashboard with missing packages.")
 
