@@ -11,14 +11,13 @@ from ray.exceptions import RayActorError
 from ray.train import DataConfig
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.session import (
-    _TrainSession,
     TrainingResult,
     TrialInfo,
     get_session,
     init_session,
     shutdown_session,
 )
-from ray.train._internal.storage import _use_storage_context
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
@@ -348,6 +347,7 @@ class BackendExecutor:
         datasets: Dict[str, Dataset],
         metadata: Dict[str, Any],
         data_config: DataConfig,
+        storage: StorageContext,
         checkpoint: Optional[Checkpoint] = None,
         on_session_init: Callable[[], None] = None,
     ) -> None:
@@ -429,12 +429,6 @@ class BackendExecutor:
             node_rank_map,
         ) = self._create_rank_world_size_mappings()
 
-        if _use_storage_context():
-            tune_session: _TrainSession = get_session()
-            assert (
-                tune_session
-            ), "`start_training` should only be called from within Tune"
-
         futures = []
         for index in range(len(self.worker_group)):
             futures.append(
@@ -456,7 +450,7 @@ class BackendExecutor:
                     checkpoint_upload_from_workers=(
                         self._checkpoint_upload_from_workers
                     ),
-                    storage=tune_session.storage if _use_storage_context() else None,
+                    storage=storage,
                 )
             )
 
