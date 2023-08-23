@@ -17,7 +17,7 @@ import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import dayjs from "dayjs";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { Align, Filters } from "../type/event";
 
 import { useFilter } from "../util/hook";
@@ -113,8 +113,8 @@ const useEventTable = (props: EventTableProps) => {
   }, []);
 
   const changeFilter = useCallback(
-    (...params) => {
-      _changeFilter(...params);
+    (key: string, value: string) => {
+      _changeFilter(key, value);
       setPagination((prevPagination) => ({
         ...prevPagination,
         pageNo: 1,
@@ -124,8 +124,8 @@ const useEventTable = (props: EventTableProps) => {
   );
 
   const setFilters = useCallback(
-    (...params) => {
-      _setFilters(...params);
+    (value: Filters) => {
+      _setFilters(value);
       setPagination((prevPagination) => ({
         ...prevPagination,
         pageNo: 1,
