@@ -8,7 +8,7 @@ If you do not have any experience with Prometheus and Grafana on Kubernetes, I s
 
 ## Preparation
 
-Please clone the [KubeRay repository](https://github.com/ray-project/kuberay) and checkout the `master` branch.
+Clone the [KubeRay repository](https://github.com/ray-project/kuberay) and checkout the `master` branch.
 This tutorial requires several files in the repository.
 
 ## Step 1: Create a Kubernetes cluster with Kind
