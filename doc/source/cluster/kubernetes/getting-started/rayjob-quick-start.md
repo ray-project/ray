@@ -11,7 +11,7 @@
 
 ## What is a RayJob?
 
-A RayJob manages 2 things:
+A RayJob manages two aspects:
 
 * **RayCluster**: Manages resources in a Kubernetes cluster.
 * **Job**: A Kubernetes Job runs `ray job submit` to submit a Ray job to the RayCluster.

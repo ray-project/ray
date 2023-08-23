@@ -20,9 +20,9 @@ different Ray versions in the same Kubernetes cluster.
 ```
 
 KubeRay introduces three distinct Kubernetes Custom Resource Definitions (CRDs): **RayCluster**, **RayJob**, and **RayService**.
-These are designed to assist users in efficiently managing Ray clusters tailored to various use cases.
+These CRDs assist users in efficiently managing Ray clusters tailored to various use cases.
 
-Check out the [Getting Started](kuberay-quickstart) page to learn the basics of KubeRay and follow the quick start guides to run your first Ray application on Kubernetes with KubeRay!
+See [Getting Started](kuberay-quickstart) to learn the basics of KubeRay and follow the quickstart guides to run your first Ray application on Kubernetes with KubeRay.
 
 * [RayCluster Quick Start](kuberay-raycluster-quickstart)
 * [RayJob Quick Start](kuberay-rayjob-quickstart)
@@ -87,7 +87,7 @@ The Ray docs present all the information you need to start running Ray workloads
         **Ecosystem**
         ^^^
     
-        Integrate KubeRay with 3rd party Kubernetes ecosystem tools.
+        Integrate KubeRay with third party Kubernetes ecosystem tools.
     
         +++
         .. button-ref:: kuberay-ecosystem-integration
@@ -95,7 +95,7 @@ The Ray docs present all the information you need to start running Ray workloads
             :outline:
             :expand:
 
-            Explore Kubernetes ecosystem
+            Ecosystem Guides
 
     .. grid-item-card::
 
@@ -110,14 +110,14 @@ The Ray docs present all the information you need to start running Ray workloads
             :outline:
             :expand:
 
-            Check the benchmark results
+            Benchmark results
     
     .. grid-item-card::
 
         **Troubleshooting**
         ^^^
     
-        Check the KubeRay troubleshooting guides.
+        Consult the KubeRay troubleshooting guides.
     
         +++
         .. button-ref:: kuberay-troubleshooting
@@ -125,7 +125,7 @@ The Ray docs present all the information you need to start running Ray workloads
             :outline:
             :expand:
 
-            Check the troubleshooting guides
+            Troubleshooting guides
 ```
 ## About KubeRay
 
