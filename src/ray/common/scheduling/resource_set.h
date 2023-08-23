@@ -27,8 +27,7 @@ namespace ray {
 using scheduling::ResourceID;
 
 /// Represents a set of resources and their values.
-/// NOTE: negative values are valid in this set, while 0 is not. This means if any
-/// resource value is changed to 0, the resource will be removed.
+/// If any resource value is changed to 0, the resource will be removed.
 class ResourceSet {
  public:
   using ResourceIdIterator =
@@ -40,7 +39,7 @@ class ResourceSet {
   }
 
   /// \brief Empty ResourceSet constructor.
-  ResourceSet();
+  ResourceSet(){};
 
   /// \brief Constructs ResourceSet from the specified resource map.
   explicit ResourceSet(const absl::flat_hash_map<std::string, FixedPoint> &resource_map);
@@ -107,19 +106,13 @@ class ResourceSet {
   /// Return true if the resource set is empty. False otherwise.
   bool IsEmpty() const;
 
-  /// Remove the negative values in this set.
-  void RemoveNegative() {
-    for (auto it = resources_.begin(); it != resources_.end();) {
-      if (it->second < 0) {
-        resources_.erase(it++);
-      } else {
-        it++;
-      }
-    }
-  }
-
   /// Return a boost::range object that can be used as an iterator of the resource IDs.
   ResourceIdIterator ResourceIds() const { return boost::adaptors::keys(resources_); }
+
+  /// Returns the underlying resource map.
+  const absl::flat_hash_map<ResourceID, FixedPoint> &Resources() const {
+    return resources_;
+  }
 
   // TODO(atumanov): implement const_iterator class for the ResourceSet container.
   // TODO(williamma12): Make sure that everywhere we use doubles we don't
@@ -138,6 +131,69 @@ class ResourceSet {
 
  private:
   /// Map from the resource IDs to the resource values.
+  absl::flat_hash_map<ResourceID, FixedPoint> resources_;
+};
+
+/// Represents a set of node resources and their values.
+/// Node resources contain both explicit resources (default value is 0)
+/// and implicit resources (default value is 1).
+/// Negative values are valid in this set.
+class NodeResourceSet {
+ public:
+  using ResourceIdIterator =
+      boost::select_first_range<absl::flat_hash_map<ResourceID, FixedPoint>>;
+
+  NodeResourceSet(){};
+
+  /// Constructs NodeResourceSet from the specified resource map.
+  explicit NodeResourceSet(const absl::flat_hash_map<std::string, double> &resource_map);
+  explicit NodeResourceSet(const absl::flat_hash_map<ResourceID, double> &resource_map);
+  explicit NodeResourceSet(
+      const absl::flat_hash_map<ResourceID, FixedPoint> &resource_map);
+
+  /// Set a node resource to the given value.
+  NodeResourceSet &Set(ResourceID resource_id, FixedPoint value);
+
+  /// Get the value of a node resource.
+  FixedPoint Get(ResourceID resource_id) const;
+
+  /// Check whether a particular node resource exist (value != 0).
+  bool Has(ResourceID resource_id) const;
+
+  /// Subtract other's resources from this node resource set.
+  NodeResourceSet &operator-=(const ResourceSet &other);
+
+  /// Check whether this set is a super set of other.
+  /// If A >= B, it means for each resource, its value in A is larger than or equqal to
+  /// that in B.
+  bool operator>=(const ResourceSet &other) const;
+
+  /// Check whether two node resource sets are equal meaning
+  /// they have the same resources and values.
+  bool operator==(const NodeResourceSet &other) const;
+
+  /// Check whether two node resource sets are not equal.
+  bool operator!=(const NodeResourceSet &other) const { return !(*this == other); }
+
+  /// Remove the negative values in this set.
+  void RemoveNegative();
+
+  /// Return a map of the node resource and value in doubles.
+  absl::flat_hash_map<std::string, double> GetResourceMap() const;
+
+  /// Return all the ids of explicit resources that this set has.
+  std::set<ResourceID> ExplicitResourceIds() const;
+
+  std::string DebugString() const;
+
+ private:
+  /// Return the default value for a resource depending on whether
+  /// the resource is the explicit or implicit resource.
+  FixedPoint ResourceDefaultValue(ResourceID resource_id) const;
+
+  /// Map from the resource IDs to the resource values.
+  /// If the resource value is the default value for the resource
+  /// it will be removed from the map.
   absl::flat_hash_map<ResourceID, FixedPoint> resources_;
 };
 
