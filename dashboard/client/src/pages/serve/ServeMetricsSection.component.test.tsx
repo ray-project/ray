@@ -55,7 +55,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
 
 describe("ServeMetricsSection", () => {
   it("renders", async () => {
-    expect.assertions(4);
+    expect.assertions(7);
 
     render(<ServeMetricsSection />, { wrapper: Wrapper });
     await screen.findByText(/View in Grafana/);
@@ -77,7 +77,7 @@ describe("ServeMetricsSection", () => {
   });
 
   it("renders nothing when grafana is not available", async () => {
-    expect.assertions(5);
+    expect.assertions(8);
 
     render(<ServeMetricsSection />, { wrapper: MetricsDisabledWrapper });
     // Wait .1 seconds for render to finish
