@@ -7,7 +7,7 @@ import numbers
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray._private.dict import flatten_dict
@@ -286,6 +286,8 @@ class _CheckpointManager:
 
         # Used for keeping top K checkpoints.
         self._top_persisted_checkpoints: List[_HeapCheckpointWrapper] = []
+        # Also keep a set of all existing checkpoints
+        self._all_persisted_checkpoint_data: Set[_TrackedCheckpoint] = set()
 
         # Best checkpoint altogether.
         # Used for exposing best_checkpoint_path.
@@ -447,6 +449,11 @@ class _CheckpointManager:
         if checkpoint.rank > 0:
             return
 
+        if checkpoint.dir_or_data in self._all_persisted_checkpoint_data:
+            return
+
+        self._all_persisted_checkpoint_data.add(checkpoint.dir_or_data)
+
         assert checkpoint.storage_mode == CheckpointStorage.PERSISTENT
         next_checkpoint_path = next_checkpoint_path or self._get_next_checkpoint_path()
 
@@ -476,7 +483,7 @@ class _CheckpointManager:
             # Only remove if checkpoint data is different
             if worst_checkpoint.dir_or_data != checkpoint.dir_or_data:
                 self._maybe_delete_persisted_checkpoint(worst_checkpoint)
-                logger.debug(f"Removed worst checkpoint from " f"{worst_checkpoint}.")
+                logger.debug(f"Removed worst checkpoint from {worst_checkpoint}.")
 
             self._replace_latest_persisted_checkpoint(checkpoint)
         else:
@@ -497,6 +504,7 @@ class _CheckpointManager:
     def _delete_persisted_checkpoint(self, persisted_checkpoint: _TrackedCheckpoint):
         persisted_checkpoint.delete(delete_fn=self._delete_fn)
         self._checkpoints_to_clean_up.discard(persisted_checkpoint)
+        self._all_persisted_checkpoint_data.remove(persisted_checkpoint.dir_or_data)
 
     def _cleanup_checkpoints(self):
         for checkpoint in list(self._checkpoints_to_clean_up):

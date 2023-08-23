@@ -544,7 +544,7 @@ class Trial:
             self.run_metadata.checkpoint_manager = _CheckpointManager(
                 checkpoint_config=checkpoint_config,
                 delete_fn=_CheckpointDeleter(
-                    self._trainable_name(), self.temporary_state.ray_actor
+                    str(self), self.temporary_state.ray_actor
                 ),
             )
 
@@ -967,7 +967,7 @@ class Trial:
             )
         if not _use_storage_context():
             self.run_metadata.checkpoint_manager.set_delete_fn(
-                _CheckpointDeleter(self._trainable_name(), ray_actor)
+                _CheckpointDeleter(str(self), ray_actor)
             )
 
     def set_location(self, location):

@@ -1938,6 +1938,10 @@ class TuneController:
             )
             trial.on_checkpoint(checkpoint)
         else:
+            if trial.temporary_state.saving_to:
+                # If a save is already in progress, don't schedule another one.
+                return trial.temporary_state.saving_to
+
             future = self._schedule_trial_task(
                 trial=trial,
                 method_name="save",
@@ -2089,7 +2093,9 @@ class TuneController:
 
         kwargs = {}
 
-        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
+        if checkpoint.storage_mode == CheckpointStorage.MEMORY or isinstance(
+            checkpoint.dir_or_data, ray.ObjectRef
+        ):
             method_name = "restore"
             args = (checkpoint.dir_or_data,)
         elif (
