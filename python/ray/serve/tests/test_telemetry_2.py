@@ -16,7 +16,7 @@ from ray.serve.tests.utils import (
 
 
 @pytest.mark.parametrize("location", ["driver", "deployment", None])
-def test_status_api_detected(manage_ray, location):
+def test_status_api_detected(manage_ray_with_telemetry, location):
     """Check that serve.status is detected correctly by telemetry."""
 
     subprocess.check_output(["ray", "start", "--head"])
@@ -54,7 +54,7 @@ def test_status_api_detected(manage_ray, location):
 
 
 @pytest.mark.parametrize("location", ["driver", "deployment", None])
-def test_get_app_handle_api_detected(manage_ray, location):
+def test_get_app_handle_api_detected(manage_ray_with_telemetry, location):
     """Check that serve.get_app_handle is detected correctly by telemetry."""
 
     subprocess.check_output(["ray", "start", "--head"])
@@ -94,7 +94,7 @@ def test_get_app_handle_api_detected(manage_ray, location):
 
 
 @pytest.mark.parametrize("location", ["driver", "deployment", None])
-def test_get_deployment_handle_api_detected(manage_ray, location):
+def test_get_deployment_handle_api_detected(manage_ray_with_telemetry, location):
     """Check that serve.get_deployment_handle is detected correctly by telemetry."""
 
     subprocess.check_output(["ray", "start", "--head"])
