@@ -423,8 +423,14 @@ class SerializationContext:
         contained_object_refs = []
 
         if isinstance(value, RayTaskError):
-            metadata = str(ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode("ascii")
-            value = value.to_bytes()
+            if issubclass(value.cause.__class__, TaskCancelledError):
+                metadata = str(ErrorType.Value("TASK_CANCELLED")).encode("ascii")
+                value = value.to_bytes()
+            else:
+                metadata = str(ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode(
+                    "ascii"
+                )
+                value = value.to_bytes()
         elif isinstance(value, ray.actor.ActorHandle):
             # TODO(fyresone): ActorHandle should be serialized via the
             # custom type feature of cross-language.
