@@ -3,7 +3,6 @@ from typing import List
 
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
-    BlockMapTransformFn,
     BuildOutputBlocksMapTransformFn,
     MapTransformFn,
     MapTransformFnDataType,
@@ -47,15 +46,19 @@ class ZeroCopyMapFusionRule(Rule):
         pass
 
 
-class ReadOpZeroCopyMapFusion(ZeroCopyMapFusionRule):
-    """Optimize Read -> Map/Write."""
+class EliminateBuildOutputBlocks(ZeroCopyMapFusionRule):
+    """This rule eliminates unnecessary BuildOutputBlocksMapTransformFn,
+    if the previous fn already outputs blocks.
+
+    This happens for the "Read -> Map/Write" fusion.
+    """
 
     def _optimize(self, transform_fns: List[MapTransformFn]) -> List[MapTransformFn]:
-        # For Read -> Map/Write, transform_fns will contain the following subsequence:
-        # 1. BlockMapTransformFn
+        # For the following subsquence,
+        # 1. Any MapTransformFn with block output.
         # 2. BuildOutputBlocksMapTransformFn
         # 3. Any MapTransformFn with block input.
-        # In this case, we can drop the BuildOutputBlocksMapTransformFn.
+        # We drop the BuildOutputBlocksMapTransformFn in the middle.
         new_transform_fns = []
 
         for i in range(len(transform_fns)):
@@ -69,7 +72,7 @@ class ReadOpZeroCopyMapFusion(ZeroCopyMapFusionRule):
                 prev_fn = transform_fns[i - 1]
                 next_fn = transform_fns[i + 1]
                 if (
-                    isinstance(prev_fn, BlockMapTransformFn)
+                    prev_fn.output_type == MapTransformFnDataType.Block
                     and next_fn.input_type == MapTransformFnDataType.Block
                 ):
                     drop = True
