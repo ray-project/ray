@@ -1,6 +1,3 @@
-# flake8: noqa
-# isort: skip_file
-
 # __start__
 # Run the following script with SAVE_DIR env var set, where you
 # want to mlflow offline logs saved.
@@ -19,8 +16,11 @@ assert os.environ.get("SAVE_DIR", None), "Please set SAVE_DIR env var."
 
 # This function is assuming `save_dir` is set in `config`
 def train_func(config):
-    save_dir = config.get["save_dir"]
-    mlflow.start_run(tracking_uri=f"file:{save_dir}")
+    save_dir = config["save_dir"]
+    if ray.train.get_context().get_world_rank() == 0:
+        mlflow.set_tracking_uri(f"file:{save_dir}")
+        mlflow.set_experiment("my_experiment")
+        mlflow.start_run()
 
     # Model, Loss, Optimizer
     model = resnet18(num_classes=10)
@@ -42,14 +42,15 @@ def train_func(config):
     train_loader = ray.train.torch.prepare_data_loader(train_loader)
 
     # Training
-    for epoch in range(10):
+    for epoch in range(2):
         for images, labels in train_loader:
             outputs = model(images)
             loss = criterion(outputs, labels)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            mlflow.log_metrics({"loss": loss.item(), "epoch": epoch})
+            if ray.train.get_context().get_world_rank() == 0:
+                mlflow.log_metrics({"loss": loss.item(), "epoch": epoch})
 
 
 trainer = TorchTrainer(

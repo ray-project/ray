@@ -17,7 +17,9 @@ assert os.environ.get("WANDB_API_KEY", None), "Please set WANDB_API_KEY env var.
 
 # This function is assuming `wandb_api_key` is set in `config`
 def train_func(config):
-    wandb.init(api_key=config.get("wandb_api_key", None))
+    if ray.train.get_context().get_world_rank() == 0:
+        wandb.login(key=config.get("wandb_api_key", None))
+        wandb.init()
 
     # Model, Loss, Optimizer
     model = resnet18(num_classes=10)
@@ -39,16 +41,18 @@ def train_func(config):
     train_loader = ray.train.torch.prepare_data_loader(train_loader)
 
     # Training
-    for epoch in range(10):
+    for epoch in range(2):
         for images, labels in train_loader:
             outputs = model(images)
             loss = criterion(outputs, labels)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            wandb.log({"loss": loss, "epoch": epoch})
+            if ray.train.get_context().get_world_rank() == 0:
+                wandb.log({"loss": loss, "epoch": epoch})
 
-    wandb.finish()
+    if ray.train.get_context().get_world_rank() == 0:
+        wandb.finish()
 
 
 trainer = TorchTrainer(
