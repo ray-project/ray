@@ -90,7 +90,7 @@ py_test(
     size = "medium",
     main = "examples/transformers/transformers_example.py",
     srcs = ["examples/transformers/transformers_example.py"],
-    tags = ["team:ml", "exclusive", "tune"],
+    tags = ["team:ml", "exclusive", "tune", "new_storage"],
     deps = [":train_lib"],
     args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
     "--max_length=32", "--per_device_train_batch_size=64",
