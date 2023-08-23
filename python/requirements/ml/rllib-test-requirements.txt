@@ -9,6 +9,8 @@ ale_py==0.8.1
 # For testing MuJoCo envs with gymnasium.
 mujoco==2.3.6
 dm_control==1.0.12
+# Dreamer README uses this example env.
+flappy_bird_gymnasium
 
 # For tests on PettingZoo's multi-agent envs.
 pettingzoo==1.23.1; python_version >= '3.7'
