@@ -1,6 +1,5 @@
 import functools
 import time
-import tempfile
 from unittest.mock import patch
 import pytest
 from ray.train._internal.worker_group import WorkerGroup
