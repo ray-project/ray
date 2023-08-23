@@ -825,5 +825,58 @@ def test_deployment_contains_utils(ray_start_stop):
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_reload_basic(ray_start_stop, tmp_path):
+    """Test `serve run` with reload."""
+
+    code_template = """
+from ray import serve
+
+@serve.deployment
+class MessageDeployment:
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __call__(self):
+        return self.msg
+
+
+msg_app = MessageDeployment.bind("Hello {message}!")
+    """
+
+    def write_file(message: str):
+        with open(os.path.join(tmp_path, "reload_serve.py"), "w") as f:
+            code = code_template.format(message=message)
+            print(f"Writing updated code:\n{code}")
+            f.write(code)
+            f.flush()
+
+    write_file("World")
+
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--app-dir",
+            tmp_path,
+            "--reload",
+            "reload_serve:msg_app",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("") == "Hello World!", timeout=10)
+
+    # Sleep to ensure the `serve run` command is in the file watching loop when we
+    # write the change, else it won't be picked up.
+    time.sleep(5)
+
+    # Write the file: an update should be auto-triggered.
+    write_file("Updated")
+    wait_for_condition(lambda: ping_endpoint("") == "Hello Updated!", timeout=10)
+
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    assert ping_endpoint("") == CONNECTION_ERROR_MSG
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
