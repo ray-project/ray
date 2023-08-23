@@ -377,7 +377,7 @@ class _ParquetDatasourceReader(Reader):
         # Evenly distributed to choose which file to sample, to avoid biased prediction
         # if data is skewed.
         file_samples = [
-            self._pq_pieces
+            self._pq_pieces[idx]
             for idx in np.linspace(0, num_files - 1, num_samples).astype(int).tolist()
         ]
 
