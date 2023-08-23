@@ -95,15 +95,6 @@ py_test(
 )
 
 py_test(
-    name = "test_cluster_searcher",
-    size = "large",
-    srcs = ["tests/test_cluster_searcher.py"],
-    data = ["tests/_test_cluster_interrupt_searcher.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
-)
-
-py_test(
     name = "test_commands",
     size = "medium",
     srcs = ["tests/test_commands.py"],
