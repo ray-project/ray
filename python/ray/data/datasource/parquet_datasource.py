@@ -262,7 +262,12 @@ class _ParquetDatasourceReader(Reader):
             )
         except OSError as e:
             _handle_read_os_error(e, paths)
-        self._pq_ds = pq_ds
+
+        # NOTE: Store the custom serialized `ParquetFileFragment` to avoid unexpected
+        # network calls when `_ParquetDatasourceReader` is serialized. See
+        # `_SerializedPiece()` implementation for more details.
+        self._pq_pieces = [_SerializedPiece(p) for p in pq_ds.pieces]
+        self._pq_paths = [p.path for p in pq_ds.pieces]
         self._meta_provider = meta_provider
         self._inferred_schema = inferred_schema
         self._block_udf = _block_udf
@@ -285,18 +290,18 @@ class _ParquetDatasourceReader(Reader):
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side (do_write), however.
         read_tasks = []
-        for pieces, metadata in zip(
-            np.array_split(self._pq_ds.pieces, parallelism),
+        for pieces, paths, metadata in zip(
+            np.array_split(self._pq_pieces, parallelism),
+            np.array_split(self._pq_paths, parallelism),
             np.array_split(self._metadata, parallelism),
         ):
             if len(pieces) <= 0:
                 continue
-            serialized_pieces = [_SerializedPiece(p) for p in pieces]
-            input_files = [p.path for p in pieces]
+
             meta = self._meta_provider(
-                input_files,
+                paths,
                 self._inferred_schema,
-                pieces=pieces,
+                num_pieces=len(pieces),
                 prefetched_metadata=metadata,
             )
             # If there is a filter operation, reset the calculated row count,
@@ -333,7 +338,7 @@ class _ParquetDatasourceReader(Reader):
             )
             read_tasks.append(
                 ReadTask(
-                    lambda p=serialized_pieces: _read_pieces(
+                    lambda p=pieces: _read_pieces(
                         block_udf,
                         reader_args,
                         default_read_batch_size,
@@ -359,7 +364,7 @@ class _ParquetDatasourceReader(Reader):
         # Launch tasks to sample multiple files remotely in parallel.
         # Evenly distributed to sample N rows in i-th row group in i-th file.
         # TODO(ekl/cheng) take into account column pruning.
-        num_files = len(self._pq_ds.pieces)
+        num_files = len(self._pq_pieces)
         num_samples = int(num_files * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
         min_num_samples = min(
             PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES, num_files
@@ -372,7 +377,7 @@ class _ParquetDatasourceReader(Reader):
         # Evenly distributed to choose which file to sample, to avoid biased prediction
         # if data is skewed.
         file_samples = [
-            self._pq_ds.pieces[idx]
+            self._pq_pieces
             for idx in np.linspace(0, num_files - 1, num_samples).astype(int).tolist()
         ]
 
@@ -383,13 +388,12 @@ class _ParquetDatasourceReader(Reader):
             # Sample the first rows batch in i-th file.
             # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
             # same machine to cause OOM issue, as sampling can be memory-intensive.
-            serialized_sample = _SerializedPiece(sample)
             futures.append(
                 sample_piece.options(scheduling_strategy=scheduling).remote(
                     self._reader_args,
                     self._columns,
                     self._schema,
-                    serialized_sample,
+                    sample,
                 )
             )
         sample_bar = ProgressBar("Parquet Files Sample", len(futures))
