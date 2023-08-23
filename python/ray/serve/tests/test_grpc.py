@@ -600,7 +600,10 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
 
     # Ensures ListApplications method on the worker node is succeeding.
     wait_for_condition(
-        ping_grpc_list_applications, channel=worker_node_channel, app_names=[app_name]
+        ping_grpc_list_applications,
+        channel=worker_node_channel,
+        app_names=[app_name],
+        timeout=30,
     )
 
     # Ensures Healthz method on the worker node is succeeding.
