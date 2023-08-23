@@ -3,6 +3,7 @@ import yaml
 import pytest
 import requests
 import subprocess
+import time
 from typing import Dict
 from fastapi import FastAPI
 from starlette.requests import Request
@@ -599,10 +600,13 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
         def __init__(self, h):
             self._h = h.options(use_new_handle_api=True)
 
-        async def __call__(self, call_downstream=False):
+        async def get(self, call_downstream=False):
             if call_downstream:
                 await self._h.remote()._to_object_ref()
             return "ok"
+
+        async def __call__(self):
+            return await self.get()
 
     handle = serve.run(Caller.bind(Downstream.bind()))
 
@@ -610,14 +614,14 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
         result = requests.get("http://localhost:8000").text
     elif mode == "outside_deployment":
         result = ray.get(
-            handle.options(use_new_handle_api=True).remote()._to_object_ref_sync()
+            handle.options(use_new_handle_api=True).get.remote()._to_object_ref_sync()
         )
     else:
         result = (
             handle.options(
                 use_new_handle_api=True,
             )
-            .remote(call_downstream=True)
+            .get.remote(call_downstream=True)
             .result()
         )
 
@@ -637,6 +641,7 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
     if mode == "http":
         for _ in range(20):
             check_telemetry(tag_should_be_set=False)
+            time.sleep(0.1)
     else:
         wait_for_condition(check_telemetry, tag_should_be_set=True)
 
