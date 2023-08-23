@@ -1,0 +1,17 @@
+load("@rules_foreign_cc//foreign_cc:configure.bzl", "configure_make")
+
+
+filegroup(
+    name = "all",
+    srcs = glob(["**"]),
+)
+
+configure_make(
+    name = "libjemalloc",
+    lib_source = ":all",
+    linkopts = ["-ldl"],
+    copts = ["-fPIC"],
+    args = ["-j"],
+    configure_options = ["--disable-shared", "--enable-prof"],
+    visibility = ["//visibility:public"],
+)
