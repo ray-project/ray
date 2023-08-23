@@ -28,7 +28,7 @@ kubectl apply -f ray-service.mobilenet.yaml
 * The [mobilenet.py](https://github.com/ray-project/serve_config_examples/blob/master/mobilenet/mobilenet.py) file requires `tensorflow` as a dependency. Hence, the YAML file uses `rayproject/ray-ml:2.5.0` instead of `rayproject/ray:2.5.0`.
 * `python-multipart` is required for the request parsing function `starlette.requests.form()`, so the YAML file includes `python-multipart` in the runtime environment.
 
-## Step 4: Forward the port of Serve
+## Step 4: Forward the port for Ray Serve
 
 ```sh
 kubectl port-forward svc/rayservice-mobilenet-serve-svc 8000

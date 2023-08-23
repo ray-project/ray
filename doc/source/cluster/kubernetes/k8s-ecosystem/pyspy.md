@@ -67,7 +67,7 @@ python3 samples/long_running_task.py
     ![StackTrace](../images/stack_trace.png)
 - Click `CPU Flame Graph` for `ray::long_running_task`.
     ![FlameGraph](../images/cpu_flame_graph.png)
-- For additional details on using the profiler, refer the [Ray Observability Guide](https://docs.ray.io/en/latest/ray-observability/user-guides/debug-apps/optimize-performance.html#python-cpu-profiling-in-the-dashboard).
+- For additional details on using the profiler, See [Python CPU profiling in the Dashboard](https://docs.ray.io/en/latest/ray-observability/user-guides/debug-apps/optimize-performance.html#python-cpu-profiling-in-the-dashboard).
 
 ### Step 7: Clean up
 
