@@ -329,6 +329,7 @@ parts:
                   - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
                   - file: cluster/kubernetes/user-guides/logging.md
                   - file: cluster/kubernetes/user-guides/gpu.md
+                  - file: cluster/kubernetes/user-guides/rayserve-dev-doc.md
                   - file: cluster/kubernetes/user-guides/experimental.md
                   - file: cluster/kubernetes/user-guides/pod-command.md
                   - file: cluster/kubernetes/user-guides/pod-security.md

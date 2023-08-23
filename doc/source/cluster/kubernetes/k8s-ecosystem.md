@@ -1,8 +1,8 @@
 (kuberay-ecosystem-integration)=
 
-# Ecosystem
+# KubeRay Ecosystem
 
-- {ref}`kuberay-ingress`
-- {ref}`kuberay-prometheus-grafana`
-- {ref}`kuberay-pyspy-integration`
-- {ref}`kuberay-kubeflow-integration`
+* {ref}`kuberay-ingress`
+* {ref}`kuberay-prometheus-grafana`
+* {ref}`kuberay-pyspy-integration`
+* {ref}`kuberay-kubeflow-integration`

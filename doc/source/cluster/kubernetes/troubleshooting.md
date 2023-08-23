@@ -1,6 +1,6 @@
 (kuberay-troubleshooting)=
 
-# Troubleshooting
+# KubeRay Troubleshooting
 
 This document addresses common inquiries.
 If you don't find an answer to your question here, please don't hesitate to connect with us via our [community channels](https://github.com/ray-project/kuberay#getting-involved).

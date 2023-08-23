@@ -49,7 +49,7 @@ kubectl apply -f ray_v1alpha1_rayservice.yaml
 * Let's first take a look at the Ray Serve config (i.e. `serveConfigV2`) embedded in the RayService YAML. At a high level, there are two applications: a fruit stand app and a calculator app. Some details about the fruit stand application:
   * The fruit stand application is contained in the `deployment_graph` variable in `fruit.py` in the [test_dag](https://github.com/ray-project/test_dag/tree/41d09119cbdf8450599f993f51318e9e27c59098) repo, so `import_path` in the config points to this variable to tell Serve from where to import the application.
   * It is hosted at the route prefix `/fruit`, meaning HTTP requests with routes that start with the prefix `/fruit` will be sent to the fruit stand application.
-  * The working directory points to the [test_dag](https://github.com/ray-project/test_dag/tree/41d09119cbdf8450599f993f51318e9e27c59098) repo, which will be downloaded at runtime, and your application will be started in this directory. See the [Runtime Environment Documentation](https://docs.ray.io/en/latest/ray-core/handling-dependencies.html#runtime-environments) for more details.
+  * The working directory points to the [test_dag](https://github.com/ray-project/test_dag/tree/41d09119cbdf8450599f993f51318e9e27c59098) repo, which will be downloaded at runtime, and your application will be started in this directory. See {ref}`Runtime Environments <runtime-environments>`. for more details.
   * For more details on configuring Ray Serve deployments, see the [Ray Serve Documentation](https://docs.ray.io/en/master/serve/configure-serve-deployment.html).
   * Similarly, the calculator app is imported from the `conditional_dag.py` file in the same repo, and it's hosted at the route prefix `/calc`.
   ```yaml
