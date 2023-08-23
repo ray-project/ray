@@ -4,11 +4,10 @@ import lightgbm
 import pandas as pd
 from pandas.api.types import is_object_dtype
 
-from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
-from ray.train.lightgbm.lightgbm_checkpoint import LegacyLightGBMCheckpoint
+from ray.train.lightgbm import LightGBMCheckpoint
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -39,18 +38,13 @@ class LightGBMPredictor(Predictor):
         )
 
     @classmethod
-    def from_checkpoint(cls, checkpoint: Checkpoint) -> "LightGBMPredictor":
-        """Instantiate the predictor from a Checkpoint.
-
-        The checkpoint is expected to be a result of ``LightGBMTrainer``.
+    def from_checkpoint(cls, checkpoint: LightGBMCheckpoint) -> "LightGBMPredictor":
+        """Instantiate the predictor from a LightGBMCheckpoint.
 
         Args:
-            checkpoint: The checkpoint to load the model and
-                preprocessor from. It is expected to be from the result of a
-                ``LightGBMTrainer`` run.
+            checkpoint: The checkpoint to load the model and preprocessor from.
 
         """
-        checkpoint = LegacyLightGBMCheckpoint.from_checkpoint(checkpoint)
         model = checkpoint.get_model()
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor)
