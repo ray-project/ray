@@ -380,6 +380,47 @@ If we instantiate an actor, we can pass the handle around to various tasks.
             }
 
 
+Cancelling  actor tasks
+-----------------------
+
+Actor tasks can be canceled by calling :func:`ray.cancel() <ray.cancel>` on the returned Object ref.
+
+.. tab-set::
+
+    .. tab-item:: Python
+
+        .. literalinclude:: doc_code/actors.py
+            :language: python
+            :start-after: __cancel_start__
+            :end-before: __cancel_end__
+
+
+In Ray, task cancellation behavior is contingent on the task's current state:
+
+**Unscheduled Tasks**
+If the actor task hasn't been scheduled yet, Ray attempts to cancel the scheduling. 
+When successfully cancelled at this stage, invoking ``ray.get(actor_task_ref)`` 
+will produce a :class:`TaskCancelledError <ray.exceptions.TaskCancelledError>`.
+
+**Running Actor Tasks (Regular Actor, Threaded Actor)**
+For tasks classified as single threaded actor or a multi-threaded actor,
+Ray offers no mechanism for interruption.
+
+**Running Async Actor Tasks**
+For tasks classified as `async actors <_async-actors>`, Ray seeks to cancel the associated coroutine. 
+This cancellation approach aligns with the standards presented in 
+`asyncio task cancellation <https://docs.python.org/3/library/asyncio-task.html#task-cancellation>`__.
+
+**Cancelation Guarantee**
+Ray attempts to cancel tasks on a *best-effort* basis, meaning cancellation isn't always guaranteed.
+For example, if the cancellation request doesn't get through to the executor,
+the task might not be cancelled.
+You can check if a task was successfully cancelled using ``ray.get(actor_task_ref)``.
+
+**Recursive Cancelation**
+Ray tracks all the children tasks and actor tasks and when ``recursive=True`` argument is given,
+it cancels all children tasks and actor tasks.
+
 Scheduling
 ----------
 

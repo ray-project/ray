@@ -2826,20 +2826,53 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 @PublicAPI
 @client_mode_hook
-def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True):
+def cancel(
+    object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True
+) -> None:
     """Cancels a task according to the following conditions.
 
-    If the specified task is pending execution, it will not be executed. If
-    the task is currently executing, the behavior depends on the ``force``
-    flag. When ``force=False``, a KeyboardInterrupt will be raised in Python
-    and when ``force=True``, the executing task will immediately exit.
-    If the task is already finished, nothing will happen.
+    The API has different semantics depending on if a given task is a task
+    (function) or an actor task (class method).
 
-    Only non-actor tasks can be canceled. Canceled tasks will not be
-    retried (max_retries will not be respected).
+    Task:
+        If the specified task is pending execution, it will not be executed. If
+        the task is currently executing, the behavior depends on the ``force``
+        flag. When ``force=False``, a KeyboardInterrupt will be raised in Python
+        and when ``force=True``, the executing task will immediately exit.
+        If the task is already finished, nothing will happen.
 
-    Calling ray.get on a canceled task will raise a TaskCancelledError or a
-    WorkerCrashedError if ``force=True``.
+        Canceled tasks will not be retried (max_retries will not be respected).
+
+        Calling ray.get on a canceled task will raise a TaskCancelledError (if
+        task hasn't been scheduled yet), RayTaskError (if task has been scheduled
+        and interrupted), or a WorkerCrashedError if ``force=True``.
+
+        If recursive=True is given, all the child tasks and actor tasks
+        will be canceled. If force=Ture and recursive=True is given, and
+        there's a child actor task, it will ignore force=True flag.
+
+    Actor Task:
+        Unlike a task, actor tasks cannot be interrupted because actors have
+        states. If the specified task is pending execution, it will not be
+        executed. If the task is currently executing, the behavior depends
+        on the execution model of an actor. if it is a regular actor
+        or a threaded actor, the execution won't be canceled. If it is
+        an async actor, Ray cancels a coroutine. The semantic of cancelation
+        is equivalent to asyncio's cancelation.
+        https://docs.python.org/3/library/asyncio-task.html#task-cancellation
+        If the task is already finished, nothing will happen.
+
+        Only force=False is allowed for an actor task. Otherwise, it will raise
+        TypeError. Use ray.kill(actor) instead to forcefully kill an actor.
+
+        Canceled tasks will not be retried (max_retries will not be respected).
+
+        Calling ray.get on a canceled task will raise a TaskCancelledError (if
+        task hasn't been scheduled yet) or RayTaskError (if task has been scheduled
+        and interrupted).
+
+        If recursive=True is given, all the child tasks and actor tasks
+        will be canceled.
 
     Args:
         object_ref: ObjectRef returned by the task
