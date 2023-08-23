@@ -100,11 +100,15 @@ class NewExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
+        # Resolve the filesystem if not specified.
         if storage_filesystem:
             self._fs = storage_filesystem
         else:
-            self._fs, experiment_checkpoint_path = get_fs_and_path(experiment_checkpoint_path)
+            self._fs, experiment_checkpoint_path = get_fs_and_path(
+                experiment_checkpoint_path
+            )
 
+        # Find the json state file.
         experiment_checkpoint_path = str(experiment_checkpoint_path)
         if experiment_checkpoint_path.endswith(".json"):
             self._experiment_fs_path = os.path.dirname(experiment_checkpoint_path)
