@@ -4769,9 +4769,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py311
-      frequency: weekly 
-      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -5162,9 +5159,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py311
-      frequency: weekly
-      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -5507,9 +5501,6 @@
     wait_for_nodes:
       num_nodes: 2
 
-  variations:
-    - __suffix__: aws.py311
-      python: "3.11"
 
 - name: many_nodes
   group: core-scalability-test
