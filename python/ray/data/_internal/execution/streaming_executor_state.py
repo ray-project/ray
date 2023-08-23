@@ -481,12 +481,9 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
         return req
 
     for op, state in topology.items():
-        print("===> process op/state:", op, state)
         per_task_resource = op.incremental_resource_usage()
         task_bundle = to_bundle(per_task_resource)
-        requests_to_add = [task_bundle] * op.num_active_tasks()
-        print("===> adding to resource_request:", len(requests_to_add), requests_to_add)
-        resource_request.extend(requests_to_add)
+        resource_request.extend([task_bundle] * op.num_active_tasks())
         # Only include incremental resource usage for ops that are ready for
         # dispatch.
         if state.num_queued() > 0:
@@ -495,11 +492,8 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
             resource_request.append(task_bundle)
 
     # Make autoscaler resource request.
-    print("===> making requests:", len(resource_request), resource_request)
     actor = get_or_create_autoscaling_requester_actor()
-    print("===> actor:", type(actor), actor)
     actor.request_resources.remote(resource_request, execution_id)
-    print("===> done with autoscaling requests")
 
 
 def _execution_allowed(

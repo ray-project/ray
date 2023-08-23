@@ -12,7 +12,7 @@
     - ./ci/env/install-minimal.sh 3.7
     - PYTHON=3.7 DATA_PROCESSING_TESTING=1 TUNE_TESTING=1 TRAIN_TESTING=1 INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
     - pip install -r python/requirements/compat/requirements_legacy_compat.txt
-    - pip install -U typing-extensions sacremoses
+    - pip install -U typing-extensions
     - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_TENSORFLOW=1 HOROVOD_WITH_PYTORCH=1 pip install horovod
     - ./ci/env/env_info.sh
     # Combine shards from different files
@@ -41,7 +41,7 @@
     - ./ci/env/install-minimal.sh 3.7
     - PYTHON=3.7 DATA_PROCESSING_TESTING=1 TUNE_TESTING=1 TRAIN_TESTING=1 INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
     - pip install -r python/requirements/compat/requirements_py37_compat.txt
-    - pip install -U typing-extensions sacremoses
+    - pip install -U typing-extensions
     - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_TENSORFLOW=1 HOROVOD_WITH_PYTORCH=1 pip install horovod
     - ./ci/env/env_info.sh
     # Combine shards from different files

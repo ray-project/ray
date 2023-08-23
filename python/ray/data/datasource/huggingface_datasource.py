@@ -85,8 +85,8 @@ class _HuggingFaceDatasourceReader(Reader):
         self,
         parallelism: int,
     ) -> List[ReadTask]:
-        # Note that `parallelism` arg is currently not used for HuggingFaceDatasource.
-        # We always generate a single ReadTask.
+        # Note: `parallelism` arg is currently not used by HuggingFaceDatasource.
+        # We always generate a single ReadTask to perform the read.
         _check_pyarrow_version()
         import pyarrow
 
