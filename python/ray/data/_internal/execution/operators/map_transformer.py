@@ -1,4 +1,3 @@
-import functools
 import itertools
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
@@ -151,105 +150,159 @@ def create_map_transformer_from_block_fn(
     )
 
 
-# Below are util functions for converting input/output data.
+# Below are util `MapTransformFn`s for converting input/output data.
 
 
-def _input_blocks_to_rows(blocks: Iterable[Block], _: TaskContext) -> Iterable[Row]:
-    """Converts input blocks to rows."""
-    for block in blocks:
-        block = BlockAccessor.for_block(block)
-        for row in block.iter_rows(public_row_format=True):
-            yield row
+class BlocksToRowsMapTransformFn(MapTransformFn):
+    """A MapTransformFn that converts input blocks to rows."""
+
+    def __init__(self):
+        super().__init__(
+            self._input_blocks_to_rows,
+            MapTransformFnDataType.Block,
+            MapTransformFnDataType.Row,
+        )
+
+    def _input_blocks_to_rows(
+        self, blocks: Iterable[Block], _: TaskContext
+    ) -> Iterable[Row]:
+        for block in blocks:
+            block = BlockAccessor.for_block(block)
+            for row in block.iter_rows(public_row_format=True):
+                yield row
+
+    @classmethod
+    def instance(cls) -> "BlocksToRowsMapTransformFn":
+        """Returns the singleton instance."""
+        if getattr(cls, "_instance", None) is None:
+            cls._instance = cls()
+        return cls._instance
 
 
-input_blocks_to_rows = MapTransformFn(
-    _input_blocks_to_rows,
-    MapTransformFnDataType.Block,
-    MapTransformFnDataType.Row,
-)
+class BlocksToBatchesMapTransformFn(MapTransformFn):
+    """A MapTransformFn that converts input blocks to batches."""
+
+    def __init__(
+        self,
+        batch_size: Optional[int] = None,
+        batch_format: str = "default",
+        zero_copy_batch: bool = False,
+    ):
+        self._batch_size = batch_size
+        self._batch_format = batch_format
+        self._ensure_copy = not zero_copy_batch and batch_size is not None
+        super().__init__(
+            self._input_blocks_to_batches,
+            MapTransformFnDataType.Block,
+            MapTransformFnDataType.Batch,
+        )
+
+    def _input_blocks_to_batches(
+        self,
+        blocks: Iterable[Block],
+        _: TaskContext,
+    ) -> Iterable[DataBatch]:
+        """Converts input blocks to batches."""
+        block_iter = iter(blocks)
+        first = next(block_iter, None)
+        if first is None:
+            return []
+        blocks = itertools.chain([first], block_iter)
+        empty_block = BlockAccessor.for_block(first).builder().build()
+        # Don't hold the first block in memory, so we reset the reference.
+        first = None
+
+        # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
+        formatted_batch_iter = batch_blocks(
+            blocks=blocks,
+            stats=None,
+            batch_size=self._batch_size,
+            batch_format=self._batch_format,
+            ensure_copy=self._ensure_copy,
+        )
+
+        first = next(formatted_batch_iter, None)
+        if first is None:
+            # If the input blocks are all empty, then yield an empty block with same
+            # format as the input blocks.
+            return [empty_block]
+        else:
+            return itertools.chain([first], formatted_batch_iter)
+
+    @property
+    def batch_size(self) -> Optional[int]:
+        return self._batch_size
+
+    @property
+    def batch_format(self) -> str:
+        return self._batch_format
+
+    @property
+    def zero_copy_batch(self) -> bool:
+        return not self._ensure_copy
 
 
-def input_blocks_to_batches(
-    blocks: Iterable[Block],
-    _: TaskContext,
-    batch_size: Optional[int] = None,
-    batch_format: str = "default",
-    zero_copy_batch: bool = False,
-) -> Iterable[DataBatch]:
-    """Converts input blocks to batches."""
-    block_iter = iter(blocks)
-    first = next(block_iter, None)
-    if first is None:
-        return []
-    blocks = itertools.chain([first], block_iter)
-    empty_block = BlockAccessor.for_block(first).builder().build()
-    # Don't hold the first block in memory, so we reset the reference.
-    first = None
+class BuildOutputBlocksMapTransformFn(MapTransformFn):
+    """A MapTransformFn that converts UDF-returned data to output blocks."""
 
-    # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
-    ensure_copy = not zero_copy_batch and batch_size is not None
-    formatted_batch_iter = batch_blocks(
-        blocks=blocks,
-        stats=None,
-        batch_size=batch_size,
-        batch_format=batch_format,
-        ensure_copy=ensure_copy,
-    )
+    def __init__(self, input_type: MapTransformFnDataType):
+        """
+        Args:
+            input_type: the type of input data.
+        """
+        self._input_type = input_type
+        super().__init__(
+            self._to_output_blocks,
+            input_type,
+            MapTransformFnDataType.Block,
+        )
 
-    first = next(formatted_batch_iter, None)
-    if first is None:
-        # If the input blocks are all empty, then yield an empty block with same
-        # format as the input blocks.
-        return [empty_block]
-    else:
-        return itertools.chain([first], formatted_batch_iter)
+    def _to_output_blocks(
+        self,
+        iter: Iterable[MapTransformFnData],
+        _: TaskContext,
+    ) -> Iterable[Block]:
+        """Convert UDF-returned data to output blocks.
 
-
-def _to_output_blocks(
-    iter: Iterable[MapTransformFnData],
-    _: TaskContext,
-    iter_type: MapTransformFnDataType,
-) -> Iterable[Block]:
-    """Convert UDF-returned data to output blocks.
-
-    Args:
-        iter: the iterable of UDF-returned data, whose type must be one
-            of MapTransformFnDataType.
-        iter_type: the type of the iterable, must match the type of iter.
-    """
-    output_buffer = BlockOutputBuffer(
-        None, DataContext.get_current().target_max_block_size
-    )
-    if iter_type == MapTransformFnDataType.Block:
-        add_fn = output_buffer.add_block
-    elif iter_type == MapTransformFnDataType.Batch:
-        add_fn = output_buffer.add_batch
-    else:
-        assert iter_type == MapTransformFnDataType.Row
-        add_fn = output_buffer.add
-    for data in iter:
-        add_fn(data)
+        Args:
+            iter: the iterable of UDF-returned data, whose type
+                must match self._input_type.
+        """
+        output_buffer = BlockOutputBuffer(
+            DataContext.get_current().target_max_block_size
+        )
+        if self._input_type == MapTransformFnDataType.Block:
+            add_fn = output_buffer.add_block
+        elif self._input_type == MapTransformFnDataType.Batch:
+            add_fn = output_buffer.add_batch
+        else:
+            assert self._input_type == MapTransformFnDataType.Row
+            add_fn = output_buffer.add
+        for data in iter:
+            add_fn(data)
+            while output_buffer.has_next():
+                yield output_buffer.next()
+        output_buffer.finalize()
         while output_buffer.has_next():
             yield output_buffer.next()
-    output_buffer.finalize()
-    while output_buffer.has_next():
-        yield output_buffer.next()
 
+    @classmethod
+    def for_rows(cls) -> "BuildOutputBlocksMapTransformFn":
+        """Return a BuildOutputBlocksMapTransformFn for row input."""
+        if getattr(cls, "_instance_for_rows", None) is None:
+            cls._instance_for_rows = cls(MapTransformFnDataType.Row)
+        return cls._instance_for_rows
 
-rows_to_output_blocks = MapTransformFn(
-    functools.partial(_to_output_blocks, iter_type=MapTransformFnDataType.Row),
-    MapTransformFnDataType.Row,
-    MapTransformFnDataType.Block,
-)
+    @classmethod
+    def for_batches(cls) -> "BuildOutputBlocksMapTransformFn":
+        """Return a BuildOutputBlocksMapTransformFn for batch input."""
+        if getattr(cls, "_instance_for_batches", None) is None:
+            cls._instance_for_batches = cls(MapTransformFnDataType.Batch)
+        return cls._instance_for_batches
 
-batches_to_output_blocks = MapTransformFn(
-    functools.partial(_to_output_blocks, iter_type=MapTransformFnDataType.Batch),
-    MapTransformFnDataType.Batch,
-    MapTransformFnDataType.Block,
-)
-
-blocks_to_output_blocks = MapTransformFn(
-    functools.partial(_to_output_blocks, iter_type=MapTransformFnDataType.Block),
-    MapTransformFnDataType.Block,
-    MapTransformFnDataType.Block,
-)
+    @classmethod
+    def for_blocks(cls) -> "BuildOutputBlocksMapTransformFn":
+        """Return a BuildOutputBlocksMapTransformFn for block input."""
+        if getattr(cls, "_instance_for_blocks", None) is None:
+            cls._instance_for_blocks = cls(MapTransformFnDataType.Block)
+        return cls._instance_for_blocks

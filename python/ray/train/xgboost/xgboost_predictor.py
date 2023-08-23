@@ -3,12 +3,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 import pandas as pd
 import xgboost
 
-from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.train.predictor import Predictor
-from ray.train.xgboost.xgboost_checkpoint import LegacyXGBoostCheckpoint
+from ray.train.xgboost import XGBoostCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -38,18 +37,16 @@ class XGBoostPredictor(Predictor):
         )
 
     @classmethod
-    def from_checkpoint(cls, checkpoint: Checkpoint) -> "XGBoostPredictor":
+    def from_checkpoint(cls, checkpoint: XGBoostCheckpoint) -> "XGBoostPredictor":
         """Instantiate the predictor from a Checkpoint.
 
-        The checkpoint is expected to be a result of ``XGBoostTrainer``.
+        This is a helper constructor that instantiates the predictor from a
+        framework-specific XGBoost checkpoint.
 
         Args:
-            checkpoint: The checkpoint to load the model and
-                preprocessor from. It is expected to be from the result of a
-                ``XGBoostTrainer`` run.
+            checkpoint: The checkpoint to load the model and preprocessor from.
 
         """
-        checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(checkpoint)
         model = checkpoint.get_model()
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor)

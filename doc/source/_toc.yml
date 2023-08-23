@@ -13,7 +13,6 @@ parts:
         title: "Use Cases"
         sections:
           - file: ray-air/getting-started
-          - file: ray-air/computer-vision
 
       - file: ray-overview/examples
         title: "Example Gallery"
@@ -92,8 +91,6 @@ parts:
                 title: "PyTorch Lightning Basic Example"
               - file: train/examples/lightning/lightning_cola_advanced
                 title: "PyTorch Lightning Advanced Example"
-              - file: train/examples/transformers/transformers_example
-                title: "HF Transformers Example"
               - file: train/examples/tf/tensorflow_mnist_example
                 title: "TensorFlow MNIST Example"
               - file: train/examples/horovod/horovod_example
