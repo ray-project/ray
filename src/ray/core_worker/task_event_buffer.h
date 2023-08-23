@@ -274,27 +274,54 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   const std::string DebugString() override;
 
  private:
+  /// Add a task status event to be reported.
+  ///
+  /// \param status_event Task status event.
   void AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_event) LOCKS_EXCLUDED(mutex_);
 
+  /// Add a task profile event to be reported.
+  ///
+  /// \param profile_event Task profile event.
   void AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile_event)
       LOCKS_EXCLUDED(profile_mutex_);
 
+  /// Get data related to task status events to be send to GCS.
+  ///
+  /// \param[out] status_events_to_send Task status events to be sent.
+  /// \param[out] dropped_task_attempts_to_send Task attempts that were dropped due to
+  ///             status events being dropped.
   void GetTaskStatusEventsToSend(
       std::vector<std::unique_ptr<TaskEvent>> *status_events_to_send,
-      absl::flat_hash_set<TaskAttempt> *dropped_status_events_to_send)
+      absl::flat_hash_set<TaskAttempt> *dropped_task_attempts_to_send)
       LOCKS_EXCLUDED(mutex_);
 
+  /// Get data related to task profile events to be send to GCS.
+  ///
+  /// \param[out] profile_events_to_send Task profile events to be sent.
+  /// \param dropped_task_attempts_to_send Task attempts that were dropped due to
+  ///        status events being dropped. We will not send any profile events for these
+  ///        task attempts.
+  /// \param status_events_to_send Task status events that will be sent to GCS. We will
+  ///        prioritize sending profile events for these task attempts first.
   void GetTaskProfileEventsToSend(
       std::vector<std::unique_ptr<TaskEvent>> *profile_events_to_send,
       const std::vector<std::unique_ptr<TaskEvent>> &status_events_to_send,
-      const absl::flat_hash_set<TaskAttempt> &dropped_status_events_to_send)
+      const absl::flat_hash_set<TaskAttempt> &dropped_task_attempts_to_send)
       LOCKS_EXCLUDED(profile_mutex_);
 
+  /// Get the task events to GCS.
+  ///
+  /// \param status_events_to_send Task status events to be sent.
+  /// \param profile_events_to_send Task profile events to be sent.
+  /// \param dropped_task_attempts_to_send Task attempts that were dropped due to
+  ///        status events being dropped.
+  /// \return A unique_ptr to rpc::TaskEvents to be sent to GCS.
   std::unique_ptr<rpc::TaskEventData> CreateDataToSend(
       std::vector<std::unique_ptr<TaskEvent>> &&status_events_to_send,
       std::vector<std::unique_ptr<TaskEvent>> &&profile_events_to_send,
-      absl::flat_hash_set<TaskAttempt> &&dropped_status_events_to_send);
+      absl::flat_hash_set<TaskAttempt> &&dropped_task_attempts_to_send);
 
+  /// Reset the counters during flushing data to GCS.
   void ResetCountersForFlush();
 
   /// Test only functions.
@@ -362,10 +389,14 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Circular buffered task status events.
   boost::circular_buffer<std::unique_ptr<TaskEvent>> status_events_ GUARDED_BY(mutex_);
 
-  absl::flat_hash_set<TaskAttempt> dropped_status_events_since_last_flush_
+  /// Buffered task attempts that were dropped due to status events being dropped.
+  /// This will be sent to GCS to surface the dropped task attempts.
+  absl::flat_hash_set<TaskAttempt> dropped_task_attempts_since_last_flush_
       GUARDED_BY(mutex_);
 
-  /// Circular buffered task profile events.
+  /// Buffered task profile events. This is not a circular buffer since we don't need
+  /// to keep the most recent profile events. Once limit is reached, we will just drop
+  /// any new profile events.
   absl::flat_hash_map<TaskAttempt, std::vector<std::unique_ptr<TaskEvent>>>
       profile_events_ GUARDED_BY(profile_mutex_);
 
