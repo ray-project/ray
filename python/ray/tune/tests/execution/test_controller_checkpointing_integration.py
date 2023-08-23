@@ -1,13 +1,11 @@
 import json
 import os
-import shutil
 
 import pytest
 import sys
 
 import ray
 from ray.train import CheckpointConfig
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.air.constants import TRAINING_ITERATION
 from ray.train._checkpoint import Checkpoint
@@ -19,7 +17,6 @@ from ray.tune.experiment import Trial
 from ray.tune.result import DONE
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
-from ray.tune.trainable import TrainableUtil
 
 from ray.train.tests.util import mock_storage_context
 
