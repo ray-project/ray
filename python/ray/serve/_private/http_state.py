@@ -348,6 +348,9 @@ class HTTPProxyStateManager:
     def get_config(self):
         return self._config
 
+    def get_grpc_config(self):
+        return self._grpc_options
+
     def get_http_proxy_handles(self) -> Dict[NodeId, ActorHandle]:
         return {
             node_id: state.actor_handle for node_id, state in self._proxy_states.items()

@@ -53,6 +53,7 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ApplicationDetails,
     ServeInstanceDetails,
+    gRPCOptionsSchema,
     HTTPOptionsSchema,
     ServeActorDetails,
 )
@@ -542,6 +543,12 @@ class ServeController:
             return None
         return self.http_proxy_state_manager.get_config()
 
+    def get_grpc_config(self):
+        """Return the gRPC proxy configuration."""
+        if self.http_proxy_state_manager is None:
+            return None
+        return self.http_proxy_state_manager.get_grpc_config()
+
     def get_root_url(self):
         """Return the root url for the serve instance."""
         if self.http_proxy_state_manager is None:
@@ -896,6 +903,7 @@ class ServeController:
         """
 
         http_config = self.get_http_config()
+        grpc_config = self.get_grpc_config()
         applications = {}
 
         for (
@@ -929,6 +937,10 @@ class ServeController:
                 host=http_config.host,
                 port=http_config.port,
                 request_timeout_s=http_config.request_timeout_s,
+            ),
+            grpc_options=gRPCOptionsSchema(
+                port=grpc_config.port,
+                grpc_servicer_functions=grpc_config.grpc_servicer_functions,
             ),
             http_proxies=self.http_proxy_state_manager.get_http_proxy_details()
             if self.http_proxy_state_manager
