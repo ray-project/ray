@@ -49,7 +49,7 @@ class MapTransformFn:
     def __call__(
         self, input: Iterable[MapTransformFnData], ctx: TaskContext
     ) -> Iterable[MapTransformFnData]:
-        pass
+        ...
 
     @property
     def input_type(self) -> MapTransformFnDataType:

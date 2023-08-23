@@ -12,10 +12,15 @@ from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
 
 
 class ZeroCopyMapFusionRule(Rule):
-    """Base class for zero-copy map fusion rules.
+    """Base abstract class for all zero-copy map fusion rules.
 
-    Subclasses implement the optimization strategies for different combinations of
-    fused map operators, by dropping unnecessary data conversion `MapTransformFn`s.
+    A zero-copy map fusion rule is a rule that optimizes the transform_fn chain of
+    a fused MapOperator. The optimization is usually done by removing unnecessary
+    data conversions.
+
+    This base abstract class defines the common util functions. And subclasses
+    should implement the `_optimize` method for the concrete optimization
+    strategy.
     """
 
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
@@ -23,6 +28,7 @@ class ZeroCopyMapFusionRule(Rule):
         return plan
 
     def _traverse(self, op):
+        """Traverse the DAG and apply the optimization to each MapOperator."""
         if isinstance(op, MapOperator):
             map_transformer = op.get_map_transformer()
             transform_fns = map_transformer.get_transform_fns()
@@ -43,7 +49,7 @@ class ZeroCopyMapFusionRule(Rule):
         Returns:
             The optimized transform_fns chain.
         """
-        pass
+        ...
 
 
 class EliminateBuildOutputBlocks(ZeroCopyMapFusionRule):
