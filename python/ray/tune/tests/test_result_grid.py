@@ -140,14 +140,14 @@ def test_result_grid_repr(tmp_path):
   Result(
     metrics={'loss': 1.0},
     path='log_1',
-    filesystem=local,
+    filesystem='local',
     checkpoint=Checkpoint(filesystem=local, path=/tmp/ckpt1)
   ),
   Result(
     error='RuntimeError',
     metrics={'loss': 2.0},
     path='log_2',
-    filesystem=local,
+    filesystem='local',
     checkpoint=Checkpoint(filesystem=local, path=/tmp/ckpt2)
   )
 ]>"""

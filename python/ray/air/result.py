@@ -115,8 +115,7 @@ class Result:
         else:
             shown_attributes.pop("error")
 
-        if isinstance(shown_attributes["filesystem"], pyarrow.fs.LocalFileSystem):
-            shown_attributes["filesystem"] = "local"
+        shown_attributes["filesystem"] = shown_attributes["filesystem"].type_name
 
         if self.metrics:
             exclude = set(AUTO_RESULT_KEYS)
