@@ -2054,18 +2054,11 @@ def update_envs(env_vars: Dict[str, str]):
     if not env_vars:
         return
 
-    replaceable_keys = [
-        "PATH",
-        "LD_LIBRARY_PATH",
-        "DYLD_LIBRARY_PATH",
-        "LD_PRELOAD",
-    ]
-
     for key, value in env_vars.items():
-        if key in replaceable_keys:
-            os.environ[key] = value.replace("${" + key + "}", os.environ.get(key, ""))
-        else:
-            os.environ[key] = value
+        expanded = os.path.expandvars(value)
+        # Replace non-existant env vars with an empty string.
+        result = re.sub(r"\$\{[A-Z0-9_]+\}", "", expanded)
+        os.environ[key] = result
 
 
 def parse_node_labels_json(
