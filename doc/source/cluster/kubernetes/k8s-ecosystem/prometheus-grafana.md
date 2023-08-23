@@ -1,10 +1,10 @@
 (kuberay-prometheus-grafana)=
 
-# Prometheus & Grafana
+# Using Prometheus and Grafana
 
 This section will describe how to monitor Ray Clusters in Kubernetes using Prometheus & Grafana.
 
-If you do not have any experience with Prometheus and Grafana on Kubernetes, I strongly recommend you watch this [YouTube playlist](https://youtube.com/playlist?list=PLy7NrYWoggjxCF3av5JKwyG7FFF9eLeL4).
+If you do not have any experience with Prometheus and Grafana on Kubernetes, watch this [YouTube playlist](https://youtube.com/playlist?list=PLy7NrYWoggjxCF3av5JKwyG7FFF9eLeL4).
 
 ## Preparation
 
@@ -81,13 +81,13 @@ kubectl get service
 # raycluster-kuberay-head-svc   ClusterIP   10.96.201.142   <none>        6379/TCP,8265/TCP,8080/TCP,8000/TCP,10001/TCP   106m
 ```
 
-* KubeRay will expose a Prometheus metrics endpoint in port **8080** via a built-in exporter by default. Hence, we do not need to install any external exporter.
+* KubeRay exposes a Prometheus metrics endpoint in port **8080** via a built-in exporter by default. Hence, we do not need to install any external exporter.
 * If you want to configure the metrics endpoint to a different port, see [kuberay/#954](https://github.com/ray-project/kuberay/pull/954) for more details.
 * Prometheus metrics format:
   * `# HELP`: Describe the meaning of this metric.
   * `# TYPE`: See [this document](https://prometheus.io/docs/concepts/metric_types/) for more details.
 
-* Three required environment variables are defined in [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.embed-grafana.yaml). See the Ray documentation ["Configuring and Managing Ray Dashboard"](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details about these environment variables.
+* Three required environment variables are defined in [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.embed-grafana.yaml). See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details about these environment variables.
   ```yaml
   env:
     - name: RAY_GRAFANA_IFRAME_HOST
