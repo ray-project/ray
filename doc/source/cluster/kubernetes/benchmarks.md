@@ -1,5 +1,5 @@
 (kuberay-benchmarks)=
 
-# Benchmarks
+# KubeRay Benchmarks
 
 - {ref}`kuberay-mem-scalability`
