@@ -943,7 +943,7 @@ def _open_file_with_retry(
 
     if OPEN_FILE_MAX_ATTEMPTS < 1:
         raise ValueError(
-            "OPEN_FILE_MAX_ATTEMPTS cannot be negative or 0, but get: "
+            "OPEN_FILE_MAX_ATTEMPTS cannot be negative or 0. Get: "
             f"{OPEN_FILE_MAX_ATTEMPTS}"
         )
 
