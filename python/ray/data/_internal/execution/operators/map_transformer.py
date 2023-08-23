@@ -1,4 +1,5 @@
 import itertools
+from abc import abstractmethod
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
 
@@ -31,7 +32,6 @@ class MapTransformFn:
 
     def __init__(
         self,
-        callable: MapTransformCallable[MapTransformFnData, MapTransformFnData],
         input_type: MapTransformFnDataType,
         output_type: MapTransformFnDataType,
     ):
@@ -45,10 +45,11 @@ class MapTransformFn:
         self._input_type = input_type
         self._output_type = output_type
 
+    @abstractmethod
     def __call__(
         self, input: Iterable[MapTransformFnData], ctx: TaskContext
     ) -> Iterable[MapTransformFnData]:
-        return self._callable(input, ctx)
+        pass
 
     @property
     def input_type(self) -> MapTransformFnDataType:
@@ -140,17 +141,66 @@ def create_map_transformer_from_block_fn(
     """
     return MapTransformer(
         [
-            MapTransformFn(
-                block_fn,
-                MapTransformFnDataType.Block,
-                MapTransformFnDataType.Block,
-            )
+            BlockMapTransformFn(block_fn),
         ],
         init_fn,
     )
 
 
-# Below are util `MapTransformFn`s for converting input/output data.
+# Below are subclasses of MapTransformFn.
+
+
+class RowMapTransformFn(MapTransformFn):
+    """A rows-to-rows MapTransformFn."""
+
+    def __init__(self, row_fn: MapTransformCallable[Row, Row]):
+        self._row_fn = row_fn
+        super().__init__(
+            MapTransformFnDataType.Row,
+            MapTransformFnDataType.Row,
+        )
+
+    def __call__(self, input: Iterable[Row], ctx: TaskContext) -> Iterable[Row]:
+        yield from self._row_fn(input, ctx)
+
+    def __repr__(self) -> str:
+        return f"RowMapTransformFn({self._row_fn})"
+
+
+class BatchMapTransformFn(MapTransformFn):
+    """A batch-to-batch MapTransformFn."""
+
+    def __init__(self, batch_fn: MapTransformCallable[DataBatch, DataBatch]):
+        self._batch_fn = batch_fn
+        super().__init__(
+            MapTransformFnDataType.Batch,
+            MapTransformFnDataType.Batch,
+        )
+
+    def __call__(
+        self, input: Iterable[DataBatch], ctx: TaskContext
+    ) -> Iterable[DataBatch]:
+        yield from self._batch_fn(input, ctx)
+
+    def __repr__(self) -> str:
+        return f"BatchMapTransformFn({self._batch_fn})"
+
+
+class BlockMapTransformFn(MapTransformFn):
+    """A block-to-block MapTransformFn."""
+
+    def __init__(self, block_fn: MapTransformCallable[Block, Block]):
+        self._block_fn = block_fn
+        super().__init__(
+            MapTransformFnDataType.Block,
+            MapTransformFnDataType.Block,
+        )
+
+    def __call__(self, input: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        yield from self._block_fn(input, ctx)
+
+    def __repr__(self) -> str:
+        return f"BlockMapTransformFn({self._block_fn})"
 
 
 class BlocksToRowsMapTransformFn(MapTransformFn):
@@ -158,14 +208,11 @@ class BlocksToRowsMapTransformFn(MapTransformFn):
 
     def __init__(self):
         super().__init__(
-            self._input_blocks_to_rows,
             MapTransformFnDataType.Block,
             MapTransformFnDataType.Row,
         )
 
-    def _input_blocks_to_rows(
-        self, blocks: Iterable[Block], _: TaskContext
-    ) -> Iterable[Row]:
+    def __call__(self, blocks: Iterable[Block], _: TaskContext) -> Iterable[Row]:
         for block in blocks:
             block = BlockAccessor.for_block(block)
             for row in block.iter_rows(public_row_format=True):
@@ -177,6 +224,9 @@ class BlocksToRowsMapTransformFn(MapTransformFn):
         if getattr(cls, "_instance", None) is None:
             cls._instance = cls()
         return cls._instance
+
+    def __repr__(self) -> str:
+        return "BlocksToRowsMapTransformFn()"
 
 
 class BlocksToBatchesMapTransformFn(MapTransformFn):
@@ -192,12 +242,11 @@ class BlocksToBatchesMapTransformFn(MapTransformFn):
         self._batch_format = batch_format
         self._ensure_copy = not zero_copy_batch and batch_size is not None
         super().__init__(
-            self._input_blocks_to_batches,
             MapTransformFnDataType.Block,
             MapTransformFnDataType.Batch,
         )
 
-    def _input_blocks_to_batches(
+    def __call__(
         self,
         blocks: Iterable[Block],
         _: TaskContext,
@@ -241,6 +290,15 @@ class BlocksToBatchesMapTransformFn(MapTransformFn):
     def zero_copy_batch(self) -> bool:
         return not self._ensure_copy
 
+    def __repr__(self) -> str:
+        return (
+            f"BlocksToBatchesMapTransformFn("
+            f"batch_size={self._batch_size}, "
+            f"batch_format={self._batch_format}, "
+            f"zero_copy_batch={self.zero_copy_batch}"
+            f")"
+        )
+
 
 class BuildOutputBlocksMapTransformFn(MapTransformFn):
     """A MapTransformFn that converts UDF-returned data to output blocks."""
@@ -252,12 +310,11 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
         """
         self._input_type = input_type
         super().__init__(
-            self._to_output_blocks,
             input_type,
             MapTransformFnDataType.Block,
         )
 
-    def _to_output_blocks(
+    def __call__(
         self,
         iter: Iterable[MapTransformFnData],
         _: TaskContext,
@@ -306,3 +363,6 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
         if getattr(cls, "_instance_for_blocks", None) is None:
             cls._instance_for_blocks = cls(MapTransformFnDataType.Block)
         return cls._instance_for_blocks
+
+    def __repr__(self) -> str:
+        return f"BuildOutputBlocksMapTransformFn(input_type={self._input_type})"
