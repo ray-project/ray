@@ -69,11 +69,6 @@ class Result:
             )
             self._local_path = str(self.log_dir)
 
-        from ray.train._internal.storage import _use_storage_context
-
-        if _use_storage_context() and not self._storage_filesystem:
-            raise ValueError("_storage_filesystem must be set")
-
         # Duplicate for retrieval
         self.log_dir = Path(self._local_path) if self._local_path else None
         # Backwards compatibility: Make sure to cast Path to string
@@ -107,7 +102,7 @@ class Result:
         Returns:
             pyarrow.fs.FileSystem implementation.
         """
-        return self._storage_filesystem
+        return self._storage_filesystem or pyarrow.fs.LocalFileSystem()
 
     def _repr(self, indent: int = 0) -> str:
         """Construct the representation with specified number of space indent."""
