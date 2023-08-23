@@ -115,11 +115,11 @@ def get_test_config() -> Dict:
 def check_single_app():
     """Checks the application deployed through the config from get_test_config()"""
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
+        lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).text
         == "9 pizzas please!"
     )
 
@@ -162,20 +162,20 @@ def check_multi_app():
     """
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["MUL", 3]).json()
+        lambda: requests.post("http://localhost:8000/app1", json=["MUL", 3]).text
         == "9 pizzas please!"
     )
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "5 pizzas please!"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 3]).json()
+        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 3]).text
         == "12 pizzas please!"
     )
 
@@ -212,11 +212,11 @@ def test_deploy_app_with_overriden_config(client: ServeControllerClient):
     client.deploy_apps(ServeApplicationSchema.parse_obj(config))
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 0]).json()
+        lambda: requests.post("http://localhost:8000/", json=["ADD", 0]).text
         == "5 pizzas please!"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
+        lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).text
         == "8 pizzas please!"
     )
 
@@ -239,7 +239,7 @@ def test_deploy_app_update_config(client: ServeControllerClient):
     client.deploy_apps(ServeApplicationSchema.parse_obj(config))
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
         == "1 pizzas please!"
     )
 
@@ -269,11 +269,11 @@ def test_deploy_multi_app_update_config(client: ServeControllerClient):
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "1 pizzas please!"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "12 pizzas please!"
     )
 
@@ -308,11 +308,11 @@ def test_deploy_app_update_num_replicas(client: ServeControllerClient):
     client.deploy_apps(ServeApplicationSchema.parse_obj(config))
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
         == "2 pizzas please!"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
+        lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).text
         == "0 pizzas please!"
     )
 
@@ -375,11 +375,11 @@ def test_deploy_multi_app_update_num_replicas(client: ServeControllerClient):
 
     client.deploy_apps(ServeDeploySchema.parse_obj(config))
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "2 pizzas please!"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "102 pizzas please!"
     )
 
@@ -472,7 +472,7 @@ def test_deploy_multi_app_update_timestamp(client: ServeControllerClient):
         ApplicationStatus.RUNNING,
     }
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -502,7 +502,7 @@ def test_deploy_app_overwrite_apps(client: ServeControllerClient):
     client.deploy_apps(test_config_2)
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -534,7 +534,7 @@ def test_deploy_multi_app_overwrite_apps(client: ServeControllerClient):
         lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -544,7 +544,7 @@ def test_deploy_multi_app_overwrite_apps(client: ServeControllerClient):
     client.deploy_apps(test_config)
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
     wait_for_condition(
@@ -580,7 +580,7 @@ def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
         lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -628,7 +628,7 @@ def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
 
     # App3 should be up and running
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app3", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app3", json=["ADD", 2]).text
         == "5 pizzas please!"
     )
 
@@ -680,8 +680,6 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
         "Adder",
         "Multiplier",
         "Router",
-        "create_order",
-        "DAGDriver",
     ]
     test_config = ServeDeploySchema.parse_obj(
         {
@@ -720,7 +718,7 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
 
     wait_for_condition(check_app, deployments=pizza_deployments)
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -1102,7 +1100,7 @@ def test_deploy_with_route_prefix_conflict(client: ServeControllerClient):
         lambda: requests.get("http://localhost:8000/app1").text == "wonderful world"
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
@@ -1291,8 +1289,8 @@ def test_get_app_handle(client: ServeControllerClient):
 
     handle_1 = serve.get_app_handle("app1")
     handle_2 = serve.get_app_handle("app2")
-    assert handle_1.predict.remote("ADD", 2).result() == "4 pizzas please!"
-    assert handle_2.predict.remote("ADD", 2).result() == "5 pizzas please!"
+    assert handle_1.route.remote("ADD", 2).result() == "4 pizzas please!"
+    assert handle_2.route.remote("ADD", 2).result() == "5 pizzas please!"
 
 
 @pytest.mark.parametrize("heavyweight", [True, False])
