@@ -118,7 +118,7 @@ def train_loop_per_worker(config):
             if config["smoke_test"]:
                 break
 
-        with tempfile.mkdtemp() as checkpoint_dir:
+        with tempfile.TemporaryDirectory() as checkpoint_dir:
             with open(os.path.join(checkpoint_dir, "data.ckpt"), "rb") as fp:
                 cpickle.dump(
                     dict(
