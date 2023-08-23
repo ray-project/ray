@@ -21,10 +21,6 @@ from ray.serve._private.common import (
     ReplicaState,
     HTTPProxyStatus,
 )
-from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 
@@ -457,10 +453,7 @@ def test_get_status(ray_start_stop):
 
     deployment_statuses = serve_status["deployment_statuses"]
     assert len(deployment_statuses) == 2
-    expected_deployment_names = {
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}BasicDriver",
-    }
+    expected_deployment_names = {"f", "BasicDriver"}
     for deployment_status in deployment_statuses:
         assert deployment_status["name"] in expected_deployment_names
         expected_deployment_names.remove(deployment_status["name"])
@@ -523,12 +516,12 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
         "app1": {
             "route_prefix": "/apple",
             "docs_path": None,
-            "deployments": {"app1_f", "app1_BasicDriver"},
+            "deployments": {"f", "BasicDriver"},
         },
         "app2": {
             "route_prefix": "/banana",
             "docs_path": "/my_docs",
-            "deployments": {"app2_FastAPIDeployment"},
+            "deployments": {"FastAPIDeployment"},
         },
     }
 
@@ -737,8 +730,7 @@ def test_serve_namespace(ray_start_stop):
     my_app_status = serve.status().applications["my_app"]
     assert (
         len(my_app_status.deployments) == 2
-        and my_app_status.deployments[f"my_app{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"]
-        is not None
+        and my_app_status.deployments["f"] is not None
     )
     print("Successfully retrieved deployment statuses with Python API.")
     print("Shutting down Python API.")

@@ -7,6 +7,7 @@ import ray
 import time
 from ray import serve
 from ray.cluster_utils import Cluster
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.http_proxy import DRAINED_MESSAGE
 from ray.serve.config import gRPCOptions
@@ -14,7 +15,6 @@ from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray.serve.exceptions import RayServeException
 
 from ray.serve._private.constants import (
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_DEFAULT_APP_NAME,
 )
@@ -271,10 +271,8 @@ def test_deploy_grpc_driver_to_node(ray_cluster):
     replicas = ray.get(
         serve.context._global_client._controller._all_running_replicas.remote()
     )
-    deployment_name = (
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DefaultgRPCDriver"
-    )
-    assert len(replicas[deployment_name]) == 1
+    deployment_id = DeploymentID("DefaultgRPCDriver", SERVE_DEFAULT_APP_NAME)
+    assert len(replicas[deployment_id]) == 1
 
     worker_node = cluster.add_node(num_cpus=2)
 
@@ -282,7 +280,7 @@ def test_deploy_grpc_driver_to_node(ray_cluster):
         lambda: len(
             ray.get(
                 serve.context._global_client._controller._all_running_replicas.remote()
-            )[deployment_name]
+            )[deployment_id]
         )
         == 2
     )
@@ -294,7 +292,7 @@ def test_deploy_grpc_driver_to_node(ray_cluster):
         lambda: len(
             ray.get(
                 serve.context._global_client._controller._all_running_replicas.remote()
-            )[deployment_name]
+            )[deployment_id]
         )
         == 1
     )
