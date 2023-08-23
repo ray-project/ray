@@ -1,4 +1,5 @@
 import sys
+import copy
 from typing import Callable, Dict, Tuple, List, Optional, Union, Set
 from dataclasses import dataclass
 from collections import defaultdict
@@ -220,9 +221,19 @@ class DeploymentScheduler:
             else:
                 scheduling_strategy = "SPREAD"
 
+            actor_options = copy.copy(replica_scheduling_request.actor_options)
+            if replica_scheduling_request.max_replicas_per_node is not None:
+                if "resources" not in actor_options:
+                    actor_options["resources"] = {}
+                # Using implicit resource (resources that every node
+                # implicitly has and total is 1)
+                # to limit the number of replicas on a single node.
+                actor_options["resources"][
+                    f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}{deployment_name}"
+                ] = (1.0 / replica_scheduling_request.max_replicas_per_node)
             actor_handle = replica_scheduling_request.actor_def.options(
                 scheduling_strategy=scheduling_strategy,
-                **replica_scheduling_request.actor_options,
+                **actor_options,
             ).remote(*replica_scheduling_request.actor_init_args)
 
             del self._pending_replicas[deployment_name][pending_replica_name]

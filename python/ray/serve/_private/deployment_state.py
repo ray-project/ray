@@ -429,7 +429,7 @@ class ActorReplicaWrapper:
                 deployment_info.replica_config.placement_group_strategy
             ),
             max_replicas_per_node=(
-                deployment_info.replica_config.max_replicas_per_node,
+                deployment_info.replica_config.max_replicas_per_node
             ),
             on_scheduled=self.on_scheduled,
         )
