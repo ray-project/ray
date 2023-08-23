@@ -1,7 +1,7 @@
 import warnings
 from ray.util.annotations import Deprecated
 
-from ray.train.hf_transformers.transformers_trainer import (
+from ray.train.huggingface.transformers.transformers_trainer import (
     TransformersTrainer,
 )
 
@@ -13,7 +13,7 @@ class HuggingFaceTrainer(TransformersTrainer):
     # Use __new__ as it is much less likely to be overriden
     # than __init__
     def __new__(cls: type, *args, **kwargs):
-        warnings.warn(deprecation_msg, DeprecationWarning)
+        warnings.warn(deprecation_msg, DeprecationWarning, stacklevel=2)
         return super(HuggingFaceTrainer, cls).__new__(cls, *args, **kwargs)
 
 

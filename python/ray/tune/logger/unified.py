@@ -4,7 +4,8 @@ from typing import Optional, List, Type, Dict, TYPE_CHECKING
 from ray.tune.logger import DEFAULT_LOGGERS
 from ray.tune.logger.json import JsonLogger
 from ray.tune.logger.logger import Logger
-from ray.util import log_once, PublicAPI
+from ray.util import log_once
+from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
 
 
+@Deprecated(message="`UnifiedLogger` will be removed in Ray 2.7.", warning=True)
 @PublicAPI
 class UnifiedLogger(Logger):
     """Unified result logger for TensorBoard, rllab/viskit, plain json.

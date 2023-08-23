@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional, List
 
 import click
@@ -10,6 +11,7 @@ from datetime import datetime
 
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
+from ray.air.constants import EXPR_RESULT_FILE
 from ray.tune.result import (
     DEFAULT_EXPERIMENT_INFO_KEYS,
     DEFAULT_RESULT_KEYS,
@@ -223,7 +225,7 @@ def list_experiments(
 
     for experiment_dir in experiment_folders:
         num_trials = sum(
-            "result.json" in files
+            EXPR_RESULT_FILE in files
             for _, _, files in os.walk(os.path.join(base, experiment_dir))
         )
 
@@ -289,17 +291,16 @@ def add_note(path: str, filename: str = "note.txt"):
         path: Directory where note will be saved.
         filename: Name of note. Defaults to "note.txt"
     """
-    path = os.path.expanduser(path)
-    assert os.path.isdir(path), "{} is not a valid directory.".format(path)
+    path = Path(path).expanduser()
+    assert path.is_dir(), "{} is not a valid directory.".format(path)
 
-    filepath = os.path.join(path, filename)
-    exists = os.path.isfile(filepath)
+    filepath = path / filename
 
     try:
-        subprocess.call([EDITOR, filepath])
+        subprocess.call([EDITOR, filepath.as_posix()])
     except Exception as exc:
         click.secho("Editing note failed: {}".format(str(exc)), fg="red")
-    if exists:
-        print("Note updated at:", filepath)
+    if filepath.exists():
+        print("Note updated at:", filepath.as_posix())
     else:
-        print("Note created at:", filepath)
+        print("Note created at:", filepath.as_posix())

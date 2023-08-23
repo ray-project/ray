@@ -1,7 +1,10 @@
 .. _ray-client-ref:
 
-Ray Client: Interactive Development
-===================================
+Ray Client
+==========
+
+.. warning::
+   Ray Client requires pip package `ray[client]`. If you installed the minimal Ray (e.g. `pip install ray`), please reinstall by executing `pip install ray[client]`.
 
 **What is the Ray Client?**
 
@@ -26,8 +29,12 @@ By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you
    do_work.remote(2)
    #....
 
+
 When to use Ray Client
 ----------------------
+
+.. note::
+   Ray Client has architectural limitations and may not work as expected when using Ray for ML workloads (like Ray Tune or Ray Train). Use :ref:`Ray Jobs API<jobs-overview>` for interactive development on ML projects.
 
 Ray Client can be used when you want to connect an interactive Python shell to a **remote** cluster.
 
@@ -281,3 +288,10 @@ Uploads
 If a ``working_dir`` is specified in the runtime env, when running ``ray.init()`` the Ray client will upload the ``working_dir`` on the laptop to ``/tmp/ray/session_latest/runtime_resources/_ray_pkg_<hash of directory contents>``.
 
 Ray workers are started in the ``/tmp/ray/session_latest/runtime_resources/_ray_pkg_<hash of directory contents>`` directory on the cluster. This means that relative paths in the remote tasks and actors in the code will work on the laptop and on the cluster without any code changes. For example, if the ``working_dir`` on the laptop contains ``data.txt`` and ``run.py``, inside the remote task definitions in ``run.py`` one can just use the relative path ``"data.txt"``. Then ``python run.py`` will work on my laptop, and also on the cluster. As a side note, since relative paths can be used in the code, the absolute path is only useful for debugging purposes.
+
+Troubleshooting
+---------------
+
+Error: Attempted to reconnect a session that has already been cleaned up 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+This error happens when Ray Client reconnects to a head node that does not recognize the client. This can happen if the head node restarts unexpectedly and loses state. On Kubernetes, this can happen if the head pod restarts after being evicted or crashing.

@@ -1,16 +1,11 @@
 import logging
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 
-from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockMetadata,
-)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.util.annotations import PublicAPI
-from typing import Iterable
 
 if TYPE_CHECKING:
     import pymongoarrow.api
@@ -81,8 +76,6 @@ class _MongoDatasourceReader(Reader):
         schema: Optional["pymongoarrow.api.Schema"] = None,
         **mongo_args,
     ):
-        import pymongo
-
         self._uri = uri
         self._database = database
         self._collection = collection
@@ -92,13 +85,8 @@ class _MongoDatasourceReader(Reader):
         # If pipeline is unspecified, read the entire collection.
         if not pipeline:
             self._pipeline = [{"$match": {"_id": {"$exists": "true"}}}]
-
-        self._client = pymongo.MongoClient(uri)
-        _validate_database_collection_exist(self._client, database, collection)
-
-        self._avg_obj_size = self._client[database].command("collstats", collection)[
-            "avgObjSize"
-        ]
+        # Initialize Mongo client lazily later when creating read tasks.
+        self._client = None
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         # TODO(jian): Add memory size estimation to improve auto-tune of parallelism.
@@ -109,9 +97,22 @@ class _MongoDatasourceReader(Reader):
             return {}
         return pipeline[0]["$match"]
 
+    def _get_or_create_client(self):
+        import pymongo
+
+        if self._client is None:
+            self._client = pymongo.MongoClient(self._uri)
+            _validate_database_collection_exist(
+                self._client, self._database, self._collection
+            )
+            self._avg_obj_size = self._client[self._database].command(
+                "collstats", self._collection
+            )["avgObjSize"]
+
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         from bson.objectid import ObjectId
 
+        self._get_or_create_client()
         coll = self._client[self._database][self._collection]
         match_query = self._get_match_query(self._pipeline)
         partitions_ids = list(

@@ -73,13 +73,19 @@ class TaskCancelledError(RayError):
             cancelled.
     """
 
-    def __init__(self, task_id: Optional[TaskID] = None):
+    def __init__(
+        self, task_id: Optional[TaskID] = None, error_message: Optional[str] = None
+    ):
         self.task_id = task_id
+        self.error_message = error_message
 
     def __str__(self):
-        if self.task_id is None:
-            return "This task or its dependency was cancelled by"
-        return "Task: " + str(self.task_id) + " was cancelled"
+        msg = ""
+        if self.task_id:
+            msg = "Task: " + str(self.task_id) + " was cancelled. "
+        if self.error_message:
+            msg += self.error_message
+        return msg
 
 
 @PublicAPI
@@ -712,6 +718,15 @@ class ActorUnschedulableError(RayError):
 
     def __str__(self):
         return f"The actor is not schedulable: {self.error_message}"
+
+
+@DeveloperAPI
+class ObjectRefStreamEndOfStreamError(RayError):
+    """Raised by streaming generator tasks when there are no more ObjectRefs to
+    read.
+    """
+
+    pass
 
 
 RAY_EXCEPTION_TYPES = [

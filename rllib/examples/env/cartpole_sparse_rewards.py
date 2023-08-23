@@ -2,7 +2,7 @@ from copy import deepcopy
 
 import gymnasium as gym
 import numpy as np
-from gymnasium.spaces import Discrete, Dict, Box
+from gymnasium.spaces import Box, Dict, Discrete
 
 
 class CartPoleSparseRewards(gym.Env):
@@ -14,7 +14,9 @@ class CartPoleSparseRewards(gym.Env):
         self.observation_space = Dict(
             {
                 "obs": self.env.observation_space,
-                "action_mask": Box(low=0, high=1, shape=(self.action_space.n,)),
+                "action_mask": Box(
+                    low=0, high=1, shape=(self.action_space.n,), dtype=np.int8
+                ),
             }
         )
         self.running_reward = 0
@@ -24,7 +26,7 @@ class CartPoleSparseRewards(gym.Env):
         obs, infos = self.env.reset()
         return {
             "obs": obs,
-            "action_mask": np.array([1, 1], dtype=np.float32),
+            "action_mask": np.array([1, 1], dtype=np.int8),
         }, infos
 
     def step(self, action):
@@ -32,7 +34,7 @@ class CartPoleSparseRewards(gym.Env):
         self.running_reward += rew
         score = self.running_reward if terminated else 0
         return (
-            {"obs": obs, "action_mask": np.array([1, 1], dtype=np.float32)},
+            {"obs": obs, "action_mask": np.array([1, 1], dtype=np.int8)},
             score,
             terminated,
             truncated,
@@ -43,7 +45,7 @@ class CartPoleSparseRewards(gym.Env):
         self.running_reward = state[1]
         self.env = deepcopy(state[0])
         obs = np.array(list(self.env.unwrapped.state))
-        return {"obs": obs, "action_mask": np.array([1, 1], dtype=np.float32)}
+        return {"obs": obs, "action_mask": np.array([1, 1], dtype=np.int8)}
 
     def get_state(self):
         return deepcopy(self.env), self.running_reward

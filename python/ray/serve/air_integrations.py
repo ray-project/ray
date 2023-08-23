@@ -16,7 +16,7 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.serve.drivers_utils import load_http_adapter, HTTPAdapterFn
 from ray.serve._private.utils import install_serve_encoders_to_fastapi
-from ray.serve._private.http_util import ASGIHTTPSender
+from ray.serve._private.http_util import BufferedASGISender
 
 
 if TYPE_CHECKING:
@@ -218,7 +218,7 @@ class SimpleSchemaIngress:
     async def __call__(self, request: starlette.requests.Request):
         # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
         # generate FastAPI on the fly, we should find a way to unify the two.
-        sender = ASGIHTTPSender()
+        sender = BufferedASGISender()
         await self.app(request.scope, receive=request.receive, send=sender)
         return sender.build_asgi_response()
 

@@ -1,12 +1,16 @@
 import os
+import logging
+import tempfile
 import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
-from ray import tune
+from ray import train, tune
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
-from ray.air.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint as LegacyCheckpoint
+from ray.train._checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
+from ray.train._internal.storage import _use_storage_context
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
@@ -21,6 +25,9 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 _WARN_REPARTITION_THRESHOLD = 10 * 1024**3
+_DEFAULT_NUM_ITERATIONS = 10
+
+logger = logging.getLogger(__name__)
 
 
 def _convert_scaling_config_to_ray_params(
@@ -119,11 +126,12 @@ class GBDTTrainer(BaseTrainer):
         params: Framework specific training parameters.
         dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
             :class:`xgboost_ray.RayDMatrix` initializations.
+        num_boost_round: Target number of boosting iterations (trees in the model).
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
         **train_kwargs: Additional kwargs passed to framework ``train()`` function.
     """
 
@@ -138,10 +146,14 @@ class GBDTTrainer(BaseTrainer):
 
     _dmatrix_cls: type
     _ray_params_cls: type
-    _tune_callback_report_cls: type
     _tune_callback_checkpoint_cls: type
-    _default_ray_params: Dict[str, Any] = {"checkpoint_frequency": 1}
+    _default_ray_params: Dict[str, Any] = {
+        "checkpoint_frequency": 1,
+        "checkpoint_at_end": True,
+    }
     _init_model_arg_name: str
+    _num_iterations_argument: str = "num_boost_round"
+    _default_num_iterations: int = _DEFAULT_NUM_ITERATIONS
 
     def __init__(
         self,
@@ -150,15 +162,18 @@ class GBDTTrainer(BaseTrainer):
         label_column: str,
         params: Dict[str, Any],
         dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = None,
+        num_boost_round: int = _DEFAULT_NUM_ITERATIONS,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         preprocessor: Optional["Preprocessor"] = None,
-        resume_from_checkpoint: Optional[Checkpoint] = None,
+        resume_from_checkpoint: Optional[LegacyCheckpoint] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         **train_kwargs,
     ):
         self.label_column = label_column
         self.params = params
 
+        self.num_boost_round = num_boost_round
         self.train_kwargs = train_kwargs
         self.dmatrix_params = dmatrix_params or {}
 
@@ -168,6 +183,7 @@ class GBDTTrainer(BaseTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )
 
         # Datasets should always use distributed loading.
@@ -206,7 +222,7 @@ class GBDTTrainer(BaseTrainer):
 
     def _load_checkpoint(
         self,
-        checkpoint: Checkpoint,
+        checkpoint: LegacyCheckpoint,
     ) -> Tuple[Any, Optional["Preprocessor"]]:
         raise NotImplementedError
 
@@ -226,12 +242,12 @@ class GBDTTrainer(BaseTrainer):
             scaling_config_dataclass, self._ray_params_cls, self._default_ray_params
         )
 
-    def preprocess_datasets(self) -> None:
-        super().preprocess_datasets()
-
+    def _repartition_datasets_to_match_num_actors(self):
         # XGBoost/LightGBM-Ray requires each dataset to have at least as many
         # blocks as there are workers.
-        # TODO: Move this logic to the respective libraries
+        # This is only applicable for xgboost-ray<0.1.16. The version check
+        # is done in subclasses to ensure that xgboost-ray doesn't need to be
+        # imported here.
         for dataset_key, dataset in self.datasets.items():
             if dataset.num_blocks() < self._ray_params.num_actors:
                 if dataset.size_bytes() > _WARN_REPARTITION_THRESHOLD:
@@ -256,12 +272,25 @@ class GBDTTrainer(BaseTrainer):
         for k in list(result_dict):
             result_dict[k] = result_dict[k][-1]
 
-        with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
-            self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
-        tune.report(**result_dict)
+        if getattr(self._tune_callback_checkpoint_cls, "_report_callbacks_cls", None):
+            # Deprecate: Remove in Ray 2.8
+            with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
+                self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
+            tune.report(**result_dict)
+        else:
+            with tempfile.TemporaryDirectory() as checkpoint_dir:
+                self._save_model(model, path=os.path.join(checkpoint_dir, MODEL_KEY))
+
+                if _use_storage_context():
+                    checkpoint = Checkpoint.from_directory(checkpoint_dir)
+                else:
+                    checkpoint = LegacyCheckpoint.from_directory(checkpoint_dir)
+
+                train.report(result_dict, checkpoint=checkpoint)
 
     def training_loop(self) -> None:
         config = self.train_kwargs.copy()
+        config[self._num_iterations_argument] = self.num_boost_round
 
         dmatrices = self._get_dmatrices(
             dmatrix_params=self.dmatrix_params,
@@ -270,32 +299,43 @@ class GBDTTrainer(BaseTrainer):
         evals_result = {}
 
         init_model = None
-        if self.resume_from_checkpoint:
-            init_model, _ = self._load_checkpoint(self.resume_from_checkpoint)
+        if self.starting_checkpoint:
+            init_model, _ = self._load_checkpoint(self.starting_checkpoint)
 
         config.setdefault("verbose_eval", False)
         config.setdefault("callbacks", [])
 
         if not any(
-            isinstance(
-                cb, (self._tune_callback_report_cls, self._tune_callback_checkpoint_cls)
-            )
+            isinstance(cb, self._tune_callback_checkpoint_cls)
             for cb in config["callbacks"]
         ):
             # Only add our own callback if it hasn't been added before
             checkpoint_frequency = (
                 self.run_config.checkpoint_config.checkpoint_frequency
             )
-            if checkpoint_frequency > 0:
-                callback = self._tune_callback_checkpoint_cls(
-                    filename=MODEL_KEY, frequency=checkpoint_frequency
-                )
-            else:
-                callback = self._tune_callback_report_cls()
+            callback = self._tune_callback_checkpoint_cls(
+                filename=MODEL_KEY, frequency=checkpoint_frequency
+            )
 
             config["callbacks"] += [callback]
 
         config[self._init_model_arg_name] = init_model
+
+        if init_model:
+            # If restoring, make sure that we only create num_boosting_round trees,
+            # and not init_model_trees + num_boosting_round trees
+            last_iteration = self._model_iteration(init_model)
+            num_iterations = config.get(
+                self._num_iterations_argument, self._default_num_iterations
+            )
+            new_iterations = num_iterations - last_iteration
+            config[self._num_iterations_argument] = new_iterations
+            logger.warning(
+                f"Model loaded from checkpoint will train for "
+                f"additional {new_iterations} iterations (trees) in order "
+                "to achieve the target number of iterations "
+                f"({self._num_iterations_argument}={num_iterations})."
+            )
 
         model = self._train(
             params=self.params,

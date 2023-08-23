@@ -7,6 +7,7 @@ import unittest
 
 import ray
 from ray import tune
+from ray.train import CheckpointConfig
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.utils import validate_save_restore
@@ -26,14 +27,12 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             return {"timesteps_this_iter": 1, "done": True}
 
         def save_checkpoint(self, checkpoint_dir):
-            checkpoint_path = os.path.join(
-                checkpoint_dir, "checkpoint-{}".format(self._iteration)
-            )
+            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pkl")
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(self.state, f)
-            return checkpoint_path
 
-        def load_checkpoint(self, checkpoint_path):
+        def load_checkpoint(self, checkpoint_dir):
+            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pkl")
             with open(checkpoint_path, "rb") as f:
                 extra_data = pickle.load(f)
             self.state.update(extra_data)
@@ -73,7 +72,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             self.MockTrainable,
             name=exp_name,
             stop={"training_iteration": 1},
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             storage_path=local_dir,
             config={"env": "CartPole-v0", "log_level": "DEBUG"},
         ).trials
@@ -90,7 +89,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(abs_trial_dir))
         self.assertTrue(
             os.path.isfile(
-                os.path.join(abs_trial_dir, "checkpoint_000001/checkpoint-1")
+                os.path.join(abs_trial_dir, "checkpoint_000001/checkpoint.pkl")
             )
         )
 
@@ -100,7 +99,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         )
 
         checkpoint_path = os.path.join(
-            local_dir, exp_name, trial_name, "checkpoint_000001/checkpoint-1"
+            local_dir, exp_name, trial_name, "checkpoint_000001/checkpoint.pkl"
         )  # Relative checkpoint path
 
         # The file tune would find. The absolute checkpoint path.

@@ -3,42 +3,39 @@
 It should be deleted once we fully move to the new executor backend.
 """
 
-import ray.cloudpickle as cloudpickle
-from typing import Iterator, Tuple, Any
+from typing import Any, Iterator, Tuple
 
 import ray
-from ray.data._internal.logical.optimizers import get_execution_plan
-from ray.data._internal.logical.util import record_operators_usage
-from ray.data.context import DataContext
-from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, List
-from ray.data.datasource import ReadTask
-from ray.data._internal.stats import StatsDict, DatasetStats
-from ray.data._internal.stage_impl import (
-    RandomizeBlocksStage,
-    LimitStage,
-)
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.compute import (
-    get_compute,
-    CallableClass,
-    TaskPoolStrategy,
-    ActorPoolStrategy,
-)
-from ray.data._internal.memory_tracing import trace_allocation
-from ray.data._internal.plan import ExecutionPlan, OneToOneStage, AllToAllStage, Stage
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.limit_operator import LimitOperator
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.compute import ActorPoolStrategy, get_compute
 from ray.data._internal.execution.interfaces import (
     Executor,
     PhysicalOperator,
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
+from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    create_map_transformer_from_block_fn,
+)
 from ray.data._internal.execution.util import make_callable_class_concurrent
+from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.optimizers import get_execution_plan
+from ray.data._internal.logical.util import record_operators_usage
+from ray.data._internal.memory_tracing import trace_allocation
+from ray.data._internal.plan import AllToAllStage, ExecutionPlan, OneToOneStage, Stage
+from ray.data._internal.stage_impl import LimitStage, RandomizeBlocksStage
+from ray.data._internal.stats import DatasetStats, StatsDict
+from ray.data._internal.util import validate_compute
+from ray.data.block import Block, BlockMetadata, CallableClass, List
+from ray.data.context import DataContext
+from ray.data.datasource import ReadTask
+from ray.types import ObjectRef
 
 # Warn about tasks larger than this.
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
@@ -137,7 +134,11 @@ def _get_execution_dag(
         record_operators_usage(plan._logical_plan.dag)
 
     # Get DAG of physical operators and input statistics.
-    if DataContext.get_current().optimizer_enabled:
+    if (
+        DataContext.get_current().optimizer_enabled
+        # TODO(scottjlee): remove this once we remove DatasetPipeline.
+        and not plan._generated_from_pipeline
+    ):
         dag = get_execution_plan(plan._logical_plan).dag
         stats = _get_initial_stats_from_plan(plan)
     else:
@@ -156,7 +157,17 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
     assert DataContext.get_current().optimizer_enabled
     if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
         return plan._snapshot_stats
-    return plan._in_stats
+    # For Datasets created from "read_xxx", `plan._in_blocks` is a LazyBlockList,
+    # and `plan._in_stats` contains useless data.
+    # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
+    # the initial stats. Because the `FromXxx` logical operators will be translated to
+    # "InputDataBuffer" physical operators, which will be ignored when generating
+    # stats, see `StreamingExecutor._generate_stats`.
+    # TODO(hchen): Unify the logic by saving the initial stats in `InputDataBuffer
+    if isinstance(plan._in_blocks, LazyBlockList):
+        return DatasetStats(stages={}, parent=None)
+    else:
+        return plan._in_stats
 
 
 def _to_operator_dag(
@@ -196,22 +207,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
         remote_args = blocks._remote_args
         assert all(isinstance(t, ReadTask) for t in read_tasks), read_tasks
 
-        # Defensively compute the size of the block as the max size reported by the
-        # datasource and the actual read task size. This is to guard against issues
-        # with bad metadata reporting.
-        def cleaned_metadata(read_task):
-            block_meta = read_task.get_metadata()
-            task_size = len(cloudpickle.dumps(read_task))
-            if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
-                if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
-                    print(
-                        f"WARNING: the read task size ({task_size} bytes) is larger "
-                        "than the reported output size of the task "
-                        f"({block_meta.size_bytes} bytes). This may be a size "
-                        "reporting bug in the datasource being read from."
-                    )
-                block_meta.size_bytes = task_size
-            return block_meta
+        from ray.data._internal.planner.plan_read_op import cleaned_metadata
 
         inputs = InputDataBuffer(
             [
@@ -240,11 +236,14 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
 
         # If the BlockList's read stage name is available, we assign it
         # as the operator's name, which is used as the task name.
-        task_name = "DoRead"
+        task_name = "Read"
         if isinstance(blocks, LazyBlockList):
             task_name = getattr(blocks, "_read_stage_name", task_name)
         return MapOperator.create(
-            do_read, inputs, name=task_name, ray_remote_args=remote_args
+            create_map_transformer_from_block_fn(do_read),
+            inputs,
+            name=task_name,
+            ray_remote_args=remote_args,
         )
     else:
         output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
@@ -267,16 +266,11 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
     if isinstance(stage, OneToOneStage):
         compute = get_compute(stage.compute)
+        validate_compute(stage.fn, compute)
 
         block_fn = stage.block_fn
         if stage.fn:
             if isinstance(stage.fn, CallableClass):
-                if isinstance(compute, TaskPoolStrategy):
-                    raise ValueError(
-                        "``compute`` must be specified when using a callable class, "
-                        "and must specify the actor compute strategy. "
-                        "For example, use ``compute=ActorPoolStrategy(size=n)``."
-                    )
                 assert isinstance(compute, ActorPoolStrategy)
 
                 fn_constructor_args = stage.fn_constructor_args or ()
@@ -311,9 +305,8 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             yield from block_fn(blocks, ctx, *fn_args, **fn_kwargs)
 
         return MapOperator.create(
-            do_map,
+            create_map_transformer_from_block_fn(do_map, init_fn),
             input_op,
-            init_fn=init_fn,
             name=stage.name,
             compute_strategy=compute,
             min_rows_per_bundle=stage.target_block_size,

@@ -8,6 +8,7 @@ from pydantic.main import ModelMetaclass
 
 import ray
 from ray._private.usage import usage_lib
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import HTTPOptions
@@ -17,7 +18,6 @@ from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY,
     SERVE_NAMESPACE,
-    RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
 )
 from ray.serve._private.client import ServeControllerClient
 
@@ -26,7 +26,6 @@ from ray.serve._private.utils import (
     get_random_letters,
 )
 from ray.serve.controller import ServeController
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.serve.context import (
     get_global_client,
     _set_global_client,
@@ -41,7 +40,7 @@ FLAG_DISABLE_HTTP_PROXY = (
 )
 
 
-def get_deployment(name: str):
+def get_deployment(name: str, app_name: str = ""):
     """Dynamically fetch a handle to a Deployment object.
 
     Args:
@@ -55,20 +54,17 @@ def get_deployment(name: str):
         (
             deployment_info,
             route_prefix,
-        ) = get_global_client().get_deployment_info(name)
+        ) = get_global_client().get_deployment_info(name, app_name)
     except KeyError:
         raise KeyError(
             f"Deployment {name} was not found. Did you call Deployment.deploy()?"
         )
     return Deployment(
-        deployment_info.replica_config.deployment_def,
         name,
         deployment_info.deployment_config,
+        deployment_info.replica_config,
         version=deployment_info.version,
-        init_args=deployment_info.replica_config.init_args,
-        init_kwargs=deployment_info.replica_config.init_kwargs,
         route_prefix=route_prefix,
-        ray_actor_options=deployment_info.replica_config.ray_actor_options,
         _internal=True,
     )
 
@@ -83,14 +79,11 @@ def list_deployments() -> Dict[str, Deployment]:
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
-            deployment_info.replica_config.deployment_def,
             name,
             deployment_info.deployment_config,
+            deployment_info.replica_config,
             version=deployment_info.version,
-            init_args=deployment_info.replica_config.init_args,
-            init_kwargs=deployment_info.replica_config.init_kwargs,
             route_prefix=route_prefix,
-            ray_actor_options=deployment_info.replica_config.ray_actor_options,
             _internal=True,
         )
 
@@ -147,21 +140,13 @@ def _start_controller(
     else:
         controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
 
-    # Used for scheduling things to the head node explicitly.
-    # Assumes that `serve.start` runs on the head node.
-    head_node_id = ray.get_runtime_context().get_node_id()
     controller_actor_options = {
         "num_cpus": 1 if dedicated_cpu else 0,
         "name": controller_name,
         "lifetime": "detached" if detached else None,
         "max_restarts": -1,
         "max_task_retries": -1,
-        # Schedule the controller on the head node with a soft constraint. This
-        # prefers it to run on the head node in most cases, but allows it to be
-        # restarted on other nodes in an HA cluster.
-        "scheduling_strategy": NodeAffinitySchedulingStrategy(head_node_id, soft=True)
-        if RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE
-        else None,
+        "resources": {HEAD_NODE_RESOURCE_NAME: 0.001},
         "namespace": SERVE_NAMESPACE,
         "max_concurrency": CONTROLLER_MAX_CONCURRENCY,
     }
@@ -170,7 +155,6 @@ def _start_controller(
         controller = ServeController.options(**controller_actor_options).remote(
             controller_name,
             http_config=http_options,
-            head_node_id=head_node_id,
             detached=detached,
             _disable_http_proxy=True,
         )
@@ -192,7 +176,6 @@ def _start_controller(
         controller = ServeController.options(**controller_actor_options).remote(
             controller_name,
             http_config=http_options,
-            head_node_id=head_node_id,
             detached=detached,
         )
 

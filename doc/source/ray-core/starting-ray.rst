@@ -39,11 +39,17 @@ Calling ``ray.init()`` starts a local Ray instance on your laptop/machine. This 
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
+          :hide:
 
-            import ray
-            # Other Ray APIs will not work until `ray.init()` is called.
-            ray.init()
+          import ray
+          ray.shutdown()
+
+        .. testcode::
+
+          import ray
+          # Other Ray APIs will not work until `ray.init()` is called.
+          ray.init()
 
     .. tab-item:: Java
 
@@ -74,7 +80,12 @@ When the process calling ``ray.init()`` terminates, the Ray runtime will also te
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
+          :hide:
+
+          ray.shutdown()
+
+        .. testcode::
 
             import ray
             ray.init()
@@ -111,7 +122,7 @@ To check if Ray is initialized, use the ``is_initialized`` API.
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
 
             import ray
             ray.init()
@@ -180,7 +191,7 @@ You can connect to this Ray instance by starting a driver process on the same no
 
     .. tab-item:: Python
 
-      .. code-block:: python
+      .. testcode::
 
         import ray
         ray.init()
@@ -235,9 +246,14 @@ Your code **only** needs to execute on one machine in the cluster (usually the h
 
 To connect to the Ray cluster, call ``ray.init`` from one of the machines in the cluster. This will connect to the latest Ray cluster:
 
-.. code-block:: python
+.. testcode::
+  :hide:
 
-    ray.init()
+  ray.shutdown()
+
+.. testcode::
+
+  ray.init()
 
 Note that the machine calling ``ray up`` will not be considered as part of the Ray cluster, and therefore calling ``ray.init`` on that same machine will not attach to the cluster.
 

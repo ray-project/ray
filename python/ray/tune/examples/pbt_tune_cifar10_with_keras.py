@@ -22,7 +22,7 @@ from tensorflow.keras.layers import Convolution2D, MaxPooling2D
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
-from ray import air, tune
+from ray import train, tune
 from ray.tune import Trainable
 from ray.tune.schedulers import PopulationBasedTraining
 
@@ -166,12 +166,12 @@ class Cifar10Model(Trainable):
     def save_checkpoint(self, checkpoint_dir):
         file_path = checkpoint_dir + "/model"
         self.model.save(file_path)
-        return file_path
 
-    def load_checkpoint(self, path):
+    def load_checkpoint(self, checkpoint_dir):
         # See https://stackoverflow.com/a/42763323
         del self.model
-        self.model = load_model(path)
+        file_path = checkpoint_dir + "/model"
+        self.model = load_model(file_path)
 
     def cleanup(self):
         # If need, save your model when exit.
@@ -212,13 +212,13 @@ if __name__ == "__main__":
             Cifar10Model,
             resources={"cpu": 1, "gpu": 1},
         ),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="pbt_cifar10",
             stop={
                 "mean_accuracy": 0.80,
                 "training_iteration": 30,
             },
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_frequency=perturbation_interval,
                 checkpoint_score_attribute="mean_accuracy",
                 num_to_keep=2,

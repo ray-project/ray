@@ -6,7 +6,7 @@ RLModule API
 ============
 
 
-RL Module specifications and configuraitons
+RL Module specifications and configurations
 -------------------------------------------
 
 Single Agent

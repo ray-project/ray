@@ -5,16 +5,15 @@ import os
 
 from typing import TYPE_CHECKING, Dict, TextIO
 
-import ray.cloudpickle as cloudpickle
-
-from ray.tune.logger.logger import Logger, LoggerCallback
-from ray.tune.utils.util import SafeFallbackEncoder
-from ray.tune.result import (
+from ray.air.constants import (
     EXPR_PARAM_FILE,
     EXPR_PARAM_PICKLE_FILE,
     EXPR_RESULT_FILE,
 )
-from ray.util.annotations import PublicAPI
+import ray.cloudpickle as cloudpickle
+from ray.tune.logger.logger import _LOGGER_DEPRECATION_WARNING, Logger, LoggerCallback
+from ray.tune.utils.util import SafeFallbackEncoder
+from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
@@ -25,6 +24,12 @@ tf = None
 VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64]
 
 
+@Deprecated(
+    message=_LOGGER_DEPRECATION_WARNING.format(
+        old="JsonLogger", new="ray.tune.json.JsonLoggerCallback"
+    ),
+    warning=True,
+)
 @PublicAPI
 class JsonLogger(Logger):
     """Logs trial results in json format.
@@ -89,6 +94,10 @@ class JsonLoggerCallback(LoggerCallback):
         # Make sure logdir exists
         trial.init_local_path()
         local_file = os.path.join(trial.local_path, EXPR_RESULT_FILE)
+
+        # Resume the file from remote storage.
+        self._restore_from_remote(EXPR_RESULT_FILE, trial)
+
         self._trial_files[trial] = open(local_file, "at")
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):

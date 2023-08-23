@@ -3,12 +3,11 @@
 Key Concepts of Ray Train
 =========================
 
-There are four main concepts in the Ray Train library.
+There are three main concepts in the Ray Train library.
 
 1. ``Trainers`` execute distributed training.
 2. ``Configuration`` objects are used to configure training.
 3. ``Checkpoints`` are returned as the result of training.
-4. ``Predictors`` can be used for inference and batch prediction.
 
 .. https://docs.google.com/drawings/d/1FezcdrXJuxLZzo6Rjz1CHyJzseH8nPFZp6IUepdn3N4/edit
 
@@ -19,14 +18,14 @@ Trainers
 
 Trainers are responsible for executing (distributed) training runs.
 The output of a Trainer run is a :ref:`Result <train-key-concepts-results>` that contains
-metrics from the training run and the latest saved :ref:`Checkpoint <air-checkpoint-ref>`.
-Trainers can also be configured with :ref:`Datasets <air-ingest>` and :ref:`Preprocessors <air-preprocessors>` for scalable data ingest and preprocessing.
+metrics from the training run and the latest saved :class:`~ray.train.Checkpoint`.
+You can also configured trainers with :ref:`Datasets <data-ingest-torch>` and :ref:`Preprocessors <air-preprocessors>` for scalable data ingest and preprocessing.
 
 
 Deep Learning, Tree-Based, and other Trainers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-There are three categories of built-in Trainers:
+There are two categories of built-in Trainers:
 
 .. tab-set::
 
@@ -41,8 +40,9 @@ There are three categories of built-in Trainers:
         For these trainers, you usually define your own training function that loads the model
         and executes single-worker training steps. Refer to the following guides for more details:
 
-        - :ref:`Deep learning user guide <train-dl-guide>`
-        - :ref:`Quick overview of deep-learning trainers in the Ray AIR documentation <air-trainers-dl>`
+        - :doc:`Distributed PyTorch </train/getting-started-pytorch>`
+        - :doc:`Distributed TensorFlow </train/distributed-tensorflow-keras>`
+        - :doc:`Horovod </train/horovod>`
 
     .. tab-item:: Tree-Based Trainers
 
@@ -55,19 +55,8 @@ There are three categories of built-in Trainers:
         For these trainers, you just pass a dataset and parameters. The training loop is configured
         automatically.
 
-        - :ref:`XGBoost/LightGBM user guide <train-gbdt-guide>`
-        - :ref:`Quick overview of tree-based trainers in the Ray AIR documentation <air-trainers-tree>`
+        - :doc:`Distributed XGBoost/LightGBM </train/distributed-xgboost-lightgbm>`
 
-
-    .. tab-item:: Other Trainers
-
-        Some trainers don't fit into the other two categories, such as:
-
-        - :class:`TransformersTrainer <ray.train.hf_transformers.TransformersTrainer>` for NLP
-        - :class:`RLTrainer <ray.train.rl.RLTrainer>` for reinforcement learning
-        - :class:`SklearnTrainer <ray.train.sklearn.sklearn_trainer.SklearnTrainer>` for (non-distributed) training of sklearn models.
-
-        - :ref:`Other trainers in the Ray AIR documentation <air-trainers-other>`
 
 .. _train-key-concepts-config:
 
@@ -79,49 +68,16 @@ the :class:`ScalingConfig <ray.air.config.ScalingConfig>` and the :class:`RunCon
 The latter contains subconfigurations, such as the :class:`FailureConfig <ray.air.config.FailureConfig>`,
 :class:`SyncConfig <ray.tune.syncer.SyncConfig>` and :class:`CheckpointConfig <ray.air.config.CheckpointConfig>`.
 
-Check out the :ref:`Configurations User Guide <train-config>` for an in-depth guide on using these configurations.
-
 .. _train-key-concepts-results:
 
 Train Checkpoints
 -----------------
 
-Calling ``Trainer.fit()`` returns a :class:`Result <ray.air.result.Result>` object, which includes
+Calling ``Trainer.fit()`` returns a :class:`Result <ray.train.Result>` object, which includes
 information about the run such as the reported metrics and the saved checkpoints.
 
 Checkpoints have the following purposes:
 
 * They can be passed to a Trainer to resume training from the given model state.
-* They can be used to create a Predictor / BatchPredictor for scalable batch prediction.
+* They can be used with Ray Data for scalable batch prediction.
 * They can be deployed with Ray Serve.
-
-.. _train-key-concepts-predictors:
-
-Train Predictors
-----------------
-
-Predictors are the counterpart to Trainers. A Trainer trains a model on a dataset, and a predictor
-uses the resulting model and performs inference on it.
-
-Each Trainer has a respective Predictor implementation that is compatible with its generated checkpoints.
-
-.. dropdown:: Example: :class:`XGBoostPredictor <ray.train.xgboost.XGBoostPredictor>`
-
-    .. literalinclude:: /train/doc_code/xgboost_train_predict.py
-        :language: python
-        :start-after: __train_predict_start__
-        :end-before: __train_predict_end__
-
-
-A predictor can be passed into a :class:`BatchPredictor <ray.train.batch_predictor.BatchPredictor>`
-is used to scale up prediction over a Ray cluster.
-It takes a Dataset as input.
-
-.. dropdown:: Example: Batch prediction with :class:`XGBoostPredictor <ray.train.xgboost.XGBoostPredictor>`
-
-    .. literalinclude:: /train/doc_code/xgboost_train_predict.py
-        :language: python
-        :start-after: __batch_predict_start__
-        :end-before: __batch_predict_end__
-
-See :ref:`the Predictors user guide <air-predictors>` for more information and examples.

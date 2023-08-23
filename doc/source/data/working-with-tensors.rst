@@ -3,7 +3,7 @@
 Working with Tensors
 ====================
 
-N-dimensional arrays (i.e., tensors) are ubiquitous in ML workloads. This guide
+N-dimensional arrays (in other words, tensors) are ubiquitous in ML workloads. This guide
 describes the limitations and best practices of working with such data.
 
 Tensor data representation
@@ -20,7 +20,6 @@ Ray Data represents tensors as
     print(ds)
 
 .. testoutput::
-    :options: +ELLIPSIS
 
     Dataset(
        num_blocks=...,
@@ -46,7 +45,7 @@ If your tensors have a fixed shape, Ray Data represents batches as regular ndarr
 Batches of variable-shape tensors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If your tensors vary in shape, Ray Data represents batches as ragged arrays.
+If your tensors vary in shape, Ray Data represents batches as arrays of object dtype.
 
 .. doctest::
 
@@ -58,7 +57,7 @@ If your tensors vary in shape, Ray Data represents batches as ragged arrays.
     >>> batch["image"].dtype
     dtype('O')
 
-Elements of ragged arrays are regular ndarrays.
+The individual elements of these object arrays are regular ndarrays.
 
 .. doctest::
 
@@ -69,47 +68,12 @@ Elements of ragged arrays are regular ndarrays.
     >>> batch["image"][3].shape  # doctest: +SKIP
     (333, 465, 3)
 
+.. _transforming_tensors:
 
-Saving tensor data
-------------------
+Transforming tensor data
+------------------------
 
-Save tensor data in Parquet or Numpy files. Other formats aren't supported.
-
-.. tab-set::
-
-    .. tab-item:: Parquet
-
-        Call :meth:`~ray.data.Dataset.write_parquet` to save data in Parquet files.
-
-        .. testcode::
-
-            import ray
-
-            ds = ray.data.read_images("example://image-datasets/simple")
-            ds.write_parquet("/tmp/simple")
-
-
-    .. tab-item:: NumPy
-
-        Call :meth:`~ray.data.Dataset.write_numpy` to save an ndarray column in a NumPy
-        file.
-
-        .. testcode::
-
-            import ray
-
-            ds = ray.data.read_images("example://image-datasets/simple")
-            ds.write_numpy("/tmp/simple.npy", column="image")
-
-For more information on saving data, read :ref:`Saving data <loading_data>`.
-
-.. _transforming_variable_tensors:
-
-Transforming variable-shape tensor data
----------------------------------------
-
-Call :meth:`~ray.data.Dataset.map` to transform variable-shape tensor data. Don't use
-:meth:`~ray.data.Dataset.map_batches`.
+Call :meth:`~ray.data.Dataset.map` or :meth:`~ray.data.Dataset.map_batches` to transform tensor data.
 
 .. testcode::
 
@@ -124,7 +88,64 @@ Call :meth:`~ray.data.Dataset.map` to transform variable-shape tensor data. Don'
         row["image"] = np.clip(row["image"] + 4, 0, 255)
         return row
 
+    # Increase the brightness, record at a time.
     ds.map(increase_brightness)
+
+    def batch_increase_brightness(batch: Dict[str, np.ndarray]) -> Dict:
+        batch["image"] = np.clip(batch["image"] + 4, 0, 255)
+        return batch
+
+    # Increase the brightness, batch at a time.
+    ds.map_batches(batch_increase_brightness)
+
+In addition to NumPy ndarrays, Ray Data also treats returned lists of NumPy ndarrays and
+objects implementing ``__array__`` (for example, ``torch.Tensor``) as tensor data.
 
 For more information on transforming data, read
 :ref:`Transforming data <transforming_data>`.
+
+
+Saving tensor data
+------------------
+
+Save tensor data with formats like Parquet, NumPy, and JSON. To view all supported
+formats, see the :ref:`Input/Output reference <input-output>`.
+
+.. tab-set::
+
+    .. tab-item:: Parquet
+
+        Call :meth:`~ray.data.Dataset.write_parquet` to save data in Parquet files.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+            ds.write_parquet("/tmp/simple")
+
+
+    .. tab-item:: NumPy
+
+        Call :meth:`~ray.data.Dataset.write_numpy` to save an ndarray column in NumPy
+        files.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+            ds.write_numpy("/tmp/simple", column="image")
+
+    .. tab-item:: JSON
+
+        To save images in a JSON file, call :meth:`~ray.data.Dataset.write_json`.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+            ds.write_json("/tmp/simple")
+
+For more information on saving data, read :ref:`Saving data <loading_data>`.

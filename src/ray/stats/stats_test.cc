@@ -84,7 +84,8 @@ class StatsTest : public ::testing::Test {
     absl::Duration harvest_interval = absl::Milliseconds(kReportFlushInterval / 2);
     ray::stats::StatsConfig::instance().SetReportInterval(report_interval);
     ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
-    const stats::TagsType global_tags = {{stats::ResourceNameKey, "CPU"}};
+    const stats::TagsType global_tags = {
+        {stats::TagKeyType::Register(stats::kResourceNameKey), "CPU"}};
     std::shared_ptr<stats::MetricExporterClient> exporter(
         new stats::StdoutExporterClient());
     ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil(), exporter);
@@ -141,8 +142,8 @@ TEST(Metric, MultiThreadMetricRegisterViewTest) {
       new stats::StdoutExporterClient());
   ray::stats::Init({}, MetricsAgentPort, WorkerID::Nil(), exporter);
   std::vector<std::thread> threads;
-  const stats::TagKeyType tag1 = stats::TagKeyType::Register("k1");
-  const stats::TagKeyType tag2 = stats::TagKeyType::Register("k2");
+  const std::string tag1 = "k1";
+  const std::string tag2 = "k2";
   for (int index = 0; index < 10; ++index) {
     threads.emplace_back([tag1, tag2, index]() {
       for (int i = 0; i < 100; i++) {

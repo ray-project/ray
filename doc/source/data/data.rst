@@ -6,71 +6,27 @@
 Ray Data: Scalable Datasets for ML
 ==================================
 
-.. _data-intro:
-
-Ray Data is the standard way to load and exchange data in Ray libraries and applications.
-It provides streaming distributed transformations such as maps
-(:meth:`map_batches <ray.data.Dataset.map_batches>`),
-global and grouped aggregations (:class:`GroupedData <ray.data.grouped_data.GroupedData>`), and
-shuffling operations (:meth:`random_shuffle <ray.data.Dataset.random_shuffle>`,
-:meth:`sort <ray.data.Dataset.sort>`,
-:meth:`repartition <ray.data.Dataset.repartition>`),
-and is compatible with a variety of file formats, data sources, and distributed frameworks.
-
-Read on for an overview of the main use cases and operations supported by Ray Data.
+Ray Data is a scalable data processing library for ML workloads. It provides flexible and performant APIs for scaling :ref:`Offline batch inference <batch_inference_overview>` and :ref:`Data preprocessing and ingest for ML training <ml_ingest_overview>`. Ray Data uses `streaming execution <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__ to efficiently process large datasets.
 
 .. image:: images/dataset.svg
 
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
--------------------------
-Streaming Batch Inference
--------------------------
+Install Ray Data
+----------------
 
-Ray Data simplifies general purpose parallel GPU and CPU compute in Ray through its
-powerful :ref:`Datastream <datastream_concept>` primitive. Datastreams enable workloads such as
-:doc:`GPU batch inference <batch_inference>` to run efficiently on large datasets,
-maximizing resource utilization by keeping the working data fitting into Ray object store memory.
+To install Ray Data, run:
 
-.. image:: images/stream-example.png
-   :width: 650px
-   :align: center
+.. code-block:: console
 
-..
- https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit#slide=id.g230eb261ad2_0_0
+    $ pip install -U 'ray[data]'
 
-As part of the Ray ecosystem, Ray Data can leverage the full functionality of Ray's distributed scheduler,
-e.g., using actors for optimizing setup time and GPU scheduling, and supports data throughputs of
-100GiB/s or more for common inference workloads.
+To learn more about installing Ray and its libraries, see
+:ref:`Installing Ray <installation>`.
 
-To learn more about the features Ray Data supports, read the
-:ref:`Data User Guide <data_user_guide>`.
-
----------------------------------------
-Streaming Preprocessing for ML Training
----------------------------------------
-
-Use Ray Data to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>` in a streaming fashion.
-Ray Data serves as a last-mile bridge from storage or ETL pipeline outputs to distributed
-applications and libraries in Ray. Don't use it as a replacement for more general data
-processing systems.
-
-.. image:: images/dataset-loading-1.png
-   :width: 650px
-   :align: center
-
-..
-  https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit
-
-----------------------
-Where to Go from Here?
-----------------------
-
-As new user of Ray Data, you may want to start with our :ref:`Getting Started Guide <data_getting_started>`.
-If you've run your first examples already, you might want to dive into Ray Data'
-:ref:`key concepts <data_key_concepts>` or our :ref:`User Guide <data_user_guide>` instead.
-Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>` for their projects.
+Learn more
+----------
 
 .. grid:: 1 2 2 2
     :gutter: 1
@@ -78,28 +34,26 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
 
     .. grid-item-card::
 
-        **Getting Started**
+        **Ray Data Overview**
         ^^^
 
-        Start with our quick start tutorials for working with Data.
-        These concrete examples will give you an idea of how to use Ray Data.
+        Get an overview of Ray Data, the workloads that it supports, and how it compares to alternatives.
 
         +++
-        .. button-ref:: data_getting_started
+        .. button-ref:: data_overview
             :color: primary
             :outline:
             :expand:
 
-            Get Started with Ray Data
+            Ray Data Overview
 
     .. grid-item-card::
 
         **Key Concepts**
         ^^^
 
-        Understand the key concepts behind Ray Data.
-        Learn what :ref:`Datasets <dataset_concept>` are and how they are executed in Ray
-        Data.
+        Understand the key concepts behind Ray Data. Learn what
+        :ref:`Datasets <dataset_concept>` are and how they're used.
 
         +++
         .. button-ref:: data_key_concepts
@@ -114,10 +68,7 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
         **User Guides**
         ^^^
 
-        Learn how to :ref:`load data <loading_data>`, :ref:`save
-        data <saving_data>`, :ref:`transform data <transforming_data>`,
-        :ref:`access and exchange data <consuming_data>`, or
-        :ref:`work with tensor data <working_with_tensors>`.
+        Learn how to use Ray Data, from basic usage to end-to-end guides.
 
         +++
         .. button-ref:: data_user_guide
@@ -125,15 +76,14 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
             :outline:
             :expand:
 
-            Start Using Ray Data
+            Learn how to use Ray Data
 
     .. grid-item-card::
 
         **Examples**
         ^^^
 
-        Find both simple and scaling-out examples of using Ray Data for data
-        processing and ML ingest.
+        Find both simple and scaling-out examples of using Ray Data.
 
         +++
         .. button-ref:: data-recipes
@@ -142,21 +92,6 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
             :expand:
 
             Ray Data Examples
-
-    .. grid-item-card::
-
-        **Ray Data FAQ**
-        ^^^
-
-        Find answers to commonly asked questions in our detailed FAQ.
-
-        +++
-        .. button-ref:: data_faq
-            :color: primary
-            :outline:
-            :expand:
-
-            Ray Data FAQ
 
     .. grid-item-card::
 
@@ -175,43 +110,17 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
 
     .. grid-item-card::
 
-        **Other Data Processing Solutions**
+        **Ray blogs**
         ^^^
 
-        For running ETL pipelines, check out :ref:`Spark-on-Ray <spark-on-ray>`. For scaling
-        up your data science workloads, check out :ref:`Dask-on-Ray <dask-on-ray>`,
-        :ref:`Modin <modin-on-ray>`, and :ref:`Mars-on-Ray <mars-on-ray>`.
+        Get the latest on engineering updates from the Ray team and how companies are using Ray Data.
 
         +++
-        .. button-ref:: integrations
+        .. button-link:: https://www.anyscale.com/blog?tag=ray-datasets
             :color: primary
             :outline:
             :expand:
 
-            Check Out Other Data Processing Options
-
-
-------------------------
-Datasource Compatibility
-------------------------
-
-Ray Data supports reading and writing many file formats.
-To view supported formats, read the :ref:`Input/Output reference <input-output>`.
-
-If your use case isn't supported, reach out on `Discourse <https://discuss.ray.io/>`__ or open a feature
-request on the `Ray GitHub repo <https://github.com/ray-project/ray>`__, and check out
-our :ref:`guide for implementing a custom datasource <data_custom_datasource>`
-if you're interested in rolling your own integration!
-
-----------
-Contribute
-----------
-
-Contributions to Ray Data are :ref:`welcome <getting-involved>`!
-There are many potential improvements, including:
-
-- Supporting more data sources and transforms.
-- Integration with more ecosystem libraries.
-- Performance optimizations.
+            Read the Ray blogs
 
 .. include:: /_includes/data/announcement_bottom.rst

@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.experimental.state.api import list_cluster_events
+from ray.util.state import list_cluster_events
 
 
 def calculate_capacity_threshold(disk_capacity_in_bytes):

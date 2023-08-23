@@ -1,13 +1,13 @@
-from typing import Callable, List, Optional, TYPE_CHECKING
-import time
 import concurrent.futures
 import logging
+import time
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 import ray
+from ray.data._internal import progress_bar
+from ray.data._internal.progress_bar import ProgressBar
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal import progress_bar
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,11 @@ def pipeline_stage(fn: Callable[[], Dataset]) -> Dataset:
     # Force eager evaluation of all blocks in the pipeline stage. This
     # prevents resource deadlocks due to overlapping stage execution (e.g.,
     # task -> actor stage).
-    return fn().materialize()
+    ds = fn()
+    # Flag used to skip the new plan optimizer, which does not
+    # support DatasetPipeline (will fall back to legacy plan optimizer)
+    ds._plan._generated_from_pipeline = True
+    return ds.materialize()
 
 
 class PipelineExecutor:

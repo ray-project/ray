@@ -43,8 +43,8 @@ from transformers import (
 from transformers.utils.versions import require_version
 
 import ray
-from ray.train.hf_accelerate import AccelerateTrainer
-from ray.air.config import ScalingConfig
+from ray.train.huggingface import AccelerateTrainer
+from ray.train import ScalingConfig
 
 logger = logging.getLogger(__name__)
 

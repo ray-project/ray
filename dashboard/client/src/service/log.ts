@@ -1,5 +1,6 @@
 import { get } from "./requestHandlers";
 
+export const MAX_LINES_FOR_LOGS = 50_000;
 const getLogUrl = (url: string) => {
   return url === "log_index" ? url : `log_proxy?url=${encodeURIComponent(url)}`;
 };
@@ -50,11 +51,65 @@ export const getLogDetail = async (url: string) => {
   return rsp.data as string;
 };
 
-export const getStateApiDownloadLogUrl = (nodeId: string, fileName: string) =>
-  `api/v0/logs/file?node_id=${nodeId}&filename=${fileName}&lines=-1`;
+export type StateApiLogInput = {
+  nodeId?: string | null;
+  /**
+   * If actorId is provided, nodeId is not necessary
+   */
+  actorId?: string | null;
+  /**
+   * If taskId is provided, nodeId is not necessary
+   */
+  taskId?: string | null;
+  suffix?: string;
+  /**
+   * If filename is provided, suffix is not necessary
+   */
+  filename?: string | null;
+};
 
-export const getStateApiLog = async (nodeId: string, fileName: string) => {
-  const resp = await get<string>(getStateApiDownloadLogUrl(nodeId, fileName));
+export const getStateApiDownloadLogUrl = ({
+  nodeId,
+  filename,
+  taskId,
+  actorId,
+  suffix,
+}: StateApiLogInput) => {
+  if (
+    nodeId === null ||
+    actorId === null ||
+    taskId === null ||
+    filename === null
+  ) {
+    // Null means data is not ready yet.
+    return null;
+  }
+  const variables = [
+    ...(nodeId !== undefined ? [`node_id=${encodeURIComponent(nodeId)}`] : []),
+    ...(filename !== undefined
+      ? [`filename=${encodeURIComponent(filename)}`]
+      : []),
+    ...(taskId !== undefined ? [`task_id=${encodeURIComponent(taskId)}`] : []),
+    ...(actorId !== undefined
+      ? [`actor_id=${encodeURIComponent(actorId)}`]
+      : []),
+    ...(suffix !== undefined ? [`suffix=${encodeURIComponent(suffix)}`] : []),
+    `lines=${MAX_LINES_FOR_LOGS}`,
+  ];
+
+  return `api/v0/logs/file?${variables.join("&")}`;
+};
+
+export const getStateApiLog = async (props: StateApiLogInput) => {
+  const url = getStateApiDownloadLogUrl(props);
+  if (url === null) {
+    return undefined;
+  }
+  const resp = await get<string>(url);
+  // Handle case where log file is empty.
+  if (resp.status === 200 && resp.data.length === 0) {
+    return "";
+  }
   // TODO(aguo): get rid of this first byte check once we support state-api logs without this streaming byte.
   if (resp.data[0] !== "1") {
     throw new Error(resp.data.substring(1));

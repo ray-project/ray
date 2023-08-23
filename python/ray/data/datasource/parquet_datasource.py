@@ -3,12 +3,16 @@ from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 import numpy as np
 
+import ray.cloudpickle as cloudpickle
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block
 from ray.data.context import DataContext
+from ray.data.datasource._default_metadata_providers import (
+    get_generic_metadata_provider,
+)
 from ray.data.datasource.datasource import Reader, ReadTask
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.file_meta_provider import (
@@ -18,7 +22,6 @@ from ray.data.datasource.file_meta_provider import (
 )
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.util.annotations import PublicAPI
-import ray.cloudpickle as cloudpickle
 
 if TYPE_CHECKING:
     import pyarrow
@@ -186,10 +189,6 @@ class _ParquetDatasourceReader(Reader):
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        if len(paths) == 1:
-            paths = paths[0]
-
         self._local_scheduling = None
         if local_uri:
             import ray
@@ -198,6 +197,26 @@ class _ParquetDatasourceReader(Reader):
             self._local_scheduling = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             )
+
+        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+
+        # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
+        # files. To avoid this, we expand the input paths with the default metadata
+        # provider and then apply the partition filter.
+        partition_filter = reader_args.pop("partition_filter", None)
+        if partition_filter is not None:
+            default_meta_provider = get_generic_metadata_provider(file_extensions=None)
+            expanded_paths, _ = map(
+                list, zip(*default_meta_provider.expand_paths(paths, filesystem))
+            )
+            paths = partition_filter(expanded_paths)
+
+            filtered_paths = set(expanded_paths) - set(paths)
+            if filtered_paths:
+                logger.info(f"Filtered out the following paths: {filtered_paths}")
+
+        if len(paths) == 1:
+            paths = paths[0]
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         try:
@@ -288,6 +307,25 @@ class _ParquetDatasourceReader(Reader):
 
             if meta.size_bytes is not None:
                 meta.size_bytes = int(meta.size_bytes * self._encoding_ratio)
+
+            if meta.num_rows and meta.size_bytes:
+                # Make sure the batches read are small enough to enable yielding of
+                # output blocks incrementally during the read.
+                row_size = meta.size_bytes / meta.num_rows
+                # Make sure the row batch size is small enough that block splitting
+                # is still effective.
+                max_parquet_reader_row_batch_size = (
+                    DataContext.get_current().target_max_block_size // 10
+                )
+                default_read_batch_size = max(
+                    1,
+                    min(
+                        PARQUET_READER_ROW_BATCH_SIZE,
+                        max_parquet_reader_row_batch_size // row_size,
+                    ),
+                )
+            else:
+                default_read_batch_size = PARQUET_READER_ROW_BATCH_SIZE
             block_udf, reader_args, columns, schema = (
                 self._block_udf,
                 self._reader_args,
@@ -299,6 +337,7 @@ class _ParquetDatasourceReader(Reader):
                     lambda p=serialized_pieces: _read_pieces(
                         block_udf,
                         reader_args,
+                        default_read_batch_size,
                         columns,
                         schema,
                         p,
@@ -363,7 +402,12 @@ class _ParquetDatasourceReader(Reader):
 
 
 def _read_pieces(
-    block_udf, reader_args, columns, schema, serialized_pieces: List[_SerializedPiece]
+    block_udf,
+    reader_args,
+    default_read_batch_size,
+    columns,
+    schema,
+    serialized_pieces: List[_SerializedPiece],
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
@@ -387,7 +431,7 @@ def _read_pieces(
 
     logger.debug(f"Reading {len(pieces)} parquet pieces")
     use_threads = reader_args.pop("use_threads", False)
-    batch_size = reader_args.pop("batch_size", PARQUET_READER_ROW_BATCH_SIZE)
+    batch_size = reader_args.pop("batch_size", default_read_batch_size)
     for piece in pieces:
         part = _get_partition_keys(piece.partition_expression)
         batches = piece.to_batches(

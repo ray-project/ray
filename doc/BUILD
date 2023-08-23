@@ -1,5 +1,6 @@
 load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
+load("//bazel:python.bzl", "doctest")
 
 exports_files(["test_myst_doc.py"])
 
@@ -14,7 +15,7 @@ py_test(
     size = "medium",
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml", "py37"],
+    tags = ["exclusive", "team:ml", "highly_parallel"],
     data = ["//doc/source/ray-core/examples:core_examples"],
     args = ["--path", "doc/source/ray-core/examples/highly_parallel.ipynb"]
 )
@@ -24,7 +25,7 @@ py_test(
     name = "datasets_train",
     size = "medium",
     srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
-    tags = ["exclusive", "team:ml", "py37", "datasets_train"],
+    tags = ["exclusive", "team:ml", "datasets_train"],
     args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
 
@@ -131,10 +132,25 @@ py_test_run_all_subdirectory(
     exclude = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
-         "source/serve/doc_code/object_detection.py",
+        "source/serve/doc_code/object_detection.py",
+        "source/serve/doc_code/http_guide/streaming_example.py",
+        "source/serve/doc_code/http_guide/websockets_example.py",
+        "source/serve/doc_code/vllm_example.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
+)
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = [
+        "source/serve/doc_code/http_guide/streaming_example.py",
+        "source/serve/doc_code/http_guide/websockets_example.py",
+    ],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:serve"],
+    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
 )
 
 py_test_run_all_subdirectory(
@@ -147,7 +163,9 @@ py_test_run_all_subdirectory(
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:serve", "gpu"],
+    env = {"RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S": "60"},
 )
+
 
 
 
@@ -182,10 +200,7 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/ray-air/doc_code/*.py"],
-    exclude = [
-        "source/ray-air/doc_code/hf_trainer.py",  # Too large
-        "source/ray-air/doc_code/predictors.py",
-    ],
+    exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
@@ -221,78 +236,26 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/data/doc_code/*.py"],
-    exclude = [
-        "source/ray-air/doc_code/predictors.py",
-        "source/data/doc_code/loading_data_untested.py",
-        "source/data/doc_code/torch_image_batch_trained.py"
-    ],
+    exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:data"],
 )
 
 # --------------------------------------------------------------------
-# Test all Workspace template notebooks in doc/source/templates
-# as smoke tests.
+# Test all doc/source/ray-more-libs/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
 
-filegroup(
-    name = "workspace_templates",
-    srcs = glob([
-        "source/templates/tests/**/*.ipynb",
-        "source/templates/tests/**/requirements.txt"
-    ]),
-    visibility = ["//doc:__subpackages__"]
-)
-
-# Validate that all the paths and yamls within the templates.yaml file are valid.
-
-py_test(
-    name = "templates_directory_validation",
-    size = "small",
-    main = "source/templates/validate.py",
-    srcs = ["source/templates/validate.py"],
-    data = glob(["source/templates/**/*"]),
-    tags = ["exclusive", "team:ml"]
-)
-
-# Templates that only require CPU
-
-py_test_run_all_notebooks(
+py_test_run_all_subdirectory(
     size = "large",
-    # TODO(justinvyu): Merge tests/ with the regular versions of the templates.
-    include = ["source/templates/tests/02_many_model_training/many_model_training.ipynb"],
+    include = ["source/ray-more-libs/doc_code/*.py"],
     exclude = [],
-    data = ["//doc:workspace_templates"],
-    tags = ["exclusive", "team:ml", "ray_air"],
-    env = {"SMOKE_TEST": "1"},
-)
-
-# Templates that require GPU
-
-py_test_run_all_notebooks(
-    size = "large",
-    include = [
-        # TODO(justinvyu): Merge tests/ with the regular versions of the templates.
-        "source/templates/tests/01_batch_inference/batch_inference.ipynb",
-        "source/templates/tests/03_serving_stable_diffusion/serving_stable_diffusion.ipynb"
-    ],
-    exclude = [],
-    data = ["//doc:workspace_templates"],
-    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
-    env = {"SMOKE_TEST": "1"},
+    extra_srcs = [],
+    tags = ["exclusive", "team:data"],
 )
 
 # --------------
 # Run GPU tests
 # --------------
-
-py_test_run_all_subdirectory(
-    size = "large",
-    include = ["source/ray-air/doc_code/predictors.py"],
-    exclude = [],
-    extra_srcs = [],
-    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
-)
 
 py_test(
     name = "pytorch_resnet_finetune",
@@ -302,4 +265,78 @@ py_test(
     tags = ["exclusive", "team:ml", "gpu", "ray_air"],
     data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
     args = ["--path", "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb"]
+)
+
+# --------------------------------------------------------------------
+# Test all doc/external code
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["external/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml", "external"],
+)
+
+
+# --------------------------------------------------------------------
+# Tests code snippets in user guides.
+# --------------------------------------------------------------------
+
+doctest(
+    files = glob(
+        include=["source/**/*.rst", "source/**/*.md"],
+        exclude=[
+            "source/ray-contribute/getting-involved.rst",
+            "source/ray-core/handling-dependencies.rst",
+            "source/ray-core/tasks/nested-tasks.rst",
+            "source/ray-observability/user-guides/ray-tracing.rst",
+            "source/ray-observability/user-guides/cli-sdk.rst",
+            "source/rllib/rllib-env.rst",
+            "source/rllib/rllib-sample-collection.rst",
+            "source/serve/advanced-guides/inplace-updates.md",
+            "source/serve/deploy-many-models/multi-app.md",
+            "source/serve/production-guide/deploy-vm.md",
+            "source/serve/production-guide/fault-tolerance.md",
+            "source/data/batch_inference.rst",
+            "source/data/transforming-data.rst",
+            "source/train/faq.rst",
+	    "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/workflows/**/*.rst",
+            "source/workflows/**/*.md",
+            "source/templates/04_finetuning_llms_with_deepspeed/README.md"
+        ]
+    ),
+    size = "large",
+    tags = ["team:none"]
+)
+
+
+doctest(
+    name="doctest[workflow]",
+    files = glob(
+        include=[
+            "source/workflows/**/*.rst",
+            "source/workflows/**/*.md"
+        ]
+    ),
+    tags = ["team:core"]
+)
+
+doctest(
+    files = [
+        "source/data/batch_inference.rst",
+        "source/data/transforming-data.rst"
+    ],
+    tags = ["team:data"],
+    gpu = True
+)
+
+doctest(
+    name="quarantine",
+    files = [
+	"source/train/user-guides/data-loading-preprocessing.rst",
+    ],
+    tags = ["team:data"],
 )

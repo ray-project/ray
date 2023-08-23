@@ -97,10 +97,12 @@ def test_metrics_folder_with_dashboard_override(
             for panel in contents["panels"]:
                 for target in panel["targets"]:
                     # Check for standard_global_filters
-                    assert 'SessionName="$SessionName"' in target["expr"]
+                    assert 'SessionName=~"$SessionName"' in target["expr"]
                     # Check for custom global_filters
                     assert global_filters in target["expr"]
             for variable in contents["templating"]["list"]:
+                if variable["name"] == "datasource":
+                    continue
                 assert global_filters in variable["definition"]
                 assert global_filters in variable["query"]["query"]
             assert "supportsGlobalFilterOverride" in contents["rayMeta"]
@@ -113,6 +115,8 @@ def test_metrics_folder_with_dashboard_override(
                 for target in panel["targets"]:
                     assert serve_global_filters in target["expr"]
             for variable in contents["templating"]["list"]:
+                if variable["name"] == "datasource":
+                    continue
                 assert serve_global_filters in variable["definition"]
                 assert serve_global_filters in variable["query"]["query"]
             assert "supportsGlobalFilterOverride" in contents["rayMeta"]

@@ -17,16 +17,9 @@ from ray.air.constants import (  # noqa: F401
     LAZY_CHECKPOINT_MARKER_FILE,
 )
 
-# Autofilled session.report() metrics. Keys should be consistent with Tune.
-# The train provided `TIME_THIS_ITER_S` and `TIMESTAMP` will triumph what's
-# auto-filled by Tune session.
-# TODO: Combine the following two with tune's, once there is a centralized
-#  file for both tune/train constants.
-TIMESTAMP = "timestamp"
-TIME_THIS_ITER_S = "time_this_iter_s"
-
+# Autofilled ray.train.report() metrics. Keys should be consistent with Tune.
+CHECKPOINT_DIR_NAME = "checkpoint_dir_name"
 TIME_TOTAL_S = "_time_total_s"
-
 WORKER_HOSTNAME = "_hostname"
 WORKER_NODE_IP = "_node_ip"
 WORKER_PID = "_pid"
@@ -70,6 +63,7 @@ TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
 # PACK to SPREAD. 1 for True, 0 for False.
 TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 
+RAY_AIR_NEW_PERSISTENCE_MODE = "RAY_AIR_NEW_PERSISTENCE_MODE"
 
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
@@ -77,6 +71,7 @@ TRAIN_ENV_VARS = {
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
+    RAY_AIR_NEW_PERSISTENCE_MODE,
 }
 
 # Blacklist virtualized networking.
@@ -84,3 +79,6 @@ DEFAULT_NCCL_SOCKET_IFNAME = "^lo,docker,veth"
 
 # Key for AIR Checkpoint metadata in TrainingResult metadata
 CHECKPOINT_METADATA_KEY = "checkpoint_metadata"
+
+# Key for AIR Checkpoint world rank in TrainingResult metadata
+CHECKPOINT_RANK_KEY = "checkpoint_rank"

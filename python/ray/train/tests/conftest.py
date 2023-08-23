@@ -8,7 +8,6 @@ import logging
 import pytest
 
 import ray
-from ray.air._internal.uri_utils import URI
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import simulate_storage
 
@@ -16,17 +15,6 @@ from ray._private.test_utils import simulate_storage
 @pytest.fixture
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_start_runtime_env():
-    # Requires at least torch 1.11 to pass
-    # TODO update torch version in requirements instead
-    runtime_env = {"pip": ["torch==1.11.0"]}
-    address_info = ray.init(runtime_env=runtime_env)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -119,6 +107,8 @@ def ray_2_node_2_cpu():
 
 @pytest.fixture
 def mock_s3_bucket_uri():
+    from ray.air._internal.uri_utils import URI
+
     port = 5002
     region = "us-west-2"
     with simulate_storage("s3", port=port, region=region) as s3_uri:

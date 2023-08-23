@@ -9,15 +9,13 @@ import unittest
 import pytest
 
 import ray
-import ray.cloudpickle as ray_pickle
-from ray import tune
-from ray.air import (
+from ray import train, tune
+from ray.train import (
     Checkpoint,
     CheckpointConfig,
     FailureConfig,
     RunConfig,
     ScalingConfig,
-    session,
 )
 from ray.air._internal.remote_storage import (
     delete_at_uri,
@@ -27,13 +25,24 @@ from ray.air._internal.remote_storage import (
 )
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune import Callback, Trainable
-from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
+from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
 from ray.tune.result_grid import ResultGrid
 from ray.tune.schedulers.async_hyperband import ASHAScheduler
 from ray.tune.search.optuna import OptunaSearch
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
+
+
+@pytest.fixture
+def propagate_logs():
+    # Ensure that logs are propagated to ancestor handles. This is required if using the
+    # caplog fixture with Ray's logging.
+    # NOTE: This only enables log propagation in the driver process, not the workers!
+    logger = logging.getLogger("ray")
+    logger.propagate = True
+    yield
+    logger.propagate = False
 
 
 @pytest.fixture
@@ -77,7 +86,7 @@ def _dummy_train_fn(config):
 
 
 def _dummy_train_fn_with_report(config):
-    session.report({"score": 1})
+    train.report({"score": 1})
 
 
 def _train_fn_sometimes_failing(config):
@@ -85,7 +94,7 @@ def _train_fn_sometimes_failing(config):
     # Hangs if hanging is set and marker file exists.
     failing, hanging = config["failing_hanging"]
 
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         checkpoint_dict = checkpoint.to_dict()
         state = {"it": checkpoint_dict["it"]}
@@ -95,7 +104,7 @@ def _train_fn_sometimes_failing(config):
     for i in range(config.get("num_epochs", 1)):
         state["it"] += 1
 
-        session.report(state, checkpoint=Checkpoint.from_dict(state))
+        train.report(state, checkpoint=Checkpoint.from_dict(state))
 
     # We fail after reporting num_epochs checkpoints.
     if failing and failing.exists():
@@ -105,7 +114,7 @@ def _train_fn_sometimes_failing(config):
         time.sleep(60)
 
     state["it"] += 1
-    session.report(state, checkpoint=Checkpoint.from_dict(state))
+    train.report(state, checkpoint=Checkpoint.from_dict(state))
 
 
 class _FailOnStats(Callback):
@@ -553,9 +562,10 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
             path = os.path.join(checkpoint_dir, "checkpoint")
             with open(path, "w") as f:
                 f.write(json.dumps({"idx": self.idx}))
-            return path
 
-        def load_checkpoint(self, checkpoint_path):
+        def load_checkpoint(self, checkpoint_dir):
+            path = os.path.join(checkpoint_dir, "checkpoint")
+
             self._is_restored = True
             with open(self.tag_file_path, "r") as f:
                 retried_num = json.loads(f.read())["retried_num"]
@@ -565,7 +575,7 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
 
             if retried_num < self.retry_num_to_fail:
                 raise RuntimeError(f"===== Failing restore #{retried_num + 1} =====")
-            with open(checkpoint_path) as f:
+            with open(path, "r") as f:
                 self.idx = json.loads(f.read())["idx"]
 
     # Set environment variable just for this test
@@ -601,7 +611,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
 
     def train_func_1(config):
         data = {"data": config["data"]}
-        session.report(data, checkpoint=Checkpoint.from_dict(data))
+        train.report(data, checkpoint=Checkpoint.from_dict(data))
         raise RuntimeError("Failing!")
 
     tuner = Tuner(
@@ -623,7 +633,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
 
     # Can't overwrite with a different Trainable name
     def train_func_2(config):
-        checkpoint = session.get_checkpoint()
+        checkpoint = train.get_checkpoint()
         assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
 
     with pytest.raises(ValueError):
@@ -635,7 +645,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
 
     # Can technically change trainable code (not recommended!)
     def train_func_1(config):
-        checkpoint = session.get_checkpoint()
+        checkpoint = train.get_checkpoint()
         assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
 
     tuner = Tuner.restore(
@@ -751,7 +761,7 @@ def test_tuner_restore_from_moved_experiment_path(
     training_iteration = results[0].metrics["training_iteration"]
     assert (
         training_iteration == 1
-    ), f"Should only have 1 session.report before erroring, got {training_iteration}"
+    ), f"Should only have 1 train.report before erroring, got {training_iteration}"
 
     # Move experiment from `tmp_path/ray_results/exp_dir`
     # to `tmp_path/moved_ray_results/new_exp_dir`, changing both `local_dir` and
@@ -780,7 +790,7 @@ def test_tuner_restore_from_moved_experiment_path(
         results = tuner.fit()
 
     assert len(results.errors) == 0
-    # Check that we restored iter=1, then made 2 calls to session.report -> iter=3
+    # Check that we restored iter=1, then made 2 calls to train.report -> iter=3
     training_iteration = results[0].metrics["training_iteration"]
     assert training_iteration == 3, training_iteration
 
@@ -808,7 +818,7 @@ def test_tuner_restore_from_moved_cloud_uri(
 
     def failing_fn(config):
         data = {"score": 1}
-        session.report(data, checkpoint=Checkpoint.from_dict(data))
+        train.report(data, checkpoint=Checkpoint.from_dict(data))
         raise RuntimeError("Failing!")
 
     tuner = Tuner(
@@ -1164,18 +1174,6 @@ def testParamSpaceOverwrite(ray_start_4_cpus, tmp_path, monkeypatch):
         # Make sure that test and test2 are updated.
         assert r.config["test"].name in ["8", "9", "10"]
         assert r.config["test2"].name in ["11", "12", "13", "14"]
-
-
-def test_tuner_pkl_backwards_compatibility(tmp_path, caplog):
-    tuner_internal = Tuner(
-        _train_fn_sometimes_failing, param_space={"a": 1}
-    )._local_tuner
-    with open(tmp_path / "tuner.pkl", "wb") as f:
-        ray_pickle.dump(tuner_internal, f)
-
-    with caplog.at_level(logging.WARNING, "ray.tune.impl.tuner_internal"):
-        tuner_internal._load_tuner_state(tmp_path / "tuner.pkl")
-        assert "run with an older version of Ray" in caplog.text
 
 
 if __name__ == "__main__":

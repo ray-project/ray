@@ -5,15 +5,15 @@ API Guide for Users from Other Data Libraries
 
 Ray Data is a data loading and preprocessing library for ML. It shares certain
 similarities with other ETL data processing libraries, but also has its own focus.
-In this API guide, we will provide API mappings for users who come from those data
+This guide provides API mappings for users who come from those data
 libraries, so you can quickly map what you may already know to Ray Data APIs.
 
 .. note::
 
   - This is meant to map APIs that perform comparable but not necessarily identical operations.
-    Please check the API reference for exact semantics and usage.
-  - This list may not be exhaustive: Ray Data is not a traditional ETL data processing library, so not all data processing APIs can map to Datasets.
-    In addition, we try to focus on common APIs or APIs that are less obvious to see a connection.
+    Select the API reference for exact semantics and usage.
+  - This list may not be exhaustive: Ray Data isn't a traditional ETL data processing library, so not all data processing APIs can map to Datasets.
+    In addition, this list focuses on common APIs or APIs that are less obvious to see a connection.
 
 .. _api-guide-for-pandas-users:
 
@@ -72,17 +72,23 @@ For PyArrow Users
 
    * - PyArrow Table API
      - Ray Data API
-   * - pa.Table.schema
+   * - ``pa.Table.schema``
      - :meth:`ds.schema() <ray.data.Dataset.schema>`
-   * - pa.Table.num_rows
+   * - ``pa.Table.num_rows``
      - :meth:`ds.count() <ray.data.Dataset.count>`
-   * - pa.Table.filter()
+   * - ``pa.Table.filter()``
      - :meth:`ds.filter() <ray.data.Dataset.filter>`
-   * - pa.Table.drop()
+   * - ``pa.Table.drop()``
      - :meth:`ds.drop_columns() <ray.data.Dataset.drop_columns>`
-   * - pa.Table.add_column()
+   * - ``pa.Table.add_column()``
      - :meth:`ds.add_column() <ray.data.Dataset.add_column>`
-   * - pa.Table.groupby()
+   * - ``pa.Table.groupby()``
      - :meth:`ds.groupby() <ray.data.Dataset.groupby>`
-   * - pa.Table.sort_by()
+   * - ``pa.Table.sort_by()``
      - :meth:`ds.sort() <ray.data.Dataset.sort>`
+
+
+For PyTorch Dataset & DataLoader Users
+--------------------------------------
+
+For more details, see the :ref:`Migrating from PyTorch to Ray Data <migrate_pytorch>`.

@@ -32,6 +32,7 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.error import ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
@@ -61,7 +62,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class TorchPolicy(Policy):
     """PyTorch specific Policy class to use with RLlib."""
 
@@ -1208,7 +1209,7 @@ class TorchPolicy(Policy):
         return outputs
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class DirectStepOptimizer:
     """Typesafe method for indicating `apply_gradients` can directly step the
     optimizers with in-place gradients.

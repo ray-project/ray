@@ -2,7 +2,7 @@ import logging
 from typing import Optional, Type
 
 from ray.data.preprocessor import Preprocessor
-from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
+from ray.train.lightning.lightning_checkpoint import LegacyLightningCheckpoint
 from ray.train.torch.torch_predictor import TorchPredictor
 from ray.util.annotations import PublicAPI
 import pytorch_lightning as pl
@@ -15,7 +15,7 @@ class LightningPredictor(TorchPredictor):
     """A predictor for PyTorch Lightning modules.
 
     Example:
-        .. testcode:: python
+        .. testcode::
 
             import torch
             import numpy as np
@@ -55,11 +55,6 @@ class LightningPredictor(TorchPredictor):
 
             assert output["predictions"].shape == (batch_size, output_dim)
 
-
-        .. testoutput::
-            :hide:
-            :options: +ELLIPSIS
-
     Args:
         model: The PyTorch Lightning module to use for predictions.
         preprocessor: A preprocessor used to transform data batches prior
@@ -83,7 +78,7 @@ class LightningPredictor(TorchPredictor):
     @classmethod
     def from_checkpoint(
         cls,
-        checkpoint: LightningCheckpoint,
+        checkpoint: LegacyLightningCheckpoint,
         model_class: Type[pl.LightningModule],
         *,
         preprocessor: Optional[Preprocessor] = None,
@@ -95,10 +90,13 @@ class LightningPredictor(TorchPredictor):
         The checkpoint is expected to be a result of ``LightningTrainer``.
 
         Example:
-            .. code-block:: python
+            .. testcode::
 
                 import pytorch_lightning as pl
-                from ray.train.lightning import LightningCheckpoint, LightningPredictor
+                from ray.train.lightning import (
+                    LegacyLightningCheckpoint,
+                    LightningPredictor,
+                )
 
                 class MyLightningModule(pl.LightningModule):
                     def __init__(self, input_dim, output_dim) -> None:
@@ -107,20 +105,23 @@ class LightningPredictor(TorchPredictor):
 
                     # ...
 
-                checkpoint = LightningCheckpoint.from_directory(
-                    "path/to/checkpoint_dir"
-                )
+                # After the training is finished, LightningTrainer saves AIR
+                # checkpoints in the result directory, for example:
+                # ckpt_dir = "{storage_path}/LightningTrainer_.*/checkpoint_000000"
 
-                # `from_checkpoint()` takes the argument list of
-                # `LightningModule.load_from_checkpoint()` as additional kwargs.
+                def load_predictor_from_checkpoint(ckpt_dir):
+                    checkpoint = LegacyLightningCheckpoint.from_directory(ckpt_dir)
 
-                predictor = LightningPredictor.from_checkpoint(
-                    checkpoint=checkpoint,
-                    use_gpu=False,
-                    model_class=MyLightningModule,
-                    input_dim=32,
-                    output_dim=10,
-                )
+                    # `from_checkpoint()` takes the argument list of
+                    # `LightningModule.load_from_checkpoint()` as additional kwargs.
+
+                    return LightningPredictor.from_checkpoint(
+                        checkpoint=checkpoint,
+                        use_gpu=False,
+                        model_class=MyLightningModule,
+                        input_dim=32,
+                        output_dim=10,
+                    )
 
         Args:
             checkpoint: The checkpoint to load the model and preprocessor from.

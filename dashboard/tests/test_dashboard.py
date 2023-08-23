@@ -39,9 +39,9 @@ from ray._private.test_utils import (
 import ray.scripts.scripts as scripts
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
-from ray.experimental.state.api import StateApiClient
-from ray.experimental.state.common import ListApiOptions, StateResource
-from ray.experimental.state.exception import ServerUnavailable
+from ray.util.state import StateApiClient
+from ray.util.state.common import ListApiOptions, StateResource
+from ray.util.state.exception import ServerUnavailable
 from ray.experimental.internal_kv import _initialize_internal_kv
 from unittest.mock import MagicMock
 from ray.dashboard.utils import DashboardHeadModule
@@ -107,14 +107,14 @@ def check_agent_register(raylet_proc, agent_pid):
 
 
 @pytest.mark.parametrize(
-    "ray_start_with_dashboard",
+    "ray_start_regular",
     [{"_system_config": {"agent_register_timeout_ms": 5000}}],
     indirect=True,
 )
-def test_basic(ray_start_with_dashboard):
+def test_basic(ray_start_regular):
     """Dashboard test that starts a Ray cluster with a dashboard server running,
     then hits the dashboard API and asserts that it receives sensible data."""
-    address_info = ray_start_with_dashboard
+    address_info = ray_start_regular
     node_id = address_info["node_id"]
     gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
@@ -158,10 +158,23 @@ def test_basic(ray_start_with_dashboard):
     assert agent_ports is not None
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") != "1",
+    reason="This specifically tests the minimal installation.",
+)
+def test_missing_imports(shutdown_only):
+    """
+    Test dashboard fails when packages are missing but inclusion
+    was explicitly specified by the user.
+    """
+    with pytest.raises(Exception):
+        ray.init(include_dashboard=True)
+
+
 def test_raylet_and_agent_share_fate(shutdown_only):
     """Test raylet and agent share fate."""
 
-    ray.init(include_dashboard=True)
+    ray.init()
     p = init_error_pubsub()
 
     node = ray._private.worker._global_node
@@ -186,7 +199,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
 
     ray.shutdown()
 
-    ray.init(include_dashboard=True)
+    ray.init()
     all_processes = ray._private.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -205,7 +218,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
 def test_agent_report_unexpected_raylet_death(shutdown_only):
     """Test agent reports Raylet death if it is not SIGTERM."""
 
-    ray.init(include_dashboard=True)
+    ray.init()
     p = init_error_pubsub()
 
     node = ray._private.worker._global_node
@@ -227,9 +240,9 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
     assert len(errors) == 1, errors
     err = errors[0]
-    assert err.type == ray_constants.RAYLET_DIED_ERROR
-    assert "Termination is unexpected." in err.error_message, err.error_message
-    assert "Raylet logs:" in err.error_message, err.error_message
+    assert err["type"] == ray_constants.RAYLET_DIED_ERROR
+    assert "Termination is unexpected." in err["error_message"], err["error_message"]
+    assert "Raylet logs:" in err["error_message"], err["error_message"]
     assert (
         os.path.getsize(os.path.join(node.get_session_dir_path(), "logs", "raylet.out"))
         < 1 * 1024**2
@@ -239,7 +252,7 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
 def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     """Test agent reports Raylet death if it is not SIGTERM."""
 
-    ray.init(include_dashboard=True)
+    ray.init()
     p = init_error_pubsub()
 
     node = ray._private.worker._global_node
@@ -268,11 +281,15 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
     assert len(errors) == 1, errors
     err = errors[0]
-    assert err.type == ray_constants.RAYLET_DIED_ERROR
-    assert "Termination is unexpected." in err.error_message, err.error_message
-    assert "Raylet logs:" in err.error_message, err.error_message
+    assert err["type"] == ray_constants.RAYLET_DIED_ERROR
+    assert "Termination is unexpected." in err["error_message"], err["error_message"]
+    assert "Raylet logs:" in err["error_message"], err["error_message"]
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 @pytest.mark.parametrize(
     "ray_start_with_dashboard",
     [
@@ -283,15 +300,15 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
 )
 def test_dashboard_address_local(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
-    if os.environ.get("RAY_MINIMAL") == "1":
-        # In the minimal installation, webui url shouldn't be configured.
-        assert webui_url == ""
-    else:
-        webui_ip = webui_url.split(":")[0]
-        assert not ipaddress.ip_address(webui_ip).is_unspecified
-        assert webui_ip == "127.0.0.1"
+    webui_ip = webui_url.split(":")[0]
+    assert not ipaddress.ip_address(webui_ip).is_unspecified
+    assert webui_ip == "127.0.0.1"
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 @pytest.mark.parametrize(
     "ray_start_with_dashboard",
     [
@@ -302,13 +319,9 @@ def test_dashboard_address_local(ray_start_with_dashboard):
 )
 def test_dashboard_address_global(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
-    if os.environ.get("RAY_MINIMAL") == "1":
-        # In the minimal installation, webui url shouldn't be configured.
-        assert webui_url == ""
-    else:
-        webui_ip = webui_url.split(":")[0]
-        assert not ipaddress.ip_address(webui_ip).is_unspecified
-        assert webui_ip == ray_start_with_dashboard["node_ip_address"]
+    webui_ip = webui_url.split(":")[0]
+    assert not ipaddress.ip_address(webui_ip).is_unspecified
+    assert webui_ip == ray_start_with_dashboard["node_ip_address"]
 
 
 @pytest.mark.skipif(
@@ -632,6 +645,48 @@ def test_get_cluster_status(ray_start_with_dashboard):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        """ray start --no-monitor --head --num-cpus 1 \
+--system-config={"enable_autoscaler_v2":true}""",
+        """ray start --head --num-cpus 1""",
+    ],
+    indirect=True,
+)
+def test_get_nodes_summary(call_ray_start):
+
+    # The sleep is needed since it seems a previous shutdown could be not yet
+    # done when the next test starts. This prevents a previous cluster to be
+    # connected the current test session.
+    time.sleep(5)
+    address_info = ray.init(address=call_ray_start)
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    def get_nodes_summary():
+        response = requests.get(f"{webui_url}/nodes?view=summary")
+        response.raise_for_status()
+        response = response.json()
+        print(response)
+
+        assert response["data"]["nodeLogicalResources"]
+        assert "0.0/1.0 CPU" in "".join(
+            response["data"]["nodeLogicalResources"].values()
+        )
+
+    assert wait_until_succeeded_without_exception(
+        get_nodes_summary,
+        (requests.RequestException,),
+        timeout_ms=10 * 1000,
+        retry_interval_ms=1000,
+    )
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_immutable_types():
     d = {str(i): i for i in range(1000)}
     d["list"] = list(range(1000))
@@ -852,7 +907,7 @@ def test_dashboard_does_not_depend_on_serve():
     with pytest.raises(ImportError):
         from ray import serve  # noqa: F401
 
-    ctx = ray.init(include_dashboard=True)
+    ctx = ray.init()
 
     # Ensure standard dashboard features, like snapshot, still work
     response = requests.get(f"http://{ctx.dashboard_url}/api/snapshot")
@@ -984,7 +1039,7 @@ def test_agent_port_conflict(shutdown_only):
     os.environ.get("RAY_MINIMAL") != "1",
     reason="This test only works for minimal installation.",
 )
-def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
+def test_dashboard_requests_fail_on_missing_deps(ray_start_regular):
     """Check that requests from client fail with minimal installation"""
     response = None
 

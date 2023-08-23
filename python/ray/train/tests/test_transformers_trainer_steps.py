@@ -5,19 +5,16 @@ import pytest
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
-    AutoTokenizer,
     Trainer,
     TrainingArguments,
 )
 
 import ray.data
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.hf_transformers import (
-    TransformersPredictor,
+from ray.train.huggingface import (
     TransformersTrainer,
 )
 from ray.train.trainer import TrainingFailedError
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.tests._huggingface_data import train_data, validation_data
 
 # 16 first rows of tokenized wikitext-2-raw-v1 training & validation
@@ -122,16 +119,6 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     assert result2.metrics["training_iteration"] == math.ceil(1 / logging_steps)
     assert result2.checkpoint
     assert "eval_loss" in result2.metrics
-
-    predictor = BatchPredictor.from_checkpoint(
-        result2.checkpoint,
-        TransformersPredictor,
-        task="text-generation",
-        tokenizer=AutoTokenizer.from_pretrained(tokenizer_checkpoint),
-    )
-
-    predictions = predictor.predict(ray.data.from_pandas(prompts))
-    assert predictions.count() == 3
 
 
 if __name__ == "__main__":

@@ -1,21 +1,29 @@
 from pathlib import Path
+from typing import Dict, List
 import pytest
 import warnings
 
 import ray
-from ray.air import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig, session
-from ray.air._internal.remote_storage import upload_to_uri
+from ray import train
+from ray.train import (
+    CheckpointConfig,
+    RunConfig,
+    ScalingConfig,
+)
+from ray.air._internal.uri_utils import URI
 from ray.train.base_trainer import BaseTrainer
 from ray.train.trainer import TrainingFailedError
-from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.train.data_parallel_trainer import (
+    DataParallelTrainer,
+)
 from ray.train.torch import TorchTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
-from ray.train.hf_transformers import TransformersTrainer
-from ray.train.rl import RLTrainer
+from ray.train.huggingface import TransformersTrainer
 from ray.tune import Callback
-from ray.data.preprocessors.batch_mapper import BatchMapper
-from ray.data.preprocessor import Preprocessor
+
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.tune.experiment import Trial
 
 
 @pytest.fixture
@@ -41,12 +49,13 @@ class _TestSpecificError(RuntimeError):
 
 
 def _failing_train_fn(config):
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     it = 1
     if checkpoint:
-        it = checkpoint.to_dict()["it"] + 1
+        it = load_dict_checkpoint(checkpoint)["it"] + 1
         print(f"\nLoading from checkpoint, which is at iteration {it}...\n")
-    session.report({"it": it}, checkpoint=Checkpoint.from_dict({"it": it}))
+    with create_dict_checkpoint({"it": it}) as checkpoint:
+        train.report({"it": it}, checkpoint=checkpoint)
     if it == 1:
         raise _TestSpecificError
 
@@ -54,12 +63,19 @@ def _failing_train_fn(config):
 class FailureInjectionCallback(Callback):
     """Inject failure at the configured iteration number."""
 
-    def __init__(self, num_iters=2):
+    def __init__(self, fail_marker_path: Path, num_iters: int = 2):
         self.num_iters = num_iters
+        self.fail_marker_path = fail_marker_path
 
-    def on_trial_save(self, iteration, trials, trial, **info):
-        if trial.last_result["training_iteration"] == self.num_iters:
+    def on_trial_result(
+        self, iteration: int, trials: List[Trial], trial: Trial, result: Dict, **info
+    ):
+        if not self.fail_marker_path.exists():
+            return
+
+        if trial.last_result.get("training_iteration", -1) >= self.num_iters:
             print(f"Failing after {self.num_iters} iters...")
+            self.fail_marker_path.unlink()
             raise _TestSpecificError
 
 
@@ -79,7 +95,7 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
         def train_fn(config):
             assert ray.get(obj_ref)["test"] == 1
             assert ray.get(config["obj_ref"])["test"] == 1
-            ds = session.get_dataset_shard("train")
+            ds = train.get_dataset_shard("train")
             assert (
                 sum([len(batch["feature"]) for batch in ds.iter_batches()])
                 == dataset_size // num_workers
@@ -124,20 +140,27 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
     assert not result.error
     assert result.metrics["training_iteration"] == 2
     assert result.metrics["iterations_since_restore"] == 1
-    assert tmpdir / "data_parallel_restore_test" in result.log_dir.parents
+    assert tmpdir / "data_parallel_restore_test" in Path(result.path).parents
 
 
 @pytest.mark.parametrize("trainer_cls", [XGBoostTrainer, LightGBMTrainer])
-def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
+def test_gbdt_trainer_restore(ray_start_6_cpus, tmp_path, trainer_cls, monkeypatch):
     """Tests restoring gradient boosted decision tree trainers.
     Success criteria:
     - Picks up at the right iteration. 2 before crash. 3 after. 5 total trees.
     - Results are being logged to the same directory as before.
     """
+    # TODO(krfricke): Re-enable this once gbdt trainers are supported.
+    # Also runs into the same problem as the test below.
+    pytest.skip("GBDT trainers are not supported yet.")
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
     exp_name = f"{trainer_cls.__name__}_restore_test"
     datasets = {
         "train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(100)])
     }
+
+    fail_marker_path = tmp_path / "fail_marker"
+    fail_marker_path.touch()
 
     trainer = trainer_cls(
         label_column="y",
@@ -151,31 +174,34 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
             num_workers=2, trainer_resources={"CPU": 0}, resources_per_worker={"CPU": 1}
         ),
         run_config=RunConfig(
-            local_dir=str(tmpdir),
             name=exp_name,
-            checkpoint_config=CheckpointConfig(num_to_keep=1, checkpoint_frequency=1),
-            callbacks=[FailureInjectionCallback(num_iters=2)],
-            # We also use a stopper, since the restored run will go for
-            # another 5 boosting rounds otherwise.
-            stop={"training_iteration": 5},
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=1, checkpoint_frequency=1, checkpoint_at_end=False
+            ),
+            callbacks=[FailureInjectionCallback(fail_marker_path, num_iters=2)],
         ),
         num_boost_round=5,
     )
     with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
-    trainer = trainer_cls.restore(str(tmpdir / exp_name), datasets=datasets)
+    trainer = trainer_cls.restore(str(tmp_path / exp_name), datasets=datasets)
     result = trainer.fit()
     assert not result.error
     assert result.metrics["training_iteration"] == 5
     assert result.metrics["iterations_since_restore"] == 3
-    assert tmpdir / exp_name in result.log_dir.parents
+    assert tmp_path / exp_name in Path(result.path).parents
 
 
 @pytest.mark.parametrize("trainer_cls", [TransformersTrainer])
-def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
+def test_trainer_with_init_fn_restore(
+    ray_start_4_cpus, tmp_path, trainer_cls, monkeypatch
+):
     """Tests restore for data parallel trainers that take in a `train_init` function
     and config. Success criteria: same as for data parallel trainers."""
+    # TODO(justinvyu): Failure injection callback doesn't work very well to test this.
+    pytest.skip("Re-enable after coming up with a better way to inject a failure.")
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
     exp_name = f"{trainer_cls.__name__}_restore_test"
 
     if trainer_cls == TransformersTrainer:
@@ -197,54 +223,51 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     #     trainer_init_config = {"max_duration": "5ep"}
     #     datasets = {}
 
+    fail_marker_path = tmp_path / "fail_marker"
+    fail_marker_path.touch()
+
     trainer = trainer_cls(
         trainer_init_per_worker=trainer_init_fn,
         trainer_init_config=trainer_init_config,
         datasets=datasets,
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(
-            local_dir=str(tmpdir),
             name=exp_name,
             checkpoint_config=CheckpointConfig(num_to_keep=1),
-            callbacks=[FailureInjectionCallback(num_iters=2)],
+            callbacks=[FailureInjectionCallback(fail_marker_path, num_iters=2)],
         ),
     )
     with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
-    trainer = trainer_cls.restore(str(tmpdir / exp_name), datasets=datasets)
+    trainer = trainer_cls.restore(str(tmp_path / exp_name), datasets=datasets)
     result = trainer.fit()
     assert not result.error
     assert result.metrics["training_iteration"] == 5
     assert result.metrics["iterations_since_restore"] == 3
-    assert tmpdir / exp_name in result.log_dir.parents
+    assert tmp_path / exp_name in Path(result.path).parents
 
 
-def test_rl_trainer_restore(ray_start_4_cpus, tmpdir):
-    """Tests restore for RL trainer. Same success criteria as above."""
-
-    trainer = RLTrainer(
-        algorithm="__fake",
-        config={
-            "rollout_fragment_length": 1,
-        },
-        run_config=RunConfig(
-            local_dir=str(tmpdir),
-            name="rl_trainer_restore",
-            checkpoint_config=CheckpointConfig(num_to_keep=1, checkpoint_frequency=1),
-            callbacks=[FailureInjectionCallback(num_iters=2)],
-            stop={"training_iteration": 5},
-        ),
+def test_restore_from_uri_s3(
+    ray_start_4_cpus, tmp_path, monkeypatch, mock_s3_bucket_uri
+):
+    """Restoration from S3 should work."""
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=lambda config: train.report({"score": 1}),
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(name="restore_from_uri", storage_path=mock_s3_bucket_uri),
     )
-    with pytest.raises(TrainingFailedError):
-        result = trainer.fit()
+    trainer.fit()
 
-    trainer = RLTrainer.restore(str(tmpdir / "rl_trainer_restore"))
-    result = trainer.fit()
-    assert not result.error
-    assert result.metrics["training_iteration"] == 5
-    assert result.metrics["iterations_since_restore"] == 3
-    assert tmpdir / "rl_trainer_restore" in result.log_dir.parents
+    # Restore from local dir
+    DataParallelTrainer.restore(str(tmp_path / "restore_from_uri"))
+
+    # Restore from S3
+    assert DataParallelTrainer.can_restore(
+        str(URI(mock_s3_bucket_uri) / "restore_from_uri")
+    )
+    DataParallelTrainer.restore(str(URI(mock_s3_bucket_uri) / "restore_from_uri"))
 
 
 def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
@@ -255,7 +278,7 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
     }
 
     trainer = DataParallelTrainer(
-        train_loop_per_worker=lambda config: session.report({"score": 1}),
+        train_loop_per_worker=lambda config: train.report({"score": 1}),
         datasets=datasets,
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(name="datasets_respecify_test", local_dir=tmpdir),
@@ -278,114 +301,13 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
     trainer = DataParallelTrainer.restore(str(tmpdir), datasets=datasets)
 
 
-@pytest.mark.parametrize("new_preprocessor", [True, False])
-def test_preprocessor_restore(ray_start_4_cpus, tmpdir, new_preprocessor):
-    """Preprocessors get restored from latest checkpoint if no new one is provided.
-    They will not be re-fit if loaded from the checkpoint.
-    If a new one is provided on restore, then it will be re-fit.
-    """
-    datasets = {
-        "train": ray.data.from_items([{"x": x, "y": x + 1} for x in range(8)]),
-    }
-
-    class MyPreprocessor(Preprocessor):
-        def __init__(self, id):
-            self.id = id
-            self._num_fits = 0
-
-        def _fit(self, dataset):
-            self.fitted_ = True
-            self._num_fits += 1
-            return self
-
-        def _transform_numpy(self, np_data):
-            return np_data
-
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=_failing_train_fn,
-        datasets=datasets,
-        preprocessor=MyPreprocessor(id=1),
-        scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="preprocessor_restore_test", local_dir=str(tmpdir)),
-    )
-    with pytest.raises(TrainingFailedError) as exc_info:
-        result = trainer.fit()
-    assert isinstance(exc_info.value.__cause__, _TestSpecificError)
-
-    new_preprocessor = MyPreprocessor(id=2) if new_preprocessor else None
-    trainer = DataParallelTrainer.restore(
-        str(tmpdir / "preprocessor_restore_test"),
-        datasets=datasets,
-        preprocessor=new_preprocessor,
-    )
-    result = trainer.fit()
-    preprocessor = result.checkpoint.get_preprocessor()
-    assert result.metrics["training_iteration"] == 2
-    assert preprocessor and preprocessor._num_fits == 1, (
-        "The preprocessor should have been loaded from the checkpoint, "
-        "and it should not have been fit again. "
-        f"Fit {preprocessor._num_fits} times instead of once."
-    )
-    if new_preprocessor:
-        assert preprocessor and preprocessor.id == 2, "Wrong preprocessor was used."
-
-
-def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
-    """Re-specifying the preprocessor allows restoration when the preprocessor
-    includes some non-serializable (across clusters) objects.
-    In this test, the preprocessor consists of a calls to a dummy preprocessor
-    object that is put on the object store.
-    NOTE: Capturing a remote actor would actually break this on restore, since
-    unpickling an actor handle immediately throws an exception from a new cluster."""
-
-    class ModelPreprocessor:
-        def transform(self, x):
-            return {k: v + 1 for k, v in x.items()}
-
-    def create_preprocessor():
-        model_prep_ref = ray.put(ModelPreprocessor())
-
-        def preprocess_fn(batch):
-            batch = ray.get(model_prep_ref).transform(batch)
-            return batch
-
-        return BatchMapper(preprocess_fn, batch_format="numpy")
-
-    preprocessor = create_preprocessor()
-
-    def train_fn(config):
-        session.report({"score": 1})
-
-    datasets = {"train": ray.data.from_items([{"x": 1}])}
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=train_fn,
-        datasets=datasets,
-        scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="obj_ref_in_train_config_test", local_dir=tmpdir),
-        preprocessor=preprocessor,
-    )
-    trainer._save(tmpdir)
-
-    # Explicit shutdown. Otherwise, old object references may still be usable
-    ray.shutdown()
-    ray.init(num_cpus=4)
-
-    datasets = {"train": ray.data.from_items([{"x": 1}])}
-    trainer = DataParallelTrainer.restore(
-        str(tmpdir), datasets=datasets, preprocessor=create_preprocessor()
-    )
-    trainer.preprocess_datasets()
-
-    assert trainer.datasets["train"].take()[0]["x"] == 2
-
-
 def test_restore_with_different_trainer(tmpdir):
     """Tests that an error is raised if trying to restore a XTrainer with
     `YTrainer.restore`"""
     trainer = DataParallelTrainer(
-        train_loop_per_worker=lambda config: session.report({"score": 1}),
+        train_loop_per_worker=lambda config: train.report({"score": 1}),
         scaling_config=ScalingConfig(num_workers=1),
-        run_config=RunConfig(name="restore_with_diff_trainer", local_dir=tmpdir),
+        run_config=RunConfig(name="restore_with_diff_trainer"),
     )
     trainer._save(tmpdir)
 
@@ -398,7 +320,7 @@ def test_restore_with_different_trainer(tmpdir):
                 trainer_cls.restore(str(tmpdir))
 
         if should_warn:
-            with pytest.warns() as warn_record:
+            with pytest.warns(Warning) as warn_record:
                 check_for_raise()
                 assert any(
                     "Invalid trainer type" in str(record.message)
@@ -423,32 +345,73 @@ def test_restore_from_invalid_dir(tmpdir):
         BaseTrainer.restore(str(tmpdir))
 
     with pytest.raises(ValueError):
-        BaseTrainer.restore("memory:///not/found")
+        BaseTrainer.restore("mock:///not/found")
 
 
-@pytest.mark.parametrize("upload_dir", [None, "memory:///test/"])
-def test_trainer_can_restore_utility(tmp_path, upload_dir):
+def test_trainer_can_restore_utility(tmp_path):
     """Make sure that `can_restore` detects an existing experiment at a
     local/remote path and only returns True if it's at the Train experiment dir root.
     """
     name = "exp_name"
     path = tmp_path / name
-    if upload_dir:
-        path = Path(upload_dir) / name
 
     assert not DataParallelTrainer.can_restore(path)
 
     trainer = DataParallelTrainer(
-        train_loop_per_worker=lambda config: session.report({"score": 1}),
+        train_loop_per_worker=lambda config: train.report({"score": 1}),
         scaling_config=ScalingConfig(num_workers=1),
-        run_config=RunConfig(name=name, local_dir=tmp_path),
     )
     (tmp_path / name).mkdir(exist_ok=True)
     trainer._save(tmp_path / name)
-    if upload_dir:
-        upload_to_uri(tmp_path / name, str(path))
 
     assert DataParallelTrainer.can_restore(path)
+
+
+@pytest.mark.parametrize("eventual_success", [True, False])
+def test_retry_with_max_failures(ray_start_4_cpus, eventual_success):
+    """Test auto-resume of a Train run when setting max_failures > 0."""
+
+    num_failures = 2 if eventual_success else 3
+    max_retries = 2
+    final_iter = 10
+
+    def train_func():
+        ckpt = train.get_checkpoint()
+        itr = 1
+        restore_count = 0
+        if ckpt:
+            ckpt = load_dict_checkpoint(ckpt)
+            itr = ckpt["iter"] + 1
+            restore_count = ckpt["restore_count"] + 1
+
+        for i in range(itr, final_iter + 1):
+            with create_dict_checkpoint(
+                dict(iter=i, restore_count=restore_count)
+            ) as checkpoint:
+                train.report(dict(test=i, training_iteration=i), checkpoint=checkpoint)
+            if restore_count < num_failures:
+                raise RuntimeError("try to fail me")
+
+    trainer = DataParallelTrainer(
+        train_func,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(
+            failure_config=train.FailureConfig(max_failures=max_retries)
+        ),
+    )
+
+    if not eventual_success:
+        # If we gave up due to hitting our max retry attempts,
+        # then `trainer.fit` should raise the last error we encountered.
+        with pytest.raises(TrainingFailedError):
+            trainer.fit()
+    else:
+        # If we encounter errors but eventually succeed, `trainer.fit` should NOT
+        # raise any of those errors.
+        result = trainer.fit()
+        assert not result.error
+        checkpoint = load_dict_checkpoint(result.checkpoint)
+        assert checkpoint["iter"] == final_iter
 
 
 if __name__ == "__main__":

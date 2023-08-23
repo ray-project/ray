@@ -38,8 +38,6 @@ These are the environment variables Ray Tune currently considers:
   letting them finish the current training step and any user-defined cleanup.
   Setting this variable to a non-zero, positive integer will cause trials to be forcefully
   terminated after a grace period of that many seconds. Defaults to ``600`` (seconds).
-* **TUNE_GET_EXECUTOR_EVENT_WAIT_S**: The time that TrialRunner waits for the
-  next ExecutorEvent in a blocking fashion. Defaults to ``5``.
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
   for threads to finish after instructing them to complete. Defaults to ``2``.
 * **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
@@ -97,9 +95,18 @@ These are the environment variables Ray Tune currently considers:
   Default is ``0``. While this retry counter is taking effect, per trial failure number will not be incremented, which
   is compared against ``max_failures``.
 * **TUNE_CHECKPOINT_CLOUD_RETRY_NUM**: The number of retries that are done if a cloud checkpoint operation (uploading, downloading, removing)
-  fails. Default is ``3``.
+  fails. Default is ``2``.
 * **TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S**: The amount of time in seconds spent on waiting between cloud checkpoint operation retries. Default is
   ``1``.
+* **RAY_AIR_FULL_TRACEBACKS**: If set to 1, will print full tracebacks for training functions,
+  including internal code paths. Otherwise, abbreviated tracebacks that only show user code
+  are printed. Defaults to 0 (disabled).
+* **RAY_AIR_NEW_OUTPUT**: If set to 0, this disables
+  the `experimental new console output <https://github.com/ray-project/ray/issues/36949>`_.
+* **RAY_AIR_RICH_LAYOUT**: If set to 1, this enables
+  the `stick table layout <https://github.com/ray-project/ray/issues/36949>`_.
+
+
 
 There are some environment variables that are mostly relevant for integrated libraries:
 

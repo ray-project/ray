@@ -1,26 +1,16 @@
 # Scaling Many Model Training with Ray Tune
 
-This template is a quickstart to using [Ray
-Tune](https://docs.ray.io/en/latest/tune/index.html) for batch
-inference. Ray Tune is one of many libraries under the [Ray AI
-Runtime](https://docs.ray.io/en/latest/ray-air/getting-started.html).
-See [this blog
-post](https://www.anyscale.com/blog/training-one-million-machine-learning-models-in-record-time-with-ray)
-for more information on the benefits of performing many model training
-with Ray!
+| Template Specification | Description |
+| ---------------------- | ----------- |
+| Summary | This template demonstrates how to parallelize the training of hundreds of time-series forecasting models with [Ray Tune](https://docs.ray.io/en/latest/tune/index.html). The template uses the `statsforecast` library to fit models to partitions of the M4 forecasting competition dataset. |
+| Time to Run | Around 5 minutes to train all models. |
+| Minimum Compute Requirements | No hard requirements. The default is 8 nodes with 8 CPUs each. |
+| Cluster Environment | This template uses the latest Anyscale-provided Ray ML image using Python 3.9: [`anyscale/ray-ml:latest-py39-gpu`](https://docs.anyscale.com/reference/base-images/overview), with some extra requirements from `requirements.txt` installed on top. If you want to change to a different cluster environment, make sure that it is based off of this image and includes all packages listed in the `requirements.txt` file. |
 
-This template walks through time-series forecasting using
-`statsforecast`, but the framework and data format can be swapped out
-easily \-- they are there just to help you build your own application!
+## Getting Started
 
-At a high level, this template will:
+**When the workspace is up and running, start coding by clicking on the Jupyter or VSCode icon above. Open the `start.ipynb` file and follow the instructions there.**
 
-1.  [Define the training function for a single partition of
-    data.](https://docs.ray.io/en/latest/tune/tutorials/tune-run.html)
-2.  [Define a Tune search space to run training over many partitions of
-    data.](https://docs.ray.io/en/latest/tune/tutorials/tune-search-spaces.html)
-3.  [Extract the best model per dataset partition from the Tune
-    experiment
-    output.](https://docs.ray.io/en/latest/tune/examples/tune_analyze_results.html)
+The end result of the template is fitting multiple models on each dataset partition, then determining the best model based on cross-validation metrics. Then, using the best model, we can generate forecasts like the ones shown below:
 
-Start coding by clicking on the Jupyter or VSCode icon above.
+![Forecasts](https://github-production-user-asset-6210df.s3.amazonaws.com/3887863/239091118-2413f399-4636-40cf-8b12-8d3ce15f5ce1.png)

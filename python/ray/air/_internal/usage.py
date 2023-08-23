@@ -1,13 +1,20 @@
+import collections
+from enum import Enum
 import json
 import os
-from typing import TYPE_CHECKING, Set, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
+import urllib.parse
 
+from ray.air._internal.remote_storage import _is_network_mount
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
     from ray.tune.schedulers import TrialScheduler
     from ray.tune.search import BasicVariantGenerator, Searcher
+    from ray.tune import Callback
+    from ray.tune import SyncConfig
+
 
 AIR_TRAINERS = {
     "AccelerateTrainer",
@@ -16,11 +23,11 @@ AIR_TRAINERS = {
     "LightGBMTrainer",
     "LightningTrainer",
     "MosaicTrainer",
-    "RLTrainer",
     "SklearnTrainer",
     "TensorflowTrainer",
     "TorchTrainer",
     "XGBoostTrainer",
+    "HuggingFaceTrainer",  # Deprecated: Remove in 2.7.
 }
 
 # searchers implemented by Ray Tune.
@@ -48,7 +55,6 @@ TUNE_SEARCHER_WRAPPERS = {
 TUNE_SCHEDULERS = {
     "FIFOScheduler",
     "AsyncHyperBandScheduler",
-    "AsyncHyperBandScheduler",
     "MedianStoppingRule",
     "HyperBandScheduler",
     "HyperBandForBOHB",
@@ -57,6 +63,13 @@ TUNE_SCHEDULERS = {
     "PB2",
     "ResourceChangingScheduler",
 }
+
+
+class AirEntrypoint(Enum):
+    TUNER = "Tuner.fit"
+    TRAINER = "Trainer.fit"
+    TUNE_RUN = "tune.run"
+    TUNE_RUN_EXPERIMENTS = "tune.run_experiments"
 
 
 def _find_class_name(obj, allowed_module_path_prefix: str, whitelist: Set[str]):
@@ -119,6 +132,131 @@ def tag_scheduler(scheduler: "TrialScheduler"):
     record_extra_usage_tag(TagKey.TUNE_SCHEDULER, scheduler_name)
 
 
+def tag_setup_wandb():
+    record_extra_usage_tag(TagKey.AIR_SETUP_WANDB_INTEGRATION_USED, "1")
+
+
+def tag_setup_mlflow():
+    record_extra_usage_tag(TagKey.AIR_SETUP_MLFLOW_INTEGRATION_USED, "1")
+
+
+def _count_callbacks(callbacks: Optional[List["Callback"]]) -> Dict[str, int]:
+    """Creates a map of callback class name -> count given a list of callbacks."""
+    from ray.tune import Callback
+    from ray.tune.logger import LoggerCallback
+    from ray.tune.utils.callback import DEFAULT_CALLBACK_CLASSES
+
+    from ray.air.integrations.wandb import WandbLoggerCallback
+    from ray.air.integrations.mlflow import MLflowLoggerCallback
+    from ray.air.integrations.comet import CometLoggerCallback
+    from ray.tune.logger.aim import AimLoggerCallback
+
+    built_in_callbacks = (
+        WandbLoggerCallback,
+        MLflowLoggerCallback,
+        CometLoggerCallback,
+        AimLoggerCallback,
+    ) + DEFAULT_CALLBACK_CLASSES
+
+    callback_names = [callback_cls.__name__ for callback_cls in built_in_callbacks]
+    callback_counts = collections.defaultdict(int)
+
+    callbacks = callbacks or []
+    for callback in callbacks:
+        if not isinstance(callback, Callback):
+            # This will error later, but don't include this as custom usage.
+            continue
+
+        callback_name = callback.__class__.__name__
+
+        if callback_name in callback_names:
+            callback_counts[callback_name] += 1
+        elif isinstance(callback, LoggerCallback):
+            callback_counts["CustomLoggerCallback"] += 1
+        else:
+            callback_counts["CustomCallback"] += 1
+
+    return callback_counts
+
+
+def tag_callbacks(callbacks: Optional[List["Callback"]]) -> bool:
+    """Records built-in callback usage via a JSON str representing a
+    dictionary mapping callback class name -> counts.
+
+    User-defined callbacks will increment the count under the `CustomLoggerCallback`
+    or `CustomCallback` key depending on which of the provided interfaces they subclass.
+    NOTE: This will NOT track the name of the user-defined callback,
+    nor its implementation.
+
+    This will NOT report telemetry if no callbacks are provided by the user.
+
+    Returns:
+        bool: True if usage was recorded, False otherwise.
+    """
+    if not callbacks:
+        # User didn't pass in any callbacks -> no usage recorded.
+        return False
+
+    callback_counts = _count_callbacks(callbacks)
+
+    if callback_counts:
+        callback_counts_str = json.dumps(callback_counts)
+        record_extra_usage_tag(TagKey.AIR_CALLBACKS, callback_counts_str)
+
+
+def _get_tag_for_remote_path(remote_path: str) -> str:
+    scheme = urllib.parse.urlparse(remote_path).scheme
+    if scheme == "file":
+        # NOTE: We treat a file:// storage_path as a "remote" path, so this case
+        # differs from the local path only case.
+        # In particular, default syncing to head node is not enabled here.
+        tag = "local_uri"
+    elif scheme == "memory":
+        # NOTE: This is used in tests and does not make sense to actually use.
+        # This condition filters the tag out of the `custom` catch-all.
+        tag = "memory"
+    elif scheme == "hdfs":
+        tag = "hdfs"
+    elif scheme in {"s3", "s3a"}:
+        tag = "s3"
+    elif scheme in {"gs", "gcs"}:
+        tag = "gs"
+    else:
+        tag = "custom_remote_storage"
+    return tag
+
+
+def tag_ray_air_storage_config(
+    local_path: str, remote_path: Optional[str], sync_config: "SyncConfig"
+) -> None:
+    """Records the storage storage configuration of an experiment.
+
+    The storage configuration is set by `RunConfig(storage_path, sync_config)`.
+
+    The possible configurations are:
+    - 'driver' = Default syncing to Tune driver node if no remote path is specified.
+    - 'local' = No synchronization at all.
+    - 'nfs' = Using a mounted shared network filesystem.
+    - ('s3', 'gs', 'hdfs', 'custom_remote_storage'): Various remote storage schemes.
+    - ('local_uri', 'memory'): Mostly used by internal testing by setting `storage_path`
+        to `file://` or `memory://`.
+    """
+    if remote_path:
+        # HDFS or cloud storage
+        storage_config_tag = _get_tag_for_remote_path(remote_path)
+    elif _is_network_mount(local_path):
+        # NFS
+        storage_config_tag = "nfs"
+    elif sync_config.syncer is None:
+        # Syncing is disabled - results are only available on node-local storage
+        storage_config_tag = "local"
+    else:
+        # The driver node's local storage is the synchronization point.
+        storage_config_tag = "driver"
+
+    record_extra_usage_tag(TagKey.AIR_STORAGE_CONFIGURATION, storage_config_tag)
+
+
 def tag_ray_air_env_vars() -> bool:
     """Records usage of environment variables exposed by the Ray AIR libraries.
 
@@ -149,3 +287,9 @@ def tag_ray_air_env_vars() -> bool:
         return True
 
     return False
+
+
+def tag_air_entrypoint(entrypoint: AirEntrypoint) -> None:
+    """Records the entrypoint to an AIR training run."""
+    assert entrypoint in AirEntrypoint
+    record_extra_usage_tag(TagKey.AIR_ENTRYPOINT, entrypoint.value)

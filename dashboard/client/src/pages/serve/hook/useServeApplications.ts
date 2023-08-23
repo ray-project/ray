@@ -3,15 +3,18 @@ import useSWR from "swr";
 import { GlobalContext } from "../../../App";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getServeApplications } from "../../../service/serve";
-import { ServeHTTPProxyStatus } from "../../../type/serve";
+import { ServeSystemActorStatus } from "../../../type/serve";
 import { ServeDetails } from "../ServeSystemDetails";
 
-const SERVE_HTTP_PROXY_STATUS_SORT_ORDER: Record<ServeHTTPProxyStatus, number> =
-  {
-    [ServeHTTPProxyStatus.UNHEALTHY]: 0,
-    [ServeHTTPProxyStatus.STARTING]: 1,
-    [ServeHTTPProxyStatus.HEALTHY]: 2,
-  };
+const SERVE_HTTP_PROXY_STATUS_SORT_ORDER: Record<
+  ServeSystemActorStatus,
+  number
+> = {
+  [ServeSystemActorStatus.UNHEALTHY]: 0,
+  [ServeSystemActorStatus.STARTING]: 1,
+  [ServeSystemActorStatus.HEALTHY]: 2,
+  [ServeSystemActorStatus.DRAINING]: 3,
+};
 
 export const useServeApplications = () => {
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
@@ -50,7 +53,11 @@ export const useServeApplications = () => {
   );
 
   const serveDetails: ServeDetails | undefined = data
-    ? { http_options: data.http_options, proxy_location: data.proxy_location }
+    ? {
+        http_options: data.http_options,
+        proxy_location: data.proxy_location,
+        controller_info: data.controller_info,
+      }
     : undefined;
   const serveApplicationsList = data
     ? Object.values(data.applications).sort(
@@ -186,6 +193,52 @@ export const useServeReplicaDetails = (
     application,
     deployment,
     replica,
+    error,
+  };
+};
+
+export const useServeHTTPProxyDetails = (httpProxyId: string | undefined) => {
+  const { data, error, isLoading } = useSWR(
+    "useServeHTTPProxyDetails",
+    async () => {
+      const rsp = await getServeApplications();
+
+      if (rsp) {
+        return rsp.data;
+      }
+    },
+    { refreshInterval: API_REFRESH_INTERVAL_MS },
+  );
+
+  const httpProxy = httpProxyId ? data?.http_proxies?.[httpProxyId] : undefined;
+
+  // Need to expose loading because it's not clear if undefined values
+  // for http proxies means loading or missing data.
+  return {
+    loading: isLoading,
+    httpProxy,
+    error,
+  };
+};
+
+export const useServeControllerDetails = () => {
+  const { data, error, isLoading } = useSWR(
+    "useServeControllerDetails",
+    async () => {
+      const rsp = await getServeApplications();
+
+      if (rsp) {
+        return rsp.data;
+      }
+    },
+    { refreshInterval: API_REFRESH_INTERVAL_MS },
+  );
+
+  // Need to expose loading because it's not clear if undefined values
+  // for serve controller means loading or missing data.
+  return {
+    loading: isLoading,
+    controller: data?.controller_info,
     error,
   };
 };

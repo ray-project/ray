@@ -1,18 +1,28 @@
 from typing import Optional
-import ray
-from ray.data._internal.execution.interfaces import TaskContext
 
-from ray.data.block import BlockAccessor
+import ray
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle_and_partition import _ShufflePartitionOp
 from ray.data._internal.stats import DatasetStats
+from ray.data.block import BlockAccessor
 
 
-def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
+def fast_repartition(
+    blocks: BlockList,
+    num_blocks: int,
+    ctx: Optional[TaskContext] = None,
+):
+    from ray.data._internal.execution.legacy_compat import _block_list_to_bundles
     from ray.data.dataset import Dataset, Schema
+
+    ref_bundles = _block_list_to_bundles(blocks, blocks._owned_by_consumer)
+    logical_plan = LogicalPlan(InputData(ref_bundles))
 
     wrapped_ds = Dataset(
         ExecutionPlan(
@@ -22,6 +32,7 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
         ),
         0,
         lazy=False,
+        logical_plan=logical_plan,
     )
     # Compute the (n-1) indices needed for an equal split of the data.
     count = wrapped_ds.count()
@@ -75,12 +86,13 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
 
     # Handle empty blocks.
     if len(new_blocks) < num_blocks:
-        from ray.data._internal.arrow_block import ArrowBlockBuilder
-        from ray.data._internal.pandas_block import PandasBlockBuilder
-        from ray.data._internal.simple_block import SimpleBlockBuilder
-
         import pyarrow as pa
-        from ray.data._internal.pandas_block import PandasBlockSchema
+
+        from ray.data._internal.arrow_block import ArrowBlockBuilder
+        from ray.data._internal.pandas_block import (
+            PandasBlockBuilder,
+            PandasBlockSchema,
+        )
 
         num_empties = num_blocks - len(new_blocks)
 
@@ -89,8 +101,6 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
                 "Dataset is empty or cleared, can't determine the format of "
                 "the dataset."
             )
-        elif isinstance(schema, type):
-            builder = SimpleBlockBuilder()
         elif isinstance(schema, pa.Schema):
             builder = ArrowBlockBuilder()
         elif isinstance(schema, PandasBlockSchema):

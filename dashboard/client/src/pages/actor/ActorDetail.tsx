@@ -1,7 +1,6 @@
 import { makeStyles } from "@material-ui/core";
-import React, { useContext } from "react";
-import { Link } from "react-router-dom";
-import { GlobalContext } from "../../App";
+import React from "react";
+import { Outlet } from "react-router-dom";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -10,12 +9,14 @@ import {
   CpuProfilingLink,
   CpuStackTraceLink,
 } from "../../common/ProfilingLink";
+import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import TaskList from "../state/task";
+import { ActorLogs } from "./ActorLogs";
 import { useActorDetail } from "./hook/useActorDetail";
 
 const useStyle = makeStyles((theme) => ({
@@ -34,14 +35,42 @@ const useStyle = makeStyles((theme) => ({
   tab: {
     marginBottom: theme.spacing(2),
   },
+  tasksSection: {
+    marginTop: theme.spacing(4),
+  },
 }));
+
+export const ActorDetailLayout = () => {
+  const { params, actorDetail } = useActorDetail();
+
+  return (
+    <div>
+      <MainNavPageInfo
+        pageInfo={
+          actorDetail
+            ? {
+                title: `${params.actorId}`,
+                pageTitle: `${params.actorId} | Actor`,
+                id: "actor-detail",
+                path: `${params.actorId}`,
+              }
+            : {
+                id: "actor-detail",
+                title: "Actor",
+                path: `${params.actorId}`,
+              }
+        }
+      />
+      <Outlet />
+    </div>
+  );
+};
 
 const ActorDetailPage = () => {
   const classes = useStyle();
-  const { ipLogMap } = useContext(GlobalContext);
   const { params, actorDetail, msg, isLoading } = useActorDetail();
 
-  if (!actorDetail) {
+  if (isLoading || actorDetail === undefined) {
     return (
       <div className={classes.root}>
         <Loading loading={isLoading} />
@@ -56,15 +85,6 @@ const ActorDetailPage = () => {
 
   return (
     <div className={classes.root}>
-      <MainNavPageInfo
-        pageInfo={{
-          title: `${params.actorId}`,
-          pageTitle: `${params.actorId} | Actor`,
-          id: "actor-detail",
-          path: `/actors/${params.actorId}`,
-        }}
-      />
-
       <MetadataSection
         metadataList={[
           {
@@ -177,15 +197,6 @@ const ActorDetailPage = () => {
             label: "Actions",
             content: (
               <div>
-                <Link
-                  target="_blank"
-                  to={`/logs/${encodeURIComponent(
-                    ipLogMap[actorDetail.address?.ipAddress],
-                  )}?fileName=${actorDetail.jobId}-${actorDetail.pid}`}
-                >
-                  Log
-                </Link>
-                <br />
                 <CpuProfilingLink
                   pid={actorDetail.pid}
                   ip={actorDetail.address?.ipAddress}
@@ -202,8 +213,18 @@ const ActorDetailPage = () => {
           },
         ]}
       />
-      <CollapsibleSection title="Tasks History">
-        <TaskList jobId={actorDetail.jobId} actorId={params.actorId} />
+      <CollapsibleSection title="Logs" startExpanded>
+        <Section noTopPadding>
+          <ActorLogs actor={actorDetail} />
+        </Section>
+      </CollapsibleSection>
+      <CollapsibleSection
+        title="Tasks History"
+        className={classes.tasksSection}
+      >
+        <Section>
+          <TaskList jobId={actorDetail.jobId} actorId={params.actorId} />
+        </Section>
       </CollapsibleSection>
     </div>
   );

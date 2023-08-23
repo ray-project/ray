@@ -7,6 +7,10 @@ from ray.includes.common cimport (
     CGcsClientOptions,
     CPythonGcsClient,
     CPythonGcsPublisher,
+    CPythonGcsSubscriber,
+    kWorkerSetupHookKeyName,
+    kResourceUnitScaling,
+    kStreamingGeneratorReturn,
 )
 
 
@@ -24,3 +28,8 @@ cdef class GcsClientOptions:
 
     cdef CGcsClientOptions* native(self):
         return <CGcsClientOptions*>(self.inner.get())
+
+
+WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS = str(kWorkerSetupHookKeyName)
+RESOURCE_UNIT_SCALING = kResourceUnitScaling
+STREAMING_GENERATOR_RETURN = kStreamingGeneratorReturn

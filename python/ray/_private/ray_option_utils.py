@@ -6,10 +6,12 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 import ray
 from ray._private import ray_constants
 from ray._private.utils import get_ray_doc_version
+from ray.util.accelerators import accelerators
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
+    NodeLabelSchedulingStrategy,
 )
 
 
@@ -106,6 +108,34 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
     return None
 
 
+def _validate_neuron_core_accelerator(options: Dict[str, Any]):
+    """Validate options for NeuronCore accelerator/ neuron_cores and GPU,
+     supports only one or the other (Either NeuronCore or GPU).
+
+    Args:
+        options: The options to be validated.
+
+    Raises:
+        ValueError: If the options are invalid.
+    """
+    num_gpus = options.get("num_gpus", None)
+    if num_gpus is not None and num_gpus > 0:
+        resources = options["resources"] if "resources" in options else None
+        accelerator_type_value: str = options.get("accelerator_type", "")
+        if resources is not None:
+            neuron_cores: int = resources.get(ray_constants.NEURON_CORES, 0)
+            if neuron_cores > 0:
+                raise ValueError(
+                    "'num_gpus' cannot be used together with "
+                    "neuron_cores/accelerator_type:aws-neuron-core."
+                )
+        elif accelerator_type_value == accelerators.AWS_NEURON_CORE:
+            raise ValueError(
+                "'num_gpus' cannot be used together with "
+                "neuron_cores/accelerator_type:aws-neuron-core."
+            )
+
+
 _common_options = {
     "accelerator_type": Option((str, type(None))),
     "memory": _resource_option("memory"),
@@ -129,6 +159,7 @@ _common_options = {
             str,
             PlacementGroupSchedulingStrategy,
             NodeAffinitySchedulingStrategy,
+            NodeLabelSchedulingStrategy,
         )
     ),
     "_metadata": Option((dict, type(None))),
@@ -154,7 +185,7 @@ _task_only_options = {
     "num_returns": Option(
         (int, str, type(None)),
         lambda x: None
-        if (x is None or x == "dynamic" or x >= 0)
+        if (x is None or x == "dynamic" or x == "streaming" or x >= 0)
         else "The keyword 'num_returns' only accepts None, a non-negative integer, or "
         '"dynamic" (for generators)',
         default_value=1,
@@ -289,6 +320,7 @@ def validate_task_options(options: Dict[str, Any], in_options: bool):
     if in_options and "max_calls" in options:
         raise ValueError("Setting 'max_calls' is not supported in '.options()'.")
     _check_deprecate_placement_group(options)
+    _validate_neuron_core_accelerator(options)
 
 
 def validate_actor_options(options: Dict[str, Any], in_options: bool):
@@ -333,6 +365,7 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
         )
 
     _check_deprecate_placement_group(options)
+    _validate_neuron_core_accelerator(options)
 
 
 def update_options(

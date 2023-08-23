@@ -5,6 +5,7 @@ export enum ServeApplicationStatus {
   RUNNING = "RUNNING",
   DEPLOY_FAILED = "DEPLOY_FAILED",
   DELETING = "DELETING",
+  UNHEALTHY = "UNHEALTHY",
 }
 
 export type ServeApplication = {
@@ -86,20 +87,25 @@ export enum ServeDeploymentMode {
 }
 
 // Keep in sync with HTTPProxyStatus in python/ray/serve/_private/common.py
-export enum ServeHTTPProxyStatus {
+export enum ServeSystemActorStatus {
   STARTING = "STARTING",
   HEALTHY = "HEALTHY",
   UNHEALTHY = "UNHEALTHY",
+  DRAINING = "DRAINING",
 }
 
-export type ServeHttpProxy = {
-  node_id: string;
-  node_ip: string;
-  actor_id: string;
-  actor_name: string;
-  status: ServeHTTPProxyStatus;
+export type ServeSystemActor = {
+  node_id: string | null;
+  node_ip: string | null;
+  actor_id: string | null;
+  actor_name: string | null;
+  worker_id: string | null;
   log_file_path: string | null;
 };
+
+export type ServeHttpProxy = {
+  status: ServeSystemActorStatus;
+} & ServeSystemActor;
 
 export type ServeApplicationsRsp = {
   http_options:
@@ -109,6 +115,7 @@ export type ServeApplicationsRsp = {
       }
     | undefined;
   proxy_location: ServeDeploymentMode;
+  controller_info: ServeSystemActor;
   http_proxies: {
     [name: string]: ServeHttpProxy;
   } | null;

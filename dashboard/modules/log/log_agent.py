@@ -296,7 +296,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
             )
         log_files = []
         for p in path.glob(request.glob_filter):
-            log_files.append(p.name)
+            log_files.append(str(p.relative_to(path)))
         return reporter_pb2.ListLogsReply(log_files=log_files)
 
     @classmethod
@@ -383,10 +383,13 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         # NOTE: If the client side connection is closed, this handler will
         # be automatically terminated.
         lines = request.lines if request.lines else 1000
-        task_id = request.task_id if request.HasField("task_id") else None
 
-        filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"
-        if not os.path.isfile(filepath):
+        if not Path(request.log_file_name).is_absolute():
+            filepath = Path(self._dashboard_agent.log_dir) / request.log_file_name
+        else:
+            filepath = Path(request.log_file_name)
+
+        if not filepath.is_file():
             await context.send_initial_metadata(
                 [[log_consts.LOG_GRPC_ERROR, log_consts.FILE_NOT_FOUND]]
             )
@@ -395,27 +398,23 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
                 await context.send_initial_metadata([])
 
                 # Default stream entire file
-                start_offset = 0
-                end_offset = find_end_offset_file(f)
+                start_offset = (
+                    request.start_offset if request.HasField("start_offset") else 0
+                )
+                end_offset = (
+                    request.end_offset
+                    if request.HasField("end_offset")
+                    else find_end_offset_file(f)
+                )
 
-                if task_id is not None:  # Stream from task log.
-                    attempt_number = (
-                        request.attempt_number
-                        if request.HasField("attempt_number")
-                        else 0
-                    )
-                    start_offset, end_offset = await self._find_task_log_offsets(
-                        task_id, attempt_number, lines, f
-                    )
-                    logger.info(
-                        f"Tailing task logs from {start_offset} to {end_offset} for"
-                        f"task attempt({task_id}, {attempt_number}) in {f.name}"
-                    )
-                elif lines != -1:  # Default tailing files
-                    # If specified tail line number,
-                    # look for the file offset with the line count
-                    start_offset = find_start_offset_last_n_lines_from_offset(
-                        f, offset=end_offset, n=lines
+                if lines != -1:
+                    # If specified tail line number, cap the start offset
+                    # with lines from the current end offset
+                    start_offset = max(
+                        find_start_offset_last_n_lines_from_offset(
+                            f, offset=end_offset, n=lines
+                        ),
+                        start_offset,
                     )
 
                 # If keep alive: following the log every 'interval'

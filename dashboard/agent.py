@@ -5,6 +5,7 @@ import json
 import logging
 import logging.handlers
 import os
+import pathlib
 import sys
 import signal
 
@@ -15,11 +16,12 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
-from ray._private.gcs_pubsub import GcsAioPublisher
 from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.ray_logging import setup_component_logger
-from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
+from ray._private.ray_logging import (
+    setup_component_logger,
+    configure_log_file,
+)
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_initialized,
@@ -27,12 +29,6 @@ from ray.experimental.internal_kv import (
 
 # Import psutil after ray so the packaged version is used.
 import psutil
-
-try:
-    from grpc import aio as aiogrpc
-except ImportError:
-    from grpc.experimental import aio as aiogrpc
-
 
 # Publishes at most this number of lines of Raylet logs, when the Raylet dies
 # unexpectedly.
@@ -48,19 +44,6 @@ except AttributeError:
     create_task = asyncio.ensure_future
 
 logger = logging.getLogger(__name__)
-
-# We would want to suppress deprecating warnings from aiogrpc library
-# with the usage of asyncio.get_event_loop() in python version >=3.10
-# This could be removed once https://github.com/grpc/grpc/issues/32526
-# is released, and we used higher versions of grpcio that that.
-if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
-    import warnings
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=DeprecationWarning)
-        aiogrpc.init_grpc_aio()
-else:
-    aiogrpc.init_grpc_aio()
 
 
 class DashboardAgent:
@@ -80,7 +63,6 @@ class DashboardAgent:
         log_dir: str,
         temp_dir: str,
         session_dir: str,
-        runtime_env_dir: str,
         logging_params: dict,
         agent_id: int,
         session_name: str,
@@ -95,7 +77,6 @@ class DashboardAgent:
 
         self.temp_dir = temp_dir
         self.session_dir = session_dir
-        self.runtime_env_dir = runtime_env_dir
         self.log_dir = log_dir
         self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
@@ -116,13 +97,45 @@ class DashboardAgent:
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
 
-        # Setup raylet channel
-        options = ray_constants.GLOBAL_GRPC_OPTIONS
-        self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
-            f"{self.ip}:{self.node_manager_port}", options, asynchronous=True
-        )
+        # grpc server is None in mininal.
+        self.server = None
+        # http_server is None in minimal.
+        self.http_server = None
 
-        # Setup grpc server
+        # Used by the agent and sub-modules.
+        # TODO(architkulkarni): Remove gcs_client once the agent exclusively uses
+        # gcs_aio_client and not gcs_client.
+        self.gcs_client = GcsClient(address=self.gcs_address)
+        _initialize_internal_kv(self.gcs_client)
+        assert _internal_kv_initialized()
+        self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
+
+        if not self.minimal:
+            self._init_non_minimal()
+
+    def _init_non_minimal(self):
+        from ray._private.gcs_pubsub import GcsAioPublisher
+
+        self.aio_publisher = GcsAioPublisher(address=self.gcs_address)
+
+        try:
+            from grpc import aio as aiogrpc
+        except ImportError:
+            from grpc.experimental import aio as aiogrpc
+
+        # We would want to suppress deprecating warnings from aiogrpc library
+        # with the usage of asyncio.get_event_loop() in python version >=3.10
+        # This could be removed once https://github.com/grpc/grpc/issues/32526
+        # is released, and we used higher versions of grpcio that that.
+        if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+            import warnings
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=DeprecationWarning)
+                aiogrpc.init_grpc_aio()
+        else:
+            aiogrpc.init_grpc_aio()
+
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         try:
@@ -141,19 +154,6 @@ class DashboardAgent:
             self.grpc_port = None
         else:
             logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
-
-        # If the agent is started as non-minimal version, http server should
-        # be configured to communicate with the dashboard in a head node.
-        self.http_server = None
-
-        # Used by the agent and sub-modules.
-        # TODO(architkulkarni): Remove gcs_client once the agent exclusively uses
-        # gcs_aio_client and not gcs_client.
-        self.gcs_client = GcsClient(address=self.gcs_address)
-        _initialize_internal_kv(self.gcs_client)
-        assert _internal_kv_initialized()
-        self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
-        self.publisher = GcsAioPublisher(address=self.gcs_address)
 
     async def _configure_http_server(self, modules):
         from ray.dashboard.http_server_agent import HttpServerAgent
@@ -179,8 +179,17 @@ class DashboardAgent:
 
     @property
     def http_session(self):
-        assert self.http_server, "Accessing unsupported API in a minimal ray."
+        assert (
+            self.http_server
+        ), "Accessing unsupported API (HttpServerAgent) in a minimal ray."
         return self.http_server.http_session
+
+    @property
+    def publisher(self):
+        assert (
+            self.aio_publisher
+        ), "Accessing unsupported API (GcsAioPublisher) in a minimal ray."
+        return self.aio_publisher
 
     async def run(self):
         async def _check_parent():
@@ -310,24 +319,12 @@ class DashboardAgent:
         # TODO: Use async version if performance is an issue
         # -1 should indicate that http server is not started.
         http_port = -1 if not self.http_server else self.http_server.http_port
+        grpc_port = -1 if not self.server else self.grpc_port
         await self.gcs_aio_client.internal_kv_put(
             f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}".encode(),
-            json.dumps([http_port, self.grpc_port]).encode(),
+            json.dumps([http_port, grpc_port]).encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
-
-        # Register agent to agent manager.
-        raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(
-            self.aiogrpc_raylet_channel
-        )
-
-        await raylet_stub.RegisterAgent(
-            agent_manager_pb2.RegisterAgentRequest(
-                agent_id=self.agent_id,
-                agent_port=self.grpc_port,
-                agent_ip_address=self.ip,
-            )
         )
 
         tasks = [m.run(self.server) for m in modules]
@@ -339,6 +336,14 @@ class DashboardAgent:
 
         if self.http_server:
             await self.http_server.cleanup()
+
+
+def open_capture_files(log_dir):
+    filename = f"agent-{args.agent_id}"
+    return (
+        ray._private.utils.open_log(pathlib.Path(log_dir) / f"{filename}.out"),
+        ray._private.utils.open_log(pathlib.Path(log_dir) / f"{filename}.err"),
+    )
 
 
 if __name__ == "__main__":
@@ -454,13 +459,7 @@ if __name__ == "__main__":
         default=None,
         help="Specify the path of this session.",
     )
-    parser.add_argument(
-        "--runtime-env-dir",
-        required=True,
-        type=str,
-        default=None,
-        help="Specify the path of the resource directory used by runtime_env.",
-    )
+
     parser.add_argument(
         "--minimal",
         action="store_true",
@@ -507,6 +506,10 @@ if __name__ == "__main__":
         # w.r.t grpc server init in the DashboardAgent initializer.
         loop = ray._private.utils.get_or_create_event_loop()
 
+        # Setup stdout/stderr redirect files
+        out_file, err_file = open_capture_files(args.log_dir)
+        configure_log_file(out_file, err_file)
+
         agent = DashboardAgent(
             args.node_ip_address,
             args.dashboard_agent_port,
@@ -514,7 +517,6 @@ if __name__ == "__main__":
             args.minimal,
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
-            runtime_env_dir=args.runtime_env_dir,
             log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,

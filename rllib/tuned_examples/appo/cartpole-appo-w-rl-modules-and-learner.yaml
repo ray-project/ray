@@ -8,20 +8,19 @@ cartpole-appo-w-rl-modules-and-learner:
         # Works for both torch and tf.
         framework: torch
         num_envs_per_worker: 5
-        num_workers: 2
-        train_batch_size: 1000
-        lr: 0.001
+        num_workers: 1
         num_gpus: 0
         observation_filter: MeanStdFilter
-        vf_loss_coeff: 0.1
-        vtrace: true
-
-        enable_connectors: true
+        num_sgd_iter: 6
+        vf_loss_coeff: 0.01
+        vtrace: false
+        model:
+            fcnet_hiddens: [32]
+            fcnet_activation: linear
+            vf_share_layers: true
+        
         _enable_learner_api: true
         _enable_rl_module_api: true
-        num_learner_workers: 2
-        num_gpus_per_learner_worker: 0
-        num_cpus_per_learner_worker: 1
         # Need to unset this b/c we are using the RLModule API, which
         # provides exploration control via the RLModule's `forward_exploration` method.
         exploration_config: {}

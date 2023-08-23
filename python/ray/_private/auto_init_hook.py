@@ -1,6 +1,9 @@
 import ray
 import os
 from functools import wraps
+import threading
+
+auto_init_lock = threading.Lock()
 
 
 def auto_init_ray():
@@ -8,7 +11,10 @@ def auto_init_ray():
         os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0"
         and not ray.is_initialized()
     ):
-        ray.init()
+        auto_init_lock.acquire()
+        if not ray.is_initialized():
+            ray.init()
+        auto_init_lock.release()
 
 
 def wrap_auto_init(fn):

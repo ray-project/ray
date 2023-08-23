@@ -10,11 +10,13 @@ from freezegun import freeze_time
 
 import ray.util
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.air.constants import TRAINING_ITERATION, REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger
-from ray.tune.result import TRAINING_ITERATION, TIME_TOTAL_S
+from ray.tune.result import TIME_TOTAL_S
 from ray.tune.syncer import (
+    _SYNC_TO_HEAD_DEPRECATION_MESSAGE,
     DEFAULT_SYNC_PERIOD,
     SyncConfig,
     SyncerCallback,
@@ -27,11 +29,27 @@ from ray.tune.utils.file_transfer import sync_dir_between_nodes
 
 
 @pytest.fixture
+def propagate_logs():
+    # Ensure that logs are propagated to ancestor handles. This is required if using the
+    # caplog fixture with Ray's logging.
+    # NOTE: This only enables log propagation in the driver process, not the workers!
+    logger = logging.getLogger("ray")
+    logger.propagate = True
+    yield
+    logger.propagate = False
+
+
+@pytest.fixture
 def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2, configure_logging=False)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture(autouse=True)
+def enable_legacy_head_node_syncing(monkeypatch):
+    monkeypatch.setenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "1")
 
 
 @pytest.fixture
@@ -107,17 +125,23 @@ def assert_file(exists: bool, root: str, path: str = ""):
 
 
 class MockTrial:
-    def __init__(self, trial_id: str, logdir: str, on_dead_node: bool = False):
+    def __init__(
+        self,
+        trial_id: str,
+        logdir: str,
+        on_dead_node: bool = False,
+        runner_ip: str = None,
+    ):
         self.trial_id = trial_id
         self.uses_cloud_checkpointing = False
         self.sync_on_checkpoint = True
 
         self.logdir = logdir
         self.local_path = logdir
-        self._local_ip = ray.util.get_node_ip_address()
+        self._local_ip = runner_ip or ray.util.get_node_ip_address()
         self._on_dead_node = on_dead_node
 
-    def get_runner_ip(self):
+    def get_ray_actor_ip(self):
         if self._on_dead_node:
             raise RayActorError()
         return self._local_ip
@@ -438,7 +462,9 @@ def test_syncer_callback_wait_for_all_error(ray_start_2_cpus, temp_data_dirs):
         assert "At least one" in e
 
 
-def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
+def test_syncer_callback_log_error(
+    propagate_logs, caplog, ray_start_2_cpus, temp_data_dirs
+):
     """Check that errors in a previous sync are logged correctly"""
     caplog.set_level(logging.ERROR, logger="ray.tune.syncer")
 
@@ -476,7 +502,9 @@ def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
     assert_file(True, tmp_target, "level0.txt")
 
 
-def test_syncer_callback_dead_node_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
+def test_syncer_callback_dead_node_log_error(
+    propagate_logs, caplog, ray_start_2_cpus, temp_data_dirs
+):
     """Check that we catch + log errors when trying syncing with a dead remote node."""
     caplog.set_level(logging.ERROR, logger="ray.tune.syncer")
 
@@ -548,6 +576,85 @@ def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
     assert_file(False, tmp_target, "checkpoint_-00001")
     assert_file(False, tmp_target, "checkpoint_tmp123")
     assert_file(False, tmp_target, "save_to_object1234")
+
+
+# TODO(ml-team): [Deprecation - head node syncing]
+def test_head_node_syncing_disabled_error(monkeypatch, tmp_path):
+    syncer_callback = SyncerCallback(sync_period=0)
+    trial = MockTrial(trial_id="a", logdir=None)
+
+    # Raise a deprecation error if checkpointing in a multi-node cluster
+    monkeypatch.setenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "0")
+    with pytest.raises(DeprecationWarning):
+        syncer_callback.on_checkpoint(
+            iteration=1,
+            trials=[],
+            trial=trial,
+            checkpoint=_TrackedCheckpoint(
+                dir_or_data="/does/not/exist", storage_mode=CheckpointStorage.PERSISTENT
+            ),
+        )
+
+    # Setting the env var raises the original TuneError instead of a deprecation
+    monkeypatch.setenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "1")
+    with pytest.raises(TuneError):
+        syncer_callback.on_checkpoint(
+            iteration=1,
+            trials=[],
+            trial=trial,
+            checkpoint=_TrackedCheckpoint(
+                dir_or_data="/does/not/exist", storage_mode=CheckpointStorage.PERSISTENT
+            ),
+        )
+
+    # Make sure we don't raise an error if running on a single node or using NFS,
+    # where the checkpoint can be accessed from the driver.
+    monkeypatch.setenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "0")
+    path_that_exists = tmp_path / "exists"
+    path_that_exists.mkdir()
+    syncer_callback.on_checkpoint(
+        iteration=1,
+        trials=[],
+        trial=trial,
+        checkpoint=_TrackedCheckpoint(
+            dir_or_data=str(path_that_exists), storage_mode=CheckpointStorage.PERSISTENT
+        ),
+    )
+
+
+# TODO(ml-team): [Deprecation - head node syncing]
+def test_head_node_syncing_disabled_warning(propagate_logs, caplog, monkeypatch):
+    monkeypatch.setenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "0")
+    syncer_callback = SyncerCallback(sync_period=0)
+    remote_trial_a = MockTrial(trial_id="a", logdir=None, runner_ip="remote")
+    remote_trial_b = MockTrial(trial_id="b", logdir=None, runner_ip="remote")
+    local_trial_c = MockTrial(trial_id="c", logdir=None)
+
+    with caplog.at_level(logging.WARNING):
+        # The log should only be displayed once for the first remote trial.
+        syncer_callback._sync_trial_dir(local_trial_c)
+        assert caplog.text.count(_SYNC_TO_HEAD_DEPRECATION_MESSAGE) == 0
+
+        # Any attempts to sync from remote trials should no-op.
+        # Instead, print a warning message to the user explaining that
+        # no checkpoints or artifacts are pulled to the head node.
+        syncer_callback._sync_trial_dir(remote_trial_a)
+        assert caplog.text.count(_SYNC_TO_HEAD_DEPRECATION_MESSAGE) == 1
+
+        # More sync attempts shouldn't add any extra warnings.
+        syncer_callback._sync_trial_dir(remote_trial_b)
+        syncer_callback._sync_trial_dir(remote_trial_a)
+        syncer_callback._sync_trial_dir(local_trial_c)
+
+        assert caplog.text.count(_SYNC_TO_HEAD_DEPRECATION_MESSAGE) == 1
+
+    disabled_syncer_callback = SyncerCallback(enabled=False)
+    remote_trial_d = MockTrial(trial_id="d", logdir=None, runner_ip="remote")
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        # No warning if syncing is explicitly disabled
+        disabled_syncer_callback._sync_trial_dir(remote_trial_d)
+        assert caplog.text.count(_SYNC_TO_HEAD_DEPRECATION_MESSAGE) == 0
 
 
 if __name__ == "__main__":

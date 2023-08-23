@@ -1,0 +1,2 @@
+evaluate==0.4.0
+sentencepiece==0.1.96

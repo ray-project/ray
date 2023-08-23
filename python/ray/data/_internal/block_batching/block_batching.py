@@ -1,18 +1,18 @@
 import collections
 import itertools
-from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 from contextlib import nullcontext
+from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 
 import ray
 from ray.data._internal.block_batching.interfaces import BlockPrefetcher
 from ray.data._internal.block_batching.util import (
-    resolve_block_refs,
+    ActorBlockPrefetcher,
+    WaitBlockPrefetcher,
     blocks_to_batches,
-    format_batches,
     collate,
     extract_data_from_batch,
-    WaitBlockPrefetcher,
-    ActorBlockPrefetcher,
+    format_batches,
+    resolve_block_refs,
 )
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
@@ -203,3 +203,4 @@ def _prefetch_blocks(
         trace_deallocation(
             block_ref, "block_batching._prefetch_blocks", free=eager_free
         )
+    prefetcher.stop()

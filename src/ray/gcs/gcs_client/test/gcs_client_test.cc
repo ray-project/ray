@@ -615,7 +615,6 @@ TEST_P(GcsClientTest, TestNodeResourceUsageWithLightResourceUsageReport) {
   // Report changed resource usage of a node to GCS.
   auto resource1 = std::make_shared<rpc::ResourcesData>();
   resource1->set_node_id(node_id.Binary());
-  resource1->set_resources_available_changed(true);
   ASSERT_TRUE(ReportResourceUsage(resource1));
 }
 
@@ -632,7 +631,6 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   auto resource = std::make_shared<rpc::ResourcesData>();
   resource->set_node_id(node_id.Binary());
   // Set this flag to indicate resources has changed.
-  resource->set_resources_available_changed(true);
   (*resource->mutable_resources_available())["CPU"] = 1.0;
   (*resource->mutable_resources_available())["GPU"] = 10.0;
   (*resource->mutable_resources_total())["CPU"] = 1.0;
@@ -645,46 +643,6 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   EXPECT_EQ(resources[0].resources_available_size(), 2);
   EXPECT_EQ((*resources[0].mutable_resources_available())["CPU"], 1.0);
   EXPECT_EQ((*resources[0].mutable_resources_available())["GPU"], 10.0);
-}
-
-TEST_P(GcsClientTest, TestGetAllAvailableResourcesWithLightResourceUsageReport) {
-  // Register node.
-  auto node_info = Mocker::GenNodeInfo();
-  node_info->mutable_resources_total()->insert({"CPU", 1.0});
-  node_info->mutable_resources_total()->insert({"GPU", 10.0});
-
-  RAY_CHECK(RegisterNode(*node_info));
-
-  // Report resource usage of a node to GCS.
-  NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  auto resource = std::make_shared<rpc::ResourcesData>();
-  resource->set_node_id(node_id.Binary());
-  resource->set_resources_available_changed(true);
-  (*resource->mutable_resources_available())["CPU"] = 1.0;
-  (*resource->mutable_resources_available())["GPU"] = 10.0;
-  (*resource->mutable_resources_total())["CPU"] = 1.0;
-  (*resource->mutable_resources_total())["GPU"] = 10.0;
-  ASSERT_TRUE(ReportResourceUsage(resource));
-
-  // Assert get all available resources right.
-  std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
-  EXPECT_EQ(resources.size(), 1);
-  EXPECT_EQ(resources[0].resources_available_size(), 2);
-  EXPECT_EQ((*resources[0].mutable_resources_available())["CPU"], 1.0);
-  EXPECT_EQ((*resources[0].mutable_resources_available())["GPU"], 10.0);
-
-  // Report unchanged resource usage of a node to GCS.
-  auto resource1 = std::make_shared<rpc::ResourcesData>();
-  resource1->set_node_id(node_id.Binary());
-  (*resource1->mutable_resources_available())["GPU"] = 8.0;
-  ASSERT_TRUE(ReportResourceUsage(resource1));
-
-  // The value would remain unchanged.
-  std::vector<rpc::AvailableResources> resources1 = GetAllAvailableResources();
-  EXPECT_EQ(resources1.size(), 1);
-  EXPECT_EQ(resources1[0].resources_available_size(), 2);
-  EXPECT_EQ((*resources1[0].mutable_resources_available())["CPU"], 1.0);
-  EXPECT_EQ((*resources1[0].mutable_resources_available())["GPU"], 10.0);
 }
 
 TEST_P(GcsClientTest, TestWorkerInfo) {
@@ -949,7 +907,7 @@ TEST_P(GcsClientTest, DISABLED_TestGetActorPerf) {
 
 TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
   // Restart doesn't work with in memory storage
-  if (RayConfig::instance().gcs_storage() == "memory") {
+  if (RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage) {
     return;
   }
   // Register actors and the actors will be destroyed.

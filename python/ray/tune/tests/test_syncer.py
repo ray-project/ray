@@ -6,25 +6,39 @@ import subprocess
 import tempfile
 import time
 from typing import List, Optional
+import unittest
 from unittest.mock import patch
 
+from freezegun import freeze_time
+import numpy as np
 import pyarrow.fs
 import pytest
-from freezegun import freeze_time
 
 import ray
 import ray.cloudpickle as pickle
-from ray import tune
-from ray.air import session, Checkpoint, RunConfig
-from ray.air._internal.uri_utils import URI
-from ray.tune import TuneError
-from ray.tune.syncer import _DefaultSyncer, Syncer, SyncConfig
-from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
+from ray import train, tune
+from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
 from ray.air._internal.remote_storage import (
     upload_to_uri,
     download_from_uri,
     get_fs_and_path,
 )
+from ray.air._internal.uri_utils import URI
+from ray.train.torch import TorchTrainer
+from ray.tune import TuneError
+from ray.tune.syncer import _BackgroundProcess, _DefaultSyncer, Syncer, SyncConfig
+from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
+
+
+@pytest.fixture
+def propagate_logs():
+    # Ensure that logs are propagated to ancestor handles. This is required if using the
+    # caplog fixture with Ray's logging.
+    # NOTE: This only enables log propagation in the driver process, not the workers!
+    logger = logging.getLogger("ray")
+    logger.propagate = True
+    yield
+    logger.propagate = False
 
 
 @pytest.fixture
@@ -466,22 +480,22 @@ def test_syncer_hanging_sync_with_timeout(temp_data_dirs):
             syncer.wait()
 
 
-def test_syncer_not_running_sync_last_failed(caplog, temp_data_dirs):
+def test_syncer_not_running_sync_last_failed(propagate_logs, caplog, temp_data_dirs):
     """Check that new sync is issued if old sync completed"""
     caplog.set_level(logging.WARNING)
 
     tmp_source, tmp_target = temp_data_dirs
 
-    class FakeSyncProcess:
+    class FakeSyncProcess(_BackgroundProcess):
         @property
         def is_running(self):
             return False
 
-        def wait(self):
+        def wait(self, *args, **kwargs):
             raise RuntimeError("Sync failed")
 
     syncer = _DefaultSyncer(sync_period=60)
-    syncer._sync_process = FakeSyncProcess()
+    syncer._sync_process = FakeSyncProcess(lambda: None)
     assert syncer.sync_up_if_needed(
         local_dir=tmp_source,
         remote_dir="memory:///test/test_syncer_not_running_sync",
@@ -504,7 +518,8 @@ def test_syncer_delete(temp_data_dirs):
     syncer.sync_down(
         remote_dir="memory:///test/test_syncer_delete", local_dir=tmp_target
     )
-    with pytest.raises(TuneError):
+    # Downloading from the deleted directory will raise some exception.
+    with pytest.raises(Exception):
         syncer.wait()
 
     # Remote storage was deleted, so target should be empty
@@ -588,7 +603,8 @@ def test_syncer_wait_or_retry_eventual_success(temp_data_dirs, tmp_path):
     syncer = EventualSuccessSyncer(sync_period=60, sync_timeout=0.5)
 
     syncer.sync_up(local_dir=tmp_source, remote_dir=f"memory://{str(tmp_target)}")
-    syncer.wait_or_retry(max_retries=3, backoff_s=0)
+    # The syncer will retry 2 times, running 3 times in total and eventually succeeding.
+    syncer.wait_or_retry(max_retries=2, backoff_s=0)
     assert success.exists()
 
 
@@ -872,7 +888,7 @@ def test_final_experiment_checkpoint_sync(ray_start_2_cpus, tmpdir):
 
     def train_func(config):
         for i in range(8):
-            session.report({"score": i})
+            train.report({"score": i})
             time.sleep(0.5)
 
     tuner = tune.Tuner(
@@ -964,7 +980,7 @@ def test_e2e_sync_to_s3(ray_start_4_cpus, mock_s3_bucket_uri, tmp_path):
     exp_name = "test_e2e_sync_to_s3"
 
     def train_fn(config):
-        session.report({"score": 1}, checkpoint=Checkpoint.from_dict({"data": 1}))
+        train.report({"score": 1}, checkpoint=Checkpoint.from_dict({"data": 1}))
         raise RuntimeError
 
     tuner = tune.Tuner(
@@ -1004,6 +1020,154 @@ def test_e2e_sync_to_s3(ray_start_4_cpus, mock_s3_bucket_uri, tmp_path):
         )
         assert result.metrics["training_iteration"] == 2
         assert num_checkpoints == 2  # 1 before restore + 1 after
+
+
+def test_distributed_checkpointing_to_s3(
+    ray_start_4_cpus, mock_s3_bucket_uri, tmp_path
+):
+    """Tests a Tune run with distributed checkpointing to a mock s3 bucket.
+
+    This test runs a Tune run with 3 distributed DDP workers.
+    We run 10 steps in total and checkpoint every 3 steps.
+    At the end of the test, we check the ranked index files are
+    available both locally and on the cloud.
+    We also make sure the model checkpoint files are only available
+    on the cloud.
+    """
+    exp_name = "test_dist_ckpt_to_s3"
+    local_dir = os.path.join(tmp_path, "local_dir")
+
+    def train_fn(config):
+        world_rank = train.get_context().get_world_rank()
+        for step in range(config["num_steps"]):
+            time.sleep(0.1)
+            checkpoint = None
+            if step % 3 == 0:
+                checkpoint_dir = tempfile.mkdtemp(dir=tmp_path)
+                path = os.path.join(checkpoint_dir, f"optim-{world_rank}.pt")
+                with open(path, "wb") as f:
+                    f.write(
+                        pickle.dumps(
+                            {
+                                "optimizer": "adam",
+                                "lr": 0.001,
+                                "optimizer_state": np.random.random((100, 100)),
+                            }
+                        )
+                    )
+                path = os.path.join(checkpoint_dir, f"model-{world_rank}.pt")
+                with open(path, "wb") as f:
+                    f.write(
+                        pickle.dumps(
+                            {
+                                "model": "resnet",
+                                "weights": np.random.random((100, 100)),
+                            }
+                        )
+                    )
+                checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            train.report({"score": step}, checkpoint=checkpoint)
+
+    def _check_dir_content(checkpoint_dir, exist=True):
+        # Double check local checkpoint dir.
+        local_trial_data = os.listdir(
+            os.path.join(local_dir, "test_dist_ckpt_to_s3", "trial_0")
+        )
+        if exist:
+            # checkpoint in local trial folder.
+            assert checkpoint_dir in local_trial_data
+            local_checkpoint_data = os.listdir(
+                os.path.join(
+                    local_dir, "test_dist_ckpt_to_s3", "trial_0", checkpoint_dir
+                )
+            )
+            # Local folder has index files.
+            assert ".RANK_0.files" in local_checkpoint_data
+            assert ".RANK_1.files" in local_checkpoint_data
+            assert ".RANK_2.files" in local_checkpoint_data
+            # But no data files.
+            assert "model-0.pt" not in local_checkpoint_data
+            assert "model-1.pt" not in local_checkpoint_data
+            assert "model-2.pt" not in local_checkpoint_data
+        else:
+            assert checkpoint_dir not in local_trial_data
+
+        cloud_trial_data = os.listdir(
+            os.path.join(download_dir, "test_dist_ckpt_to_s3", "trial_0")
+        )
+        if exist:
+            # Checkpoint in cloud trial folder.
+            assert checkpoint_dir in cloud_trial_data
+            cloud_checkpoint_data = os.listdir(
+                os.path.join(
+                    download_dir, "test_dist_ckpt_to_s3", "trial_0", checkpoint_dir
+                )
+            )
+            # Cloud folder has index files.
+            assert ".RANK_0.files" in cloud_checkpoint_data
+            assert ".RANK_1.files" in cloud_checkpoint_data
+            assert ".RANK_2.files" in cloud_checkpoint_data
+            # And all the data files.
+            assert "model-0.pt" in cloud_checkpoint_data
+            assert "model-1.pt" in cloud_checkpoint_data
+            assert "model-2.pt" in cloud_checkpoint_data
+        else:
+            assert checkpoint_dir not in cloud_trial_data
+
+    with unittest.mock.patch.dict(os.environ, {"RAY_AIR_LOCAL_CACHE_DIR": local_dir}):
+        trainer = TorchTrainer(
+            train_fn,
+            train_loop_config={"num_steps": 10},
+            scaling_config=ScalingConfig(
+                num_workers=3,
+                use_gpu=False,
+            ),
+            # Note(jungong) : Trainers ignore the RunConfig specified via
+            # Tuner below. So to specify proper cloud paths and CheckpointConfig,
+            # we must pass another dummy RunConfig here.
+            # TODO(jungong) : this is extremely awkward. Refactor and clean up.
+            run_config=RunConfig(
+                storage_path=mock_s3_bucket_uri,
+                checkpoint_config=CheckpointConfig(
+                    num_to_keep=3,
+                    checkpoint_frequency=3,
+                    _checkpoint_keep_all_ranks=True,
+                    _checkpoint_upload_from_workers=True,
+                ),
+            ),
+        )
+
+        tuner = tune.Tuner(
+            trainer,
+            run_config=RunConfig(
+                name=exp_name,
+                storage_path=mock_s3_bucket_uri,
+                checkpoint_config=CheckpointConfig(
+                    num_to_keep=3,
+                ),
+            ),
+            tune_config=tune.TuneConfig(
+                # Only running 1 trial.
+                trial_dirname_creator=lambda t: "trial_0"
+            ),
+        )
+        result_grid = tuner.fit()
+        # Run was successful.
+        assert not result_grid.errors
+        # Make sure checkpoint is backed by the full s3 checkpoint uri.
+        assert result_grid[0].checkpoint.uri.startswith("s3://")
+
+        # Download remote dir locally to do some sanity checks
+        download_dir = os.path.join(tmp_path, "download")
+
+        shutil.rmtree(download_dir, ignore_errors=True)
+        download_from_uri(uri=mock_s3_bucket_uri, local_path=str(download_dir))
+
+        # Step 0 checkpoint is deleted.
+        _check_dir_content("checkpoint_000000", exist=False)
+        _check_dir_content("checkpoint_000001")  # Step 3
+        _check_dir_content("checkpoint_000002")  # Step 6
+        _check_dir_content("checkpoint_000003")  # Step 9
 
 
 if __name__ == "__main__":

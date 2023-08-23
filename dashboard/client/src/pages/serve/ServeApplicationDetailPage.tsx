@@ -30,11 +30,18 @@ import { ServeDeploymentRow } from "./ServeDeploymentRow";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
+    root: {
+      padding: theme.spacing(3),
+    },
     table: {
       tableLayout: "fixed",
     },
     helpInfo: {
       marginLeft: theme.spacing(1),
+    },
+    statusMessage: {
+      display: "inline-flex",
+      maxWidth: "100%",
     },
   }),
 );
@@ -72,8 +79,17 @@ export const ServeApplicationDetailPage = () => {
   }
 
   const appName = application.name ? application.name : "-";
+  // Expand all deployments if there is only 1 deployment or
+  // there are less than 10 replicas across all deployments.
+  const deploymentsStartExpanded =
+    Object.keys(application.deployments).length === 1 ||
+    Object.values(application.deployments).reduce(
+      (acc, deployment) => acc + deployment.replicas.length,
+      0,
+    ) < 10;
+
   return (
-    <div>
+    <div className={classes.root}>
       <MetadataSection
         metadataList={[
           {
@@ -91,7 +107,19 @@ export const ServeApplicationDetailPage = () => {
           {
             label: "Status",
             content: (
-              <StatusChip type="serveApplication" status={application.status} />
+              <React.Fragment>
+                <StatusChip
+                  type="serveApplication"
+                  status={application.status}
+                />{" "}
+                {application.message && (
+                  <CodeDialogButton
+                    title="Status details"
+                    code={application.message}
+                    buttonText="View details"
+                  />
+                )}
+              </React.Fragment>
             ),
           },
           {
@@ -229,6 +257,7 @@ export const ServeApplicationDetailPage = () => {
                     key={deployment.name}
                     deployment={deployment}
                     application={application}
+                    startExpanded={deploymentsStartExpanded}
                   />
                 ))}
             </TableBody>

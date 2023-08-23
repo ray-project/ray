@@ -2,11 +2,12 @@ from typing import Callable, Optional, Union
 
 from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 
 
-@ExperimentalAPI
+@Deprecated(error=False)
 def input_to_output_specs(
     input_specs: SpecDict,
     num_input_feature_dims: int,
@@ -153,7 +154,7 @@ def get_activation_fn(
     )
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 def get_filter_config(shape):
     """Returns a default Conv2D filter config (list) for a given image shape.
 

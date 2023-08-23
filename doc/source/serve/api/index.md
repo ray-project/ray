@@ -27,6 +27,7 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
       :noindex:
    serve.ingress
    serve.batch
+   serve.multiplexed
 ```
 
 #### Object Types
@@ -51,6 +52,7 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    :toctree: doc/
 
    serve.get_replica_context
+   serve.get_multiplexed_model_id
 ```
 
 ### Running Applications
@@ -375,7 +377,7 @@ Content-Type: application/json
 (serve-rest-api-response-schema)=
 ## Response Schemas
 
-#### V1 REST API
+### V1 REST API
 ```{eval-rst}
 .. autosummary::
    :toctree: doc/
@@ -383,7 +385,7 @@ Content-Type: application/json
    schema.ServeStatusSchema
 ```
 
-#### V2 REST API
+### V2 REST API
 ```{eval-rst}
 .. autosummary::
    :toctree: doc/

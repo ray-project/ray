@@ -17,7 +17,6 @@ pendulum-ppo:
         lr: 0.0003
         sgd_minibatch_size: 64
         observation_filter: MeanStdFilter
-        seed: 42
         model:
             fcnet_activation: relu
         enable_connectors: true

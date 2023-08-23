@@ -570,6 +570,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                               address,
                               num_returns,
                               false,
+                              false,
                               resources,
                               resources,
                               "",
@@ -681,6 +682,39 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
   // Verify that put index doesn't confict with the return object range.
   ASSERT_EQ(context.GetNextPutIndex(), num_returns + 1);
   ASSERT_EQ(context.GetNextPutIndex(), num_returns + 2);
+}
+
+TEST_F(ZeroNodeTest, TestWorkerContextGeneratorReturn) {
+  auto job_id = NextJobId();
+
+  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), job_id);
+  TaskSpecification task_spec;
+  size_t num_returns = 1;
+  task_spec.GetMutableMessage().set_job_id(job_id.Binary());
+  task_spec.GetMutableMessage().set_num_returns(num_returns);
+  context.ResetCurrentTask();
+  context.SetCurrentTask(task_spec);
+  ASSERT_EQ(context.GetCurrentTaskID(), task_spec.TaskId());
+  ;
+
+  // Verify when task ID is nil and put index is nullopt,
+  // it deduces the next return ID from the current context.
+  auto return_id = context.GetGeneratorReturnId(TaskID::Nil(), std::nullopt);
+  ASSERT_EQ(return_id.TaskId(), context.GetCurrentTaskID());
+  ASSERT_EQ(return_id, ObjectID::FromIndex(context.GetCurrentTaskID(), 2));
+  auto return_id2 = context.GetGeneratorReturnId(TaskID::Nil(), std::nullopt);
+  ASSERT_EQ(return_id2.TaskId(), context.GetCurrentTaskID());
+  ASSERT_EQ(return_id2, ObjectID::FromIndex(context.GetCurrentTaskID(), 3));
+
+  // Verify manual specification of put index and taskId.
+  auto task_id = TaskID::FromRandom(job_id);
+  auto put_index = 1;
+  return_id = context.GetGeneratorReturnId(task_id, put_index);
+  ASSERT_EQ(return_id.TaskId(), task_id);
+  ASSERT_EQ(return_id, ObjectID::FromIndex(task_id, put_index));
+  // Although we repeat, it should return the same value.
+  return_id = context.GetGeneratorReturnId(task_id, put_index);
+  ASSERT_EQ(return_id, ObjectID::FromIndex(task_id, put_index));
 }
 
 TEST_F(ZeroNodeTest, TestActorHandle) {

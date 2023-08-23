@@ -14,12 +14,11 @@ from ray._private.ray_constants import (
     RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
     RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,
 )
-from ray._private.utils import split_address
+from ray._private.utils import check_ray_client_dependencies_installed, split_address
 from ray._private.worker import BaseContext
 from ray._private.worker import init as ray_driver_init
 from ray.job_config import JobConfig
 from ray.util.annotations import Deprecated, PublicAPI
-from ray.widgets import Template
 
 logger = logging.getLogger(__name__)
 
@@ -86,20 +85,6 @@ class ClientContext(BaseContext):
             # This is only a driver connected to an existing cluster.
             ray.shutdown()
 
-    def _repr_html_(self):
-        if self.dashboard_url:
-            dashboard_row = Template("context_dashrow.html.j2").render(
-                dashboard_url="http://" + self.dashboard_url
-            )
-        else:
-            dashboard_row = None
-
-        return Template("context.html.j2").render(
-            python_version=self.python_version,
-            ray_version=self.ray_version,
-            dashboard_row=dashboard_row,
-        )
-
 
 @Deprecated
 class ClientBuilder:
@@ -110,6 +95,12 @@ class ClientBuilder:
     """
 
     def __init__(self, address: Optional[str]) -> None:
+        if not check_ray_client_dependencies_installed():
+            raise ValueError(
+                "Ray Client requires pip package `ray[client]`. "
+                "If you installed the minimal Ray (e.g. `pip install ray`), "
+                "please reinstall by executing `pip install ray[client]`."
+            )
         self.address = address
         self._job_config = JobConfig()
         self._remote_init_kwargs = {}

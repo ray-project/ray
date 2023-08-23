@@ -1,62 +1,67 @@
-import { Typography } from "@material-ui/core";
-import React from "react";
-import useSWR from "swr";
-import { getStateApiDownloadLogUrl, getStateApiLog } from "../../service/log";
+import React, { useContext } from "react";
+import { GlobalContext } from "../../App";
+import { MultiTabLogViewer } from "../../common/MultiTabLogViewer";
 import { UnifiedJob } from "../../type/job";
-import { LogViewer } from "../log/LogViewer";
 
-const useDriverLogs = (
-  job: Pick<UnifiedJob, "driver_node_id" | "submission_id">,
-) => {
-  const { driver_node_id, submission_id } = job;
+type JobDriverLogsProps = {
+  job: Pick<
+    UnifiedJob,
+    | "job_id"
+    | "driver_node_id"
+    | "submission_id"
+    | "driver_agent_http_address"
+    | "driver_info"
+    | "type"
+  >;
+};
 
+export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
+  const { driver_node_id, submission_id, type } = job;
   const filename = submission_id
     ? `job-driver-${submission_id}.log`
     : undefined;
 
-  const downloadUrl =
-    driver_node_id && filename
-      ? getStateApiDownloadLogUrl(driver_node_id, filename)
-      : undefined;
+  const { ipLogMap } = useContext(GlobalContext);
 
-  const {
-    data: log,
-    isLoading,
-    mutate,
-  } = useSWR(
-    driver_node_id && filename
-      ? ["useDriverLogs", driver_node_id, filename]
-      : null,
-    async ([_, node_id, filename]) => {
-      return getStateApiLog(node_id, filename);
-    },
-  );
+  let link: string | undefined;
 
-  return {
-    log: isLoading ? "Loading..." : log,
-    downloadUrl,
-    refresh: mutate,
-    path: filename,
-  };
-};
+  if (job.driver_agent_http_address) {
+    link = `/logs/${encodeURIComponent(
+      `${job.driver_agent_http_address}/logs`,
+    )}`;
+  } else if (job.driver_info && ipLogMap[job.driver_info.node_ip_address]) {
+    link = `/logs/${encodeURIComponent(
+      ipLogMap[job.driver_info.node_ip_address],
+    )}`;
+  }
 
-type JobDriverLogsProps = {
-  job: Pick<UnifiedJob, "driver_node_id" | "submission_id">;
-};
+  if (link && job.job_id) {
+    link += `?fileName=${job.job_id}`;
+  } else {
+    // Don't show "other logs" link if link is not available
+    // or job_id does not exist.
+    link = undefined;
+  }
 
-export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
-  const { downloadUrl, log, path, refresh } = useDriverLogs(job);
-  return typeof log === "string" ? (
-    <LogViewer
-      log={log}
-      path={path}
-      downloadUrl={downloadUrl}
-      height={300}
-      onRefreshClick={() => {
-        refresh();
-      }}
+  return (
+    <MultiTabLogViewer
+      tabs={[
+        type === "SUBMISSION"
+          ? {
+              title: "Driver",
+              nodeId: driver_node_id,
+              filename,
+            }
+          : {
+              title: "Driver",
+              contents:
+                "Driver logs are only available when submitting jobs via the " +
+                "Job Submission API, SDK or the `ray job submit` CLI command.\n" +
+                "To learn more, please read the documentation at " +
+                "https://docs.ray.io/en/latest/cluster/running-applications/job-submission/index.html",
+            },
+      ]}
+      otherLogsLink={link}
     />
-  ) : (
-    <Typography color="error">Failed to load</Typography>
   );
 };

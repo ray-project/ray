@@ -22,7 +22,9 @@ python_grpc_compile(
 proto_library(
     name = "common_proto",
     srcs = ["common.proto"],
-    deps = [":runtime_env_common_proto"],
+    deps = [
+      ":runtime_env_common_proto",
+    ],
     visibility = ["//java:__subpackages__"],
 )
 
@@ -53,6 +55,11 @@ proto_library(
 
 python_grpc_compile(
     name = "instance_manager_py_proto",
+    deps = [":instance_manager_proto"],
+)
+
+cc_proto_library(
+    name ="instance_manager_cc_proto",
     deps = [":instance_manager_proto"],
 )
 
@@ -125,6 +132,7 @@ proto_library(
     deps = [
       ":common_proto",
       ":gcs_proto",
+      ":autoscaler_proto",
     ],
 )
 
@@ -360,10 +368,7 @@ cc_proto_library(
 
 proto_library(
     name = "autoscaler_proto",
-    srcs = ["experimental/autoscaler.proto"],
-    deps = [
-        ":instance_manager_proto",
-    ],
+    srcs = ["autoscaler.proto"],
 )
 
 python_grpc_compile(

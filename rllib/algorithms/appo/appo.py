@@ -15,7 +15,7 @@ import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.appo.appo_learner import (
-    AppoHyperparameters,
+    AppoLearnerHyperparameters,
     LEARNER_RESULTS_KL_KEY,
 )
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
@@ -222,7 +222,10 @@ class APPOConfig(ImpalaConfig):
 
             return APPOTfLearner
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
     @override(ImpalaConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -235,16 +238,19 @@ class APPOConfig(ImpalaConfig):
                 APPOTfRLModule as RLModule,
             )
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
         from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
 
         return SingleAgentRLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
 
     @override(ImpalaConfig)
-    def get_learner_hyperparameters(self) -> AppoHyperparameters:
+    def get_learner_hyperparameters(self) -> AppoLearnerHyperparameters:
         base_hps = super().get_learner_hyperparameters()
-        return AppoHyperparameters(
+        return AppoLearnerHyperparameters(
             use_kl_loss=self.use_kl_loss,
             kl_target=self.kl_target,
             kl_coeff=self.kl_coeff,
@@ -355,9 +361,9 @@ class APPO(Impala):
         return dict(
             last_update=self._counters[LAST_TARGET_UPDATE_TS],
             mean_kl_loss_per_module={
-                mid: r[LEARNER_STATS_KEY][LEARNER_RESULTS_KL_KEY]
-                for mid, r in train_results.items()
-                if mid != ALL_MODULES
+                module_id: r[LEARNER_RESULTS_KL_KEY]
+                for module_id, r in train_results.items()
+                if module_id != ALL_MODULES
             },
         )
 

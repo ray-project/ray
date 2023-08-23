@@ -1,8 +1,9 @@
+import time
+
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-import time
 
 import ray
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
@@ -16,8 +17,8 @@ from ray.data.extensions.tensor_extension import (
     TensorDtype,
 )
 from ray.data.tests.conftest import *  # noqa
-from ray.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
+from ray.tests.conftest import *  # noqa
 
 
 # https://github.com/ray-project/ray/issues/33695
@@ -214,11 +215,15 @@ def test_batch_tensors(ray_start_regular_shared):
     import torch
 
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)], parallelism=40)
-    res = "MaterializedDataset(num_blocks=40, num_rows=40, schema={item: object})"
+    res = (
+        "MaterializedDataset(\n"
+        "   num_blocks=40,\n"
+        "   num_rows=40,\n"
+        "   schema={item: numpy.ndarray(shape=(2,), dtype=int64)}\n"
+        ")"
+    )
     assert str(ds) == res, str(ds)
-    with pytest.raises(pa.lib.ArrowInvalid):
-        next(ds.iter_batches(batch_format="pyarrow"))
-    df = next(ds.iter_batches(batch_format="pandas"))
+    df = next(iter(ds.iter_batches(batch_format="pandas")))
     assert df.to_dict().keys() == {"item"}
 
 

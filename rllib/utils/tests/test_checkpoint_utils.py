@@ -210,12 +210,12 @@ class TestCheckpointUtils(unittest.TestCase):
         check(pickle_w["policy_states"], msgpack_w["policy_states"])
         # Make sure the (serialized) configs match 100%. Our `check` utility cannot
         # handle comparing types/classes.
-        # The only exception is the `multiagent.policies` field as it might have gotten
+        # The only exception is the `policies` field as it might have gotten
         # regenerated from a set, thus the order of PIDs might be different.
         p = pickle_state["config"].serialize()
-        p_pols = p["multiagent"].pop("policies")
+        p_pols = p.pop("policies")
         m = msgpack_state["config"].serialize()
-        m_pols = m["multiagent"].pop("policies")
+        m_pols = m.pop("policies")
         check(p, m)
         # Compare sets of policyIDs here.
         self.assertTrue(set(p_pols) == set(m_pols))

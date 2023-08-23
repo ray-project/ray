@@ -42,7 +42,8 @@ class GcsNodeManagerTest : public ::testing::Test {
 };
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
-  gcs::GcsNodeManager node_manager(gcs_publisher_, gcs_table_storage_, client_pool_);
+  gcs::GcsNodeManager node_manager(
+      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -55,7 +56,8 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
 }
 
 TEST_F(GcsNodeManagerTest, TestListener) {
-  gcs::GcsNodeManager node_manager(gcs_publisher_, gcs_table_storage_, client_pool_);
+  gcs::GcsNodeManager node_manager(
+      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;

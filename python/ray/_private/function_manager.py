@@ -9,7 +9,7 @@ import threading
 import time
 import traceback
 from collections import defaultdict, namedtuple
-from typing import Optional
+from typing import Optional, Callable
 
 import ray
 import ray._private.profiling as profiling
@@ -27,11 +27,20 @@ from ray._private.utils import (
     format_error_message,
 )
 from ray._private.serialization import pickle_dumps
-from ray._raylet import JobID, PythonFunctionDescriptor
+from ray._raylet import (
+    JobID,
+    PythonFunctionDescriptor,
+    WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS,
+)
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
 )
+ImportedFunctionInfo = namedtuple(
+    "ImportedFunctionInfo",
+    ["job_id", "function_id", "function_name", "function", "module", "max_calls"],
+)
+
 """FunctionExecutionInfo: A named tuple storing remote function information."""
 
 logger = logging.getLogger(__name__)
@@ -42,10 +51,6 @@ def make_function_table_key(key_type: bytes, job_id: JobID, key: Optional[bytes]
         return b":".join([key_type, job_id.hex().encode()])
     else:
         return b":".join([key_type, job_id.hex().encode(), key])
-
-
-def make_exports_prefix(job_id: JobID) -> bytes:
-    return make_function_table_key(b"IsolatedExports", job_id)
 
 
 def make_export_key(pos: int, job_id: JobID) -> bytes:
@@ -153,9 +158,6 @@ class FunctionActorManager:
         # One optimization is that we can use importer counter since
         # it's sure keys before this counter has been allocated.
         with self._export_lock:
-            self._num_exported = max(
-                self._num_exported, self._worker.import_thread.num_imported
-            )
             while True:
                 self._num_exported += 1
                 holder = make_export_key(
@@ -174,6 +176,54 @@ class FunctionActorManager:
         # that the notification doesn't include any actual data.
         # TODO(mwtian) implement per-job notification here.
         self._worker.gcs_publisher.publish_function_key(key)
+
+    def export_setup_func(
+        self, setup_func: Callable, timeout: Optional[int] = None
+    ) -> bytes:
+        """Export the setup hook function and return the key."""
+        pickled_function = pickle_dumps(
+            setup_func,
+            "Cannot serialize the worker_process_setup_hook " f"{setup_func.__name__}",
+        )
+
+        function_to_run_id = hashlib.shake_128(pickled_function).digest(
+            ray_constants.ID_SIZE
+        )
+        key = make_function_table_key(
+            # This value should match with gcs_function_manager.h.
+            # Otherwise, it won't be GC'ed.
+            WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS.encode(),
+            # b"FunctionsToRun",
+            self._worker.current_job_id.binary(),
+            function_to_run_id,
+        )
+
+        check_oversized_function(
+            pickled_function, setup_func.__name__, "function", self._worker
+        )
+
+        try:
+            self._worker.gcs_client.internal_kv_put(
+                key,
+                pickle.dumps(
+                    {
+                        "job_id": self._worker.current_job_id.binary(),
+                        "function_id": function_to_run_id,
+                        "function": pickled_function,
+                    }
+                ),
+                # overwrite
+                True,
+                ray_constants.KV_NAMESPACE_FUNCTION_TABLE,
+                timeout=timeout,
+            )
+        except Exception as e:
+            logger.exception(
+                "Failed to export the setup hook " f"{setup_func.__name__}."
+            )
+            raise e
+
+        return key
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
@@ -224,21 +274,31 @@ class FunctionActorManager:
             key, val, True, KV_NAMESPACE_FUNCTION_TABLE
         )
 
-    def fetch_and_register_remote_function(self, key):
-        """Import a remote function."""
-        vals = self._worker.gcs_client.internal_kv_get(key, KV_NAMESPACE_FUNCTION_TABLE)
+    def fetch_registered_method(
+        self, key: str, timeout: Optional[int] = None
+    ) -> Optional[ImportedFunctionInfo]:
+        vals = self._worker.gcs_client.internal_kv_get(
+            key, KV_NAMESPACE_FUNCTION_TABLE, timeout=timeout
+        )
         if vals is None:
-            return False
+            return None
         else:
             vals = pickle.loads(vals)
-        fields = [
-            "job_id",
-            "function_id",
-            "function_name",
-            "function",
-            "module",
-            "max_calls",
-        ]
+            fields = [
+                "job_id",
+                "function_id",
+                "function_name",
+                "function",
+                "module",
+                "max_calls",
+            ]
+            return ImportedFunctionInfo._make(vals.get(field) for field in fields)
+
+    def fetch_and_register_remote_function(self, key):
+        """Import a remote function."""
+        remote_function_info = self.fetch_registered_method(key)
+        if not remote_function_info:
+            return False
         (
             job_id_str,
             function_id_str,
@@ -246,7 +306,7 @@ class FunctionActorManager:
             serialized_function,
             module,
             max_calls,
-        ) = (vals.get(field) for field in fields)
+        ) = remote_function_info
 
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
