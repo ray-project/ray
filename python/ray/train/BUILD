@@ -584,7 +584,7 @@ py_test(
     name = "test_tune",
     size = "large",
     srcs = ["tests/test_tune.py"],
-    tags = ["team:ml", "exclusive", "tune", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "tune", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
