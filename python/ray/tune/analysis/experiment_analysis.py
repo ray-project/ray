@@ -29,6 +29,7 @@ from ray.train._internal.storage import (
     _use_storage_context,
     _list_at_fs_path,
     _exists_at_fs_path,
+    get_fs_and_path,
 )
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.tune.execution.tune_controller import TuneController
@@ -86,7 +87,7 @@ class NewExperimentAnalysis:
     def __init__(
         self,
         experiment_checkpoint_path: Union[str, os.PathLike],
-        storage_filesystem: pyarrow.fs.FileSystem,
+        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trials: Optional[List[Trial]] = None,
         default_metric: Optional[str] = None,
         default_mode: Optional[str] = None,
@@ -99,7 +100,11 @@ class NewExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        self._fs = storage_filesystem
+        if storage_filesystem:
+            self._fs = storage_filesystem
+        else:
+            self._fs, experiment_checkpoint_path = get_fs_and_path(experiment_checkpoint_path)
+
         experiment_checkpoint_path = str(experiment_checkpoint_path)
         if experiment_checkpoint_path.endswith(".json"):
             self._experiment_fs_path = os.path.dirname(experiment_checkpoint_path)
