@@ -127,7 +127,7 @@ py_test(
     name = "horovod_tune_example",
     size = "small",
     srcs = ["examples/horovod/horovod_tune_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -137,7 +137,7 @@ py_test (
     size = "medium",
     srcs = ["examples/huggingface/huggingface_basic_language_modeling_example.py"],
     args = ["--smoke-test", "--num-epochs 3"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"]
 )
 
@@ -232,7 +232,7 @@ py_test(
     name = "test_backend",
     size = "large",
     srcs = ["tests/test_backend.py"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib",  ":conftest"]
 )
 
@@ -248,15 +248,7 @@ py_test(
     name = "test_checkpoint",
     size = "small",
     srcs = ["tests/test_checkpoint.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_checkpoints",
-    size = "small",
-    srcs = ["tests/test_checkpoints.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib"]
 )
 
@@ -464,7 +456,7 @@ py_test(
     name = "test_session",
     size = "small",
     srcs = ["tests/test_session.py"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
