@@ -257,6 +257,7 @@ class RAY_EXPORT PythonGcsClient {
     if (!cluster_id_.IsNil()) {
       context.AddMetadata(kClusterIdKey, cluster_id_.Hex());
     }
+    context.set_wait_for_ready(true);
   }
 
   ClusterID cluster_id_;
