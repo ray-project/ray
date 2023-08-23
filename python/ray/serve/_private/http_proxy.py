@@ -1478,10 +1478,21 @@ class HTTPProxyActor:
                     get_component_logger_file_path(),
                 ]
             )
-        elif not self.http_setup_complete.is_set():
-            return await done_set_http.pop()
         else:
-            return await done_set_grpc.pop()
+            proxy_error = None
+            if not self.http_setup_complete.is_set():
+                try:
+                    await done_set_http.pop()
+                except Exception as e:
+                    logger.exception(e)
+                    proxy_error = e
+            if not self.grpc_setup_complete.is_set():
+                try:
+                    await done_set_grpc.pop()
+                except Exception as e:
+                    logger.exception(e)
+                    proxy_error = e
+            raise proxy_error
 
     async def run_http_server(self):
         sock = socket.socket()

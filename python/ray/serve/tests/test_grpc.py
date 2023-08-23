@@ -534,6 +534,11 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     ListApplications and Healthz methods should respond successfully. When there are
     no replicas on any nodes, ListApplications and Healthz methods should continue to
     succeeding on the head node. But should return draining response on the worker node.
+
+    Also note, this is to ensure the previous fix to serve downscaling also applies to
+    gRPC proxy. Head node will not need to be downscaled and never be in the draining
+    state. Worker nodes will be in draining when there is no replicas. We will fail the
+    health check in this case, so ALB knows not to route to this node anymore.
     """
     head_node_grpc_port = 9000
     worker_node_grpc_port = 9001
