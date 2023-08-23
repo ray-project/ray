@@ -217,16 +217,15 @@ def test_task_actor_conda_env(conda_envs, shutdown_only):
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
 )
-def test_task_conda_env_validation_cached(shutdown_only):
+def test_task_conda_env_validation_cached(conda_envs, shutdown_only):
     """Verify that when a task is running with the same conda env
     it doesn't validate if env exists.
     """
     # The first run would be slower because we need to validate
     # if the package exists.
     ray.init()
-    # version = EMOJI_VERSIONS[0]
-    # runtime_env = {"conda": f"package-{version}"}
-    runtime_env = {"conda": "core"}
+    version = EMOJI_VERSIONS[0]
+    runtime_env = {"conda": f"package-{version}"}
     task = get_emoji_version.options(runtime_env=runtime_env)
     s = time.time()
     ray.get(task.remote())
