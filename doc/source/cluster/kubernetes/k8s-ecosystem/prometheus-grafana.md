@@ -208,7 +208,7 @@ spec:
 
 ## Step 7: Collect custom metrics with Recording Rules
 
-[Recording Rules](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/) allow us to precompute frequently needed or computationally expensive [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) expressions and save their result as custom metrics. Note this is different from [Custom Application-level Metrics](https://docs.ray.io/en/master/ray-observability/ray-metrics.html#application-level-metrics) which aim for the visibility of ray applications.
+[Recording Rules](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/) allow us to precompute frequently needed or computationally expensive [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) expressions and save their result as custom metrics. Note this is different from [Custom Application-level Metrics](application-level-metrics) which aim for the visibility of ray applications.
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1

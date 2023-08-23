@@ -88,7 +88,7 @@ For the sake of flexibility, we have set `serveConfigV2` as a YAML multi-line st
 This implies that there is no strict type checking for the Ray Serve configurations in `serveConfigV2` field.
 Some tips to help you debug the `serveConfigV2` field:
 
-* Check [the documentation](put-api-serve-applications) for the schema about
+* Check [the documentation](serve-api) for the schema about
 the Ray Serve Multi-application API `PUT "/api/serve/applications/"`.
 * Unlike `serveConfig`, `serveConfigV2` adheres to the snake case naming convention. For example, `numReplicas` is used in `serveConfig`, while `num_replicas` is used in `serveConfigV2`. 
 
