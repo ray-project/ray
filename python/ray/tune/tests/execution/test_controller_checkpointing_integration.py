@@ -10,6 +10,9 @@ from ray.train import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.air.constants import TRAINING_ITERATION
+from ray.train._checkpoint import Checkpoint
+from ray.train._internal.session import _TrainingResult
+from ray.train._internal.storage import StorageContext
 from ray.tune import PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
@@ -17,6 +20,11 @@ from ray.tune.result import DONE
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.trainable import TrainableUtil
+
+from ray.train.tests.util import mock_storage_context
+
+
+STORAGE = mock_storage_context()
 
 
 @pytest.fixture(scope="function")
@@ -61,13 +69,13 @@ def test_checkpoint_save_restore(
     Legacy test: test_trial_runner_2.py::TrialRunnerTest::testRestoreMetricsAfterCheckpointing  # noqa
     """
     runner = TuneController(
-        resource_manager_factory=lambda: resource_manager_cls(),
-        experiment_path=str(tmpdir),
+        resource_manager_factory=lambda: resource_manager_cls(), storage=STORAGE
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 1},
         "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
+        "storage": STORAGE,
     }
     runner.add_trial(Trial("__fake", **kwargs))
     trials = runner.get_trials()
@@ -83,13 +91,22 @@ def test_checkpoint_save_restore(
     while trials[0].status != Trial.TERMINATED:
         runner.step()
 
-    assert trials[0].checkpoint.metrics[TRAINING_ITERATION] == 1
+    assert (
+        trials[0].run_metadata.checkpoint_manager.latest_checkpoint_result.metrics[
+            TRAINING_ITERATION
+        ]
+        == 1
+    )
     assert trials[0].last_result[TRAINING_ITERATION] == 1
     assert trials[0].last_result["iterations_since_restore"] == 1
 
     # Prepare new trial
-    kwargs["restore_path"] = trials[0].checkpoint.dir_or_data
-    runner.add_trial(Trial("__fake", **kwargs))
+    new_trial = Trial("__fake", **kwargs)
+    old_trial = trials[0]
+    new_trial.run_metadata.checkpoint_manager._latest_checkpoint_result = (
+        old_trial.run_metadata.checkpoint_manager.latest_checkpoint_result
+    )
+    runner.add_trial(new_trial)
     trials = runner.get_trials()
 
     assert trials[1].status == Trial.PENDING
@@ -107,7 +124,12 @@ def test_checkpoint_save_restore(
     while trials[1].status != Trial.TERMINATED:
         runner.step()
 
-    assert trials[1].checkpoint.metrics[TRAINING_ITERATION] == 2
+    assert (
+        trials[1].run_metadata.checkpoint_manager.latest_checkpoint_result.metrics[
+            TRAINING_ITERATION
+        ]
+        == 2
+    )
     assert trials[1].last_result[TRAINING_ITERATION] == 2
     assert trials[1].last_result["iterations_since_restore"] == 1
     assert trials[1].last_result["time_since_restore"] > 0
@@ -124,12 +146,13 @@ def test_checkpoint_at_end(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, 
     """
     runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
-        experiment_path=str(tmpdir),
+        storage=STORAGE,
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 2},
         "checkpoint_config": CheckpointConfig(checkpoint_at_end=True),
         "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+        "storage": STORAGE,
     }
     runner.add_trial(Trial("__fake", **kwargs))
     trials = runner.get_trials()
@@ -159,6 +182,7 @@ def test_pause_resume_trial(
         "stopping_criterion": {"training_iteration": 2},
         "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
+        "storage": STORAGE,
     }
     runner.add_trial(Trial("__fake", **kwargs))
     trials = runner.get_trials()
@@ -188,7 +212,7 @@ def test_pause_resume_trial(
     while trials[0].status != Trial.TERMINATED:
         runner.step()
 
-    assert trials[0].checkpoint.metrics[TRAINING_ITERATION] == 2
+    assert trials[0].checkpoint
     assert trials[0].last_result[TRAINING_ITERATION] == 2
     assert trials[0].last_result["iterations_since_restore"] == 1
     assert trials[0].last_result["time_since_restore"] > 0
@@ -198,7 +222,7 @@ def test_pause_resume_trial(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_checkpoint_num_to_keep(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmpdir
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
 ):
     """Test that only num_to_keep checkpoints are kept.
 
@@ -207,38 +231,25 @@ def test_checkpoint_num_to_keep(
     Legacy test: test_trial_runner_2.py::TrialRunnerTest::testPauseResumeCheckpointCount
     """
     trial = Trial(
-        "__fake",
-        experiment_path=str(tmpdir),
-        checkpoint_config=CheckpointConfig(num_to_keep=2),
+        "__fake", checkpoint_config=CheckpointConfig(num_to_keep=2), storage=STORAGE
     )
     trial.init_local_path()
-    trial.run_metadata.checkpoint_manager.set_delete_fn(
-        lambda cp: shutil.rmtree(cp.dir_or_data)
-    )
 
     def write_checkpoint(trial: Trial, index: int):
-        checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-            trial.local_path, index=index
-        )
+        checkpoint_dir = tmp_path / StorageContext._make_checkpoint_dir_name(index)
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
         result = {"training_iteration": index}
         with open(os.path.join(checkpoint_dir, "cp.json"), "w") as f:
             json.dump(result, f)
 
-        tune_cp = _TrackedCheckpoint(
-            dir_or_data=checkpoint_dir,
-            storage_mode=CheckpointStorage.PERSISTENT,
-            metrics=result,
-        )
-        trial.temporary_state.saving_to = tune_cp
-
-        return checkpoint_dir
+        checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        return _TrainingResult(checkpoint=checkpoint, metrics=result)
 
     def get_checkpoint_dirs(trial: Trial):
-        return [d for d in os.listdir(trial.local_path) if d.startswith("checkpoint_")]
+        return [d for d in os.listdir(tmp_path) if d.startswith("checkpoint_")]
 
     runner = TuneController(
-        resource_manager_factory=lambda: resource_manager_cls(),
-        experiment_path=str(tmpdir),
+        resource_manager_factory=lambda: resource_manager_cls(), storage=STORAGE
     )
 
     runner.add_trial(trial)
@@ -270,15 +281,11 @@ def test_checkpoint_num_to_keep(
     # Re-instantiate trial runner and resume
     runner.checkpoint(force=True)
     runner = TuneController(
-        resource_manager_factory=lambda: resource_manager_cls(),
-        experiment_path=str(tmpdir),
+        resource_manager_factory=lambda: resource_manager_cls(), storage=STORAGE
     )
     runner.resume()
 
     trial = runner.get_trials()[0]
-    trial.run_metadata.checkpoint_manager.set_delete_fn(
-        lambda cp: shutil.rmtree(cp.dir_or_data)
-    )
 
     # Write fourth checkpoint
     result = write_checkpoint(trial, 4)
