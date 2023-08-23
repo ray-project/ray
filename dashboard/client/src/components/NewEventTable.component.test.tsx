@@ -55,7 +55,12 @@ describe("NewEventTable", () => {
 
     // Check that the correct request params are being used (as part of the mocked useEvents hook)
     expect(useEvents).toHaveBeenCalledWith(
-      "JOB_ID=010000&severityLevel=INFO&severityLevel=WARNING",
+      {
+        entityId: "010000",
+        entityName: "JOB_ID",
+        severityLevel: ["INFO", "WARNING"],
+        sourceType: [],
+      },
       1, // Page number
     );
 

@@ -135,7 +135,10 @@ const useEventTable = (props: EventTableProps) => {
     error,
     isLoading,
   } = useEvents(filters, pageNo);
-  console.error(error, "getEvents error");
+
+  if (error) {
+    console.error(error, "getEvents error");
+  }
 
   const range = [
     (pagination.pageNo - 1) * pagination.pageSize,
@@ -213,6 +216,7 @@ const NewEventTable = (props: EventTableProps) => {
       />
     </header>
   );
+
   const eventsLen = events.length;
   if (eventsLen < 1) {
     return (
