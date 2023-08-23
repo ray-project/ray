@@ -87,6 +87,7 @@ class NewExperimentAnalysis:
     def __init__(
         self,
         experiment_checkpoint_path: Union[str, os.PathLike],
+        *,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trials: Optional[List[Trial]] = None,
         default_metric: Optional[str] = None,
