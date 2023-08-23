@@ -137,7 +137,7 @@ def test_datasets(ray_start_4_cpus):
         # All other datasets should not be sharded.
         val_dataset = train.get_dataset_shard("val")
         val_ds_count = len(list(val_dataset.iter_rows()))
-        assert val_ds_count == num_val_data
+        assert val_ds_count == num_val_data / scale_config.num_workers
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=get_dataset,
