@@ -1,4 +1,5 @@
 import copy
+import grpc
 import os
 import sys
 from typing import Dict
@@ -20,6 +21,8 @@ from ray.serve._private.common import (
     ReplicaState,
     HTTPProxyStatus,
 )
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+
 
 GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
@@ -812,6 +815,61 @@ def test_put_with_http_options(ray_start_stop, option, override):
         == "4 pizzas please!"
     )
     assert requests.post("http://localhost:8000/serve/app2").text == "wonderful world"
+
+
+def test_put_with_grpc_options(ray_start_stop):
+    """Submits a config with gRPC options specified.
+
+    Ensure gRPC options can be accepted by the api. HTTP deployment continue to
+    accept requests. gRPC deployment is also able to accept requests.
+    """
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+    test_files_import_path = "ray.serve.tests.test_config_files."
+    grpc_import_path = f"{test_files_import_path}grpc_deployment:g"
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    original_config = {
+        "proxy_location": "EveryNode",
+        "http_options": {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "root_path": "/serve",
+        },
+        "grpc_options": {
+            "port": 9000,
+            "grpc_servicer_functions": grpc_servicer_functions,
+        },
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": grpc_import_path,
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": world_import_path,
+            },
+        ],
+    }
+    # Ensure api can accept config with gRPC options
+    deploy_config_multi_app(original_config)
+
+    # Ensure HTTP requests are still working
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/serve/app2").text
+        == "wonderful world",
+        timeout=15,
+    )
+
+    # Ensure gRPC requests also work
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    test_in = serve_pb2.UserDefinedMessage(name="foo", num=30)
+    metadata = (("application", "app1"),)
+    response = stub.Method1(request=test_in, metadata=metadata)
+    assert response.greeting == "Hello foo from method1"
 
 
 def test_default_dashboard_agent_listen_port():

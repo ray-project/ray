@@ -23,7 +23,7 @@ from ray.serve._private.common import (
     ServeDeployMode,
     MultiplexedReplicaInfo,
 )
-from ray.serve.config import HTTPOptions
+from ray.serve.config import gRPCOptions, HTTPOptions
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_LOGGER_NAME,
@@ -110,6 +110,7 @@ class ServeController:
         http_config: HTTPOptions,
         detached: bool = False,
         _disable_http_proxy: bool = False,
+        grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
         assert (
@@ -156,6 +157,7 @@ class ServeController:
                 http_config,
                 self._controller_node_id,
                 self.cluster_node_info_cache,
+                grpc_options,
             )
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)

@@ -262,11 +262,13 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         full_http_options = dict(
             {"location": config.proxy_location}, **config_http_options
         )
+        grpc_options = config.grpc_options.dict()
 
         async with self._controller_start_lock:
             client = await serve_start_async(
                 detached=True,
                 http_options=full_http_options,
+                grpc_options=grpc_options,
             )
 
         # Serve ignores HTTP options if it was already running when

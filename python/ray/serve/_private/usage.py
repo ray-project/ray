@@ -27,6 +27,8 @@ class ServeUsageTag(Enum):
         TagKey.SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED
     )
     MULTIPLEXED_API_USED = TagKey.SERVE_MULTIPLEXED_API_USED
+    HTTP_PROXY_USED = TagKey.SERVE_HTTP_PROXY_USED
+    GRPC_PROXY_USED = TagKey.SERVE_GRPC_PROXY_USED
 
     def record(self, value: str):
         """Record telemetry value."""

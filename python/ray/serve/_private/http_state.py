@@ -4,13 +4,13 @@ import os
 import random
 import time
 import traceback
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from ray.serve.config import HTTPOptions, DeploymentMode
+from ray.serve.config import gRPCOptions, HTTPOptions, DeploymentMode
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
     PROXY_HEALTH_CHECK_TIMEOUT_S,
@@ -315,6 +315,7 @@ class HTTPProxyStateManager:
         config: HTTPOptions,
         head_node_id: str,
         cluster_node_info_cache: ClusterNodeInfoCache,
+        grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_name = controller_name
         self._detached = detached
@@ -322,6 +323,7 @@ class HTTPProxyStateManager:
             self._config = config
         else:
             self._config = HTTPOptions()
+        self._grpc_options = grpc_options or gRPCOptions()
         self._proxy_states: Dict[NodeId, HTTPProxyState] = dict()
         self._head_node_id: str = head_node_id
 
@@ -438,21 +440,34 @@ class HTTPProxyStateManager:
         """Helper to start a single HTTP proxy.
 
         Takes the name of the proxy, the node id, and the node ip address. and creates a
-        new HTTPProxyActor actor handle for the proxy. Also, setting up
-        `TEST_WORKER_NODE_PORT` env var will help head node and worker nodes to be
-        opening on different ports.
+        new HTTPProxyActor actor handle for the proxy. In addition, setting up
+        `TEST_WORKER_NODE_HTTP_PORT` env var will help head node and worker nodes to be
+        opening on different HTTP ports. Setting up `TEST_WORKER_NODE_GRPC_PORT` env var
+        will help head node and worker nodes to be opening on different gRPC ports.
         """
         port = self._config.port
+        grpc_options = self._grpc_options
 
         if (
             node_id != self._head_node_id
-            and os.getenv("TEST_WORKER_NODE_PORT") is not None
+            and os.getenv("TEST_WORKER_NODE_HTTP_PORT") is not None
         ):
             logger.warning(
-                f"`TEST_WORKER_NODE_PORT` env var is set. "
+                f"`TEST_WORKER_NODE_HTTP_PORT` env var is set. "
                 f"Using it for worker node {node_id}."
             )
-            port = int(os.getenv("TEST_WORKER_NODE_PORT"))
+            port = int(os.getenv("TEST_WORKER_NODE_HTTP_PORT"))
+
+        if (
+            node_id != self._head_node_id
+            and os.getenv("TEST_WORKER_NODE_GRPC_PORT") is not None
+        ):
+            logger.warning(
+                f"`TEST_WORKER_NODE_GRPC_PORT` env var is set. "
+                f"Using it for worker node {node_id}."
+                f"{int(os.getenv('TEST_WORKER_NODE_GRPC_PORT'))}"
+            )
+            grpc_options.port = int(os.getenv("TEST_WORKER_NODE_GRPC_PORT"))
 
         proxy = http_proxy.HTTPProxyActor.options(
             num_cpus=self._config.num_cpus,
@@ -472,6 +487,7 @@ class HTTPProxyStateManager:
             http_middlewares=self._config.middlewares,
             request_timeout_s=self._config.request_timeout_s,
             keep_alive_timeout_s=self._config.keep_alive_timeout_s,
+            grpc_options=grpc_options,
         )
         return proxy
 
