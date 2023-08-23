@@ -314,6 +314,17 @@ void GcsTaskManager::GcsTaskManagerStorage::EvictTaskEvent() {
 void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     rpc::TaskEvents &&events_by_task) {
   auto job_id = JobID::FromBinary(events_by_task.job_id());
+  auto task_id = TaskID::FromBinary(events_by_task.task_id());
+
+  if (job_id.IsNil() || task_id.IsNil()) {
+    // Skip invalid task events.
+    RAY_LOG(DEBUG)
+        << "Skip invalid task event with missing job id or task id. This "
+           "could happen when profiling events are created without a task id : "
+        << events_by_task.DebugString();
+    return;
+  }
+
   // We are dropping this task.
   if (job_task_summary_[job_id].ShouldDropTaskAttempt(GetTaskAttempt(events_by_task))) {
     // This task attempt has been dropped.
