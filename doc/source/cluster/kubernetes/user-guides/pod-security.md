@@ -12,14 +12,14 @@ references can help you understand this document better:
 * [Kubernetes - Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted)
 * [Kubernetes - Pod Security Admission](https://kubernetes.io/docs/concepts/security/pod-security-admission/)
 * [Kubernetes - Auditing](https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/)
-* [KinD - Auditing](https://kind.sigs.k8s.io/docs/user/auditing/)
+* [Kind - Auditing](https://kind.sigs.k8s.io/docs/user/auditing/)
 
 # Preparation
 
 Please clone the [KubeRay repository](https://github.com/ray-project/kuberay) and checkout the `master` branch.
 This tutorial requires several files in the repository.
 
-# Step 1: Create a KinD cluster
+# Step 1: Create a Kind cluster
 
 ```bash
 # Path: kuberay/
