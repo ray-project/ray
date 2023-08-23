@@ -106,9 +106,7 @@ class TestCheckpointRestorePG(unittest.TestCase):
         )
 
     def test_ppo_checkpoint_restore(self):
-        test_ckpt_restore(
-            algorithms_and_configs["PPO"], "CartPole-v1", object_store=True
-        )
+        test_ckpt_restore(algorithms_and_configs["PPO"], "CartPole-v1")
 
 
 class TestCheckpointRestoreOffPolicy(unittest.TestCase):
@@ -132,7 +130,6 @@ class TestCheckpointRestoreOffPolicy(unittest.TestCase):
         test_ckpt_restore(
             algorithms_and_configs["DQN"],
             "CartPole-v1",
-            object_store=True,
             replay_buffer=True,
         )
 

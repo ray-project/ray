@@ -1681,15 +1681,6 @@ def read_sql(
         :ref:`Reading from SQL Databases <reading_sql>`.
 
         .. testcode::
-            :hide:
-
-            import os
-            try:
-                os.remove("example.db")
-            except OSError:
-                pass
-
-        .. testcode::
 
             import sqlite3
 
@@ -1723,6 +1714,12 @@ def read_sql(
             ds = ray.data.read_sql(
                 "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
             )
+
+        .. testcode::
+            :hide:
+
+            import os
+            os.remove("example.db")
 
     Args:
         sql: The SQL query to execute.
@@ -2313,7 +2310,11 @@ def _get_reader(
         OOM, the estimated inmemory data size, and the reader generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
-    if local_uri:
+    # NOTE: `ParquetDatasource` has separate steps to fetch metadata and sample rows,
+    # so it needs `local_uri` parameter for now.
+    # TODO(chengsu): stop passing `local_uri` parameter to
+    # `ParquetDatasource.create_reader()`.
+    if local_uri and isinstance(ds, ParquetDatasource):
         kwargs["local_uri"] = local_uri
     DataContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)

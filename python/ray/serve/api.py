@@ -5,7 +5,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from functools import wraps
 
 from fastapi import APIRouter, FastAPI
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 import ray
 from ray import cloudpickle
@@ -44,6 +43,7 @@ from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
 )
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     Default,
@@ -51,7 +51,6 @@ from ray.serve._private.utils import (
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
-    record_serve_tag,
     get_random_letters,
     extract_self_if_method_call,
 )
@@ -112,7 +111,7 @@ def start(
     client = _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
     # Record after Ray has been started.
-    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+    ServeUsageTag.API_VERSION.record("v1")
 
     return client
 
@@ -224,7 +223,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
                 # Call user-defined constructor.
                 cls.__init__(self, *args, **kwargs)
 
-                record_serve_tag("SERVE_FASTAPI_USED", "1")
+                ServeUsageTag.FASTAPI_USED.record("1")
                 install_serve_encoders_to_fastapi()
                 ASGIAppReplicaWrapper.__init__(self, frozen_app)
 
@@ -289,9 +288,8 @@ def deployment(
             is set, `num_replicas` cannot be set.
         init_args: [DEPRECATED] These should be passed to `.bind()` instead.
         init_kwargs: [DEPRECATED] These should be passed to `.bind()` instead.
-        route_prefix: Requests to paths under this HTTP path prefix are routed
-            to this deployment. Defaults to '/'. This can only be set for the
-            ingress (top-level) deployment of an application.
+        route_prefix: [DEPRECATED] Route prefix should be set per-application
+            through `serve.run()`.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
@@ -357,6 +355,13 @@ def deployment(
         logger.warning(
             "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. "
             "Explicitly specifying version will raise an error in the future!"
+        )
+
+    if route_prefix is not DEFAULT.VALUE:
+        logger.warning(
+            "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
+            "deprecated. To specify a route prefix for an application, pass it into "
+            "`serve.run` instead."
         )
 
     if is_driver_deployment is DEFAULT.VALUE:
@@ -435,7 +440,7 @@ def get_deployment(name: str) -> Deployment:
     Returns:
         Deployment
     """
-    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+    ServeUsageTag.API_VERSION.record("v1")
     return _private_api.get_deployment(name)
 
 
@@ -446,7 +451,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+    ServeUsageTag.API_VERSION.record("v1")
     return _private_api.list_deployments()
 
 
@@ -490,7 +495,7 @@ def run(
     )
 
     # Record after Ray has been started.
-    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v2")
+    ServeUsageTag.API_VERSION.record("v2")
 
     if isinstance(target, Application):
         deployments = pipeline_build(target._get_internal_dag_node(), name)
