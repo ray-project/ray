@@ -5,7 +5,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from functools import wraps
 
 from fastapi import APIRouter, FastAPI
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 import ray
 from ray import cloudpickle
@@ -14,7 +13,12 @@ from ray.util.annotations import Deprecated, PublicAPI, DeveloperAPI
 
 from ray.serve.built_application import BuiltApplication
 from ray.serve._private.client import ServeControllerClient
-from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
+from ray.serve.config import (
+    AutoscalingConfig,
+    DeploymentConfig,
+    ReplicaConfig,
+    HTTPOptions,
+)
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -34,11 +38,12 @@ from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeHandle, RayServeSyncHandle
+from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
 )
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     Default,
@@ -46,7 +51,6 @@ from ray.serve._private.utils import (
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
-    record_serve_tag,
     get_random_letters,
     extract_self_if_method_call,
 )
@@ -107,7 +111,7 @@ def start(
     client = _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
     # Record after Ray has been started.
-    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+    ServeUsageTag.API_VERSION.record("v1")
 
     return client
 
@@ -219,7 +223,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
                 # Call user-defined constructor.
                 cls.__init__(self, *args, **kwargs)
 
-                record_serve_tag("SERVE_FASTAPI_USED", "1")
+                ServeUsageTag.FASTAPI_USED.record("1")
                 install_serve_encoders_to_fastapi()
                 ASGIAppReplicaWrapper.__init__(self, frozen_app)
 
@@ -283,9 +287,8 @@ def deployment(
             is set, `num_replicas` cannot be set.
         init_args: [DEPRECATED] These should be passed to `.bind()` instead.
         init_kwargs: [DEPRECATED] These should be passed to `.bind()` instead.
-        route_prefix: Requests to paths under this HTTP path prefix are routed
-            to this deployment. Defaults to '/'. This can only be set for the
-            ingress (top-level) deployment of an application.
+        route_prefix: [DEPRECATED] Route prefix should be set per-application
+            through `serve.run()`.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
@@ -351,10 +354,17 @@ def deployment(
             "Explicitly specifying version will raise an error in the future!"
         )
 
+    if route_prefix is not DEFAULT.VALUE:
+        logger.warning(
+            "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
+            "deprecated. To specify a route prefix for an application, pass it into "
+            "`serve.run` instead."
+        )
+
     if is_driver_deployment is DEFAULT.VALUE:
         is_driver_deployment = False
 
-    config = DeploymentConfig.from_default(
+    deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
@@ -364,17 +374,13 @@ def deployment(
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
     )
-    config.user_configured_option_names = set(user_configured_option_names)
+    deployment_config.user_configured_option_names = set(user_configured_option_names)
 
     def decorator(_func_or_class):
-        return Deployment(
+        replica_config = ReplicaConfig.create(
             _func_or_class,
-            name if name is not DEFAULT.VALUE else _func_or_class.__name__,
-            config,
-            version=(version if version is not DEFAULT.VALUE else None),
             init_args=(init_args if init_args is not DEFAULT.VALUE else None),
             init_kwargs=(init_kwargs if init_kwargs is not DEFAULT.VALUE else None),
-            route_prefix=route_prefix,
             ray_actor_options=(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
@@ -388,6 +394,14 @@ def deployment(
                 if placement_group_strategy is not DEFAULT.VALUE
                 else None
             ),
+        )
+
+        return Deployment(
+            name if name is not DEFAULT.VALUE else _func_or_class.__name__,
+            deployment_config,
+            replica_config,
+            version=(version if version is not DEFAULT.VALUE else None),
+            route_prefix=route_prefix,
             is_driver_deployment=is_driver_deployment,
             _internal=True,
         )
@@ -418,7 +432,7 @@ def get_deployment(name: str) -> Deployment:
     Returns:
         Deployment
     """
-    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+    ServeUsageTag.API_VERSION.record("v1")
     return _private_api.get_deployment(name)
 
 
@@ -429,7 +443,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+    ServeUsageTag.API_VERSION.record("v1")
     return _private_api.list_deployments()
 
 
@@ -467,13 +481,16 @@ def run(
     Returns:
         RayServeSyncHandle: A handle that can be used to call the application.
     """
+    if len(name) == 0:
+        raise RayServeException("Application name must a non-empty string.")
+
     client = _private_api.serve_start(
         detached=True,
         http_options={"host": host, "port": port, "location": "EveryNode"},
     )
 
     # Record after Ray has been started.
-    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v2")
+    ServeUsageTag.API_VERSION.record("v2")
 
     if isinstance(target, Application):
         deployments = pipeline_build(target._get_internal_dag_node(), name)
@@ -506,13 +523,8 @@ def run(
             deployment._route_prefix = route_prefix
         deployment_parameters = {
             "name": deployment._name,
-            "func_or_class": deployment._func_or_class,
-            "init_args": deployment.init_args,
-            "init_kwargs": deployment.init_kwargs,
-            "ray_actor_options": deployment._ray_actor_options,
-            "placement_group_bundles": deployment._placement_group_bundles,
-            "placement_group_strategy": deployment._placement_group_strategy,
-            "config": deployment._config,
+            "replica_config": deployment._replica_config,
+            "deployment_config": deployment._deployment_config,
             "version": deployment._version or get_random_letters(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
@@ -783,18 +795,12 @@ def status() -> ServeStatus:
 
 @PublicAPI(stability="alpha")
 def get_app_handle(
-    name: str, sync: Optional[bool] = None
-) -> Optional[Union[RayServeHandle, RayServeSyncHandle]]:
+    name: str,
+) -> DeploymentHandle:
     """Get a handle to the application's ingress deployment by name.
-
-    When called from within a deployment `sync` will default to `False`.
-    When called from outside a deployment `sync` will default to `True`.
 
     Args:
         name: Name of application to get a handle to.
-        sync: If false, then returns a RayServeHandle, which is
-            asynchronous. If true, then returns a RayServeSyncHandle,
-            which is synchronous.
 
     Raises:
         RayServeException: If no Serve controller is running, or if the
@@ -811,7 +817,7 @@ def get_app_handle(
 
             serve.run(f.bind(), name="my_app")
             handle = serve.get_app_handle("my_app")
-            assert ray.get(handle.remote(3)) == 6
+            assert handle.remote(3).result() == 6
     """
 
     client = get_global_client()
@@ -819,23 +825,19 @@ def get_app_handle(
     if ingress is None:
         raise RayServeException(f"Application '{name}' does not exist.")
 
-    internal_replica_context = get_internal_replica_context()
-    if sync is None:
-        # If sync is unspecified, default to async within a deployment
-        # and default to sync outside a deployment
-        sync = internal_replica_context is None
-
-    return client.get_handle(ingress, name, sync=sync)
+    # Default to async within a deployment and sync outside a deployment.
+    sync = get_internal_replica_context() is None
+    return client.get_handle(ingress, name, sync=sync).options(
+        use_new_handle_api=True,
+    )
 
 
 @DeveloperAPI
 def get_deployment_handle(
-    deployment_name: str, app_name: Optional[str] = None, sync: Optional[bool] = None
-) -> Union[RayServeHandle, RayServeSyncHandle]:
+    deployment_name: str,
+    app_name: Optional[str] = None,
+) -> DeploymentHandle:
     """Get a handle to the named deployment.
-
-    When called from within a deployment `sync` will default to `False`.
-    When called from outside a deployment `sync` will default to `True`.
 
     Args:
         deployment_name: Name of deployment to get a handle to.
@@ -843,9 +845,6 @@ def get_deployment_handle(
             from inside a Serve application and `app_name` is not
             specified, this will default to the application from which
             this API is called.
-        sync: If false, then returns a RayServeHandle, which is
-            asynchronous. If true, then returns a RayServeSyncHandle,
-            which is synchronous.
 
     Raises:
         RayServeException: If no Serve controller is running, or if
@@ -865,9 +864,8 @@ def get_deployment_handle(
         else:
             app_name = internal_replica_context.app_name
 
-    if sync is None:
-        # If sync is unspecified, default to async within a deployment
-        # and default to sync outside a deployment
-        sync = internal_replica_context is None
-
-    return client.get_handle(deployment_name, app_name, sync=sync)
+    # Default to async within a deployment and sync outside a deployment.
+    sync = internal_replica_context is None
+    return client.get_handle(deployment_name, app_name, sync=sync).options(
+        use_new_handle_api=True
+    )

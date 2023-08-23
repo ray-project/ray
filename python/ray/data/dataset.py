@@ -67,11 +67,13 @@ from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan, OneToOneStage
-from ray.data._internal.planner.filter import generate_filter_fn
-from ray.data._internal.planner.flat_map import generate_flat_map_fn
-from ray.data._internal.planner.map_batches import generate_map_batches_fn
-from ray.data._internal.planner.map_rows import generate_map_rows_fn
-from ray.data._internal.planner.write import generate_write_fn
+from ray.data._internal.planner.plan_udf_map_op import (
+    generate_filter_fn,
+    generate_flat_map_fn,
+    generate_map_batches_fn,
+    generate_map_rows_fn,
+)
+from ray.data._internal.planner.plan_write_op import generate_write_fn
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import SortKey
@@ -113,6 +115,7 @@ from ray.data.context import (
 )
 from ray.data.datasource import (
     BlockWritePathProvider,
+    Connection,
     CSVDatasource,
     Datasource,
     DefaultBlockWritePathProvider,
@@ -121,6 +124,7 @@ from ray.data.datasource import (
     NumpyDatasource,
     ParquetDatasource,
     ReadTask,
+    SQLDatasource,
     TFRecordDatasource,
     WriteResult,
 )
@@ -286,6 +290,7 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         **ray_remote_args,
@@ -336,6 +341,9 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
@@ -353,7 +361,7 @@ class Dataset:
             :meth:`~Dataset.map_batches`
                 Call this method to transform batches of data.
         """  # noqa: E501
-        validate_compute(fn, compute)
+        validate_compute(fn, compute, fn_constructor_args)
 
         transform_fn = generate_map_rows_fn()
 
@@ -370,6 +378,7 @@ class Dataset:
                 compute,
                 ray_remote_args,
                 fn=fn,
+                fn_constructor_args=fn_constructor_args,
             )
         )
 
@@ -378,6 +387,7 @@ class Dataset:
             map_op = MapRows(
                 logical_plan.dag,
                 fn,
+                fn_constructor_args=fn_constructor_args,
                 compute=compute,
                 ray_remote_args=ray_remote_args,
             )
@@ -552,22 +562,20 @@ class Dataset:
                 f"{batch_format}"
             )
 
-        validate_compute(fn, compute)
+        validate_compute(fn, compute, fn_constructor_args)
 
-        if fn_constructor_args is not None or fn_constructor_kwargs is not None:
+        if fn_constructor_kwargs is not None:
             if compute is None or (
                 compute != "actors" and not isinstance(compute, ActorPoolStrategy)
             ):
                 raise ValueError(
-                    "fn_constructor_args and fn_constructor_kwargs can only be "
-                    "specified if using the actor pool compute strategy, but got: "
-                    f"{compute}"
+                    "fn_constructor_kwargs can only be specified if using the actor "
+                    f"pool compute strategy, but got: {compute}"
                 )
             if not isinstance(fn, CallableClass):
                 raise ValueError(
-                    "fn_constructor_args and fn_constructor_kwargs can only be "
-                    "specified if providing a CallableClass instance for fn, but got: "
-                    f"{fn}"
+                    "fn_constructor_kwargs can only be specified if providing a "
+                    f"CallableClass instance for fn, but got: {fn}"
                 )
 
         transform_fn = generate_map_batches_fn(
@@ -789,6 +797,7 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         **ray_remote_args,
@@ -833,6 +842,9 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
@@ -848,7 +860,7 @@ class Dataset:
             :meth:`~Dataset.map`
                 Call this method to transform one row at time.
         """
-        validate_compute(fn, compute)
+        validate_compute(fn, compute, fn_constructor_args)
 
         transform_fn = generate_flat_map_fn()
 
@@ -859,7 +871,14 @@ class Dataset:
             ray_remote_args["num_gpus"] = num_gpus
 
         plan = self._plan.with_stage(
-            OneToOneStage("FlatMap", transform_fn, compute, ray_remote_args, fn=fn)
+            OneToOneStage(
+                "FlatMap",
+                transform_fn,
+                compute,
+                ray_remote_args,
+                fn=fn,
+                fn_constructor_args=fn_constructor_args,
+            )
         )
 
         logical_plan = self._logical_plan
@@ -867,6 +886,7 @@ class Dataset:
             op = FlatMap(
                 input_op=logical_plan.dag,
                 fn=fn,
+                fn_constructor_args=fn_constructor_args,
                 compute=compute,
                 ray_remote_args=ray_remote_args,
             )
@@ -2304,10 +2324,12 @@ class Dataset:
             ``ValueError``: if the dataset is empty.
         """
         batch_format = _apply_strict_mode_batch_format(batch_format)
+        limited_ds = self.limit(batch_size)
+
         try:
             res = next(
                 iter(
-                    self.iter_batches(
+                    limited_ds.iter_batches(
                         batch_size=batch_size,
                         prefetch_batches=0,
                         batch_format=batch_format,
@@ -2317,6 +2339,9 @@ class Dataset:
         except StopIteration:
             raise ValueError("The dataset is empty.")
         self._synchronize_progress_bar()
+
+        # Save the computed stats to the original dataset.
+        self._plan._snapshot_stats = limited_ds._plan.stats()
         return res
 
     @ConsumptionAPI
@@ -2357,11 +2382,16 @@ class Dataset:
                 "records in pandas or numpy batch format."
             )
         output = []
-        for row in self.iter_rows():
+
+        limited_ds = self.limit(limit)
+        for row in limited_ds.iter_rows():
             output.append(row)
             if len(output) >= limit:
                 break
         self._synchronize_progress_bar()
+
+        # Save the computed stats to the original dataset.
+        self._plan._snapshot_stats = limited_ds._plan.stats()
         return output
 
     @ConsumptionAPI
@@ -2826,7 +2856,7 @@ class Dataset:
             column: The column containing the data you want to write to images.
             file_format: The image file format to write with. For available options,
                 see `Image file formats <https://pillow.readthedocs.io/en/latest\
-                /handbook/image-file-formats.html>`.
+                /handbook/image-file-formats.html>`_.
             filesystem: The pyarrow filesystem implementation to write to.
                 These filesystems are specified in the
                 `pyarrow docs <https://arrow.apache.org/docs\
@@ -3185,6 +3215,68 @@ class Dataset:
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
+        )
+
+    @ConsumptionAPI
+    def write_sql(
+        self,
+        sql: str,
+        connection_factory: Callable[[], Connection],
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Write to a database that provides a
+        `Python DB API2-compliant <https://peps.python.org/pep-0249/>`_ connector.
+
+        .. note::
+
+            This method writes data in parallel using the DB API2 ``executemany``
+            method. To learn more about this method, see
+            `PEP 249 <https://peps.python.org/pep-0249/#executemany>`_.
+
+        Examples:
+
+            .. testcode::
+
+                import sqlite3
+                import ray
+
+                connection = sqlite3.connect("example.db")
+                connection.cursor().execute("CREATE TABLE movie(title, year, score)")
+                dataset = ray.data.from_items([
+                    {"title": "Monty Python and the Holy Grail", "year": 1975, "score": 8.2},
+                    {"title": "And Now for Something Completely Different", "year": 1971, "score": 7.5}
+                ])
+
+                dataset.write_sql(
+                    "INSERT INTO movie VALUES(?, ?, ?)", lambda: sqlite3.connect("example.db")
+                )
+
+                result = connection.cursor().execute("SELECT * FROM movie ORDER BY year")
+                print(result.fetchall())
+
+            .. testoutput::
+
+                [('And Now for Something Completely Different', 1971, 7.5), ('Monty Python and the Holy Grail', 1975, 8.2)]
+
+            .. testcode::
+                :hide:
+
+                import os
+                os.remove("example.db")
+
+        Arguments:
+            sql: An ``INSERT INTO`` statement that specifies the table to write to. The
+                number of parameters must match the number of columns in the table.
+            connection_factory: A function that takes no arguments and returns a
+                Python DB API2
+                `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
+            ray_remote_args: Keyword arguments passed to :meth:`~ray.remote` in the
+                write tasks.
+        """  # noqa: E501
+        self.write_datasource(
+            SQLDatasource(connection_factory),
+            ray_remote_args=ray_remote_args,
+            sql=sql,
         )
 
     @ConsumptionAPI
