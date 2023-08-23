@@ -408,8 +408,11 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \param data
     void RecordDataLossFromWorker(const rpc::TaskEventData &data);
 
-    /// Evict task events of a task attempt from the storage.
+    /// Evict task events from the storage when there are too many task events.
     void EvictTaskEvent();
+
+    /// Remove information of a task attempt from the storage.
+    void RemoveTaskAttempt(std::shared_ptr<TaskEventLocator> loc);
 
     /// Test only functions.
     std::shared_ptr<TaskEventLocator> GetTaskEventLocator(

@@ -270,6 +270,28 @@ GcsTaskManager::GcsTaskManagerStorage::UpdateOrInitTaskEventLocator(
   return loc;
 }
 
+void GcsTaskManager::GcsTaskManagerStorage::RemoveTaskAttempt(
+    std::shared_ptr<TaskEventLocator> loc) {
+  const auto &to_remove = loc->GetTaskEvents();
+
+  const auto job_id = JobID::FromBinary(to_remove.job_id());
+
+  // Update the tracking
+  job_task_summary_[job_id].RecordProfileEventsDropped(NumProfileEvents(to_remove));
+  job_task_summary_[job_id].RecordTaskAttemptDropped(GetTaskAttempt(to_remove));
+  stats_counter_.Decrement(kNumTaskEventsBytesStored, to_remove.ByteSizeLong());
+  stats_counter_.Decrement(kNumTaskEventsStored);
+  stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
+  stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
+                           NumProfileEvents(to_remove));
+
+  // Remove from the index.
+  RemoveFromIndex(loc);
+
+  // Lastly, remove from the underlying list.
+  task_events_list_[loc->GetCurrentListIndex()].erase(loc->GetCurrentListIterator());
+}
+
 void GcsTaskManager::GcsTaskManagerStorage::EvictTaskEvent() {
   // Choose one task event to evict
   size_t list_index = 0;
@@ -286,24 +308,7 @@ void GcsTaskManager::GcsTaskManagerStorage::EvictTaskEvent() {
   const auto &loc_iter = primary_index_.find(GetTaskAttempt(to_evict));
   RAY_CHECK(loc_iter != primary_index_.end());
 
-  // Copy the pointer, otherwise the iterator will be invalidated when
-  // removed from primary index.
-  auto loc = loc_iter->second;
-  const auto job_id = JobID::FromBinary(to_evict.job_id());
-
-  // Update the tracking
-  job_task_summary_[job_id].RecordProfileEventsDropped(NumProfileEvents(to_evict));
-  job_task_summary_[job_id].RecordTaskAttemptDropped(GetTaskAttempt(to_evict));
-  stats_counter_.Decrement(kNumTaskEventsBytesStored, to_evict.ByteSizeLong());
-  stats_counter_.Decrement(kNumTaskEventsStored);
-  stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
-  stats_counter_.Increment(kTotalNumProfileTaskEventsDropped, NumProfileEvents(to_evict));
-
-  // Remove from the index.
-  RemoveFromIndex(loc);
-
-  // Lastly, remove from the underlying list.
-  task_events_list_[loc->GetCurrentListIndex()].erase(loc->GetCurrentListIterator());
+  RemoveTaskAttempt(loc_iter->second);
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
@@ -312,8 +317,9 @@ void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   // We are dropping this task.
   if (job_task_summary_[job_id].ShouldDropTaskAttempt(GetTaskAttempt(events_by_task))) {
     // This task attempt has been dropped.
-    RAY_LOG(INFO) << "already dropping task " << events_by_task.task_id() << " attempt "
-                  << events_by_task.attempt_number() << " of job " << job_id;
+    RAY_LOG(DEBUG) << "already dropping task "
+                   << TaskID::FromBinary(events_by_task.task_id()) << " attempt "
+                   << events_by_task.attempt_number() << " of job " << job_id;
     return;
   }
 
@@ -432,6 +438,13 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
     job_task_summary_[job_id].RecordTaskAttemptDropped(
         std::make_pair<>(task_id, attempt_number));
     stats_counter_.Increment(kTotalNumTaskAttemptsDropped);
+
+    // We will also remove any existing task events for this task attempt from the storage
+    // since we want to make data loss at task attempt granularity.
+    const auto &loc_iter = primary_index_.find(std::make_pair<>(task_id, attempt_number));
+    if (loc_iter != primary_index_.end()) {
+      RemoveTaskAttempt(loc_iter->second);
+    }
   }
 
   if (data.num_profile_events_dropped() > 0) {
