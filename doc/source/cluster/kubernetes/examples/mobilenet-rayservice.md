@@ -34,7 +34,7 @@ kubectl apply -f ray-service.mobilenet.yaml
 kubectl port-forward svc/rayservice-mobilenet-serve-svc 8000
 ```
 
-Note that the Serve service will be created after the Serve applications are ready and running. This process may take approximately 1 minute after all Pods in the RayCluster are running.
+Note that the Serve service is created after the Ray Serve applications are ready and running. This process may take approximately 1 minute after all Pods in the RayCluster are running.
 
 ## Step 5: Send a request to the ImageClassifier
 
