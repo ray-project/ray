@@ -75,27 +75,6 @@ def _do_additional_splits(
             offset += size
 
 
-def _generate_output_transform_fn(
-    additional_split_factor: Optional[int],
-) -> MapTransformFn:
-    """Generate the MapTransformFn for handling output blocks of a ReadTask."""
-    if additional_split_factor is None:
-        # If additional_split_factor is None, we build output blocks from the
-        # output blocks of the read tasks.
-        return BuildOutputBlocksMapTransformFn.for_blocks()
-    else:
-        # If additional_split_factor is not None, we do additional splits to the
-        # output blocks of the read tasks.
-        return MapTransformFn(
-            functools.partial(
-                _do_additional_splits,
-                additional_output_splits=additional_split_factor,
-            ),
-            MapTransformFnDataType.Block,
-            MapTransformFnDataType.Block,
-        )
-
-
 # TODO(hchen): This function is for supporting the `_block_udf` parameter
 # of `read_parquet`. The parameter can be deprecated in favor of using
 # `read_parquet` + `map_batches` with operator fusion.
@@ -150,14 +129,30 @@ def plan_read_op(op: Read) -> PhysicalOperator:
 
     # Create a MapTransformer for a read operator
     transform_fns = [
+        # First, execute the read tasks.
         MapTransformFn(
             do_read, MapTransformFnDataType.Block, MapTransformFnDataType.Block
         ),
     ]
     block_udf = getattr(op._reader, "_block_udf", None)
     if block_udf is not None:
+        # Then apply the block UDF if it exists.
         transform_fns.append(_generate_block_udf_transform_fn(block_udf))
-    transform_fns.append(_generate_output_transform_fn(op._additional_split_factor))
+    # Finally, build the output blocks.
+    transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
+
+    if op._additional_split_factor is not None:
+        # If addtional split is needed, do it in the last.
+        transform_fns.append(
+            MapTransformFn(
+                functools.partial(
+                    _do_additional_splits,
+                    additional_output_splits=op._additional_split_factor,
+                ),
+                MapTransformFnDataType.Block,
+                MapTransformFnDataType.Block,
+            ),
+        )
 
     map_transformer = MapTransformer(transform_fns)
 
@@ -177,11 +172,23 @@ def apply_output_blocks_handling_to_read_task(
 
     This function is only used for compability with the legacy LazyBlockList code path.
     """
-    transform_fns = []
+    transform_fns: List[MapTransformFn] = []
     block_udf = getattr(read_task, "_block_udf", None)
     if block_udf is not None:
         transform_fns.append(_generate_block_udf_transform_fn(block_udf))
-    transform_fns.append(_generate_output_transform_fn(additional_split_factor))
+    transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
+
+    if additional_split_factor is not None:
+        transform_fns.append(
+            MapTransformFn(
+                functools.partial(
+                    _do_additional_splits,
+                    additional_output_splits=additional_split_factor,
+                ),
+                MapTransformFnDataType.Block,
+                MapTransformFnDataType.Block,
+            ),
+        )
     map_transformer = MapTransformer(transform_fns)
 
     original_read_fn = read_task._read_fn
