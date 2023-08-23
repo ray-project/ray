@@ -15,6 +15,10 @@ import useSWR from "swr";
 import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
 import { NodeLink } from "../../common/links";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+} from "../../common/ProfilingLink";
 import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
@@ -254,23 +258,8 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
           Logs
         </Link>
         <br />
-        <a
-          href={`/worker/traceback?pid=${pid}&ip=${ip}&native=0`}
-          target="_blank"
-          title="Sample the current Python stack trace for this worker."
-          rel="noreferrer"
-        >
-          Stack&nbsp;Trace
-        </a>
-        <br />
-        <a
-          href={`/worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
-          target="_blank"
-          title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
-          rel="noreferrer"
-        >
-          CPU&nbsp;Flame&nbsp;Graph
-        </a>
+        <CpuStackTraceLink pid={pid} ip={ip} type="" />
+        <CpuProfilingLink pid={pid} ip={ip} type="" />
         <br />
       </TableCell>
       <TableCell>
