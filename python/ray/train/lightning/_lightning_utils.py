@@ -199,14 +199,15 @@ class RayTrainReportCallback(Callback):
     def __init__(self) -> None:
         super().__init__()
         self.trial_name = train.get_context().get_trial_name()
+        self.local_rank = train.get_context().get_local_rank()
         self.tmpdir_prefix = os.path.join(tempfile.gettempdir(), self.trial_name)
+        if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
+            shutil.rmtree(self.tmpdir_prefix)
 
     def on_train_epoch_end(self, trainer, pl_module) -> None:
         # Creates a checkpoint dir with fixed name
         tmpdir = os.path.join(self.tmpdir_prefix, str(trainer.current_epoch))
-        if os.path.isdir(tmpdir):
-            shutil.rmtree(tmpdir)
-        os.makedirs(tmpdir)
+        os.makedirs(tmpdir, exist_ok=True)
 
         # Fetch metrics
         metrics = trainer.callback_metrics
@@ -227,7 +228,8 @@ class RayTrainReportCallback(Callback):
             checkpoint = Checkpoint.from_directory(tmpdir)
         train.report(metrics=metrics, checkpoint=checkpoint)
 
-        shutil.rmtree(tmpdir)
+        if self.local_rank == 0:
+            shutil.rmtree(tmpdir)
 
 
 class RayIterableDataset(IterableDataset):
