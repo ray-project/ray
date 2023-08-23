@@ -85,7 +85,7 @@ class Checkpoint:
         self._uuid = uuid.uuid4()
 
     def __repr__(self):
-        return f"Checkpoint(filesystem={self.filesystem}, path={self.path})"
+        return f"Checkpoint(filesystem={self.filesystem.type_name}, path={self.path})"
 
     def get_metadata(self) -> Dict[str, Any]:
         """Return the metadata dict stored with the checkpoint.
@@ -117,8 +117,8 @@ class Checkpoint:
         existing_metadata.update(metadata)
         self.set_metadata(existing_metadata)
 
-    @staticmethod
-    def from_directory(path: Union[str, os.PathLike]) -> "Checkpoint":
+    @classmethod
+    def from_directory(cls, path: Union[str, os.PathLike]) -> "Checkpoint":
         """Create checkpoint object from a local directory.
 
         Args:
@@ -128,9 +128,9 @@ class Checkpoint:
                 of the checkpoint directory.
 
         Returns:
-            Checkpoint: checkpoint object.
+            A ray.train.Checkpoint object.
         """
-        return Checkpoint(path, filesystem=pyarrow.fs.LocalFileSystem())
+        return cls(path, filesystem=pyarrow.fs.LocalFileSystem())
 
     def to_directory(self, path: Optional[Union[str, os.PathLike]] = None) -> str:
         """Write checkpoint data to directory.

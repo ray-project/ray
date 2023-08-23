@@ -8,8 +8,7 @@ import ray
 from ray import tune
 from ray.train.constants import TRAIN_DATASET_KEY
 
-from ray.data.preprocessor import Preprocessor
-from ray.train.lightgbm import LightGBMCheckpoint, LightGBMTrainer
+from ray.train.lightgbm import LegacyLightGBMCheckpoint, LightGBMTrainer
 from ray.train import Checkpoint, ScalingConfig
 
 from sklearn.datasets import load_breast_cancer
@@ -68,8 +67,8 @@ def test_fit_with_categoricals(ray_start_6_cpus):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
-    model = checkpoint.get_model()
+    checkpoint = result.checkpoint
+    model = LightGBMTrainer.get_model(checkpoint)
     assert model.pandas_categorical == [["A", "B"]]
 
 
@@ -85,7 +84,7 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
     )
     result = trainer.fit()
     checkpoint = result.checkpoint
-    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
+    checkpoint = LegacyLightGBMCheckpoint.from_checkpoint(result.checkpoint)
     model = checkpoint.get_model()
     assert get_num_trees(model) == 5
 
@@ -104,9 +103,9 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
         resume_from_checkpoint=resume_from,
     )
     result = trainer.fit()
-    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
-    xgb_model = checkpoint.get_model()
-    assert get_num_trees(xgb_model) == 10
+    checkpoint = result.checkpoint
+    model = LightGBMTrainer.get_model(checkpoint)
+    assert get_num_trees(model) == 10
 
 
 @pytest.mark.parametrize(
@@ -149,45 +148,6 @@ def test_checkpoint_freq(ray_start_6_cpus, freq_end_expected):
     # Assert checkpoint numbers are increasing
     cp_paths = [cp._local_path for cp, _ in result.best_checkpoints]
     assert cp_paths == sorted(cp_paths), str(cp_paths)
-
-
-def test_preprocessor_in_checkpoint(ray_start_6_cpus, tmpdir):
-    train_dataset = ray.data.from_pandas(train_df)
-    valid_dataset = ray.data.from_pandas(test_df)
-
-    class DummyPreprocessor(Preprocessor):
-        def __init__(self):
-            super().__init__()
-            self.is_same = True
-
-        def _fit(self, dataset):
-            self.fitted_ = True
-
-        def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
-            return df
-
-    trainer = LightGBMTrainer(
-        scaling_config=scale_config,
-        label_column="target",
-        params=params,
-        datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
-        preprocessor=DummyPreprocessor(),
-    )
-    result = trainer.fit()
-
-    # Move checkpoint to a different directory.
-    checkpoint_dict = result.checkpoint.to_dict()
-    checkpoint = Checkpoint.from_dict(checkpoint_dict)
-    checkpoint_path = checkpoint.to_directory(tmpdir)
-    resume_from = Checkpoint.from_directory(checkpoint_path)
-
-    resume_from = LightGBMCheckpoint.from_checkpoint(resume_from)
-
-    model = resume_from.get_model()
-    preprocessor = resume_from.get_preprocessor()
-    assert get_num_trees(model) == 10
-    assert preprocessor.is_same
-    assert preprocessor.fitted_
 
 
 def test_tune(ray_start_8_cpus):

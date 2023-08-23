@@ -10,7 +10,6 @@ import ray
 from ray.actor import ActorHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from ray._raylet import GcsClient
 from ray.serve.config import HTTPOptions, DeploymentMode
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
@@ -26,9 +25,9 @@ from ray.serve._private.constants import (
 from ray.serve._private import http_proxy
 from ray.serve._private.utils import (
     format_actor_name,
-    get_all_node_ids,
 )
 from ray.serve._private.common import NodeId, HTTPProxyStatus
+from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve.schema import HTTPProxyDetails
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -129,6 +128,7 @@ class HTTPProxyState:
                 self._health_check_obj_ref = None
                 try:
                     ray.get(finished[0])
+                    self.try_update_status(HTTPProxyStatus.HEALTHY)
                 except ray.exceptions.RayActorError:
                     # The proxy actor dies.
                     self.set_status(HTTPProxyStatus.UNHEALTHY)
@@ -314,7 +314,7 @@ class HTTPProxyStateManager:
         detached: bool,
         config: HTTPOptions,
         head_node_id: str,
-        gcs_client: GcsClient,
+        cluster_node_info_cache: ClusterNodeInfoCache,
     ):
         self._controller_name = controller_name
         self._detached = detached
@@ -325,7 +325,7 @@ class HTTPProxyStateManager:
         self._proxy_states: Dict[NodeId, HTTPProxyState] = dict()
         self._head_node_id: str = head_node_id
 
-        self._gcs_client = gcs_client
+        self._cluster_node_info_cache = cluster_node_info_cache
 
         assert isinstance(head_node_id, str)
 
@@ -395,7 +395,7 @@ class HTTPProxyStateManager:
 
         target_nodes = [
             (node_id, ip_address)
-            for node_id, ip_address in get_all_node_ids(self._gcs_client)
+            for node_id, ip_address in self._cluster_node_info_cache.get_alive_nodes()
             if node_id in http_proxy_nodes
         ]
 
@@ -471,6 +471,7 @@ class HTTPProxyStateManager:
             node_id=node_id,
             http_middlewares=self._config.middlewares,
             request_timeout_s=self._config.request_timeout_s,
+            keep_alive_timeout_s=self._config.keep_alive_timeout_s,
         )
         return proxy
 
@@ -505,10 +506,10 @@ class HTTPProxyStateManager:
 
         Removes proxy actors from any nodes that no longer exist or unhealthy proxy.
         """
-        all_node_ids = {node_id for node_id, _ in get_all_node_ids(self._gcs_client)}
+        alive_node_ids = self._cluster_node_info_cache.get_alive_node_ids()
         to_stop = []
         for node_id, proxy_state in self._proxy_states.items():
-            if node_id not in all_node_ids:
+            if node_id not in alive_node_ids:
                 logger.info(f"Removing HTTP proxy on removed node '{node_id}'.")
                 to_stop.append(node_id)
             elif proxy_state.status == HTTPProxyStatus.UNHEALTHY:

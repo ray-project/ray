@@ -36,6 +36,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
@@ -52,6 +53,7 @@ from ray.serve._private.http_util import (
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
+    configure_component_cpu_profiler,
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
@@ -63,6 +65,7 @@ from ray.serve._private.utils import (
     MetricsPusher,
 )
 from ray.serve._private.version import DeploymentVersion
+from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -101,6 +104,11 @@ def create_replica_wrapper(name: str):
                 component_id=replica_tag,
             )
             configure_component_memory_profiler(
+                component_type=ServeComponentType.DEPLOYMENT,
+                component_name=deployment_name,
+                component_id=replica_tag,
+            )
+            self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
                 component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,
@@ -433,6 +441,27 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             return self.replica.version.deployment_config, self.replica.version
 
+        def _save_cpu_profile_data(self) -> str:
+            """Saves CPU profiling data, if CPU profiling is enabled.
+
+            Logs a warning if CPU profiling is disabled.
+            """
+
+            if self.cpu_profiler is not None:
+                import marshal
+
+                self.cpu_profiler.snapshot_stats()
+                with open(self.cpu_profiler_log, "wb") as f:
+                    marshal.dump(self.cpu_profiler.stats, f)
+                logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+                return self.cpu_profiler_log
+            else:
+                logger.error(
+                    "Attempted to save CPU profile data, but failed because no "
+                    "CPU profiler was running! Enable CPU profiling by enabling "
+                    "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
+                )
+
         async def prepare_for_shutdown(self):
             if self.replica is not None:
                 return await self.replica.prepare_for_shutdown()
@@ -524,6 +553,7 @@ class RayServeReplica:
 
         self.restart_counter.inc()
 
+        self.autoscaling_metrics_store = InMemoryMetricsStore()
         self.metrics_pusher = MetricsPusher()
         if autoscaling_config:
             process_remote_func = controller_handle.record_autoscaling_metrics.remote
@@ -533,12 +563,23 @@ class RayServeReplica:
                 config.metrics_interval_s,
                 process_remote_func,
             )
+            self.metrics_pusher.register_task(
+                lambda: {self.replica_tag: self.get_num_pending_and_running_requests()},
+                min(
+                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                    config.metrics_interval_s,
+                ),
+                self._add_autoscaling_metrics_point,
+            )
 
         self.metrics_pusher.register_task(
             self._set_replica_requests_metrics,
             RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
         )
         self.metrics_pusher.start()
+
+    def _add_autoscaling_metrics_point(self, data, send_timestamp: float):
+        self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
 
     def _set_replica_requests_metrics(self):
         self.num_processing_items.set(self.get_num_running_requests())
@@ -574,7 +615,10 @@ class RayServeReplica:
         return stats.get("pending", 0) + stats.get("running", 0)
 
     def collect_autoscaling_metrics(self):
-        return {self.replica_tag: self.get_num_pending_and_running_requests()}
+        look_back_period = self.deployment_config.autoscaling_config.look_back_period_s
+        return self.replica_tag, self.autoscaling_metrics_store.window_average(
+            self.replica_tag, time.time() - look_back_period
+        )
 
     def get_runner_method(self, request_metadata: RequestMetadata) -> Callable:
         method_name = request_metadata.call_method

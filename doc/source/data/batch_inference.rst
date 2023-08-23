@@ -26,12 +26,12 @@ To start, install Ray Data:
 
 Using Ray Data for offline inference involves four basic steps:
 
-- **Step 1:** Load your data into a Ray Dataset. Ray Data supports many different data sources and formats. For more details, see :ref:`Loading Data <loading_data>`.
+- **Step 1:** Load your data into a Ray Dataset. Ray Data supports many different datasources and formats. For more details, see :ref:`Loading Data <loading_data>`.
 - **Step 2:** Define a Python class to load the pre-trained model.
 - **Step 3:** Transform your dataset using the pre-trained model by calling :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see :ref:`Transforming Data <transforming_data>`.
 - **Step 4:** Get the final predictions by either iterating through the output or saving the results. For more details, see the :ref:`Iterating over data <iterating-over-data>` and :ref:`Saving data <saving-data>` user guides.
 
-For more in-depth examples for your use case, see :ref:`our batch inference examples<batch_inference_examples>`.
+For more in-depth examples for your use case, see :ref:`the batch inference examples<batch_inference_examples>`.
 For how to configure batch inference, see :ref:`the configuration guide<batch_inference_configuration>`.
 
 .. tabs::
@@ -184,7 +184,7 @@ More examples
 -------------
 - :doc:`Image Classification Batch Inference with PyTorch ResNet18 </data/examples/pytorch_resnet_batch_prediction>`
 - :doc:`Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50 </data/examples/batch_inference_object_detection>`
-- :doc:`Image Classification Batch Inference with Huggingface Vision Transformer </data/examples/huggingface_vit_batch_prediction>`
+- :doc:`Image Classification Batch Inference with Hugging Face Vision Transformer </data/examples/huggingface_vit_batch_prediction>`
 
 .. _batch_inference_configuration:
 
@@ -199,8 +199,8 @@ Using GPUs for inference
 To use GPUs for inference, make the following changes to your code:
 
 1. Update the class implementation to move the model and data to and from GPU.
-2. Specify `num_gpus=1` in the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` call to indicate that each actor should use 1 GPU.
-3. Specify a `batch_size` for inference. For more details on how to configure the batch size, see `batch_inference_batch_size`_.
+2. Specify ``num_gpus=1`` in the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` call to indicate that each actor should use 1 GPU.
+3. Specify a ``batch_size`` for inference. For more details on how to configure the batch size, see :ref:`Configuring Batch Size <batch_inference_batch_size>`.
 
 The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
@@ -340,9 +340,9 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 Configuring Batch Size
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Configure the size of the input batch that is passed to ``__call__`` by setting the ``batch_size`` argument for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
+Configure the size of the input batch that's passed to ``__call__`` by setting the ``batch_size`` argument for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
 
-Increasing batch size results in faster execution because inference is a vectorized operation. For GPU inference, increasing batch size increases GPU utilization. Set the batch size to as large possible without running out of memory. If you encounter OOMs, decreasing ``batch_size`` may help.
+Increasing batch size results in faster execution because inference is a vectorized operation. For GPU inference, increasing batch size increases GPU utilization. Set the batch size to as large possible without running out of memory. If you encounter out-of-memory errors, decreasing ``batch_size`` may help.
 
 .. testcode::
 
@@ -361,7 +361,7 @@ Increasing batch size results in faster execution because inference is a vectori
 
 .. caution::
   The default ``batch_size`` of ``4096`` may be too large for datasets with large rows
-  (e.g., tables with many columns or a collection of large images).
+  (for example, tables with many columns or a collection of large images).
 
 Handling GPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -383,9 +383,9 @@ Handling CPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you run out of CPU RAM, you likely that you have too many model replicas that are running concurrently on the same node. For example, if a model
-uses 5GB of RAM when created / run, and a machine has 16GB of RAM total, then no more
+uses 5 GB of RAM when created / run, and a machine has 16 GB of RAM total, then no more
 than three of these models can be run at the same time. The default resource assignments
-of one CPU per task/actor will likely lead to `OutOfMemoryError` from Ray in this situation.
+of one CPU per task/actor might lead to `OutOfMemoryError` from Ray in this situation.
 
 Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
 3 of these actors per node, you can override the CPU or memory:
@@ -420,18 +420,21 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
     predictions.show(limit=1)
 
 
+.. _batch_inference_ray_train:
+
+
 Using models from Ray Train
 ---------------------------
 
-Models that have been trained with :ref:`Ray Train <train-docs>` can then be used for batch inference with :ref:`Ray Data <data>` via the :class:`Checkpoint <ray.air.checkpoint.Checkpoint>` that is returned by :ref:`Ray Train <train-docs>`.
+Models that have been trained with :ref:`Ray Train <train-docs>` can then be used for batch inference with :ref:`Ray Data <data>` via the :class:`Checkpoint <ray.train.Checkpoint>` that is returned by :ref:`Ray Train <train-docs>`.
 
 **Step 1:** Train a model with :ref:`Ray Train <train-docs>`.
 
 .. testcode::
 
     import ray
+    from ray.train import ScalingConfig
     from ray.train.xgboost import XGBoostTrainer
-    from ray.air.config import ScalingConfig
 
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
     train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
@@ -456,15 +459,15 @@ Models that have been trained with :ref:`Ray Train <train-docs>` can then be use
 
     ...
 
-**Step 2:** Extract the :class:`Checkpoint <ray.air.checkpoint.Checkpoint>` from the training :class:`Result <ray.air.Result>`.
+**Step 2:** Extract the :class:`Checkpoint <ray.train.Checkpoint>` from the training :class:`Result <ray.train.Result>`.
 
 .. testcode::
 
     checkpoint = result.checkpoint
 
-**Step 3:** Use Ray Data for batch inference. To load in the model from the :class:`Checkpoint <ray.air.checkpoint.Checkpoint>` inside the Python class, use one of the framework-specific Checkpoint classes.
+**Step 3:** Use Ray Data for batch inference. To load in the model from the :class:`Checkpoint <ray.train.Checkpoint>` inside the Python class, use one of the framework-specific Checkpoint classes.
 
-In this case, we use the :class:`XGBoostCheckpoint <ray.train.xgboost.XGBoostCheckpoint>` to load the model.
+In this case, use :class:`XGBoostCheckpoint <ray.train.xgboost.XGBoostCheckpoint>` to load the model.
 
 The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
 
@@ -475,14 +478,14 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
     import numpy as np
     import xgboost
 
-    from ray.air import Checkpoint
-    from ray.train.xgboost import XGBoostCheckpoint
+    from ray.train import Checkpoint
+    from ray.train.xgboost import LegacyXGBoostCheckpoint
 
     test_dataset = valid_dataset.drop_columns(["target"])
 
     class XGBoostPredictor:
         def __init__(self, checkpoint: Checkpoint):
-            xgboost_checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
+            xgboost_checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(checkpoint)
             self.model = xgboost_checkpoint.get_model()
         
         def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
