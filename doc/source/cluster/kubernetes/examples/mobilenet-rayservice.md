@@ -4,7 +4,7 @@
 
 > **Note:** The Python files for the Ray Serve application and its client are in the repository [ray-project/serve_config_examples](https://github.com/ray-project/serve_config_examples).
 
-## Step 1: Create a Kubernetes cluster with Kind.
+## Step 1: Create a Kubernetes cluster with Kind
 
 ```sh
 kind create cluster --image=kindest/node:v1.23.0
@@ -12,8 +12,8 @@ kind create cluster --image=kindest/node:v1.23.0
 
 ## Step 2: Install KubeRay operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
-Please note that the YAML file in this example uses `serveConfigV2`, which is supported starting from KubeRay v0.6.0.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
+Note that the YAML file in this example uses `serveConfigV2`, which is supported by KubeRay version v0.6.0 and later.
 
 ## Step 3: Install a RayService
 
