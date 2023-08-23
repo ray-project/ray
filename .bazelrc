@@ -8,11 +8,18 @@ build:windows --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
 # Using C++ 17 on all platforms.
+build --cxxopt="-DABSL_LEGACY_THREAD_ANNOTATIONS"
+# host_cxxopt should be removed once bazel doesn't populate std flags automatically.
 build:linux --cxxopt="-std=c++17"
+build:linux --host_cxxopt="-std=c++17"
 build:macos --cxxopt="-std=c++17"
+build:macos --host_cxxopt="-std=c++17"
 build:clang-cl --cxxopt="-std=c++17"
+build:clang-cl --host_cxxopt="-std=c++17"
 build:msvc-cl --cxxopt="/std:c++17"
+build:msvc-cl --host_cxxopt="/std:c++17"
 build:windows --cxxopt="/std:c++17"
+build:windows --host_cxxopt="/std:c++17"
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --force_pic
 build:macos --force_pic
