@@ -570,6 +570,9 @@ class _TrainSession:
     def new_report(
         self, metrics: Dict, checkpoint: Optional[NewCheckpoint] = None
     ) -> None:
+        if self.ignore_report:
+            return
+
         persisted_checkpoint = None
         if checkpoint:
             if not isinstance(checkpoint, NewCheckpoint):
