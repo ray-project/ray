@@ -11,7 +11,6 @@ _DOCKER_ECR_REPO = os.environ.get(
     "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp",
 )
 _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
-_PIPELINE_POSTMERGE = "0189e759-8c96-4302-b6b5-b4274406bf89"
 
 
 def run_tests(
