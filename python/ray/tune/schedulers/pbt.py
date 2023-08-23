@@ -681,7 +681,11 @@ class PopulationBasedTraining(FIFOScheduler):
             else:
                 logger.debug(f"Instructing {trial} to save.")
                 state.last_checkpoint = tune_controller._schedule_trial_save(
-                    trial, CheckpointStorage.PERSISTENT, result=state.last_result
+                    trial,
+                    CheckpointStorage.PERSISTENT
+                    if _use_storage_context()
+                    else CheckpointStorage.MEMORY,
+                    result=state.last_result,
                 )
             self._num_checkpoints += 1
         else:

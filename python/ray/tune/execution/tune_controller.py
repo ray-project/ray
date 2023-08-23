@@ -1652,9 +1652,7 @@ class TuneController:
         if should_checkpoint:
             self._schedule_trial_save(
                 trial,
-                storage=CheckpointStorage.PERSISTENT
-                if _use_storage_context()
-                else CheckpointStorage.MEMORY,
+                CheckpointStorage.MEMORY,
             )
 
         self._schedule_trial_stop(trial)
@@ -2086,7 +2084,7 @@ class TuneController:
             )
             return True
 
-        checkpoint = trial.temporary_state.next_restore or trial.checkpoint
+        checkpoint = trial.checkpoint
 
         if checkpoint.dir_or_data is None:
             logger.debug(f"Not restoring trial {trial}: No checkpoint found.")
@@ -2094,9 +2092,7 @@ class TuneController:
 
         kwargs = {}
 
-        if checkpoint.storage_mode == CheckpointStorage.MEMORY or isinstance(
-            checkpoint.dir_or_data, ray.ObjectRef
-        ):
+        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             method_name = "restore"
             args = (checkpoint.dir_or_data,)
         elif (

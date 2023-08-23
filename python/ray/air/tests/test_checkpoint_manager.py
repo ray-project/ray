@@ -12,7 +12,7 @@ def test_unlimited_persistent_checkpoints():
 
     for i in range(10):
         cpm.register_checkpoints(
-            _TrackedCheckpoint(f"data_{i}", storage_mode=CheckpointStorage.PERSISTENT)
+            _TrackedCheckpoint({"data": i}, storage_mode=CheckpointStorage.PERSISTENT)
         )
 
     assert len(cpm._top_persisted_checkpoints) == 10
@@ -23,7 +23,7 @@ def test_limited_persistent_checkpoints():
 
     for i in range(10):
         cpm.register_checkpoints(
-            _TrackedCheckpoint(f"data_{i}", storage_mode=CheckpointStorage.PERSISTENT)
+            _TrackedCheckpoint({"data": i}, storage_mode=CheckpointStorage.PERSISTENT)
         )
 
     assert len(cpm._top_persisted_checkpoints) == 2
