@@ -665,12 +665,12 @@ def test_put_multi_then_single(ray_start_stop):
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
             == "4 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).text
             == "6 pizzas please!",
             timeout=15,
         )
@@ -778,9 +778,7 @@ def test_put_with_http_options(ray_start_stop, option, override):
 
     # Wait for deployments to be up
     wait_for_condition(
-        lambda: requests.post(
-            "http://localhost:8000/serve/app1", json=["ADD", 2]
-        ).json()
+        lambda: requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).text
         == "4 pizzas please!",
         timeout=15,
     )
@@ -798,7 +796,7 @@ def test_put_with_http_options(ray_start_stop, option, override):
 
     # Deployments should still be up
     assert (
-        requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).json()
+        requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
     assert requests.post("http://localhost:8000/serve/app2").text == "wonderful world"

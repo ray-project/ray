@@ -244,7 +244,7 @@ def test_controller_deserialization_deployment_def(
     )
     ray.get(run_graph.remote())
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 

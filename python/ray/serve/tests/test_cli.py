@@ -178,7 +178,7 @@ def test_deploy_with_http_options(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_multi_app(ray_start_stop):
+def test_deploy_multi_app_basic(ray_start_stop):
     """Deploys some valid config files and checks that the deployments work."""
     # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
@@ -205,41 +205,37 @@ def test_deploy_multi_app(ray_start_stop):
 
         # Test add and mul for each of the two apps
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
             == "3 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).json()
+            lambda: requests.post("http://localhost:8000/app1", json=["MUL", 2]).text
             == "2 pizzas please!",
             timeout=15,
         )
         print('Application "app1" is reachable over HTTP.')
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
             == "5 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).text
             == "4 pizzas please!",
             timeout=15,
         )
         print('Application "app2" is reachable over HTTP.')
 
-        deployments = [
-            DeploymentID("DAGDriver", "app1"),
-            DeploymentID("create_order", "app1"),
+        deployment_names = [
             DeploymentID("Router", "app1"),
             DeploymentID("Multiplier", "app1"),
             DeploymentID("Adder", "app1"),
-            DeploymentID("DAGDriver", "app2"),
-            DeploymentID("create_order", "app2"),
             DeploymentID("Router", "app2"),
             DeploymentID("Multiplier", "app2"),
             DeploymentID("Adder", "app2"),
         ]
-        assert_deployments_live(deployments)
+        assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
 
         print("Deploying pizza world config.")
@@ -255,12 +251,12 @@ def test_deploy_multi_app(ray_start_stop):
         )
         print('Application "app1" is reachable over HTTP.')
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
             == "12 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).text
             == "20 pizzas please!",
             timeout=15,
         )
@@ -269,8 +265,6 @@ def test_deploy_multi_app(ray_start_stop):
         deployment_names = [
             DeploymentID("BasicDriver", "app1"),
             DeploymentID("f", "app1"),
-            DeploymentID("DAGDriver", "app2"),
-            DeploymentID("create_order", "app2"),
             DeploymentID("Router", "app2"),
             DeploymentID("Multiplier", "app2"),
             DeploymentID("Adder", "app2"),

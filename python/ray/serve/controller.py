@@ -58,6 +58,7 @@ from ray.serve.schema import (
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
+    DEFAULT,
     call_function_from_import_path,
     get_all_live_placement_group_names,
     get_head_node_id,
@@ -460,12 +461,12 @@ class ServeController:
             )
             applications = list(config_checkpoints_dict.values())
             if deploy_mode == ServeDeployMode.SINGLE_APP:
-                self.deploy_apps(
+                self.deploy_config(
                     ServeApplicationSchema.parse_obj(applications[0]),
                     deployment_time,
                 )
             else:
-                self.deploy_apps(
+                self.deploy_config(
                     ServeDeploySchema.parse_obj({"applications": applications}),
                     deployment_time,
                 )
@@ -638,7 +639,7 @@ class ServeController:
 
         self.application_state_manager.apply_deployment_args(name, deployment_args_list)
 
-    def deploy_apps(
+    def deploy_config(
         self,
         config: Union[ServeApplicationSchema, ServeDeploySchema],
         deployment_time: float = 0,
@@ -710,6 +711,14 @@ class ServeController:
         new_config_checkpoint = {}
 
         for app_config in applications:
+            for deployments in app_config.deployments:
+                if deployments.route_prefix != DEFAULT.VALUE:
+                    logger.warning(
+                        "Specifying route prefix for a deployment is deprecated. "
+                        "Please specify route prefix at an application level in the "
+                        "Serve config instead."
+                    )
+
             app_config_dict = app_config.dict(exclude_unset=True)
             new_config_checkpoint[app_config.name] = app_config_dict
 

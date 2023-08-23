@@ -353,7 +353,7 @@ class ServeControllerClient:
                 because a single-app config was deployed after deploying a multi-app
                 config, or vice versa.
         """
-        ray.get(self._controller.deploy_apps.remote(config))
+        ray.get(self._controller.deploy_config.remote(config))
 
         if _blocking:
             timeout_s = 60
