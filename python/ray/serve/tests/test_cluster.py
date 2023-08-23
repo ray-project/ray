@@ -318,8 +318,15 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
 @pytest.mark.skipif(
     not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
 )
-def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster):
-    """Verify that http proxy routes to replicas on the same node when possible."""
+@pytest.mark.parametrize("set_flag", [True, False])
+def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
+    """When the feature flag is turned on via env var, verify that http proxy routes to
+    replicas on the same node when possible. Otherwise if env var is not set, http proxy
+    should route to all replicas equally.
+    """
+
+    if set_flag:
+        os.environ["RAY_SERVE_ENABLE_PROXY_LOCALITY_ROUTING"] = "1"
 
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
@@ -338,8 +345,14 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster):
 
     # Since they're sent sequentially, all requests should be routed to
     # the replica on the head node
-    for _ in range(10):
-        assert requests.post("http://localhost:8000").text == head_node_id
+    responses = [requests.post("http://localhost:8000").text for _ in range(10)]
+    if set_flag:
+        assert all(resp == head_node_id for resp in responses)
+    else:
+        assert len(set(responses)) == 2
+
+    if "RAY_SERVE_ENABLE_PROXY_LOCALITY_ROUTING" in os.environ:
+        del os.environ["RAY_SERVE_ENABLE_PROXY_LOCALITY_ROUTING"]
 
 
 if __name__ == "__main__":
