@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-public class Application {
+public class Application implements DAGNodeBase{
 
   private List<Deployment> deployments;
   public Application(Deployment deployment) {
