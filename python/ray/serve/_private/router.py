@@ -353,12 +353,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         event_loop: asyncio.AbstractEventLoop,
         deployment_id: DeploymentID,
-        locality_routing: bool = False,
+        prefer_local_routing: bool = False,
         self_node_id: Optional[str] = None,
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
-        self._locality_routing = locality_routing
+        self._prefer_local_routing = prefer_local_routing
         self._self_node_id = self_node_id
 
         # Current replicas available to be scheduled.
@@ -588,7 +588,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         )
                     )
             elif (
-                self._locality_routing
+                self._prefer_local_routing
                 and backoff_index == 0
                 and len(self._colocated_replica_ids) > 0
             ):
@@ -1055,7 +1055,7 @@ class Router:
         self_node_id: str,
         event_loop: asyncio.BaseEventLoop = None,
         _use_new_routing: bool = False,
-        _locality_routing: bool = False,
+        _prefer_local_routing: bool = False,
         _router_cls: Optional[str] = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
@@ -1073,7 +1073,7 @@ class Router:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 event_loop,
                 deployment_id,
-                _locality_routing,
+                _prefer_local_routing,
                 self_node_id,
             )
         else:
