@@ -211,6 +211,9 @@ class RayTrainReportCallback(Callback):
             ckpt_path = os.path.join(tmpdir, "checkpoint.ckpt")
             trainer.save_checkpoint(ckpt_path, weights_only=False)
 
+            # Ensures all workers already finish writing their checkpoints
+            trainer.strategy.barrier()
+
             # Report to train session
             if _use_storage_context():
                 checkpoint = NewCheckpoint.from_directory(tmpdir)
