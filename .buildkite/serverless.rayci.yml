@@ -1,6 +1,7 @@
 group: serverless tests
 steps:
   - label: ":serverless: serverless: python tests"
+    team: core
     instance_type: medium
     parallelism: 2
     commands:
@@ -11,6 +12,7 @@ steps:
     job_env: serverlessbuild
 
   - label: ":serverless: serverless: flaky tests"
+    team: core
     instance_type: medium
     soft_fail: true
     commands:
