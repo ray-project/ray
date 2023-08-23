@@ -93,12 +93,14 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
 def _pyarrow_fs_copy_files(
     source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
 ):
-    if isinstance(source_filesystem, pyarrow.fs.S3FileSystem) or isinstance(
-        destination_filesystem, pyarrow.fs.S3FileSystem
-    ):
-        # Workaround multi-threading issue with pyarrow
+    if isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
+        # Workaround multi-threading issue with pyarrow. Note that use_threads=True
+        # is safe for download, just not for uploads, see:
         # https://github.com/apache/arrow/issues/32372
         kwargs.setdefault("use_threads", False)
+
+    # Use a large chunk size to speed up large checkpoint transfers.
+    kwargs.setdefault("chunk_size", 64 * 1024 * 1024)
 
     return pyarrow.fs.copy_files(
         source,

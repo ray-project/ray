@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data.datasource.datasource import _splitrange
+from ray.data._internal.planner.plan_read_op import _splitrange
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
