@@ -170,29 +170,6 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
                    << ", data_size=" << object_info.data_size
                    << ", metadata_size=" << object_info.metadata_size;
   }
-
-  // Trigger object spilling if current usage is above the specified threshold.
-  if (spilling_required != nullptr) {
-    const int64_t footprint_limit = allocator_.GetFootprintLimit();
-    if (footprint_limit != 0) {
-      const float allocated_percentage =
-          static_cast<float>(allocator_.Allocated()) / footprint_limit;
-      if (allocated_percentage > object_spilling_threshold_) {
-        // Try to free up twice as much free space.
-        int64_t num_bytes_to_evict = 2 * (allocator_.GetFootprintLimit() - allocator_.Allocated());
-        int64_t num_bytes_evicted = object_lifecycle_mgr_.RequireSpace(num_bytes_to_evict);
-        const float cur_allocated_percentage =
-            static_cast<float>(allocator_.Allocated()) / footprint_limit;
-        if (cur_allocated_percentage > object_spilling_threshold_) {
-          RAY_LOG(INFO) << "Triggering object spilling because current usage "
-                        << cur_allocated_percentage * 100 << "% is above threshold "
-                        << object_spilling_threshold_ * 100 << "% after evicting "
-                        << num_bytes_evicted << " bytes.";
-          *spilling_required = true;
-        }
-      }
-    }
-  }
   return error;
 }
 

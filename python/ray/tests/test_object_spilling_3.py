@@ -109,7 +109,8 @@ def _test_object_spilling_threshold(thres, num_objects, num_objects_spilled):
         objs = []
         for _ in range(num_objects):
             objs.append(ray.put(np.empty(200_000_000, dtype=np.uint8)))
-        time.sleep(10)  # Wait for spilling to happen
+        if num_objects_spilled == 0:
+            time.sleep(10)  # Wait for spilling to happen
         _check_spilled(num_objects_spilled)
     finally:
         ray.shutdown()
@@ -369,13 +370,17 @@ def test_evict_secondary_before_spill(ray_start_cluster, object_spilling_config)
     ray.init(address=cluster.address)
     for _ in range(3):
         cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    wait_for_condition(lambda: ray.cluster_resources()["CPU"] >= 4)
 
     # Spread data onto all nodes.
     @ray.remote
     def gen():
-        return np.ones(1024 * 1024, dtype=np.uint8)
+        time.sleep(0.5)
+        return np.ones(10 * 1024 * 1024, dtype=np.uint8)
 
-    refs = [gen.options(scheduling_strategy="SPREAD").remote() for _ in range(100)]  # 100MiB
+    refs = [
+        gen.options(scheduling_strategy="SPREAD").remote() for _ in range(16)
+    ]  # 160MiB
 
     # Iterate over the data on the worker nodes from the head node.
     for i in range(10):

@@ -519,6 +519,22 @@ ray::Status NodeManager::RegisterGcs() {
         [this] { local_object_manager_.FlushFreeObjects(); },
         RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.flush_free_objects");
+    periodical_runner_.RunFnPeriodically(
+        [this] {
+          // Trigger object spilling if current usage is above the specified threshold.
+          const float allocated_percentage =
+              static_cast<float>(local_object_manager_.GetPrimaryBytes()) /
+              object_manager_.GetMemoryCapacity();
+          if (allocated_percentage >= RayConfig::instance().object_spilling_threshold()) {
+            RAY_LOG(INFO) << "Triggering object spilling because current usage "
+                          << allocated_percentage * 100 << "% is above threshold "
+                          << RayConfig::instance().object_spilling_threshold() * 100
+                          << "%.";
+            local_object_manager_.SpillObjectUptoMaxThroughput();
+          }
+        },
+        RayConfig::instance().free_objects_period_milliseconds(),
+        "NodeManager.deadline_timer.spill_objects_when_over_threshold");
   }
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
