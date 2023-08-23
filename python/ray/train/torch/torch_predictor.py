@@ -5,10 +5,9 @@ import numpy as np
 import torch
 
 from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
-from ray.air.checkpoint import Checkpoint
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.train.predictor import DataBatchType
-from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
+from ray.train.torch import TorchCheckpoint
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -74,18 +73,14 @@ class TorchPredictor(DLPredictor):
     @classmethod
     def from_checkpoint(
         cls,
-        checkpoint: Checkpoint,
+        checkpoint: TorchCheckpoint,
         model: Optional[torch.nn.Module] = None,
         use_gpu: bool = False,
     ) -> "TorchPredictor":
-        """Instantiate the predictor from a Checkpoint.
-
-        The checkpoint is expected to be a result of ``TorchTrainer``.
+        """Instantiate the predictor from a TorchCheckpoint.
 
         Args:
-            checkpoint: The checkpoint to load the model and
-                preprocessor from. It is expected to be from the result of a
-                ``TorchTrainer`` run.
+            checkpoint: The checkpoint to load the model and preprocessor from.
             model: If the checkpoint contains a model state dict, and not
                 the model itself, then the state dict will be loaded to this
                 ``model``. If the checkpoint already contains the model itself,
@@ -93,7 +88,6 @@ class TorchPredictor(DLPredictor):
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
         """
-        checkpoint = LegacyTorchCheckpoint.from_checkpoint(checkpoint)
         model = checkpoint.get_model(model)
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)

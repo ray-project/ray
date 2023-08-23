@@ -236,14 +236,14 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
 def test_replica_actor_infeasible(serve_instance):
     """Test that we get a validation error if the replica doesn't fit in the bundle."""
 
-    @serve.deployment(
-        placement_group_bundles=[{"CPU": 0.1}],
-    )
     class Infeasible:
         pass
 
     with pytest.raises(ValueError):
-        serve.run(Infeasible.bind())
+        serve.deployment(placement_group_bundles=[{"CPU": 0.1}])(Infeasible)
+
+    with pytest.raises(ValueError):
+        serve.deployment(Infeasible).options(placement_group_bundles=[{"CPU": 0.1}])
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")

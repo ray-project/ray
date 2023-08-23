@@ -1,6 +1,7 @@
 import abc
 import copy
 import inspect
+import json
 import logging
 import os
 from pathlib import Path
@@ -50,6 +51,15 @@ GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 
 
 logger = logging.getLogger(__name__)
+
+PREPROCESSOR_DEPRECATION_MESSAGE = (
+    "The `preprocessor` argument to Trainers is deprecated as of Ray 2.7. "
+    "Instead, use the Preprocessor `fit` and `transform` APIs directly on the Ray "
+    "Dataset. For any state that needs to be saved to the trained checkpoint, pass it "
+    "in using the `metadata` argument of the `Trainer`. "
+    "For a full example, see "
+    "https://docs.ray.io/en/master/train/user-guides/data-loading-preprocessing.html#preprocessing-structured-data "  # noqa:E501
+)
 
 
 @PublicAPI(stability="beta")
@@ -170,6 +180,9 @@ class BaseTrainer(abc.ABC):
         run_config: Configuration for the execution of the training run.
         datasets: Any Datasets to use for training. Use the key "train"
             to denote which dataset is the training dataset.
+        metadata: Dict that should be made available via
+            `train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
@@ -190,6 +203,7 @@ class BaseTrainer(abc.ABC):
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
         # Deprecated.
         preprocessor: Optional["Preprocessor"] = None,
@@ -198,6 +212,7 @@ class BaseTrainer(abc.ABC):
             scaling_config if scaling_config is not None else ScalingConfig()
         )
         self.run_config = run_config if run_config is not None else RunConfig()
+        self.metadata = metadata
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
         self.starting_checkpoint = resume_from_checkpoint
@@ -210,13 +225,8 @@ class BaseTrainer(abc.ABC):
 
         air_usage.tag_air_trainer(self)
 
-        if preprocessor:
-            logger.warning(
-                "The `preprocessor` arg to Trainer is deprecated. Apply "
-                "preprocessor transformations ahead of time by calling "
-                "`preprocessor.transform(ds)`. Support for the preprocessor "
-                "arg will be dropped in a future release."
-            )
+        if preprocessor is not None:
+            raise DeprecationWarning(PREPROCESSOR_DEPRECATION_MESSAGE)
 
     @PublicAPI(stability="alpha")
     @classmethod
@@ -244,7 +254,6 @@ class BaseTrainer(abc.ABC):
             import os
             import ray
             from ray import train
-            from ray.data.preprocessors import BatchMapper
             from ray.train.trainer import BaseTrainer
 
             experiment_name = "unique_experiment_name"
@@ -253,7 +262,6 @@ class BaseTrainer(abc.ABC):
 
             # Define some dummy inputs for demonstration purposes
             datasets = {"train": ray.data.from_items([{"a": i} for i in range(10)])}
-            preprocessor = BatchMapper(lambda x: x, batch_format="numpy")
 
             class CustomTrainer(BaseTrainer):
                 def training_loop(self):
@@ -267,7 +275,6 @@ class BaseTrainer(abc.ABC):
             else:
                 trainer = CustomTrainer(
                     datasets=datasets,
-                    preprocessor=preprocessor,
                     run_config=train.RunConfig(
                         name=experiment_name,
                         local_dir=local_dir,
@@ -291,12 +298,6 @@ class BaseTrainer(abc.ABC):
             datasets: Re-specified datasets used in the original training run.
                 This must include all the datasets that were passed in the
                 original trainer constructor.
-            preprocessor: Optionally re-specified preprocessor that was passed in
-                the original trainer constructor. This should be used to re-supply
-                the preprocessor if it is not restorable in a new Ray cluster.
-                This preprocessor will be fit at the start before resuming training.
-                If no preprocessor is passed in restore, then the old preprocessor
-                will be loaded from the latest checkpoint and will not be re-fit.
             scaling_config: Optionally re-specified scaling config. This can be
                 modified to be different from the original spec.
             **kwargs: Other optionally re-specified arguments, passed in by subclasses.
@@ -402,7 +403,6 @@ class BaseTrainer(abc.ABC):
             "scaling_config": ScalingConfig(),
             "run_config": RunConfig(),
             "datasets": {},
-            "preprocessor": None,
             "starting_checkpoint": None,
         }
 
@@ -468,6 +468,19 @@ class BaseTrainer(abc.ABC):
                         "`ray.data.Dataset`. "
                         f"Received {dataset} instead."
                     )
+        # Metadata.
+        self.metadata = self.metadata or {}
+        if not isinstance(self.metadata, dict):
+            raise TypeError(
+                f"The provided metadata must be a dict, was {type(self.metadata)}."
+            )
+        try:
+            self.metadata = json.loads(json.dumps(self.metadata))
+        except Exception as e:
+            raise ValueError(
+                "The provided metadata must be JSON-serializable: "
+                f"{self.metadata}: {e}"
+            )
 
         # Preprocessor
         if self.preprocessor is not None and not isinstance(
@@ -724,8 +737,13 @@ class BaseTrainer(abc.ABC):
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
         restored = bool(self._restore_path)
+        metadata = self.metadata
 
         def train_func(config):
+            assert metadata is not None, metadata
+            # Propagate user metadata from the Trainer constructor.
+            session._get_session().metadata = metadata
+
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)

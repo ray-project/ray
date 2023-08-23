@@ -14,7 +14,7 @@ from ray.util.annotations import PublicAPI
 
 import xgboost
 import xgboost_ray
-from xgboost_ray.tune import TuneReportCheckpointCallback, TuneReportCallback
+from xgboost_ray.tune import TuneReportCheckpointCallback
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -59,11 +59,8 @@ class XGBoostTrainer(GBDTTrainer):
 
     Args:
         datasets: The Ray Datasets to use for training and validation. Must include a
-            "train" key denoting the training dataset. If a ``preprocessor``
-            is provided and has not already been fit, it will be fit on the training
-            dataset. All datasets will be transformed by the ``preprocessor`` if
-            one is provided. All non-training datasets will be used as separate
-            validation sets, each reporting a separate metric.
+            "train" key denoting the training dataset. All non-training datasets will
+            be used as separate validation sets, each reporting a separate metric.
         label_column: Name of the label column. A column with this name
             must be present in the training dataset.
         params: XGBoost training parameters.
@@ -80,15 +77,14 @@ class XGBoostTrainer(GBDTTrainer):
             iterations more, instead of 10 more.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
         **train_kwargs: Additional kwargs passed to ``xgboost.train()`` function.
     """
 
     _dmatrix_cls: type = xgboost_ray.RayDMatrix
     _ray_params_cls: type = xgboost_ray.RayParams
-    _tune_callback_report_cls: type = TuneReportCallback
     _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
     _default_ray_params: Dict[str, Any] = {
         "num_actors": 1,

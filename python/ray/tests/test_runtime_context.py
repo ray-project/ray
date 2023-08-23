@@ -8,6 +8,8 @@ import warnings
 
 from ray._private.test_utils import SignalActor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.state import list_tasks
+from ray._private.test_utils import wait_for_condition
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
@@ -348,6 +350,27 @@ def test_auto_init(shutdown_only):
     assert not ray.is_initialized()
     ray.get_runtime_context()
     assert ray.is_initialized()
+
+
+def test_async_actor_task_id(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    class A:
+        async def f(self):
+            task_id = ray.get_runtime_context().get_task_id()
+            return task_id
+
+    a = A.remote()
+    task_id = ray.get(a.f.remote())
+
+    def verify():
+        tasks = list_tasks(filters=[("name", "=", "A.f")])
+        assert len(tasks) == 1
+        assert tasks[0].task_id == task_id
+        return True
+
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":

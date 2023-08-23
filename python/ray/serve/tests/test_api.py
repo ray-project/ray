@@ -19,7 +19,7 @@ from ray.serve.deployment import Application
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle, RayServeHandle
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
@@ -447,8 +447,8 @@ class TestSetOptions:
         assert f.num_replicas == 9
         assert f.max_concurrent_queries == 3
         assert f.version == "efgh"
-        assert f.ray_actor_options == {"num_gpus": 3}
-        assert f._config.health_check_timeout_s == 17
+        assert f.ray_actor_options == {"num_cpus": 1, "num_gpus": 3}
+        assert f._deployment_config.health_check_timeout_s == 17
 
     def test_set_options_validation(self):
         @serve.deployment
@@ -1005,10 +1005,10 @@ def test_get_app_handle_basic(serve_instance):
     serve.run(MyDriver.bind(f.bind()), name="B", route_prefix="/b")
 
     handle = serve.get_app_handle("A")
-    assert ray.get(handle.remote(8)) == 9
+    assert handle.remote(8).result() == 9
 
     handle = serve.get_app_handle("B")
-    assert ray.get(handle.remote()) == "hello world"
+    assert handle.remote().result() == "hello world"
 
 
 def test_get_app_handle_dne(serve_instance):
@@ -1037,41 +1037,14 @@ def test_get_app_handle_within_deployment_async(serve_instance):
     @serve.deployment
     async def f(val):
         handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
-        result = await (await handle.remote(val))
+        result = await handle.remote(val)
         return f"The answer is {result}"
 
     serve.run(a.bind(b.bind()), route_prefix="/math")
     serve.run(f.bind(), name="call")
 
     handle = serve.get_app_handle("call")
-    assert ray.get(handle.remote(7)) == "The answer is 9"
-
-
-def test_get_app_handle_within_deployment_sync(serve_instance):
-    @serve.deployment()
-    class a:
-        def __init__(self, handle):
-            self.handle = handle
-
-        def __call__(self, val: int):
-            return val + 2
-
-    @serve.deployment()
-    class b:
-        def __call__(self, val: int):
-            return val
-
-    @serve.deployment
-    def f(val):
-        handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME, sync=True)
-        result = ray.get(handle.remote(val))
-        return f"The answer is {result}"
-
-    serve.run(a.bind(b.bind()), route_prefix="/math")
-    serve.run(f.bind(), name="call")
-
-    handle = serve.get_app_handle("call")
-    assert ray.get(handle.remote(7)) == "The answer is 9"
+    assert handle.remote(7).result() == "The answer is 9"
 
 
 def test_get_deployment_handle_basic(serve_instance):
@@ -1090,10 +1063,12 @@ def test_get_deployment_handle_basic(serve_instance):
     serve.run(MyDriver.bind(f.bind()))
 
     handle = serve.get_deployment_handle("f", SERVE_DEFAULT_APP_NAME)
-    assert ray.get(handle.remote()) == "hello world"
+    assert isinstance(handle, DeploymentHandle)
+    assert handle.remote().result() == "hello world"
 
     app_handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
-    assert ray.get(app_handle.remote()) == "hello world!!"
+    assert isinstance(app_handle, DeploymentHandle)
+    assert app_handle.remote().result() == "hello world!!"
 
 
 if __name__ == "__main__":
