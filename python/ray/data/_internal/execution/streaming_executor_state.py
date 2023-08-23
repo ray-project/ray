@@ -335,7 +335,11 @@ def process_completed_tasks(topology: Topology) -> None:
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
         while op.has_next():
-            op_state.add_output(op.get_next())
+            next = op.get_next()
+            num_rows = next.num_rows()
+            # Skip empty RefBundles.
+            if num_rows is not None and num_rows > 0:
+                op_state.add_output(op.get_next())
 
 
 def update_operator_states(topology: Topology) -> None:
