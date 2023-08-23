@@ -75,26 +75,6 @@ def _do_additional_splits(
             offset += size
 
 
-# TODO(hchen): This function is for supporting the `_block_udf` parameter
-# of `read_parquet`. The parameter can be deprecated in favor of using
-# `read_parquet` + `map_batches` with operator fusion.
-def _generate_block_udf_transform_fn(
-    block_udf: Callable[[Block], Block],
-) -> MapTransformFn:
-    def transform_fn(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
-        for block in blocks:
-            if BlockAccessor.for_block(block).num_rows() == 0:
-                yield block
-            else:
-                yield block_udf(block)
-
-    return MapTransformFn(
-        transform_fn,
-        MapTransformFnDataType.Block,
-        MapTransformFnDataType.Block,
-    )
-
-
 def plan_read_op(op: Read) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for Read.
 
@@ -133,13 +113,9 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         MapTransformFn(
             do_read, MapTransformFnDataType.Block, MapTransformFnDataType.Block
         ),
+        # Then build the output blocks.
+        BuildOutputBlocksMapTransformFn.for_blocks(),
     ]
-    block_udf = getattr(op._reader, "_block_udf", None)
-    if block_udf is not None:
-        # Then apply the block UDF if it exists.
-        transform_fns.append(_generate_block_udf_transform_fn(block_udf))
-    # Finally, build the output blocks.
-    transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
 
     if op._additional_split_factor is not None:
         # If addtional split is needed, do it in the last.
@@ -172,11 +148,7 @@ def apply_output_blocks_handling_to_read_task(
 
     This function is only used for compability with the legacy LazyBlockList code path.
     """
-    transform_fns: List[MapTransformFn] = []
-    block_udf = getattr(read_task, "_block_udf", None)
-    if block_udf is not None:
-        transform_fns.append(_generate_block_udf_transform_fn(block_udf))
-    transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
+    transform_fns: List[MapTransformFn] = [BuildOutputBlocksMapTransformFn.for_blocks()]
 
     if additional_split_factor is not None:
         transform_fns.append(
