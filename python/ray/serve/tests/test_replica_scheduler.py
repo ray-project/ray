@@ -526,7 +526,7 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("pow_2_scheduler", {}, indirect=True)
+@pytest.mark.parametrize("pow_2_scheduler", [{}], indirect=True)
 async def test_prefer_replica_on_same_node(pow_2_scheduler, fake_query):
     """
     Verify that the scheduler prefers replicas that are colocated on the same node ID
