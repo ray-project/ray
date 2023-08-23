@@ -19,7 +19,7 @@ securityContext:
 
 ## Check CPU flame graph and stack trace via Ray Dashboard
 
-### Step 1: Create a KinD cluster
+### Step 1: Create a Kind cluster
 
 ```bash
 kind create cluster
