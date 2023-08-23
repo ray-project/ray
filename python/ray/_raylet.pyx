@@ -2219,7 +2219,6 @@ cdef void cancel_async_task(
         future = worker.core_worker.get_queued_future(task_id)
         if future is not None:
             future.cancel()
-            # eventloop.call_soon_threadsafe(future.cancel)
         # else, the task is already finished. If the task
         # wasn't finished (task is queued on a client or server side),
         # this method shouldn't have been called.
@@ -4264,8 +4263,6 @@ cdef class CoreWorker:
         future = asyncio.run_coroutine_threadsafe(async_func(), eventloop)
         if task_id:
             with self._task_id_to_future_lock:
-                # self._task_id_to_future[task_id] = asyncio.wrap_future(
-                #     future, loop=eventloop)
                 self._task_id_to_future[task_id] = future
 
         future.add_done_callback(lambda _: event.Notify())
