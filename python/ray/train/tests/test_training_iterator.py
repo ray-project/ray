@@ -23,6 +23,8 @@ from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 
+from ray.train.tests.util import mock_storage_context
+
 MAX_RETRIES = 3
 
 
@@ -37,11 +39,7 @@ def patch_tune_session():
             node_rank=None,
             local_world_size=None,
             world_size=None,
-            storage=StorageContext(
-                storage_path=tempdir,
-                experiment_dir_name="exp_name",
-                trial_dir_name="trial_name",
-            ),
+            storage=mock_storage_context(),
         )
     yield
 
