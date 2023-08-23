@@ -57,7 +57,7 @@ def test_status_multi_app(ray_start_stop):
         status = yaml.safe_load(status_response)["applications"]
         return len(status["app1"]["deployments"]) and len(status["app2"]["deployments"])
 
-    wait_for_condition(lambda: num_live_deployments() == 5, timeout=15)
+    wait_for_condition(lambda: num_live_deployments() == 3, timeout=15)
     print("All deployments are live.")
 
     status_response = subprocess.check_output(
@@ -65,21 +65,22 @@ def test_status_multi_app(ray_start_stop):
     )
     statuses = yaml.safe_load(status_response)["applications"]
 
-    expected_deployments = {
-        "app1_f",
-        "app1_BasicDriver",
-        "app2_DAGDriver",
-        "app2_Multiplier",
-        "app2_Adder",
-        "app2_Router",
-        "app2_create_order",
+    expected_deployments_1 = {"f", "BasicDriver"}
+    expected_deployments_2 = {
+        "Multiplier",
+        "Adder",
+        "Router",
     }
-    for status in statuses.values():
-        for deployment_name, deployment in status["deployments"].items():
-            expected_deployments.remove(deployment_name)
-            assert deployment["status"] in {"HEALTHY", "UPDATING"}
-            assert "message" in deployment
-    assert len(expected_deployments) == 0
+    for deployment_name, deployment in statuses["app1"]["deployments"].items():
+        expected_deployments_1.remove(deployment_name)
+        assert deployment["status"] in {"HEALTHY", "UPDATING"}
+        assert "message" in deployment
+    for deployment_name, deployment in statuses["app2"]["deployments"].items():
+        expected_deployments_2.remove(deployment_name)
+        assert deployment["status"] in {"HEALTHY", "UPDATING"}
+        assert "message" in deployment
+    assert len(expected_deployments_1) == 0
+    assert len(expected_deployments_2) == 0
     print("All expected deployments are present in the status output.")
 
     for status in statuses.values():
@@ -214,12 +215,12 @@ def test_run_multi_app(ray_start_stop):
     )
     print('Application "app1" is reachable over HTTP.')
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
         == "12 pizzas please!",
         timeout=15,
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+        lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).text
         == "20 pizzas please!",
         timeout=15,
     )
@@ -823,6 +824,59 @@ def test_deployment_contains_utils(ray_start_stop):
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/").text == "hello_from_utils"
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_reload_basic(ray_start_stop, tmp_path):
+    """Test `serve run` with reload."""
+
+    code_template = """
+from ray import serve
+
+@serve.deployment
+class MessageDeployment:
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __call__(self):
+        return self.msg
+
+
+msg_app = MessageDeployment.bind("Hello {message}!")
+    """
+
+    def write_file(message: str):
+        with open(os.path.join(tmp_path, "reload_serve.py"), "w") as f:
+            code = code_template.format(message=message)
+            print(f"Writing updated code:\n{code}")
+            f.write(code)
+            f.flush()
+
+    write_file("World")
+
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--app-dir",
+            tmp_path,
+            "--reload",
+            "reload_serve:msg_app",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("") == "Hello World!", timeout=10)
+
+    # Sleep to ensure the `serve run` command is in the file watching loop when we
+    # write the change, else it won't be picked up.
+    time.sleep(5)
+
+    # Write the file: an update should be auto-triggered.
+    write_file("Updated")
+    wait_for_condition(lambda: ping_endpoint("") == "Hello Updated!", timeout=10)
+
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    assert ping_endpoint("") == CONNECTION_ERROR_MSG
 
 
 if __name__ == "__main__":

@@ -4,12 +4,14 @@ from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
-from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block
 from ray.data.context import DataContext
+from ray.data.datasource._default_metadata_providers import (
+    get_generic_metadata_provider,
+)
 from ray.data.datasource.datasource import Reader, ReadTask
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.file_meta_provider import (
@@ -186,10 +188,6 @@ class _ParquetDatasourceReader(Reader):
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        if len(paths) == 1:
-            paths = paths[0]
-
         self._local_scheduling = None
         if local_uri:
             import ray
@@ -198,6 +196,26 @@ class _ParquetDatasourceReader(Reader):
             self._local_scheduling = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             )
+
+        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+
+        # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
+        # files. To avoid this, we expand the input paths with the default metadata
+        # provider and then apply the partition filter.
+        partition_filter = reader_args.pop("partition_filter", None)
+        if partition_filter is not None:
+            default_meta_provider = get_generic_metadata_provider(file_extensions=None)
+            expanded_paths, _ = map(
+                list, zip(*default_meta_provider.expand_paths(paths, filesystem))
+            )
+            paths = partition_filter(expanded_paths)
+
+            filtered_paths = set(expanded_paths) - set(paths)
+            if filtered_paths:
+                logger.info(f"Filtered out the following paths: {filtered_paths}")
+
+        if len(paths) == 1:
+            paths = paths[0]
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         try:
@@ -404,12 +422,6 @@ def _read_pieces(
     import pyarrow as pa
     from pyarrow.dataset import _get_partition_keys
 
-    ctx = DataContext.get_current()
-    output_buffer = BlockOutputBuffer(
-        block_udf=block_udf,
-        target_max_block_size=ctx.target_max_block_size,
-    )
-
     logger.debug(f"Reading {len(pieces)} parquet pieces")
     use_threads = reader_args.pop("use_threads", False)
     batch_size = reader_args.pop("batch_size", default_read_batch_size)
@@ -433,12 +445,10 @@ def _read_pieces(
                     )
             # If the table is empty, drop it.
             if table.num_rows > 0:
-                output_buffer.add_block(table)
-                if output_buffer.has_next():
-                    yield output_buffer.next()
-    output_buffer.finalize()
-    if output_buffer.has_next():
-        yield output_buffer.next()
+                if block_udf is not None:
+                    yield block_udf(table)
+                else:
+                    yield table
 
 
 def _fetch_metadata_serialization_wrapper(
