@@ -543,9 +543,7 @@ class Trial:
         else:
             self.run_metadata.checkpoint_manager = _CheckpointManager(
                 checkpoint_config=checkpoint_config,
-                delete_fn=_CheckpointDeleter(
-                    str(self), self.temporary_state.ray_actor
-                ),
+                delete_fn=_CheckpointDeleter(str(self), self.temporary_state.ray_actor),
             )
 
         # Restoration fields
