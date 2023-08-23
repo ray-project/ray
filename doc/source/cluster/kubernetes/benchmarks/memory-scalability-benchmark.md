@@ -41,7 +41,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 
 ## Step 4: Run experiments
 
-* Step 4.1: Make sure the `kubectl` CLI can connect to your GKE cluster. If not, please run `gcloud auth login`.
+* Step 4.1: Make sure the `kubectl` CLI can connect to your GKE cluster. If not, run `gcloud auth login`.
 * Step 4.2: Run an experiment
   ```sh
   # You can modify `memory_benchmark_utils` to run the experiment you want to run.
