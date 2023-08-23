@@ -24,7 +24,7 @@ class NodeResourceSetTest : public ::testing::Test {};
 TEST_F(NodeResourceSetTest, TestImplicitResourcePrefix) {
   // Test to make sure we don't accidentally change this constant
   // as autoscaler depends on it.
-  ASSERT_EQ(kImplicitResourcePrefix, "node:__internal_implicit_resource_");
+  ASSERT_EQ(std::string(kImplicitResourcePrefix), "node:__internal_implicit_resource_");
 }
 
 TEST_F(NodeResourceSetTest, TestRemoveNegative) {
