@@ -40,7 +40,7 @@ The Ray trainer dispatches train_func to each worker process.
 ScalingConfig
 -------------
 
-Configure the compute resources for distributing model training, using the :py:class:`~ray.train.ScalingConfig` class.
+Configure the compute resources on the cluster that are available for the distributed training job, using the :py:class:`~ray.train.ScalingConfig` class.
 Two basic parameters scale your training compute resources:
 
 * `num_workers`: Sets the number of workers to launch for a single distributed training job.
