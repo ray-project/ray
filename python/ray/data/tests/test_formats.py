@@ -14,6 +14,10 @@ from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource import Datasource, DummyOutputDatasource, WriteResult
+from ray.data.datasource.file_based_datasource import (
+    OPEN_FILE_RETRY_MAX_ATTEMPTS,
+    _open_file_with_retry,
+)
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -160,6 +164,33 @@ def test_write_datasource(ray_start_regular_shared):
     assert output.num_ok == 1
     assert output.num_failed == 1
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
+
+
+def test_open_file_with_retry(ray_start_regular_shared):
+    class Counter:
+        def __init__(self):
+            self.retry_attempts = 0
+
+        def foo(self, max_attempts: int):
+            self.retry_attempts += 1
+            if self.retry_attempts < max_attempts:
+                raise OSError(
+                    "When creating key x in bucket y: AWS Error SLOW_DOWN during "
+                    "PutObject operation: Please reduce your request rate."
+                )
+            return 0
+
+    counter = Counter()
+    assert _open_file_with_retry("dummy", lambda: counter.foo(3)) == 0
+
+    original_max_attempts = OPEN_FILE_RETRY_MAX_ATTEMPTS
+    ray.data.datasource.file_based_datasource.OPEN_FILE_RETRY_MAX_ATTEMPTS = 3
+    counter = Counter()
+    with pytest.raises(OSError):
+        _open_file_with_retry("dummy", lambda: counter.foo(4))
+    ray.data.datasource.file_based_datasource.OPEN_FILE_RETRY_MAX_ATTEMPTS = (
+        original_max_attempts
+    )
 
 
 def test_from_tf(ray_start_regular_shared):

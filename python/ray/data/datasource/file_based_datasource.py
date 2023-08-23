@@ -59,6 +59,15 @@ FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
 # 16 file size fetches from S3 takes ~1.5 seconds with Arrow's S3FileSystem.
 PATHS_PER_FILE_SIZE_FETCH_TASK = 16
 
+# The errors to retry for opening file.
+OPEN_FILE_RETRY_ON_ERRORS = ["AWS Error SLOW_DOWN"]
+
+# The max retry backoff in seconds for opening file.
+OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
+
+# The max number of retry attempts for opening file.
+OPEN_FILE_RETRY_MAX_ATTEMPTS = 10
+
 
 @DeveloperAPI
 class BlockWritePathProvider:
@@ -348,7 +357,10 @@ class FileBasedDatasource(Datasource):
                     )
                     write_path = os.path.join(path, filename)
                     logger.get_logger().debug(f"Writing {write_path} file.")
-                    with fs.open_output_stream(write_path, **open_stream_args) as f:
+                    with _open_file_with_retry(
+                        write_path,
+                        lambda: fs.open_output_stream(write_path, **open_stream_args),
+                    ) as f:
                         _write_row_to_file(
                             f,
                             row,
@@ -366,7 +378,10 @@ class FileBasedDatasource(Datasource):
                     file_format=file_format,
                 )
                 logger.get_logger().debug(f"Writing {write_path} file.")
-                with fs.open_output_stream(write_path, **open_stream_args) as f:
+                with _open_file_with_retry(
+                    write_path,
+                    lambda: fs.open_output_stream(write_path, **open_stream_args),
+                ) as f:
                     _write_block_to_file(
                         f,
                         block,
@@ -567,7 +582,10 @@ class _FileBasedDatasourceReader(Reader):
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
 
-                with open_input_source(fs, read_path, **open_stream_args) as f:
+                with _open_file_with_retry(
+                    read_path,
+                    lambda: open_input_source(fs, read_path, **open_stream_args),
+                ) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         if partitions:
                             data = _add_partitions(data, partitions)
@@ -909,3 +927,38 @@ def _fetch_metadata_parallel(
         fetch_tasks.append(remote_fetch_func.remote(uri_chunk))
     results = metadata_fetch_bar.fetch_until_complete(fetch_tasks)
     yield from itertools.chain.from_iterable(results)
+
+
+def _open_file_with_retry(
+    file_path: str,
+    open_file: Callable[[], "pyarrow.NativeFile"],
+) -> "pyarrow.NativeFile":
+    """Open file with an exponential backoff retry strategy.
+
+    This is to avoid transient task failure with remote storage (such as S3),
+    when the remote storage throttles the requests.
+    """
+    import random
+    import time
+
+    for i in range(OPEN_FILE_RETRY_MAX_ATTEMPTS):
+        try:
+            return open_file()
+        except Exception as e:
+            error_message = str(e)
+            is_retryable = any(
+                [error in error_message for error in OPEN_FILE_RETRY_ON_ERRORS]
+            )
+            if is_retryable and i + 1 < OPEN_FILE_RETRY_MAX_ATTEMPTS:
+                # Retry with binary expoential backoff with random jitter.
+                backoff = min(
+                    (2 ** (i + 1)) * random.random(),
+                    OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
+                )
+                logger.get_logger().debug(
+                    f"Retrying {i+1} attempts to open file {file_path} after "
+                    f"{backoff} seconds."
+                )
+                time.sleep(backoff)
+            else:
+                raise e from None
