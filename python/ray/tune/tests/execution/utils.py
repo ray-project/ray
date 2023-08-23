@@ -11,6 +11,7 @@ from ray.air.execution.resources import (
 )
 
 from ray.air.execution._internal.tracked_actor import TrackedActor
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.utils.resource_updater import _ResourceUpdater
@@ -127,9 +128,21 @@ def create_execution_test_objects(
 
     resources = resources or {"CPU": 4}
 
+    storage_path = str(tmpdir)
+    experiment_name = "test_exp"
+
+    storage = kwargs.pop("storage", None)
+    if not storage and _use_storage_context():
+        storage = StorageContext(
+            storage_path=storage_path,
+            experiment_dir_name=experiment_name,
+        )
+        storage.storage_path = tmpdir
+
     tune_controller = tune_controller_cls(
-        experiment_path=str(tmpdir),
+        experiment_path=os.path.join(storage_path, experiment_name),
         reuse_actors=reuse_actors,
+        storage=storage,
         **kwargs,
     )
     resource_manager = BudgetResourceManager(total_resources=resources)
