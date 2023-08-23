@@ -2,7 +2,9 @@
 
 # RayJob
 
-> Note: This is the alpha version of Ray Job Support in KubeRay. There will be ongoing improvements for Ray Job in the future releases.
+:::{warning}
+This is the alpha version of RayJob Support in KubeRay. There will be ongoing improvements for RayJob in the future releases.
+:::
 
 ## Prerequisites
 
