@@ -93,10 +93,9 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
 def _pyarrow_fs_copy_files(
     source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
 ):
-    if isinstance(source_filesystem, pyarrow.fs.S3FileSystem) or isinstance(
-        destination_filesystem, pyarrow.fs.S3FileSystem
-    ):
-        # Workaround multi-threading issue with pyarrow
+    if isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
+        # Workaround multi-threading issue with pyarrow. Note that use_threads=True
+        # is safe for download, just not for uploads, see:
         # https://github.com/apache/arrow/issues/32372
         kwargs.setdefault("use_threads", False)
 
@@ -171,17 +170,11 @@ def _download_from_fs_path(
         _local_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        # Note that use_threads=True is safe for download, just not for uploads, see:
-        # https://github.com/apache/arrow/issues/32372
         if filelock:
             with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
-                _pyarrow_fs_copy_files(
-                    fs_path, local_path, source_filesystem=fs, use_threads=True
-                )
+                _pyarrow_fs_copy_files(fs_path, local_path, source_filesystem=fs)
         else:
-            _pyarrow_fs_copy_files(
-                fs_path, local_path, source_filesystem=fs, use_threads=True
-            )
+            _pyarrow_fs_copy_files(fs_path, local_path, source_filesystem=fs)
     except Exception as e:
         # Clean up the directory if downloading was unsuccessful
         if not exists_before:
