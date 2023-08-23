@@ -139,9 +139,8 @@ namespace rpc {
                       HANDLER,                            \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-// TODO(vitsai): Set auth for everything except GCS.
 #define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH(InternalKVGcsService, HANDLER, -1, AuthType::NO_AUTH)
+  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
 #define RUNTIME_ENV_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(RuntimeEnvGcsService, HANDLER, -1)

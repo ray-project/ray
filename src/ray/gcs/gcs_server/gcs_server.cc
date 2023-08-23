@@ -15,7 +15,6 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 
 #include <fstream>
-#include <future>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"

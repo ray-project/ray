@@ -829,21 +829,16 @@ print("DONE")
     wait_for_pid_to_exit(gcs_server_pid, 10000)
 
 
-@pytest.mark.skipif(
-    enable_external_redis(), reason="Only valid when started without external redis"
-)
 @pytest.mark.parametrize(
-    "ray_start_with_env_vars",
+    "ray_start_regular",
     [
-        {
-            "env_vars": {
-                "RAY_enable_cluster_auth": "1",
-            },
-        },
+        generate_system_config_map(
+            enable_cluster_auth=True,
+        )
     ],
     indirect=True,
 )
-def test_cluster_id(ray_start_with_env_vars):
+def test_cluster_id(ray_start_regular):
     raylet_proc = ray._private.worker._global_node.all_processes[
         ray_constants.PROCESS_TYPE_RAYLET
     ][0].process
@@ -852,12 +847,21 @@ def test_cluster_id(ray_start_with_env_vars):
         return raylet_proc.poll() is None
 
     wait_for_condition(lambda: check_raylet_healthy())
+    for i in range(10):
+        assert check_raylet_healthy()
+        sleep(1)
 
     ray._private.worker._global_node.kill_gcs_server()
     ray._private.worker._global_node.start_gcs_server()
 
-    # Waiting for raylet to become unhealthy
-    wait_for_condition(lambda: not check_raylet_healthy())
+    if not enable_external_redis():
+        # Waiting for raylet to become unhealthy
+        wait_for_condition(lambda: not check_raylet_healthy())
+    else:
+        # Waiting for raylet to become unhealthy
+        for i in range(10):
+            assert check_raylet_healthy()
+            sleep(1)
 
 
 @pytest.mark.parametrize(
