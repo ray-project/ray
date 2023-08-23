@@ -164,10 +164,8 @@ class TorchTrainer(DataParallelTrainer):
             Sharding and additional configuration can be done by
             passing in a ``dataset_config``.
         dataset_config: The configuration for ingesting the input ``datasets``.
-            By default:
-
-            - The ``"train"`` Dataset is split equally across workers.
-            - All other Datasets are **not** split.
+            By default, all the Ray Dataset are split equally across workers.
+            See :class:`~ray.train.DataConfig` for more details.
         resume_from_checkpoint: A checkpoint to resume training from.
             This checkpoint can be accessed from within ``train_loop_per_worker``
             by calling ``ray.train.get_checkpoint()``.
