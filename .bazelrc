@@ -8,7 +8,6 @@ build:windows --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
 # Using C++ 17 on all platforms.
-build --cxxopt="-DABSL_LEGACY_THREAD_ANNOTATIONS"
 # host_cxxopt should be removed once bazel doesn't populate std flags automatically.
 build:linux --cxxopt="-std=c++17"
 build:linux --host_cxxopt="-std=c++17"
@@ -25,6 +24,12 @@ build:linux --force_pic
 build:macos --force_pic
 build:clang-cl --compiler=clang-cl
 build:msvc-cl --compiler=msvc-cl
+# Absl backward compatibility
+build:linux --cxxopt="-DABSL_LEGACY_THREAD_ANNOTATIONS"
+build:macos --cxxopt="-DABSL_LEGACY_THREAD_ANNOTATIONS"
+build:clang-cl --cxxopt="-DABSL_LEGACY_THREAD_ANNOTATIONS"
+build:msvc-cl --cxxopt="/DABSL_LEGACY_THREAD_ANNOTATIONS"
+build:windows --cxxopt="/DABSL_LEGACY_THREAD_ANNOTATIONS"
 # `LC_ALL` and `LANG` is needed for cpp worker tests, because they will call "ray start".
 # If we don't add them, python's `click` library will raise an error.
 test --test_env=LC_ALL
