@@ -384,7 +384,7 @@ class StateDataSourceClient:
     ) -> Dictionary:
         return DataSource.events
 
-    async def get_all_events_as_list(self, job_id: Optional[int]) -> Dictionary:
+    async def get_all_events(self, job_id: Optional[int]) -> List:
         if job_id:
             return list(DataSource.events[job_id].values())
         events_list = []
