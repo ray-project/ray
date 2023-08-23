@@ -350,7 +350,6 @@ class GenericProxy(ABC):
         # only use the non-root part of the path for routing
         root_path = scope["root_path"]
         route_path = scope["path"][len(root_path) :]
-        print(scope)
 
         if route_path == "/-/routes":
             if self._is_draining():
@@ -412,6 +411,8 @@ class GenericProxy(ABC):
             if route_prefix != "/":
                 assert not route_prefix.endswith("/")
                 scope["path"] = route_path.replace(route_prefix, "", 1)
+                if not scope["path"]:
+                    scope["path"] = "/"
                 scope["root_path"] = root_path + route_prefix
 
             start_time = time.time()
