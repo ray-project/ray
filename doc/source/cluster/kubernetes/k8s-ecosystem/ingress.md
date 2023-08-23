@@ -12,11 +12,11 @@ Two examples show how to use ingress to access your Ray cluster:
 ### Prerequisite
 * Create an EKS cluster. See [Getting started with Amazon EKS – AWS Management Console and AWS CLI](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html#eks-configure-kubectl).
 
-* Follow the [installation instructions](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/deploy/installation/) to set up the [AWS Load Balancer controller](https://github.com/kubernetes-sigs/aws-load-balancer-controller). Note that the repository maintains a webpage for each release. Please make sure you use the latest installation instructions.
+* Set up the [AWS Load Balancer controller](https://github.com/kubernetes-sigs/aws-load-balancer-controller), see [installation instructions](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/deploy/installation/). Note that the repository maintains a webpage for each release. Confirm that you are using the latest installation instructions.
 
-* (Optional) Try [echo server example](https://github.com/kubernetes-sigs/aws-load-balancer-controller/blob/main/docs/examples/echo_server.md) in the [aws-load-balancer-controller](https://github.com/kubernetes-sigs/aws-load-balancer-controller) repository.
+* (Optional) Try the [echo server example](https://github.com/kubernetes-sigs/aws-load-balancer-controller/blob/main/docs/examples/echo_server.md) in the [aws-load-balancer-controller](https://github.com/kubernetes-sigs/aws-load-balancer-controller) repository.
 
-* (Optional) Read [how-it-works.md](https://github.com/kubernetes-sigs/aws-load-balancer-controller/blob/main/docs/how-it-works.md) to understand the mechanism of [aws-load-balancer-controller](https://github.com/kubernetes-sigs/aws-load-balancer-controller).
+* (Optional) Read [how-it-works.md](https://github.com/kubernetes-sigs/aws-load-balancer-controller/blob/main/docs/how-it-works.md) to understand the [aws-load-balancer-controller](https://github.com/kubernetes-sigs/aws-load-balancer-controller) mechanism.
 
 ### Instructions
 ```sh
@@ -71,7 +71,7 @@ kubectl describe ingress ray-cluster-ingress
 kubectl delete ingress ray-cluster-ingress
 ```
 
-## Example: Manually setting up NGINX Ingress on KinD
+## Manually setting up NGINX Ingress on Kind
 
 ```sh
 # Step 1: Create a KinD cluster with `extraPortMappings` and `node-labels`
