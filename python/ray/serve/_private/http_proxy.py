@@ -508,7 +508,7 @@ class GenericProxy(ABC):
                 )
                 self.deployment_request_error_counter.inc(
                     tags={
-                        "deployment": str(handle.deployment_id),
+                        "deployment": handle.deployment_id.name,
                         "error_code": proxy_response.status_code,
                         "method": method,
                         "route": route_path,
