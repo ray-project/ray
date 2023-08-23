@@ -18,11 +18,12 @@ import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import dayjs from "dayjs";
-import React, { useEffect, useState } from "react";
-import { Align, Event, Filters } from "../type/event";
+import React, { useState } from "react";
+import { Align, Filters } from "../type/event";
 
 import { useFilter } from "../util/hook";
 import { SeverityLevel } from "./event";
+import Loading from "./Loading";
 import { StatusChip } from "./StatusChip";
 import { useEvents } from "./useEvents";
 
@@ -30,38 +31,6 @@ type EventTableProps = {
   defaultSeverityLevels?: SeverityLevel[];
   entityName?: string;
   entityId?: string; // It could be a specific or "*" to represent all entities
-};
-
-const appendToParams = (
-  params: URLSearchParams,
-  key: string,
-  value: string | string[],
-) => {
-  if (Array.isArray(value)) {
-    value.forEach((val) =>
-      params.append(encodeURIComponent(key), encodeURIComponent(val)),
-    );
-  } else {
-    params.append(encodeURIComponent(key), encodeURIComponent(value));
-  }
-};
-
-const transformFiltersToParams = (filters: Filters) => {
-  const params = new URLSearchParams();
-
-  // Handling special cases for entityName and entityId
-  if (filters.entityName && filters.entityId) {
-    appendToParams(params, filters.entityName, filters.entityId);
-  }
-
-  // Handling general cases, for key like "count", "sourceType", "severityLevel"
-  Object.entries(filters).forEach(([key, value]) => {
-    if (key !== "entityName" && key !== "entityId") {
-      appendToParams(params, key, value as string | string[]);
-    }
-  });
-
-  return params.toString();
 };
 
 const useStyles = makeStyles((theme) => ({
@@ -98,6 +67,10 @@ const useStyles = makeStyles((theme) => ({
   pagination: {
     marginTop: theme.spacing(3),
   },
+  root: {
+    height: 800,
+    paddingLeft: theme.spacing(1),
+  },
 }));
 
 const SOURCE_TYPE_OPTIONS = [
@@ -117,13 +90,12 @@ const COLUMNS = [
   { label: "Severity", align: "center" },
   { label: "Timestamp", align: "center" },
   { label: "Source", align: "center" },
-  { label: "Custom Fields", align: "left" },
+  { label: "Custom fields", align: "left" },
   { label: "Message", align: "left" },
 ];
 
 const useEventTable = (props: EventTableProps) => {
   const { defaultSeverityLevels, entityName, entityId } = props;
-  const [loading, setLoading] = useState(true);
   const { changeFilter: _changeFilter, filterFunc } = useFilter();
   const [filters, _setFilters] = useState<Filters>({
     sourceType: [],
@@ -131,8 +103,6 @@ const useEventTable = (props: EventTableProps) => {
     entityName, // We used two fields(entityName, entityId) because we will support select entityName by dropdown and input entityId by TextField in the future.
     entityId, // id or *
   });
-
-  const [events, setEvents] = useState<Event[]>([]);
 
   const [pagination, setPagination] = useState({
     pageNo: 1, // first page is PageNo 1
@@ -160,18 +130,15 @@ const useEventTable = (props: EventTableProps) => {
   };
   const { pageNo } = pagination;
 
-  const params = transformFiltersToParams(filters);
-  const { data: eventsData, error, isLoading } = useEvents(params, pageNo);
+  const {
+    data: eventsData = [],
+    error,
+    isLoading,
+  } = useEvents(filters, pageNo);
 
-  useEffect(() => {
-    if (eventsData) {
-      setEvents(eventsData);
-    }
-    if (error) {
-      console.error("getEvent error: ", error);
-    }
-    setLoading(isLoading);
-  }, [eventsData, error, isLoading]);
+  if (error) {
+    console.error(error, "getEvents error");
+  }
 
   const range = [
     (pagination.pageNo - 1) * pagination.pageSize,
@@ -179,13 +146,14 @@ const useEventTable = (props: EventTableProps) => {
   ];
 
   return {
-    events: events.filter(filterFunc).slice(range[0], range[1]),
+    total: eventsData.filter(filterFunc).length,
+    events: eventsData.filter(filterFunc).slice(range[0], range[1]),
     filters,
     setFilters,
     changeFilter,
     pagination,
     changePage,
-    loading,
+    loading: isLoading,
   };
 };
 
@@ -199,53 +167,70 @@ const NewEventTable = (props: EventTableProps) => {
     pagination,
     changePage,
     loading,
+    total,
   } = useEventTable(props);
 
   if (loading) {
-    return <LinearProgress />;
+    return <Loading loading={loading} />;
   }
+
+  const controlHeader = (
+    <header className={classes.filterContainer}>
+      <Autocomplete
+        className={classes.search}
+        style={{ width: 150 }}
+        value={filters.severityLevel?.[0]}
+        options={SEVERITY_LEVEL_OPTIONS}
+        onInputChange={(_: any, value: string) => {
+          setFilters({ ...filters, severityLevel: [value.trim()] });
+        }}
+        renderInput={(params: TextFieldProps) => (
+          <TextField {...params} label="Severity" />
+        )}
+      />
+      <Autocomplete
+        className={classes.search}
+        style={{ width: 150 }}
+        value={filters.sourceType?.[0]}
+        options={SOURCE_TYPE_OPTIONS}
+        onInputChange={(_: any, value: string) => {
+          setFilters({ ...filters, sourceType: [value.trim()] });
+        }}
+        renderInput={(params: TextFieldProps) => (
+          <TextField {...params} label="Source" />
+        )}
+      />
+      <TextField
+        className={classes.search}
+        label="Message"
+        InputProps={{
+          onChange: ({ target: { value } }) => {
+            changeFilter("message", value.trim()); // TODO: filter the message in the frontend and to filter it in the backend in the future
+          },
+          endAdornment: (
+            <InputAdornment position="end">
+              <SearchOutlined />
+            </InputAdornment>
+          ),
+        }}
+      />
+    </header>
+  );
+
   const eventsLen = events.length;
+  if (eventsLen < 1) {
+    return (
+      <div>
+        {controlHeader}
+        <p className={classes.root}>No events</p>;
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <header className={classes.filterContainer}>
-        <Autocomplete
-          className={classes.search}
-          style={{ width: 150 }}
-          options={SEVERITY_LEVEL_OPTIONS}
-          onInputChange={(_: any, value: string) => {
-            setFilters({ ...filters, severityLevel: [value.trim()] });
-          }}
-          renderInput={(params: TextFieldProps) => (
-            <TextField {...params} label="Severity" />
-          )}
-        />
-        <Autocomplete
-          className={classes.search}
-          style={{ width: 150 }}
-          options={SOURCE_TYPE_OPTIONS}
-          onInputChange={(_: any, value: string) => {
-            setFilters({ ...filters, sourceType: [value.trim()] });
-          }}
-          renderInput={(params: TextFieldProps) => (
-            <TextField {...params} label="Source" />
-          )}
-        />
-        <TextField
-          className={classes.search}
-          label="Message"
-          InputProps={{
-            onChange: ({ target: { value } }) => {
-              changeFilter("message", value.trim()); // TODO: filter the message in the frontend and to filter it in the backend in the future
-            },
-            endAdornment: (
-              <InputAdornment position="end">
-                <SearchOutlined />
-              </InputAdornment>
-            ),
-          }}
-        />
-      </header>
-      <body>
+    <div className={classes.root}>
+      {controlHeader}
+      <div>
         <TableContainer component={Paper}>
           <Table className={classes.tableContainer}>
             <TableHead>
@@ -281,8 +266,8 @@ const NewEventTable = (props: EventTableProps) => {
                       ? JSON.stringify(custom_fields)
                       : "-";
                   return (
-                    <React.Fragment>
-                      <TableRow key={event_id}>
+                    <React.Fragment key={event_id}>
+                      <TableRow>
                         <TableCell align="center">
                           <StatusChip status={severity} type={severity} />
                         </TableCell>
@@ -316,11 +301,11 @@ const NewEventTable = (props: EventTableProps) => {
             </TableBody>
           </Table>
         </TableContainer>
-      </body>
+      </div>
       <footer>
         <Pagination
           className={classes.pagination}
-          count={eventsLen > 0 ? Math.ceil(eventsLen / pagination.pageSize) : 0}
+          count={total > 0 ? Math.ceil(total / pagination.pageSize) : 0}
           page={pagination.pageNo}
           onChange={(event: React.ChangeEvent<unknown>, value: number) => {
             changePage("pageNo", value);

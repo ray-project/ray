@@ -23,7 +23,6 @@ import {
 import { Section } from "../../common/Section";
 import { SeverityLevel } from "../../components/event";
 import Loading from "../../components/Loading";
-import NewEventTable from "../../components/NewEventTable";
 
 import { HelpInfo } from "../../components/Tooltip";
 import { ServeSystemActor } from "../../type/serve";
@@ -210,21 +209,6 @@ export const ServeApplicationsListPage = () => {
             <Section noTopPadding>
               <ServeControllerLogs controller={serveDetails.controller_info} />
             </Section>
-          </CollapsibleSection>
-          <CollapsibleSection
-            title="Event Table"
-            startExpanded
-            className={classes.section}
-          >
-            <NewEventTable
-              defaultSeverityLevels={[
-                SeverityLevel.WARNING,
-                SeverityLevel.ERROR,
-                SeverityLevel.INFO,
-              ]}
-              entityName="serve_app_name"
-              entityId="*"
-            />
           </CollapsibleSection>
         </React.Fragment>
       )}
