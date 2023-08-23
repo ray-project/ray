@@ -11,5 +11,7 @@ def get_logical_optimizer_rules():
 
 
 def get_physical_optimizer_rules():
+    # Subclasses of ZeroCopyMapFusionRule (e.g., EliminateBuildOutputBlocks) should
+    # be run after OperatorFusionRule.
     rules = [OperatorFusionRule, EliminateBuildOutputBlocks]
     return rules
