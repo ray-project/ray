@@ -422,8 +422,6 @@ class _BlockRefBundler:
 
     def add_bundle(self, bundle: RefBundle):
         """Add a bundle to the bundler."""
-        if bundle.num_rows() == 0:
-            return
         self._bundle_buffer.append(bundle)
         self._bundle_buffer_size += self._get_bundle_size(bundle)
 
