@@ -10,24 +10,29 @@ from typing import (
     Tuple,
     Union,
 )
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
-from ray.serve.context import get_global_client
 from ray.dag.dag_node import DAGNodeBase
 from ray.dag.class_node import ClassNode
 from ray.dag.function_node import FunctionNode
+from ray.util.annotations import Deprecated, PublicAPI
+
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
     ReplicaConfig,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
+from ray.serve.context import get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warning
-from ray.util.annotations import Deprecated, PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
+)
+from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve._private.utils import (
+    DEFAULT,
+    Default,
+    guarded_deprecation_warning,
 )
 
 
@@ -286,7 +291,7 @@ class Deployment:
             init_kwargs: kwargs to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
-        record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+        ServeUsageTag.API_VERSION.record("v1")
         self._deploy(*init_args, _blocking=_blocking, **init_kwargs)
 
     # TODO(Sihan) Promote the _deploy to deploy after we fully deprecate the API

@@ -21,7 +21,8 @@ from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.handle import RayServeHandle
 from ray.serve._private.constants import DEFAULT_GRPC_PORT, SERVE_LOGGER_NAME
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
-from ray.serve._private.utils import install_serve_encoders_to_fastapi, record_serve_tag
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve._private.utils import install_serve_encoders_to_fastapi
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -46,9 +47,9 @@ class DAGDriver(ASGIAppReplicaWrapper):
                 HTTP requests to Ray Serve input.
         """
 
-        record_serve_tag("SERVE_DAG_DRIVER_USED", "1")
+        ServeUsageTag.DAG_DRIVER_USED.record("1")
         if http_adapter is not None:
-            record_serve_tag("SERVE_HTTP_ADAPTER_USED", "1")
+            ServeUsageTag.HTTP_ADAPTER_USED.record("1")
 
         install_serve_encoders_to_fastapi()
         http_adapter = load_http_adapter(http_adapter)
@@ -141,7 +142,7 @@ class gRPCIngress:
 
         self.setup_complete = asyncio.Event()
         self.running_task = get_or_create_event_loop().create_task(self.run())
-        record_serve_tag("SERVE_GRPC_INGRESS_USED", "1")
+        ServeUsageTag.GRPC_INGRESS_USED.record("1")
 
     async def run(self):
         """Start gRPC Server"""
