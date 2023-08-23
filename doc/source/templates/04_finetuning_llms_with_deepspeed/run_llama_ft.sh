@@ -80,8 +80,8 @@ do
         params+=("--as-test");
     elif [[ "$arg" == "--lora" ]]; then
         params+=("--lora");
-        params+=("--lr");
-        params+=("1e-4");
+        # Lora usually requires a lower learning rate
+        params+=("--lr 1e-4");
     fi
 done
 

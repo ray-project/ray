@@ -267,7 +267,6 @@ def training_function(kwargs: dict):
     if config["lora"]:
         # Apply LoRA
         s = time.time()
-        assert "lora" in config, "No LoRA config provided."
         lora_config = LoraConfig(**config["lora_config"])
 
         expected_num_parameters = get_expected_lora_num_parameters(lora_config=lora_config, model=model)
@@ -709,12 +708,11 @@ def main():
     results = trainer.fit()
     best_checkpoint = results.best_checkpoints[0]
 
-    if not args.as_test:
-        print("Results are stored in:")
-        print(results.path)
-        print("Best checkpoint is stored in:")
-        print(best_checkpoint[0].uri)
-        print(f"With perplexity: {best_checkpoint[1]['perplexity']}")
+    print("Results are stored in:")
+    print(results.path)
+    print("Best checkpoint is stored in:")
+    print(best_checkpoint[0].uri)
+    print(f"With perplexity: {best_checkpoint[1]['perplexity']}")
 
 
 if __name__ == "__main__":

@@ -25,20 +25,11 @@ STOP_TOKEN = "<END_A>"
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of training script.")
-    parser.add_argument(
-        "--mx",
-        type=str,
-        default="bf16",
-        choices=["no", "fp16", "bf16", "fp8"],
-        help="Whether to use mixed precision. Choose"
-        "between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10."
-        "and an Nvidia Ampere GPU.",
-    )
 
-    parser.add_argument("--output-path", type=str, default=None, help="Path to output directory. Defaults to the orginal checkpoint directory.")
+    parser.add_argument("--output-path", type=str, help="Path to output directory. Defaults to the orginal checkpoint directory.", required=True)
 
     parser.add_argument(
-        "--model-name", required=True, type=str
+        "--model-name", required=True, type=str, help="7b, 13b or 70b."
     )
 
     parser.add_argument(
@@ -51,6 +42,8 @@ def parse_args():
 
 def test_eval(model, tokenizer):
     """Query the model with a single prompt to sanity check it."""
+
+    print(f"Starting model evaluation...")
 
     model.eval()
     model.to("cuda")
@@ -93,13 +86,15 @@ def main():
     # Load orignal model
     s = time.time()
     model_id = f"meta-llama/Llama-2-{args.model_name}-hf"
-    print(f"Downloading original model {model_id} ...")
     s3_bucket = get_mirror_link(model_id)
     ckpt_path, _ = get_checkpoint_and_refs_dir(model_id=model_id, bucket_uri=s3_bucket)
 
+    print(f"Downloading original model {model_id} from {s3_bucket} to {ckpt_path} ...")
     print(f"Loading tokenizer...")
+
     tokenizer = AutoTokenizer.from_pretrained(args.checkpoint, legacy=True)
     tokenizer.save_pretrained(Path(args.output_path))
+
     print(f"Saved tokenizer to {args.output_path}")
 
     download_model(
@@ -108,7 +103,10 @@ def main():
         s3_sync_args=["--no-sign-request"],
     )
 
+    print(f"Downloading to {ckpt_path} finished after {time.time() - s} seconds.")
     print(f"Loading original model from {ckpt_path} ...")
+
+    s2 = time.time()
 
     model = AutoModelForCausalLM.from_pretrained(
         ckpt_path,
@@ -117,9 +115,10 @@ def main():
         use_cache=False,
     )
     model.resize_token_embeddings(len(tokenizer))
-    print(f"Done downloading and loading model in {time.time() - s} seconds.")
 
+    print(f"Done downloading and loading model after {time.time() - s2} seconds.")
     print(f"Loading and merging peft weights...")
+    s3 = time.time()
     
     # Load LoRA weights
     model: peft.PeftModel = peft.PeftModel.from_pretrained(
@@ -129,9 +128,12 @@ def main():
     
     # Merge weights and save
     model = model.merge_and_unload()
-    model.save_pretrained(Path(args.output_path), safe_serialization=True)
+    output_path = Path(args.output_path)
+    model.save_pretrained(output_path, safe_serialization=True)
+    model.config.save_pretrained(output_path)
 
-    print(f"Saved merged model to {args.output_path}")
+    print(f"Saved merged model to {args.output_path} after {time.time() - s3} seconds.")
+    print(f"This script took {time.time() - s} seconds to execute.")
 
     if TEST_EVAL:
         test_eval(model, tokenizer)

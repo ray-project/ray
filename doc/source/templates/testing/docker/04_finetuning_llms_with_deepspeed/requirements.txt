@@ -15,3 +15,4 @@ torchmetrics
 lm_eval==0.3.0
 tiktoken==0.1.2
 sentencepiece
+peft

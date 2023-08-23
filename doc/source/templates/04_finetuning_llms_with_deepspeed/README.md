@@ -108,31 +108,30 @@ This script was tested across three model sizes on the following cluster configu
 To launch a successful finetuning you can use the following command:
 
 ```
-./run_llama_ft.sh --size=7b --num-epochs=10
+./run_llama_ft.sh --size=7b
 ```
-
-Note that the learning rate schedule scales with the number of epochs.
-Hence, training with ```./run_llama_7b.sh --num-epochs=2``` yields different results after training for 1 epoch then ```./run_llama_7b.sh --num-epochs=1```.
 
 ### Launching LoRA fine-tuning
 
-You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve similar (or better) finetuning results than vanilla finetuning while using less compute during training and enabling quick swapping of finetuned parameters.
-
-
-The command for testing a lora fine-tuning is:
-
-```
-python finetune_hf_llm.py --as-test --lora 
-```
-
+You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve similar finetuning results than vanilla finetuning while using less compute during training and enabling quick swapping of finetuned parameters.
 When adapting `target_modules` in the LoRA config (at lora_configs/lora.json), be aware that different models have different names for the
-sub-models that can be tuned with LoRA. For example, LLaMa 2 requires {"target_modules": ["q_proj", "v_proj"]} and Falcon requires {"target_modules": ["query_key_value"]}. Running with `--as-test` will tell you what the submodules the model has.
-
-To launch a succesful LoRA finetuning, you can use the following command:
+sub-models that can be tuned with LoRA. To launch a LoRA finetuning, you can use the following command or similar commands for other model sizes:
 
 ```
-./run_llama_ft.sh --size=7b --num-epochs=10 --lora
+./run_llama_ft.sh --size=7b --lora
 ```
+
+Finetuning a model with lora results in a checkpoint containing only the finetuned weights.
+As an example, the default lora configuration should yield a 42/64/202MB checkpoint for 7B/13B/70B models.
+If we want to evaluate the model after training, we can merge the model weights with the original (non-finetuned) model.
+We provide a script to merge the finetuned weights with the original weights to produce a full-parameter checkpoint.
+The script has high CPU memory requirements because it requires us to load all parameters into memory at the same time, 152GB for 7B/13B/70B models. We set the following coarse expectations for time requirements for this script: Downloading and loading the original weights should take ~1min/~2min/~10min each, merging and saving the weights ~4min/~8min/~50min on a p4de.24xlarge instance for the 7B/13B/70B models. You can run the script as follows:
+
+```
+python merge_model_weights.py --model-name=7b --checkpoint=<path to your checkpoint> --output-path=<desired output path>
+```
+
+This leaves a self-contained lora fine-tuned model, config and tokenizer at the desired output path.
 
 ### Guideline on how to pick node instances when A100s are not available.
 
