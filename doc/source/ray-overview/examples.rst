@@ -599,8 +599,6 @@ Ray Examples
 
         End-to-end Example for Tuning a PyTorch Model with PBT
 
-    .. grid-item-card:: :bdg-secondary:`Code example`
-
     .. grid-item-card:: :bdg-info:`Course`
         :class-item: gallery-item rl
         :link: https://applied-rl-course.netlify.app/
