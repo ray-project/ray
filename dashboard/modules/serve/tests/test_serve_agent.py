@@ -14,7 +14,7 @@ import ray._private.ray_constants as ray_constants
 from ray.util.state import list_actors
 from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_MESSAGE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
-from ray.serve.schema import ServeInstanceDetails
+from ray.serve.schema import ServeInstanceDetails, HTTPOptionsSchema
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentStatus,
@@ -737,7 +737,6 @@ def test_serve_namespace(ray_start_stop):
     serve.shutdown()
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 @pytest.mark.parametrize(
     "option,override",
     [
@@ -751,19 +750,22 @@ def test_put_with_http_options(ray_start_stop, option, override):
     """Submits a config with HTTP options specified.
 
     Trying to submit a config to the serve agent with the HTTP options modified should
-    fail, since users are required to shutdown Serve and restart it if they want to
-    change HTTP options.
+    NOT fail:
+      - If Serve is NOT running, HTTP options will be honored when starting Serve
+      - If Serve is running, HTTP options will be ignored, and warning will be logged
+      urging users to restart Serve if they want their options to take effect
     """
 
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
-    original_config = {
+    original_http_options_json = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "root_path": "/serve",
+    }
+    original_serve_config_json = {
         "proxy_location": "EveryNode",
-        "http_options": {
-            "host": "127.0.0.1",
-            "port": 8000,
-            "root_path": "/serve",
-        },
+        "http_options": original_http_options_json,
         "applications": [
             {
                 "name": "app1",
@@ -777,7 +779,7 @@ def test_put_with_http_options(ray_start_stop, option, override):
             },
         ],
     }
-    deploy_config_multi_app(original_config)
+    deploy_config_multi_app(original_serve_config_json)
 
     # Wait for deployments to be up
     wait_for_condition(
@@ -791,11 +793,21 @@ def test_put_with_http_options(ray_start_stop, option, override):
         timeout=15,
     )
 
-    modified_config = copy.deepcopy(original_config)
-    modified_config[option] = override
+    updated_serve_config_json = copy.deepcopy(original_serve_config_json)
+    updated_serve_config_json[option] = override
 
-    put_response = requests.put(GET_OR_PUT_URL_V2, json=modified_config, timeout=5)
-    assert put_response.status_code == 400
+    put_response = requests.put(
+        GET_OR_PUT_URL_V2, json=updated_serve_config_json, timeout=5
+    )
+    assert put_response.status_code == 200
+
+    # Fetch Serve status and confirm that HTTP options are unchanged
+    get_response = requests.get(GET_OR_PUT_URL_V2, timeout=5)
+    serve_details = ServeInstanceDetails.parse_obj(get_response.json())
+
+    original_http_options = HTTPOptionsSchema.parse_obj(original_http_options_json)
+
+    assert original_http_options == serve_details.http_options.dict(exclude_unset=True)
 
     # Deployments should still be up
     assert (

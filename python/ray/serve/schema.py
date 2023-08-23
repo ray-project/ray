@@ -531,7 +531,7 @@ class gRPCOptionsSchema(BaseModel):
 
 
 @PublicAPI(stability="alpha")
-class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
+class HTTPOptionsSchema(BaseModel):
     """Options to start the HTTP Proxy with."""
 
     host: str = Field(

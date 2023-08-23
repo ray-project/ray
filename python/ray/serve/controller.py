@@ -884,14 +884,11 @@ class ServeController:
         # except for the route_prefix in the deployment_config of each deployment, since
         # route_prefix is set instead in each application.
         # Eventually we want to remove route_prefix from DeploymentSchema.
+        http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         return ServeInstanceDetails(
             controller_info=self._actor_details,
             proxy_location=http_config.location,
-            http_options=HTTPOptionsSchema(
-                host=http_config.host,
-                port=http_config.port,
-                request_timeout_s=http_config.request_timeout_s,
-            ),
+            http_options=http_options,
             http_proxies=self.http_proxy_state_manager.get_http_proxy_details()
             if self.http_proxy_state_manager
             else None,

@@ -272,16 +272,9 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             )
 
         # Serve ignores HTTP options if it was already running when
-        # serve_start_async() is called. We explicitly return an error response
-        # here if Serve's HTTP options don't match the config's options.
-        for option, requested_value in full_http_options.items():
-            conflict_response = self.check_http_options(
-                option,
-                getattr(client.http_config, option),
-                requested_value,
-            )
-            if conflict_response is not None:
-                return conflict_response
+        # serve_start_async() is called. Therefore we validate that no
+        # existing HTTP options are updated and print warning in case they are
+        self.validate_http_options(client, full_http_options)
 
         try:
             client.deploy_apps(config)
@@ -294,21 +287,19 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         else:
             return Response()
 
-    def check_http_options(self, option: str, old: str, new: str):
-        http_mismatch_message = (
-            "Serve is already running on this Ray cluster. Its HTTP {option} is set to "
-            '"{old}". However, the requested {option} is "{new}". The requested '
-            "{option} must match the running Serve instance's HTTP {option}. To change "
-            "the Serve HTTP {option}, shut down Serve on this Ray cluster using "
-            "the `serve shutdown` CLI command or by sending a DELETE request to the "
-            '"/api/serve/applications/" endpoint. CAUTION: shutting down Serve will '
-            "also shut down all Serve applications."
-        )
+    def validate_http_options(self, client, http_options):
+        divergent_http_options = []
 
-        if not old == new:
-            return Response(
-                status=400,
-                text=http_mismatch_message.format(option=option, old=old, new=new),
+        for option, new_value in http_options.items():
+            prev_value = getattr(client.http_config, option)
+            if prev_value != new_value:
+                divergent_http_options.append(option)
+
+        if divergent_http_options:
+            logger.warning(
+                f"Serve is already running on this Ray cluster and it's not possible "
+                f"to update its HTTP options without restarting it. Following options "
+                f"are attempted to be updated: {divergent_http_options}."
             )
 
     async def get_serve_controller(self):
