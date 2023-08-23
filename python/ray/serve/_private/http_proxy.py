@@ -22,6 +22,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
+from ray.serve._private.usage import ServeUsageTag
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator
 
@@ -83,7 +84,6 @@ from ray.serve._private.proxy_router import (
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
     call_function_from_import_path,
-    record_serve_tag,
 )
 from ray.serve.config import gRPCOptions
 from ray.serve.exceptions import RayServeTimeout
@@ -273,7 +273,7 @@ class GenericProxy(ABC):
         # The node is not draining if it's None.
         self._draining_start_time: Optional[float] = None
 
-        record_serve_tag(f"SERVE_{self.protocol.upper()}_PROXY_USED", "1")
+        getattr(ServeUsageTag, f"{self.protocol.upper()}_PROXY_USED").record("1")
 
     @property
     @abstractmethod
