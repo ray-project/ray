@@ -350,6 +350,7 @@ class GenericProxy(ABC):
         # only use the non-root part of the path for routing
         root_path = scope["root_path"]
         route_path = scope["path"][len(root_path) :]
+        print(scope)
 
         if route_path == "/-/routes":
             if self._is_draining():
