@@ -75,7 +75,12 @@ config_setting(
 )
 
 # === Begin of rpc definitions ===
-
+malloc_deps = select({
+    "@bazel_tools//src/conditions:linux_x86_64": [
+        "@jemalloc//:libjemalloc",
+    ],
+    "//conditions:default": [],
+})
 # GRPC common lib.
 cc_library(
     name = "grpc_common_lib",
@@ -488,8 +493,7 @@ cc_binary(
         ":raylet_lib",
         "//src/ray/util",
         "@com_github_gflags_gflags//:gflags",
-        "@jemalloc//:libjemalloc",
-    ],
+    ] + malloc_deps,
 )
 
 cc_library(
@@ -561,8 +565,7 @@ cc_binary(
         ":gcs_server_lib",
         ":stats_lib",
         "@com_github_gflags_gflags//:gflags",
-        "@jemalloc//:libjemalloc",
-    ],
+    ] + malloc_deps,
 )
 
 # Ray native pubsub module.

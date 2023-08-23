@@ -8,12 +8,10 @@ filegroup(
 
 configure_make(
     name = "libjemalloc",
-    autogen = True,
-    configure_in_place = True,
     lib_source = ":all",
     linkopts = ["-ldl"],
+    copts = ["-fPIC"],
     args = ["-j"],
-    configure_options = ["--disable-shared", "--enable-prof", "--enable-prof-libunwind"],
+    configure_options = ["--disable-shared", "--enable-prof"],
     visibility = ["//visibility:public"],
-    deps = ["@libunwind//:libunwind"],
 )
