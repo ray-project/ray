@@ -183,7 +183,7 @@ py_test(
         "tests/_test_multi_tenancy_run.py"
     ],
     deps = [":tune_lib"],
-    tags = ["team:ml", "no_new_storage"],
+    tags = ["team:ml", "new_storage"],
 )
 
 py_test(
