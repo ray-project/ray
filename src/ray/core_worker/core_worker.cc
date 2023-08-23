@@ -2804,6 +2804,10 @@ Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
   return status;
 }
 
+bool CoreWorker::IsFinished(const ObjectID &generator_id) const {
+  return task_manager_->IsFinished(generator_id);
+}
+
 rpc::ObjectReference CoreWorker::PeekObjectRefStream(const ObjectID &generator_id) {
   auto object_id = task_manager_->PeekObjectRefStream(generator_id);
   rpc::ObjectReference object_ref;

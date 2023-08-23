@@ -105,6 +105,9 @@ class ObjectRefStream {
   /// \return KeyError if it reaches to EoF. Ok otherwise.
   Status TryReadNextItem(ObjectID *object_id_out);
 
+  /// Return True if there's no more object to read. False otherwise.
+  bool IsFinished() const;
+
   ObjectID PeekNextItem();
 
   /// Insert the object id to the stream of an index item_index.
@@ -350,6 +353,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
   Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out)
       LOCKS_EXCLUDED(mu_);
+
+  /// Return True if there's no more object to read. False otherwise.
+  bool IsFinished(const ObjectID &generator_id) const LOCKS_EXCLUDED(mu_);
 
   /// Read the next index of a ObjectRefStream of generator_id without
   /// consuming an index.

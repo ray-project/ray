@@ -262,11 +262,20 @@ class ObjectRefGenerator:
 
 
 class StreamingObjectRefGenerator:
+    """A generator class to get object references
+    created from a generator task in a streaming manner.
+
+    The class is compatible with asyncio.
+
+    The class is not thread-safe.
+
+    >>> gen = generator_task.remote()
+    >>> next(gen)
+    >>> await gen.__anext__()
+    """
     def __init__(self, generator_ref: ObjectRef, worker: "Worker"):
         # The reference to a generator task.
         self._generator_ref = generator_ref
-        # The last time generator task has completed.
-        self._generator_task_completed_time = None
         # The exception raised from a generator task.
         self._generator_task_exception = None
         # Ray's worker class. ray._private.worker.global_worker
@@ -274,11 +283,9 @@ class StreamingObjectRefGenerator:
         self.worker.check_connected()
         assert hasattr(worker, "core_worker")
 
-    def get_next_ref(self) -> ObjectRef:
-        self.worker.check_connected()
-        core_worker = self.worker.core_worker
-        return core_worker.peek_object_ref_stream(
-            self._generator_ref)
+    """
+    Public APIs
+    """
 
     def __iter__(self) -> "StreamingObjectRefGenerator":
         return self
@@ -296,11 +303,110 @@ class StreamingObjectRefGenerator:
         """
         return self._next_sync()
 
+    def send(self, value):
+        raise NotImplementedError("`gen.send` is not supported.")
+
+    def throw(self, value):
+        raise NotImplementedError("`gen.throw` is not supported.")
+
+    def close(self):
+        raise NotImplementedError("`gen.close` is not supported.")
+
     def __aiter__(self):
         return self
 
     async def __anext__(self):
         return await self._next_async()
+
+    async def asend(self, value):
+        raise NotImplementedError("`gen.asend` is not supported.")
+
+    async def athrow(self, value):
+        raise NotImplementedError("`gen.athrow` is not supported.")
+
+    async def aclose(self):
+        raise NotImplementedError("`gen.aclose` is not supported.")
+
+    def completed(self) -> ObjectRef:
+        """Returns an object ref that is ready when
+        a generator task completes.
+
+        If the task is failed unexpectedly (e.g., worker failure),
+        the `ray.get(gen.completed())` raises an exception.
+
+        The function returns immediately.
+
+        >>> ray.get(gen.completed())
+        """
+        return self._generator_ref
+
+    def next_ready(self) -> bool:
+        """If True, it means the output of next(gen) is ready and
+        ray.get(next(gen)) returns immediately. False otherwise.
+
+        It returns False when next(gen) raises a StopIteration
+        (this condition should be checked using is_finished).
+
+        The function returns immediately.
+        """
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+
+        if self.is_finished():
+            return False
+
+        expected_ref = core_worker.peek_object_ref_stream(
+            self._generator_ref)
+        ready, _ = ray.wait(
+            [expected_ref], timeout=0, fetch_local=False)
+        return len(ready) > 0
+
+    def is_finished(self) -> bool:
+        """If True, it means the generator is finished
+        and all output is taken. False otherwise.
+
+        When True, if next(gen) is called, it will raise StopIteration
+        or StopAsyncIteration
+
+        The function returns immediately.
+        """
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+
+        finished = core_worker.is_object_ref_stream_finished(
+            self._generator_ref)
+
+        if finished:
+            if self._generator_task_exception:
+                return True
+            else:
+                # We should try ray.get on a generator ref.
+                # If it raises an exception and
+                # _generator_task_exception is not set,
+                # this means the last ref is not taken yet.
+                try:
+                    ray.get(self._generator_ref)
+                except Exception:
+                    # The exception from _generator_ref
+                    # hasn't been taken yet.
+                    return False
+                else:
+                    return True
+
+    """
+    Private APIs
+    """
+
+    def _get_next_ref(self) -> ObjectRef:
+        """Return the next reference from a generator.
+
+        Note that the ObjectID generated from a generator
+        is always deterministic.
+        """
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        return core_worker.peek_object_ref_stream(
+            self._generator_ref)
 
     def _next_sync(
             self,
@@ -360,7 +466,7 @@ class StreamingObjectRefGenerator:
                 raise StopIteration
         return ref
 
-    async def suppress_exceptions(self, ref: ObjectRef):
+    async def _suppress_exceptions(self, ref: ObjectRef):
         # Wrap a streamed ref to avoid asyncio warnings about not retrieving
         # the exception when we are just waiting for the ref to become ready.
         # The exception will get returned (or warned) to the user once they
@@ -381,7 +487,7 @@ class StreamingObjectRefGenerator:
         ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
         # TODO(swang): Avoid fetching the value.
-        ready, unready = await asyncio.wait([self.suppress_exceptions(ref)],
+        ready, unready = await asyncio.wait([self._suppress_exceptions(ref)],
                                             timeout=timeout_s)
         if len(unready) > 0:
             return ObjectRef.nil()
@@ -3316,7 +3422,7 @@ cdef class CoreWorker:
             if isinstance(ref_or_generator, StreamingObjectRefGenerator):
                 # Before calling wait,
                 # get the next reference from a generator.
-                object_refs.append(ref_or_generator.get_next_ref())
+                object_refs.append(ref_or_generator._get_next_ref())
             else:
                 object_refs.append(ref_or_generator)
 
@@ -3856,6 +3962,7 @@ cdef class CoreWorker:
             method_meta = ray.actor._ActorClassMethodMetadata.create(
                 actor_class, actor_creation_function_descriptor)
             return ray.actor.ActorHandle(language, actor_id,
+                                         method_meta.method_is_generator,
                                          method_meta.decorators,
                                          method_meta.signatures,
                                          method_meta.num_returns,
@@ -4530,6 +4637,16 @@ cdef class CoreWorker:
             "",
             # Already added when the ref is updated.
             skip_adding_local_ref=True)
+
+    def is_object_ref_stream_finished(self, ObjectRef generator_id):
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+            c_bool finished
+
+        with nogil:
+            finished = CCoreWorkerProcess.GetCoreWorker().IsFinished(
+                c_generator_id)
+        return finished
 
     def peek_object_ref_stream(self, ObjectRef generator_id):
         cdef:

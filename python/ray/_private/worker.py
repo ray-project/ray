@@ -121,13 +121,17 @@ R = TypeVar("R")
 DAGNode = TypeVar("DAGNode")
 
 
+class RayWaitable(Generic[R]):
+    Type = Union["ObjectRef[R]", StreamingObjectRefGenerator]
+
+
 class RemoteFunctionNoArgs(Generic[R]):
     def __init__(self, function: Callable[[], R]) -> None:
         pass
 
     def remote(
         self,
-    ) -> "ObjectRef[R]":
+    ) -> "RayWaitable[R]":
         ...
 
     def bind(
@@ -143,7 +147,7 @@ class RemoteFunction0(Generic[R, T0]):
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
-    ) -> "ObjectRef[R]":
+    ) -> "RayWaitable[R]":
         ...
 
     def bind(
@@ -161,7 +165,7 @@ class RemoteFunction1(Generic[R, T0, T1]):
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
         __arg1: "Union[T1, ObjectRef[T1]]",
-    ) -> "ObjectRef[R]":
+    ) -> "RayWaitable[R]":
         ...
 
     def bind(
@@ -181,7 +185,7 @@ class RemoteFunction2(Generic[R, T0, T1, T2]):
         __arg0: "Union[T0, ObjectRef[T0]]",
         __arg1: "Union[T1, ObjectRef[T1]]",
         __arg2: "Union[T2, ObjectRef[T2]]",
-    ) -> "ObjectRef[R]":
+    ) -> "RayWaitable[R]":
         ...
 
     def bind(
@@ -203,7 +207,7 @@ class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
         __arg1: "Union[T1, ObjectRef[T1]]",
         __arg2: "Union[T2, ObjectRef[T2]]",
         __arg3: "Union[T3, ObjectRef[T3]]",
-    ) -> "ObjectRef[R]":
+    ) -> "RayWaitable[R]":
         ...
 
     def bind(
@@ -227,7 +231,7 @@ class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
         __arg2: "Union[T2, ObjectRef[T2]]",
         __arg3: "Union[T3, ObjectRef[T3]]",
         __arg4: "Union[T4, ObjectRef[T4]]",
-    ) -> "ObjectRef[R]":
+    ) -> "RayWaitable[R]":
         ...
 
     def bind(
@@ -253,7 +257,7 @@ class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
         __arg3: "Union[T3, ObjectRef[T3]]",
         __arg4: "Union[T4, ObjectRef[T4]]",
         __arg5: "Union[T5, ObjectRef[T5]]",
-    ) -> "ObjectRef[R]":
+    ) -> "RayWaitable[R]":
         ...
 
     def bind(
@@ -281,7 +285,7 @@ class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
         __arg4: "Union[T4, ObjectRef[T4]]",
         __arg5: "Union[T5, ObjectRef[T5]]",
         __arg6: "Union[T6, ObjectRef[T6]]",
-    ) -> "ObjectRef[R]":
+    ) -> "RayWaitable[R]":
         ...
 
     def bind(
@@ -311,7 +315,7 @@ class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
         __arg5: "Union[T5, ObjectRef[T5]]",
         __arg6: "Union[T6, ObjectRef[T6]]",
         __arg7: "Union[T7, ObjectRef[T7]]",
-    ) -> "ObjectRef[R]":
+    ) -> "RayWaitable[R]":
         ...
 
     def bind(
@@ -345,7 +349,7 @@ class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
         __arg6: "Union[T6, ObjectRef[T6]]",
         __arg7: "Union[T7, ObjectRef[T7]]",
         __arg8: "Union[T8, ObjectRef[T8]]",
-    ) -> "ObjectRef[R]":
+    ) -> "RayWaitable[R]":
         ...
 
     def bind(
@@ -381,7 +385,7 @@ class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
         __arg7: "Union[T7, ObjectRef[T7]]",
         __arg8: "Union[T8, ObjectRef[T8]]",
         __arg9: "Union[T9, ObjectRef[T9]]",
-    ) -> "ObjectRef[R]":
+    ) -> "RayWaitable[R]":
         ...
 
     def bind(
@@ -2478,6 +2482,8 @@ def get(
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
 
+    :class:`~StreamingObjectRefGenerators` is not allowed as an input.
+
     Related patterns and anti-patterns:
 
     - :doc:`/ray-core/patterns/ray-get-loop`
@@ -2519,9 +2525,11 @@ def get(
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
-        # TODO(sang): Should make StreamingObjectRefGenerator
-        # compatible to ray.get for dataset.
         if isinstance(object_refs, StreamingObjectRefGenerator):
+            # TODO(sang): We should raise an exception.
+            logger.warning(
+                "Calling ray.get on a `StreamingObjectRefGenerator`" "is not allowed."
+            )
             return object_refs
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
@@ -2630,12 +2638,12 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    object_refs: List["ray.ObjectRef"],
+    ray_waitables: List[RayWaitable[Any]],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
-) -> Tuple[List["ray.ObjectRef"], List["ray.ObjectRef"]]:
+) -> Tuple[List[RayWaitable[Any]], List[RayWaitable[Any]]]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -2643,19 +2651,34 @@ def wait(
     is not set, the function simply waits until that number of objects is ready
     and returns that exact number of object refs.
 
-    This method returns two lists. The first list consists of object refs that
-    correspond to objects that are available in the object store. The second
-    list corresponds to the rest of the object refs (which may or may not be
-    ready).
+    `ray_waitables` is a list of :class:`~ObjectRefs` and
+    :class:`~StreamingObjectRefGenerators`. This method returns two lists.
 
-    Ordering of the input list of object refs is preserved. That is, if A
+    The first list:
+        ObjectRef:
+            The first list consists of object refs that
+            correspond to objects that are available in the object store.
+        StreamingObjectRefGenerators:
+            The first list consists of generators in which the next ref
+            in the genreator correspond to objects that are
+            available in the object store.
+
+    The seccond list:
+        ObjectRef:
+            The second list corresponds to the rest of the object refs
+            (which may or may not be ready).
+        StreamingObjectRefGenerators:
+            The second list corresponds to the rest of the generator
+            in which the next item is not ready in the object store.
+
+    Ordering of the input list of ray_waitables is preserved. That is, if A
     precedes B in the input list, and both are in the ready list, then A will
     precede B in the ready list. This also holds true if A and B are both in
     the remaining list.
 
     This method will issue a warning if it's running inside an async context.
-    Instead of ``ray.wait(object_refs)``, you can use
-    ``await asyncio.wait(object_refs)``.
+    Instead of ``ray.wait(ray_waitables)``, you can use
+    ``await asyncio.wait(ray_waitables)``.
 
     Related patterns and anti-patterns:
 
@@ -2663,17 +2686,18 @@ def wait(
     - :doc:`/ray-core/patterns/ray-get-submission-order`
 
     Args:
-        object_refs: List of :class:`~ObjectRefs` or
+        ray_waitables: List of :class:`~ObjectRefs` or
             :class:`~StreamingObjectRefGenerators` for objects that may or may
             not be ready. Note that these must be unique.
-        num_returns: The number of object refs that should be returned.
+        num_returns: The number of ray_waitables that should be returned.
         timeout: The maximum amount of time in seconds to wait before
             returning.
         fetch_local: If True, wait for the object to be downloaded onto
-            the local node before returning it as ready. If False, ray.wait()
-            will not trigger fetching of objects to the local node and will
-            return immediately once the object is available anywhere in the
-            cluster.
+            the local node before returning it as ready. If the `ray_waitable`
+            is a generator, it will wait until the next object in the generator
+            is downloaed. If False, ray.wait() will not trigger fetching of
+            objects to the local node and will return immediately once the
+            object is available anywhere in the cluster.
 
     Returns:
         A list of object refs that are ready and a list of the remaining object
@@ -2696,20 +2720,20 @@ def wait(
             )
             blocking_wait_inside_async_warned = True
 
-    if isinstance(object_refs, ObjectRef) or isinstance(
-        object_refs, StreamingObjectRefGenerator
+    if isinstance(ray_waitables, ObjectRef) or isinstance(
+        ray_waitables, StreamingObjectRefGenerator
     ):
         raise TypeError(
             "wait() expected a list of ray.ObjectRef or ray.StreamingObjectRefGenerator"
             ", got a single ray.ObjectRef or ray.StreamingObjectRefGenerator "
-            f"{object_refs}"
+            f"{ray_waitables}"
         )
 
-    if not isinstance(object_refs, list):
+    if not isinstance(ray_waitables, list):
         raise TypeError(
             "wait() expected a list of ray.ObjectRef or "
             "ray.StreamingObjectRefGenerator, "
-            f"got {type(object_refs)}"
+            f"got {type(ray_waitables)}"
         )
 
     if timeout is not None and timeout < 0:
@@ -2717,14 +2741,14 @@ def wait(
             "The 'timeout' argument must be nonnegative. " f"Received {timeout}"
         )
 
-    for object_ref in object_refs:
-        if not isinstance(object_ref, ObjectRef) and not isinstance(
-            object_ref, StreamingObjectRefGenerator
+    for ray_waitable in ray_waitables:
+        if not isinstance(ray_waitable, ObjectRef) and not isinstance(
+            ray_waitable, StreamingObjectRefGenerator
         ):
             raise TypeError(
                 "wait() expected a list of ray.ObjectRef or "
                 "ray.StreamingObjectRefGenerator, "
-                f"got list containing {type(object_ref)}"
+                f"got list containing {type(ray_waitable)}"
             )
     worker.check_connected()
 
@@ -2733,23 +2757,23 @@ def wait(
         # TODO(rkn): This is a temporary workaround for
         # https://github.com/ray-project/ray/issues/997. However, it should be
         # fixed in Arrow instead of here.
-        if len(object_refs) == 0:
+        if len(ray_waitables) == 0:
             return [], []
 
-        if len(object_refs) != len(set(object_refs)):
-            raise ValueError("Wait requires a list of unique object refs.")
+        if len(ray_waitables) != len(set(ray_waitables)):
+            raise ValueError("Wait requires a list of unique ray_waitables.")
         if num_returns <= 0:
             raise ValueError("Invalid number of objects to return %d." % num_returns)
-        if num_returns > len(object_refs):
+        if num_returns > len(ray_waitables):
             raise ValueError(
                 "num_returns cannot be greater than the number "
-                "of objects provided to ray.wait."
+                "of ray_waitables provided to ray.wait."
             )
 
         timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = worker.core_worker.wait(
-            object_refs,
+            ray_waitables,
             num_returns,
             timeout_milliseconds,
             worker.current_task_id,
@@ -2826,7 +2850,9 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 @PublicAPI
 @client_mode_hook
-def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True):
+def cancel(
+    ray_waitable: RayWaitable[Any], *, force: bool = False, recursive: bool = True
+):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
@@ -2842,8 +2868,8 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
     WorkerCrashedError if ``force=True``.
 
     Args:
-        object_ref: ObjectRef returned by the task
-            that should be canceled.
+        ray_waitable: ObjectRef or StreamingObjectRefGenreator
+            returned by the task that should be canceled.
         force: Whether to force-kill a running task by killing
             the worker that is running the task.
         recursive: Whether to try to cancel tasks submitted by the
@@ -2854,16 +2880,16 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    if isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
-        assert hasattr(object_ref, "_generator_ref")
-        object_ref = object_ref._generator_ref
+    if isinstance(ray_waitable, ray._raylet.StreamingObjectRefGenerator):
+        assert hasattr(ray_waitable, "_generator_ref")
+        ray_waitable = ray_waitable._generator_ref
 
-    if not isinstance(object_ref, ray.ObjectRef):
+    if not isinstance(ray_waitable, ray.ObjectRef):
         raise TypeError(
             "ray.cancel() only supported for object refs. "
-            f"For actors, try ray.kill(). Got: {type(object_ref)}."
+            f"For actors, try ray.kill(). Got: {type(ray_waitable)}."
         )
-    return worker.core_worker.cancel_task(object_ref, force, recursive)
+    return worker.core_worker.cancel_task(ray_waitable, force, recursive)
 
 
 def _mode(worker=global_worker):

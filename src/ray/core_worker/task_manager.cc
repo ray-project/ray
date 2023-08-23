@@ -59,8 +59,7 @@ absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
 
 Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   *object_id_out = GetObjectRefAtIndex(next_index_);
-  bool is_eof_set = end_of_stream_index_ != -1;
-  if (is_eof_set && next_index_ >= end_of_stream_index_) {
+  if (IsFinished()) {
     // next_index_ cannot be bigger than end_of_stream_index_.
     RAY_CHECK(next_index_ == end_of_stream_index_);
     RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
@@ -82,6 +81,11 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
     *object_id_out = ObjectID::Nil();
   }
   return Status::OK();
+}
+
+bool ObjectRefStream::IsFinished() const {
+  bool is_eof_set = end_of_stream_index_ != -1;
+  return is_eof_set && next_index_ >= end_of_stream_index_;
 }
 
 ObjectID ObjectRefStream::PeekNextItem() { return GetObjectRefAtIndex(next_index_); }
@@ -466,6 +470,16 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
          "created "
          "and not removed.";
   return stream_it->second.TryReadNextItem(object_id_out);
+}
+
+bool TaskManager::IsFinished(const ObjectID &generator_id) const {
+  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  auto stream_it = object_ref_streams_.find(generator_id);
+  RAY_CHECK(stream_it != object_ref_streams_.end())
+      << "IsFinished API can be used only when the stream has been "
+         "created "
+         "and not removed.";
+  return stream_it->second.IsFinished();
 }
 
 ObjectID TaskManager::PeekObjectRefStream(const ObjectID &generator_id) {

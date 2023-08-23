@@ -105,7 +105,8 @@ class ActorMethod:
         _actor_ref: A weakref handle to the actor.
         _method_name: The name of the actor method.
         _num_returns: The default number of return values that the method
-            invocation should return.
+            invocation should return. If None is given, it uses
+            DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS.
         _decorator: An optional decorator that should be applied to the actor
             method invocation (as opposed to the actor method execution) before
             invoking the method. The decorator must return a function that
@@ -115,10 +116,25 @@ class ActorMethod:
             "test_decorated_method" in "python/ray/tests/test_actor.py".
     """
 
-    def __init__(self, actor, method_name, num_returns, decorator=None, hardref=False):
+    def __init__(
+        self,
+        actor,
+        method_name,
+        num_returns: Optional[int],
+        is_generator: bool,
+        decorator=None,
+        hardref=False,
+    ):
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
         self._num_returns = num_returns
+
+        if self._num_returns is None:
+            if is_generator:
+                self._num_returns = "streaming"
+            else:
+                self._num_returns = ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS
+
         # This is a decorator that is used to wrap the function invocation (as
         # opposed to the function execution). The decorator must return a
         # function that takes in two arguments ("args" and "kwargs"). In most
@@ -255,6 +271,7 @@ class _ActorClassMethodMetadata(object):
         self.decorators = {}
         self.signatures = {}
         self.num_returns = {}
+        self.method_is_generator = {}
         self.concurrency_group_for_methods = {}
 
         for method_name, method in actor_methods:
@@ -277,9 +294,7 @@ class _ActorClassMethodMetadata(object):
             if hasattr(method, "__ray_num_returns__"):
                 self.num_returns[method_name] = method.__ray_num_returns__
             else:
-                self.num_returns[
-                    method_name
-                ] = ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS
+                self.num_returns[method_name] = None
 
             if hasattr(method, "__ray_invocation_decorator__"):
                 self.decorators[method_name] = method.__ray_invocation_decorator__
@@ -288,6 +303,11 @@ class _ActorClassMethodMetadata(object):
                 self.concurrency_group_for_methods[
                     method_name
                 ] = method.__ray_concurrency_group__
+
+            is_generator = inspect.isgeneratorfunction(
+                method
+            ) or inspect.isasyncgenfunction(method)
+            self.method_is_generator[method_name] = is_generator
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
@@ -997,6 +1017,7 @@ class ActorClass:
         actor_handle = ActorHandle(
             meta.language,
             actor_id,
+            meta.method_meta.method_is_generator,
             meta.method_meta.decorators,
             meta.method_meta.signatures,
             meta.method_meta.num_returns,
@@ -1056,6 +1077,7 @@ class ActorHandle:
         self,
         language,
         actor_id,
+        method_is_generator,
         method_decorators,
         method_signatures,
         method_num_returns,
@@ -1067,6 +1089,7 @@ class ActorHandle:
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
         self._ray_original_handle = original_handle
+        self._ray_method_is_generator = method_is_generator
         self._ray_method_decorators = method_decorators
         self._ray_method_signatures = method_signatures
         self._ray_method_num_returns = method_num_returns
@@ -1093,6 +1116,7 @@ class ActorHandle:
                     self,
                     method_name,
                     self._ray_method_num_returns[method_name],
+                    self._ray_method_is_generator[method_name],
                     decorator=self._ray_method_decorators.get(method_name),
                 )
                 setattr(self, method_name, method)
@@ -1223,9 +1247,9 @@ class ActorHandle:
         return ActorMethod(
             self,
             item,
-            ray_constants.
-            # Currently, we use default num returns
-            DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS,
+            None,
+            # Attributes are not a generator.
+            False,
             # Currently, cross-lang actor method not support decorator
             decorator=None,
         )
@@ -1263,6 +1287,7 @@ class ActorHandle:
                 {
                     "actor_language": self._ray_actor_language,
                     "actor_id": self._ray_actor_id,
+                    "method_is_generator": self._ray_method_is_generator,
                     "method_decorators": self._ray_method_decorators,
                     "method_signatures": self._ray_method_signatures,
                     "method_num_returns": self._ray_method_num_returns,
@@ -1297,9 +1322,10 @@ class ActorHandle:
             # Local mode
             return cls(
                 # TODO(swang): Accessing the worker's current task ID is not
-                # thread-safe.
+                # thread-safe.x
                 state["actor_language"],
                 state["actor_id"],
+                state["method_is_generator"],
                 state["method_decorators"],
                 state["method_signatures"],
                 state["method_num_returns"],

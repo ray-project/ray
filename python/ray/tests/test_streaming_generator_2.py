@@ -53,7 +53,7 @@ def test_reconstruction(monkeypatch, ray_start_cluster, delay):
         node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
         cluster.wait_for_nodes()
 
-    @ray.remote(num_returns="streaming", max_retries=2)
+    @ray.remote(max_retries=2)
     def dynamic_generator(num_returns):
         for i in range(num_returns):
             yield np.ones(1_000_000, dtype=np.int8) * i
@@ -63,7 +63,7 @@ def test_reconstruction(monkeypatch, ray_start_cluster, delay):
         return x[0]
 
     # Test recovery of all dynamic objects through re-execution.
-    gen = ray.get(dynamic_generator.remote(10))
+    gen = dynamic_generator.remote(10)
     refs = []
 
     for i in range(5):
@@ -134,7 +134,7 @@ def test_reconstruction_retry_failed(ray_start_cluster, failure_type):
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
-    @ray.remote(num_returns="streaming")
+    @ray.remote
     def dynamic_generator(num_returns, signal_actor):
         for i in range(num_returns):
             if i == 3:
@@ -151,7 +151,7 @@ def test_reconstruction_retry_failed(ray_start_cluster, failure_type):
     def fetch(x):
         return x[0]
 
-    gen = ray.get(dynamic_generator.remote(10, signal))
+    gen = dynamic_generator.remote(10, signal)
     refs = []
 
     for i in range(5):
@@ -205,7 +205,7 @@ def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster):
         )
         ray.init(address=cluster.address)
 
-        @ray.remote(num_returns="streaming", max_retries=-1)
+        @ray.remote(max_retries=-1)
         def dynamic_generator(num_returns):
             for i in range(num_returns):
                 time.sleep(0.1)
@@ -262,7 +262,7 @@ def test_generator_max_returns(monkeypatch, shutdown_only):
             "2",
         )
 
-        @ray.remote(num_returns="streaming")
+        @ray.remote
         def generator_task():
             for _ in range(3):
                 yield 1
@@ -289,7 +289,7 @@ def test_return_yield_mix(shutdown_only):
             yield i
             return
 
-    generator = g.options(num_returns="streaming").remote()
+    generator = g.remote()
     result = []
     for ref in generator:
         result.append(ray.get(ref))
@@ -317,7 +317,7 @@ def test_task_name_not_changed_for_iteration(shutdown_only):
             assert task_name == asyncio.current_task().get_name()
 
     a = A.remote()
-    for obj_ref in a.gen.options(num_returns="streaming").remote():
+    for obj_ref in a.gen.remote():
         print(ray.get(obj_ref))
 
 
@@ -334,7 +334,7 @@ def test_async_actor_concurrent(shutdown_only):
     a = A.remote()
 
     async def co():
-        async for ref in a.gen.options(num_returns="streaming").remote():
+        async for ref in a.gen.remote():
             print(await ref)
 
     async def main():
@@ -359,7 +359,7 @@ def test_no_memory_store_obj_leak(shutdown_only):
             yield 1
 
     for _ in range(10):
-        for ref in f.options(num_returns="streaming").remote():
+        for ref in f.remote():
             del ref
 
         time.sleep(0.2)
@@ -369,7 +369,7 @@ def test_no_memory_store_obj_leak(shutdown_only):
     assert_no_leak()
 
     for _ in range(10):
-        for ref in f.options(num_returns="streaming").remote():
+        for ref in f.remote():
             break
 
         time.sleep(0.2)
@@ -453,7 +453,7 @@ def test_python_object_leak(shutdown_only):
 
     def verify_generator(actor, fail):
         for _ in range(100):
-            for ref in actor.gen.options(num_returns="streaming").remote(fail=fail):
+            for ref in actor.gen.remote(fail=fail):
                 try:
                     ray.get(ref)
                 except Exception:

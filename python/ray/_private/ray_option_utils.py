@@ -188,7 +188,7 @@ _task_only_options = {
         if (x is None or x == "dynamic" or x == "streaming" or x >= 0)
         else "The keyword 'num_returns' only accepts None, a non-negative integer, or "
         '"dynamic" (for generators)',
-        default_value=1,
+        default_value=None,
     ),
     "object_store_memory": Option(  # override "_common_options"
         (int, type(None)),

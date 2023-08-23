@@ -144,7 +144,7 @@ def test_generator_basic(shutdown_only):
         for i in range(5):
             yield i
 
-    gen = f.options(num_returns="streaming").remote()
+    gen = f.remote()
     i = 0
     for ref in gen:
         print(ray.get(ref))
@@ -162,7 +162,7 @@ def test_generator_basic(shutdown_only):
                 raise ValueError
             yield i
 
-    gen = f.options(num_returns="streaming").remote()
+    gen = f.remote()
     print(ray.get(next(gen)))
     print(ray.get(next(gen)))
     with pytest.raises(ray.exceptions.RayTaskError) as e:
@@ -188,7 +188,7 @@ def test_generator_basic(shutdown_only):
                 yield i
 
     a = A.remote()
-    gen = a.f.options(num_returns="streaming").remote()
+    gen = a.f.remote()
     i = 0
     for ref in gen:
         if i == 2:
@@ -231,7 +231,7 @@ def test_generator_basic(shutdown_only):
             yield i
 
     a = Actor.remote()
-    gen = f.options(num_returns="streaming").remote(a)
+    gen = f.remote(a)
     assert ray.get(next(gen)) == 0
     assert ray.get(next(gen)) == 1
     assert ray.get(next(gen)) == 2
@@ -250,7 +250,7 @@ def test_generator_basic(shutdown_only):
             time.sleep(5)
             yield i
 
-    gen = f.options(num_returns="streaming").remote()
+    gen = f.remote()
     assert ray.get(next(gen)) == 0
     ray.cancel(gen)
     with pytest.raises(ray.exceptions.RayTaskError) as e:
@@ -278,7 +278,7 @@ def test_streaming_generator_bad_exception_not_failing(shutdown_only, capsys):
         raise UnserializableException
         yield 1  # noqa
 
-    for ref in f.options(num_returns="streaming").remote():
+    for ref in f.remote():
         with pytest.raises(ray.exceptions.RayTaskError):
             ray.get(ref)
     captured = capsys.readouterr()
@@ -304,7 +304,7 @@ def test_generator_streaming_no_leak_upon_failures(
         @ray.remote
         def g():
             try:
-                gen = f.options(num_returns="streaming").remote()
+                gen = f.remote()
                 for ref in gen:
                     print(ref)
                     ray.get(ref)
@@ -373,9 +373,7 @@ def test_generator_streaming(shutdown_only, use_actors, store_in_plasma):
         remote_generator_fn = generator
 
     """Verify num_returns="streaming" is streaming"""
-    gen = remote_generator_fn.options(num_returns="streaming").remote(
-        3, store_in_plasma
-    )
+    gen = remote_generator_fn.remote(3, store_in_plasma)
     i = 0
     for ref in gen:
         id = ref.hex()
@@ -415,9 +413,7 @@ def test_generator_dist_chain(ray_start_cluster):
                     time.sleep(0.1)
                     yield np.ones(5 * 1024 * 1024)
             else:
-                for data in self.child.get_data.options(
-                    num_returns="streaming"
-                ).remote():
+                for data in self.child.get_data.remote():
                     yield ray.get(data)
 
     chain_actor = ChainActor.remote()
@@ -425,7 +421,7 @@ def test_generator_dist_chain(ray_start_cluster):
     chain_actor_3 = ChainActor.remote(chain_actor_2)
     chain_actor_4 = ChainActor.remote(chain_actor_3)
 
-    for ref in chain_actor_4.get_data.options(num_returns="streaming").remote():
+    for ref in chain_actor_4.get_data.remote():
         assert np.array_equal(np.ones(5 * 1024 * 1024), ray.get(ref))
         print("getting the next data")
         del ref
@@ -446,7 +442,7 @@ def test_generator_slow_pinning_requests(monkeypatch, shutdown_only):
         def f():
             yield np.ones(5 * 1024 * 1024)
 
-        for ref in f.options(num_returns="streaming").remote():
+        for ref in f.remote():
             del ref
 
         print(list_objects())
@@ -478,7 +474,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
         arr = 3
 
     def verify_sync_task_executor():
-        generator = a.f.options(num_returns="streaming").remote(ray.put(arr))
+        generator = a.f.remote(ray.put(arr))
         # Verify it works with next.
         assert isinstance(generator, StreamingObjectRefGenerator)
         assert ray.get(next(generator)) == 0
@@ -488,26 +484,26 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
             ray.get(next(generator))
 
         # Verify it works with for.
-        generator = a.f.options(num_returns="streaming").remote(ray.put(3))
+        generator = a.f.remote(ray.put(3))
         for index, ref in enumerate(generator):
             assert index == ray.get(ref)
 
     def verify_async_task_executor():
         # Verify it works with next.
-        generator = a.async_f.options(num_returns="streaming").remote(ray.put(arr))
+        generator = a.async_f.remote(ray.put(arr))
         assert isinstance(generator, StreamingObjectRefGenerator)
         assert ray.get(next(generator)) == 0
         assert ray.get(next(generator)) == 1
         assert ray.get(next(generator)) == 2
 
         # Verify it works with for.
-        generator = a.f.options(num_returns="streaming").remote(ray.put(3))
+        generator = a.f.remote(ray.put(3))
         for index, ref in enumerate(generator):
             assert index == ray.get(ref)
 
     async def verify_sync_task_async_generator():
         # Verify anext
-        async_generator = a.f.options(num_returns="streaming").remote(ray.put(arr))
+        async_generator = a.f.remote(ray.put(arr))
         assert isinstance(async_generator, StreamingObjectRefGenerator)
         for expected in range(3):
             ref = await async_generator.__anext__()
@@ -516,7 +512,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
             await async_generator.__anext__()
 
         # Verify async for.
-        async_generator = a.f.options(num_returns="streaming").remote(ray.put(arr))
+        async_generator = a.f.remote(ray.put(arr))
         expected = 0
         async for ref in async_generator:
             value = await ref
@@ -524,9 +520,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
             expected += 1
 
     async def verify_async_task_async_generator():
-        async_generator = a.async_f.options(num_returns="streaming").remote(
-            ray.put(arr)
-        )
+        async_generator = a.async_f.remote(ray.put(arr))
         assert isinstance(async_generator, StreamingObjectRefGenerator)
         for expected in range(3):
             ref = await async_generator.__anext__()
@@ -535,9 +529,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
             await async_generator.__anext__()
 
         # Verify async for.
-        async_generator = a.async_f.options(num_returns="streaming").remote(
-            ray.put(arr)
-        )
+        async_generator = a.async_f.remote(ray.put(arr))
         expected = 0
         async for ref in async_generator:
             value = await ref
@@ -566,7 +558,7 @@ def test_streaming_generator_exception(shutdown_only):
             yield 1  # noqa
 
     a = Actor.remote()
-    g = a.f.options(num_returns="streaming").remote()
+    g = a.f.remote()
     with pytest.raises(ValueError):
         ray.get(next(g))
 
@@ -576,7 +568,7 @@ def test_streaming_generator_exception(shutdown_only):
     with pytest.raises(StopIteration):
         ray.get(next(g))
 
-    g = a.async_f.options(num_returns="streaming").remote()
+    g = a.async_f.remote()
     with pytest.raises(ValueError):
         ray.get(next(g))
 
@@ -610,7 +602,7 @@ def test_threaded_actor_generator(shutdown_only):
 
         async def run():
             i = 0
-            async for ref in a.f.options(num_returns="streaming").remote():
+            async for ref in a.f.remote():
                 val = ray.get(ref)
                 print(val)
                 print(ref)
@@ -620,7 +612,7 @@ def test_threaded_actor_generator(shutdown_only):
 
         async def run2():
             i = 0
-            async for ref in asy.f.options(num_returns="streaming").remote():
+            async for ref in asy.f.remote():
                 val = await ref
                 print(ref)
                 print(val)
@@ -657,7 +649,7 @@ def test_generator_dist_gather(ray_start_cluster):
 
     async def all_gather():
         actor = Actor.remote()
-        async for ref in actor.get_data.options(num_returns="streaming").remote():
+        async for ref in actor.get_data.remote():
             val = await ref
             assert np.array_equal(np.ones(5 * 1024 * 1024), val)
             del ref
@@ -687,7 +679,7 @@ def test_generator_wait(shutdown_only):
         time.sleep(sleep_time)
         return 10
 
-    gen = f.options(num_returns="streaming").remote(1)
+    gen = f.remote(1)
 
     """
     Test basic cases.
@@ -710,7 +702,7 @@ def test_generator_wait(shutdown_only):
             assert next(r[0]) == 0
         assert len(ur) == 0
 
-    gen = f.options(num_returns="streaming").remote(0)
+    gen = f.remote(0)
     # Wait until the generator task finishes
     ray.get(gen._generator_ref)
     for i in range(2):
@@ -722,7 +714,7 @@ def test_generator_wait(shutdown_only):
     """
     Test the case ref is mixed with regular object ref.
     """
-    gen = f.options(num_returns="streaming").remote(0)
+    gen = f.remote(0)
     ref = g.remote(3)
     ready, unready = [], [gen, ref]
     result_set = set()
@@ -749,7 +741,7 @@ def test_generator_wait(shutdown_only):
     """
     Test timeout.
     """
-    gen = f.options(num_returns="streaming").remote(3)
+    gen = f.remote(3)
     ref = g.remote(1)
     ready, unready = ray.wait([gen, ref], timeout=2)
     assert len(ready) == 1
@@ -758,7 +750,7 @@ def test_generator_wait(shutdown_only):
     """
     Test num_returns
     """
-    gen = f.options(num_returns="streaming").remote(1)
+    gen = f.remote(1)
     ref = g.remote(1)
     ready, unready = ray.wait([ref, gen], num_returns=2)
     assert len(ready) == 2
@@ -779,7 +771,7 @@ def test_generator_wait_e2e(shutdown_only):
         time.sleep(sleep_time)
         return 10
 
-    gen = [f.options(num_returns="streaming").remote(1) for _ in range(4)]
+    gen = [f.remote(1) for _ in range(4)]
     ref = [g.remote(2) for _ in range(4)]
     ready, unready = [], [*gen, *ref]
     result = []
@@ -806,6 +798,61 @@ def test_generator_wait_e2e(shutdown_only):
     assert result[0] == 4
     assert result[1] == 4
     assert result[10] == 4
+
+
+def test_completed_next_ready_is_finished(shutdown_only):
+    @ray.remote
+    def f():
+        for _ in range(3):
+            time.sleep(1)
+            yield 1
+
+    gen = f.remote()
+    assert not gen.is_finished()
+    assert not gen.next_ready()
+    r, _ = ray.wait([gen])
+    gen = r[0]
+    assert gen.next_ready()
+    _, ur = ray.wait([gen.completed()], timeout=0)
+    assert len(ur) == 1
+
+    # Consume object refs
+    next(gen)
+    assert not gen.is_finished()
+    _, ur = ray.wait([gen.completed()], timeout=0)
+    assert len(ur) == 1
+
+    next(gen)
+    assert not gen.is_finished()
+    _, ur = ray.wait([gen.completed()], timeout=0)
+    assert len(ur) == 1
+
+    next(gen)
+    with pytest.raises(StopIteration):
+        next(gen)
+
+    assert gen.is_finished()
+    # Since the next should raise StopIteration,
+    # it should be False.
+    assert not gen.next_ready()
+    r, _ = ray.wait([gen.completed()], timeout=0)
+    assert len(r) == 1
+
+    # Test the failed case.
+    gen = f.remote()
+    next(gen)
+    ray.cancel(gen, force=True)
+    r, _ = ray.wait([gen])
+    assert len(r) == 1
+    # The last exception is not taken yet.
+    assert gen.next_ready()
+    assert not gen.is_finished()
+    with pytest.raises(WorkerCrashedError):
+        ray.get(gen.completed())
+    with pytest.raises(WorkerCrashedError):
+        ray.get(next(gen))
+    assert not gen.next_ready()
+    assert gen.is_finished()
 
 
 if __name__ == "__main__":
