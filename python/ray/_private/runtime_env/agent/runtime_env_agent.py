@@ -58,6 +58,21 @@ class CreatedEnvResult:
 UriType = str
 
 
+def runtime_env_summary(serialized_runtime_env: str) -> str:
+    """
+    If the env is too long, returns a summary to avoid overloading the logs.
+    Omits the last chars except for the last char which should be "}".
+    """
+    if len(serialized_runtime_env) > 120:
+        return serialized_runtime_env[:116] + "...}"
+    return serialized_runtime_env
+
+
+def log_debug_runtime_env_if_too_long(logger, serialized_runtime_env):
+    if len(serialized_runtime_env) > 120:
+        logger.debug(f"serialized runtime env full length: {serialized_runtime_env}")
+
+
 class ReferenceTable:
     """
     The URI reference table which is used for GC.
@@ -124,7 +139,10 @@ class ReferenceTable:
         else:
             default_logger.warn(f"Runtime env {serialized_env} does not exist.")
         if unused:
-            default_logger.info(f"Unused runtime env {serialized_env}.")
+            default_logger.info(
+                f"Unused runtime env {runtime_env_summary(serialized_env)}."
+            )
+            log_debug_runtime_env_if_too_long(default_logger, serialized_env)
             self._unused_runtime_env_callback(serialized_env)
         return unused
 
@@ -253,8 +271,10 @@ class RuntimeEnvAgent:
         def delete_runtime_env():
             del self._env_cache[unused_runtime_env]
             self._logger.info(
-                "Runtime env %s removed from env-level cache.", unused_runtime_env
+                "Runtime env %s removed from env-level cache.",
+                runtime_env_summary(unused_runtime_env),
             )
+            log_debug_runtime_env_if_too_long(self._logger, unused_runtime_env)
 
         if unused_runtime_env in self._env_cache:
             if not self._env_cache[unused_runtime_env].success:
@@ -279,6 +299,9 @@ class RuntimeEnvAgent:
         return self._per_job_logger_cache[job_id]
 
     async def GetOrCreateRuntimeEnv(self, request):
+
+        runtime_env_summary = self.runtime_env_summary(request.serialized_runtime_env)
+
         self._logger.debug(
             f"Got request from {request.source_process} to increase "
             "reference for runtime env: "
@@ -326,8 +349,6 @@ class RuntimeEnvAgent:
 
         async def _create_runtime_env_with_retry(
             runtime_env,
-            serialized_runtime_env,
-            serialized_allocated_resource_instances,
             setup_timeout_seconds,
         ) -> Tuple[bool, str, str]:
             """
@@ -346,9 +367,10 @@ class RuntimeEnvAgent:
 
             """
             self._logger.info(
-                f"Creating runtime env: {serialized_env} with timeout "
+                f"Creating runtime env: {runtime_env_summary} with timeout "
                 f"{setup_timeout_seconds} seconds."
             )
+            log_debug_runtime_env_if_too_long(self._logger, serialized_env)
             serialized_context = None
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
@@ -393,9 +415,10 @@ class RuntimeEnvAgent:
             else:
                 self._logger.info(
                     "Successfully created runtime env: %s, the context: %s",
-                    serialized_env,
+                    runtime_env_summary,
                     serialized_context,
                 )
+                log_debug_runtime_env_if_too_long(self._logger, serialized_env)
                 return True, serialized_context, None
 
         try:
@@ -429,9 +452,10 @@ class RuntimeEnvAgent:
                     context = result.result
                     self._logger.info(
                         "Runtime env already created "
-                        f"successfully. Env: {serialized_env}, "
+                        f"successfully. Env: {runtime_env_summary}, "
                         f"context: {context}"
                     )
+                    log_debug_runtime_env_if_too_long(self._logger, serialized_env)
                     return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
                         serialized_runtime_env_context=context,
@@ -440,9 +464,10 @@ class RuntimeEnvAgent:
                     error_message = result.result
                     self._logger.info(
                         "Runtime env already failed. "
-                        f"Env: {serialized_env}, "
+                        f"Env: {runtime_env_summary}, "
                         f"err: {error_message}"
                     )
+                    log_debug_runtime_env_if_too_long(self._logger, serialized_env)
                     # Recover the reference.
                     self._reference_table.decrease_reference(
                         runtime_env, serialized_env, request.source_process
@@ -472,8 +497,6 @@ class RuntimeEnvAgent:
                 error_message,
             ) = await _create_runtime_env_with_retry(
                 runtime_env,
-                serialized_env,
-                request.serialized_allocated_resource_instances,
                 setup_timeout_seconds,
             )
             creation_time_ms = int(round((time.perf_counter() - start) * 1000, 0))
@@ -498,11 +521,15 @@ class RuntimeEnvAgent:
             )
 
     async def DeleteRuntimeEnvIfPossible(self, request):
+
+        runtime_env_summary = self.runtime_env_summary(request.serialized_runtime_env)
+
         self._logger.info(
             f"Got request from {request.source_process} to decrease "
             "reference for runtime env: "
-            f"{request.serialized_runtime_env}."
+            f"{runtime_env_summary}."
         )
+        log_debug_runtime_env_if_too_long(self._logger, request.serialized_runtime_env)
 
         try:
             runtime_env = RuntimeEnv.deserialize(request.serialized_runtime_env)
