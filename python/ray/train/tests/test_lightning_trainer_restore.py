@@ -166,7 +166,7 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path):
     assert not result.error
     assert result.metrics["training_iteration"] == training_iterations
     assert result.metrics["iterations_since_restore"] == iterations_since_restore
-    assert tmpdir / exp_name in result.log_dir.parents
+    assert tmpdir / exp_name in result.path.parents
 
 
 if __name__ == "__main__":

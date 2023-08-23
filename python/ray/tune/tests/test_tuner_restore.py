@@ -512,8 +512,8 @@ def test_tuner_restore_latest_available_checkpoint(
     del tuner
     fail_marker.remove(ignore_errors=True)
 
-    shutil.rmtree(os.path.join(result.log_dir, "checkpoint_000003"))
-    shutil.rmtree(os.path.join(result.log_dir, "checkpoint_000002"))
+    shutil.rmtree(os.path.join(result.path, "checkpoint_000003"))
+    shutil.rmtree(os.path.join(result.path, "checkpoint_000002"))
 
     if upload_uri:
         delete_at_uri(upload_uri + "/checkpoint_000003")
@@ -798,9 +798,7 @@ def test_tuner_restore_from_moved_experiment_path(
     assert results[0].checkpoint
     assert len(results[0].best_checkpoints) == num_to_keep
     checkpoint_dirs = [
-        path
-        for path in os.listdir(results[0].log_dir)
-        if path.startswith("checkpoint_")
+        path for path in os.listdir(results[0].path) if path.startswith("checkpoint_")
     ]
     assert sorted(checkpoint_dirs) == ["checkpoint_000001", "checkpoint_000002"]
 
@@ -865,11 +863,7 @@ def test_tuner_restore_from_moved_cloud_uri(
     assert num_experiment_checkpoints == 2
 
     num_trial_checkpoints = len(
-        [
-            path
-            for path in os.listdir(results[0].log_dir)
-            if path.startswith("checkpoint_")
-        ]
+        [path for path in os.listdir(results[0].path) if path.startswith("checkpoint_")]
     )
     assert num_trial_checkpoints == 2
 
@@ -1006,7 +1000,7 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, use_air_trai
     ), f"Should be at 2 iters before erroring, got {training_iteration}"
 
     # Initial run saves the first 2 checkpoints
-    checkpoint_dirs, checkpoints = get_checkpoints(results[0].log_dir)
+    checkpoint_dirs, checkpoints = get_checkpoints(results[0].path)
     assert checkpoint_dirs == ["checkpoint_000000", "checkpoint_000001"]
     assert [ckpt.to_dict()["it"] for ckpt in checkpoints] == [1, 2]
 
@@ -1022,7 +1016,7 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, use_air_trai
     assert training_iteration == 5
 
     # Restored run saves the 3 more checkpoints, and first checkpoint should be deleted
-    checkpoint_dirs, checkpoints = get_checkpoints(results[0].log_dir)
+    checkpoint_dirs, checkpoints = get_checkpoints(results[0].path)
     assert checkpoint_dirs == [f"checkpoint_00000{i}" for i in range(1, 5)]
     assert [ckpt.to_dict()["it"] for ckpt in checkpoints] == [2, 3, 4, 5]
 
