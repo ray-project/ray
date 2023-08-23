@@ -1038,7 +1038,7 @@
   cluster:
     byod:
       type: cu118
-    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
+    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
 
   run:
     timeout: 600
@@ -1054,30 +1054,6 @@
       #     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
 
 
-
-- name: workspace_template_finetuning_llms_with_deepspeed_llama_2_13b
-  group: Workspace templates
-  working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
-  python: "3.9"
-  frequency: nightly-3x
-  team: ml
-  cluster:
-    byod:
-      type: cu118
-    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
-
-  run:
-    timeout: 1200
-    script: chmod +x ./run_llama_ft.sh && RAY_AIR_NEW_PERSISTENCE_MODE=1 ./run_llama_ft.sh --size=13b --as-test
-
-  variations:
-      - __suffix__: aws
-      # TODO (Kourosh): Enable once GCE is ready
-      # - __suffix__: gce
-      #   env: gce
-      #   frequency: manual
-      #   cluster:
-      #     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
 
 #######################
 # XGBoost release tests
@@ -2197,7 +2173,7 @@
 
   run:
     timeout: 600
-    script: python workloads/torch_tune_serve_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_tune_serve_test.py
     wait_for_nodes:
       num_nodes: 2
 
@@ -3060,6 +3036,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -5451,6 +5429,7 @@
 
   frequency: nightly-3x
   team: core
+  stable: false
   cluster:
     byod:
       type: gpu
