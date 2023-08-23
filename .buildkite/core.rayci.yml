@@ -12,6 +12,7 @@ steps:
     job_env: corebuild
 
   - label: ":ray: core: flaky tests"
+    if: "false"
     instance_type: large
     soft_fail: true
     commands:
