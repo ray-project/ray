@@ -119,7 +119,7 @@ def train_loop_per_worker(config):
                 break
 
         with tempfile.TemporaryDirectory() as checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, "data.ckpt"), "rb") as fp:
+            with open(os.path.join(checkpoint_dir, "data.ckpt"), "wb") as fp:
                 cpickle.dump(
                     dict(
                         model_state=net.state_dict(),

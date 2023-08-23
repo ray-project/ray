@@ -150,8 +150,8 @@ def train_func(config):
         train_epoch(train_loader, model, criterion, optimizer)
         result = validate_epoch(validation_loader, model, criterion)
 
-        with tempfile.mkdtemp() as checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, "data.ckpt"), "rb") as fp:
+        with tempfile.TemporaryDirectory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "data.ckpt"), "wb") as fp:
                 cpickle.dump(
                     {
                         "epoch": epoch,
