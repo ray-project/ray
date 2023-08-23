@@ -821,12 +821,14 @@ py_test(
 #     args = ["--smoke-test"]
 # )
 
+# Exclude from new storage tests as transformers still uses the old tune
+# API.
 py_test(
     name = "pbt_transformers",
     size = "small",
     srcs = ["examples/pbt_transformers/pbt_transformers.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
     args = ["--smoke-test"]
 )
 
