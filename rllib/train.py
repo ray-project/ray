@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import importlib
 import json
 import os
 from pathlib import Path
@@ -88,34 +87,36 @@ def load_experiments_from_file(
             experiments = yaml.safe_load(f)
             if stop is not None and stop != "{}":
                 raise ValueError("`stop` criteria only supported for python files.")
-    # Python file case (ensured by file type enum)
+    # Python file case (ensured by file type enum).
     else:
-        module_name = os.path.basename(config_file).replace(".py", "")
-        spec = importlib.util.spec_from_file_location(module_name, config_file)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        spec.loader.exec_module(module)
+        # Read in the code and execute it so we'll have access to the `config` and
+        # `stop` variables defined in there.
+        with open(config_file) as f:
+            code = f.read()
 
-        if not hasattr(module, "config"):
+        exec(code)
+        local_vars = locals()
+
+        if not "config" in local_vars:
             raise ValueError(
                 "Your Python file must contain a 'config' variable "
                 "that is an AlgorithmConfig object."
             )
-        algo_config = getattr(module, "config")
+        algo_config = local_vars["config"]
         if stop is None:
-            stop = getattr(module, "stop", {})
+            stop = local_vars.get("stop", {})
         else:
             stop = json.loads(stop)
 
         # Note: we do this gymnastics to support the old format that
         # "run_rllib_experiments" expects. Ideally, we'd just build the config and
         # run the algo.
-        config = algo_config.to_dict()
+        config_dict = algo_config.to_dict()
         experiments = {
             f"default_{uuid.uuid4().hex}": {
                 "run": algo_config.__class__.__name__.replace("Config", ""),
-                "env": config.get("env"),
-                "config": config,
+                "env": config_dict.get("env"),
+                "config": config_dict,
                 "stop": stop,
             }
         }

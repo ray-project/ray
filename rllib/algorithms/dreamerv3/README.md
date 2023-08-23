@@ -79,27 +79,32 @@ $ pip install flappy_bird_gymnasium
 Now, let's create a new RLlib python config file for this experiment and call it ``flappy_bird.py``:
 
 ```python
-# Import flappy bird and gymnasium
-import flappy_bird_gymnasium  # we must import this for the `gym.make()` below to work
-import gymnasium as gym
-
-# Our two env wrappers for a) resizing and b) image normalization.
-from supersuit.generic_wrappers import resize_v1
-from ray.rllib.algorithms.dreamerv3.utils.env_runner import NormalizedImageEnv
-
-# Register the FlappyBird-rgb-v0 env including necessary wrappers via the
-# `tune.register_env()` API.
 from ray import tune
-tune.register_env("flappy-bird", lambda ctx: (
-    NormalizedImageEnv(resize_v1(  # resize to 64x64 and normalize images
-        gym.make("FlappyBird-rgb-v0", {"audio_on": False}), x_size=64, y_size=64
-    ))
-))
-
 # Import our DreamerV3 algorithm config class:
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 
-# Define the `config` variable.
+
+# Register the FlappyBird-rgb-v0 env including necessary wrappers via the
+# `tune.register_env()` API.
+def env_creator(ctx):
+    # Import flappy bird and gymnasium
+    import flappy_bird_gymnasium  # noqa
+    import gymnasium as gym
+    # Our two env wrappers for a) resizing and b) image normalization.
+    from supersuit.generic_wrappers import resize_v1
+    from ray.rllib.algorithms.dreamerv3.utils.env_runner import NormalizedImageEnv
+
+    return NormalizedImageEnv(
+        resize_v1(  # resize to 64x64 and normalize images
+            gym.make("FlappyBird-rgb-v0", audio_on=False), x_size=64, y_size=64
+        )
+    )
+
+
+tune.register_env("flappy-bird", env_creator)
+
+
+# Define the `config` variable to use for training.
 config = (
     DreamerV3Config()
     # set the env to the pre-registered string
