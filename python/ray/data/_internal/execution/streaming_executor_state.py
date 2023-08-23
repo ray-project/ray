@@ -339,7 +339,7 @@ def process_completed_tasks(topology: Topology) -> None:
             num_rows = next.num_rows()
             # Skip empty RefBundles.
             if num_rows is not None and num_rows > 0:
-                op_state.add_output(op.get_next())
+                op_state.add_output(next)
 
 
 def update_operator_states(topology: Topology) -> None:
