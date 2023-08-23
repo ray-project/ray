@@ -4,7 +4,7 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
-from ray.serve._private.common import ReplicaState
+from ray.serve._private.common import ReplicaState, DeploymentID
 
 
 class TestInMemoryMetricsStore:
@@ -93,7 +93,7 @@ def test_e2e(serve_instance):
             time.sleep(0.1)
 
     handle = serve.run(A.bind())
-    dep_id = "default_A"
+    dep_id = DeploymentID("A", "default")
     [handle.remote() for _ in range(50)]
 
     # Wait for metrics to propagate
