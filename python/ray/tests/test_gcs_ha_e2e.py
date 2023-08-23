@@ -16,9 +16,9 @@ print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
 
     def check_alive(n):
         output = worker.exec_run(cmd=f"python -c '{get_nodes_script}'")
-        assert output.exit_code == 0
         text = output.output.decode().strip().split("\n")[-1]
         print("Alive nodes: ", text)
+        assert output.exit_code == 0
         return n == int(text)
 
     # Make sure two nodes are alive
