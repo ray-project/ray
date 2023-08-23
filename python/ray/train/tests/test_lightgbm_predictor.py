@@ -9,7 +9,6 @@ from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
 from ray.train.lightgbm import (
     LightGBMCheckpoint,
-    LegacyLightGBMCheckpoint,
     LightGBMPredictor,
 )
 from ray.train.predictor import TYPE_TO_ENUM
@@ -109,7 +108,7 @@ def test_predict_feature_columns_pandas_categorical(to_string: bool):
 
 
 def test_predict_no_preprocessor_no_training():
-    checkpoint = LegacyLightGBMCheckpoint.from_model(booster=model)
+    checkpoint = LightGBMCheckpoint.from_model(booster=model)
     predictor = LightGBMPredictor.from_checkpoint(checkpoint)
 
     data_batch = np.array([[1, 2], [3, 4], [5, 6]])

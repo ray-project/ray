@@ -2,7 +2,7 @@ import logging
 from typing import Optional, Type
 
 from ray.data.preprocessor import Preprocessor
-from ray.train.lightning.lightning_checkpoint import LegacyLightningCheckpoint
+from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from ray.train.torch.torch_predictor import TorchPredictor
 from ray.util.annotations import PublicAPI
 import pytorch_lightning as pl
@@ -78,7 +78,7 @@ class LightningPredictor(TorchPredictor):
     @classmethod
     def from_checkpoint(
         cls,
-        checkpoint: LegacyLightningCheckpoint,
+        checkpoint: LightningCheckpoint,
         model_class: Type[pl.LightningModule],
         *,
         preprocessor: Optional[Preprocessor] = None,
@@ -94,7 +94,7 @@ class LightningPredictor(TorchPredictor):
 
                 import pytorch_lightning as pl
                 from ray.train.lightning import (
-                    LegacyLightningCheckpoint,
+                    LightningCheckpoint,
                     LightningPredictor,
                 )
 
@@ -110,7 +110,7 @@ class LightningPredictor(TorchPredictor):
                 # ckpt_dir = "{storage_path}/LightningTrainer_.*/checkpoint_000000"
 
                 def load_predictor_from_checkpoint(ckpt_dir):
-                    checkpoint = LegacyLightningCheckpoint.from_directory(ckpt_dir)
+                    checkpoint = LightningCheckpoint.from_directory(ckpt_dir)
 
                     # `from_checkpoint()` takes the argument list of
                     # `LightningModule.load_from_checkpoint()` as additional kwargs.
