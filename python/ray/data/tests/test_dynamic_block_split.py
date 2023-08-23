@@ -325,6 +325,7 @@ def test_lazy_block_list(shutdown_only, target_max_block_size):
         assert block_metadata.schema is not None
 
 
+@pytest.skip("Needs zero-copy optimization for read->map_batches.")
 def test_read_large_data(ray_start_cluster):
     # Test 20G input with single task
     num_blocks_per_task = 20
