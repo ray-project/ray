@@ -500,7 +500,7 @@ py_test(
     size = "large",
     srcs = ["tests/execution/test_controller_search_alg_integration.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"]
+    tags = ["team:ml", "exclusive", "new_storage"]
 )
 
 # --------------------------------------------------------------------
