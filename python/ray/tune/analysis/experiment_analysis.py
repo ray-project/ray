@@ -125,7 +125,7 @@ class NewExperimentAnalysis:
             fs = pyarrow.fs.LocalFileSystem()
         experiment_fs_path = str(experiment_path)
 
-        if not _is_directory(fs, experiment_fs_path):
+        if experiment_fs_path.endswith(".json"):
             experiment_json_fs_path = experiment_fs_path
             experiment_fs_path = os.path.dirname(experiment_fs_path)
         else:
