@@ -262,10 +262,11 @@ class ObjectRefGenerator:
 
 
 class StreamingObjectRefGenerator:
-    """A generator class to get object references
-    created from a generator task in a streaming manner.
+    """A generator to obtain object references
+    from a task in a streaming manner.
 
-    The class is compatible with asyncio.
+    The class is compatible with generator and
+    async generator interface.
 
     The class is not thread-safe.
 

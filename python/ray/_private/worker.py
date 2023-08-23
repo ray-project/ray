@@ -2652,22 +2652,18 @@ def wait(
     and returns that exact number of object refs.
 
     `ray_waitables` is a list of :class:`~ObjectRefs` and
-    :class:`~StreamingObjectRefGenerators`. This method returns two lists.
+    :class:`~StreamingObjectRefGenerators`.
 
-    The first list:
-        ObjectRef:
-            The first list consists of object refs that
-            correspond to objects that are available in the object store.
-        StreamingObjectRefGenerators:
+    ObjectRef:
+        The first list consists of object refs that
+        correspond to objects that are available in the object store.
+        The second list corresponds to the rest of the object refs
+        (which may or may not be ready).
+
+    StreamingObjectRefGenerators:
             The first list consists of generators in which the next ref
             in the genreator correspond to objects that are
             available in the object store.
-
-    The seccond list:
-        ObjectRef:
-            The second list corresponds to the rest of the object refs
-            (which may or may not be ready).
-        StreamingObjectRefGenerators:
             The second list corresponds to the rest of the generator
             in which the next item is not ready in the object store.
 
@@ -2868,7 +2864,8 @@ def cancel(
     WorkerCrashedError if ``force=True``.
 
     Args:
-        ray_waitable: ObjectRef or StreamingObjectRefGenreator
+        ray_waitable: :class:`~ObjectRefs` and
+            :class:`~StreamingObjectRefGenerators`
             returned by the task that should be canceled.
         force: Whether to force-kill a running task by killing
             the worker that is running the task.
