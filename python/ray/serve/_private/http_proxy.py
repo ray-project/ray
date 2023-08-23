@@ -246,6 +246,7 @@ class GenericProxy(ABC):
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=(
+                "method",
                 "route",
                 "application",
                 "status_code",
@@ -495,6 +496,7 @@ class GenericProxy(ABC):
             self.processing_latency_tracker.observe(
                 latency_ms,
                 tags={
+                    "method": method,
                     "route": route_path,
                     "application": handle.deployment_id.app,
                     "status_code": proxy_response.status_code,

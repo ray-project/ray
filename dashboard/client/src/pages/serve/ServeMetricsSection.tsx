@@ -62,16 +62,28 @@ const useStyles = makeStyles((theme) =>
 // NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/serve_dashboard_panels.py
 const METRICS_CONFIG: MetricConfig[] = [
   {
-    title: "QPS per route",
+    title: "QPS per application",
     pathParams: "orgId=1&theme=light&panelId=7",
   },
   {
-    title: "Error QPS per route",
+    title: "Error QPS per application",
     pathParams: "orgId=1&theme=light&panelId=8",
   },
   {
-    title: "P90 latency per route",
+    title: "P90 latency per application",
     pathParams: "orgId=1&theme=light&panelId=15",
+  },
+  {
+    title: "QPS per gRPC application method",
+    pathParams: "orgId=1&theme=light&panelId=17",
+  },
+  {
+    title: "Error QPS per gRPC application method",
+    pathParams: "orgId=1&theme=light&panelId=18",
+  },
+  {
+    title: "P90 latency per gRPC application method",
+    pathParams: "orgId=1&theme=light&panelId=21",
   },
 ];
 
