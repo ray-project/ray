@@ -13,9 +13,9 @@ from ray.serve._private.common import DeploymentID, RequestProtocol
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
 )
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     get_random_letters,
-    record_serve_tag,
     DEFAULT,
 )
 from ray.serve._private.router import Router, RequestMetadata
@@ -109,7 +109,11 @@ class _DeploymentHandleBase:
 
         # TODO(zcin): Separate deployment_id into deployment and application tags
         self.request_counter.set_default_tags(
-            {"handle": handle_tag, "deployment": str(self.deployment_id)}
+            {
+                "handle": handle_tag,
+                "deployment": str(self.deployment_id),
+                "application": self.deployment_id.app,
+            }
         )
 
         self._router: Optional[Router] = _router
@@ -122,13 +126,12 @@ class _DeploymentHandleBase:
             and self.handle_options._request_protocol == RequestProtocol.UNDEFINED
         ):
             if self.__class__ == DeploymentHandle:
-                tag = "SERVE_DEPLOYMENT_HANDLE_API_USED"
+                ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.record("1")
             elif self.__class__ == RayServeHandle:
-                tag = "SERVE_RAY_SERVE_HANDLE_API_USED"
+                ServeUsageTag.RAY_SERVE_HANDLE_API_USED.record("1")
             else:
-                tag = "SERVE_RAY_SERVE_SYNC_HANDLE_API_USED"
+                ServeUsageTag.RAY_SERVE_SYNC_HANDLE_API_USED.record("1")
 
-            record_serve_tag(tag, "1")
             self._recorded_telemetry = True
 
     def _set_request_protocol(self, request_protocol: RequestProtocol):
@@ -456,7 +459,7 @@ class _DeploymentResponseBase:
         # `_record_telemetry` is used to filter other API calls that go through
         # this path as well as calls from the proxy.
         if _record_telemetry:
-            record_serve_tag("SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED", "1")
+            ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
         return await self._assign_request_task
 
     def _to_object_ref_or_gen_sync(
@@ -470,7 +473,7 @@ class _DeploymentResponseBase:
             )
 
         if _record_telemetry:
-            record_serve_tag("SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED", "1")
+            ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
         return self._object_ref_future.result()
 
