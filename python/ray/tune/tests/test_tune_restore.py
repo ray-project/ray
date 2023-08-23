@@ -539,7 +539,6 @@ class TuneExampleTest(unittest.TestCase):
 
         cifar10.load_data()
         validate_save_restore(Cifar10Model)
-        validate_save_restore(Cifar10Model, use_object_store=True)
 
     def testPyTorchMNIST(self):
         from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
@@ -547,15 +546,12 @@ class TuneExampleTest(unittest.TestCase):
 
         datasets.MNIST("~/data", train=True, download=True)
         validate_save_restore(TrainMNIST)
-        validate_save_restore(TrainMNIST, use_object_store=True)
 
     def testHyperbandExample(self):
         validate_save_restore(MyTrainableClass)
-        validate_save_restore(MyTrainableClass, use_object_store=True)
 
     def testAsyncHyperbandExample(self):
         validate_save_restore(MyTrainableClass)
-        validate_save_restore(MyTrainableClass, use_object_store=True)
 
 
 class AutoInitTest(unittest.TestCase):

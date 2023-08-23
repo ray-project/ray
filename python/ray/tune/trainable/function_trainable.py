@@ -587,11 +587,6 @@ class FunctionTrainable(Trainable):
     ) -> Optional[str]:
         return None
 
-    def save_to_object(self):
-        checkpoint_path = self.save()
-        checkpoint = Checkpoint.from_directory(checkpoint_path)
-        return checkpoint.to_bytes()
-
     def load_checkpoint(self, checkpoint):
         if _use_storage_context():
             checkpoint_result = checkpoint
@@ -617,15 +612,6 @@ class FunctionTrainable(Trainable):
             self.logdir
         )
         checkpoint.to_directory(self.temp_checkpoint_dir)
-        self.restore(self.temp_checkpoint_dir)
-
-    def restore_from_object(self, obj):
-        self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
-            self.logdir
-        )
-        checkpoint = Checkpoint.from_bytes(obj)
-        checkpoint.to_directory(self.temp_checkpoint_dir)
-
         self.restore(self.temp_checkpoint_dir)
 
     def cleanup(self):

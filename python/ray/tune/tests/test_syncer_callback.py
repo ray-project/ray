@@ -539,11 +539,7 @@ def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
         config={}, logger_creator=logger_creator
     )
 
-    ray.get(trainable.save_to_object.remote())
-
-    # Temporary directory exists
-    assert_file(True, tmp_source, "checkpoint_-00001/" + NULL_MARKER)
-    assert_file(True, tmp_source, "checkpoint_-00001")
+    ray.get(trainable.save.remote())
 
     # Create some bogus test directories for testing
     os.mkdir(os.path.join(tmp_source, "checkpoint_tmp123"))
