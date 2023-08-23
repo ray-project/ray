@@ -96,7 +96,7 @@ class Result:
         associated `filesystem`.
 
         For instance, for a result stored in S3 at ``s3://bucket/location``,
-        ``path`` will have the value ``bucket/location`.
+        ``path`` will have the value ``bucket/location``.
         """
         return self._remote_path or self._local_path
 
@@ -234,6 +234,7 @@ class Result:
             checkpoint=latest_checkpoint,
             _local_path=local_path,
             _remote_path=None,
+            _storage_filesystem=pyarrow.fs.LocalFileSystem(),
             metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
             error=error,
