@@ -57,7 +57,7 @@ def test_update_envs():
         del os.environ["LD_PRELOAD"]
         update_envs(env_vars)
         assert os.environ["LD_LIBRARY_PATH"] == "/test/path1::./test/path2"
-        assert os.environ["DYLD_LIBRARY_PATH"] == "${DYLD_LIBRARY_PATH}:/test/path"
+        assert os.environ["DYLD_LIBRARY_PATH"] == ":/test/path"
         assert os.environ["LD_PRELOAD"] == env_vars["LD_PRELOAD"]
 
 
