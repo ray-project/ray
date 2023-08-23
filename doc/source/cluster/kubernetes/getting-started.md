@@ -1,6 +1,6 @@
 (kuberay-quickstart)=
 
-# Getting Started
+# Getting Started with KubeRay
 
 ## Custom Resource Definitions (CRDs)
 
