@@ -14,16 +14,19 @@ import asyncio
 import logging
 import time
 from abc import ABC
+from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
+from ray._private.utils import run_background_task
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 
 # Type aliases for id types.
 ReplicaID = str
 ModelID = str
 RequestID = str
+RouterID = str
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -59,6 +62,7 @@ class SchedulerState:
     Attributes:
         replicas: live replicas by replica id.
         pending_requests: index of live requests by request id.
+        router_requests: index of live requests by router id.
     """
 
     replicas: Dict[ReplicaID, ReplicaState] = field(default_factory=dict)
@@ -66,6 +70,20 @@ class SchedulerState:
     pending_requests: Dict[RequestID, Tuple[ModelID, ReplicaID]] = field(
         default_factory=dict
     )
+    router_requests: DefaultDict[RouterID, List[RequestID]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+
+    def complete_pending_requests(self, routers: List[RouterID]) -> None:
+        """Mark all pending requests finished by router id.
+
+        Args:
+            routers: target routers to finish requests.
+        """
+        for router_id in routers:
+            for request_id in self.router_requests.get(router_id, []):
+                self.complete_request(request_id)
+            self.router_requests.pop(router_id, None)
 
     def update_replicas(self, replica_ids: List[ReplicaID]) -> None:
         """Set live replicas, removing the state of dead replicas.
@@ -87,6 +105,7 @@ class SchedulerState:
         request_id: RequestID,
         model_id: ModelID,
         replica_id: ReplicaID,
+        router_id: RouterID,
         current_time: int,
         model_to_evict: Optional[ModelID] = None,
     ) -> None:
@@ -104,6 +123,7 @@ class SchedulerState:
                 for this rquest.
         """
         self.pending_requests[request_id] = (model_id, replica_id)
+        self.router_requests[router_id].append(request_id)
         if model_to_evict:
             del self.replicas[replica_id].models[model_to_evict]
         if model_id not in self.replicas[replica_id].models:
@@ -250,12 +270,16 @@ class SyncCentralScheduler(CentralSchedulerInterface):
         self.clock = clock
         logger.info(f"SyncCentralScheduler({self.__dict__}) created")
 
-    def try_schedule(self, request_id: str, model_id: str) -> Optional[str]:
+    def try_schedule(
+        self, request_id: str, model_id: str, router_id: str
+    ) -> Optional[str]:
         replica_id = self.state.find_schedulable_replica(
             model_id, self.max_concurrent_requests_per_replica
         )
         if replica_id:
-            self.state.assign_request(request_id, model_id, replica_id, self.clock())
+            self.state.assign_request(
+                request_id, model_id, replica_id, router_id, self.clock()
+            )
             logger.debug(
                 f"{request_id} Scheduled successfully on {replica_id} {model_id}: "
                 f"{self.state.debug_dict()}"
@@ -273,6 +297,7 @@ class SyncCentralScheduler(CentralSchedulerInterface):
                 request_id,
                 model_id,
                 replica_id,
+                router_id,
                 self.clock(),
                 model_to_evict=model_to_evict,
             )
@@ -292,14 +317,52 @@ class SyncCentralScheduler(CentralSchedulerInterface):
             self.state.complete_request(request_id)
         logger.debug(f"Request completed: {request_id}: {self.state.debug_dict()}")
 
+    def clean_up_scheduler_state(self, routers: List[RouterID]):
+        self.state.complete_pending_requests(routers)
+
 
 @ray.remote(max_restarts=-1, max_task_retries=3)
 class CentralSchedulerActor(SyncCentralScheduler):
     """Remote impl for use by Serve router using the LLM multiplex scheduler."""
 
-    async def schedule(self, request_id: str, model_id: str) -> str:
-        res = self.try_schedule(request_id, model_id)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.routers_health_ref: Dict[str, Union[ray.ObjectRef, None]] = {}
+        run_background_task(self.check_router_health())
+
+    async def check_router_health(self):
+        while True:
+            for router_id in list(self.routers_health_ref.keys()):
+                health_ref = self.routers_health_ref[router_id]
+                try:
+                    if health_ref:
+                        done, _ = await asyncio.wait([health_ref])
+                        if done and done.pop().exception():
+                            logger.warning(f"Mark router {router_id} dead.")
+                            self.clean_up_scheduler_state([router_id])
+                            self.routers_health_ref.pop(router_id, None)
+                except Exception as e:
+                    logger.warning(
+                        f"Unexpected error {e} when checking "
+                        f"router {router_id} health."
+                    )
+            await asyncio.sleep(0.5)
+
+    async def schedule(
+        self,
+        request_id: str,
+        model_id: str,
+        router_id: str,
+        health_ref: List[ray.ObjectRef],
+    ) -> str:
+
+        # health_ref is passed in to make sure if the CentralSchedulerActor is
+        # restarted, the health ref can be recollected from routers.
+        if router_id not in self.routers_health_ref:
+            self.routers_health_ref[router_id] = health_ref[0]
+
+        res = self.try_schedule(request_id, model_id, router_id)
         while not res:
             await asyncio.sleep(0.1)
-            res = self.try_schedule(request_id, model_id)
+            res = self.try_schedule(request_id, model_id, router_id)
         return res

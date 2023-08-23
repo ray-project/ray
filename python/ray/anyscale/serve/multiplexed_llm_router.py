@@ -27,6 +27,11 @@ class MultiplexedLLMReplicaScheduler(ReplicaScheduler, threading.Thread):
     all scheduling state.
     """
 
+    # Holding a ObjectRef per process as indicator of router health.
+    # When the process dies, the ObjectRef will be lost, and
+    # ray.get will raise ObjectLostError exception.
+    HEALTH_INDICATOR_REF = None
+
     def __init__(self, **kwargs):
         self._replicas: Dict[str, ReplicaWrapper] = {}
         self._router_uuid = uuid.uuid4().hex
@@ -35,6 +40,8 @@ class MultiplexedLLMReplicaScheduler(ReplicaScheduler, threading.Thread):
         self._scheduler = CentralSchedulerActor.options(
             name="central_scheduler",
             get_if_exists=True,
+            lifetime="detached",
+            namespace="serve",
         ).remote(
             max_replicas_per_model=1,
             max_models_per_replica=1,
@@ -44,6 +51,9 @@ class MultiplexedLLMReplicaScheduler(ReplicaScheduler, threading.Thread):
         self._submitted_requests: Dict[ray.ObjectRef, str] = {}
         super().__init__(daemon=True)
         self.start()
+
+        if MultiplexedLLMReplicaScheduler.HEALTH_INDICATOR_REF is None:
+            MultiplexedLLMReplicaScheduler.HEALTH_INDICATOR_REF = [ray.put(1)]
 
     async def assign_replica(
         self, query: Query
@@ -55,7 +65,12 @@ class MultiplexedLLMReplicaScheduler(ReplicaScheduler, threading.Thread):
             )
         request_id = f"{self._router_uuid}__{self._next_req_id}"
         self._next_req_id += 1
-        replica_id = await self._scheduler.schedule.remote(request_id, model_id)
+        replica_id = await self._scheduler.schedule.remote(
+            request_id,
+            model_id,
+            self._router_uuid,
+            MultiplexedLLMReplicaScheduler.HEALTH_INDICATOR_REF,
+        )
         logger.info(f"assigned {request_id} {model_id} to {replica_id}")
 
         replica = self._replicas[replica_id]
