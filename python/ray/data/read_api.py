@@ -2187,7 +2187,7 @@ def from_huggingface(
         # HuggingFaceDatasource should not be imported at top level, because
         # we only want the Hugging Face datasets package to be imported
         # if Hugging Face Datasets are used.
-        from ray.data.datasource import HuggingFaceDatasource
+        from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
 
         # For an IterableDataset, we can use a streaming implementation to read data.
         return read_datasource(
