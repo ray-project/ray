@@ -31,16 +31,20 @@ c = config.critic_lr
 
 # Register the FlappyBird-rgb-v0 env including necessary wrappers via the
 # `tune.register_env()` API.
-tune.register_env("flappy-bird", lambda ctx: (
-    NormalizedImageEnv(resize_v1(  # resize to 64x64 and normalize images
-        gym.make("FlappyBird-rgb-v0", {"audio_on": False}), x_size=64, y_size=64
-    ))
-))
+tune.register_env(
+    "flappy-bird",
+    lambda ctx: (
+        NormalizedImageEnv(
+            resize_v1(  # resize to 64x64 and normalize images
+                gym.make("FlappyBird-rgb-v0", {"audio_on": False}), x_size=64, y_size=64
+            )
+        )
+    ),
+)
 
 
 (
-    config
-    .environment("flappy-bird")
+    config.environment("flappy-bird")
     .resources(
         num_learner_workers=0 if num_gpus == 1 else num_gpus,
         num_gpus_per_learner_worker=1 if num_gpus else 0,

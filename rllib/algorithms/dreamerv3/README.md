@@ -122,13 +122,14 @@ $ rllib train file flappy_bird.py
 This should be it. Feel free to try out running this on multiple GPUs using these
 more advanced config examples [here (Atari100k)](../../tuned_examples/dreamerv3/atari_100k.py) and
 [here (DM Control Suite)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py).
-See the notes below on good recipes for running on multiple GPUs.
+Also see the notes below on good recipes for running on multiple GPUs.
 
-Note that DreamerV3 out-of-the-box only supports image observation spaces of shape 64x64x3
-as well as any vector observations (any 1D float32 Box).
-Should you require a special encoder- and decoder for other observation spaces, you
-will have to subclass [DreamerV3's catalog class](dreamerv3_catalog.py) and then
-configure your own catalog via your ``DreamerV3Config`` object:
+<b>IMPORTANT:</b> DreamerV3 out-of-the-box only supports image observation spaces of
+shape 64x64x3 as well as any vector observations (1D float32 Box spaces).
+Should you require a special world model encoder- and decoder for other observation
+spaces (e.g. a text embedding or images of other dimensions), you will have to
+subclass [DreamerV3's catalog class](dreamerv3_catalog.py) and then configure this
+new catalog via your ``DreamerV3Config`` object as follows:
 
 ```python
 from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import DreamerV3TfRLModule

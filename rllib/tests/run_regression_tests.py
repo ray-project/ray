@@ -175,13 +175,19 @@ if __name__ == "__main__":
         # Set the number of samples to run.
         exp["num_samples"] = args.num_samples
 
+        # Make sure there is a config and a stopping criterium.
+        exp["config"] = exp.get("config", {})
+        exp["stop"] = exp.get("stop", {})
+
         # Override framework setting with the command line one, if provided.
         # Otherwise, will use framework setting in file (or default: torch).
         if args.framework is not None:
             exp["config"]["framework"] = args.framework
         # Override env setting if given on command line.
         if args.env is not None:
-            exp["config"]["env"] = exp["env"] = args.env
+            exp["config"]["env"] = args.env
+        else:
+            exp["config"]["env"] = exp["env"]
 
         # Override the mean reward if specified. This is used by the ray ci
         # for overriding the episode reward mean for tf2 tests for off policy
@@ -217,7 +223,9 @@ if __name__ == "__main__":
         callbacks = None
         if args.wandb_key is not None:
             project = args.wandb_project or (
-                exp["run"].lower() + "-" + re.sub("\\W+", "-", exp["env"].lower())
+                exp["run"].lower()
+                + "-"
+                + re.sub("\\W+", "-", exp["config"]["env"].lower())
                 if config_is_python
                 else list(experiments.keys())[0]
             )
@@ -276,16 +284,16 @@ if __name__ == "__main__":
                 # we evaluate against an actual environment.
                 check_eval = exp["config"].get("evaluation_interval", None) is not None
                 reward_mean = (
-                    t.last_result["evaluation"]["sampler_results"][
+                    t.metrics["evaluation"]["sampler_results"][
                         "episode_reward_mean"
                     ]
                     if check_eval
                     else (
                         # Some algos don't store sampler results under `sampler_results`
                         # e.g. ARS. Need to keep this logic around for now.
-                        t.last_result["sampler_results"]["episode_reward_mean"]
-                        if "sampler_results" in t.last_result
-                        else t.last_result["episode_reward_mean"]
+                        t.metrics["sampler_results"]["episode_reward_mean"]
+                        if "sampler_results" in t.metrics
+                        else t.metrics["episode_reward_mean"]
                     )
                 )
 
@@ -293,13 +301,13 @@ if __name__ == "__main__":
                 # a stopping criterion under the "evaluation/" scope. If
                 # not, use `episode_reward_mean`.
                 if check_eval:
-                    min_reward = t.stopping_criterion.get(
+                    min_reward = exp["stop"].get(
                         "evaluation/sampler_results/episode_reward_mean",
-                        t.stopping_criterion.get("sampler_results/episode_reward_mean"),
+                        exp["stop"].get("sampler_results/episode_reward_mean"),
                     )
                 # Otherwise, expect `episode_reward_mean` to be set.
                 else:
-                    min_reward = t.stopping_criterion.get(
+                    min_reward = exp["stop"].get(
                         "sampler_results/episode_reward_mean"
                     )
 

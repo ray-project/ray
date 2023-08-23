@@ -113,18 +113,19 @@ class DreamerV3EnvRunner(EnvRunner):
                 partial(
                     _global_registry.get(ENV_CREATOR, self.config.env),
                     self.config.env_config,
-                ) if _global_registry.contains(ENV_CREATOR, self.config.env)
+                )
+                if _global_registry.contains(ENV_CREATOR, self.config.env)
                 else partial(
                     _gym_env_creator,
                     env_context=self.config.env_config,
                     env_descriptor=self.config.env,
-                )
+                ),
             )
             # Create the vectorized gymnasium env.
             self.env = gym.vector.make(
                 "dreamerv3-custom-env-v0",
                 num_envs=self.config.num_envs_per_worker,
-                asynchronous=False,#self.config.remote_worker_envs,
+                asynchronous=False,  # self.config.remote_worker_envs,
             )
         self.num_envs = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
