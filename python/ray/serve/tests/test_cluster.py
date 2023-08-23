@@ -242,7 +242,7 @@ def test_replica_spread(ray_cluster):
     def get_num_nodes():
         client = get_global_client()
         details = client.get_serve_details()
-        dep = details["applications"]["default"]["deployments"]["default_D"]
+        dep = details["applications"]["default"]["deployments"]["D"]
         nodes = {r["node_id"] for r in dep["replicas"]}
         print("replica nodes", nodes)
         return len(nodes)
