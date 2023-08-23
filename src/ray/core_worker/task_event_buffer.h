@@ -50,7 +50,7 @@ class TaskEvent {
 
   virtual ~TaskEvent() = default;
 
-  /// Convert itself a rpc::TaskEvents or drop itself due to data limit.
+  /// Convert itself a rpc::TaskEvents
   ///
   /// NOTE: this method will modify internal states by moving fields to the
   /// rpc::TaskEvents.
