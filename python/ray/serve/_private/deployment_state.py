@@ -16,10 +16,6 @@ from ray import ObjectRef, cloudpickle
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
 from ray.util.placement_group import PlacementGroup
-from ray._private.usage.usage_lib import (
-    TagKey,
-    record_extra_usage_tag,
-)
 
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
@@ -51,6 +47,7 @@ from ray.serve._private.constants import (
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.storage.kv_store import KVStoreBase
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     JavaActorHandleProxy,
     format_actor_name,
@@ -1358,16 +1355,12 @@ class DeploymentState:
                 self._target_state.version.deployment_config.autoscaling_config
                 != target_state.version.deployment_config.autoscaling_config
             ):
-                record_extra_usage_tag(
-                    TagKey.SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED, "True"
-                )
+                ServeUsageTag.AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED.record("True")
             elif (
                 self._target_state.version.deployment_config.num_replicas
                 != target_state.version.deployment_config.num_replicas
             ):
-                record_extra_usage_tag(
-                    TagKey.SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED, "True"
-                )
+                ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
 
         self._target_state = target_state
         self._curr_status_info = DeploymentStatusInfo(
@@ -1552,7 +1545,7 @@ class DeploymentState:
                 "with outdated deployment configs."
             )
             # Record user config lightweight update
-            record_extra_usage_tag(TagKey.SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED, "True")
+            ServeUsageTag.USER_CONFIG_LIGHTWEIGHT_UPDATED.record("True")
 
         return replicas_changed
 
@@ -2675,9 +2668,7 @@ class DeploymentStateManager:
         return any_recovering
 
     def _record_deployment_usage(self):
-        record_extra_usage_tag(
-            TagKey.SERVE_NUM_DEPLOYMENTS, str(len(self._deployment_states))
-        )
+        ServeUsageTag.NUM_DEPLOYMENTS.record(str(len(self._deployment_states)))
 
         num_gpu_deployments = 0
         for deployment_state in self._deployment_states.values():
@@ -2694,9 +2685,7 @@ class DeploymentStateManager:
                 )
             ):
                 num_gpu_deployments += 1
-        record_extra_usage_tag(
-            TagKey.SERVE_NUM_GPU_DEPLOYMENTS, str(num_gpu_deployments)
-        )
+        ServeUsageTag.NUM_GPU_DEPLOYMENTS.record(str(num_gpu_deployments))
 
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
         """
