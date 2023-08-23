@@ -355,9 +355,12 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         - severity_levels (List[str]): List of accepted severity levels for filtering.
         - source_types (List[str]): List of accepted source types for filtering.
         - entity_name (Optional[str]): Name of the entity to be matched in event's
-        custom fields.
+        custom fields. e.g. "serve_app_name", "job_id"
         - entity_id (Optional[str]): ID of the entity to be matched in event's
-        custom fields.
+        custom fields. It could be a string to represent a specific entity, like id for
+        "job_id" or name for "serve_app_name We could also accept "*" to represent we
+        will fetch all entities with the given entity_name no matter what the
+        entity_id is.
 
         Returns:
         - List[Dict[str, Union[str, Dict]]]: A filtered list of events.
