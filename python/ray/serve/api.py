@@ -838,8 +838,7 @@ def get_deployment_handle(
 ) -> DeploymentHandle:
     """Get a handle to the named deployment.
 
-    This is a developer API, meaning it is meant to be for advanced Ray
-    users and library developers.
+    This is a developer API and is for advanced Ray users and library developers.
 
     Args:
         deployment_name: Name of deployment to get a handle to.
