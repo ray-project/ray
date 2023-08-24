@@ -11,6 +11,7 @@ from ray.util.state import list_actors
 
 def get_node_to_deployment_to_num_replicas():
     actors = list_actors()
+    print(actors)
     # {node_id: {deployment_name: num_replicas}}
     node_to_deployment_to_num_replicas = defaultdict(dict)
     for actor in actors:
