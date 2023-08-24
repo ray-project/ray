@@ -23,7 +23,7 @@ from ray.serve._private.common import (
     ServeDeployMode,
     MultiplexedReplicaInfo,
 )
-from ray.serve.config import HTTPOptions
+from ray.serve.config import gRPCOptions, HTTPOptions
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_LOGGER_NAME,
@@ -110,6 +110,7 @@ class ServeController:
         http_config: HTTPOptions,
         detached: bool = False,
         _disable_http_proxy: bool = False,
+        grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
         assert (
@@ -156,6 +157,7 @@ class ServeController:
                 http_config,
                 self._controller_node_id,
                 self.cluster_node_info_cache,
+                grpc_options,
             )
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
@@ -232,10 +234,8 @@ class ServeController:
     def _dump_autoscaling_metrics_for_testing(self):
         return self.deployment_state_manager.get_autoscaling_metrics()
 
-    def _dump_replica_states_for_testing(self, deployment_name):
-        return self.deployment_state_manager._deployment_states[
-            deployment_name
-        ]._replicas
+    def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
+        return self.deployment_state_manager._deployment_states[deployment_id]._replicas
 
     def _stop_one_running_replica_for_testing(self, deployment_name):
         self.deployment_state_manager._deployment_states[
@@ -281,8 +281,10 @@ class ServeController:
         )
 
         endpoints = self.get_all_endpoints()
+        # NOTE(zcin): Java only supports 1.x deployments, so only return
+        # a dictionary of deployment name -> endpoint info
         data = {
-            str(endpoint_tag): EndpointInfoProto(route=endppint_dict["route"])
+            endpoint_tag.name: EndpointInfoProto(route=endppint_dict["route"])
             for endpoint_tag, endppint_dict in endpoints.items()
         }
         return EndpointSet(endpoints=data).SerializeToString()
@@ -471,7 +473,7 @@ class ServeController:
                     deployment_time,
                 )
 
-    def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
+    def _all_running_replicas(self) -> Dict[DeploymentID, List[RunningReplicaInfo]]:
         """Used for testing.
 
         Returned dictionary maps deployment names to replica infos.
@@ -611,7 +613,9 @@ class ServeController:
         # TODO(architkulkarni): When a deployment is redeployed, even if
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
-        updating = self.deployment_state_manager.deploy(name, deployment_info)
+        updating = self.deployment_state_manager.deploy(
+            DeploymentID(name, ""), deployment_info
+        )
 
         if route_prefix is not None:
             endpoint_info = EndpointInfo(
@@ -741,8 +745,9 @@ class ServeController:
     def delete_deployment(self, name: str):
         """Should only be used for 1.x deployments."""
 
-        self.endpoint_state.delete_endpoint(EndpointTag(name, ""))
-        return self.deployment_state_manager.delete_deployment(name)
+        id = DeploymentID(name, "")
+        self.endpoint_state.delete_endpoint(id)
+        return self.deployment_state_manager.delete_deployment(id)
 
     def delete_deployments(self, names: Iterable[str]) -> None:
         """Should only be used for 1.x deployments."""
@@ -763,11 +768,10 @@ class ServeController:
             KeyError if the deployment doesn't exist.
         """
         id = DeploymentID(name, app_name)
-        deployment_info = self.deployment_state_manager.get_deployment(str(id))
+        deployment_info = self.deployment_state_manager.get_deployment(id)
         if deployment_info is None:
-            raise KeyError(
-                f"Deployment '{name}' does not exist in application '{app_name}'."
-            )
+            app_msg = f" in application '{app_name}'" if app_name else ""
+            raise KeyError(f"Deployment '{name}' does not exist{app_msg}.")
 
         route = self.endpoint_state.get_endpoint_route(id)
 
@@ -780,7 +784,7 @@ class ServeController:
 
     def list_deployments_internal(
         self, include_deleted: Optional[bool] = False
-    ) -> Dict[str, Tuple[DeploymentInfo, str]]:
+    ) -> Dict[DeploymentID, Tuple[DeploymentInfo, str]]:
         """Gets the current information about all deployments.
 
         Args:
@@ -788,20 +792,17 @@ class ServeController:
                 deployments that have been deleted.
 
         Returns:
-            Dict(deployment_name, (DeploymentInfo, route))
-
-        Raises:
-            KeyError if the deployment doesn't exist.
+            Dict(deployment_id, (DeploymentInfo, route))
         """
         return {
-            str(id): (info, self.endpoint_state.get_endpoint_route(id))
+            id: (info, self.endpoint_state.get_endpoint_route(id))
             for id, info in self.deployment_state_manager.get_deployment_infos(
                 include_deleted=include_deleted
             ).items()
         }
 
-    def list_deployments(self, include_deleted: Optional[bool] = False) -> bytes:
-        """Gets the current information about all deployments.
+    def list_deployments_v1(self, include_deleted: Optional[bool] = False) -> bytes:
+        """Gets the current information about all 1.x deployments.
 
         Args:
             include_deleted: Whether to include information about
@@ -813,12 +814,16 @@ class ServeController:
         from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
 
         deployment_route_list = DeploymentRouteList()
-        for deployment_name, (
+        for deployment_id, (
             deployment_info,
             route_prefix,
         ) in self.list_deployments_internal(include_deleted=include_deleted).items():
+            # Only list 1.x deployments, which should have app=""
+            if deployment_id.app:
+                continue
+
             deployment_info_proto = deployment_info.to_proto()
-            deployment_info_proto.name = deployment_name
+            deployment_info_proto.name = deployment_id.name
             deployment_route_list.deployment_routes.append(
                 DeploymentRoute(
                     deployment_info=deployment_info_proto, route=route_prefix
@@ -826,11 +831,18 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
-    def list_deployment_names(self) -> List[str]:
-        """Gets the current list of all deployments' names.
+    def list_deployments(self) -> Dict[DeploymentID, DeploymentInfo]:
+        """Gets the current information about all deployments (1.x and 2.x)"""
+        return {
+            deployment_id: deployment_info
+            for deployment_id, (
+                deployment_info,
+                _,
+            ) in self.list_deployments_internal().items()
+        }
 
-        Returns: deployment names, in the format {app-name}_{deployment-name}.
-        """
+    def list_deployment_ids(self) -> List[DeploymentID]:
+        """Gets the current list of all deployments' identifiers."""
         return self.deployment_state_manager._deployment_states.keys()
 
     def get_serve_instance_details(self) -> Dict:
@@ -872,14 +884,11 @@ class ServeController:
         # except for the route_prefix in the deployment_config of each deployment, since
         # route_prefix is set instead in each application.
         # Eventually we want to remove route_prefix from DeploymentSchema.
+        http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         return ServeInstanceDetails(
             controller_info=self._actor_details,
             proxy_location=http_config.location,
-            http_options=HTTPOptionsSchema(
-                host=http_config.host,
-                port=http_config.port,
-                request_timeout_s=http_config.request_timeout_s,
-            ),
+            http_options=http_options,
             http_proxies=self.http_proxy_state_manager.get_http_proxy_details()
             if self.http_proxy_state_manager
             else None,
@@ -930,9 +939,19 @@ class ServeController:
         statuses = self.deployment_state_manager.get_deployment_statuses()
         return [status.to_proto().SerializeToString() for status in statuses]
 
-    def get_deployment_status(self, name: str) -> Union[None, bytes]:
-        """Get deployment status by deployment name"""
-        status = self.deployment_state_manager.get_deployment_statuses([name])
+    def get_deployment_status(
+        self, name: str, app_name: str = ""
+    ) -> Union[None, bytes]:
+        """Get deployment status by deployment name.
+
+        Args:
+            name: Deployment name.
+            app_name: Application name. Default is "" because 1.x
+                deployments go through this API.
+        """
+
+        id = DeploymentID(name, app_name)
+        status = self.deployment_state_manager.get_deployment_statuses([id])
         if not status:
             return None
         return status[0].to_proto().SerializeToString()
