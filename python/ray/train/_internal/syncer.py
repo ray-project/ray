@@ -1,6 +1,5 @@
 import abc
 import urllib.parse
-from functools import partial
 import threading
 import traceback
 from typing import (
@@ -8,15 +7,12 @@ from typing import (
     Callable,
     Dict,
     List,
-    TYPE_CHECKING,
     Union,
     Optional,
-    Set,
     Tuple,
 )
 
 import logging
-import os
 import time
 from dataclasses import dataclass
 
@@ -31,9 +27,7 @@ try:
 except Exception:
     s3fs = None
 
-import ray
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air._internal.remote_storage import (
     fs_hint,
     upload_to_uri,
@@ -44,20 +38,12 @@ from ray.air._internal.remote_storage import (
 from ray.air.constants import (
     LAZY_CHECKPOINT_MARKER_FILE,
     REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE,
-    TRAINING_ITERATION,
 )
-from ray.exceptions import RayActorError
-from ray.tune import TuneError
-from ray.tune.callback import Callback
-from ray.tune.result import TIME_TOTAL_S
-from ray.tune.utils.file_transfer import sync_dir_between_nodes
+# from ray.tune import TuneError
 from ray.util import log_once
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
 
-if TYPE_CHECKING:
-    from ray.train._checkpoint import Checkpoint
-    from ray.tune.experiment import Trial
 
 logger = logging.getLogger(__name__)
 
@@ -729,287 +715,3 @@ def get_node_to_storage_syncer(
         f"Please leave a comment on GitHub if you run into any issues with this: "
         f"https://github.com/ray-project/ray/issues"
     )
-
-
-@DeveloperAPI
-class SyncerCallback(Callback):
-    """Callback to synchronize trial directories on a worker node with the driver."""
-
-    def __init__(self, enabled: bool = True, sync_period: float = DEFAULT_SYNC_PERIOD):
-        self._enabled = enabled
-
-        # Map from trial id to syncer process
-        self._sync_processes: Dict[str, _BackgroundProcess] = {}
-
-        # Last time we synced a trial
-        self._sync_times: Dict[str, float] = {}
-
-        # How often we should sync (in seconds)
-        self._sync_period = sync_period
-
-        # Map of trial id to IP
-        self._trial_ips: Dict[str, str] = {}
-
-        # Set of sync processes that are flagged to remove
-        self._trial_sync_processes_to_remove: Set[str] = set()
-
-        # Recorded training iterations + training times
-        self._trial_iter_training_times: Dict[str, Tuple[int, float]] = {}
-
-        # Only sync if this many items OR this much time has passed
-        # for each individual trial.
-        self._min_iter_threshold = int(
-            os.environ.get(
-                "TUNE_NODE_SYNCING_MIN_ITER_THRESHOLD",
-                _DEFAULT_NODE_SYNCING_MIN_ITER_THRESHOLD,
-            )
-        )
-        self._min_time_s_threshold = float(
-            os.environ.get(
-                "TUNE_NODE_SYNCING_MIN_TIME_S_THRESHOLD",
-                _DEFAULT_NODE_SYNCING_MIN_TIME_S_THRESHOLD,
-            )
-        )
-
-    def _get_trial_sync_process(self, trial: "Trial"):
-        return self._sync_processes.setdefault(
-            trial.trial_id,
-            _BackgroundProcess(partial(sync_dir_between_nodes, max_size_bytes=None)),
-        )
-
-    def _remove_trial_sync_process(self, trial_id: str, force: bool = False):
-        """Remove trial sync process.
-
-        If ``force=True``, we remove it immediately. If ``force=False``, we flag
-        it for removal and only remove it when it resolved. This is so we can await
-        the sync process at the end of the experiment.
-        """
-        if force:
-            self._sync_processes.pop(trial_id, None)
-        else:
-            self._trial_sync_processes_to_remove.add(trial_id)
-
-    def _cleanup_trial_sync_processes(self):
-        for trial_id in list(self._trial_sync_processes_to_remove):
-            sync_process = self._sync_processes.get(trial_id, None)
-            if not sync_process or not sync_process.is_running:
-                self._trial_sync_processes_to_remove.remove(trial_id)
-                self._sync_processes.pop(trial_id, None)
-
-    def _should_sync(self, trial: "Trial"):
-        iteration, time_trained = self._trial_iter_training_times.setdefault(
-            trial.trial_id, (0, 0.0)
-        )
-
-        # If neither the min iter nor the min time threshold were met, we don't sync.
-        # This is to avoid eager syncing when we have many short running trials -
-        # in that case we only want to sync once at the end of training. For longer
-        # running trials the threshold is usually small enough to not make a difference
-        # in practice.
-        if (
-            iteration < self._min_iter_threshold
-            and time_trained < self._min_time_s_threshold
-        ):
-            return False
-
-        last_sync_time = self._sync_times.setdefault(trial.trial_id, float("-inf"))
-
-        if time.time() - last_sync_time < self._sync_period:
-            return False
-
-        return True
-
-    def _mark_as_synced(self, trial: "Trial"):
-        self._sync_times[trial.trial_id] = time.time()
-
-    def _local_trial_logdir(self, trial: "Trial"):
-        return trial.local_path
-
-    def _remote_trial_logdir(self, trial: "Trial"):
-        return trial.local_path
-
-    def _sync_trial_dir(
-        self, trial: "Trial", force: bool = False, wait: bool = True
-    ) -> bool:
-        if not self._enabled or trial.uses_cloud_checkpointing:
-            return False
-
-        source_ip = self._trial_ips.get(trial.trial_id, None)
-
-        if not source_ip:
-            try:
-                source_ip = trial.get_ray_actor_ip()
-            except RayActorError as e:
-                logger.error(
-                    f"Trial {trial}: An error occurred when trying to get the "
-                    f"node ip where this trial is running: {e}"
-                )
-
-            # If it still does not exist, the runner is terminated.
-            if not source_ip:
-                return False
-
-        self._trial_ips[trial.trial_id] = source_ip
-
-        if not bool(int(os.environ.get(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "0"))):
-            # Only log a warning for remote trials, since
-            # this only affects artifacts that are saved on worker nodes.
-            if source_ip != ray.util.get_node_ip_address():
-                if log_once("deprecated_head_node_sync"):
-                    logger.warning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
-            return False
-
-        sync_process = self._get_trial_sync_process(trial)
-
-        # Always run if force=True
-        # Otherwise, only run if we should sync (considering sync period)
-        # and if there is no sync currently still running.
-        if not force and (not self._should_sync(trial) or sync_process.is_running):
-            return False
-
-        try:
-            sync_process.wait()
-        except TuneError as e:
-            # Errors occurring during this wait are not fatal for this
-            # checkpoint, so it should just be logged.
-            logger.error(
-                f"Trial {trial}: An error occurred during the "
-                f"checkpoint syncing of the previous checkpoint: {e}"
-            )
-        sync_process.start(
-            source_ip=source_ip,
-            source_path=self._remote_trial_logdir(trial),
-            target_ip=ray.util.get_node_ip_address(),
-            target_path=self._local_trial_logdir(trial),
-            exclude=_EXCLUDE_FROM_SYNC,
-        )
-        self._sync_times[trial.trial_id] = time.time()
-        if wait:
-            try:
-                sync_process.wait()
-            except TuneError as e:
-                # Errors occurring during this wait are not fatal for this
-                # checkpoint, so it should just be logged.
-                logger.error(
-                    f"Trial {trial}: An error occurred during the "
-                    f"checkpoint syncing of the current checkpoint: {e}"
-                )
-        return True
-
-    def on_trial_start(
-        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
-    ):
-        self._trial_ips.pop(trial.trial_id, None)
-
-    def on_trial_result(
-        self,
-        iteration: int,
-        trials: List["Trial"],
-        trial: "Trial",
-        result: Dict,
-        **info,
-    ):
-        # If the results are not found, default to triggering syncing
-        trial_iter = result.get(TRAINING_ITERATION, self._min_iter_threshold)
-        trial_time_s = result.get(TIME_TOTAL_S, self._min_time_s_threshold)
-
-        self._trial_iter_training_times[trial.trial_id] = (trial_iter, trial_time_s)
-        self._sync_trial_dir(trial, force=False, wait=False)
-
-    def on_trial_complete(
-        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
-    ):
-        self._sync_trial_dir(trial, force=True, wait=False)
-        self._remove_trial_sync_process(trial.trial_id, force=False)
-        self._trial_ips.pop(trial.trial_id, None)
-        self._cleanup_trial_sync_processes()
-
-    def on_trial_error(
-        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
-    ):
-        self._remove_trial_sync_process(trial.trial_id, force=True)
-        self._trial_ips.pop(trial.trial_id, None)
-        self._cleanup_trial_sync_processes()
-
-    def on_checkpoint(
-        self,
-        iteration: int,
-        trials: List["Trial"],
-        trial: "Trial",
-        checkpoint: Union["_TrackedCheckpoint", "Checkpoint"],
-        **info,
-    ):
-        if not hasattr(checkpoint, "storage_mode"):
-            # Syncer should be disabled for new storage path
-            raise RuntimeError(
-                "Internal error: Got new Train Checkpoint object in Syncer: "
-                f"{checkpoint}. Please raise an error on "
-                f"https://github.com/ray-project/ray/issues"
-            )
-
-        if not self._enabled or trial.uses_cloud_checkpointing:
-            return
-
-        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
-            return
-
-        if not bool(int(os.environ.get(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "0"))):
-            # If we have saved a checkpoint, but it's not accessible on the driver,
-            # that means that it lives on some other node and would be synced to head
-            # prior to Ray 2.6.
-            if not os.path.exists(checkpoint.dir_or_data):
-                raise _HeadNodeSyncDeprecationWarning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
-            # else:
-            #   No need to raise an error about syncing, since the driver can find
-            #   the checkpoint, because either:
-            #   - the checkpoint lives on the head node
-            #   - a shared filesystem is used
-        else:
-            # Old head node syncing codepath
-            synced = self._sync_trial_dir(
-                trial, force=trial.sync_on_checkpoint, wait=True
-            )
-            if synced and not os.path.exists(checkpoint.dir_or_data):
-                raise TuneError(
-                    f"Trial {trial}: Checkpoint path {checkpoint.dir_or_data} not "
-                    "found after successful sync down."
-                )
-
-    def wait_for_all(self):
-        # Remove any sync processes as needed, and only wait on the remaining ones.
-        self._cleanup_trial_sync_processes()
-
-        failed_syncs = {}
-        for trial_id, sync_process in self._sync_processes.items():
-            try:
-                sync_process.wait()
-            except Exception as e:
-                failed_syncs[trial_id] = e
-
-            # Queue this sync process for removal
-            self._remove_trial_sync_process(trial_id, force=False)
-
-        # Remove the awaited processes
-        self._cleanup_trial_sync_processes()
-
-        if failed_syncs:
-            sync_str = "\n".join(
-                [f"  {trial}: {e}" for trial, e in failed_syncs.items()]
-            )
-            raise TuneError(
-                f"At least one trial failed to sync down when waiting for all "
-                f"trials to sync: \n{sync_str}"
-            )
-
-    def on_experiment_end(self, trials: List["Trial"], **info):
-        """Wait for background sync processes to finish on experiment end."""
-        try:
-            self.wait_for_all()
-        except TuneError as e:
-            logger.error(e)
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        for remove in ["_sync_times", "_sync_processes", "_trial_ips"]:
-            state.pop(remove, None)
-        return state

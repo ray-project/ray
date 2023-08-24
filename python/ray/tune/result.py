@@ -14,6 +14,8 @@ from ray.air.constants import (  # noqa: F401
     EXPR_ERROR_FILE,
 )
 
+from ray.train.constants import _get_defaults_results_dir
+
 # fmt: off
 # __sphinx_doc_begin__
 # (Optional/Auto-filled) training is terminated. Filled only if not provided.
@@ -119,21 +121,6 @@ TRIAL_INFO = "__trial_info__"
 # to pass log file locations to the Trainable via the constructor.
 STDOUT_FILE = "__stdout_file__"
 STDERR_FILE = "__stderr_file__"
-
-
-def _get_defaults_results_dir() -> str:
-    return (
-        # This can be overwritten by our libraries
-        os.environ.get("RAY_AIR_LOCAL_CACHE_DIR")
-        # This is a directory provided by Bazel automatically
-        or os.environ.get("TEST_TMPDIR")
-        # This is the old way to specify the results dir
-        # Deprecate: Remove in 2.6
-        or os.environ.get("TUNE_RESULT_DIR")
-        # Default
-        or Path("~/ray_results").expanduser().as_posix()
-    )
-
 
 # Where Tune writes result files by default
 DEFAULT_RESULTS_DIR = _get_defaults_results_dir()
