@@ -486,11 +486,11 @@ void TaskEventBufferImpl::AddTaskEvent(std::unique_ptr<TaskEvent> task_event) {
 }
 
 void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_event) {
-  absl::MutexLock lock(&mutex_);
   if (!enabled_) {
     return;
   }
 
+  absl::MutexLock lock(&mutex_);
   if (dropped_task_attempts_since_last_flush_.count(status_event->GetTaskAttempt())) {
     // This task attempt has been dropped before, so we drop this event.
     stats_counter_.Increment(
@@ -514,17 +514,8 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
 }
 
 void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile_event) {
-  absl::MutexLock lock(&profile_mutex_);
   if (!enabled_) {
     return;
-  }
-
-  auto profile_events_itr = profile_events_.find(profile_event->GetTaskAttempt());
-  if (profile_events_itr == profile_events_.end()) {
-    auto inserted = profile_events_.insert(
-        {profile_event->GetTaskAttempt(), std::vector<std::unique_ptr<TaskEvent>>()});
-    RAY_CHECK(inserted.second);
-    profile_events_itr = inserted.first;
   }
 
   auto max_num_profile_event_per_task =
@@ -533,6 +524,15 @@ void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile
       RayConfig::instance().task_events_max_num_events_by_kind_in_worker();
   auto profile_event_stored =
       stats_counter_.Get(TaskEventBufferCounter::kNumTaskProfileEventsStored);
+
+  absl::MutexLock lock(&profile_mutex_);
+  auto profile_events_itr = profile_events_.find(profile_event->GetTaskAttempt());
+  if (profile_events_itr == profile_events_.end()) {
+    auto inserted = profile_events_.insert(
+        {profile_event->GetTaskAttempt(), std::vector<std::unique_ptr<TaskEvent>>()});
+    RAY_CHECK(inserted.second);
+    profile_events_itr = inserted.first;
+  }
 
   // If we store too many per task or too many per kind of event, we drop the new event.
   if ((max_num_profile_event_per_task >= 0 &&

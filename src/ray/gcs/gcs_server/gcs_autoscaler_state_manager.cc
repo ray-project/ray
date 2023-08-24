@@ -281,6 +281,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeRequest request,
     rpc::autoscaler::DrainNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "HandleDrainNode Request:" << request.DebugString();
   const NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO) << "HandleDrainNode " << node_id.Hex()
                 << ", reason: " << request.reason_message();

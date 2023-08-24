@@ -496,7 +496,7 @@ RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
 /// report gRPC call. A task could have more profile events in GCS from multiple
 /// report gRPC call.
 /// Setting the value to -1 allows unlimited profile events to be sent.
-RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 1000)
+RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 100)
 
 /// Max number of task attempts being dropped on the worker side to report to GCS.
 /// Setting the value to -1 allows unlimited dropped task attempts in a single
