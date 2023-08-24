@@ -209,55 +209,6 @@ class CustomCommandSyncer(Syncer):
         pass
 
 
-def test_sync_string_invalid_uri():
-    with pytest.raises(ValueError):
-        sync_config = tune.SyncConfig()
-        sync_config.validate_upload_dir("invalid://some/url")
-
-
-def test_sync_string_invalid_local():
-    with pytest.raises(ValueError):
-        sync_config = tune.SyncConfig()
-        sync_config.validate_upload_dir("/invalid/dir")
-
-
-def test_sync_string_valid_local():
-    sync_config = tune.SyncConfig()
-    sync_config.validate_upload_dir("file:///valid/dir")
-
-
-def test_sync_string_valid_s3():
-    sync_config = tune.SyncConfig()
-    sync_config.validate_upload_dir("s3://valid/bucket")
-
-
-def test_sync_config_validate():
-    sync_config = tune.SyncConfig()
-    sync_config.validate_upload_dir()
-
-
-def test_sync_config_validate_custom_syncer():
-    class CustomSyncer(_DefaultSyncer):
-        @classmethod
-        def validate_upload_dir(cls, upload_dir: str) -> bool:
-            return True
-
-    sync_config = tune.SyncConfig(syncer=CustomSyncer())
-    sync_config.validate_upload_dir("/invalid/dir")
-
-
-def test_sync_config_upload_dir_custom_syncer_mismatch():
-    # Shouldn't be able to disable syncing if upload dir is specified
-    with pytest.raises(ValueError):
-        sync_config = tune.SyncConfig(syncer=None)
-        sync_config.validate_upload_dir("s3://valid/bucket")
-
-    # Shouldn't be able to use a custom cloud syncer without specifying cloud dir
-    with pytest.raises(ValueError):
-        sync_config = tune.SyncConfig(syncer=_DefaultSyncer())
-        sync_config.validate_upload_dir(None)
-
-
 def test_syncer_sync_up_down(temp_data_dirs):
     """Check that syncing up and down works"""
     tmp_source, tmp_target = temp_data_dirs

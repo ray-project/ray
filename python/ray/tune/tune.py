@@ -271,8 +271,6 @@ def _resolve_and_validate_storage_path(
                 "Using configured Ray storage URI as storage path: " f"{remote_path}"
             )
 
-    sync_config.validate_upload_dir(remote_path)
-
     if not local_path:
         local_path = _get_defaults_results_dir()
 
