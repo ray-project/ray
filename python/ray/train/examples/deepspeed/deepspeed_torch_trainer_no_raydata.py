@@ -31,7 +31,6 @@ from ray.train.torch import TorchTrainer
 
 # TODO(ml-team): Remove this:
 os.environ["RAY_AIR_NEW_PERSISTENCE_MODE"] = "1"
-ray.init(runtime_env={"env_vars": {"RAY_AIR_NEW_PERSISTENCE_MODE": "1"}})
 
 
 def train_func(config):
