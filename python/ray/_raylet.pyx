@@ -2378,12 +2378,15 @@ def _auto_reconnect(f):
 
 
 def timeout_to_int_ms(timeout: Optional[float]):
-    if not timeout:
-        return 0
-    if timeout > 0:
-        return round(1000 * timeout)
-    if timeout < 0:
+    if timeout is None:
+        return 0 # defaults to gcs_server_request_timeout_seconds in PythonGcsClient.
+    timeout_int = round(1000 * timeout)
+    if timeout_int == 0:
+        raise ValueError("timeout must be non-0 or None for default value.")
+    if timeout_int < 0:
         return -1
+    return timeout_int
+
 
 cdef class GcsClient:
     """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
