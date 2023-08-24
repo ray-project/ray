@@ -4025,7 +4025,7 @@ class Dataset:
             None,
         ] = None,
         verify_meta: bool = True,
-    ) -> "dask.DataFrame":
+    ) -> "dask.dataframe.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame>`_.
 
@@ -4125,7 +4125,7 @@ class Dataset:
         return ddf
 
     @ConsumptionAPI(pattern="Time complexity:")
-    def to_mars(self) -> "mars.DataFrame":
+    def to_mars(self) -> "mars.dataframe.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html>`_.
 
@@ -4158,7 +4158,7 @@ class Dataset:
         return op(index_value=index_value, columns_value=columns_value, dtypes=dtypes)
 
     @ConsumptionAPI(pattern="Time complexity:")
-    def to_modin(self) -> "modin.DataFrame":
+    def to_modin(self) -> "modin.pandas.dataframe.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html>`_.
 
