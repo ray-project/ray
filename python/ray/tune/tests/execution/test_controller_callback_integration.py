@@ -46,11 +46,7 @@ def test_callback_save_restore(
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::testCallbackSaveRestore
     """
     storage = mock_storage_context()
-    runner = TuneController(
-        callbacks=[StatefulCallback()],
-        experiment_path=str(tmpdir),
-        storage=storage,
-    )
+    runner = TuneController(callbacks=[StatefulCallback()], storage=storage)
     runner.add_trial(Trial("__fake", stub=True, storage=storage))
     for i in range(3):
         runner._callbacks.on_trial_result(
@@ -58,11 +54,7 @@ def test_callback_save_restore(
         )
     runner.checkpoint(force=True)
     callback = StatefulCallback()
-    runner2 = TuneController(
-        callbacks=[callback],
-        experiment_path=str(tmpdir),
-        storage=storage,
-    )
+    runner2 = TuneController(callbacks=[callback], storage=storage)
     assert callback.counter == 0
     runner2.resume()
     assert callback.counter == 3

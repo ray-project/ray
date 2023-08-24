@@ -226,7 +226,11 @@ def test_search_alg_finishes(ray_start_4_cpus_2_gpus_extra, resource_manager_cls
             spec = self._experiment.spec
             trial = None
             if self._index < spec["num_samples"]:
-                trial = Trial(spec.get("run"), stopping_criterion=spec.get("stop"))
+                trial = Trial(
+                    spec.get("run"),
+                    stopping_criterion=spec.get("stop"),
+                    storage=spec.get("storage"),
+                )
             self._index += 1
 
             if self._index > 4:
