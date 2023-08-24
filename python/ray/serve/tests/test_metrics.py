@@ -162,7 +162,7 @@ def test_http_replica_gauge_metrics(serve_start_shutdown):
     wait_for_condition(ensure_request_processing, timeout=5)
 
 
-def test_http_metrics(serve_start_shutdown):
+def test_proxy_metrics(serve_start_shutdown):
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
     # Any updates here should be reflected there too.
@@ -277,20 +277,27 @@ def test_http_metrics(serve_start_shutdown):
         verify_error_count(do_assert=True)
 
 
-def test_http_metrics_fields(serve_start_shutdown):
-    """Tests the http metrics' fields' behavior."""
+def test_proxy_metrics_fields(serve_start_shutdown):
+    """Tests the proxy metrics' fields' behavior."""
 
-    @serve.deployment(route_prefix="/real_route")
+    @serve.deployment()
     def f(*args):
         return 1 / 0
 
-    serve.run(f.bind(), name="app")
+    real_app_name = "app"
+    real_app_name2 = "app2"
+    serve.run(f.bind(), name=real_app_name, route_prefix="/real_route")
+    serve.run(f.bind(), name=real_app_name2, route_prefix="/real_route2")
 
     # Should generate 404 responses
     broken_url = "http://127.0.0.1:8000/fake_route"
-    for _ in range(10):
-        requests.get(broken_url).text
+    requests.get(broken_url).text
     print("Sent requests to broken URL.")
+
+    # Ping gRPC proxy for not existing application.
+    channel = grpc.insecure_channel("localhost:9000")
+    fake_app_name = "fake-app"
+    ping_grpc_call_method(channel=channel, app_name=fake_app_name, test_not_found=True)
 
     num_requests = get_metric_dictionaries("serve_num_http_requests")
     assert len(num_requests) == 1
@@ -300,6 +307,14 @@ def test_http_metrics_fields(serve_start_shutdown):
     assert num_requests[0]["status_code"] == "404"
     print("serve_num_http_requests working as expected.")
 
+    num_requests = get_metric_dictionaries("serve_num_grpc_requests")
+    assert len(num_requests) == 1
+    assert num_requests[0]["route"] == fake_app_name
+    assert num_requests[0]["method"] == "__call__"
+    assert num_requests[0]["application"] == ""
+    assert num_requests[0]["status_code"] == str(grpc.StatusCode.NOT_FOUND)
+    print("serve_num_grpc_requests working as expected.")
+
     num_errors = get_metric_dictionaries("serve_num_http_error_requests")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "/fake_route"
@@ -307,11 +322,21 @@ def test_http_metrics_fields(serve_start_shutdown):
     assert num_errors[0]["method"] == "GET"
     print("serve_num_http_error_requests working as expected.")
 
+    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
+    assert len(num_errors) == 1
+    assert num_errors[0]["route"] == fake_app_name
+    assert num_errors[0]["error_code"] == str(grpc.StatusCode.NOT_FOUND)
+    assert num_errors[0]["method"] == "__call__"
+    print("serve_num_grpc_error_requests working as expected.")
+
     # Deployment should generate divide-by-zero errors
     correct_url = "http://127.0.0.1:8000/real_route"
-    for _ in range(10):
-        requests.get(correct_url).text
+    requests.get(correct_url).text
     print("Sent requests to correct URL.")
+
+    # Ping gPRC proxy for broken app
+    with pytest.raises(AssertionError):
+        ping_grpc_call_method(channel=channel, app_name=real_app_name)
 
     num_deployment_errors = get_metric_dictionaries(
         "serve_num_deployment_http_error_requests"
@@ -323,12 +348,31 @@ def test_http_metrics_fields(serve_start_shutdown):
     assert num_deployment_errors[0]["application"] == "app"
     print("serve_num_deployment_http_error_requests working as expected.")
 
+    num_deployment_errors = get_metric_dictionaries(
+        "serve_num_deployment_grpc_error_requests"
+    )
+    assert len(num_deployment_errors) == 1
+    assert num_deployment_errors[0]["deployment"] == "app_f"
+    assert num_deployment_errors[0]["error_code"] == str(grpc.StatusCode.INTERNAL)
+    assert num_deployment_errors[0]["method"] == "__call__"
+    assert num_deployment_errors[0]["application"] == real_app_name
+    print("serve_num_deployment_grpc_error_requests working as expected.")
+
     latency_metrics = get_metric_dictionaries("serve_http_request_latency_ms_sum")
     assert len(latency_metrics) == 1
+    assert latency_metrics[0]["method"] == "GET"
     assert latency_metrics[0]["route"] == "/real_route"
     assert latency_metrics[0]["application"] == "app"
     assert latency_metrics[0]["status_code"] == "500"
     print("serve_http_request_latency_ms working as expected.")
+
+    latency_metrics = get_metric_dictionaries("serve_grpc_request_latency_ms_sum")
+    assert len(latency_metrics) == 1
+    assert latency_metrics[0]["method"] == "__call__"
+    assert latency_metrics[0]["route"] == real_app_name
+    assert latency_metrics[0]["application"] == real_app_name
+    assert latency_metrics[0]["status_code"] == str(grpc.StatusCode.INTERNAL)
+    print("serve_grpc_request_latency_ms_sum working as expected.")
 
 
 def test_http_redirect_metrics(serve_start_shutdown):
