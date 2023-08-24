@@ -2351,10 +2351,10 @@ def _auto_reconnect(f):
             try:
                 return f(self, *args, **kwargs)
             except RpcError as e:
-                import grpc
                 if e.rpc_code in [
-                    grpc.StatusCode.UNAVAILABLE.value[0],
-                    grpc.StatusCode.UNKNOWN.value[0],
+                    GRPC_STATUS_CODE_UNAVAILABLE,
+                    GRPC_STATUS_CODE_UNKNOWN,
+                    GRPC_STATUS_CODE_DEADLINE_EXCEEDED,
                 ]:
                     if remaining_retry <= 0:
                         logger.error(
