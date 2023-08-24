@@ -529,17 +529,6 @@ def get_neuron_core_constraint_name():
     return get_constraint_name(accelerators.AWS_NEURON_CORE)
 
 
-def get_tpu_constraint_name():
-    """Get the name of the constraint that represents the TPU accelerator.
-
-    Returns:
-        (str) The constraint name.
-    """
-    import ray.util.accelerators.accelerators as accelerators
-
-    return get_constraint_name(accelerators.AWS_NEURON_CORE)
-
-
 def get_constraint_name(pretty_name: str):
     """Get the name of the constraint that represents the given resource.
 
