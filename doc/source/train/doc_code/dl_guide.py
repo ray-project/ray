@@ -7,7 +7,8 @@ from typing import Dict, Optional
 
 import ray
 from ray import train
-from ray.train.torch import LegacyTorchCheckpoint, TorchTrainer
+from ray.train._checkpoint import Checkpoint
+from ray.train.torch import TorchTrainer
 
 
 def get_datasets() -> Dict[str, ray.data.Dataset]:
@@ -16,10 +17,16 @@ def get_datasets() -> Dict[str, ray.data.Dataset]:
 
 def train_loop_per_worker(config: dict):
     from torchvision.models import resnet18
+    from tempfile import TemporaryDirectory
 
     # Checkpoint loading
-    checkpoint: Optional[LegacyTorchCheckpoint] = train.get_checkpoint()
-    model = checkpoint.get_model() if checkpoint else resnet18()
+    checkpoint: Optional[Checkpoint] = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as tmpdir:
+            checkpoint = torch.load(f"{tmpdir}/model.bin")
+            model.load_state_dict(checkpoint)
+    else:
+        model = resnet18()
     ray.train.torch.prepare_model(model)
 
     train_ds = train.get_dataset_shard("train")
@@ -28,10 +35,12 @@ def train_loop_per_worker(config: dict):
         # Do some training...
 
         # Checkpoint saving
-        train.report(
-            {"epoch": epoch},
-            checkpoint=LegacyTorchCheckpoint.from_model(model),
-        )
+        with TemporaryDirectory() as tmpdir:
+            torch.save(model.state_dict(), f"{tmpdir}/model.bin")
+            train.report(
+                {"epoch": epoch},
+                checkpoint=Checkpoint.from_directory(tmpdir),
+            )
 
 
 trainer = TorchTrainer(

@@ -21,7 +21,8 @@ from transformers import (
 )
 
 import ray.train
-from ray.train import ScalingConfig, Checkpoint
+from ray.train._checkpoint import Checkpoint
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
 

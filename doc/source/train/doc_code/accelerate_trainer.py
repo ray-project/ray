@@ -5,7 +5,8 @@ from accelerate import Accelerator
 
 import ray
 from ray import train
-from ray.train import Checkpoint, ScalingConfig
+from ray.train._checkpoint import Checkpoint
+from ray.train import ScalingConfig
 from ray.train.huggingface import AccelerateTrainer
 
 
@@ -51,12 +52,16 @@ def train_loop_per_worker():
             optimizer.step()
             print(f"epoch: {epoch}, loss: {loss.item()}")
 
-        train.report(
-            metrics={"epoch": epoch, "loss": loss.item()},
-            checkpoint=Checkpoint.from_dict(
-                dict(epoch=epoch, model=accelerator.unwrap_model(model).state_dict())
-            ),
-        )
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            state_dict = accelerator.unwrap_model(model).state_dict()
+            torch.save(state_dict, f"{tmpdir}/model.bin")
+
+            train.report(
+                metrics={"epoch": epoch, "loss": loss.item()},
+                checkpoint=Checkpoint.from_directory(tmpdir),
+            )
 
 
 train_dataset = ray.data.from_items([{"x": x, "y": 2 * x + 1} for x in range(200)])

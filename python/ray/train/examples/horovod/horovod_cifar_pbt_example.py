@@ -7,8 +7,8 @@ import torchvision.transforms as transforms
 from torchvision.models import resnet18
 
 import ray
+from ray.train._checkpoint import Checkpoint
 from ray.train import (
-    Checkpoint,
     CheckpointConfig,
     FailureConfig,
     RunConfig,
@@ -52,13 +52,14 @@ def train_loop_per_worker(config):
 
     checkpoint = train.get_checkpoint()
     if checkpoint:
-        checkpoint_dict = checkpoint.to_dict()
-        model_state = checkpoint_dict["model_state"]
-        optimizer_state = checkpoint_dict["optimizer_state"]
-        epoch = checkpoint_dict["epoch"] + 1
+        with checkpoint.as_directory() as tmpdir:
+            checkpoint_dict = torch.load(f"{tmpdir}/checkpoint.bin")
+            model_state = checkpoint_dict["model_state"]
+            optimizer_state = checkpoint_dict["optimizer_state"]
+            epoch = checkpoint_dict["epoch"] + 1
 
-        net.load_state_dict(model_state)
-        optimizer.load_state_dict(optimizer_state)
+            net.load_state_dict(model_state)
+            optimizer.load_state_dict(optimizer_state)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = hvd.DistributedOptimizer(optimizer)
@@ -111,14 +112,17 @@ def train_loop_per_worker(config):
             if config["smoke_test"]:
                 break
 
-        checkpoint = Checkpoint.from_dict(
-            dict(
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            state_dict = dict(
                 model_state=net.state_dict(),
                 optimizer_state=optimizer.state_dict(),
                 epoch=epoch,
             )
-        )
-        train.report(dict(loss=running_loss / epoch_steps), checkpoint=checkpoint)
+            torch.save(state_dict, f"{tmpdir}/checkpoint.bin")
+            checkpoint = Checkpoint.from_directory(tmpdir)
+            train.report(dict(loss=running_loss / epoch_steps), checkpoint=checkpoint)
 
 
 if __name__ == "__main__":
