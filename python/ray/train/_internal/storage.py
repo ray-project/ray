@@ -7,7 +7,7 @@ import shutil
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING
 
 try:
-    import fsspec
+    import fsspec  # noqa
     from fsspec.implementations.local import LocalFileSystem
 
 except (ImportError, ModuleNotFoundError) as e:
