@@ -482,16 +482,16 @@ class ServeController:
 
         return self.deployment_state_manager.get_running_replica_infos()
 
-    def get_http_config(self):
+    def get_http_config(self) -> HTTPOptions:
         """Return the HTTP proxy configuration."""
         if self.http_proxy_state_manager is None:
-            return None
+            return HTTPOptions()
         return self.http_proxy_state_manager.get_config()
 
-    def get_grpc_config(self):
+    def get_grpc_config(self) -> gRPCOptions:
         """Return the gRPC proxy configuration."""
         if self.http_proxy_state_manager is None:
-            return None
+            return gRPCOptions()
         return self.http_proxy_state_manager.get_grpc_config()
 
     def get_root_url(self):

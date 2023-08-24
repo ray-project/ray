@@ -19,7 +19,7 @@ from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve.config import gRPCOptions
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
-from ray.serve.tests.test_grpc import (
+from ray.serve.tests.utils import (
     ping_grpc_list_applications,
     ping_grpc_call_method,
     ping_fruit_stand,
