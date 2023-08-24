@@ -178,6 +178,14 @@ py_test(
 )
 
 py_test(
+    name = "test_telemetry_2",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_batching",
     size = "small",
     srcs = serve_tests_srcs,

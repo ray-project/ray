@@ -804,6 +804,7 @@ def status() -> ServeStatus:
         # Serve has not started yet
         return ServeStatus()
 
+    ServeUsageTag.SERVE_STATUS_API_USED.record("1")
     details = ServeInstanceDetails(**client.get_serve_details())
     return details._get_status()
 
@@ -840,6 +841,7 @@ def get_app_handle(
     if ingress is None:
         raise RayServeException(f"Application '{name}' does not exist.")
 
+    ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
     # Default to async within a deployment and sync outside a deployment.
     sync = get_internal_replica_context() is None
     return client.get_handle(ingress, name, sync=sync).options(
@@ -853,6 +855,8 @@ def get_deployment_handle(
     app_name: Optional[str] = None,
 ) -> DeploymentHandle:
     """Get a handle to the named deployment.
+
+    This is a developer API and is for advanced Ray users and library developers.
 
     Args:
         deployment_name: Name of deployment to get a handle to.
@@ -879,6 +883,7 @@ def get_deployment_handle(
         else:
             app_name = internal_replica_context.app_name
 
+    ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
     # Default to async within a deployment and sync outside a deployment.
     sync = internal_replica_context is None
     return client.get_handle(deployment_name, app_name, sync=sync).options(
