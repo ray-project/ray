@@ -178,8 +178,6 @@ class Trainable:
         self._storage = storage
 
         if _use_storage_context():
-            assert storage
-            assert storage.trial_fs_path
             logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
 
         self.setup(copy.deepcopy(self.config))
@@ -525,17 +523,23 @@ class Trainable:
                         )
 
                 local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
-                persisted_checkpoint = self._storage.persist_current_checkpoint(
-                    local_checkpoint
-                )
-                # The checkpoint index needs to be incremented.
-                # NOTE: This is no longer using "iteration" as the folder indexing
-                # to be consistent with fn trainables.
-                self._storage.current_checkpoint_index += 1
+                
+                if self._storage:
+                    persisted_checkpoint = self._storage.persist_current_checkpoint(
+                        local_checkpoint
+                    )
+                    # The checkpoint index needs to be incremented.
+                    # NOTE: This is no longer using "iteration" as the folder indexing
+                    # to be consistent with fn trainables.
+                    self._storage.current_checkpoint_index += 1
 
-                checkpoint_result = _TrainingResult(
-                    checkpoint=persisted_checkpoint, metrics=self._last_result.copy()
-                )
+                    checkpoint_result = _TrainingResult(
+                        checkpoint=persisted_checkpoint, metrics=self._last_result.copy()
+                    )
+                else:
+                    checkpoint_result = _TrainingResult(
+                        checkpoint=local_checkpoint, metrics=self._last_result.copy()
+                    )
 
             else:
                 checkpoint_result: _TrainingResult = checkpoint_dict_or_path
