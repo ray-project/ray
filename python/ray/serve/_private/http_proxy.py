@@ -343,6 +343,7 @@ class GenericProxy(ABC):
         routing, including routes and health checks, ongoing request counter,
         and metrics.
         """
+        print(scope)
         assert scope["type"] in {"http", "websocket"}
 
         method = scope.get("method", "websocket").upper()
@@ -796,6 +797,7 @@ class HTTPProxy(GenericProxy):
 
                 asgi_messages: List[Message] = pickle.loads(await obj_ref)
                 for asgi_message in asgi_messages:
+                    print(asgi_message)
                     if asgi_message["type"] == "http.response.start":
                         # HTTP responses begin with exactly one
                         # "http.response.start" message containing the "status"
