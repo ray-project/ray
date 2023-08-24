@@ -180,7 +180,6 @@ message DeploymentInfo {
   string actor_name = 5;
   string version = 6;
   int64 end_time_ms = 7;
-  string app_name = 8;
 }
 
 // Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
