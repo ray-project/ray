@@ -753,7 +753,8 @@ def read_delta(
 
 
     Args:
-        uri: A single file path or directory.
+        uri: A single file path or directory. On databricks, only dbfs path is
+            supported.
         delta_package: The coordinate of io.delta:delta-core jar package that will
             be installed in spark session.
         filesystem: The PyArrow filesystem
@@ -764,6 +765,7 @@ def read_delta(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used. If ``None``, this function uses a system-chosen implementation.
+            If on databricks, this argument will be ignored.
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
         parallelism: The amount of parallelism to use for the dataset. Defaults to -1,

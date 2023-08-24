@@ -36,6 +36,12 @@ def test_read_delta_basic(spark):
         data = read_delta(tempdir)
         assert data.count() == 3
         assert data.columns() == ["id", "name", "age"]
+        data_dict = [
+            {"id": 1, "name": "Alice", "age": 20},
+            {"id": 2, "name": "Bob", "age": 40},
+            {"id": 3, "name": "Charlie", "age": 60},
+        ]
+        assert sorted(data.take_all(), key=lambda x: x["id"]) == data_dict
 
         # Add rows
         spark.sql(
@@ -47,6 +53,13 @@ def test_read_delta_basic(spark):
         )
         data = read_delta(tempdir)
         assert data.count() == 5
+        new_data_dict = [
+            {"id": 4, "name": "David", "age": 5},
+            {"id": 5, "name": "Eva", "age": 50},
+        ]
+        assert (
+            sorted(data.take_all(), key=lambda x: x["id"]) == data_dict + new_data_dict
+        )
 
         # Delete rows
         spark.sql(
@@ -57,6 +70,7 @@ def test_read_delta_basic(spark):
         )
         data = read_delta(tempdir)
         assert data.count() == 2
+        assert sorted(data.take_all(), key=lambda x: x["id"]) == new_data_dict
 
 
 def test_read_ray_data(spark):
