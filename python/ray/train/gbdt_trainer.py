@@ -3,7 +3,7 @@ import logging
 import tempfile
 import warnings
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
 from ray import train, tune
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
@@ -223,7 +223,7 @@ class GBDTTrainer(BaseTrainer):
     def _load_checkpoint(
         self,
         checkpoint: LegacyCheckpoint,
-    ) -> Tuple[Any, Optional["Preprocessor"]]:
+    ) -> Any:
         raise NotImplementedError
 
     def _train(self, **kwargs):

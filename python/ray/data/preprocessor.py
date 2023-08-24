@@ -1,4 +1,5 @@
 import abc
+import base64
 import collections
 import pickle
 import warnings
@@ -61,15 +62,6 @@ class Preprocessor(abc.ABC):
 
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
-
-    @DeveloperAPI
-    def pickle(self) -> str:
-        return pickle.dumps(self, 0).decode("ascii")
-
-    @DeveloperAPI
-    @staticmethod
-    def unpickle(serialized: str) -> "Preprocessor":
-        return pickle.loads(serialized.encode("ascii"))
 
     def fit_status(self) -> "Preprocessor.FitStatus":
         if not self._is_fittable:
@@ -336,3 +328,18 @@ class Preprocessor(abc.ABC):
         path is the most optimal.
         """
         return BatchFormat.PANDAS
+
+    @DeveloperAPI
+    def serialize(self) -> str:
+        """Return this preprocessor serialized as a string.
+        Note: this is not a stable serialization format as it uses `pickle`.
+        """
+        # Convert it to a plain string so that it can be included as JSON metadata
+        # in Trainer checkpoints.
+        return base64.b64encode(pickle.dumps(self)).decode("ascii")
+
+    @staticmethod
+    @DeveloperAPI
+    def deserialize(serialized: str) -> "Preprocessor":
+        """Load the original preprocessor serialized via `self.serialize()`."""
+        return pickle.loads(base64.b64decode(serialized))
