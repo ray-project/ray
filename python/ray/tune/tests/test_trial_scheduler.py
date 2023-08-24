@@ -932,14 +932,12 @@ class _MockTrial(Trial):
 
     @property
     def restored_checkpoint(self):
-        if self.temporary_state.next_restore:
-            if hasattr(self.temporary_state.next_restore, "dir_or_data"):
-                return self.temporary_state.next_restore.dir_or_data
-            return self.temporary_state.next_restore.checkpoint.path
+        if hasattr(self.run_metadata.checkpoint_manager, "_latest_checkpoint_result"):
+            result = self.run_metadata.checkpoint_manager._latest_checkpoint_result
+            return result.checkpoint.path
         return self._restored_checkpoint
 
 
-@unittest.skipIf(not _use_storage_context(), "Disabled for old code path")
 class PopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
@@ -2038,7 +2036,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertEqual(len(active), 0)
 
 
-@unittest.skipIf(not _use_storage_context(), "Disabled for old code path")
 class E2EPopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=4)

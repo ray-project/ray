@@ -935,20 +935,19 @@ class PopulationBasedTraining(FIFOScheduler):
         # Resume training from a shallow copy of `trial_to_clone`'s latest
         # checkpoint
         checkpoint_to_exploit = copy.copy(new_state.last_checkpoint)
-        # NOTE: Clear the checkpoint id (which was set by the other trial's
-        # checkpoint manager) so that the current trial's checkpoint manager marks
-        # the checkpoint as the most recent to use upon trial resume
-        checkpoint_to_exploit.id = None
 
         if _use_storage_context():
-            exploit = _TrainingResult(
-                checkpoint=checkpoint_to_exploit, metrics=new_state.last_result
+            trial.run_metadata.checkpoint_manager._latest_checkpoint_result = (
+                _TrainingResult(
+                    checkpoint=checkpoint_to_exploit, metrics=new_state.last_result
+                )
             )
         else:
-            exploit = checkpoint_to_exploit
-
-        # Next trial restore should use this checkpoint
-        trial.temporary_state.next_restore = exploit
+            # NOTE: Clear the checkpoint id (which was set by the other trial's
+            # checkpoint manager) so that the current trial's checkpoint manager marks
+            # the checkpoint as the most recent to use upon trial resume
+            checkpoint_to_exploit.id = None
+            trial.on_checkpoint(checkpoint_to_exploit)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
@@ -1176,16 +1175,17 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         )
         if _use_storage_context():
             training_result = result.resolve()
-            next_restore = training_result
+            trial.run_metadata.checkpoint_manager._latest_checkpoint_result = (
+                training_result
+            )
         else:
-            next_restore = result
+            trial.on_checkpoint(result)
 
         new_tag = _make_experiment_tag(self.experiment_tag, new_config, new_config)
 
         tune_controller.pause_trial(trial, should_checkpoint=False)
         trial.set_experiment_tag(new_tag)
         trial.set_config(new_config)
-        trial.temporary_state.next_restore = next_restore
 
         self.current_config = new_config
         self._num_perturbations += 1

@@ -2055,9 +2055,7 @@ class TuneController:
     def _schedule_trial_restore(self, trial: Trial) -> bool:
         if _use_storage_context():
             cpm = trial.run_metadata.checkpoint_manager
-            checkpoint_result = (
-                trial.temporary_state.next_restore or cpm.latest_checkpoint_result
-            )
+            checkpoint_result = cpm.latest_checkpoint_result
 
             if not checkpoint_result:
                 logger.debug(f"Not restoring trial {trial}: No checkpoint found.")

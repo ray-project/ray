@@ -18,7 +18,6 @@ from ray import cloudpickle, train, tune
 from ray.train._checkpoint import Checkpoint
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
-from ray.train._internal.storage import _use_storage_context
 from ray.tune import Trainable, Callback
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining
@@ -48,9 +47,6 @@ class MockParam(object):
         return val
 
 
-@unittest.skipIf(
-    _use_storage_context(), "New storage context has no memory checkpoints."
-)
 class PopulationBasedTrainingMemoryTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=1, object_store_memory=100 * MB)
