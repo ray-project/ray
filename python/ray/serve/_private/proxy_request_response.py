@@ -124,7 +124,7 @@ class gRPCProxyRequest(ProxyRequest):
         if not self.is_route_request and not self.is_health_request:
             service_method_split = self.service_method.split("/")
             self.request = pickle.dumps(self.request)
-            self.method_name = service_method_split[-1].lower()
+            self.method_name = service_method_split[-1]
             for key, value in self.context.invocation_metadata():
                 if key == "application":
                     self.app_name = value
