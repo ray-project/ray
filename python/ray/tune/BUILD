@@ -215,7 +215,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_run_experiment.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
