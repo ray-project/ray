@@ -26,6 +26,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -39,7 +40,7 @@ namespace gcs {
 
 inline int64_t GetGcsTimeoutMs() {
   return absl::ToInt64Milliseconds(
-      absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()));
+      absl::Seconds(::RayConfig::instance().gcs_server_request_timeout_seconds()));
 }
 
 /// \class GcsClientOptions
