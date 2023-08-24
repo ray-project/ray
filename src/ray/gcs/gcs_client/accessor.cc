@@ -19,13 +19,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 
-namespace {
-inline int64_t GetGcsTimeoutMs() {
-  return absl::ToInt64Milliseconds(
-      absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()));
-}
-}  // namespace
-
 namespace ray {
 namespace gcs {
 

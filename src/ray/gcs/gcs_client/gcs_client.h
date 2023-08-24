@@ -37,6 +37,11 @@ namespace ray {
 
 namespace gcs {
 
+inline int64_t GetGcsTimeoutMs() {
+  return absl::ToInt64Milliseconds(
+      absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()));
+}
+
 /// \class GcsClientOptions
 /// GCS client's options (configuration items), such as service address, and service
 /// password.
@@ -250,9 +255,10 @@ class RAY_EXPORT PythonGcsClient {
 
  private:
   void PrepareContext(grpc::ClientContext &context, int64_t timeout_ms) {
-    if (timeout_ms != -1) {
-      context.set_deadline(std::chrono::system_clock::now() +
-                           std::chrono::milliseconds(timeout_ms));
+    if (timeout_ms >= 0) {
+      context.set_deadline(
+          std::chrono::system_clock::now() +
+          std::chrono::milliseconds(timeout_ms > 0 ? timeout_ms : GetGcsTimeoutMs()));
     }
     if (!cluster_id_.IsNil()) {
       context.AddMetadata(kClusterIdKey, cluster_id_.Hex());

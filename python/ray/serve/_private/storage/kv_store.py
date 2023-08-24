@@ -39,7 +39,8 @@ class RayInternalKVStore(KVStoreBase):
             self.gcs_client = gcs_client
         else:
             self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-        self.timeout = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
+        self.timeout = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "3"))
+        assert self.timeout > 0
 
         self.namespace = namespace or ""
 

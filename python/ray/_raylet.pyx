@@ -2377,6 +2377,14 @@ def _auto_reconnect(f):
     return wrapper
 
 
+def timeout_to_int_ms(timeout: Optional[float]):
+    if not timeout:
+        return 0
+    if timeout > 0:
+        return round(1000 * timeout)
+    if timeout < 0:
+        return -1
+
 cdef class GcsClient:
     """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
     cdef:
@@ -2400,7 +2408,7 @@ cdef class GcsClient:
 
     def _connect(self, timeout_s=None):
         cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout_s)
             size_t num_retries = self._nums_reconnect_retry
         with nogil:
             status = self.inner.get().Connect(self.cluster_id, timeout_ms, num_retries)
@@ -2426,7 +2434,7 @@ cdef class GcsClient:
         self, node_ips: c_vector[c_string], timeout: Optional[float] = None
     ):
         cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
             c_vector[c_bool] c_result
         with nogil:
             check_status(self.inner.get().CheckAlive(node_ips, timeout_ms, c_result))
@@ -2439,7 +2447,7 @@ cdef class GcsClient:
     def internal_kv_get(self, c_string key, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
             c_string value
             CRayStatus status
         with nogil:
@@ -2456,7 +2464,7 @@ cdef class GcsClient:
             c_string ns = namespace or b""
             c_vector[c_string] c_keys
             c_string c_key
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
             unordered_map[c_string, c_string] c_result
             unordered_map[c_string, c_string].iterator it
 
@@ -2480,7 +2488,7 @@ cdef class GcsClient:
                         namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
             int num_added = 0
         with nogil:
             check_status(self.inner.get().InternalKVPut(
@@ -2493,7 +2501,7 @@ cdef class GcsClient:
                         namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
             int num_deleted = 0
         with nogil:
             check_status(self.inner.get().InternalKVDel(
@@ -2505,7 +2513,7 @@ cdef class GcsClient:
     def internal_kv_keys(self, c_string prefix, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
             c_vector[c_string] keys
             c_string key
 
@@ -2524,7 +2532,7 @@ cdef class GcsClient:
     def internal_kv_exists(self, c_string key, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
             c_bool exists = False
         with nogil:
             check_status(self.inner.get().InternalKVExists(
@@ -2534,7 +2542,7 @@ cdef class GcsClient:
     @_auto_reconnect
     def pin_runtime_env_uri(self, str uri, int expiration_s, timeout=None):
         cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
             c_string c_uri = uri.encode()
         with nogil:
             check_status(self.inner.get().PinRuntimeEnvUri(
@@ -2543,7 +2551,7 @@ cdef class GcsClient:
     @_auto_reconnect
     def get_all_node_info(self, timeout=None):
         cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
             CGcsNodeInfo node_info
             c_vector[CGcsNodeInfo] node_infos
         with nogil:
@@ -2564,7 +2572,7 @@ cdef class GcsClient:
         # Manually converting each and every protobuf field is out of question,
         # so we serialize the pb to string to cross the FFI interface.
         cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
             CJobTableData c_job_info
             c_vector[CJobTableData] c_job_infos
             c_vector[c_string] serialized_job_infos
@@ -2582,7 +2590,7 @@ cdef class GcsClient:
     @_auto_reconnect
     def get_all_resource_usage(self, timeout=None) -> GetAllResourceUsageReply:
         cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
             c_string serialized_reply
 
         with nogil:
@@ -2603,7 +2611,7 @@ cdef class GcsClient:
             count_array: c_vector[int64_t],
             timeout_s=None):
         cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout_s)
         with nogil:
             check_status(self.inner.get().RequestClusterResourceConstraint(
                 timeout_ms, bundles, count_array))
@@ -2613,7 +2621,7 @@ cdef class GcsClient:
             self,
             timeout_s=None):
         cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout_s)
             c_string serialized_reply
         with nogil:
             check_status(self.inner.get().GetClusterStatus(timeout_ms,
@@ -2644,7 +2652,7 @@ cdef class GcsClient:
     def drain_nodes(self, node_ids, timeout=None):
         cdef:
             c_vector[c_string] c_node_ids
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
             c_vector[c_string] c_drained_node_ids
         for node_id in node_ids:
             c_node_ids.push_back(node_id)
@@ -2785,7 +2793,7 @@ cdef class GcsErrorSubscriber(_GcsSubscriber):
         cdef:
             CErrorTableData error_data
             c_string key_id
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
 
         with nogil:
             check_status(self.inner.get().PollError(&key_id, timeout_ms, &error_data))
@@ -2828,7 +2836,7 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
         cdef:
             CLogBatch log_batch
             c_string key_id
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
             c_vector[c_string] c_log_lines
             c_string c_log_line
 
@@ -2881,7 +2889,7 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
         cdef:
             CActorTableData actor_data
             c_string key_id
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = timeout_to_int_ms(timeout)
 
         with nogil:
             check_status(self.inner.get().PollActor(
@@ -2915,7 +2923,7 @@ def check_health(address: str, timeout=2, skip_version_check=False):
     cdef:
         c_string c_gcs_address = gcs_address
         int c_gcs_port = int(gcs_port)
-        int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        int64_t timeout_ms = timeout_to_int_ms(timeout)
         c_string c_ray_version = ray.__version__
         c_bool c_skip_version_check = skip_version_check
         c_bool c_is_healthy = True
