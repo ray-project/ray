@@ -699,7 +699,7 @@ class Trial:
     @property
     def remote_experiment_path(self) -> str:
         if _use_storage_context():
-            return str(self.storage.storage_prefix / self.storage.experiment_fs_path)
+            return self.storage.experiment_fs_path
 
         return str(self._legacy_remote_experiment_path)
 
@@ -809,7 +809,7 @@ class Trial:
     @property
     def path(self) -> Optional[str]:
         if _use_storage_context():
-            return str(self.storage.storage_prefix / self.storage.trial_fs_path)
+            return self.storage.trial_fs_path
 
         return self.remote_path or self.local_path
 
