@@ -103,13 +103,8 @@ def test_get_serve_instance_details(ray_start_stop):
     print("Confirmed docs paths are correct.")
 
     # CHECK: all deployments are present
-    assert app_details["app1"].deployments.keys() == {
-        "app1_f",
-        "app1_BasicDriver",
-    }
-    assert app_details["app2"].deployments.keys() == {
-        "app2_FastAPIDeployment",
-    }
+    assert app_details["app1"].deployments.keys() == {"f", "BasicDriver"}
+    assert app_details["app2"].deployments.keys() == {"FastAPIDeployment"}
     print("Metadata for all deployed deployments are present.")
 
     # CHECK: application details

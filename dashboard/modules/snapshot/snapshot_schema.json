@@ -188,33 +188,7 @@
                   "port": {
                     "type": "integer"
                   },
-                  "metadata": {
-                    "type": "object",
-                    "properties": {
-                      "serve": {
-                        "type": "object",
-                        "properties": {
-                          "deploymentName": {
-                            "type": "string"
-                          },
-                          "replicaTag": {
-                            "type": "string"
-                          },
-                          "version": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
-                          }
-                        },
-                        "required": [
-                          "deploymentName",
-                          "replicaTag",
-                          "version"
-                        ]
-                      }
-                    }
-                  },
+                  "metadata": {},
                   "required": [
                     "jobId",
                     "state",
