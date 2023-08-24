@@ -1940,15 +1940,39 @@ def parse_node_labels_json(
     return labels
 
 
+def is_valid_label_string(s):
+    if len(s) == 0:
+        return True
+    pattern = r"^[a-zA-Z0-9\-_./]+$"
+    return bool(re.match(pattern, s))
+
+
 def validate_node_labels(labels: Dict[str, str]):
     if labels is None:
         return
-    for key in labels.keys():
-        if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
+    for key, value in labels.items():
+        if key.startswith(ray._raylet.RAY_DEFAULT_LABEL_KEY_PREFIX):
             raise ValueError(
                 f"Custom label keys `{key}` cannot start with the prefix "
-                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
+                f"`{ray._raylet.RAY_DEFAULT_LABEL_KEY_PREFIX}`. "
                 f"This is reserved for Ray defined labels."
+            )
+        if (
+            len(key) >= ray._raylet.RAY_LABEL_MAX_LENGTH
+            or len(key) == 0
+            or len(value) >= ray._raylet.RAY_LABEL_MAX_LENGTH
+        ):
+            raise ValueError(
+                "The keys and values length of custom lables "
+                "cannot be empty or exceed "
+                f"{ray._raylet.RAY_LABEL_MAX_LENGTH - 1} characters, "
+                f"invalid label: {key}:{value}."
+            )
+        if (not is_valid_label_string(key)) or (not is_valid_label_string(value)):
+            raise ValueError(
+                "The keys and values of custom lables must "
+                "consist of letters from `a-z0-9A-Z` or `-` or `_` or `.` or `/`, "
+                f"invalid label: {key}:{value}."
             )
 
 
