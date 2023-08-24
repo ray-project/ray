@@ -1170,7 +1170,7 @@ def run(
             default_metric=metric,
             default_mode=mode,
             trials=all_trials,
-            storage_filesystem=storage_filesystem,
+            storage_filesystem=experiments[0].storage.storage_filesystem,
         )
     else:
         return ExperimentAnalysis(

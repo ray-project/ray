@@ -421,7 +421,7 @@ class TuneController:
     @property
     def experiment_path(self) -> str:
         if _use_storage_context():
-            return str(self._storage.storage_prefix / self._storage.experiment_fs_path)
+            return self._storage.experiment_fs_path
 
         return self._legacy_remote_experiment_path or self._legacy_local_experiment_path
 
