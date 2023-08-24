@@ -15,6 +15,7 @@ from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 import ray
 from ray import tune
 from ray.rllib import _register_all
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search.dragonfly import DragonflySearch
@@ -470,6 +471,7 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
+@unittest.skipIf(not _use_storage_context(), "Disabled for old code path")
 class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space = {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}

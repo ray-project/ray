@@ -138,6 +138,7 @@ def create_execution_test_objects(
             experiment_dir_name=experiment_name,
         )
         storage.storage_path = tmpdir
+        storage.storage_local_path = tmpdir
 
     tune_controller = tune_controller_cls(
         experiment_path=os.path.join(storage_path, experiment_name),

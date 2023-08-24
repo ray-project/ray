@@ -13,7 +13,7 @@ import shutil
 from unittest.mock import MagicMock
 
 import ray
-from ray import tune
+from ray import train, tune
 from ray.train import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import TRAINING_ITERATION
@@ -701,7 +701,6 @@ class HyperbandSuite(unittest.TestCase):
         self.assertIsNotNone(trial)
 
 
-@unittest.skipIf(not _use_storage_context(), "Disabled for old code path")
 class BOHBSuite(unittest.TestCase):
     def setUp(self):
         ray.init(object_store_memory=int(1e8))
@@ -809,25 +808,30 @@ class BOHBSuite(unittest.TestCase):
     def testNonstopBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
-        def train(cfg, checkpoint_dir=None):
+        def train_fn(cfg):
             start = 0
-            if checkpoint_dir:
-                with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
-                    start = int(f.read())
+            if train.get_checkpoint():
+                with train.get_checkpoint().as_directory() as checkpoint_dir:
+                    with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
+                        start = int(f.read())
 
             for i in range(start, 200):
 
                 time.sleep(0.1)
-                tune.report(episode_reward_mean=i)
-                with tune.checkpoint_dir(i) as checkpoint_dir:
+
+                with tempfile.TemporaryDirectory() as checkpoint_dir:
                     with open(os.path.join(checkpoint_dir, "checkpoint"), "w") as f:
                         f.write(str(i))
+                    train.report(
+                        dict(episode_reward_mean=i),
+                        checkpoint=Checkpoint.from_directory(checkpoint_dir),
+                    )
 
         config = {"test_variable": tune.uniform(0, 20)}
         sched = HyperBandForBOHB(max_t=10, reduction_factor=3, stop_last_trials=False)
         alg = ConcurrencyLimiter(TuneBOHB(), 4)
         analysis = tune.run(
-            train,
+            train_fn,
             scheduler=sched,
             search_alg=alg,
             stop={"training_iteration": 32},

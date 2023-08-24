@@ -18,7 +18,7 @@ from ray import cloudpickle, train, tune
 from ray.train._checkpoint import Checkpoint
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
-from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._internal.storage import _use_storage_context
 from ray.tune import Trainable, Callback
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining
@@ -556,14 +556,8 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
 
     def testBurnInPeriod(self):
         tempdir = tempfile.mkdtemp()
-        storage_context = None
-        if _use_storage_context():
-            storage_context = StorageContext(
-                storage_path=tempdir,
-                experiment_dir_name="test",
-                trial_dir_name="test0",
-            )
-        runner, *_ = create_execution_test_objects(tempdir, storage=storage_context)
+        runner, *_ = create_execution_test_objects(tempdir)
+        storage_context = runner._storage
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
