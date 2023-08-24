@@ -177,6 +177,7 @@ py_test_module_list(
     "test_draining.py",
     "test_streaming_generator.py",
     "test_streaming_generator_2.py",
+    "test_streaming_generator_3.py",
     "test_scheduling_performance.py",
   ],
   size = "medium",
