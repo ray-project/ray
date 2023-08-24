@@ -65,7 +65,6 @@ class AutoscalingCluster:
         dashboard_options,
         head_node_options,
         collect_log_to_path,
-        _system_config=None,
     ):
         """Start the cluster.
 
@@ -101,12 +100,6 @@ class AutoscalingCluster:
         if "object_store_memory" in self._head_resources:
             ray_head_node_cmd.append("--object-store-memory={}".format(self._head_resources.pop("object_store_memory")))
         ray_head_node_cmd.append(f"--resources={json.dumps(self._head_resources)}")
-        if _system_config is not None:
-            ray_head_node_cmd.append(
-                "--system-config={}".format(
-                    json.dumps(_system_config, separators=(",", ":"))
-                )
-            )
         extra_env = {
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
