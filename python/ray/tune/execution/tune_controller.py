@@ -59,7 +59,7 @@ from ray.tune.callback import Callback, CallbackList
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
-from ray.tune.syncer import _HeadNodeSyncDeprecationWarning, SyncConfig
+from ray.train._internal.syncer import _HeadNodeSyncDeprecationWarning, SyncConfig
 from ray.tune.experiment import Trial
 from ray.tune.utils.log import _dedup_logs
 from ray.tune.utils.object_cache import _ObjectCache
