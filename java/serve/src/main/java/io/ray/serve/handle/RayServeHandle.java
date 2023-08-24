@@ -6,6 +6,8 @@ import io.ray.api.ObjectRef;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Metrics;
 import io.ray.serve.common.Constants;
+import io.ray.serve.context.Context;
+import io.ray.serve.context.RequestContext;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.router.Router;
@@ -63,6 +65,16 @@ public class RayServeHandle {
    * @return ObjectRef
    */
   public ObjectRef<Object> remote(Object... parameters) {
+    RequestContext requestContextInfo = new RequestContext("1","2","3","hh");
+    Context.setContextInfo(requestContextInfo);
+    RequestContext contextInfo = Context.getContextInfo();
+    String appName = contextInfo.getAppName();
+    String requestId = contextInfo.getRequestId();
+    String route = contextInfo.getRoute();
+    System.out.println("test");
+    System.out.println(appName);
+    System.out.println(requestId);
+    System.out.println(route);
     RayServeMetrics.execute(() -> requestCounter.inc(1.0));
     RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
     requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
