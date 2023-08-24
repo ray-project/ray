@@ -2244,13 +2244,13 @@ def from_spark(
 
 
 @PublicAPI
-def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a
-    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_.
-
-    This function isn't parallelized, and is intended to be used
-    with Hugging Face Datasets that are loaded into memory (as opposed
-    to memory-mapped).
+def from_huggingface(
+    dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
+) -> Union[MaterializedDataset, Dataset]:
+    """Create a :class:`~ray.data.MaterializedDataset` from a
+    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
+    or a :class:`~ray.data.Dataset` from a `Hugging Face Datasets IterableDataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDataset/>`_.
+    For an `IterableDataset`, we use a streaming implementation to read data.
 
     Example:
 
@@ -2267,6 +2267,10 @@ def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
             ray_ds = ray.data.from_huggingface(hf_dataset["train"])
             print(ray_ds)
 
+            hf_dataset_stream = datasets.load_dataset("tweet_eval", "emotion", streaming=True)
+            ray_ds_stream = ray.data.from_huggingface(hf_dataset_stream["train"])
+            print(ray_ds_stream)
+
         .. testoutput::
             :options: +MOCK
 
@@ -2275,11 +2279,16 @@ def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
                 num_rows=3257,
                 schema={text: string, label: int64}
             )
+            Dataset(
+                num_blocks=...,
+                num_rows=3257,
+                schema={text: string, label: int64}
+            )
 
     Args:
-        dataset: A `Hugging Face Datasets Dataset`_.
-            ``IterableDataset`` and
+        dataset: A `Hugging Face Datasets Dataset`_ or `Hugging Face Datasets IterableDataset`_.
             `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_
+            and `IterableDatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDatasetDict/>`_
             are not supported.
 
     Returns:
@@ -2287,22 +2296,33 @@ def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
     """  # noqa: E501
     import datasets
 
+    if isinstance(dataset, datasets.IterableDataset):
+        # HuggingFaceDatasource should not be imported at top level, because
+        # we only want the Hugging Face datasets package to be imported
+        # if Hugging Face Datasets are used.
+        from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
+
+        # For an IterableDataset, we can use a streaming implementation to read data.
+        return read_datasource(
+            HuggingFaceDatasource(),
+            dataset=dataset,
+        )
     if isinstance(dataset, datasets.Dataset):
         # To get the resulting Arrow table from a Hugging Face Dataset after
-        # applying transformations (e.g. train_test_split(), shard(), select()),
+        # applying transformations (e.g., train_test_split(), shard(), select()),
         # we create a copy of the Arrow table, which applies the indices
         # mapping from the transformations.
         hf_ds_arrow = dataset.with_format("arrow")
         ray_ds = from_arrow(hf_ds_arrow[:])
         return ray_ds
-    elif isinstance(dataset, datasets.DatasetDict):
+    elif isinstance(dataset, (datasets.DatasetDict, datasets.IterableDatasetDict)):
         available_keys = list(dataset.keys())
         raise DeprecationWarning(
-            "You provided a Hugging Face DatasetDict which contains multiple "
-            "datasets, but `from_huggingface` now only accepts a single Hugging Face "
-            "Dataset. To convert just a single Hugging Face Dataset to a "
-            "Ray Dataset, specify a split. For example, "
-            "`ray.data.from_huggingface(my_dataset_dictionary"
+            "You provided a Hugging Face DatasetDict or IterableDatasetDict, "
+            "which contains multiple datasets, but `from_huggingface` now "
+            "only accepts a single Hugging Face Dataset. To convert just "
+            "a single Hugging Face Dataset to a Ray Dataset, specify a split. "
+            "For example, `ray.data.from_huggingface(my_dataset_dictionary"
             f"['{available_keys[0]}'])`. "
             f"Available splits are {available_keys}."
         )
