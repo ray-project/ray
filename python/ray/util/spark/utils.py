@@ -1,6 +1,5 @@
 import subprocess
 import os
-from packaging.version import Version
 import sys
 import random
 import threading
@@ -131,45 +130,31 @@ def get_spark_session():
     return spark_session
 
 
-# This mapping needs to be updated according to
-# new spark versions.
-_spark_delta_core_version_mapping = {
-    "3.3.0": "2.1.0",
-    "3.3.1": "2.2.0",
-    "3.3.2": "2.3.0",
-    "3.4.0": "2.4.0",
-}
-MIN_SPARK_VERSION = min(_spark_delta_core_version_mapping)
-MAX_SPARK_VERSION = max(_spark_delta_core_version_mapping)
-
-
-def get_or_create_spark_session_for_delta():
-    import pyspark
+def get_or_create_spark_session_with_delta_extension(delta_package=None):
+    from pyspark.conf import SparkConf
     from pyspark.sql import SparkSession
 
-    spark_version = pyspark.__version__
-    if Version(spark_version) < Version(MIN_SPARK_VERSION):
-        raise RuntimeError(
-            f"Spark version {spark_version} is not supported for Delta Lake. "
-        )
-    elif Version(spark_version) > Version(MAX_SPARK_VERSION):
-        spark_version = MAX_SPARK_VERSION
-    delta_core_version = _spark_delta_core_version_mapping[spark_version]
+    spark_conf = SparkConf()
+    conf = {}
 
-    spark_session = (
-        SparkSession.builder.config(
-            "spark.jars.packages",
-            f"io.delta:delta-core_2.12:{delta_core_version}",
+    if spark_session := SparkSession.getActiveSession():
+        conf = spark_session.sparkContext.getConf()
+
+    if "io.delta_delta-core" not in conf.get("spark.jars", ""):
+        spark_conf.set(
+            "spark.jars.packages", delta_package or "io.delta:delta-core_2.12:2.2.0"
         )
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config(
-            "spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-        )
-        .getOrCreate()
+    spark_conf.set(
+        "spark.sql.extensions",
+        conf.get("spark.sql.extensions") or "io.delta.sql.DeltaSparkSessionExtension",
+    )
+    spark_conf.set(
+        "spark.sql.catalog.spark_catalog",
+        conf.get("spark.sql.catalog.spark_catalog")
+        or "org.apache.spark.sql.delta.catalog.DeltaCatalog",
     )
 
-    return spark_session
+    return SparkSession.builder.config(conf=spark_conf).getOrCreate()
 
 
 def get_spark_application_driver_host(spark):

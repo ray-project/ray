@@ -8,39 +8,55 @@ from pyspark.sql import SparkSession
 
 import ray.data
 from ray.data import read_delta
-
-
-def get_or_create_spark_session():
-    return (
-        SparkSession.builder.config(
-            "spark.jars.packages", "io.delta:delta-core_2.12:2.2.0"
-        )
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config(
-            "spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-        )
-        .getOrCreate()
-    )
+from ray.util.spark.utils import get_or_create_spark_session_with_delta_extension
 
 
 @pytest.fixture(scope="module")
 def spark():
-    with (get_or_create_spark_session()) as spark:
+    with (get_or_create_spark_session_with_delta_extension()) as spark:
         yield spark
 
 
 def test_read_delta_basic(spark):
-    spark_df = spark.range(200).repartition(8)
-    with tempfile.TemporaryDirectory() as tempdir:
-        uri = os.path.join(tempdir, "DeltaTable")
-        spark_df.write.format("delta").save(uri)
+    spark_df = spark.createDataFrame(
+        [(1, "Alice", 20), (2, "Bob", 40), (3, "Charlie", 60)], ["id", "name", "age"]
+    )
+    spark_df.createOrReplaceTempView("temp_table")
 
-        data = read_delta(uri)
-        assert data.count() == 200
-        assert data.columns() == ["id"]
-        assert data.schema().names == ["id"]
-        assert data.schema().types[0] == "int64"
+    with tempfile.TemporaryDirectory() as tempdir:
+        spark.sql(
+            f"""
+            CREATE TABLE delta_table
+            USING delta
+            LOCATION '{tempdir}'
+            AS SELECT * FROM temp_table
+        """
+        )
+
+        data = read_delta(tempdir)
+        assert data.count() == 3
+        assert data.columns() == ["id", "name", "age"]
+
+        # Add rows
+        spark.sql(
+            """
+            INSERT INTO delta_table VALUES
+            (4, 'David', 5),
+            (5, 'Eva', 50);
+        """
+        )
+        data = read_delta(tempdir)
+        assert data.count() == 5
+
+        # Delete rows
+        spark.sql(
+            """
+            DELETE FROM delta_table
+            WHERE id <= 3
+        """
+        )
+        data = read_delta(tempdir)
+        assert data.count() == 2
 
 
 def test_read_ray_data(spark):
@@ -60,7 +76,7 @@ def test_read_ray_data(spark):
 
 def test_existing_spark_session_success():
     spark = SparkSession.builder.getOrCreate()
-    spark = get_or_create_spark_session()
+    spark = get_or_create_spark_session_with_delta_extension()
     spark_df = spark.range(200).repartition(8)
     with tempfile.TemporaryDirectory() as tempdir:
         spark_df.write.format("delta").save(tempdir)

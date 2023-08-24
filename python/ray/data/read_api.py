@@ -84,7 +84,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.util.spark.utils import (
     _convert_dbfs_path_to_local_path,
-    get_or_create_spark_session_for_delta,
+    get_or_create_spark_session_with_delta_extension,
     get_spark_session,
     is_in_databricks_runtime,
 )
@@ -707,6 +707,7 @@ def read_parquet(
 @PublicAPI
 def read_delta(
     uri: str,
+    delta_package: str = None,
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
@@ -753,6 +754,8 @@ def read_delta(
 
     Args:
         uri: A single file path or directory.
+        delta_package: The coordinate of io.delta:delta-core jar package that will
+            be installed in spark session.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -794,7 +797,7 @@ def read_delta(
         paths = spark.read.load(uri, format="delta").inputFiles()
         paths = [_convert_dbfs_path_to_local_path(path) for path in paths]
     else:
-        spark = get_or_create_spark_session_for_delta()
+        spark = get_or_create_spark_session_with_delta_extension(delta_package)
         paths = spark.read.load(uri, format="delta").inputFiles()
     return read_parquet(
         paths=paths,
