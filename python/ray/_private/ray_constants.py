@@ -395,7 +395,27 @@ KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 
+# Accelerator constants
+NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR = (
+    "RAY_EXPERIMENTAL_NOSET_NEURON_RT_VISIBLE_CORES"
+)
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
+CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
+NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
+NEURON_CORES = "neuron_cores"
+GPU = "GPU"
+# https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/inf2-arch.html#aws-inf2-arch
+# https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/trn1-arch.html#aws-trn1-arch
+# Subject to removal after the information is available via public API
+AWS_NEURON_INSTANCE_MAP = {
+    "trn1.2xlarge": 2,
+    "trn1.32xlarge": 32,
+    "trn1n.32xlarge": 32,
+    "inf2.xlarge": 2,
+    "inf2.8xlarge": 2,
+    "inf2.24xlarge": 12,
+    "inf2.48xlarge": 24,
+}
 RAY_WORKER_NICENESS = "RAY_worker_niceness"
 
 # Default max_retries option in @ray.remote for non-actor
@@ -457,3 +477,10 @@ RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = (
 )
 
 RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
+
+RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONNECTIONS"
+
+# TPU VMs come with 4 chips per host and 2 tensorcores per chip.
+# For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
+RAY_TPU_NUM_CHIPS_PER_HOST = 4
+RAY_TPU_CORES_PER_CHIP = 2

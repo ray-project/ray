@@ -671,6 +671,18 @@ class TestServeDeploySchema:
         with pytest.raises(ValidationError):
             ServeDeploySchema.parse_obj(deploy_config_dict)
 
+    def test_deploy_with_grpc_options(self):
+        """gRPC options can be specified."""
+
+        deploy_config_dict = {
+            "grpc_options": {
+                "port": 9000,
+                "grpc_servicer_functions": ["foo.bar"],
+            },
+            "applications": [],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
+
 
 class TestServeStatusSchema:
     def get_valid_serve_status_schema(self):
@@ -782,7 +794,9 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
     deployment = schema_to_deployment(deployment_to_schema(f))
     deployment.set_options(func_or_class="ray.serve.tests.test_schema.global_f")
 
-    assert len(deployment.ray_actor_options) == 0
+    # Serve will set num_cpus to 1 if it's not set.
+    assert len(deployment.ray_actor_options) == 1
+    assert deployment.ray_actor_options["num_cpus"] == 1
 
 
 def test_status_schema_helpers():
@@ -815,10 +829,10 @@ def test_status_schema_helpers():
     ).deployment_statuses
     assert len(f1_statuses) == 1
     assert f1_statuses[0].status in {"UPDATING", "HEALTHY"}
-    assert f1_statuses[0].name == "app1_f1"
+    assert f1_statuses[0].name == "f1"
     assert len(f2_statuses) == 1
     assert f2_statuses[0].status in {"UPDATING", "HEALTHY"}
-    assert f2_statuses[0].name == "app2_f2"
+    assert f2_statuses[0].name == "f2"
 
     serve.shutdown()
 

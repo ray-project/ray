@@ -33,6 +33,7 @@ from typing import (
     Union,
     Coroutine,
     List,
+    Mapping,
 )
 
 # Import psutil after ray so the packaged version is used.
@@ -47,7 +48,6 @@ from ray.core.generated.runtime_env_common_pb2 import (
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
-
 
 pwd = None
 if sys.platform != "win32":
@@ -64,14 +64,12 @@ linux_prctl = None
 win32_job = None
 win32_AssignProcessToJobObject = None
 
-
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
 _PYARROW_VERSION = None
 
 # This global variable is used for testing only
 _CALLED_FREQ = defaultdict(lambda: 0)
 _CALLED_FREQ_LOCK = threading.Lock()
-
 
 PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
     r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
@@ -278,30 +276,82 @@ def compute_driver_id_from_job(job_id):
     return ray.WorkerID(driver_id_str)
 
 
-def get_cuda_visible_devices():
-    """Get the device IDs in the CUDA_VISIBLE_DEVICES environment variable.
+def get_gpu_and_accelerator_runtime_ids() -> Mapping[str, Optional[List[str]]]:
+    """
+    Get the device IDs of GPUs (CUDA), accelerators(NeuronCore) using
+    (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES) environment variables.
 
     Returns:
-        devices (List[str]): If CUDA_VISIBLE_DEVICES is set, returns a
-            list of strings representing the IDs of the visible GPUs.
+        A dictionary with keys:
+            - ray_constants.GPU: The list of device IDs of GPUs.
+            - ray_constants.NEURON_CORES: The list of device IDs of
+                accelerators.
+        If either of the environment variables is not set, returns None for
+        corresponding key.
+    """
+    return {
+        ray_constants.GPU: get_cuda_visible_devices(),
+        ray_constants.NEURON_CORES: get_aws_neuron_core_visible_ids(),
+    }
+
+
+def get_cuda_visible_devices() -> Optional[List[str]]:
+    """
+    Get the device IDs using CUDA_VISIBLE_DEVICES environment variable.
+
+    Returns:
+        devices (List[str]): If environment variable is set, returns a
+            list of strings representing the IDs of the visible devices.
             If it is not set or is set to NoDevFiles, returns empty list.
     """
-    gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+    return _get_visible_ids(env_var=ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR)
 
-    if gpu_ids_str is None:
+
+def get_aws_neuron_core_visible_ids() -> Optional[List[str]]:
+    """
+    Get the device IDs using NEURON_RT_VISIBLE_CORES environment variable.
+
+    Returns:
+        devices (List[str]): If environment variable is set, returns a
+            list of strings representing the IDs of the visible devices.
+            If it is not set or is set to NoDevFiles, returns empty list.
+    """
+    return _get_visible_ids(env_var=ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR)
+
+
+def _get_visible_ids(env_var: str) -> Optional[List[str]]:
+    """Get the device IDs from defined environment variable.
+    Args:
+        env_var: Environment variable (e.g., CUDA_VISIBLE_DEVICES,
+        NEURON_RT_VISIBLE_CORES) to set based on the accelerator runtime.
+
+    Returns:
+        devices (List[str]): If environment variable is set, returns a
+            list of strings representing the IDs of the visible devices or cores.
+            If it is not set or is set to NoDevFiles, returns empty list.
+    """
+    if env_var not in (
+        ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR,
+        ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
+    ):
+        raise ValueError(f"Invalid environment variable {env_var} to get visible IDs.")
+    visible_ids_str = os.environ.get(env_var, None)
+
+    if visible_ids_str is None:
         return None
 
-    if gpu_ids_str == "":
+    if visible_ids_str == "":
         return []
 
-    if gpu_ids_str == "NoDevFiles":
+    if visible_ids_str == "NoDevFiles":
         return []
 
-    # GPU identifiers are given as strings representing integers or UUIDs.
-    return list(gpu_ids_str.split(","))
+    # Identifiers are given as strings representing integers or UUIDs.
+    return list(visible_ids_str.split(","))
 
 
 last_set_gpu_ids = None
+last_set_neuron_core_ids = None
 
 
 def set_omp_num_threads_if_unset() -> bool:
@@ -344,22 +394,90 @@ def set_omp_num_threads_if_unset() -> bool:
     return True
 
 
-def set_cuda_visible_devices(gpu_ids):
+def set_cuda_visible_devices(gpu_ids: List[str]):
     """Set the CUDA_VISIBLE_DEVICES environment variable.
 
     Args:
         gpu_ids (List[str]): List of strings representing GPU IDs.
     """
-
     if os.environ.get(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR):
         return
-
     global last_set_gpu_ids
     if last_set_gpu_ids == gpu_ids:
         return  # optimization: already set
-
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
+    _set_visible_ids(gpu_ids, ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR)
     last_set_gpu_ids = gpu_ids
+
+
+def set_gpu_and_accelerator_runtime_ids() -> None:
+    """Set (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) environment variables
+    based on the accelerator runtime.
+
+    Raises:
+        ValueError: If the environment variable is set to a different
+            environment variable.
+    """
+    ids = ray.get_runtime_context().get_resource_ids()
+    set_cuda_visible_devices(ids[ray_constants.GPU])
+    set_aws_neuron_core_visible_ids(ids[ray_constants.NEURON_CORES])
+
+
+def set_aws_neuron_core_visible_ids(neuron_core_ids: List[str]) -> None:
+    """Set the NEURON_RT_VISIBLE_CORES environment variable based on
+    given neuron_core_ids.
+
+    Args:
+        neuron_core_ids (List[str]): List of int representing core IDs.
+    """
+    if os.environ.get(ray_constants.NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR):
+        return
+    global last_set_neuron_core_ids
+    if last_set_neuron_core_ids == neuron_core_ids:
+        return  # optimization: already set
+    _set_visible_ids(neuron_core_ids, ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR)
+    last_set_neuron_core_ids = neuron_core_ids
+
+
+def _set_visible_ids(visible_ids: List[str], env_var: str):
+    """Set the environment variable (e.g., CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES)
+     passed based on accelerator runtime and will raise an error if the function uses
+     different environment variable.
+
+    Args:
+        visible_ids (List[str]): List of strings representing GPU IDs or NeuronCore IDs.
+        env_var: Environment variable to set based on accelerator runtime.
+
+    """
+    if env_var not in (
+        ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR,
+        ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
+    ):
+        raise ValueError(f"Invalid environment variable {env_var} to set visible IDs.")
+    os.environ[env_var] = ",".join([str(i) for i in visible_ids])
+
+
+def get_neuron_core_constraint_name():
+    """Get the name of the constraint that represents the AWS Neuron core accelerator.
+
+    Returns:
+        (str) The constraint name.
+    """
+    import ray.util.accelerators.accelerators as accelerators
+
+    return get_constraint_name(accelerators.AWS_NEURON_CORE)
+
+
+def get_constraint_name(pretty_name: str):
+    """Get the name of the constraint that represents the given resource.
+
+    Args:
+        pretty_name: The name of the resource.
+
+    Returns:
+        (str) The constraint name.
+    """
+    constraint_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
+    return constraint_name
 
 
 def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -1167,8 +1285,10 @@ def deprecated(
     return deprecated_wrapper
 
 
-def import_attr(full_path: str):
+def import_attr(full_path: str, *, reload_module: bool = False):
     """Given a full import path to a module attr, return the imported attr.
+
+    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
 
     For example, the following are equivalent:
         MyClass = import_attr("module.submodule:MyClass")
@@ -1194,6 +1314,8 @@ def import_attr(full_path: str):
         attr_name = full_path[last_period_idx + 1 :]
 
     module = importlib.import_module(module_name)
+    if reload_module:
+        importlib.reload(module)
     return getattr(module, attr_name)
 
 
@@ -1932,18 +2054,11 @@ def update_envs(env_vars: Dict[str, str]):
     if not env_vars:
         return
 
-    replaceable_keys = [
-        "PATH",
-        "LD_LIBRARY_PATH",
-        "DYLD_LIBRARY_PATH",
-        "LD_PRELOAD",
-    ]
-
     for key, value in env_vars.items():
-        if key in replaceable_keys:
-            os.environ[key] = value.replace("${" + key + "}", os.environ.get(key, ""))
-        else:
-            os.environ[key] = value
+        expanded = os.path.expandvars(value)
+        # Replace non-existant env vars with an empty string.
+        result = re.sub(r"\$\{[A-Z0-9_]+\}", "", expanded)
+        os.environ[key] = result
 
 
 def parse_node_labels_json(

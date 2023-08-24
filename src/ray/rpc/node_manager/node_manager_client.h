@@ -85,12 +85,6 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Request a resource report.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         RequestResourceReport,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
-
   /// Get a resource load
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetResourceLoad,

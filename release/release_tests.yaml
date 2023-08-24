@@ -272,7 +272,7 @@
   run:
     timeout: 600  # 10min
     long_running: true
-    script: python frequent_pausing/script.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python frequent_pausing/script.py
 
   variations:
     - __suffix__: aws
@@ -308,7 +308,7 @@
 
   run:
     timeout: 36000
-    script: python horovod/workloads/horovod_tune_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python horovod/workloads/horovod_tune_test.py
     long_running: true
     wait_for_nodes:
       num_nodes: 2
@@ -402,7 +402,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
 
     wait_for_nodes:
       num_nodes: 4
@@ -431,7 +431,7 @@
 
   run:
     timeout: 4800
-    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -444,7 +444,7 @@
 
     run:
       timeout: 3600
-      script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
+      script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
 
       wait_for_nodes:
         num_nodes: 2
@@ -476,7 +476,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
 
   variations:
     - __suffix__: aws
@@ -503,7 +503,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
 
     wait_for_nodes:
       num_nodes: 4
@@ -532,7 +532,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 3 --num-trials 8 --num-workers 4
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tune_torch_benchmark.py --num-runs 3 --num-trials 8 --num-workers 4
 
     wait_for_nodes:
       num_nodes: 8
@@ -561,7 +561,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 4 --use-gpu
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 4 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -725,7 +725,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/pytorch_training_e2e.py --data-size-gb 20
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/pytorch_training_e2e.py --data-size-gb 20
 
   alert: default
 
@@ -754,7 +754,7 @@
 
   run:
     timeout: 10800
-    script: python workloads/pytorch_training_e2e.py --data-size-gb=100 --num-workers=16
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/pytorch_training_e2e.py --data-size-gb=100 --num-workers=16
 
     wait_for_nodes:
       num_nodes: 4
@@ -1038,11 +1038,11 @@
   cluster:
     byod:
       type: cu118
-    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
+    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
 
   run:
     timeout: 600
-    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=7b --as-test
+    script: chmod +x ./run_llama_ft.sh && RAY_AIR_NEW_PERSISTENCE_MODE=1 ./run_llama_ft.sh --size=7b --as-test
 
   variations:
       - __suffix__: aws
@@ -1054,30 +1054,6 @@
       #     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
 
 
-
-- name: workspace_template_finetuning_llms_with_deepspeed_llama_2_13b
-  group: Workspace templates
-  working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
-  python: "3.9"
-  frequency: nightly-3x
-  team: ml
-  cluster:
-    byod:
-      type: cu118
-    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
-
-  run:
-    timeout: 1200
-    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=13b --as-test
-
-  variations:
-      - __suffix__: aws
-      # TODO (Kourosh): Enable once GCE is ready
-      # - __suffix__: gce
-      #   env: gce
-      #   frequency: manual
-      #   cluster:
-      #     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
 
 #######################
 # XGBoost release tests
@@ -1820,59 +1796,6 @@
 #######################
 # Tune cloud  tests
 #######################
-- name: tune_cloud_no_sync_down
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod: {}
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py no_sync_down
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: tpl_gce_4x8.yaml
-
-  alert: tune_tests
-
-- name: tune_cloud_ssh_sync
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod: {}
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py ssh_sync
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: tpl_gce_4x8.yaml
-
-  alert: tune_tests
-
 - name: tune_cloud_durable_upload
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
@@ -1885,7 +1808,7 @@
 
   run:
     timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --bucket s3://tune-cloud-tests/durable_upload
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/run_cloud_test.py durable_upload --bucket s3://tune-cloud-tests/durable_upload
 
     wait_for_nodes:
       num_nodes: 4
@@ -1899,90 +1822,11 @@
         cluster_compute: tpl_gce_4x8.yaml
       run:
         timeout: 600
-        script: python workloads/run_cloud_test.py durable_upload --bucket gs://tune-cloud-tests/durable_upload
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/run_cloud_test.py durable_upload --bucket gs://tune-cloud-tests/durable_upload
         wait_for_nodes:
           num_nodes: 4
 
   alert: tune_tests
-
-- name: tune_cloud_durable_upload_rllib_str
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-
-  stable: false
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-
-    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
-      --bucket s3://tune-cloud-tests/durable_upload_rllib_str
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: tpl_gce_4x2.yaml
-      run:
-        timeout: 600
-        script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
-          --bucket gs://tune-cloud-tests/durable_upload_rllib_str
-        wait_for_nodes:
-          num_nodes: 4
-
-
-  alert: tune_tests
-
-- name: tune_cloud_durable_upload_rllib_trainer
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-
-  stable: false
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_trainer
-      --bucket s3://tune-cloud-tests/durable_upload_rllib_trainer
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: tpl_gce_4x2.yaml
-      run:
-        timeout: 600
-        script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
-          --bucket gs://tune-cloud-tests/durable_upload_rllib_trainer
-        wait_for_nodes:
-          num_nodes: 4
-
-  alert: tune_tests
-
 
 - name: tune_cloud_long_running_cloud_storage
   group: Tune cloud tests
@@ -1998,7 +1842,14 @@
     # 14 hours
     timeout: 50400
     long_running: true
-    script: python workloads/long_running_cloud_storage.py s3://tune-cloud-tests/long_running_cloud_storage
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/long_running_cloud_storage.py s3://tune-cloud-tests/long_running_cloud_storage
+
+  # NOTE: This smoke test is not useful to run because the point of the test
+  # is to be long running. This is just for debugging updates to the test quickly.
+  smoke_test:
+    frequency: manual
+    run:
+      timeout: 600
 
   variations:
     - __suffix__: aws
@@ -2011,7 +1862,7 @@
         # 14 hours
         timeout: 50400
         long_running: true
-        script: python workloads/long_running_cloud_storage.py gs://tune-cloud-tests/long_running_cloud_storage
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/long_running_cloud_storage.py gs://tune-cloud-tests/long_running_cloud_storage
         wait_for_nodes:
           num_nodes: 1
 
@@ -2034,7 +1885,7 @@
 
   run:
     timeout: 1200
-    script: python workloads/test_bookkeeping_overhead.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_bookkeeping_overhead.py
 
   alert: tune_tests
 
@@ -2059,7 +1910,7 @@
 
   run:
     timeout: 900
-    script: python workloads/test_durable_trainable.py --bucket s3://tune-cloud-tests/scalability_durable_trainable
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_durable_trainable.py --bucket s3://tune-cloud-tests/scalability_durable_trainable
     wait_for_nodes:
       num_nodes: 16
 
@@ -2070,7 +1921,7 @@
       frequency: manual
       run:
         timeout: 900
-        script: python workloads/test_durable_trainable.py --bucket gs://tune-cloud-tests/scalability_durable_trainable
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_durable_trainable.py --bucket gs://tune-cloud-tests/scalability_durable_trainable
         wait_for_nodes:
           num_nodes: 16
       cluster:
@@ -2092,7 +1943,7 @@
 
   run:
     timeout: 900
-    script: python workloads/test_durable_multifile_checkpoints.py --bucket s3://tune-cloud-tests/scalability_durable_multifile_checkpoints
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_durable_multifile_checkpoints.py --bucket s3://tune-cloud-tests/scalability_durable_multifile_checkpoints
     wait_for_nodes:
       num_nodes: 16
 
@@ -2103,7 +1954,7 @@
       frequency: manual
       run:
         timeout: 900
-        script: python workloads/test_durable_multifile_checkpoints.py --bucket gs://tune-cloud-tests/scalability_durable_multifile_checkpoints
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_durable_multifile_checkpoints.py --bucket gs://tune-cloud-tests/scalability_durable_multifile_checkpoints
         wait_for_nodes:
           num_nodes: 16
       cluster:
@@ -2124,7 +1975,7 @@
 
   run:
     timeout: 86400
-    script: python workloads/test_long_running_large_checkpoints.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_long_running_large_checkpoints.py
     long_running: true
 
   smoke_test:
@@ -2159,7 +2010,7 @@
   run:
     timeout: 750
     prepare_timeout: 1200
-    script: python workloads/test_network_overhead.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_network_overhead.py
     wait_for_nodes:
       num_nodes: 100
 
@@ -2174,7 +2025,7 @@
       run:
         timeout: 750
         prepare_timeout: 600
-        script: python workloads/test_network_overhead.py --smoke-test
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_network_overhead.py --smoke-test
         wait_for_nodes:
           num_nodes: 20
     - __suffix__: gce
@@ -2196,7 +2047,7 @@
 
   run:
     timeout: 600
-    script: python workloads/test_result_throughput_cluster.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_result_throughput_cluster.py
 
     wait_for_nodes:
       num_nodes: 16
@@ -2224,7 +2075,7 @@
 
   run:
     timeout: 600
-    script: python workloads/test_result_throughput_single_node.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_result_throughput_single_node.py
 
   alert: tune_tests
 
@@ -2235,9 +2086,6 @@
       frequency: manual
       cluster:
         cluster_compute: tpl_gce_1x96.yaml
-      run:
-        timeout: 600
-        script: python workloads/test_result_throughput_single_node.py
 
 - name: tune_scalability_xgboost_sweep
   group: Tune scalability tests
@@ -2253,7 +2101,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/test_xgboost_sweep.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_xgboost_sweep.py
 
     wait_for_nodes:
       num_nodes: 16
@@ -2288,7 +2136,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/test_tune_worker_fault_tolerance.py --bucket s3://tune-cloud-tests/worker_fault_tolerance
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_tune_worker_fault_tolerance.py --bucket s3://tune-cloud-tests/worker_fault_tolerance
 
     wait_for_nodes:
       num_nodes: 16
@@ -2325,7 +2173,7 @@
 
   run:
     timeout: 600
-    script: python workloads/torch_tune_serve_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_tune_serve_test.py
     wait_for_nodes:
       num_nodes: 2
 
@@ -3188,6 +3036,8 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -4072,6 +3922,7 @@
   working_dir: rllib_tests
 
   frequency: nightly
+  stable: false
   team: rllib
 
   cluster:
@@ -4102,6 +3953,7 @@
   working_dir: rllib_tests
 
   frequency: nightly
+  stable: false
   team: rllib
   python: "3.8"
   cluster:
@@ -4949,6 +4801,7 @@
       cluster:
         cluster_compute: tpl_64_gce.yaml
     - __suffix__: aws.py311
+      frequency: weekly 
       python: "3.11"
 
 
@@ -5003,6 +4856,9 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      frequency: weekly 
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -5082,6 +4938,11 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      frequency: manual 
+      python: "3.11"
+      smoke_test:
+        frequency: nightly-3x
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -5577,6 +5438,7 @@
 
   frequency: nightly-3x
   team: core
+  stable: false
   cluster:
     byod:
       type: gpu

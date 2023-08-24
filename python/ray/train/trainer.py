@@ -20,8 +20,10 @@ from ray.train._internal.checkpoint import (
 )
 from ray.train._internal.session import (
     _TrainingResult,
+    _TrainSession,
     TrainingResult,
     TrainingResultType,
+    get_session,
 )
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 
@@ -53,6 +55,7 @@ class TrainingIterator:
         backend_config: BackendConfig,
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
         datasets: Dict[str, Dataset],
+        metadata: Dict[str, Any],
         data_config: DataConfig,
         checkpoint_manager: CheckpointManager,
         checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
@@ -64,6 +67,7 @@ class TrainingIterator:
         self._backend = backend_config.backend_cls()
         self._train_func = train_func
         self._datasets = datasets
+        self._metadata = metadata
         self._data_config = data_config
         self._run_dir = run_dir
         self._checkpoint_manager = checkpoint_manager
@@ -78,11 +82,11 @@ class TrainingIterator:
             train_func=train_func,
             run_dir=run_dir,
             datasets=self._datasets,
+            metadata=self._metadata,
             data_config=self._data_config,
             checkpoint=checkpoint,
         )
 
-        self._final_results = None
         self._finished_training = False
 
     def __iter__(self):
@@ -93,6 +97,7 @@ class TrainingIterator:
         train_func,
         run_dir,
         datasets,
+        metadata,
         data_config,
         checkpoint,
         latest_checkpoint_id=None,
@@ -106,11 +111,21 @@ class TrainingIterator:
         if not _use_storage_context():
             checkpoint = self._checkpoint_manager._load_checkpoint(checkpoint)
 
+        storage = None
+        if _use_storage_context():
+            tune_session: _TrainSession = get_session()
+            assert (
+                tune_session
+            ), "`_start_training` should only be called from within Tune"
+            storage = tune_session.storage
+
         self._run_with_error_handling(
             lambda: self._backend_executor.start_training(
                 train_func=train_func,
                 datasets=datasets,
+                metadata=metadata,
                 data_config=data_config,
+                storage=storage,
                 checkpoint=checkpoint,
                 # Workers need to start out with a path to write the first checkpoint to
                 on_session_init=self._send_next_checkpoint_path_to_workers,
@@ -139,6 +154,7 @@ class TrainingIterator:
                 self._train_func,
                 self._run_dir,
                 self._datasets,
+                self._metadata,
                 self._data_config,
                 self._checkpoint_manager.latest_checkpoint,
                 self._checkpoint_manager.latest_checkpoint_id,
@@ -164,9 +180,7 @@ class TrainingIterator:
         try:
             next_results = self._run_with_error_handling(self._fetch_next_result)
             if next_results is None:
-                self._final_results = self._run_with_error_handling(
-                    self._finish_training
-                )
+                self._run_with_error_handling(self._finish_training)
                 self._finished_training = True
                 raise StopIteration
             else:
@@ -279,37 +293,6 @@ class TrainingIterator:
 
     def is_finished(self) -> bool:
         return self._finished_training
-
-    # TODO(justinvyu): Remove unused code
-    def get_final_results(self, force: bool = False) -> List[T]:
-        """Gets the training func return values from each worker.
-
-        If ``force`` is ``True``, then immediately finish training
-        and return even if all the intermediate results have not
-        been processed yet. Else, intermediate results must be
-        processed before obtaining the final results. Defaults to
-        False.
-        """
-        if not self.is_finished():
-            assert self._final_results is None
-            if force:
-                try:
-                    self._final_results = self._run_with_error_handling(
-                        self._finish_training
-                    )
-                finally:
-                    self._finished_training = True
-            else:
-                logger.info(
-                    "Please finish iterating through the "
-                    "intermediate results before getting the"
-                    "final returns. If you would like "
-                    "training to finish immediately and get "
-                    "the final returns, then set "
-                    "`force=True`."
-                )
-
-        return self._final_results
 
     # TODO(justinvyu): Remove legacy path.
     def __get_cloud_checkpoint_dir(self):

@@ -6,6 +6,7 @@
 # We are in the middle of transitioning to a tree of build files.
 # If you would like to help with the move in your PR, please use `git mv` so that the history of the file is retained.
 
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
@@ -74,8 +75,31 @@ config_setting(
     values = {"compilation_mode": "opt"},
 )
 
-# === Begin of rpc definitions ===
+bool_flag(
+    name = "jemalloc_flag",
+    build_setting_default = True,
+)
 
+config_setting(
+    name = "jemalloc",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    flag_values = {
+        ":jemalloc_flag": "true",
+    }
+)
+
+malloc_deps = select({
+    ":jemalloc": [
+         "@jemalloc//:libjemalloc",
+    ],
+    "//conditions:default": [],
+})
+
+
+# === Begin of rpc definitions ===
 # GRPC common lib.
 cc_library(
     name = "grpc_common_lib",
@@ -488,7 +512,7 @@ cc_binary(
         ":raylet_lib",
         "//src/ray/util",
         "@com_github_gflags_gflags//:gflags",
-    ],
+    ] + malloc_deps,
 )
 
 cc_library(
@@ -560,7 +584,7 @@ cc_binary(
         ":gcs_server_lib",
         ":stats_lib",
         "@com_github_gflags_gflags//:gflags",
-    ],
+    ] + malloc_deps,
 )
 
 # Ray native pubsub module.
@@ -1952,21 +1976,6 @@ cc_test(
     size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_resource_manager_test.cc",
-    ],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "gcs_resource_report_poller_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_resource_report_poller_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],

@@ -7,8 +7,11 @@ import sys
 from collections import namedtuple
 from typing import Optional
 
+import ray._private.accelerator as accelerator
+
 import ray
 import ray._private.ray_constants as ray_constants
+
 
 try:
     import GPUtil
@@ -198,6 +201,8 @@ class ResourceSpec(
         except Exception:
             logger.exception("Could not parse gpu information.")
 
+        accelerator.update_resources_with_accelerator_type(resources)
+
         # Choose a default object store size.
         system_memory = ray._private.utils.get_system_memory()
         avail_memory = ray._private.utils.estimate_available_memory()
@@ -305,12 +310,9 @@ def _get_gpu_types_gputil():
     if len(gpu_list) > 0:
         gpu_list_names = [gpu.name for gpu in gpu_list]
         info_str = gpu_list_names.pop()
-        pretty_name = _pretty_gpu_name(info_str)
+        pretty_name = _pretty_nvidia_gpu_name(info_str)
         if pretty_name:
-            constraint_name = (
-                f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
-            )
-            return {constraint_name: 1}
+            return {ray._private.utils.get_constraint_name(pretty_name): 1}
     return {}
 
 
@@ -336,11 +338,8 @@ def _constraints_from_gpu_info(info_str: str):
         if k.strip() == "Model":
             full_model_name = v.strip()
             break
-    pretty_name = _pretty_gpu_name(full_model_name)
-    if pretty_name:
-        constraint_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
-        return {constraint_name: 1}
-    return {}
+    pretty_name = _pretty_nvidia_gpu_name(full_model_name)
+    return {ray._private.utils.get_constraint_name(pretty_name): 1}
 
 
 def _get_gpu_info_string():
@@ -364,11 +363,11 @@ def _get_gpu_info_string():
 
 # TODO(Alex): This pattern may not work for non NVIDIA Tesla GPUs (which have
 # the form "Tesla V100-SXM2-16GB" or "Tesla K80").
-GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
+NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
 
 
-def _pretty_gpu_name(name):
+def _pretty_nvidia_gpu_name(name):
     if name is None:
         return None
-    match = GPU_NAME_PATTERN.match(name)
+    match = NVIDIA_GPU_NAME_PATTERN.match(name)
     return match.group(1) if match else None

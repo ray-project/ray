@@ -26,6 +26,7 @@ from ray.air.constants import (
 
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
+from ray.train._checkpoint import Checkpoint
 from ray.train._internal.checkpoint_manager import (
     _TrainingResult,
     _CheckpointManager as _NewCheckpointManager,
@@ -692,7 +693,7 @@ class Trial:
     @property
     def remote_experiment_path(self) -> str:
         if _use_storage_context():
-            return str(self.storage.storage_prefix / self.storage.experiment_fs_path)
+            return self.storage.experiment_fs_path
 
         return str(self._legacy_remote_experiment_path)
 
@@ -802,7 +803,7 @@ class Trial:
     @property
     def path(self) -> Optional[str]:
         if _use_storage_context():
-            return str(self.storage.storage_prefix / self.storage.trial_fs_path)
+            return self.storage.trial_fs_path
 
         return self.remote_path or self.local_path
 
@@ -832,14 +833,16 @@ class Trial:
         return config.checkpoint_frequency
 
     @property
-    def checkpoint(self):
-        """Returns the most recent checkpoint.
-
-        If the trial is in ERROR state, the most recent PERSISTENT checkpoint
-        is returned.
-        """
+    def checkpoint(self) -> Optional[Checkpoint]:
+        """Returns the most recent checkpoint if one has been saved."""
         if _use_storage_context():
-            return self.run_metadata.checkpoint_manager.latest_checkpoint_result
+            checkpoint_manager = self.run_metadata.checkpoint_manager
+            latest_checkpoint_result = checkpoint_manager.latest_checkpoint_result
+            return (
+                latest_checkpoint_result.checkpoint
+                if latest_checkpoint_result
+                else None
+            )
 
         if self.status == Trial.ERROR:
             checkpoint = (
@@ -1090,6 +1093,7 @@ class Trial:
             self.storage.current_checkpoint_index += 1
         else:
             self.run_metadata.checkpoint_manager.on_checkpoint(checkpoint)
+        self.invalidate_json_state()
         self.run_metadata.invalidate_cache()
 
     def on_restore(self):
