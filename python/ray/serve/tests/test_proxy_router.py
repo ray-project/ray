@@ -92,34 +92,21 @@ def test_default_route(mocked_router, target_route, request):
 
     assert get_handle_function(router)("/nonexistent") is None
 
-    route, handle, app_name, app_is_cross_language = get_handle_function(router)(
-        target_route
-    )
-    assert all(
-        [
-            route == "/endpoint",
-            handle == "endpoint",
-            app_name == "default",
-            not app_is_cross_language,
-        ]
-    )
+    route, handle, app_is_cross_language = get_handle_function(router)(target_route)
+    assert all([route == "/endpoint", handle == "endpoint", not app_is_cross_language])
 
 
 def test_trailing_slash(mock_longest_prefix_router):
     router = mock_longest_prefix_router
     router.update_routes(
-        {
-            EndpointTag("endpoint", "default"): EndpointInfo(route="/test"),
-        }
+        {EndpointTag("endpoint", "default"): EndpointInfo(route="/test")}
     )
 
-    route, handle, _, _ = get_handle_function(router)("/test/")
+    route, handle, _ = get_handle_function(router)("/test/")
     assert route == "/test" and handle == "endpoint"
 
     router.update_routes(
-        {
-            EndpointTag("endpoint", "default"): EndpointInfo(route="/test/"),
-        }
+        {EndpointTag("endpoint", "default"): EndpointInfo(route="/test/")}
     )
 
     assert get_handle_function(router)("/test") is None
@@ -135,23 +122,23 @@ def test_prefix_match(mock_longest_prefix_router):
         }
     )
 
-    route, handle, _, _ = get_handle_function(router)("/test/test2/subpath")
+    route, handle, _ = get_handle_function(router)("/test/test2/subpath")
     assert route == "/test/test2" and handle == "endpoint1"
-    route, handle, _, _ = get_handle_function(router)("/test/test2/")
+    route, handle, _ = get_handle_function(router)("/test/test2/")
     assert route == "/test/test2" and handle == "endpoint1"
-    route, handle, _, _ = get_handle_function(router)("/test/test2")
+    route, handle, _ = get_handle_function(router)("/test/test2")
     assert route == "/test/test2" and handle == "endpoint1"
 
-    route, handle, _, _ = get_handle_function(router)("/test/subpath")
+    route, handle, _ = get_handle_function(router)("/test/subpath")
     assert route == "/test" and handle == "endpoint2"
-    route, handle, _, _ = get_handle_function(router)("/test/")
+    route, handle, _ = get_handle_function(router)("/test/")
     assert route == "/test" and handle == "endpoint2"
-    route, handle, _, _ = get_handle_function(router)("/test")
+    route, handle, _ = get_handle_function(router)("/test")
     assert route == "/test" and handle == "endpoint2"
 
-    route, handle, _, _ = get_handle_function(router)("/test2")
+    route, handle, _ = get_handle_function(router)("/test2")
     assert route == "/" and handle == "endpoint3"
-    route, handle, _, _ = get_handle_function(router)("/")
+    route, handle, _ = get_handle_function(router)("/")
     assert route == "/" and handle == "endpoint3"
 
 
@@ -168,17 +155,8 @@ def test_update_routes(mocked_router, target_route1, target_route2, request):
         {EndpointTag("endpoint", "app1"): EndpointInfo(route="/endpoint")}
     )
 
-    route, handle, app_name, app_is_cross_language = get_handle_function(router)(
-        target_route1
-    )
-    assert all(
-        [
-            route == "/endpoint",
-            handle == "endpoint",
-            app_name == "app1",
-            not app_is_cross_language,
-        ]
-    )
+    route, handle, app_is_cross_language = get_handle_function(router)(target_route1)
+    assert all([route == "/endpoint", handle == "endpoint", not app_is_cross_language])
 
     router.update_routes(
         {
@@ -195,18 +173,8 @@ def test_update_routes(mocked_router, target_route1, target_route2, request):
 
     assert get_handle_function(router)(target_route1) is None
 
-    route, handle, app_name, app_is_cross_language = get_handle_function(router)(
-        target_route2
-    )
-    assert route == "/endpoint2" and handle == "endpoint2" and app_name == "app2"
-    assert all(
-        [
-            route == "/endpoint2",
-            handle == "endpoint2",
-            app_name == "app2",
-            app_is_cross_language,
-        ]
-    )
+    route, handle, app_is_cross_language = get_handle_function(router)(target_route2)
+    assert all([route == "/endpoint2", handle == "endpoint2", app_is_cross_language])
 
 
 if __name__ == "__main__":
