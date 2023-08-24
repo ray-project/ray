@@ -104,17 +104,11 @@ class AutoscalingConfig(BaseModel):
 
         return max_replicas
 
-    def get_upscale_smoothing_factor(self) -> float:
-        if self.upscale_smoothing_factor:
-            return self.upscale_smoothing_factor
-        else:
-            return self.smoothing_factor
+    def get_upscale_smoothing_factor(self) -> PositiveFloat:
+        return self.upscale_smoothing_factor or self.smoothing_factor
 
-    def get_downscale_smoothing_factor(self) -> float:
-        if self.downscale_smoothing_factor:
-            return self.downscale_smoothing_factor
-        else:
-            return self.smoothing_factor
+    def get_downscale_smoothing_factor(self) -> PositiveFloat:
+        return self.downscale_smoothing_factor or self.smoothing_factor
 
     # TODO(architkulkarni): implement below
     # The num_ongoing_requests_per_replica error ratio (desired / current)

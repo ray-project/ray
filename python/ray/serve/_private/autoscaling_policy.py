@@ -42,12 +42,18 @@ def calculate_desired_num_replicas(
         / autoscaling_config.target_num_ongoing_requests_per_replica
     )
 
-    # Multiply the distance to 1 by the smoothing ("gain") factor (default=1).
+    # If error ratio >= 1, then the number of ongoing requests per
+    # replica exceeds the target and we will make an upscale decision,
+    # so we apply the upscale smoothing factor. Otherwise, the number of
+    # ongoing requests per replica is lower than the target and we will
+    # make a downscale decision, so we apply the downscale smoothing
+    # factor.
     if error_ratio >= 1:
         smoothing_factor = autoscaling_config.get_upscale_smoothing_factor()
     else:
         smoothing_factor = autoscaling_config.get_downscale_smoothing_factor()
 
+    # Multiply the distance to 1 by the smoothing ("gain") factor (default=1).
     smoothed_error_ratio = 1 + ((error_ratio - 1) * smoothing_factor)
     desired_num_replicas = math.ceil(current_num_replicas * smoothed_error_ratio)
 
