@@ -4801,6 +4801,7 @@
       cluster:
         cluster_compute: tpl_64_gce.yaml
     - __suffix__: aws.py311
+      frequency: weekly 
       python: "3.11"
 
 
@@ -4855,6 +4856,9 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      frequency: weekly 
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -4934,6 +4938,11 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      frequency: manual 
+      python: "3.11"
+      smoke_test:
+        frequency: nightly-3x
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -5429,6 +5438,7 @@
 
   frequency: nightly-3x
   team: core
+  stable: false
   cluster:
     byod:
       type: gpu

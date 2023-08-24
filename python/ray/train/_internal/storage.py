@@ -93,12 +93,14 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
 def _pyarrow_fs_copy_files(
     source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
 ):
-    if isinstance(source_filesystem, pyarrow.fs.S3FileSystem) or isinstance(
-        destination_filesystem, pyarrow.fs.S3FileSystem
-    ):
-        # Workaround multi-threading issue with pyarrow
+    if isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
+        # Workaround multi-threading issue with pyarrow. Note that use_threads=True
+        # is safe for download, just not for uploads, see:
         # https://github.com/apache/arrow/issues/32372
         kwargs.setdefault("use_threads", False)
+
+    # Use a large chunk size to speed up large checkpoint transfers.
+    kwargs.setdefault("chunk_size", 64 * 1024 * 1024)
 
     return pyarrow.fs.copy_files(
         source,
@@ -115,8 +117,13 @@ def _pyarrow_fs_copy_files(
 def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
     assert not is_uri(fs_path), fs_path
 
+    is_dir = _is_directory(fs, fs_path)
+
     try:
-        fs.delete_dir(fs_path)
+        if is_dir:
+            fs.delete_dir(fs_path)
+        else:
+            fs.delete_file(fs_path)
     except Exception:
         logger.exception(f"Caught exception when deleting path at ({fs}, {fs_path}):")
 
@@ -242,7 +249,7 @@ def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     """Returns True if (fs, fs_path) exists."""
     assert not is_uri(fs_path), fs_path
 
-    valid = fs.get_file_info([fs_path])[0]
+    valid = fs.get_file_info(fs_path)
     return valid.type != pyarrow.fs.FileType.NotFound
 
 
@@ -253,7 +260,11 @@ def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
     assert not is_uri(fs_path), fs_path
+
     file_info = fs.get_file_info(fs_path)
+    if file_info.type == pyarrow.fs.FileType.NotFound:
+        raise FileNotFoundError(f"Path not found: ({fs}, {fs_path})")
+
     return not file_info.is_file
 
 
