@@ -63,7 +63,7 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
         return "_excluding_local"
 
     def _should_exclude(self, name: str) -> bool:
-        """Return True if `name` matches any of the `self._exclude` patterns."""
+        """Return True if `name` matches any of the ``self._exclude`` patterns."""
         alt = None
         if os.path.isdir(name):
             # If this is a directory, also test it with trailing slash
