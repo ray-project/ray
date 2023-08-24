@@ -12,6 +12,7 @@ import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.router.Router;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.w3c.dom.ls.LSOutput;
 
 /** A handle to a service deployment. */
 public class RayServeHandle {
@@ -71,21 +72,37 @@ public class RayServeHandle {
     String appName = contextInfo.getAppName();
     String requestId = contextInfo.getRequestId();
     String route = contextInfo.getRoute();
-    System.out.println("test");
-    System.out.println(appName);
-    System.out.println(requestId);
-    System.out.println(route);
     RayServeMetrics.execute(() -> requestCounter.inc(1.0));
     RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
-    requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
+    //requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
+    requestMetadata.setRequestId(requestId);
     requestMetadata.setEndpoint(deploymentName);
+    requestMetadata.setAppName(appName);
+    requestMetadata.setRoute(route);
     requestMetadata.setCallMethod(
         handleOptions != null ? handleOptions.getMethodName() : Constants.CALL_METHOD);
+    requestMetadata.setIsStreaming(
+        handleOptions != null ? handleOptions.getStreaming() : false);
+    requestMetadata.setMultiplexedModelId(
+      handleOptions != null ? handleOptions.getMultiplexedModelId() : null);
+    System.out.println(requestMetadata.getCallMethod());
+    System.out.println(requestMetadata.getMultiplexedModelId());
+    System.out.println(requestMetadata.getIsStreaming());
     return router.assignRequest(requestMetadata.build(), parameters);
   }
 
   public RayServeHandle method(String methodName) {
     handleOptions.setMethodName(methodName);
+    return this;
+  }
+
+  public RayServeHandle multiplexed(String multiplexedModelId) {
+    handleOptions.setMultiplexedModelId(multiplexedModelId);
+    return this;
+  }
+
+  public RayServeHandle streaming(boolean isStreaming) {
+    handleOptions.setStreaming(isStreaming);
     return this;
   }
 

@@ -34,7 +34,7 @@ public class DeploymentTest extends BaseServeTest {
             .create();
 
     deployment.deploy(true);
-    Assert.assertEquals(Ray.get(deployment.getHandle().method("call").remote("6")), "echo_6_test");
+    Assert.assertEquals(Ray.get(deployment.getHandle().method("call").multiplexed("pytorch").streaming(false).remote("6")), "echo_6_test");
     Assert.assertTrue((boolean) Ray.get(deployment.getHandle().method("checkHealth").remote()));
   }
 
