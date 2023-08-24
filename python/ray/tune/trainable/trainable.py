@@ -897,8 +897,8 @@ class Trainable:
             assert isinstance(checkpoint_result, _TrainingResult)
 
             checkpoint_metrics = checkpoint_result.metrics
-            self._iteration = checkpoint_metrics[TRAINING_ITERATION]
-            self._time_total = checkpoint_metrics[TIME_TOTAL_S]
+            self._iteration = checkpoint_metrics.get(TRAINING_ITERATION, 0)
+            self._time_total = checkpoint_metrics.get(TIME_TOTAL_S, 0)
             self._time_since_restore = 0.0
             self._iterations_since_restore = 0
 
