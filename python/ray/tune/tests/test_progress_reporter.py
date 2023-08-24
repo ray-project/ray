@@ -282,7 +282,7 @@ VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------------------+--
 |-------------------+----------+-------------------+----------|
 | train_xxxxx_00000 | RUNNING  | 123.123.123.123:1 | complete |"""
 
-VERBOSE_CMD = """from ray import train, tune
+VERBOSE_CMD = """from ray import train as ray_train, tune
 import random
 import numpy as np
 import time
@@ -301,14 +301,14 @@ def mock_get_trial_location(trial, result):
 def train(config):
     if config["do"] == "complete":
         time.sleep(0.1)
-        train.report(dict(acc=5, done=True))
+        ray_train.report(dict(acc=5, done=True))
     elif config["do"] == "once":
         time.sleep(0.5)
-        train.report(dict(acc=6))
+        return 6
     else:
         time.sleep(1.0)
-        train.report(dict(acc=7))
-        train.report(dict(acc=8))
+        ray_train.report(dict(acc=7))
+        ray_train.report(dict(acc=8))
 
 random.seed(1234)
 np.random.seed(1234)
@@ -692,7 +692,6 @@ class ProgressReporterTest(unittest.TestCase):
         try:
             os.environ["_TEST_TUNE_TRIAL_UUID"] = "xxxxx"
             os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "100"
-            os.environ["RAY_AIR_NEW_PERSISTENCE_MODE"] = "1"
             output = run_string_as_driver(END_TO_END_COMMAND)
             try:
                 # New execution path is too fast, trials are already terminated

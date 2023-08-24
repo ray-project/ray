@@ -14,7 +14,6 @@ from ray.air.constants import (  # noqa: F401
     EXPR_ERROR_FILE,
 )
 
-from ray.train.constants import CHECKPOINT_DIR_NAME
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -107,7 +106,8 @@ AUTO_RESULT_KEYS = (
     "timesteps_since_restore",
     "iterations_since_restore",
     "config",
-    CHECKPOINT_DIR_NAME,
+    # TODO(justinvyu): Move this stuff to train to avoid cyclical dependency.
+    "checkpoint_dir_name",
 )
 
 # __duplicate__ is a magic keyword used internally to
