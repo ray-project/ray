@@ -1,13 +1,19 @@
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
 from ray.tune.registry import register_env
 
 
-register_env("multi_agent_pendulum", lambda _: MultiAgentPendulum({"num_agents": 1}))
+def env_creator(ctx):
+    from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
+
+    return MultiAgentPendulum({"num_agents": 1})
+
+
+register_env("multi-agent-pendulum", env_creator)
+
 
 config = (
     PPOConfig()
-    .environment("multi_agent_pendulum")
+    .environment("multi-agent-pendulum")
     .rollouts(
         num_envs_per_worker=20,
         observation_filter="MeanStdFilter",

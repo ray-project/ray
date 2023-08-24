@@ -1,17 +1,20 @@
-import gymnasium as gym
-from gymnasium.wrappers import TimeLimit
-
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.tune.registry import register_env
 
-register_env(
-    "cartpole_truncated",
-    lambda _: TimeLimit(gym.make("CartPole-v1"), max_episode_steps=50),
-)
+
+def env_creator(ctx):
+    import gymnasium as gym
+    from gymnasium.wrappers import TimeLimit
+
+    return TimeLimit(gym.make("CartPole-v1"), max_episode_steps=50)
+
+
+register_env("cartpole-truncated", env_creator)
+
 
 config = (
     PPOConfig()
-    .environment("cartpole_truncated")
+    .environment("cartpole-truncated")
     .rollouts(num_envs_per_worker=10)
     .evaluation(
         evaluation_config=PPOConfig.overrides(env="CartPole-v1"),
