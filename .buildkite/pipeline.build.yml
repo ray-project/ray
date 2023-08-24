@@ -203,7 +203,7 @@
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel build $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:ray_pkg
-    - bazel test --config=ci --config=asan $(./ci/run/bazel_export_options)
+    - bazel test --config=asan $(./ci/run/bazel_export_options)
       --config=asan-buildkite
       --test_tag_filters=-kubernetes,asan_tests
       --test_env=CONDA_EXE
@@ -211,6 +211,7 @@
       --test_env=CONDA_SHLVL
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
+      --config=ci
       python/ray/tests/...
 
 - label: ":book: Doctest (CPU)"
