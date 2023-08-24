@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from datetime import datetime
 from pathlib import Path
 from importlib import import_module
@@ -9,15 +8,10 @@ from jinja2.filters import FILTERS
 sys.path.insert(0, os.path.abspath("."))
 from custom_directives import (
     DownloadAndPreprocessEcosystemDocs,
-    mock_modules,
     update_context,
     LinkcheckSummarizer,
     build_gallery,
 )
-
-
-# Mocking modules allows Sphinx to work without installing Ray.
-mock_modules()
 
 assert (
     "ray" not in sys.modules
@@ -137,9 +131,48 @@ copybutton_prompt_is_regexp = True
 # functionality with the `sphinx_tabs_disable_tab_closing` option.
 sphinx_tabs_disable_tab_closing = True
 
-# There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
-# of imports.
-# autodoc_mock_imports = ["ray.experimental.tf_utils"]
+autodoc_mock_imports = [
+    "transformers",
+    "horovod",
+    "datasets",
+    "tensorflow",
+    "torch",
+    "torchvision",
+    "lightgbm",
+    "lightgbm_ray",
+    "pytorch_lightning",
+    "xgboost",
+    "xgboost_ray",
+    "wandb",
+    "huggingface",
+    "joblib",
+    "watchfiles",
+]
+
+for mock_target in autodoc_mock_imports:
+    assert mock_target not in sys.modules, (
+        f"Problematic mock target ({mock_target}) found; "
+        "autodoc_mock_imports cannot mock modules that have already"
+        "been loaded into sys.modules when the sphinx build starts."
+    )
+
+# Special mocking of packaging.version.Version is required when using sphinx;
+# we can't just add this to autodoc_mock_imports, as packaging is imported by
+# sphinx even before it can be mocked. Instead, we patch it here.
+import packaging
+
+Version = packaging.version.Version
+
+
+class MockVersion(Version):
+    def __init__(self, version: str):
+        if isinstance(version, (str, bytes)):
+            super().__init__(version)
+        else:
+            super().__init__("0")
+
+
+packaging.version.Version = MockVersion
 
 # This is used to suppress warnings about explicit "toctree" directives.
 suppress_warnings = ["etoc.toctree"]

@@ -1,7 +1,5 @@
 import logging
 import logging.handlers
-import os
-import sys
 import urllib
 import urllib.request
 from pathlib import Path
@@ -19,11 +17,8 @@ from preprocess_github_markdown import preprocess_github_markdown_file
 from sphinx.util import logging as sphinx_logging
 from sphinx.util.console import red  # type: ignore
 
-import mock
-
 __all__ = [
     "DownloadAndPreprocessEcosystemDocs",
-    "mock_modules",
     "update_context",
     "LinkcheckSummarizer",
     "build_gallery",
@@ -58,71 +53,6 @@ def update_context(app, pagename, templatename, context, doctree):
     context["feedback_form_url"] = feedback_form_url(app.config.project, pagename)
 
 
-MOCK_MODULES = [
-    "ax",
-    "ax.service.ax_client",
-    "ConfigSpace",
-    "dask.distributed",
-    "datasets",
-    "datasets.iterable_dataset",
-    "datasets.load",
-    "gym",
-    "gym.spaces",
-    "gymnasium",
-    "gymnasium.spaces",
-    "gymnasium.envs",
-    "horovod",
-    "horovod.runner",
-    "horovod.runner.common",
-    "horovod.runner.common.util",
-    "horovod.ray",
-    "horovod.ray.runner",
-    "horovod.ray.utils",
-    "horovod.torch",
-    "hyperopt",
-    "hyperopt.hp",
-    "kubernetes",
-    "mlflow",
-    "modin",
-    "optuna",
-    "optuna.distributions",
-    "optuna.samplers",
-    "optuna.trial",
-    "psutil",
-    "ray._raylet",
-    "ray.core.generated",
-    "ray.core.generated.common_pb2",
-    "ray.core.generated.runtime_env_common_pb2",
-    "ray.core.generated.gcs_pb2",
-    "ray.core.generated.logging_pb2",
-    "ray.core.generated.ray.protocol.Task",
-    "ray.serve.generated",
-    "ray.serve.generated.serve_pb2",
-    "ray.serve.generated.serve_pb2_grpc",
-    "scipy.signal",
-    "scipy.stats",
-    "setproctitle",
-    "tensorflow_probability",
-    "tensorflow.contrib",
-    "tensorflow.contrib.all_reduce",
-    "tensorflow.contrib.all_reduce.python",
-    "tensorflow.contrib.layers",
-    "tensorflow.contrib.rnn",
-    "tensorflow.contrib.slim",
-    "tree",
-    "wandb",
-    "wandb.data_types",
-    "wandb.util",
-    "zoopt",
-    "composer",
-    "composer.trainer",
-    "composer.loggers",
-    "composer.loggers.logger_destination",
-    "composer.core",
-    "composer.core.state",
-]
-
-
 def make_typing_mock(module, name):
     class Object:
         pass
@@ -132,18 +62,6 @@ def make_typing_mock(module, name):
     Object.__name__ = name
 
     return Object
-
-
-def mock_modules():
-    if os.environ.get("RAY_MOCK_MODULES", "1") == "0":
-        return
-
-    for mod_name in MOCK_MODULES:
-        mock_module = mock.MagicMock()
-        mock_module.__spec__ = mock.MagicMock()
-        sys.modules[mod_name] = mock_module
-
-    sys.modules["ray._raylet"].ObjectRef = make_typing_mock("ray", "ObjectRef")
 
 
 # Add doc files from external repositories to be downloaded during build here
