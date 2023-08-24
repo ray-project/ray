@@ -284,9 +284,7 @@ if __name__ == "__main__":
                 # we evaluate against an actual environment.
                 check_eval = exp["config"].get("evaluation_interval", None) is not None
                 reward_mean = (
-                    t.metrics["evaluation"]["sampler_results"][
-                        "episode_reward_mean"
-                    ]
+                    t.metrics["evaluation"]["sampler_results"]["episode_reward_mean"]
                     if check_eval
                     else (
                         # Some algos don't store sampler results under `sampler_results`
@@ -307,9 +305,7 @@ if __name__ == "__main__":
                     )
                 # Otherwise, expect `episode_reward_mean` to be set.
                 else:
-                    min_reward = exp["stop"].get(
-                        "sampler_results/episode_reward_mean"
-                    )
+                    min_reward = exp["stop"].get("sampler_results/episode_reward_mean")
 
                 # If min reward not defined, always pass.
                 if min_reward is None or reward_mean >= min_reward:

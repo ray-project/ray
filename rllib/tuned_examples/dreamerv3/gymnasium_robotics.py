@@ -9,39 +9,47 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 
 # Run with:
-# python run_regression_tests.py --dir [this file] --env GRB/AdroitHandHammer-v1
+# python run_regression_tests.py --dir [this file]
 
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
+from ray import tune
 
 
 # Number of GPUs to run on.
 num_gpus = 4
 
+
+# Register the gymnasium robotics env (including necessary wrappers and options) via the
+# `tune.register_env()` API.
+def env_creator(ctx):
+    import gymnasium_robotics  # noqa
+    import gymnasium as gym
+
+    # Create the specific gymnasium robotics env.
+    # e.g. AdroitHandHammerSparse-v1 or FrankaKitchen-v1.
+    # return gym.make("FrankaKitchen-v1", tasks_to_complete=["microwave", "kettle"])
+    return gym.make("AdroitHandHammer-v1")
+
+
+tune.register_env("flappy-bird", env_creator)
+
+
+# Define the DreamerV3 config object to use.
 config = DreamerV3Config()
 w = config.world_model_lr
 c = config.critic_lr
 
-config = (
-    config.environment(
-        # Android hand and hammer.
-        "GRB/AdroitHandHammer-v1",
-        # W/ sparse rewards.
-        # "GRB/AdroitHandHammerSparse-v1",
-        # Franka Kitchen.
-        # "GRB/FrankaKitchen-v1",
-        # env_config={
-        #    "tasks_to_complete": ["microwave", "kettle"],
-        # },
-    )
-    .resources(
+(
+    config.resources(
         num_learner_workers=0 if num_gpus == 1 else num_gpus,
         num_gpus_per_learner_worker=1 if num_gpus else 0,
         num_cpus_for_local_worker=8 * (num_gpus or 1),
     )
     # If we use >1 GPU and increase the batch size accordingly, we should also
     # increase the number of envs per worker.
-    .rollouts(num_envs_per_worker=8 * (num_gpus or 1), remote_worker_envs=True)
-    .reporting(
+    .rollouts(
+        num_envs_per_worker=8 * (num_gpus or 1), remote_worker_envs=True
+    ).reporting(
         metrics_num_episodes_for_smoothing=(num_gpus or 1),
         report_images_and_videos=False,
         report_dream_data=False,

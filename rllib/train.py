@@ -288,7 +288,6 @@ def run(
     # If no subcommand is specified, simply run the following lines as the
     # "rllib train" main command.
     if ctx.invoked_subcommand is None:
-
         # we only check for backends when actually running the command. otherwise the
         # start-up time is too slow.
         import_backends()

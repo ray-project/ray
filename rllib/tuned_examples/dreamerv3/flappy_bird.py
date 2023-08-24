@@ -43,7 +43,7 @@ def env_creator(ctx):
 tune.register_env("flappy-bird", env_creator)
 
 
-# Define the DreamerV3 config object to use by the
+# Define the DreamerV3 config object to use.
 (
     config.environment("flappy-bird")
     .resources(
