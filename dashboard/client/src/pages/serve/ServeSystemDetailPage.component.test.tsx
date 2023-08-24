@@ -18,7 +18,7 @@ const mockGetActor = jest.mocked(getActor);
 
 describe("ServeSystemDetailPage", () => {
   it("renders list", async () => {
-    expect.assertions(6);
+    expect.assertions(7);
 
     // Mock ServeController actor fetch
     mockGetActor.mockResolvedValue({

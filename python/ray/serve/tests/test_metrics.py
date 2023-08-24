@@ -19,7 +19,12 @@ from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve.config import gRPCOptions
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
-from ray.serve.tests.test_grpc import ping_grpc_list_applications, ping_grpc_call_method
+from ray.serve.tests.test_grpc import (
+    ping_grpc_list_applications,
+    ping_grpc_call_method,
+    ping_fruit_stand,
+)
+from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 
 
 @pytest.fixture
@@ -652,6 +657,102 @@ class TestRequestContextMetrics:
             assert metrics_app_name["app1_f"] == "app1", msg
             assert metrics_app_name["app2_g"] == "app2", msg
             assert metrics_app_name["app3_h"] == "app3", msg
+
+    def test_request_context_pass_for_grpc_proxy(self, serve_start_shutdown):
+        """Test gRPC proxy passing request context"""
+
+        @serve.deployment(graceful_shutdown_timeout_s=0.001)
+        class H:
+            def __call__(self, *args, **kwargs):
+                return 1 / 0
+
+        h = H.bind()
+        app_name1 = "app1"
+        depl_name1 = f"{app_name1}_grpc-deployment"
+        app_name2 = "app2"
+        depl_name2 = f"{app_name2}_grpc-deployment-model-composition"
+        app_name3 = "app3"
+        depl_name3 = "app3_H"
+        serve.run(g, name=app_name1, route_prefix="/app1")
+        serve.run(g2, name=app_name2, route_prefix="/app2")
+        serve.run(h, name=app_name3, route_prefix="/app3")
+
+        channel = grpc.insecure_channel("localhost:9000")
+        ping_grpc_call_method(channel, app_name1)
+        ping_fruit_stand(channel, app_name2)
+        with pytest.raises(AssertionError):
+            ping_grpc_call_method(channel, app_name3)
+
+        # app1 has 1 deployment, app2 has 3 deployments, and app3 has 1 deployment.
+        wait_for_condition(
+            lambda: len(
+                get_metric_dictionaries("serve_deployment_processing_latency_ms_sum")
+            )
+            == 5,
+            timeout=40,
+        )
+
+        def wait_for_route_and_name(
+            _metric_name: str,
+            deployment_name: str,
+            app_name: str,
+            route: str,
+            timeout: float = 5,
+        ):
+            """Waits for app name and route to appear in deployment's metric."""
+
+            def check():
+                # Check replica qps & latency
+                (
+                    qps_metrics_route,
+                    qps_metrics_app_name,
+                ) = self._generate_metrics_summary(
+                    get_metric_dictionaries(_metric_name)
+                )
+                assert qps_metrics_app_name[deployment_name] == app_name
+                assert qps_metrics_route[deployment_name] == {route}
+                return True
+
+            wait_for_condition(check, timeout=timeout)
+
+        # Check replica qps & latency
+        wait_for_route_and_name(
+            "serve_deployment_request_counter", depl_name1, app_name1, app_name1
+        )
+        wait_for_route_and_name(
+            "serve_deployment_request_counter", depl_name2, app_name2, app_name2
+        )
+        wait_for_route_and_name(
+            "serve_deployment_error_counter", depl_name3, app_name3, app_name3
+        )
+
+        # Check grpc proxy qps & latency
+        for metric_name in [
+            "serve_num_grpc_requests",
+            "serve_grpc_request_latency_ms_sum",
+        ]:
+            metrics = get_metric_dictionaries(metric_name)
+            assert {metric["route"] for metric in metrics} == {
+                "app1",
+                "app2",
+                "app3",
+            }
+
+        for metric_name in [
+            "serve_handle_request_counter",
+            "serve_num_router_requests",
+            "serve_deployment_processing_latency_ms_sum",
+        ]:
+            metrics_route, metrics_app_name = self._generate_metrics_summary(
+                get_metric_dictionaries(metric_name)
+            )
+            msg = f"Incorrect metrics for {metric_name}"
+            assert metrics_route[depl_name1] == {"app1"}, msg
+            assert metrics_route[depl_name2] == {"app2"}, msg
+            assert metrics_route[depl_name3] == {"app3"}, msg
+            assert metrics_app_name[depl_name1] == "app1", msg
+            assert metrics_app_name[depl_name2] == "app2", msg
+            assert metrics_app_name[depl_name3] == "app3", msg
 
     def test_request_context_pass_for_handle_passing(self, serve_start_shutdown):
         """Test handle passing contexts between replicas"""
