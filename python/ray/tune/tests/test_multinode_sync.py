@@ -1,15 +1,10 @@
-import json
-import os
 import sys
 import time
 import unittest
-from typing import List
 
 import ray
 from ray import tune
-from ray.train import CheckpointConfig
 from ray.air.util.node import _force_on_node
-from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
 from ray.tune.callback import Callback
 from ray.tune.experiment import Trial
