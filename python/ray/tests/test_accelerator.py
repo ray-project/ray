@@ -101,7 +101,7 @@ def test_autodetect_num_tpus_accel(mock_glob):
         "/dev/accel2",
         "/dev/accel3",
     ]
-    assert accelerator.autodetect_num_tpus() == 4
+    assert accelerator._autodetect_num_tpus() == 4
 
 
 @patch("glob.glob")
@@ -109,7 +109,7 @@ def test_autodetect_num_tpus_accel(mock_glob):
 def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
     mock_glob.return_value = []
     mock_list.return_value = [f"{i}" for i in range(4)]
-    assert accelerator.autodetect_num_tpus() == 4
+    assert accelerator._autodetect_num_tpus() == 4
 
 
 @patch("glob.glob")
@@ -117,7 +117,7 @@ def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
 def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
     mock_list.side_effect = FileNotFoundError
     mock_glob.return_value = []
-    assert accelerator.autodetect_num_tpus() == 0
+    assert accelerator._autodetect_num_tpus() == 0
 
 
 @pytest.mark.parametrize(
@@ -138,7 +138,7 @@ def test_autodetect_tpu_version_gce(mock_request, accelerator_type_version_tuple
     mock_response.status_code = 200
     mock_response.text = accelerator_type
     mock_request.return_value = mock_response
-    assert accelerator.autodetect_tpu_version() == expected_version
+    assert accelerator._autodetect_tpu_version() == expected_version
 
 
 @pytest.mark.parametrize(
@@ -156,13 +156,13 @@ def test_autodetect_tpu_version_gce(mock_request, accelerator_type_version_tuple
 def test_autodetect_tpu_version_gke_v2(mock_os, accelerator_type_version_tuple):
     accelerator_type, expected_version = accelerator_type_version_tuple
     mock_os.return_value = accelerator_type
-    assert accelerator.autodetect_tpu_version() == expected_version
+    assert accelerator._autodetect_tpu_version() == expected_version
 
 
 def test_autodetect_tpu_fails_gracefully():
     with patch("requests.get") as mock_get:
         mock_get.side_effect = requests.exceptions.RequestException
-        tpu_result = accelerator.autodetect_tpu_version()
+        tpu_result = accelerator._autodetect_tpu_version()
         assert tpu_result is None
 
 
@@ -182,14 +182,16 @@ def test_autodetect_tpu_fails_gracefully():
 def test_validate_accelerator_options(test_config):
     num_gpus, num_tpus, num_neuron_cores, use_neuron_acc, expect_error = test_config
     options = {
-        "num_tpus": num_tpus,
         "num_gpus": num_gpus,
+        "resources": {},
     }
 
     if use_neuron_acc:
         options["accelerator_type"] = AWS_NEURON_CORE
     if num_neuron_cores > 0:
-        options["resources"] = {"neuron_cores": 1}
+        options["resources"]["neuron_cores"] = num_neuron_cores
+    if num_tpus > 0:
+        options["resources"]["TPU"] = num_tpus
 
     if expect_error:
         with pytest.raises(ValueError):
@@ -246,7 +248,7 @@ def test_set_tpu_visible_ids_and_bounds(tpu_chips):
 
 @pytest.mark.parametrize("num_tpus", [3, 8, 10, 0.3, 0.2])
 def test_invalid_tpu_chip_configuration_warning(propagate_logs, caplog, num_tpus):
-    options = {"num_tpus": num_tpus}
+    options = {"resources": {"TPU": num_tpus}}
     with caplog.at_level(logging.WARNING, logger="ray._private.ray_option_utils"):
         _validate_accelerators(options)
         assert "not a supported chip configuration" in caplog.text

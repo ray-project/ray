@@ -21,7 +21,6 @@ available_node_types:
         resources:
             CPU: 8   # <-- set this to num CPUs used/detected in `ray start`
             GPU: 0   # <-- set this to num GPUs used/detected in `ray start`
-            TPU: 0   # <-- set this to num TPUs used/detected in `ray start`
         node_config: {}
         max_workers: 0
     ray.worker.cpu:
@@ -35,14 +34,6 @@ available_node_types:
         resources:
             CPU: 4
             GPU: 1
-            object_store_memory: 1000000000
-        node_config: {}
-        min_workers: 0
-        max_workers: 2
-    ray.worker.tpu:
-        resources:
-            CPU: 4
-            TPU: 4
             object_store_memory: 1000000000
         node_config: {}
         min_workers: 0

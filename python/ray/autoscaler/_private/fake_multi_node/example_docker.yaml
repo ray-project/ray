@@ -27,7 +27,6 @@ provider:
     head_resources:
       CPU: 4
       GPU: 0
-      TPU: 0
 
 auth:
   ssh_user: ubuntu
@@ -54,14 +53,6 @@ available_node_types:
         resources:
             CPU: 4
             GPU: 1
-            object_store_memory: 1000000000
-        node_config: {}
-        min_workers: 1
-        max_workers: 2
-    ray.worker.tpu:
-        resources:
-            CPU: 4
-            TPU: 4
             object_store_memory: 1000000000
         node_config: {}
         min_workers: 1

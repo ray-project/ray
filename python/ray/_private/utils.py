@@ -529,6 +529,17 @@ def get_neuron_core_constraint_name():
     return get_constraint_name(accelerators.AWS_NEURON_CORE)
 
 
+def get_tpu_constraint_name():
+    """Get the name of the constraint that represents the TPU accelerator.
+
+    Returns:
+        (str) The constraint name.
+    """
+    import ray.util.accelerators.accelerators as accelerators
+
+    return get_constraint_name(accelerators.AWS_NEURON_CORE)
+
+
 def get_constraint_name(pretty_name: str):
     """Get the name of the constraint that represents the given resource.
 
@@ -565,7 +576,6 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
 
     num_cpus = options_dict.get("num_cpus")
     num_gpus = options_dict.get("num_gpus")
-    num_tpus = options_dict.get("num_tpus")
     memory = options_dict.get("memory")
     object_store_memory = options_dict.get("object_store_memory")
     accelerator_type = options_dict.get("accelerator_type")
@@ -574,8 +584,6 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
         resources["CPU"] = num_cpus
     if num_gpus is not None:
         resources["GPU"] = num_gpus
-    if num_tpus is not None:
-        resources["TPU"] = num_tpus
     if memory is not None:
         resources["memory"] = int(memory)
     if object_store_memory is not None:

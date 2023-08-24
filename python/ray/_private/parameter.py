@@ -30,7 +30,6 @@ class RayParams:
             redis_port, or random ports if those are not available.
         num_cpus: Number of CPUs to configure the raylet with.
         num_gpus: Number of GPUs to configure the raylet with.
-        num_tpus: Number of TPUs to configure the raylet with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
         labels: The key-value labels of the node.
@@ -139,7 +138,6 @@ class RayParams:
         gcs_address: Optional[str] = None,
         num_cpus: Optional[int] = None,
         num_gpus: Optional[int] = None,
-        num_tpus: Optional[int] = None,
         resources: Optional[Dict[str, float]] = None,
         labels: Optional[Dict[str, str]] = None,
         memory: Optional[float] = None,
@@ -199,7 +197,6 @@ class RayParams:
         self.gcs_address = gcs_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
-        self.num_tpus = num_tpus
         self.memory = memory
         self.object_store_memory = object_store_memory
         self.resources = resources
@@ -441,7 +438,6 @@ class RayParams:
 
             assert "CPU" not in self.resources, build_error("CPU", "num_cpus")
             assert "GPU" not in self.resources, build_error("GPU", "num_gpus")
-            assert "TPU" not in self.resources, build_error("TPU", "num_tpus")
             assert "memory" not in self.resources, build_error("memory", "memory")
             assert "object_store_memory" not in self.resources, build_error(
                 "object_store_memory", "object_store_memory"

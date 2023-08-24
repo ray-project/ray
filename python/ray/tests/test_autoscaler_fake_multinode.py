@@ -58,7 +58,7 @@ def test_fake_autoscaler_basic_e2e(shutdown_only):
             print("cpu ok")
 
         # Triggers the addition of a TPU node.
-        @ray.remote(num_tpus=4)
+        @ray.remote(resources={"TPU": 4})
         def h():
             print("tpu ok")
 

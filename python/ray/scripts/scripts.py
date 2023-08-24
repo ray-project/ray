@@ -382,9 +382,6 @@ def debug(address):
     "--num-gpus", required=False, type=int, help="the number of GPUs on this node"
 )
 @click.option(
-    "--num-tpus", required=False, type=int, help="the number of TPU chips on this node"
-)
-@click.option(
     "--resources",
     required=False,
     default="{}",
@@ -561,7 +558,6 @@ def start(
     redis_max_memory,
     num_cpus,
     num_gpus,
-    num_tpus,
     resources,
     head,
     include_dashboard,
@@ -653,7 +649,6 @@ def start(
         redirect_output=redirect_output,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
-        num_tpus=num_tpus,
         resources=resources,
         labels=labels_dict,
         autoscaling_config=autoscaling_config,

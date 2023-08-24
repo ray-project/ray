@@ -33,7 +33,6 @@ class ResourceSpec(
         [
             "num_cpus",
             "num_gpus",
-            "num_tpus",
             "memory",
             "object_store_memory",
             "resources",
@@ -50,7 +49,6 @@ class ResourceSpec(
     Attributes:
         num_cpus: The CPUs allocated for this raylet.
         num_gpus: The GPUs allocated for this raylet.
-        num_tpus: The TPUs allocated for this raylet.
         memory: The memory allocated for this raylet.
         object_store_memory: The object store memory allocated for this raylet.
             Note that when calling to_resource_dict(), this will be scaled down
@@ -67,7 +65,6 @@ class ResourceSpec(
         cls,
         num_cpus=None,
         num_gpus=None,
-        num_tpus=None,
         memory=None,
         object_store_memory=None,
         resources=None,
@@ -77,7 +74,6 @@ class ResourceSpec(
             cls,
             num_cpus,
             num_gpus,
-            num_tpus,
             memory,
             object_store_memory,
             resources,
@@ -94,7 +90,7 @@ class ResourceSpec(
     def to_resource_dict(self):
         """Returns a dict suitable to pass to raylet initialization.
 
-        This renames num_cpus / num_gpus / num_tpus to "CPU" / "GPU" / "TPU",
+        This renames num_cpus / num_gpus to "CPU" / "GPU",
         translates memory from bytes into 100MB memory units, and checks types.
         """
         assert self.resolved()
@@ -103,7 +99,6 @@ class ResourceSpec(
             self.resources,
             CPU=self.num_cpus,
             GPU=self.num_gpus,
-            TPU=self.num_tpus,
             memory=int(self.memory),
             object_store_memory=int(self.object_store_memory),
         )
@@ -156,7 +151,6 @@ class ResourceSpec(
         resources = (self.resources or {}).copy()
         assert "CPU" not in resources, resources
         assert "GPU" not in resources, resources
-        assert "TPU" not in resources, resources
         assert "memory" not in resources, resources
         assert "object_store_memory" not in resources, resources
 
@@ -206,40 +200,6 @@ class ResourceSpec(
             resources.update(gpu_types)
         except Exception:
             logger.exception("Could not parse gpu information.")
-
-        num_tpus = self.num_tpus
-        tpu_ids = ray._private.utils.get_tpu_visible_chips()
-
-        # Check that the TPU IDs being set are valid.
-        # TPUs only processes running on 1, 2, or 4 chips per TPU VM host.
-        if tpu_ids is not None:
-            num_visible_tpus = len(tpu_ids)
-            if num_visible_tpus not in ray_constants.TPU_VALID_CHIP_OPTIONS:
-                logger.exception(
-                    f"Tried to set TPU_VISIBLE_CHIPS to use {num_visible_tpus} chips  "
-                    "which is not a supported chip configuration. Supported "
-                    f"configurations: {ray_constants.TPU_VALID_CHIP_OPTIONS}. "
-                    f"Got TPU_VISIBLE_CHIPS={tpu_ids}."
-                )
-
-        # Check that the number of TPUs that the raylet wants doesn't
-        # exceed the amount allowed by TPU_VISIBLE_CHIPS.
-        if num_tpus is not None and tpu_ids is not None and num_tpus > len(tpu_ids):
-            raise ValueError(
-                "Attempting to start raylet with {} TPUs, "
-                "but TPU_VISIBLE_CHIPS contains {}.".format(num_tpus, tpu_ids)
-            )
-        if num_tpus is None:
-            # Try to automatically detect the number of TPUs
-            num_tpus = accelerator.autodetect_num_tpus()
-            # Don't use more TPUs than allowed by TPU_VISIBLE_DEVICES.
-            if tpu_ids is not None:
-                num_tpus = min(num_tpus, len(tpu_ids))
-
-        tpu_version = accelerator.autodetect_tpu_version()
-        if tpu_version is not None:
-            # Update with, e.g. {"TPU-V2": 1}
-            resources.update({tpu_version: 1})
 
         accelerator.update_resources_with_accelerator_type(resources)
 
@@ -317,7 +277,6 @@ class ResourceSpec(
         spec = ResourceSpec(
             num_cpus,
             num_gpus,
-            num_tpus,
             memory,
             object_store_memory,
             resources,

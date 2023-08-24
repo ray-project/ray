@@ -1,7 +1,7 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
 import warnings
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Union
 
 import logging
 import ray
@@ -95,10 +95,10 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
     if resources is None:
         return None
 
-    if "CPU" in resources or "GPU" in resources or "TPU" in resources:
+    if "CPU" in resources or "GPU" in resources:
         return (
-            "Use the 'num_cpus', 'num_gpus' and 'num_tpus' keyword instead "
-            "of 'CPU', 'GPU' and 'TPU' in 'resources' keyword"
+            "Use the 'num_cpus' and 'num_gpus' keyword instead of 'CPU' and 'GPU' "
+            "in 'resources' keyword"
         )
 
     for name, quantity in resources.items():
@@ -109,12 +109,35 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
     return None
 
 
+def _maybe_warn_misconfigured_tpu_chips(resources: Dict[str, Any]):
+    """Possibly warn against misconfigured TPU chip configuration."""
+    num_tpus = resources.get(ray_constants.TPU, 0)
+    if num_tpus not in ray_constants.TPU_VALID_CHIP_OPTIONS:
+        logging.warning(
+            f"The number of requested 'TPU' was set to {num_tpus} which "
+            "is not a supported chip configuration. Supported configs: "
+            f"{ray_constants.TPU_VALID_CHIP_OPTIONS}"
+        )
+
+
 def _validate_accelerators(options: Dict[str, Any]):
     """Validate options for accelerators - support only one out of multiple options.
 
     GPUs, NeuronCore accelerators (neuron_cores), and TPUs are valid options, but
     individual nodes do not support heterogeneous accelerators. This function
-    guards against this.
+    guards against this setting.
+
+    The control flow is as follows:
+        - For each accelerator, determine if the options indicate usage of
+          a particular accelerator, captured by booleans.
+            - For GPUs, this is set if num_gpus > 0.
+            - For custom resources, this is set if the
+              resource name ("neuron_cores" or "TPU") or
+              accelerator_type ("aws-neuron-core", "TPU-V2", "TPU-V3", etc.)
+              is requested.
+        - If we identify that >1 resource type is requested,
+          we raise an error indicating that heterogeneous raylets
+          are not supported.
 
     Args:
         options: The options to be validated.
@@ -123,28 +146,38 @@ def _validate_accelerators(options: Dict[str, Any]):
         ValueError: If the options are invalid.
     """
     num_gpus = options.get("num_gpus", None)
-    num_tpus = options.get("num_tpus", None)
     non_zero_gpus = num_gpus is not None and num_gpus > 0
-    non_zero_tpus = num_tpus is not None and num_tpus > 0
-
-    # TPU-specific check
-    if non_zero_tpus and num_tpus not in ray_constants.TPU_VALID_CHIP_OPTIONS:
-        logging.warning(
-            f"'num_tpus' was set to {num_tpus} which is not a "
-            "supported chip configuration. Supported configs: "
-            f"{ray_constants.TPU_VALID_CHIP_OPTIONS}"
-        )
-
     resources = options["resources"] if "resources" in options else None
-    accelerator_type_value: str = options.get("accelerator_type", "")
 
-    non_zero_neuron_cores = False
-    if resources is not None:
-        neuron_cores: int = resources.get(ray_constants.NEURON_CORES, 0)
-        if neuron_cores > 0:
-            non_zero_neuron_cores = True
-    elif accelerator_type_value == accelerators.AWS_NEURON_CORE:
-        non_zero_neuron_cores = True
+    def non_zero_custom_resource(
+        resource_id: str, accelerator_ids: Iterable[str]
+    ) -> bool:
+        """Return whether or not the options includes >0 of a custom resource."""
+        result = False
+        accelerator_type_value: str = options.get("accelerator_type", "")
+        if resources is not None:
+            num_resources: int = resources.get(resource_id, 0)
+            if num_resources > 0:
+                result = True
+        if accelerator_type_value in accelerator_ids:
+            result = True
+        return result
+
+    non_zero_neuron_cores = non_zero_custom_resource(
+        resource_id=ray_constants.NEURON_CORES,
+        accelerator_ids=[accelerators.AWS_NEURON_CORE],
+    )
+    non_zero_tpus = non_zero_custom_resource(
+        resource_id=ray_constants.TPU,
+        accelerator_ids=[
+            accelerators.GOOGLE_TPU_V2,
+            accelerators.GOOGLE_TPU_V3,
+            accelerators.GOOGLE_TPU_V4,
+        ],
+    )
+
+    if non_zero_tpus:
+        _maybe_warn_misconfigured_tpu_chips(resources)
 
     num_configured_accelerators = sum(
         [non_zero_gpus, non_zero_tpus, non_zero_neuron_cores]
@@ -152,7 +185,8 @@ def _validate_accelerators(options: Dict[str, Any]):
     if num_configured_accelerators > 1:
         raise ValueError(
             "Only one of 'num_gpus', 'neuron_cores/accelerator_type:aws-neuron-core' "
-            f"and 'num_tpus' can be set. Detected {num_configured_accelerators} "
+            "and 'TPU/accelerator_type:TPU-V*' can be set. "
+            f"Detected {num_configured_accelerators} "
             "options were configured."
         )
 
@@ -163,7 +197,6 @@ _common_options = {
     "name": Option((str, type(None))),
     "num_cpus": _resource_option("num_cpus"),
     "num_gpus": _resource_option("num_gpus"),
-    "num_tpus": _resource_option("num_tpus"),
     "object_store_memory": _counting_option("object_store_memory", False),
     # TODO(suquark): "placement_group", "placement_group_bundle_index"
     # and "placement_group_capture_child_tasks" are deprecated,

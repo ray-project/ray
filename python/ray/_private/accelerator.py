@@ -5,79 +5,113 @@ import subprocess
 import sys
 import requests
 import logging
-from typing import Optional
-from ray._private import ray_constants
+import ray._private.ray_constants as ray_constants
+import ray._private.utils as utils
+from typing import Iterable, Optional
 
 
 def update_resources_with_accelerator_type(resources: dict):
     """Update the resources dictionary with the accelerator type and custom
     resources.
 
-    Currently, we support AWS NeuronCore (neuron_cores /
-    accelerator_type:aws-neuron-core) detection and configuration.
+    Currently, we support detection and configuration of:
+    - AWS NeuronCore (neuron_cores / accelerator_type:aws-neuron-core)
+    - Google Cloud TPUs (TPU / accelerator_type:TPU-V*)
 
     Args:
         resources: Resources dictionary to be updated with
         accelerator type and custom resources.
     """
-    _detect_and_configure_aws_neuron_core(resources)
+    # Autodetect AWS NeuronCore
+    _detect_and_configure_custom_accelerator(
+        resources=resources,
+        accelerator_key=ray_constants.NEURON_CORES,
+        accelerator_type=utils.get_neuron_core_constraint_name(),
+        visible_ids=utils.get_aws_neuron_core_visible_ids(),
+        autodetected_accelerators=_autodetect_aws_neuron_cores(),
+        visible_devices_env_variable=ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
+    )
+    # Autodetect Google Cloud TPUs
+    _detect_and_configure_custom_accelerator(
+        resources=resources,
+        accelerator_key=ray_constants.TPU,
+        accelerator_type=_autodetect_tpu_version(),
+        visible_ids=utils.get_tpu_visible_chips(),
+        autodetected_accelerators=_autodetect_num_tpus(),
+        visible_devices_env_variable=ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR,
+    )
 
 
-def _detect_and_configure_aws_neuron_core(resources: dict):
-    """Configuration and auto-detection of AWS NeuronCore accelerator type
-    and number of NeuronCore (neuron_cores).
+def _detect_and_configure_custom_accelerator(
+    resources: dict,
+    accelerator_key: str,
+    accelerator_type: str,
+    visible_ids: Optional[Iterable[str]],
+    autodetected_accelerators: int,
+    visible_devices_env_variable: str,
+):
+    """Configure and autodetect custom accelerators counts and types.
 
-    If the number of NeuronCore is not specified in the resources, this
-    function will try to detect the number of NeuronCore.
+    If the number of accelerators is not specified in the resources, this
+    function will try to detect the number of accelerators.
 
-    If the number of NeuronCore is specified in the resources, this
-    function will check if the number of NeuronCore is greater than the
-    number of visible NeuronCore and raise an error if it is true.
+    If the number of accelerators is specified in the resources, this
+    function will check if the number of accelerators is greater than the
+    number of visible devices and raise an error if it is true.
 
-    If the number of NeuronCore is greater than the number of visible
-    NeuronCore, this function will raise an error.
+    If the number of accelerators is greater than the number of visible
+    devices, this function will raise an error.
 
-    Lastly, update accelerator_type and neuron_cores in resources.
+    Lastly, update accelerator_type and number of accelerators in resources.
 
     Args:
-        resources: Resources dictionary to be updated with
-        NeuronCore accelerator type and custom resources(neuron_cores).
+        resources: Resources dictionary to be updated with the custom
+            accelerator type and resource count.
+        accelerator_key: The key used to access the number of accelerators
+            within `resources`. This can be:
+            ray_constants.NEURON_CORES or ray_constants.TPU
+        accelerator_type: The name of the accelerator type. This
+            is the unique identifier of the accelerator version, e.g.
+            ray_constants.AWS_NEURON_CORE or ray_constants.GOOGLE_TPU_V4.
+        visible_ids: The visible IDs specified by the user. This is typically
+            controlled by an environment variable, e.g. NEURON_RT_VISIBLE_CORES
+            or TPU_VISIBLE_CHIPS.
+        autodetected_accelerators: The number of accelerators autodetected
+            on the machine.
+        visible_devices_env_variable: The environment variable a user uses
+            to specify which devices are visible.
 
     Raises:
         ValueError: If the number of NeuronCore is greater than the number of
             visible NeuronCore.
     """
-    import ray._private.ray_constants as ray_constants
-    import ray._private.utils as utils
-
-    # AWS NeuronCore detection and configuration
-    # 1. Check if the user specified neuron_cores in resources
-    neuron_cores = resources.get(ray_constants.NEURON_CORES, None)
-    # 2. Check if the user specified NEURON_RT_VISIBLE_CORES
-    neuron_core_ids = utils.get_aws_neuron_core_visible_ids()
+    # Custom accelerator detection and configuration
+    # 1. Check if the user specified accelerator_count in resources
+    accelerator_count = resources.get(accelerator_key, None)
+    # 2. Check if the user specified visible cores/chips (within `visible_ids`)
     if (
-        neuron_cores is not None
-        and neuron_core_ids is not None
-        and neuron_cores > len(neuron_core_ids)
+        accelerator_count is not None
+        and visible_ids is not None
+        and accelerator_count > len(visible_ids)
     ):
         raise ValueError(
-            f"Attempting to start raylet with {neuron_cores} "
-            f"neuron cores, but NEURON_RT_VISIBLE_CORES contains "
-            f"{neuron_core_ids}."
+            f"Attempting to start raylet with {accelerator_count} "
+            f"{accelerator_key}, but f{visible_devices_env_variable} "
+            f"contains {visible_ids}."
         )
-    # 3. Auto-detect neuron_cores if not specified in resources
-    if neuron_cores is None:
-        neuron_cores = _autodetect_aws_neuron_cores()
-        # Don't use more neuron cores than allowed by NEURON_RT_VISIBLE_CORES.
-        if neuron_cores is not None and neuron_core_ids is not None:
-            neuron_cores = min(neuron_cores, len(neuron_core_ids))
-    if neuron_cores is not None:
-        # 4. Update accelerator_type and neuron_cores with
-        # number of neuron cores detected or configured.
+    # 3. Auto-detect accelerator_count if not specified in resources
+    if accelerator_count is None:
+        accelerator_count = autodetected_accelerators
+        # Don't use more resources than allowed by the user's pre-set values.
+        if accelerator_count is not None and visible_ids is not None:
+            accelerator_count = min(accelerator_count, len(visible_ids))
+    if accelerator_count is not None:
+        # 4. Update accelerator_type and accelerator_count with
+        # number of accelerators detected or configured.
         resources.update(
             {
-                ray_constants.NEURON_CORES: neuron_cores,
-                utils.get_neuron_core_constraint_name(): neuron_cores,
+                accelerator_key: accelerator_count,
+                accelerator_type: accelerator_count,
             }
         )
 
@@ -115,7 +149,7 @@ def _get_neuron_core_count() -> int:
     return nc_count
 
 
-def autodetect_num_tpus() -> int:
+def _autodetect_num_tpus() -> int:
     """Attempt to detect the number of TPUs on this machine.
 
     TPU chips are represented as devices within `/dev/`, either as
@@ -137,7 +171,7 @@ def autodetect_num_tpus() -> int:
         return 0
 
 
-def autodetect_tpu_version() -> Optional[str]:
+def _autodetect_tpu_version() -> Optional[str]:
     """Attempt to detect the TPU version.
 
     Individual TPU VMs within a TPU pod must know what type

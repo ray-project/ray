@@ -75,7 +75,6 @@ DOCKER_HEAD_CMD = (
     "--object-manager-port=8076 "
     "--num-cpus {num_cpus} "
     "--num-gpus {num_gpus} "
-    "--num-tpus {num_tpus} "
     # "--resources='{resources}' "
     '--block"'
 )
@@ -96,7 +95,6 @@ DOCKER_WORKER_CMD = (
     "--object-manager-port=8076 "
     "--num-cpus {num_cpus} "
     "--num-gpus {num_gpus} "
-    "--num-tpus {num_tpus} "
     # "--resources='{resources}' "
     '--block"'
 )
@@ -126,7 +124,6 @@ def create_node_spec(
     mounted_node_dir: str,
     num_cpus: int = 2,
     num_gpus: int = 0,
-    num_tpus: int = 0,
     resources: Optional[Dict] = None,
     env_vars: Optional[Dict] = None,
     host_gcs_port: int = 16379,
@@ -161,7 +158,6 @@ def create_node_spec(
         ensure_ssh=ensure_ssh,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
-        num_tpus=num_tpus,
         resources=json.dumps(resources, indent=None),
         volume_dir=volume_dir,
         autoscaling_config=bootstrap_cfg_path_on_container,
@@ -319,7 +315,6 @@ class FakeMultiNodeProvider(NodeProvider):
                 dashboard_port=None,
                 num_cpus=resources.pop("CPU", 0),
                 num_gpus=resources.pop("GPU", 0),
-                num_tpus=resources.pop("TPU", 0),
                 object_store_memory=resources.pop("object_store_memory", None),
                 resources=resources,
                 labels=labels,
@@ -476,7 +471,6 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
             mounted_node_dir=node_dir,
             num_cpus=resources.pop("CPU", 0),
             num_gpus=resources.pop("GPU", 0),
-            num_tpus=resources.pop("TPU", 0),
             host_gcs_port=self._host_gcs_port,
             host_object_manager_port=self._host_object_manager_port,
             host_client_port=self._host_client_port,
