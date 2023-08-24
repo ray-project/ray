@@ -70,8 +70,9 @@ def test_multiple_directories(tmp_path, shutdown_only):
     print("Check deletion...")
     # Empty object refs.
     object_refs = []
-    # Add a new object so that the last entry is evicted.
-    ref = ray.put(arr)
+    # Add a new small object so that the last entry is evicted and we don't
+    # exceed the spill threshold.
+    ref = ray.put(np.ones(5 * 1024 * 1024, dtype=np.uint8))
     for temp_dir in temp_dirs:
         temp_folder = temp_dir
         wait_for_condition(lambda: is_dir_empty(temp_folder))
@@ -364,7 +365,7 @@ def test_spill_reconstruction_errors(ray_start_cluster, object_spilling_config):
         ray.get(ref)
 
 
-def test_evict_secondary_before_spill(ray_start_cluster, object_spilling_config):
+def test_evict_secondary_copies_before_spill(ray_start_cluster, object_spilling_config):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, object_store_memory=10**8)
     ray.init(address=cluster.address)

@@ -520,19 +520,7 @@ ray::Status NodeManager::RegisterGcs() {
         RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.flush_free_objects");
     periodical_runner_.RunFnPeriodically(
-        [this] {
-          // Trigger object spilling if current usage is above the specified threshold.
-          const float allocated_percentage =
-              static_cast<float>(local_object_manager_.GetPrimaryBytes()) /
-              object_manager_.GetMemoryCapacity();
-          if (allocated_percentage >= RayConfig::instance().object_spilling_threshold()) {
-            RAY_LOG(INFO) << "Triggering object spilling because current usage "
-                          << allocated_percentage * 100 << "% is above threshold "
-                          << RayConfig::instance().object_spilling_threshold() * 100
-                          << "%.";
-            local_object_manager_.SpillObjectUptoMaxThroughput();
-          }
-        },
+        [this] { SpillIfOverPrimaryObjectsThreshold(); },
         RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.spill_objects_when_over_threshold");
   }
@@ -2204,6 +2192,19 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
   }
 }
 
+void NodeManager::SpillIfOverPrimaryObjectsThreshold() {
+  // Trigger object spilling if current usage is above the specified threshold.
+  const float allocated_percentage =
+      static_cast<float>(local_object_manager_.GetPrimaryBytes()) /
+      object_manager_.GetMemoryCapacity();
+  if (allocated_percentage >= RayConfig::instance().object_spilling_threshold()) {
+    RAY_LOG(INFO) << "Triggering object spilling because current usage "
+                  << allocated_percentage * 100 << "% is above threshold "
+                  << RayConfig::instance().object_spilling_threshold() * 100 << "%.";
+    local_object_manager_.SpillObjectUptoMaxThroughput();
+  }
+}
+
 void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
   const ObjectID &object_id = object_info.object_id;
   // Notify the task dependency manager that this object is local.
@@ -2236,6 +2237,10 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
           }
         });
   }
+
+  // An object was created so we may be over the spill
+  // threshold now.
+  SpillIfOverPrimaryObjectsThreshold();
 }
 
 bool NodeManager::IsActorCreationTask(const TaskID &task_id) {
