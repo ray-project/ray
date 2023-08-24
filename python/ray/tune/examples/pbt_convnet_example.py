@@ -72,7 +72,6 @@ if __name__ == "__main__":
 
     # check if PytorchTrainble will save/restore correctly before execution
     validate_save_restore(PytorchTrainable)
-    validate_save_restore(PytorchTrainable, use_object_store=True)
 
     # __pbt_begin__
     scheduler = PopulationBasedTraining(
