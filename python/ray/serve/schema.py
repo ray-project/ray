@@ -20,6 +20,7 @@ from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.serve._private.constants import (
+    DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
 )
@@ -161,16 +162,7 @@ class DeploymentSchema(
     route_prefix: Union[str, None] = Field(
         default=DEFAULT.VALUE,
         description=(
-            "Requests to paths under this HTTP path "
-            "prefix will be routed to this deployment. When null, no HTTP "
-            "endpoint will be created. When omitted, defaults to "
-            "the deployment's name. Routing is done based on "
-            "longest-prefix match, so if you have deployment A with "
-            'a prefix of "/a" and deployment B with a prefix of "/a/b", '
-            'requests to "/a", "/a/", and "/a/c" go to A and requests '
-            'to "/a/b", "/a/b/", and "/a/b/c" go to B. Routes must not '
-            'end with a "/" unless they\'re the root (just "/"), which '
-            "acts as a catch-all."
+            "[DEPRECATED] Please use route_prefix under ServeApplicationSchema instead."
         ),
     )
     max_concurrent_queries: int = Field(
@@ -342,7 +334,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         default="/",
         description=(
             "Route prefix for HTTP requests. If not provided, it will use"
-            "route_prefix of the ingress deployment. By default, the ingress route"
+            "route_prefix of the ingress deployment. By default, the ingress route "
             "prefix is '/'."
         ),
     )
@@ -516,7 +508,30 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
+class gRPCOptionsSchema(BaseModel):
+    """Options to start the gRPC Proxy with."""
+
+    port: int = Field(
+        default=DEFAULT_GRPC_PORT,
+        description=(
+            "Port for gRPC server. Defaults to 9000. Cannot be updated once "
+            "Serve has started running. Serve must be shut down and restarted "
+            "with the new port instead."
+        ),
+    )
+    grpc_servicer_functions: List[str] = Field(
+        default=[],
+        description=(
+            "List of import paths for gRPC `add_servicer_to_server` functions to add "
+            "to Serve's gRPC proxy. Default to empty list, which means no gRPC methods "
+            "will be added and no gRPC server will be started. The servicer functions "
+            "need to be importable from the context of where Serve is running."
+        ),
+    )
+
+
+@PublicAPI(stability="alpha")
+class HTTPOptionsSchema(BaseModel):
     """Options to start the HTTP Proxy with."""
 
     host: str = Field(
@@ -579,6 +594,9 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
     )
     applications: List[ServeApplicationSchema] = Field(
         ..., description=("The set of Serve applications to run on the Ray cluster.")
+    )
+    grpc_options: gRPCOptionsSchema = Field(
+        default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
     )
 
     @validator("applications")
