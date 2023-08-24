@@ -19,13 +19,16 @@ import { Link as RouterLink } from "react-router-dom";
 import { CodeDialogButton } from "../common/CodeDialogButton";
 import { DurationText } from "../common/DurationText";
 import { ActorLink, NodeLink } from "../common/links";
+import {
+  TaskCpuProfilingLink,
+  TaskCpuStackTraceLink,
+} from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
 import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
-
 export type TaskTableProps = {
   tasks: Task[];
   jobId?: string;
@@ -71,6 +74,10 @@ const TaskTable = ({
           tasks.
           <br />- Error: For tasks that have failed, show a stack trace for the
           faiure.
+          <br /> Stack Trace: Get a stacktrace of the worker process where the
+          task is running.
+          <br />- CPU Flame Graph: Get a flame graph of the next 5 seconds of
+          the worker process where the task is running.
         </Typography>
       ),
     },
@@ -330,11 +337,29 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
       ? `Error Type: ${task.error_type}\n\n${task.error_message}`
       : undefined;
 
+  const isTaskActive = task.state === "RUNNING" && task.worker_id;
+
   return (
     <React.Fragment>
       <Link component={RouterLink} to={`tasks/${task.task_id}`}>
         Log
       </Link>
+      {isTaskActive && (
+        <React.Fragment>
+          <br />
+          <TaskCpuProfilingLink
+            taskId={task.task_id}
+            attemptNumber={task.attempt_number}
+            nodeId={task.node_id}
+          />
+          <br />
+          <TaskCpuStackTraceLink
+            taskId={task.task_id}
+            attemptNumber={task.attempt_number}
+            nodeId={task.node_id}
+          />
+        </React.Fragment>
+      )}
       <br />
 
       {errorDetails && (

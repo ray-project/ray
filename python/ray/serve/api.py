@@ -16,6 +16,7 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
+    gRPCOptions,
     ReplicaConfig,
     HTTPOptions,
 )
@@ -68,6 +69,7 @@ def start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
+    grpc_options: Optional[gRPCOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Start Serve on the cluster.
@@ -107,8 +109,21 @@ def start(
               internal Serve HTTP proxy actor.  Defaults to 0.
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
+        grpc_options: [Experimental] Configuration options for gRPC proxy. You can pass
+          in a gRPCOptions object with fields:
+
+            - grpc_servicer_functions: List of import paths for gRPC
+              `add_servicer_to_server` functions to add to Serve's gRPC proxy. Default
+              empty list, meaning not to start the gRPC server.
+            - port: Port for gRPC server. Defaults to 9000.
     """
-    client = _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
+    client = _private_api.serve_start(
+        detached=detached,
+        http_options=http_options,
+        dedicated_cpu=dedicated_cpu,
+        grpc_options=grpc_options,
+        **kwargs,
+    )
 
     # Record after Ray has been started.
     ServeUsageTag.API_VERSION.record("v1")
@@ -287,9 +302,8 @@ def deployment(
             is set, `num_replicas` cannot be set.
         init_args: [DEPRECATED] These should be passed to `.bind()` instead.
         init_kwargs: [DEPRECATED] These should be passed to `.bind()` instead.
-        route_prefix: Requests to paths under this HTTP path prefix are routed
-            to this deployment. Defaults to '/'. This can only be set for the
-            ingress (top-level) deployment of an application.
+        route_prefix: [DEPRECATED] Route prefix should be set per-application
+            through `serve.run()`.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
@@ -353,6 +367,13 @@ def deployment(
         logger.warning(
             "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. "
             "Explicitly specifying version will raise an error in the future!"
+        )
+
+    if route_prefix is not DEFAULT.VALUE:
+        logger.warning(
+            "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
+            "deprecated. To specify a route prefix for an application, pass it into "
+            "`serve.run` instead."
         )
 
     if is_driver_deployment is DEFAULT.VALUE:
@@ -475,6 +496,9 @@ def run(
     Returns:
         RayServeSyncHandle: A handle that can be used to call the application.
     """
+    if len(name) == 0:
+        raise RayServeException("Application name must a non-empty string.")
+
     client = _private_api.serve_start(
         detached=True,
         http_options={"host": host, "port": port, "location": "EveryNode"},
