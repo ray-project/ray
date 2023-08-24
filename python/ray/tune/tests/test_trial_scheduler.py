@@ -21,7 +21,10 @@ from ray.train._checkpoint import Checkpoint
 from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
 from ray.train._internal.storage import StorageContext, _use_storage_context
 from ray.tune import Trainable, PlacementGroupFactory
-from ray.tune.execution.checkpoint_manager import _CheckpointManager
+from ray.tune.execution.checkpoint_manager import (
+    _CheckpointManager as _LegacyCheckpointManager,
+)
+from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.tune.experiment.trial import _TemporaryTrialState
 from ray.tune.schedulers import (
     FIFOScheduler,
@@ -698,6 +701,7 @@ class HyperbandSuite(unittest.TestCase):
         self.assertIsNotNone(trial)
 
 
+@unittest.skipIf(not _use_storage_context(), "Disabled for old code path")
 class BOHBSuite(unittest.TestCase):
     def setUp(self):
         ray.init(object_store_memory=int(1e8))
@@ -897,13 +901,21 @@ class _MockTrial(Trial):
         self.relative_logdir = None
         self._default_result_or_future = None
         self.run_metadata = _TrainingRunMetadata()
-        self.run_metadata.checkpoint_manager = _CheckpointManager(
-            checkpoint_config=CheckpointConfig(
-                num_to_keep=2,
-                checkpoint_score_attribute="episode_reward_mean",
-            ),
-            delete_fn=lambda c: None,
-        )
+        if _use_storage_context():
+            self.run_metadata.checkpoint_manager = _CheckpointManager(
+                checkpoint_config=CheckpointConfig(
+                    num_to_keep=2,
+                    checkpoint_score_attribute="episode_reward_mean",
+                ),
+            )
+        else:
+            self.run_metadata.checkpoint_manager = _LegacyCheckpointManager(
+                checkpoint_config=CheckpointConfig(
+                    num_to_keep=2,
+                    checkpoint_score_attribute="episode_reward_mean",
+                ),
+                delete_fn=lambda c: None,
+            )
         self.temporary_state = _TemporaryTrialState()
         self.storage = storage
 
@@ -923,6 +935,7 @@ class _MockTrial(Trial):
         return self._restored_checkpoint
 
 
+@unittest.skipIf(not _use_storage_context(), "Disabled for old code path")
 class PopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
@@ -2021,6 +2034,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertEqual(len(active), 0)
 
 
+@unittest.skipIf(not _use_storage_context(), "Disabled for old code path")
 class E2EPopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=4)

@@ -1069,6 +1069,8 @@ class Trial:
         )
 
     def has_checkpoint(self):
+        if _use_storage_context():
+            return self.checkpoint.path is not None
         return self.checkpoint.dir_or_data is not None
 
     def clear_checkpoint(self):
