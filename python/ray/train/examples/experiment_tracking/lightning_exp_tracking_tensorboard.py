@@ -1,3 +1,10 @@
+# flake8: noqa
+# isort: skip_file
+import tempfile
+
+tempdir = tempfile.mktemp()
+os.environ["SHARED_STORAGE_PATH"] = tempdir
+
 from lightning_exp_tracking_model_dl import DummyModel, dataloader
 
 # __lightning_experiment_tracking_tensorboard_start__

@@ -1,6 +1,13 @@
+# flake8: noqa
+# isort: skip_file
+import tempfile
+
+tempdir = tempfile.mktemp()
+os.environ["SHARED_STORAGE_PATH"] = tempdir
+
 # __start__
-# Run the following script with SAVE_DIR env var set, where you
-# want to mlflow offline logs saved.
+# Run the following script with SHARED_STORAGE_PATH env var set.
+# The MLflow offline logs will be saved to SHARED_STORAGE_PATH/mlruns.
 
 import mlflow
 import os
@@ -12,7 +19,9 @@ from torchvision import datasets, transforms
 from torchvision.models import resnet18
 from torch.utils.data import DataLoader
 
-assert os.environ.get("SAVE_DIR", None), "Please set SAVE_DIR env var."
+assert os.environ.get(
+    "SHARED_STORAGE_PATH", None
+), "Please set SHARED_STORAGE_PATH env var."
 
 
 # This function is assuming `save_dir` is set in `config`
@@ -56,7 +65,9 @@ def train_func(config):
 
 trainer = TorchTrainer(
     train_func,
-    train_loop_config={"save_dir": os.environ["SAVE_DIR"]},
+    train_loop_config={
+        "save_dir": os.path.join(os.environ["SHARED_STORAGE_PATH"], "mlruns")
+    },
     scaling_config=ScalingConfig(num_workers=4),
 )
 trainer.fit()

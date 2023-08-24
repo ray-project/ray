@@ -1,6 +1,3 @@
-# flake8: noqa
-# isort: skip_file
-
 # __start__
 # Run the following script with WANDB_API_KEY env var set.
 import os

@@ -46,6 +46,66 @@ py_library(
     srcs = ["tests/conftest.py"]
 )
 
+############ Experiment tracking examples start ############
+
+# no credentials needed
+py_test(
+    name = "lightning_exp_tracking_mlflow",
+    size = "small",
+    main = "examples/lightning_exp_tracking_mlflow.py",
+    srcs = ["examples/lightning_exp_tracking_mlflow.py", "examples/lightning_exp_tracking_model_dl.py"],
+    tags = ["team:ml", "exclusive", "no_main", "new_storage"],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "lightning_exp_tracking_tensorboard",
+    size = "small",
+    main = "examples/lightning_exp_tracking_tensorboard.py",
+    srcs = ["examples/lightning_exp_tracking_tensorboard.py", "examples/lightning_exp_tracking_model_dl.py"],
+    tags = ["team:ml", "exclusive", "no_main", "new_storage"],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "torch_exp_tracking_mlflow",
+    size = "small",
+    main = "examples/torch_exp_tracking_mlflow.py",
+    srcs = ["examples/torch_exp_tracking_mlflow.py"],
+    tags = ["team:ml", "exclusive", "no_main", "new_storage"],
+    deps = [":train_lib"],
+)
+
+# credentials needed
+py_test(
+    name = "lightning_exp_tracking_wandb",
+    size = "small",
+    main = "examples/lightning_exp_tracking_wandb.py",
+    srcs = ["examples/lightning_exp_tracking_wandb.py", "examples/lightning_exp_tracking_model_dl.py"],
+    tags = ["team:ml", "exclusive", "no_main", "new_storage", "needs_credentials"],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "lightning_exp_tracking_comet",
+    size = "small",
+    main = "examples/lightning_exp_tracking_comet.py",
+    srcs = ["examples/lightning_exp_tracking_comet.py", "examples/lightning_exp_tracking_model_dl.py"],
+    tags = ["team:ml", "exclusive", "no_main", "new_storage", "needs_credentials"],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "torch_exp_tracking_wandb",
+    size = "small",
+    main = "examples/torch_exp_tracking_wandb.py",
+    srcs = ["examples/torch_exp_tracking_wandb.py"],
+    tags = ["team:ml", "exclusive", "no_main", "new_storage", "needs_credentials"],
+    deps = [":train_lib"],
+)
+
+############ Experiment tracking examples end ############
+
 py_test(
     name = "mlflow_simple_example",
     size = "small",
