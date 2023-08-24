@@ -20,6 +20,7 @@ from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.serve._private.constants import (
+    DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
 )
@@ -507,6 +508,29 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
+class gRPCOptionsSchema(BaseModel):
+    """Options to start the gRPC Proxy with."""
+
+    port: int = Field(
+        default=DEFAULT_GRPC_PORT,
+        description=(
+            "Port for gRPC server. Defaults to 9000. Cannot be updated once "
+            "Serve has started running. Serve must be shut down and restarted "
+            "with the new port instead."
+        ),
+    )
+    grpc_servicer_functions: List[str] = Field(
+        default=[],
+        description=(
+            "List of import paths for gRPC `add_servicer_to_server` functions to add "
+            "to Serve's gRPC proxy. Default to empty list, which means no gRPC methods "
+            "will be added and no gRPC server will be started. The servicer functions "
+            "need to be importable from the context of where Serve is running."
+        ),
+    )
+
+
+@PublicAPI(stability="alpha")
 class HTTPOptionsSchema(BaseModel):
     """Options to start the HTTP Proxy with."""
 
@@ -570,6 +594,9 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
     )
     applications: List[ServeApplicationSchema] = Field(
         ..., description=("The set of Serve applications to run on the Ray cluster.")
+    )
+    grpc_options: gRPCOptionsSchema = Field(
+        default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
     )
 
     @validator("applications")

@@ -253,7 +253,7 @@ class TestgRPCProxyRequest:
         assert isinstance(proxy_request, ProxyRequest)
         assert proxy_request.route_path == application
         assert pickle.loads(proxy_request.request) == request_proto
-        assert proxy_request.method_name == method_name.lower()
+        assert proxy_request.method_name == method_name
         assert proxy_request.app_name == application
         assert proxy_request.request_id == request_id
         assert proxy_request.multiplexed_model_id == multiplexed_model_id

@@ -471,7 +471,7 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
     """
     # Setup worker http proxy to be pointing to port 8001. Head node http proxy will
     # continue to be pointing to the default port 8000.
-    os.environ["TEST_WORKER_NODE_PORT"] = "8001"
+    os.environ["TEST_WORKER_NODE_HTTP_PORT"] = "8001"
 
     # Setup a cluster with 2 nodes
     cluster = Cluster()
