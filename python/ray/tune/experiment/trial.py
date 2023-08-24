@@ -693,7 +693,7 @@ class Trial:
     @property
     def remote_experiment_path(self) -> str:
         if _use_storage_context():
-            return str(self.storage.storage_prefix / self.storage.experiment_fs_path)
+            return self.storage.experiment_fs_path
 
         return str(self._legacy_remote_experiment_path)
 
@@ -803,7 +803,7 @@ class Trial:
     @property
     def path(self) -> Optional[str]:
         if _use_storage_context():
-            return str(self.storage.storage_prefix / self.storage.trial_fs_path)
+            return self.storage.trial_fs_path
 
         return self.remote_path or self.local_path
 
@@ -1093,6 +1093,7 @@ class Trial:
             self.storage.current_checkpoint_index += 1
         else:
             self.run_metadata.checkpoint_manager.on_checkpoint(checkpoint)
+        self.invalidate_json_state()
         self.run_metadata.invalidate_cache()
 
     def on_restore(self):

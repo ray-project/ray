@@ -194,7 +194,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
     actor_names = {
         "ServeController",
         "HTTPProxyActor",
-        "ServeReplica:app_f",
+        "ServeReplica:app:f",
     }
 
     def check_alive():
@@ -233,8 +233,8 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     actor_names = {
         "ServeController",
         "HTTPProxyActor",
-        "ServeReplica:app1_f",
-        "ServeReplica:app2_f",
+        "ServeReplica:app1:f",
+        "ServeReplica:app2:f",
     }
 
     def check_alive():
@@ -664,7 +664,7 @@ def test_fixed_number_proxies(monkeypatch, ray_cluster):
 
 def test_serve_shutdown(ray_shutdown):
     ray.init(namespace="serve")
-    serve.start(detached=True)
+    client = serve.start(detached=True)
 
     @serve.deployment
     class A:
@@ -673,16 +673,16 @@ def test_serve_shutdown(ray_shutdown):
 
     serve.run(A.bind())
 
-    assert len(serve.list_deployments()) == 1
+    assert len(client.list_deployments()) == 1
 
     serve.shutdown()
-    serve.start(detached=True)
+    client = serve.start(detached=True)
 
-    assert len(serve.list_deployments()) == 0
+    assert len(client.list_deployments()) == 0
 
     serve.run(A.bind())
 
-    assert len(serve.list_deployments()) == 1
+    assert len(client.list_deployments()) == 1
 
 
 def test_detached_namespace_default_ray_init(ray_shutdown):
@@ -721,50 +721,6 @@ serve.run(A.bind())"""
     run_string_as_driver(
         driver_template.format(address=address, namespace="test_namespace2", port=8001)
     )
-
-
-@pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)
-def test_snapshot_always_written_to_internal_kv(
-    ray_start_with_dashboard, ray_shutdown  # noqa: F811
-):
-    # https://github.com/ray-project/ray/issues/19752
-
-    @serve.deployment()
-    def hello(_):
-        return "hello"
-
-    def check():
-        try:
-            resp = requests.get("http://localhost:8000/hello")
-            assert resp.text == "hello"
-            return True
-        except Exception:
-            return False
-
-    serve.start(detached=True)
-    serve.run(hello.bind(), name="app")
-    check()
-
-    webui_url = ray_start_with_dashboard["webui_url"]
-
-    def get_deployment_snapshot():
-        snapshot = requests.get(f"http://{webui_url}/api/snapshot").json()["data"][
-            "snapshot"
-        ]
-        return snapshot["deployments"]
-
-    # Make sure /api/snapshot return non-empty deployment status.
-    def verify_snapshot():
-        return get_deployment_snapshot() != {}
-
-    wait_for_condition(verify_snapshot)
-
-    # Sanity check the snapshot is correct
-    snapshot = get_deployment_snapshot()
-    assert len(snapshot) == 1
-    hello_deployment = list(snapshot.values())[0]
-    assert hello_deployment["name"] == "app_hello"
-    assert hello_deployment["status"] == "RUNNING"
 
 
 def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, caplog):
@@ -844,7 +800,7 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
 
     def updating_message():
         deployment_status = (
-            serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["default_f"]
+            serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["f"]
         )
         message_substring = "more than 1s to be scheduled."
         return (deployment_status.status == "UPDATING") and (
@@ -874,7 +830,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
     wait_for_condition(
         lambda: serve.status()
         .applications[SERVE_DEFAULT_APP_NAME]
-        .deployments["default_f"]
+        .deployments["f"]
         .status
         == "UNHEALTHY",
         timeout=20,
@@ -884,7 +840,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
         wait_for_condition(
             lambda: serve.status()
             .applications[SERVE_DEFAULT_APP_NAME]
-            .deployments["default_f"]
+            .deployments["f"]
             .status
             == "UPDATING",
             timeout=10,
