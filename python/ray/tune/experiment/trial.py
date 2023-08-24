@@ -1094,6 +1094,7 @@ class Trial:
                 self.latest_checkpoint_result.checkpoint = None
             self.temporary_state.restoring_from = None
             self.run_metadata.invalidate_cache()
+            return
 
         self.checkpoint.dir_or_data = None
         self.temporary_state.restoring_from = None
