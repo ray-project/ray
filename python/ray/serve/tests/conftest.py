@@ -9,8 +9,10 @@ import requests
 import ray
 from ray.tests.conftest import pytest_runtest_makereport, propagate_logs  # noqa
 from ray._private.test_utils import wait_for_condition
+from ray._private.usage import usage_lib
 
 from ray import serve
+from ray.serve.tests.utils import check_ray_stopped, TELEMETRY_ROUTE_PREFIX
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
@@ -145,3 +147,29 @@ def ray_instance(request):
 
     os.environ.clear()
     os.environ.update(original_env_vars)
+
+
+@pytest.fixture
+def manage_ray_with_telemetry(monkeypatch):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv(
+            "RAY_USAGE_STATS_REPORT_URL",
+            f"http://127.0.0.1:8000{TELEMETRY_ROUTE_PREFIX}",
+        )
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(check_ray_stopped, timeout=5)
+        yield
+
+        # Call Python API shutdown() methods to clear global variable state
+        serve.shutdown()
+        ray.shutdown()
+
+        # Reset global state (any keys that may have been set and cached while the
+        # workload was running).
+        usage_lib.reset_global_state()
+
+        # Shut down Ray cluster with CLI
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(check_ray_stopped, timeout=5)
