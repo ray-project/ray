@@ -12,6 +12,7 @@ from ray.air.constants import (  # noqa: F401
     LAZY_CHECKPOINT_MARKER_FILE,
 )
 
+
 def _get_defaults_results_dir() -> str:
     return (
         # This can be overwritten by our libraries
@@ -24,7 +25,6 @@ def _get_defaults_results_dir() -> str:
         # Default
         or Path("~/ray_results").expanduser().as_posix()
     )
-
 
 
 # Autofilled ray.train.report() metrics. Keys should be consistent with Tune.

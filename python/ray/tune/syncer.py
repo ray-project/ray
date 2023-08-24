@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 import logging
 
@@ -18,6 +17,7 @@ class SyncConfig:
 class Syncer:
     def __new__(cls: type, *args, **kwargs):
         raise DeprecationWarning()
+
 
 @DeveloperAPI
 class SyncerCallback:

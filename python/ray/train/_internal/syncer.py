@@ -35,11 +35,6 @@ from ray.air._internal.remote_storage import (
     delete_at_uri,
     is_non_local_path_uri,
 )
-from ray.air.constants import (
-    LAZY_CHECKPOINT_MARKER_FILE,
-    REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE,
-)
-# from ray.tune import TuneError
 from ray.util import log_once
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
@@ -52,53 +47,6 @@ DEFAULT_SYNC_PERIOD = 300
 
 # Default sync timeout after which syncing processes are aborted
 DEFAULT_SYNC_TIMEOUT = 1800
-
-# Trigger first node-to-node sync only after this many iterations arrived
-_DEFAULT_NODE_SYNCING_MIN_ITER_THRESHOLD = 2
-# ... or until at least this much time (in seconds) passed
-_DEFAULT_NODE_SYNCING_MIN_TIME_S_THRESHOLD = 10.0
-
-
-_EXCLUDE_FROM_SYNC = [
-    "./checkpoint_-00001",
-    "./checkpoint_tmp*",
-    "./save_to_object*",
-    "./rank_*",
-    f"./{LAZY_CHECKPOINT_MARKER_FILE}",
-]
-
-
-class _HeadNodeSyncDeprecationWarning(DeprecationWarning):
-    """Error raised when trying to rely on deprecated head node syncing when
-    checkpointing across multiple nodes."""
-
-    pass
-
-
-_SYNC_TO_HEAD_DEPRECATION_MESSAGE = (
-    "Ray AIR no longer supports the synchronization of checkpoints and other "
-    "artifacts from worker nodes to the head node. This means that the "
-    "checkpoints and artifacts saved by trials scheduled on worker nodes will not be "
-    "accessible during the run (e.g., resuming from a checkpoint "
-    "after a failure) or after the run "
-    "(e.g., loading the checkpoint of a trial that ran on an already "
-    "terminated worker node).\n\n"
-    "To fix this issue, configure AIR to use either:\n"
-    "(1) Cloud storage: `RunConfig(storage_path='s3://your/bucket')`\n"
-    "(2) A network filesystem mounted on all nodes: "
-    "`RunConfig(storage_path='/mnt/path/to/nfs_storage')`\n"
-    "See this Github issue for more details on transitioning to cloud storage/NFS "
-    "as well as an explanation on why this functionality is "
-    "being removed: https://github.com/ray-project/ray/issues/37177\n"
-    "If you are already using NFS, you can ignore this warning message.\n\n"
-    "Other temporary workarounds:\n"
-    "- If you want to avoid errors/warnings and continue running with "
-    "syncing explicitly turned off, set `RunConfig(SyncConfig(syncer=None))`\n"
-    "- Or, to re-enable the head node syncing behavior, set the "
-    f"environment variable {REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE}=1\n"
-    "  - **Note that this functionality will tentatively be hard-deprecated in "
-    "Ray 2.7.** See the linked issue for the latest information."
-)
 
 
 @PublicAPI
@@ -509,7 +457,7 @@ class Syncer(abc.ABC):
                 continue
             # Succeeded!
             return
-        raise TuneError(
+        raise RuntimeError(
             f"Failed sync even after {max_retries} retries. "
             f"The latest sync failed with the following error:\n{last_error_traceback}"
         )
@@ -657,7 +605,7 @@ class _BackgroundSyncer(Syncer):
 
     def retry(self):
         if not self._current_cmd:
-            raise TuneError("No sync command set, cannot retry.")
+            raise RuntimeError("No sync command set, cannot retry.")
         cmd, kwargs = self._current_cmd
         self._sync_process = _BackgroundProcess(cmd)
         self._sync_process.start(**kwargs)
