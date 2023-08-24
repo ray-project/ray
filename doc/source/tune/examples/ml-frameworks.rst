@@ -5,7 +5,7 @@ Ray Tune integrates with many popular machine learning frameworks.
 Here you find a few practical examples showing you how to tune your models.
 At the end of these guides you will often find links to even more examples.
 
-.. grid:: 1 2 3 4
+.. grid:: 1 2 4 4
     :gutter: 1
     :class-container: container pb-3
 
@@ -88,3 +88,19 @@ At the end of these guides you will often find links to even more examples.
         .. button-ref:: tune-huggingface-example
 
             A Guide To Tuning Huggingface Transformers With Tune
+    
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: tune_train_tf_example
+
+            End-to-end Example for Tuning a TensorFlow Model
+
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: tune_train_torch_example
+
+            End-to-end Example for Tuning a PyTorch Model with PBT
