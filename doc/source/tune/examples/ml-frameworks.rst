@@ -5,7 +5,7 @@ Ray Tune integrates with many popular machine learning frameworks.
 Here you find a few practical examples showing you how to tune your models.
 At the end of these guides you will often find links to even more examples.
 
-.. grid:: 1 2 4 4
+.. grid:: 1 2 3 4
     :gutter: 1
     :class-container: container pb-3
 
