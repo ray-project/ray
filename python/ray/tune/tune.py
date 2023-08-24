@@ -515,8 +515,7 @@ def run(
         callbacks: List of callbacks that will be called at different
             times in the training loop. Must be instances of the
             ``ray.tune.callback.Callback`` class. If not passed,
-            `LoggerCallback` and `SyncerCallback` callbacks are automatically
-            added.
+            `LoggerCallback` (json/csv/tensorboard) callbacks are automatically added.
         max_concurrent_trials: Maximum number of trials to run
             concurrently. Must be non-negative. If None or 0, no limit will
             be applied. This is achieved by wrapping the ``search_alg`` in
