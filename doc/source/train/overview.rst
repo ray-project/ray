@@ -5,25 +5,33 @@
 Ray Train Overview
 ==================
 
-Ray Train distributes model training without writing distributed logic.
+Ray Train is a Ray AI Library built on top of the open-source Ray framework.
+Developers use the API to scale model training without writing distribution logic or orchestrating compute resources. 
 
-Four main concepts are in the Ray Train library:
+Using Ray Train for distributed model training involves setting up some configurations and wrapper functions.
+The APIs and how-to guides are based on some key concepts and patterns.
+
+.. image:: ./images/train-concepts.svg
+
+<<<<<<<TODO: I submitted a request for this diagram to be professionally done by a designer we have on contract.>>>>>>>
+
+The API is based on four key concepts:
 
 1. :ref:`Ray trainers <train-overview-ray-trainers>` are framework-specific, top-level APIs that execute a single distributed training job.
 2. :ref:`train_func <train-overview-train_func>` is your Python training loop.
 3. :class:`ScalingConfig <ray.train.ScalingConfig>` is the Ray Train configuration class that specifies the aggregate compute resources to allocate to a single training job.
 4. :ref:`Worker <train-overview-workers>` is a process that runs the `train_func` on a cluster. The number of workers generally equals the number of GPUs available in a cluster.
 
-.. https://docs.google.com/drawings/d/1FezcdrXJuxLZzo6Rjz1CHyJzseH8nPFZp6IUepdn3N4/edit
-
 .. _train-overview-ray-trainers:
 
-Ray trainers
+Ray Trainers
 ------------
 
-Ray trainers are wrapper classes around third-party framework trainers. These classes are the interface between Ray Train and third-party trainers. 
-Ray trainers abstract away the details of scaling compute resources that include orchestration of nodes and GPU resource management.
-They are responsible for executing (distributed) training runs.
+Ray Trainers execute distributed training runs. 
+They are wrapper classes around third-party framework trainers. 
+These classes are the interface between Ray Train and third-party trainers. 
+Ray Trainers abstract away the details of scaling compute resources that include orchestration of nodes and GPU resource management.
+
 [TODO: Ask Matt for content]
 
 .. _train-overview-train_func:
@@ -31,10 +39,11 @@ They are responsible for executing (distributed) training runs.
 train_func
 ----------
 
-The train_func is your training loop function to pass to the Ray trainer. 
+The train_func is a user-defined wrapper function that the Ray Trainer dispatches to the distributed processes.
+It contains your training loop function with the addition of logic that provides the context that every worker needs to run the training job. 
 It loads the model, gets the shard of data, does checkpointing, and can have evaluation logic and metrics reporting.
-This function must contain the context that every worker needs to run the training job.
-The Ray trainer dispatches train_func to each worker process.
+train_func is an parameter of the Ray Trainer.
+
 [TODO Is this not needed for tree-based trainers?]
 
 .. _train-key-overview-scalingconfig:
@@ -42,24 +51,41 @@ The Ray trainer dispatches train_func to each worker process.
 ScalingConfig
 -------------
 
-Configure the compute resources on the cluster that are available for the distributed training job, using the :py:class:`~ray.train.ScalingConfig` class.
-Two basic parameters scale your training compute resources:
+Ray Train scales training based on high level scaling parameters. 
+Users specify the number of Worker processes to distribute the training to, using the :py:class:`~ray.train.ScalingConfig` class.
+Two basic parameters scale the training compute resources:
 
-* `num_workers`: Sets the number of workers to launch for a single distributed training job.
-* `use_gpu`: Configures Ray Train to use GPUs or not. 
+* `num_workers`: The number of Workers to launch for a single distributed training job.
+* `use_gpu`: The flag that configures Ray Train to use GPUs or not. 
+
+Examples:
+
+* Single node, single CPU: num_workers=1, use_gpu=false
+* Single node, single GPU: num_workers=1, use_gpu=true
+* Three nodes, GPUs: num_workers=3, use_gpu=true
 
 .. _train-overview-workers:
 
 Workers
 -------
-A worker process runs your training computing. It has a GPU, executes, train_func. Actually a Python process that runs your train_func. Want to have one GPU per worker.
-Can have multiple GPUs per worker. One worker can use multiple nodes and multiple workers can be on one node. Ray manages worker allocating
-compute resources from a pool that the user defines, across compute boundaries.
+
+Ray Train distributes model training compute to Ray Workers. 
+The number of Workers is user-defined and typically equals the aggregate number of GPUs (or CPUs?) in the cluster pool of resources that are allocated to the entire training job.
+Each Worker is a Python process that executes the train_func on a GPU or CPU resource.  
+Ray Train abstracts away the allocation and orchestration of nodes and compute resources for Workers.
+
+Key steps
+---------
+
+Get started with a framework-specific guide to run distributed model training with Ray Train. These guides cover the necessary steps to run Ray Train:
+
+* Launch Ray Trainer
+* Configure model to run on a distributed cluster: train_func
+* Configure sharding of data to cluster nodes: Framework pipeline or Ray Data
+* Configure scale and CPU/GPU resource requirements for your training job: ScalingConfig
 
 Next steps
 ----------
-
-Get started with a framework-specific guide to run distributed model training with Ray Train.
 
 .. tab-set::
 

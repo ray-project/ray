@@ -10,6 +10,8 @@ Ray Train simplifies scaling by abstracting away the details of distributed comp
 Model training on a single node or multiple nodes, uses the same training code, making Ray Train the easiest way to train large models with large datasets.
 Ray Train is one of the Ray AI Libraries, a suite of libraries built on Ray, for scaling machine learning.
 
+<<<<<<INSERT image from Kamil comparing single-node to multi-node training>>>>>>
+
 Ray Train provides Pythonic wrapper classes for many frameworks:
 
 * PyTorch trainers: PyTorch, PyTorch Lightning, HuggingFace Transformers, HuggingFace Accelerate
@@ -68,7 +70,7 @@ Learn more
         **Get Started**
         ^^^
 
-        Start with the guide for the framework you are using.
+        Run distributed model training using framework-specific APIs.
 
         +++
         .. button-ref:: train-pytorch
@@ -76,13 +78,13 @@ Learn more
             :outline:
             :expand:
 
-            Distribute training with PyTorch
+            Start distributed training
     .. grid-item-card::
 
         **User Guides**
         ^^^
 
-        Learn how to use Ray Train, from basic usage to end-to-end guides.
+        Learn how to use Ray Train features, from basic usage to end-to-end guides.
 
         +++
         .. button-ref:: train-user-guides
@@ -97,7 +99,7 @@ Learn more
         **Examples**
         ^^^
 
-        Find both simple and scaling-out examples of using Ray Train.
+        Find both single-node and scaling-out examples.
 
         +++
         .. button-ref:: train-examples
