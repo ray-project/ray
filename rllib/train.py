@@ -3,7 +3,6 @@ import json
 import os
 from pathlib import Path
 import re
-import sys
 import typer
 from typing import Optional
 import uuid
@@ -58,7 +57,7 @@ def _patch_path(path: str):
 def load_experiments_from_file(
     config_file: str,
     file_type: SupportedFileType,
-    stop: Optional[str] = None,
+    stop_override: Optional[str] = None,
     checkpoint_config: Optional[dict] = None,
 ) -> dict:
     """Load experiments from a file. Supports YAML and Python files.
@@ -71,7 +70,7 @@ def load_experiments_from_file(
         config_file: The yaml or python file to be used as experiment definition.
             Must only contain exactly one experiment.
         file_type: One value of the `SupportedFileType` enum (yaml or python).
-        stop: An optional stop json string, only used if file_type is python.
+        stop_override: An optional stop json string, only used if file_type is python.
             If None (and file_type is python), will try to extract stop information
             from a defined `stop` variable in the python file, otherwise, will use {}.
         checkpoint_config: An optional checkpoint config to add to the returned
@@ -85,8 +84,10 @@ def load_experiments_from_file(
     if file_type == SupportedFileType.yaml:
         with open(config_file) as f:
             experiments = yaml.safe_load(f)
-            if stop is not None and stop != "{}":
-                raise ValueError("`stop` criteria only supported for python files.")
+            if stop_override is not None and stop_override != "{}":
+                raise ValueError(
+                    "`stop_override` criteria only supported for python files."
+                )
     # Python file case (ensured by file type enum).
     else:
         # Read in the code and execute it so we'll have access to the `config` and
@@ -97,16 +98,16 @@ def load_experiments_from_file(
         exec(code)
         local_vars = locals()
 
-        if not "config" in local_vars:
+        if "config" not in local_vars:
             raise ValueError(
                 "Your Python file must contain a 'config' variable "
                 "that is an AlgorithmConfig object."
             )
         algo_config = local_vars["config"]
-        if stop is None:
-            stop = local_vars.get("stop", {})
+        if stop_override is None:
+            stop_override = local_vars.get("stop", {})
         else:
-            stop = json.loads(stop)
+            stop_override = json.loads(stop_override)
 
         # Note: we do this gymnastics to support the old format that
         # "run_rllib_experiments" expects. Ideally, we'd just build the config and
@@ -117,7 +118,7 @@ def load_experiments_from_file(
                 "run": algo_config.__class__.__name__.replace("Config", ""),
                 "env": config_dict.get("env"),
                 "config": config_dict,
-                "stop": stop,
+                "stop": stop_override,
             }
         }
 

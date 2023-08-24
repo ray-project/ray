@@ -20,3 +20,7 @@ config = (
         training_ratio=1024,
     )
 )
+
+stop = {
+    "sampler_results/episode_reward_mean": 30.0,
+}
