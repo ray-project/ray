@@ -80,7 +80,7 @@ Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deplo
 `downscale_delay_s` and `upscale_delay_s` control the frequency of doing autoscaling work. For example, if your application takes a long time to do initialization work, you can increase `downscale_delay_s` to make the downscaling happen slowly.
 :::
 
-**upscale_smoothing_factor[default_value=1.0]**: The multiplicative factor to speed up or slow down each upscaling decision. For example, when the application has high traffic volume in short period of time, you can increase `upscale_smoothing_factor` to scale up the resource quickly. You can think of this as a "gain" factor to amplify the response of the autoscaling algorithm.
+**upscale_smoothing_factor[default_value=1.0]**: The multiplicative factor to speed up or slow down each upscaling decision. For example, when the application has high traffic volume in a short period of time, you can increase `upscale_smoothing_factor` to scale up the resource quickly. You can think of this as a "gain" factor to amplify the response of the autoscaling algorithm.
 
 **downscale_smoothing_factor[default_value=1.0]**: The multiplicative factor to speed up or slow down each downscaling decision. For example, if you want your application to be less sensitive to drops in traffic and scale down more conservatively, you can decrease `downscale_smoothing_factor` to slow down the pace of downscaling.
 
