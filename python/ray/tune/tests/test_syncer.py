@@ -26,7 +26,12 @@ from ray.air._internal.remote_storage import (
 from ray.air._internal.uri_utils import URI
 from ray.train.torch import TorchTrainer
 from ray.tune import TuneError
-from ray.tune.syncer import _BackgroundProcess, _DefaultSyncer, Syncer, SyncConfig
+from ray.train._internal.syncer import (
+    _BackgroundProcess,
+    _DefaultSyncer,
+    Syncer,
+    SyncConfig,
+)
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 
 
@@ -847,7 +852,7 @@ def test_final_experiment_checkpoint_sync(ray_start_2_cpus, tmpdir):
         run_config=RunConfig(
             name="exp_name",
             storage_path="memory:///test_upload_dir",
-            sync_config=tune.SyncConfig(syncer=syncer),
+            sync_config=train.SyncConfig(syncer=syncer),
         ),
     )
     results = tuner.fit()

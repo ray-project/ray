@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
-    from ray.tune.syncer import SyncConfig
+    from ray.train import SyncConfig
     from ray.tune.experimental.output import AirVerbosity
     from ray.tune.utils.log import Verbosity
     from ray.tune.execution.placement_groups import PlacementGroupFactory
@@ -727,7 +727,7 @@ class RunConfig:
             (any state of the callback will not be checkpointed by Tune
             and thus will not take effect in resumed runs).
         failure_config: Failure mode configuration.
-        sync_config: Configuration object for syncing. See tune.SyncConfig.
+        sync_config: Configuration object for syncing. See train.SyncConfig.
         checkpoint_config: Checkpointing configuration.
         progress_reporter: Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
@@ -849,7 +849,7 @@ class RunConfig:
             )
 
     def __repr__(self):
-        from ray.tune.syncer import SyncConfig
+        from ray.train import SyncConfig
 
         return _repr_dataclass(
             self,

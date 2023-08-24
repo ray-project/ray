@@ -4,7 +4,6 @@ from typing import Collection, List, Optional, Type, Union, TYPE_CHECKING
 
 from ray.tune.callback import Callback, CallbackList
 
-from ray.tune.syncer import SyncConfig
 from ray.tune.logger import (
     CSVLoggerCallback,
     CSVLogger,
@@ -39,7 +38,6 @@ def _get_artifact_templates_for_callbacks(
 def _create_default_callbacks(
     callbacks: Optional[List[Callback]],
     *,
-    sync_config: SyncConfig,
     air_verbosity: Optional["AirVerbosity"] = None,
     entrypoint: Optional[str] = None,
     metric: Optional[str] = None,

@@ -960,7 +960,6 @@ def run(
     # Create default logging + syncer callbacks
     callbacks = _create_default_callbacks(
         callbacks,
-        sync_config=sync_config,
         air_verbosity=air_verbosity,
         entrypoint=_entrypoint,
         config=config,

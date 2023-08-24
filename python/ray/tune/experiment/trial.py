@@ -53,7 +53,7 @@ from ray.tune.result import (
     DEFAULT_EXPERIMENT_NAME,
     _get_defaults_results_dir,
 )
-from ray.tune.syncer import SyncConfig
+from ray.train import SyncConfig
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,

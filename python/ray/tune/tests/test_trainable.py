@@ -17,8 +17,8 @@ from ray.air._internal.remote_storage import (
     delete_at_uri,
 )
 from ray.train._internal.storage import StorageContext, _use_storage_context
+from ray.train._internal.syncer import _DefaultSyncer
 from ray.tune.logger import NoopLogger
-from ray.tune.syncer import _DefaultSyncer
 from ray.tune.trainable import wrap_function
 
 
@@ -172,7 +172,7 @@ def test_sync_timeout(tmpdir, monkeypatch, hanging):
     trainable = SavingTrainable(
         "object",
         remote_checkpoint_dir=f"memory:///test/location_hanging_{hanging}",
-        sync_config=tune.SyncConfig(syncer=HangingSyncer(sync_timeout=0.5)),
+        sync_config=train.SyncConfig(syncer=HangingSyncer(sync_timeout=0.5)),
     )
 
     with patch("ray.air.checkpoint.upload_to_uri", _hanging_upload):
@@ -211,7 +211,7 @@ def test_find_latest_checkpoint_local(tmpdir):
         "object",
         logger_creator=_logger,
         remote_checkpoint_dir=None,
-        sync_config=tune.SyncConfig(sync_timeout=0.5),
+        sync_config=train.SyncConfig(sync_timeout=0.5),
     )
     assert trainable._get_latest_local_available_checkpoint() is None
 
@@ -258,7 +258,7 @@ def test_find_latest_checkpoint_remote(tmpdir):
         "object",
         logger_creator=_logger,
         remote_checkpoint_dir=remote_uri,
-        sync_config=tune.SyncConfig(sync_timeout=0.5),
+        sync_config=train.SyncConfig(sync_timeout=0.5),
     )
     assert trainable._get_latest_remote_available_checkpoint() is None
 
@@ -317,7 +317,7 @@ def test_recover_from_latest(tmpdir, upload_uri, fetch_from_cloud):
         "object",
         logger_creator=_logger,
         remote_checkpoint_dir=remote_checkpoint_dir,
-        sync_config=tune.SyncConfig(sync_timeout=0.5),
+        sync_config=train.SyncConfig(sync_timeout=0.5),
     )
 
     assert trainable._get_latest_available_checkpoint() is None
@@ -345,7 +345,7 @@ def test_recover_from_latest(tmpdir, upload_uri, fetch_from_cloud):
         "object",
         logger_creator=_logger,
         remote_checkpoint_dir=remote_checkpoint_dir,
-        sync_config=tune.SyncConfig(sync_timeout=0.5),
+        sync_config=train.SyncConfig(sync_timeout=0.5),
     )
 
     if remote_checkpoint_dir and fetch_from_cloud:

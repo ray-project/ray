@@ -186,6 +186,12 @@ or use a custom logging library that requires multi-process logging.
 For example, you may want to do this if you're trying to log images to TensorBoard.
 We refer to these saved files as **trial artifacts**.
 
+.. warning::
+
+    Trial artifacts are *not* uploaded automatically from remote workers
+    to the `RunConfig(storage_path)`. Instead, you should manually upload these files
+    to the shared storage if you want access to them after training.
+
 You can save trial artifacts directly in the trainable, as shown below:
 
 .. tip:: Make sure that any logging calls or objects stay within scope of the Trainable.
@@ -268,42 +274,6 @@ for demonstation purposes, and it highlights that the third-party library
 should be configured to log to the Trainable's *working directory.* By default,
 the current working directory of both functional and class trainables is set to the
 corresponding trial directory once it's been launched as a remote Ray actor.
-
-.. warning::
-
-    When running in a multi-node cluster using the *deprecated* :ref:`head node storage option <tune-default-syncing>`,
-    trial artifacts are synchronized to the driver node under the specified path.
-    This will allow you to visualize and analyze logs of all distributed training workers on a single machine.
-
-When :ref:`specifying a cloud upload directory <tune-cloud-checkpointing>`, trial artifacts are uploaded to that cloud bucket
-for later analysis. Note that the driver node does not necessarily contain
-artifacts from *all* trials -- only the ones that were running on that node.
-To disable artifacts from being uploaded to the cloud, set ``SyncConfig(sync_artifacts=False)`` in :class:`~ray.tune.syncer.SyncConfig`.
-
-.. warning::
-
-    Appending to trial artifacts upon restoration is not supported.
-    As a workaround, save trial artifacts to separate files with unique filenames.
-
-    For example, instead of doing this:
-
-    .. code-block:: python
-
-        def appending_train_fn(config):
-            for i in range(config["num_epochs"]):
-                with open("./artifact.txt", "a") as f:
-                    f.write(f"Some data about iteration {i}\n")
-
-    Log artifacts as independent files with unique filenames:
-
-    .. code-block:: python
-
-        def separate_files_train_fn(config):
-            for i in range(config["num_epochs"]):
-                with open(f"./artifact_{i}.txt", "w") as f:
-                    f.write(f"Some data about iteration {i}\n")
-
-    If you are running into issues, `file an issue <https://github.com/ray-project/ray/issues>`_
 
 
 How to Build Custom Tune Loggers?

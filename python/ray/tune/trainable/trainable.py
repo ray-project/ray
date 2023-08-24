@@ -138,7 +138,7 @@ class Trainable:
                 This is **per trial** directory,
                 which is different from **per checkpoint** directory.
             sync_config: Configuration object for syncing.
-                See :class:`~ray.tune.syncer.SyncConfig`.
+                See :class:`~ray.train.SyncConfig`.
         """
 
         self.config = config or {}
