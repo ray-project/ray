@@ -1,21 +1,22 @@
 import os
 from functools import partial
 from multiprocessing import Pool
-from typing import List, Dict, DefaultDict
+from typing import DefaultDict, Dict, List
 
-import requests
 import pytest
+import requests
+import starlette
+from fastapi import FastAPI
 
 import ray
+import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.utils import block_until_http_ready
-import ray.util.state as state_api
-from fastapi import FastAPI
-from ray.serve.metrics import Counter, Histogram, Gauge
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
+from ray.serve._private.utils import block_until_http_ready
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
+from ray.serve.metrics import Counter, Gauge, Histogram
 
 
 @pytest.fixture
@@ -297,16 +298,23 @@ def test_http_redirect_metrics(serve_start_shutdown):
                 assert match_metric[key] == metric_dict[key]
 
     @serve.deployment
-    class Model:
-        def __call__(self, *args):
-            return "123"
+    def basic(_):
+        return starlette.responses.Response("Hello, world!", media_type="text/plain")
 
-    serve.run(
-        DAGDriver.bind(Model.bind(), http_adapter=json_request), route_prefix="/bar"
-    )
-    resp = requests.get("http://localhost:8000/bar", json=["123"])
+    basic_app = basic.bind()
+
+    @serve.deployment
+    def redirect(_):
+        return starlette.responses.RedirectResponse(url="http://127.0.0.1:8000/basic")
+
+    redirect_app = redirect.bind()
+
+    serve.run(basic_app, name="basic", route_prefix="/basic")
+    serve.run(redirect_app)
+
+    resp = requests.get("http://127.0.0.1:8000/")
     assert resp.status_code == 200
-    assert resp.text == '"123"'
+    assert resp.text == "Hello, world!"
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_num_http_requests")) == 2,
@@ -315,13 +323,13 @@ def test_http_redirect_metrics(serve_start_shutdown):
     num_http_requests = get_metric_dictionaries("serve_num_http_requests")
     expected_output = [
         {
-            "route": "/bar/",
-            "application": "default",
+            "route": "/basic",
+            "application": "basic",
             "method": "GET",
             "status_code": "200",
         },
         {
-            "route": "/bar",
+            "route": "/",
             "application": "default",
             "method": "GET",
             "status_code": "307",
@@ -335,8 +343,8 @@ def test_http_redirect_metrics(serve_start_shutdown):
     )
     http_latency = get_metric_dictionaries("serve_num_http_requests")
     expected_output = [
-        {"route": "/bar/", "application": "default", "status_code": "200"},
-        {"route": "/bar", "application": "default", "status_code": "307"},
+        {"route": "/basic", "application": "basic", "status_code": "200"},
+        {"route": "/", "application": "default", "status_code": "307"},
     ]
     verify_metrics_with_route(http_latency, expected_output)
 
