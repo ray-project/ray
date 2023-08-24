@@ -130,14 +130,31 @@ def get_spark_session():
     return spark_session
 
 
+# This mapping needs to be updated according to
+# new spark versions.
+_spark_delta_core_version_mapping = {
+    "3.3.0": "2.1.0",
+    "3.3.1": "2.2.0",
+    "3.3.2": "2.3.0",
+    "3.4.0": "2.4.0",
+}
+
+
 def get_or_create_spark_session_for_delta():
+    import pyspark
     from pyspark.sql import SparkSession
+
+    spark_version = pyspark.__version__
+    if spark_version not in _spark_delta_core_version_mapping:
+        raise RuntimeError(
+            f"Spark version {spark_version} is not supported for Delta Lake. "
+        )
+    delta_core_version = _spark_delta_core_version_mapping[spark_version]
 
     spark_session = (
         SparkSession.builder.config(
-            # This package version should vary with the Spark version.
             "spark.jars.packages",
-            "io.delta:delta-core_2.12:2.2.0",
+            f"io.delta:delta-core_2.12:{delta_core_version}",
         )
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config(
