@@ -1,7 +1,7 @@
 import logging
 import pytest
 import async_timeout
-from ray.dashboard.modules.state.state_head import filter_events
+from ray.dashboard.modules.state.state_utils import filter_events
 
 logger = logging.getLogger(__name__)
 

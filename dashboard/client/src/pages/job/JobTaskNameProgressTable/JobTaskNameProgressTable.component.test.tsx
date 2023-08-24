@@ -44,3 +44,5 @@ describe("JobTaskNameProgressTable", () => {
     expect(screen.getByText("task_b")).toBeInTheDocument();
   });
 });
+
+

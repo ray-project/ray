@@ -21,7 +21,7 @@ export enum TypeTaskType {
   DRIVER_TASK = "DRIVER_TASK",
 }
 
-export type Task = {
+export type –Task = {
   task_id: string;
   name: string;
   state: TypeTaskStatus;
