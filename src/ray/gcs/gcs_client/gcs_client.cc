@@ -187,8 +187,8 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
         RAY_LOG(DEBUG) << "Received cluster ID from GCS server: " << cluster_id_;
         RAY_CHECK(!cluster_id_.IsNil());
         break;
-      } else if (!connect_status.IsGrpcError()) {
-        return HandleGcsError(reply.status());
+      } else if ((!connect_status.IsGrpcError()) && !connect_status.IsTimedOut()) {
+        RAY_RETURN_NOT_OK(connect_status);
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
