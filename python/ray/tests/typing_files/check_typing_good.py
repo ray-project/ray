@@ -28,5 +28,7 @@ print(g.remote(object_ref_str))
 # Make sure there can be mixed T0 and ObjectRef[T1] for args
 print(h.remote(object_ref_str, 100))
 
+ready, unready = ray.wait([object_ref_str])
+
 # Make sure the return type is checked.
 xy = ray.get(object_ref_str) + "y"

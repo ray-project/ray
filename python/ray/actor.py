@@ -1322,7 +1322,7 @@ class ActorHandle:
             # Local mode
             return cls(
                 # TODO(swang): Accessing the worker's current task ID is not
-                # thread-safe.x
+                # thread-safe.
                 state["actor_language"],
                 state["actor_id"],
                 state["method_is_generator"],

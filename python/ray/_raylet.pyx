@@ -30,7 +30,7 @@ from typing import (
     Any,
     Optional,
     Generator,
-    AsyncGenerator
+    AsyncGenerator,
 )
 
 import contextvars
@@ -315,7 +315,7 @@ class StreamingObjectRefGenerator:
     def close(self):
         raise NotImplementedError("`gen.close` is not supported.")
 
-    def __aiter__(self):
+    def __aiter__(self) -> "StreamingObjectRefGenerator":
         return self
 
     async def __anext__(self):
@@ -469,7 +469,7 @@ class StreamingObjectRefGenerator:
                 raise StopIteration
         return ref
 
-    async def _suppress_exceptions(self, ref: ObjectRef):
+    async def _suppress_exceptions(self, ref: ObjectRef) -> None:
         # Wrap a streamed ref to avoid asyncio warnings about not retrieving
         # the exception when we are just waiting for the ref to become ready.
         # The exception will get returned (or warned) to the user once they

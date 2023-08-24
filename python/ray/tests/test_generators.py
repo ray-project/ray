@@ -315,15 +315,16 @@ def test_dynamic_generator(
         )
     )
 
-    # Normal remote functions don't work with num_returns="dynamic".
-    @ray.remote(num_returns=num_returns_type)
-    def static(num_returns):
-        return list(range(num_returns))
+    if num_returns_type == "dynamic":
+        # Normal remote functions don't work with num_returns="dynamic".
+        @ray.remote(num_returns=num_returns_type)
+        def static(num_returns):
+            return list(range(num_returns))
 
-    with pytest.raises(ray.exceptions.RayTaskError):
-        gen = ray.get(static.remote(3))
-        for ref in gen:
-            ray.get(ref)
+        with pytest.raises(ray.exceptions.RayTaskError):
+            gen = ray.get(static.remote(3))
+            for ref in gen:
+                ray.get(ref)
 
 
 @pytest.mark.parametrize("num_returns_type", ["dynamic", None])

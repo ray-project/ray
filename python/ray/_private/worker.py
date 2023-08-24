@@ -146,7 +146,7 @@ class RemoteFunction0(Generic[R, T0]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg0: "Union[T0, RayWaitable[T0]]",
     ) -> "RayWaitable[R]":
         ...
 
@@ -163,8 +163,8 @@ class RemoteFunction1(Generic[R, T0, T1]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg0: "Union[T0, RayWaitable[T0]]",
+        __arg1: "Union[T1, RayWaitable[T1]]",
     ) -> "RayWaitable[R]":
         ...
 
@@ -182,9 +182,9 @@ class RemoteFunction2(Generic[R, T0, T1, T2]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg0: "Union[T0, RayWaitable[T0]]",
+        __arg1: "Union[T1, RayWaitable[T1]]",
+        __arg2: "Union[T2, RayWaitable[T2]]",
     ) -> "RayWaitable[R]":
         ...
 
@@ -203,10 +203,10 @@ class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg0: "Union[T0, RayWaitable[T0]]",
+        __arg1: "Union[T1, RayWaitable[T1]]",
+        __arg2: "Union[T2, RayWaitable[T2]]",
+        __arg3: "Union[T3, RayWaitable[T3]]",
     ) -> "RayWaitable[R]":
         ...
 
@@ -226,11 +226,11 @@ class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg0: "Union[T0, RayWaitable[T0]]",
+        __arg1: "Union[T1, RayWaitable[T1]]",
+        __arg2: "Union[T2, RayWaitable[T2]]",
+        __arg3: "Union[T3, RayWaitable[T3]]",
+        __arg4: "Union[T4, RayWaitable[T4]]",
     ) -> "RayWaitable[R]":
         ...
 
@@ -251,12 +251,12 @@ class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg0: "Union[T0, RayWaitable[T0]]",
+        __arg1: "Union[T1, RayWaitable[T1]]",
+        __arg2: "Union[T2, RayWaitable[T2]]",
+        __arg3: "Union[T3, RayWaitable[T3]]",
+        __arg4: "Union[T4, RayWaitable[T4]]",
+        __arg5: "Union[T5, RayWaitable[T5]]",
     ) -> "RayWaitable[R]":
         ...
 
@@ -278,13 +278,13 @@ class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg0: "Union[T0, RayWaitable[T0]]",
+        __arg1: "Union[T1, RayWaitable[T1]]",
+        __arg2: "Union[T2, RayWaitable[T2]]",
+        __arg3: "Union[T3, RayWaitable[T3]]",
+        __arg4: "Union[T4, RayWaitable[T4]]",
+        __arg5: "Union[T5, RayWaitable[T5]]",
+        __arg6: "Union[T6, RayWaitable[T6]]",
     ) -> "RayWaitable[R]":
         ...
 
@@ -307,14 +307,14 @@ class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-        __arg6: "Union[T6, ObjectRef[T6]]",
-        __arg7: "Union[T7, ObjectRef[T7]]",
+        __arg0: "Union[T0, RayWaitable[T0]]",
+        __arg1: "Union[T1, RayWaitable[T1]]",
+        __arg2: "Union[T2, RayWaitable[T2]]",
+        __arg3: "Union[T3, RayWaitable[T3]]",
+        __arg4: "Union[T4, RayWaitable[T4]]",
+        __arg5: "Union[T5, RayWaitable[T5]]",
+        __arg6: "Union[T6, RayWaitable[T6]]",
+        __arg7: "Union[T7, RayWaitable[T7]]",
     ) -> "RayWaitable[R]":
         ...
 
@@ -340,15 +340,15 @@ class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-        __arg6: "Union[T6, ObjectRef[T6]]",
-        __arg7: "Union[T7, ObjectRef[T7]]",
-        __arg8: "Union[T8, ObjectRef[T8]]",
+        __arg0: "Union[T0, RayWaitable[T0]]",
+        __arg1: "Union[T1, RayWaitable[T1]]",
+        __arg2: "Union[T2, RayWaitable[T2]]",
+        __arg3: "Union[T3, RayWaitable[T3]]",
+        __arg4: "Union[T4, RayWaitable[T4]]",
+        __arg5: "Union[T5, RayWaitable[T5]]",
+        __arg6: "Union[T6, RayWaitable[T6]]",
+        __arg7: "Union[T7, RayWaitable[T7]]",
+        __arg8: "Union[T8, RayWaitable[T8]]",
     ) -> "RayWaitable[R]":
         ...
 
@@ -375,16 +375,16 @@ class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
 
     def remote(
         self,
-        __arg0: "Union[T0, ObjectRef[T0]]",
-        __arg1: "Union[T1, ObjectRef[T1]]",
-        __arg2: "Union[T2, ObjectRef[T2]]",
-        __arg3: "Union[T3, ObjectRef[T3]]",
-        __arg4: "Union[T4, ObjectRef[T4]]",
-        __arg5: "Union[T5, ObjectRef[T5]]",
-        __arg6: "Union[T6, ObjectRef[T6]]",
-        __arg7: "Union[T7, ObjectRef[T7]]",
-        __arg8: "Union[T8, ObjectRef[T8]]",
-        __arg9: "Union[T9, ObjectRef[T9]]",
+        __arg0: "Union[T0, RayWaitable[T0]]",
+        __arg1: "Union[T1, RayWaitable[T1]]",
+        __arg2: "Union[T2, RayWaitable[T2]]",
+        __arg3: "Union[T3, RayWaitable[T3]]",
+        __arg4: "Union[T4, RayWaitable[T4]]",
+        __arg5: "Union[T5, RayWaitable[T5]]",
+        __arg6: "Union[T6, RayWaitable[T6]]",
+        __arg7: "Union[T7, RayWaitable[T7]]",
+        __arg8: "Union[T8, RayWaitable[T8]]",
+        __arg9: "Union[T9, RayWaitable[T9]]",
     ) -> "RayWaitable[R]":
         ...
 
@@ -2453,31 +2453,33 @@ blocking_get_inside_async_warned = False
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
+    object_refs: "Sequence[RayWaitable[Any]]", *, timeout: Optional[float] = None
 ) -> List[Any]:
     ...
 
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
+    object_refs: "Sequence[RayWaitable[R]]", *, timeout: Optional[float] = None
 ) -> List[R]:
     ...
 
 
 @overload
-def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
+def get(object_refs: "RayWaitable[R]", *, timeout: Optional[float] = None) -> R:
     ...
 
 
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union[ray.ObjectRef, Sequence[ray.ObjectRef]],
+    object_refs: Union["RayWaitable[Any]", Sequence["RayWaitable[Any]"]],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
     """Get a remote object or a list of remote objects from the object store.
+
+    Passing :class:`~StreamingObjectRefGenerators` is not allowed.
 
     This method blocks until the object corresponding to the object ref is
     available in the local object store. If this object is not in the local
@@ -2492,8 +2494,6 @@ def get(
     This method will issue a warning if it's running inside async context,
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
-
-    :class:`~StreamingObjectRefGenerators` is not allowed as an input.
 
     Related patterns and anti-patterns:
 
@@ -2549,7 +2549,8 @@ def get(
 
         if not isinstance(object_refs, list):
             raise ValueError(
-                "'object_refs' must either be an ObjectRef or a list of ObjectRefs."
+                f"Invalid type of object refs, {type(object_refs)}, is given. "
+                "'object_refs' must either be an ObjectRef or a list of ObjectRefs. "
             )
 
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
@@ -2665,18 +2666,23 @@ def wait(
     `ray_waitables` is a list of :class:`~ObjectRefs` and
     :class:`~StreamingObjectRefGenerators`.
 
+    The first list contains ray_waitables that are ready. Ready means
+    different depending on if the ray waitable is ObjectRef or
+    StreamingObjectRefGenerators. The second list contains the
+    rest of ray_waitables. The second list may contain ray_waitables
+    that are ready if num_returns < num_ready_waitables. The first list
+    (ready list) can contain the result upto `num_returns`.
+
     ObjectRef:
-        The first list consists of object refs that
-        correspond to objects that are available in the object store.
-        The second list corresponds to the rest of the object refs
-        (which may or may not be ready).
+        object refs that correspond to objects that are available
+        in the object store are in the first list.
+        The rest of the object refs are in the second list.
 
     StreamingObjectRefGenerators:
-            The first list consists of generators in which the next ref
-            in the genreator correspond to objects that are
-            available in the object store.
-            The second list corresponds to the rest of the generator
-            in which the next item is not ready in the object store.
+            Generators whose next reference (that will be obtained
+            via `next(generator)`) has a corresponding object available
+            in the object store are in the first list.
+            All other generators are placed in the second list.
 
     Ordering of the input list of ray_waitables is preserved. That is, if A
     precedes B in the input list, and both are in the ready list, then A will
@@ -2858,8 +2864,8 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 @PublicAPI
 @client_mode_hook
 def cancel(
-    ray_waitable: RayWaitable[Any], *, force: bool = False, recursive: bool = True
-):
+    ray_waitable: RayWaitable[R], *, force: bool = False, recursive: bool = True
+) -> None:
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If

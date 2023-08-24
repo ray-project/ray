@@ -15,7 +15,8 @@ def test_typing_good():
     # the path specified TYPING_TEST_DIRS
     if not os.path.exists(script):
         script = os.path.join(TYPING_TEST_DIRS, script)
-    _, msg, status_code = mypy_api.run([script])
+    out, msg, status_code = mypy_api.run([script])
+    print(out)
     assert status_code == 0, msg
 
 
