@@ -19,10 +19,10 @@ try:
     # Due to HF Dataset's dynamic module system, we need to dynamically import the
     # datasets_modules module on every actor when training.
     # We accomplish this by simply running the following bit of code directly
-    # in module you are currently viewing. This ensures that when we
-    # unpickle the Dataset, it will be ran before pickle tries to
+    # in the module you are currently viewing. This ensures that when we
+    # unpickle the Dataset, it runs before pickle tries to
     # import datasets_modules and prevents an exception from being thrown.
-    # Same logic is present inside ray's TransformersTrainer and HF Transformers Ray
+    # Same logic is present inside Ray's TransformersTrainer and HF Transformers Ray
     # integration: https://github.com/huggingface/transformers/blob/\
     # 7d5fde991d598370d961be8cb7add6541e2b59ce/src/transformers/integrations.py#L271
     # Also see https://github.com/ray-project/ray/issues/28084

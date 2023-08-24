@@ -2196,7 +2196,7 @@ def from_huggingface(
         )
     if isinstance(dataset, datasets.Dataset):
         # To get the resulting Arrow table from a Hugging Face Dataset after
-        # applying transformations (e.g. train_test_split(), shard(), select()),
+        # applying transformations (e.g., train_test_split(), shard(), select()),
         # we create a copy of the Arrow table, which applies the indices
         # mapping from the transformations.
         hf_ds_arrow = dataset.with_format("arrow")
@@ -2205,7 +2205,7 @@ def from_huggingface(
     elif isinstance(dataset, (datasets.DatasetDict, datasets.IterableDatasetDict)):
         available_keys = list(dataset.keys())
         raise DeprecationWarning(
-            "You provided a Hugging Face DatasetDict or IterableDatasetDict "
+            "You provided a Hugging Face DatasetDict or IterableDatasetDict, "
             "which contains multiple datasets, but `from_huggingface` now "
             "only accepts a single Hugging Face Dataset. To convert just "
             "a single Hugging Face Dataset to a Ray Dataset, specify a split. "

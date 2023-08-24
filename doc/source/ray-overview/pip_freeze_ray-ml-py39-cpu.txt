@@ -216,7 +216,7 @@ mlagents-envs==0.28.0
 mlflow==2.4.1
 modin==0.22.2
 monotonic==1.6
-mosaicml==0.15.0
+mosaicml==0.12.1
 mpmath==1.3.0
 msal==1.18.0b1
 msal-extensions==1.0.0

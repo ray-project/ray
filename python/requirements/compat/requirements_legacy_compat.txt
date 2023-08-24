@@ -27,7 +27,4 @@ xgboost_ray==0.1.10
 # Datasets
 pyarrow==6.0.1
 
-# for compatibility with Hugging Face datasets library
-sacremoses
-
 ray[tune,data]
