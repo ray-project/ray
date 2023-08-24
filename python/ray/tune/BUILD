@@ -303,7 +303,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_syncer.py"],
     deps = [":tune_lib", ":conftest"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
