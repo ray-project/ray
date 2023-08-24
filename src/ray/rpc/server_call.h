@@ -31,8 +31,9 @@ namespace rpc {
 
 // Authentication type of ServerCall.
 enum class AuthType {
-  NO_AUTH,    // Do not authenticate (accept all).
-  LAZY_AUTH,  // Accept missing token, but reject wrong token.
+  NO_AUTH,     // Do not authenticate (accept all).
+  LAZY_AUTH,   // Accept missing token, but reject wrong token.
+  EMPTY_AUTH,  // Accept only empty token
 };
 
 /// Get the thread pool for the gRPC server.
@@ -212,6 +213,16 @@ class ServerCallImpl : public ServerCall {
             it != metadata.end() && it->second != cluster_id_.Hex()) {
           RAY_LOG(DEBUG) << "Wrong cluster ID token in request! Expected: "
                          << cluster_id_.Hex() << ", but got: "
+                         << (it == metadata.end() ? "No token!" : it->second);
+          auth_success = false;
+        }
+      } else if constexpr (EnableAuth == AuthType::EMPTY_AUTH) {
+        RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
+        auto &metadata = context_.client_metadata();
+        if (auto it = metadata.find(kClusterIdKey);
+            it != metadata.end() && it->second != ClusterID::Nil().Hex()) {
+          RAY_LOG(DEBUG) << "Cluster ID token in request! Expected Nil, "
+                         << "but got: "
                          << (it == metadata.end() ? "No token!" : it->second);
           auth_success = false;
         }

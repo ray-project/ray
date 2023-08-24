@@ -960,6 +960,24 @@ TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
   }
 }
 
+TEST_P(GcsClientTest, TestGcsEmptyAuth) {
+  RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
+  // Restart GCS.
+  RestartGcsServer();
+  auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+                                     grpc::InsecureChannelCredentials());
+  auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
+  grpc::ClientContext context;
+  StampContext(context);
+  context.set_deadline(std::chrono::system_clock::now() + 1s);
+  const rpc::GetClusterIdRequest request;
+  rpc::GetClusterIdReply reply;
+  auto status = stub->GetClusterId(&context, request, &reply);
+
+  // We expect the wrong cluster ID
+  EXPECT_TRUE(GrpcStatusToRayStatus(status).IsAuthError());
+}
+
 TEST_P(GcsClientTest, TestGcsAuth) {
   RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
   // Restart GCS.
