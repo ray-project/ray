@@ -81,6 +81,12 @@ enum TagKey {
   SERVE_HTTP_PROXY_USED = 23;
   // Whether or not an gRPC proxy was used ("1" if used).
   SERVE_GRPC_PROXY_USED = 24;
+  // Whether the serve.status API was used ("1" if used)
+  SERVE_STATUS_API_USED = 25;
+  // Whether the serve.get_app_handle API was used ("1" if used)
+  SERVE_GET_APP_HANDLE_API_USED = 26;
+  // Whether the serve.get_deployment_handle API was used ("1" if used)
+  SERVE_GET_DEPLOYMENT_HANDLE_API_USED = 27;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of
