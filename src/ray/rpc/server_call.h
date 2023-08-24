@@ -32,8 +32,8 @@ namespace rpc {
 // Authentication type of ServerCall.
 enum class AuthType {
   NO_AUTH,     // Do not authenticate (accept all).
-  LAZY_AUTH,   // Accept missing token, but reject wrong token.
-  EMPTY_AUTH,  // Accept only empty token
+  LAZY_AUTH,   // Accept missing cluster ID, but reject incorrect one.
+  EMPTY_AUTH,  // Accept only empty cluster ID.
 };
 
 /// Get the thread pool for the gRPC server.
@@ -211,9 +211,8 @@ class ServerCallImpl : public ServerCall {
         auto &metadata = context_.client_metadata();
         if (auto it = metadata.find(kClusterIdKey);
             it != metadata.end() && it->second != cluster_id_.Hex()) {
-          RAY_LOG(DEBUG) << "Wrong cluster ID token in request! Expected: "
-                         << cluster_id_.Hex() << ", but got: "
-                         << (it == metadata.end() ? "No token!" : it->second);
+          RAY_LOG(WARNING) << "Wrong cluster ID token in request! Expected: "
+                           << cluster_id_.Hex() << ", but got: " << it->second;
           auth_success = false;
         }
       } else if constexpr (EnableAuth == AuthType::EMPTY_AUTH) {
@@ -221,15 +220,13 @@ class ServerCallImpl : public ServerCall {
         auto &metadata = context_.client_metadata();
         if (auto it = metadata.find(kClusterIdKey);
             it != metadata.end() && it->second != ClusterID::Nil().Hex()) {
-          RAY_LOG(DEBUG) << "Cluster ID token in request! Expected Nil, "
-                         << "but got: "
-                         << (it == metadata.end() ? "No token!" : it->second);
+          RAY_LOG(WARNING) << "Cluster ID token in request! Expected Nil, "
+                           << "but got: " << it->second;
           auth_success = false;
         }
       } else {
         if (!cluster_id_.IsNil()) {
-          RAY_LOG_EVERY_MS(WARNING, 5000)
-              << "Unexpected cluster ID in server call! " << cluster_id_;
+          RAY_LOG_EVERY_MS(WARNING, 5000) << "Unexpected cluster ID in server call!";
         }
       }
     }

@@ -839,6 +839,10 @@ print("DONE")
     indirect=True,
 )
 def test_cluster_id(ray_start_regular):
+    # Kill GCS and check that raylets kill themselves when not backed by Redis,
+    # and stay alive when backed by Redis.
+    # Raylets should kill themselves due to cluster ID mismatch in the
+    # non-persisted case.
     raylet_proc = ray._private.worker._global_node.all_processes[
         ray_constants.PROCESS_TYPE_RAYLET
     ][0].process
@@ -858,7 +862,7 @@ def test_cluster_id(ray_start_regular):
         # Waiting for raylet to become unhealthy
         wait_for_condition(lambda: not check_raylet_healthy())
     else:
-        # Waiting for raylet to become unhealthy
+        # Waiting for raylet to stay healthy
         for i in range(10):
             assert check_raylet_healthy()
             sleep(1)

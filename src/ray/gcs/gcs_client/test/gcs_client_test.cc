@@ -984,10 +984,13 @@ TEST_P(GcsClientTest, TestGcsAuth) {
   RestartGcsServer();
   auto node_info = Mocker::GenNodeInfo();
   if (!no_redis_) {
+    // If we are backed by Redis, we can reuse cluster ID, so the RPC passes.
     EXPECT_TRUE(RegisterNode(*node_info));
     return;
   }
 
+  // If we are not backed by Redis, we need to first fetch
+  // the new cluster ID, so we expect failure before success.
   EXPECT_FALSE(RegisterNode(*node_info));
   ReconnectClient();
   EXPECT_TRUE(RegisterNode(*node_info));

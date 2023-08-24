@@ -381,7 +381,7 @@ class NodeInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
-    // We only allow raylets to have one cluster ID in their lifetime.
+    // We only allow one cluster ID in the lifetime of a client.
     // So, if a client connects, it should not have a pre-existing different ID.
     RPC_SERVICE_HANDLER_CUSTOM_AUTH(
         NodeInfoGcsService,
