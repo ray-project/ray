@@ -561,7 +561,7 @@ ray::Status NodeManager::RegisterGcs() {
                 RAY_LOG(FATAL)
                     << "GCS returned an authentication error. This may happen when "
                     << "GCS is not backed by a DB and restarted or there is data loss "
-                    << "in the DB.";
+                    << "in the DB. Local cluster ID: " << gcs_client_->GetClusterId();
               }
               *checking_ptr = false;
             },

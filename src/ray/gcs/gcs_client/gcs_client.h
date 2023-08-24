@@ -159,6 +159,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *placement_group_accessor_;
   }
 
+  const ClusterID &GetClusterId() { return client_call_manager_->GetClusterId(); }
+
   /// Get the sub-interface for accessing worker information in GCS.
   /// This function is thread safe.
   virtual InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }

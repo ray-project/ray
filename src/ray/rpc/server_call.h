@@ -237,7 +237,7 @@ class ServerCallImpl : public ServerCall {
       if (auth_success) {
         SendReply(Status::Invalid("HandleServiceClosed"));
       } else {
-        SendReply(Status::AuthError("WrongClusterToken"));
+        SendReply(Status::AuthError("WrongClusterID"));
       }
     }
   }
@@ -260,7 +260,7 @@ class ServerCallImpl : public ServerCall {
     if (!auth_success) {
       boost::asio::post(GetServerCallExecutor(), [this]() {
         SendReply(
-            Status::AuthError("WrongClusterToken: Perhaps the client is accessing GCS "
+            Status::AuthError("WrongClusterID: Perhaps the client is accessing GCS "
                               "after it has restarted."));
       });
     } else {

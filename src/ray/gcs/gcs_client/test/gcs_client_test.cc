@@ -123,8 +123,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   void StampContext(grpc::ClientContext &context) {
     RAY_CHECK(gcs_client_->client_call_manager_)
         << "Cannot stamp context before initializing client call manager.";
-    context.AddMetadata(kClusterIdKey,
-                        gcs_client_->client_call_manager_->cluster_id_.Hex());
+    context.AddMetadata(kClusterIdKey, gcs_client_->GetClusterId().Hex());
   }
 
   void RestartGcsServer() {
