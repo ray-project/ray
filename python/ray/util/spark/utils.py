@@ -1,5 +1,6 @@
 import subprocess
 import os
+from packaging.version import Version
 import sys
 import random
 import threading
@@ -138,6 +139,8 @@ _spark_delta_core_version_mapping = {
     "3.3.2": "2.3.0",
     "3.4.0": "2.4.0",
 }
+MIN_SPARK_VERSION = min(_spark_delta_core_version_mapping)
+MAX_SPARK_VERSION = max(_spark_delta_core_version_mapping)
 
 
 def get_or_create_spark_session_for_delta():
@@ -145,10 +148,12 @@ def get_or_create_spark_session_for_delta():
     from pyspark.sql import SparkSession
 
     spark_version = pyspark.__version__
-    if spark_version not in _spark_delta_core_version_mapping:
+    if Version(spark_version) < Version(MIN_SPARK_VERSION):
         raise RuntimeError(
             f"Spark version {spark_version} is not supported for Delta Lake. "
         )
+    elif Version(spark_version) > Version(MAX_SPARK_VERSION):
+        spark_version = MAX_SPARK_VERSION
     delta_core_version = _spark_delta_core_version_mapping[spark_version]
 
     spark_session = (
