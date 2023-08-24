@@ -140,9 +140,6 @@ CLIENT_CHECK_CREATION_POLLING_INTERVAL_S: float = 0.1
 # Handle metric push interval. (This interval will affect the cold start time period)
 HANDLE_METRIC_PUSH_INTERVAL_S = 10
 
-# Timeout for GCS internal KV service
-RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
-
 # Timeout for GCS RPC request
 RAY_GCS_RPC_TIMEOUT_S = 3.0
 
