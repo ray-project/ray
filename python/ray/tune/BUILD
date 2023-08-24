@@ -405,7 +405,7 @@ py_test(
     name = "test_tuner_restore",
     size = "large",
     srcs = ["tests/test_tuner_restore.py"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
     tags = ["team:ml", "exclusive", "new_storage"],
 )
 
