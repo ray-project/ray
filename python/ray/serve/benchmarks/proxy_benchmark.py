@@ -80,15 +80,16 @@ def build_app(
             return await obj_ref
 
         async def grpc_call(self, raq_data):
-            req.nums
-            obj_ref = await self._handle.remote(await req.body())
+            raw = np.asarray(raq_data.nums)
+            processed = (raw - np.min(raw)) / (np.max(raw) - np.min(raw))
+            obj_ref = await self._handle.remote(processed)
             return await obj_ref
 
     @serve.deployment(
         num_replicas=num_replicas,
         max_concurrent_queries=max_concurrent_queries,
     )
-    class ModelInferencing:
+    class ModelInference:
         def __init__(self):
             # Turn off access log.
             logging.getLogger("ray.serve").setLevel(logging.WARNING)
@@ -103,7 +104,7 @@ def build_app(
             else:
                 return b"ok"
 
-    return DataPreprocessing.bind(Inference.bind())
+    return DataPreprocessing.bind(ModelInference.bind())
 
 
 async def trial(
