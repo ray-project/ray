@@ -453,7 +453,7 @@ class AlphaStar(appo.APPO):
                 sample_results = self._sampling_actor_manager.get_ready()
         # Update sample counters.
         for sample_result in sample_results.values():
-            for (env_steps, agent_steps) in sample_result:
+            for env_steps, agent_steps in sample_result:
                 self._counters[NUM_ENV_STEPS_SAMPLED] += env_steps
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += agent_steps
 

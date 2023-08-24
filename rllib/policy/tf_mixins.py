@@ -297,7 +297,6 @@ class ValueNetworkMixin:
         # When doing GAE or vtrace, we need the value function estimate on the
         # observation.
         if config.get("use_gae") or config.get("vtrace"):
-
             # Input dict is provided to us automatically via the Model's
             # requirements. It's a single-timestep (last one in trajectory)
             # input_dict.

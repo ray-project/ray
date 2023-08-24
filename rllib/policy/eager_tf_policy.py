@@ -17,7 +17,7 @@ from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
@@ -494,7 +494,6 @@ def _build_eager_tf_policy(
             episodes: Optional[List[Episode]] = None,
             **kwargs,
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
             if not self.config.get("eager_tracing") and not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
 
@@ -683,7 +682,6 @@ def _build_eager_tf_policy(
         def compute_gradients(
             self, postprocessed_batch: SampleBatch
         ) -> Tuple[ModelGradients, Dict[str, TensorType]]:
-
             pad_batch_to_sequences_of_same_size(
                 postprocessed_batch,
                 shuffle=False,
@@ -879,7 +877,6 @@ def _build_eager_tf_policy(
                         actions, logp = action_sampler_outputs
                 else:
                     if action_distribution_fn:
-
                         # Try new action_distribution_fn signature, supporting
                         # state_batches and seq_lens.
                         try:
@@ -1056,7 +1053,6 @@ def _build_eager_tf_policy(
                     )
 
         def _stats(self, outputs, samples, grads):
-
             fetches = {}
             if stats_fn:
                 fetches[LEARNER_STATS_KEY] = {

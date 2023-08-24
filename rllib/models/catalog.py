@@ -653,7 +653,6 @@ class ModelCatalog:
                 raise ValueError("ModelV2 class could not be determined!")
 
             if model_config.get("use_lstm") or model_config.get("use_attention"):
-
                 from ray.rllib.models.tf.attention_net import (
                     AttentionWrapper,
                 )
@@ -700,7 +699,6 @@ class ModelCatalog:
                 raise ValueError("ModelV2 class could not be determined!")
 
             if model_config.get("use_lstm") or model_config.get("use_attention"):
-
                 from ray.rllib.models.torch.attention_net import AttentionWrapper
                 from ray.rllib.models.torch.recurrent_net import LSTMWrapper
 
@@ -846,7 +844,6 @@ class ModelCatalog:
     def _get_v2_model_class(
         input_space: gym.Space, model_config: ModelConfigDict, framework: str = "tf"
     ) -> Type[ModelV2]:
-
         VisionNet = None
         ComplexNet = None
 

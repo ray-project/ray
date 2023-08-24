@@ -332,7 +332,6 @@ class DynamicTFPolicy(TFPolicy):
             # Distribution generation is customized, e.g., DQN, DDPG.
             else:
                 if action_distribution_fn:
-
                     # Try new action_distribution_fn signature, supporting
                     # state_batches and seq_lens.
                     in_dict = self._input_dict
@@ -717,7 +716,6 @@ class DynamicTFPolicy(TFPolicy):
     def _initialize_loss_from_dummy_batch(
         self, auto_remove_unneeded_view_reqs: bool = True, stats_fn=None
     ) -> None:
-
         # Create the optimizer/exploration optimizer here. Some initialization
         # steps (e.g. exploration postprocessing) may need this.
         if not self._optimizers:
@@ -1334,7 +1332,6 @@ def _average_gradients(tower_grads):
 
     average_grads = []
     for grad_and_vars in zip(*tower_grads):
-
         # Note that each grad_and_vars looks like the following:
         #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
         grads = []
