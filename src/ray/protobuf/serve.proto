@@ -298,3 +298,16 @@ service UserDefinedService {
 service FruitService {
   rpc FruitStand(FruitAmounts) returns (FruitCosts);
 }
+
+// Used for gRPC benchmark
+message RawData {
+  repeated float nums = 1;
+}
+
+message ModelOutput {
+  float output = 1;
+}
+
+service RayServeBenchmarkService {
+  rpc grpc_call(RawData) returns (ModelOutput);
+}
