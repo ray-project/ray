@@ -307,14 +307,6 @@ py_test(
 )
 
 py_test(
-    name = "test_syncer_callback",
-    size = "medium",
-    srcs = ["tests/test_syncer_callback.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
-)
-
-py_test(
     name = "test_trainable",
     size = "medium",
     srcs = ["tests/test_trainable.py"],
