@@ -43,8 +43,8 @@
       --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest,-new_storage,-needs_credentials
       python/ray/train/...
-    # Only setup credentials in branch builds
-    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    # # Only setup credentials in branch builds
+    # - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
     - python ./ci/env/setup_credentials.py wandb comet
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options)
@@ -363,8 +363,8 @@
       --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest,-no_new_storage,-needs_credentials
       --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
       python/ray/train/...
-    # Only setup credentials in branch builds
-    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    # # Only setup credentials in branch builds
+    # - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
     - python ./ci/env/setup_credentials.py wandb comet
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options)

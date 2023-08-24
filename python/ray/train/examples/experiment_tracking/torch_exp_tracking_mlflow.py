@@ -6,7 +6,7 @@ tempdir = tempfile.mktemp()
 os.environ["SHARED_STORAGE_PATH"] = tempdir
 
 # __start__
-# Run the following script with SHARED_STORAGE_PATH env var set.
+# Run the following script with the SHARED_STORAGE_PATH env var set.
 # The MLflow offline logs will be saved to SHARED_STORAGE_PATH/mlruns.
 
 import mlflow
@@ -24,7 +24,7 @@ assert os.environ.get(
 ), "Please set SHARED_STORAGE_PATH env var."
 
 
-# This function is assuming `save_dir` is set in `config`
+# Assumes you are passing a `save_dir` in `config`
 def train_func(config):
     save_dir = config["save_dir"]
     if ray.train.get_context().get_world_rank() == 0:

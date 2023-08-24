@@ -1,79 +1,89 @@
 .. _train-experiment-tracking-native:
 
-==================================
-Experiment Tracking with Ray Train
-==================================
+===================
+Experiment Tracking
+===================
 
 .. note::
     This guide is relevant for all DataParallelTrainer, including TorchTrainer and TensorflowTrainer.
 
 Most experiment tracking libraries work out-of-the-box with Ray Train. 
-In the following guide, you will learn how to set up code so that your favorite experiment tracking libraries 
-can work with distributed data parallel training with Ray Train. We will conclude the session with debugging
+This guide provides instructions on how to set up the code so that your favorite experiment tracking libraries 
+can work for distributed data parallel training with Ray Train. We will conclude the session with debugging
 tips.
 
 Ray Train lets you use native experiment tracking libraries by customizing your tracking 
-logic inside ``train_loop_per_worker``. 
-This gives you the highest degree of freedom to decide when and where to log params, metrics, 
-models or even media contents. 
-This also allows you to use some native integrations that these tracking frameworks have with 
+logic inside the ``train_loop_per_worker`` function. 
+You can customize when and where to log parameters, metrics, models, or media contents. 
+You can also use some native integrations that these tracking frameworks have with 
 specific training frameworks, for example ``mlflow.pytorch.autolog()``, 
 ``lightning.pytorch.loggers.MLFlowLogger`` etc. 
-In this way, you get to port your experiment tracking logic to Ray Train with minimal change. 
+In this way, you can port your experiment tracking logic to Ray Train with minimal changes. 
 
-How to set up your code to log distributed training experiment
-==============================================================
+Log distributed training experiments
+====================================
 
-Step 1: Decide a tracking service to use
+Step 1: Choose a tracking service to use
 ----------------------------------------
 
-For easy configuration, we recommend the following:
-
-**MLflow:**
-
-- offline mode: file based tracking uri pointing to shared storage path (``mlflow.start_run(tracking_uri=”file:some_shared_storage_path”)``)
-- online mode: externally hosted by Databricks(``mlflow.start_run(tracking_uri=”databricks”)``).
-
-**TensorBoard:**
-
-A shared storage location where all nodes can write to.
+The following tracking service setups have the simplest configurations for remote nodes
+to access and write logs to.
 
 **W&B:**
 
-- offline mode: directory pointing to shared storage path (``wandb.init(dir="some_shared_storage_path")``)
-- online mode: should work out-of-the-box with correct credentials
+- online mode: Should work out-of-the-box with correct credentials
+
+- offline mode: Set Wandb directory to point to a shared storage path: :code:`wandb.init(dir="some_shared_storage_path/wandb")`      
+
+**MLflow:**
+
+- online mode: Start the run with externally hosted MLflow by Databricks: :code:`mlflow.start_run(tracking_uri="databricks")`
+
+- offline mode: Start the run by setting tracking uri to a shared storage path: :code:`mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")`
+
+**TensorBoard:**
+
+- Set up ``SummaryWriter`` to write to a shared storage path: :code:`writer = SummaryWriter("some_shared_storage_path/runs")`
 
 Step 2: Make sure that all nodes and processes have access to credentials
 -------------------------------------------------------------------------
 
-See example below.
+**W&B:**
 
-Step3: Initialize the run 
--------------------------
+- :code:`wandb.login(key="your_api_key")` or :code:`os.environ["WANDB_API_KEY"] = "your_api_key"`
 
-Ray Train provides a training context from where you can grab the 
-training id (:meth:`context.get_trial_id() <ray.train.context.TrainContext.get_trial_id>`) 
-and name (:meth:`context.get_trial_name() <ray.train.context.TrainContext.get_trial_name>`) 
-if desired. 
+**MLflow:**
 
-Step4: Log
-----------
+- This is done by having ``databrickscfg`` accessible by all nodes. See below for
+code snippet.
 
-Dedupe if necessary. Ray Train allows you to only log from rank 0 worker 
-(:meth:`context.get_world_rank() <ray.train.context.TrainContext.get_world_rank>`).
+Step 3: Initialize the run 
+--------------------------
 
-Step5: Finish the run
----------------------
+Ray Train provides a training context that provides access to training identifiers. For example, 
 
-Some frameworks requires a call to mark a run as finished. For example, ``wandb.finish()``.
+* Training ID (:meth:`context.get_trial_id() <ray.train.context.TrainContext.get_trial_id>`) 
+* Training Name (:meth:`context.get_trial_name() <ray.train.context.TrainContext.get_trial_name>`)
+
+Step 4: Log
+-----------
+
+For some logs, every Worker generates an identical copy and saving a single copy is sufficient. 
+Ray Train can save logs from the rank 0 Worker only with the following method:
+:meth:`context.get_world_rank() <ray.train.context.TrainContext.get_world_rank>`.
+
+Step 5: Finish the run
+----------------------
+
+For frameworks that require a call to mark a run as finished, include the appropriate call.
+For example, ``wandb.finish()``.
 
 Code Example
 ============
 
 Let's see how the above works with some code.
 
-In the following session, we will use Wandb and MLflow but the idea should be easily 
-adaptable to other frameworks.
+The following session uses Wandb and MLflow but it is adaptable to other frameworks.
 
 Pytorch
 -------
@@ -83,14 +93,14 @@ Conceptual code snippets
 
 .. tabs::
 
-    .. tab:: wandb(online)
+    .. tab:: Wandb(online)
 
         .. code-block:: python
             
             from ray import train
             import wandb
 
-            # assuming passing API key through config
+            # Assumes you are passing API key through config
             def train_func(config):
                 if train.get_context().get_world_rank() == 0:
                     wandb.login(key=config["wandb_api_key"])
@@ -116,7 +126,7 @@ Conceptual code snippets
                 if train.get_context().get_world_rank() == 0:
                     wandb.finish()
 
-    .. tab:: wandb(offline)
+    .. tab:: Wandb(offline)
 
         .. code-block:: python
             
@@ -148,15 +158,40 @@ Conceptual code snippets
                 if train.get_context().get_world_rank() == 0:
                     wandb.finish()
 
-
-    .. tab:: file based MLflow (offline)
+    .. tab:: MLflow(online)
 
         .. code-block:: python
             
             from ray import train
             import mlflow
 
-            # assuming passing a save dir through config
+            # Run the following on the head node:
+            # $ databricks configure --token
+            # mv ~/.databrickscfg YOUR_SHARED_STORAGE_PATH
+            # This function assumes `databricks_config_file` in config
+            def train_func(config):
+                os.environ["DATABRICKS_CONFIG_FILE"] = config["databricks_config_file"]
+                mlflow.set_tracking_uri("databricks")
+                mlflow.set_experiment_id(...)
+                mlflow.start_run()
+
+                # ...
+
+                loss = optimize()
+
+                metrics = {"loss": loss}
+                # Only report the results from the first worker to mlflow to avoid duplication
+                if train.get_context().get_world_rank() == 0:
+                    mlflow.log_metrics(metrics)
+
+    .. tab:: MLflow(offline)
+
+        .. code-block:: python
+            
+            from ray import train
+            import mlflow
+
+            # Assumes you are passing a save dir through config
             def train_func(config):
                 save_dir = config["save_dir"]
                 if train.get_context().get_world_rank() == 0:
@@ -164,32 +199,6 @@ Conceptual code snippets
                     mlflow.set_tracking_uri(f"file:{save_dir}")
                     mlflow.set_experiment("my_experiment")
                     mlflow.start_run()
-
-                # ...
-
-                loss = optimize()
-
-                metrics = {"loss": loss}
-                # Only report the first worker results to mlflow to avoid dup
-                if train.get_context().get_world_rank() == 0:
-                    mlflow.log_metrics(metrics)
-
-    .. tab:: MLflow externally hosted by databricks (online)
-
-        .. code-block:: python
-            
-            from ray import train
-            import mlflow
-
-            # on head node, run the following:
-            # $ databricks configure --token
-            # mv ~/.databrickscfg YOUR_SHARED_STORAGE_PATH
-            # This function is assuming `databricks_config_file` in config
-            def train_func(config):
-                os.environ["DATABRICKS_CONFIG_FILE"] = config["databricks_config_file"]
-                mlflow.set_tracking_uri("databricks")
-                mlflow.set_experiment_id(...)
-                mlflow.start_run()
 
                 # ...
 
@@ -208,14 +217,14 @@ Runnable code
     .. tab:: Log to Wandb (online)
 
         .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking//torch_exp_tracking_wandb.py
-            :emphasize-lines: 17, 18, 47, 48, 50, 51, 56
+            :emphasize-lines: 17, 18, 48, 49, 51, 52, 57
             :language: python
             :start-after: __start__
 
     .. tab:: Log to file based MLflow (offline)
 
         .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/torch_exp_tracking_mlflow.py
-            :emphasize-lines: 18, 19, 51, 52, 57
+            :emphasize-lines: 21, 22, 54, 55, 61
             :language: python
             :start-after: __start__
 
@@ -234,6 +243,8 @@ just for demonstration purposes.
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_model_dl.py
         :language: python
+
+**Define the training loop that logs**
 
 .. tabs::
 
@@ -276,7 +287,7 @@ just for demonstration purposes.
 Common Errors
 =============
 
-**I have already called ``wandb login`` cli, but still getting 
+**I have already called `wandb login` cli, but still getting 
 "wandb: ERROR api_key not configured (no-tty). 
 call wandb.login(key=[your_api_key])."**
 

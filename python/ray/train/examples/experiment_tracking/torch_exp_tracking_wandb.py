@@ -1,5 +1,5 @@
 # __start__
-# Run the following script with WANDB_API_KEY env var set.
+# Run the following script with the WANDB_API_KEY env var set.
 import os
 import ray
 from ray.train import ScalingConfig
@@ -13,7 +13,7 @@ import wandb
 assert os.environ.get("WANDB_API_KEY", None), "Please set WANDB_API_KEY env var."
 
 
-# This function is assuming `wandb_api_key` is set in `config`
+# Assumes you are passing a `wandb_api_key` in `config`
 def train_func(config):
     if ray.train.get_context().get_world_rank() == 0:
         wandb.login(key=config.get("wandb_api_key", None))

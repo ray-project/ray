@@ -187,8 +187,8 @@ for distributed data loading. The relevant parts are:
 Reporting results
 -----------------
 During training, the training loop should report intermediate results and checkpoints
-to Ray Train. This will log the results to the console output and append them to
-local log files. It will trigger :ref:`checkpoint bookkeeping <train-dl-configure-checkpoints>`.
+to Ray Train. This reporting logs the results to the console output and appends them to
+local log files. The logging also triggers :ref:`checkpoint bookkeeping <train-dl-configure-checkpoints>`.
 
 The easiest way to report your results with Keras is by using the
 :class:`~air.integrations.keras.ReportCheckpointCallback`:
@@ -345,7 +345,7 @@ Loading checkpoints
 
 Further reading
 ---------------
-We explore more topics in our :ref:`User Guides <train-user-guides>`. You may want to look into:
+See :ref:`User Guides <train-user-guides>` to explore more topics:
 
 - :ref:`Experiment tracking <train-experiment-tracking-native>`
 - :ref:`Fault tolerance and training on spot instances <train-fault-tolerance>`

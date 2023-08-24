@@ -52,8 +52,8 @@ py_library(
 py_test(
     name = "lightning_exp_tracking_mlflow",
     size = "small",
-    main = "examples/lightning_exp_tracking_mlflow.py",
-    srcs = ["examples/lightning_exp_tracking_mlflow.py", "examples/lightning_exp_tracking_model_dl.py"],
+    main = "examples/experiment_tracking/lightning_exp_tracking_mlflow.py",
+    srcs = ["examples/experiment_tracking/lightning_exp_tracking_mlflow.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
     tags = ["team:ml", "exclusive", "no_main", "new_storage"],
     deps = [":train_lib"],
 )
@@ -61,8 +61,8 @@ py_test(
 py_test(
     name = "lightning_exp_tracking_tensorboard",
     size = "small",
-    main = "examples/lightning_exp_tracking_tensorboard.py",
-    srcs = ["examples/lightning_exp_tracking_tensorboard.py", "examples/lightning_exp_tracking_model_dl.py"],
+    main = "examples/experiment_tracking/lightning_exp_tracking_tensorboard.py",
+    srcs = ["examples/experiment_tracking/lightning_exp_tracking_tensorboard.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
     tags = ["team:ml", "exclusive", "no_main", "new_storage"],
     deps = [":train_lib"],
 )
@@ -70,8 +70,8 @@ py_test(
 py_test(
     name = "torch_exp_tracking_mlflow",
     size = "small",
-    main = "examples/torch_exp_tracking_mlflow.py",
-    srcs = ["examples/torch_exp_tracking_mlflow.py"],
+    main = "examples/experiment_tracking/torch_exp_tracking_mlflow.py",
+    srcs = ["examples/experiment_tracking/torch_exp_tracking_mlflow.py"],
     tags = ["team:ml", "exclusive", "no_main", "new_storage"],
     deps = [":train_lib"],
 )
@@ -80,8 +80,8 @@ py_test(
 py_test(
     name = "lightning_exp_tracking_wandb",
     size = "small",
-    main = "examples/lightning_exp_tracking_wandb.py",
-    srcs = ["examples/lightning_exp_tracking_wandb.py", "examples/lightning_exp_tracking_model_dl.py"],
+    main = "examples/experiment_tracking/lightning_exp_tracking_wandb.py",
+    srcs = ["examples/experiment_tracking/lightning_exp_tracking_wandb.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
     tags = ["team:ml", "exclusive", "no_main", "new_storage", "needs_credentials"],
     deps = [":train_lib"],
 )
@@ -89,8 +89,8 @@ py_test(
 py_test(
     name = "lightning_exp_tracking_comet",
     size = "small",
-    main = "examples/lightning_exp_tracking_comet.py",
-    srcs = ["examples/lightning_exp_tracking_comet.py", "examples/lightning_exp_tracking_model_dl.py"],
+    main = "examples/experiment_tracking/lightning_exp_tracking_comet.py",
+    srcs = ["examples/experiment_tracking/lightning_exp_tracking_comet.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
     tags = ["team:ml", "exclusive", "no_main", "new_storage", "needs_credentials"],
     deps = [":train_lib"],
 )
@@ -98,8 +98,8 @@ py_test(
 py_test(
     name = "torch_exp_tracking_wandb",
     size = "small",
-    main = "examples/torch_exp_tracking_wandb.py",
-    srcs = ["examples/torch_exp_tracking_wandb.py"],
+    main = "examples/experiment_tracking/torch_exp_tracking_wandb.py",
+    srcs = ["examples/experiment_tracking/torch_exp_tracking_wandb.py"],
     tags = ["team:ml", "exclusive", "no_main", "new_storage", "needs_credentials"],
     deps = [":train_lib"],
 )
