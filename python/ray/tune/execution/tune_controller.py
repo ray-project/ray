@@ -23,6 +23,7 @@ from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
 from ray.train._internal.storage import StorageContext, _use_storage_context
+from ray.train.constants import CHECKPOINT_DIR_NAME
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError, _TuneRestoreError
 from ray.tune.execution.class_cache import _ActorClassCache
@@ -420,7 +421,7 @@ class TuneController:
     @property
     def experiment_path(self) -> str:
         if _use_storage_context():
-            return str(self._storage.storage_prefix / self._storage.experiment_fs_path)
+            return self._storage.experiment_fs_path
 
         return self._legacy_remote_experiment_path or self._legacy_local_experiment_path
 
@@ -1753,6 +1754,14 @@ class TuneController:
             result = trial.last_result
             result.update(done=True)
 
+        # NOTE: This checkpoint dir name metric should only be auto-filled
+        # after we know the trial will save a checkpoint.
+        if _use_storage_context() and not is_duplicate:
+            trial_will_checkpoint = trial.should_checkpoint() or force_checkpoint
+            result[CHECKPOINT_DIR_NAME] = (
+                trial.storage.checkpoint_dir_name if trial_will_checkpoint else None
+            )
+
         self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
         flat_result = flatten_dict(result)
@@ -1910,9 +1919,11 @@ class TuneController:
             return
 
         if storage == CheckpointStorage.MEMORY:
+            # This is now technically a persistent checkpoint, but
+            # we don't resolve it. Instead, we register it directly.
             future = self._schedule_trial_task(
                 trial=trial,
-                method_name="save_to_object",
+                method_name="save",
                 on_result=None,
                 on_error=self._trial_task_failure,
                 _return_future=True,
@@ -2071,7 +2082,7 @@ class TuneController:
         kwargs = {}
 
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
-            method_name = "restore_from_object"
+            method_name = "restore"
             args = (checkpoint.dir_or_data,)
         elif (
             trial.uses_cloud_checkpointing
@@ -2090,9 +2101,9 @@ class TuneController:
             }
         elif trial.sync_on_checkpoint:
             checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint.dir_or_data)
-            obj = Checkpoint.from_directory(checkpoint_path).to_bytes()
+            obj = Checkpoint.from_directory(checkpoint_path)
 
-            method_name = "restore_from_object"
+            method_name = "restore"
             args = (obj,)
         else:
             raise _AbortTrialExecution(

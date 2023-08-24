@@ -6,6 +6,7 @@ from ray.serve._private.common import (
     ApplicationName,
     EndpointInfo,
     EndpointTag,
+    RequestProtocol,
 )
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
@@ -27,9 +28,11 @@ class ProxyRouter(ABC):
 class LongestPrefixRouter(ProxyRouter):
     """Router that performs longest prefix matches on incoming routes."""
 
-    def __init__(self, get_handle: Callable):
+    def __init__(self, get_handle: Callable, protocol: RequestProtocol):
         # Function to get a handle given a name. Used to mock for testing.
         self._get_handle = get_handle
+        # Protocol to config handle
+        self._protocol = protocol
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
         # Endpoints associated with the routes.
@@ -55,15 +58,16 @@ class LongestPrefixRouter(ProxyRouter):
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                self.handles[endpoint] = self._get_handle(
-                    endpoint.name, endpoint.app
-                ).options(
+                handle = self._get_handle(endpoint.name, endpoint.app).options(
                     # Streaming codepath isn't supported for Java.
                     stream=(
                         RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
                         and not info.app_is_cross_language
                     ),
+                    use_new_handle_api=True,
                 )
+                handle._set_request_protocol(self._protocol)
+                self.handles[endpoint] = handle
 
         # Clean up any handles that are no longer used.
         if len(existing_handles) > 0:
@@ -82,12 +86,12 @@ class LongestPrefixRouter(ProxyRouter):
 
     def match_route(
         self, target_route: str
-    ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
+    ) -> Optional[Tuple[str, RayServeHandle, bool]]:
         """Return the longest prefix match among existing routes for the route.
         Args:
             target_route: route to match against.
         Returns:
-            (route, handle, app_name, is_cross_language) if found, else None.
+            (route, handle, is_cross_language) if found, else None.
         """
 
         for route in self.sorted_routes:
@@ -111,7 +115,6 @@ class LongestPrefixRouter(ProxyRouter):
                     return (
                         route,
                         self.handles[endpoint],
-                        endpoint.app,
                         self.app_to_is_cross_language[endpoint.app],
                     )
 
@@ -121,9 +124,11 @@ class LongestPrefixRouter(ProxyRouter):
 class EndpointRouter(ProxyRouter):
     """Router that matches endpoint to return the handle."""
 
-    def __init__(self, get_handle: Callable):
+    def __init__(self, get_handle: Callable, protocol: RequestProtocol):
         # Function to get a handle given a name. Used to mock for testing.
         self._get_handle = get_handle
+        # Protocol to config handle
+        self._protocol = protocol
         # Contains a ServeHandle for each endpoint.
         self.handles: Dict[EndpointTag, RayServeHandle] = dict()
         # Endpoints info associated with endpoints.
@@ -139,15 +144,16 @@ class EndpointRouter(ProxyRouter):
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                self.handles[endpoint] = self._get_handle(
-                    endpoint.name, endpoint.app
-                ).options(
+                handle = self._get_handle(endpoint.name, endpoint.app).options(
                     # Streaming codepath isn't supported for Java.
                     stream=(
                         RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
                         and not info.app_is_cross_language
                     ),
+                    use_new_handle_api=True,
                 )
+                handle._set_request_protocol(self._protocol)
+                self.handles[endpoint] = handle
 
         # Clean up any handles that are no longer used.
         if len(existing_handles) > 0:
@@ -159,22 +165,24 @@ class EndpointRouter(ProxyRouter):
             del self.handles[endpoint]
 
     def get_handle_for_endpoint(
-        self, target_endpoint: str
-    ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
+        self, target_app_name: str
+    ) -> Optional[Tuple[str, RayServeHandle, bool]]:
         """Return the handle that matches with endpoint.
 
         Args:
-            target_endpoint: endpoint to match against.
+            target_app_name: app_name to match against.
         Returns:
-            (route, handle, app_name, is_cross_language) if found, else None.
+            (route, handle, app_name, is_cross_language) for the single app if there
+            is only one, else find the app and handle for exact match. Else return None.
         """
         for endpoint_tag, handle in self.handles.items():
-            if target_endpoint == str(endpoint_tag):
+            # If the target_app_name matches with the endpoint or if
+            # there is only one endpoint.
+            if target_app_name == endpoint_tag.app or len(self.handles) == 1:
                 endpoint_info = self.endpoints[endpoint_tag]
                 return (
                     endpoint_info.route,
                     handle,
-                    endpoint_tag.app,
                     endpoint_info.app_is_cross_language,
                 )
 

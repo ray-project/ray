@@ -30,6 +30,7 @@ def test_handle_options():
     assert only_set_method.method_name == "hi"
     assert only_set_method.multiplexed_model_id == ""
     assert only_set_method.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
@@ -42,6 +43,7 @@ def test_handle_options():
     assert only_set_model_id.method_name == "__call__"
     assert only_set_model_id.multiplexed_model_id == "hi"
     assert only_set_model_id.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
@@ -54,6 +56,7 @@ def test_handle_options():
     assert only_set_stream.method_name == "__call__"
     assert only_set_stream.multiplexed_model_id == ""
     assert only_set_stream.stream is True
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
@@ -140,15 +143,13 @@ def test_sync_handle_in_thread(serve_instance):
     handle = serve.run(f.bind())
 
     def thread_get_handle(deploy):
-        handle = serve.get_deployment_handle(
-            deploy._name, SERVE_DEFAULT_APP_NAME, sync=True
-        )
+        handle = serve.get_deployment_handle(deploy._name, SERVE_DEFAULT_APP_NAME)
         return handle
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         fut = executor.submit(thread_get_handle, f)
         handle = fut.result()
-        assert ray.get(handle.remote()) == "hello"
+        assert handle.remote().result() == "hello"
 
 
 def test_handle_in_endpoint(serve_instance):
@@ -377,18 +378,28 @@ class MyRouter(PowerOfTwoChoicesReplicaScheduler):
     pass
 
 
-def test_handle_options_custom_router(serve_instance):
+@pytest.mark.parametrize("use_new_handle_api", [False, True])
+def test_handle_options_custom_router(serve_instance, use_new_handle_api: bool):
     @serve.deployment
     def echo(name: str):
         return f"Hi {name}"
 
-    handle = serve.run(echo.bind())
-    handle2 = handle.options(_router_cls="ray.serve.tests.test_handle.MyRouter")
-    ray.get(handle2.remote("HI"))
-    print("Router class used", handle2._router._replica_scheduler)
+    handle = serve.run(echo.bind()).options(
+        _router_cls="ray.serve.tests.test_handle.MyRouter",
+        use_new_handle_api=use_new_handle_api,
+    )
+
+    if use_new_handle_api:
+        result = handle.remote("HI").result()
+    else:
+        result = ray.get(handle.remote("HI"))
+
+    assert result == "Hi HI"
+
+    print("Router class used", handle._router._replica_scheduler)
     assert (
-        "MyRouter" in handle2._router._replica_scheduler.__class__.__name__
-    ), handle2._router._replica_scheduler
+        "MyRouter" in handle._router._replica_scheduler.__class__.__name__
+    ), handle._router._replica_scheduler
 
 
 def test_set_request_protocol(serve_instance):

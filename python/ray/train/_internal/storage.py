@@ -26,7 +26,7 @@ except (ImportError, ModuleNotFoundError) as e:
 
 
 from ray.air._internal.filelock import TempFileLock
-from ray.air._internal.uri_utils import URI, is_uri
+from ray.air._internal.uri_utils import is_uri
 from ray.tune.syncer import Syncer, SyncConfig, _BackgroundSyncer
 from ray.tune.result import _get_defaults_results_dir
 
@@ -93,12 +93,14 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
 def _pyarrow_fs_copy_files(
     source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
 ):
-    if isinstance(source_filesystem, pyarrow.fs.S3FileSystem) or isinstance(
-        destination_filesystem, pyarrow.fs.S3FileSystem
-    ):
-        # Workaround multi-threading issue with pyarrow
+    if isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
+        # Workaround multi-threading issue with pyarrow. Note that use_threads=True
+        # is safe for download, just not for uploads, see:
         # https://github.com/apache/arrow/issues/32372
         kwargs.setdefault("use_threads", False)
+
+    # Use a large chunk size to speed up large checkpoint transfers.
+    kwargs.setdefault("chunk_size", 64 * 1024 * 1024)
 
     return pyarrow.fs.copy_files(
         source,
@@ -115,8 +117,13 @@ def _pyarrow_fs_copy_files(
 def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
     assert not is_uri(fs_path), fs_path
 
+    is_dir = _is_directory(fs, fs_path)
+
     try:
-        fs.delete_dir(fs_path)
+        if is_dir:
+            fs.delete_dir(fs_path)
+        else:
+            fs.delete_file(fs_path)
     except Exception:
         logger.exception(f"Caught exception when deleting path at ({fs}, {fs_path}):")
 
@@ -242,7 +249,7 @@ def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     """Returns True if (fs, fs_path) exists."""
     assert not is_uri(fs_path), fs_path
 
-    valid = fs.get_file_info([fs_path])[0]
+    valid = fs.get_file_info(fs_path)
     return valid.type != pyarrow.fs.FileType.NotFound
 
 
@@ -253,7 +260,11 @@ def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
     assert not is_uri(fs_path), fs_path
+
     file_info = fs.get_file_info(fs_path)
+    if file_info.type == pyarrow.fs.FileType.NotFound:
+        raise FileNotFoundError(f"Path not found: ({fs}, {fs_path})")
+
     return not file_info.is_file
 
 
@@ -391,10 +402,6 @@ class StorageContext:
         >>> storage.current_checkpoint_index = 1
         >>> storage.checkpoint_fs_path
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
-        >>> storage.storage_prefix
-        URI<mock://netloc?param=1>
-        >>> str(storage.storage_prefix / storage.experiment_fs_path)
-        'mock://netloc/bucket/path/exp_name?param=1'
 
     Example with storage_path=None:
 
@@ -418,10 +425,6 @@ class StorageContext:
         True
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
         <pyarrow._fs.LocalFileSystem object...
-        >>> storage.storage_prefix
-        URI<.>
-        >>> str(storage.storage_prefix / storage.experiment_fs_path)
-        '/tmp/ray_results/exp_name'
 
     Internal Usage Examples:
     - To copy files to the trial directory on the storage filesystem:
@@ -458,18 +461,6 @@ class StorageContext:
 
         self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
             self.storage_path, storage_filesystem
-        )
-
-        # The storage prefix is part of the URI that is stripped away
-        # from the user-provided `storage_path` by pyarrow's `from_uri`.
-        # Ex: `storage_path="s3://bucket/path?param=1`
-        #  -> `storage_prefix=URI<s3://.?param=1>`
-        # See the doctests for more examples.
-        # This is used to construct URI's of the same format as `storage_path`.
-        # However, we don't track these URI's internally, because pyarrow only
-        # needs to interact with the prefix-stripped fs_path.
-        self.storage_prefix: URI = URI(self.storage_path).rstrip_subpath(
-            Path(self.storage_fs_path)
         )
 
         # Syncing is always needed if a custom `storage_filesystem` is provided.
@@ -626,10 +617,12 @@ class StorageContext:
         The user of this class is responsible for setting the `current_checkpoint_index`
         (e.g., incrementing when needed).
         """
-        checkpoint_dir_name = StorageContext._make_checkpoint_dir_name(
-            self.current_checkpoint_index
-        )
-        return os.path.join(self.trial_fs_path, checkpoint_dir_name)
+        return os.path.join(self.trial_fs_path, self.checkpoint_dir_name)
+
+    @property
+    def checkpoint_dir_name(self) -> str:
+        """The current checkpoint directory name, based on the checkpoint index."""
+        return StorageContext._make_checkpoint_dir_name(self.current_checkpoint_index)
 
     @staticmethod
     def get_experiment_dir_name(run_obj: Union[str, Callable, Type]) -> str:

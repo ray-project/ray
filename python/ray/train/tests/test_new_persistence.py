@@ -4,6 +4,7 @@ from pathlib import Path
 import pickle
 import pytest
 import re
+import shutil
 import tempfile
 import time
 from typing import List, Optional, Tuple
@@ -114,23 +115,6 @@ def _get_local_inspect_dir(
         local_inspect_dir = storage_local_path
 
     return local_inspect_dir, storage_fs_path
-
-
-def _convert_path_to_fs_path(
-    path: str, storage_filesystem: Optional[pyarrow.fs.FileSystem]
-) -> str:
-    """Converts a path to a (prefix-stripped) filesystem path.
-
-    Ex: "s3://bucket/path/to/file" -> "bucket/path/to/file"
-    Ex: "/mnt/nfs/path/to/file" -> "/mnt/nfs/bucket/path/to/file"
-    """
-    if not storage_filesystem:
-        _, fs_path = pyarrow.fs.FileSystem.from_uri(path)
-        return fs_path
-
-    # Otherwise, we're using a custom filesystem,
-    # and the provided path is already the fs path.
-    return path
 
 
 def _get_checkpoint_index(checkpoint_dir_name: str) -> int:
@@ -431,6 +415,9 @@ def test_tuner(
         result_grid = tuner.fit()
         assert result_grid.errors
 
+        if storage_path:
+            shutil.rmtree(LOCAL_CACHE_DIR, ignore_errors=True)
+
         restored_tuner = tune.Tuner.restore(
             path=str(URI(storage_path or str(LOCAL_CACHE_DIR)) / exp_name),
             trainable=trainable,
@@ -448,13 +435,14 @@ def test_tuner(
         )
 
     # First, check that the ResultGrid returns the correct paths.
-    experiment_fs_path = _convert_path_to_fs_path(
-        result_grid.experiment_path, storage_filesystem
-    )
+    print(result_grid)
+    experiment_fs_path = result_grid.experiment_path
+    assert isinstance(result_grid.filesystem, pyarrow.fs.FileSystem), result_grid
     assert experiment_fs_path == os.path.join(storage_fs_path, exp_name)
     assert len(result_grid) == NUM_TRIALS
     for result in result_grid:
-        trial_fs_path = _convert_path_to_fs_path(result.path, storage_filesystem)
+        trial_fs_path = result.path
+        assert isinstance(result.filesystem, pyarrow.fs.FileSystem), result
         assert trial_fs_path.startswith(experiment_fs_path)
         for checkpoint, _ in result.best_checkpoints:
             assert checkpoint.path.startswith(trial_fs_path)
@@ -573,7 +561,8 @@ def test_trainer(
         )
 
     # First, inspect that the result object returns the correct paths.
-    trial_fs_path = _convert_path_to_fs_path(result.path, storage_filesystem)
+    print(result)
+    trial_fs_path = result.path
     assert trial_fs_path.startswith(storage_fs_path)
     for checkpoint, _ in result.best_checkpoints:
         assert checkpoint.path.startswith(trial_fs_path)

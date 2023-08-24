@@ -1432,7 +1432,7 @@ def init(
 
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
-                job_config.runtime_env
+                runtime_env
             )
 
         job_config.set_runtime_env(runtime_env)
@@ -2871,7 +2871,7 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
 
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
-            "ray.cancel() only supported for non-actor object refs. "
+            "ray.cancel() only supported for object refs. "
             f"For actors, try ray.kill(). Got: {type(object_ref)}."
         )
     return worker.core_worker.cancel_task(object_ref, force, recursive)
