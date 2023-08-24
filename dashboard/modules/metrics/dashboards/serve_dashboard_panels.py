@@ -163,7 +163,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{deployment}}",
             ),
         ],
-        grid_pos=GridPos(0, 4, 8, 8),
+        grid_pos=GridPos(0, 2, 8, 8),
     ),
     Panel(
         id=13,
@@ -176,7 +176,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{deployment}}",
             ),
         ],
-        grid_pos=GridPos(8, 4, 8, 8),
+        grid_pos=GridPos(8, 2, 8, 8),
     ),
     Panel(
         id=14,
@@ -189,7 +189,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{deployment}}",
             ),
         ],
-        grid_pos=GridPos(16, 4, 8, 8),
+        grid_pos=GridPos(16, 2, 8, 8),
     ),
     Panel(
         id=9,
@@ -208,7 +208,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(0, 5, 8, 8),
+        grid_pos=GridPos(0, 3, 8, 8),
     ),
     Panel(
         id=10,
@@ -227,7 +227,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(8, 5, 8, 8),
+        grid_pos=GridPos(8, 3, 8, 8),
     ),
     Panel(
         id=11,
@@ -246,7 +246,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(16, 5, 8, 8),
+        grid_pos=GridPos(16, 3, 8, 8),
     ),
     Panel(
         id=3,
@@ -261,7 +261,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(0, 6, 8, 8),
+        grid_pos=GridPos(0, 4, 8, 8),
     ),
     Panel(
         id=4,
@@ -283,7 +283,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="Pending Nodes: {{NodeType}}",
             ),
         ],
-        grid_pos=GridPos(8, 6, 8, 8),
+        grid_pos=GridPos(8, 4, 8, 8),
     ),
     Panel(
         id=6,
@@ -303,7 +303,7 @@ SERVE_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(16, 6, 8, 8),
+        grid_pos=GridPos(16, 4, 8, 8),
     ),
 ]
 
