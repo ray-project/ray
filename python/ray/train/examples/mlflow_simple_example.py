@@ -41,7 +41,7 @@ result = trainer.fit()
 
 # Print the latest run directory and keep note of it.
 # For example: /home/ubuntu/ray_results/TorchTrainer_2022-06-13_20-31-06
-print("Run directory:", result.log_dir.parent)  # TensorBoard is saved in parent dir
+print("Run directory:", result.path.parent)  # TensorBoard is saved in parent dir
 
 # How to visualize the logs
 

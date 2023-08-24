@@ -1,4 +1,5 @@
 import numpy as np
+from pathlib import Path
 import pytest
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -166,7 +167,7 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path):
     assert not result.error
     assert result.metrics["training_iteration"] == training_iterations
     assert result.metrics["iterations_since_restore"] == iterations_since_restore
-    assert tmpdir / exp_name in result.path.parents
+    assert tmpdir / exp_name in Path(result.path).parents
 
 
 if __name__ == "__main__":
