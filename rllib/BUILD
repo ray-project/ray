@@ -3038,14 +3038,14 @@ py_test(
     srcs = ["examples/bare_metal_policy_with_custom_view_reqs.py"],
 )
 
-# py_test(
-#    name = "examples/batch_norm_model_ppo_tf",
-#    main = "examples/batch_norm_model.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "medium",
-#    srcs = ["examples/batch_norm_model.py"],
-#    args = ["--as-test", "--framework=tf", "--run=PPO", "--stop-reward=80"]
-# )
+py_test(
+    name = "examples/batch_norm_model_ppo_tf",
+    main = "examples/batch_norm_model.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/batch_norm_model.py"],
+    args = ["--as-test", "--framework=tf", "--run=PPO", "--stop-reward=80"]
+)
 
 py_test(
     name = "examples/batch_norm_model_ppo_torch",
