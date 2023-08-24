@@ -56,10 +56,10 @@ message AutoscalingConfig {
   optional uint32 initial_replicas = 9;
 
   // The multiplicative "gain" factor to limit upscale.
-  optional uint32 upscale_smoothing_factor = 10;
+  optional double upscale_smoothing_factor = 10;
 
   // The multiplicative "gain" factor to limit downscale.
-  optional uint32 downscale_smoothing_factor = 11;
+  optional double downscale_smoothing_factor = 11;
 }
 
 // Configuration options for a deployment, to be set by the user.
