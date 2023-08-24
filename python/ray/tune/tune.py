@@ -28,6 +28,7 @@ from ray.air import CheckpointConfig
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
+from ray.train import SyncConfig
 from ray.train._internal.storage import _use_storage_context
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
@@ -77,7 +78,6 @@ from ray.tune.search.util import (
     _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
 from ray.tune.search.variant_generator import _has_unresolved_values
-from ray.tune.syncer import SyncConfig
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.utils.callback import _create_default_callbacks
@@ -467,8 +467,7 @@ def run(
             original working directory. However, all workers on the same node now
             share the same working directory, so be sure to use
             `ray.train.get_context().get_trial_dir()` as the path to save any outputs.
-        sync_config: Configuration object for syncing. See
-            tune.SyncConfig.
+        sync_config: Configuration object for syncing. See train.SyncConfig.
         export_formats: List of formats that exported at the end of
             the experiment. Default is None.
         max_failures: Try to recover a trial at least this many times.
