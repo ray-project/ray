@@ -36,7 +36,6 @@ from typing import (
 import contextvars
 import concurrent
 from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import Future as ConcurrentFuture
 
 from libc.stdint cimport (
     int32_t,
@@ -2219,7 +2218,7 @@ cdef void cancel_async_task(
             function_descriptor, name_of_concurrency_group_to_execute)
         future = worker.core_worker.get_queued_future(task_id)
         if future is not None:
-            future.cancel()
+            eventloop.call_soon_threadsafe(future.cancel)
         # else, the task is already finished. If the task
         # wasn't finished (task is queued on a client or server side),
         # this method shouldn't have been called.
@@ -4264,7 +4263,8 @@ cdef class CoreWorker:
         future = asyncio.run_coroutine_threadsafe(async_func(), eventloop)
         if task_id:
             with self._task_id_to_future_lock:
-                self._task_id_to_future[task_id] = future
+                self._task_id_to_future[task_id] = asyncio.wrap_future(
+                    future, loop=eventloop)
 
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
@@ -4308,7 +4308,7 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorMaxConcurrency())
 
-    def get_queued_future(self, task_id: Optional[TaskID]) -> ConcurrentFuture:
+    def get_queued_future(self, task_id: Optional[TaskID]) -> asyncio.Future:
         """Get a asyncio.Future that's queued in the event loop."""
         with self._task_id_to_future_lock:
             return self._task_id_to_future.get(task_id)
