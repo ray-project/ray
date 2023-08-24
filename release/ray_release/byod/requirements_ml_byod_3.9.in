@@ -24,3 +24,4 @@ torchtext
 torchvision
 transformers>=4.31.0
 wandb
+whisper
