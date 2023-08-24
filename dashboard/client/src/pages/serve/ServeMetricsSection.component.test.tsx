@@ -55,7 +55,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
 
 describe("ServeMetricsSection", () => {
   it("renders", async () => {
-    expect.assertions(7);
+    expect.assertions(4);
 
     render(<ServeMetricsSection />, { wrapper: Wrapper });
     await screen.findByText(/View in Grafana/);
@@ -65,19 +65,10 @@ describe("ServeMetricsSection", () => {
     expect(
       screen.getByTitle("P90 latency per application"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByTitle("QPS per gRPC application method"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTitle("Error QPS per gRPC application method"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTitle("P90 latency per gRPC application method"),
-    ).toBeInTheDocument();
   });
 
   it("renders nothing when grafana is not available", async () => {
-    expect.assertions(8);
+    expect.assertions(5);
 
     render(<ServeMetricsSection />, { wrapper: MetricsDisabledWrapper });
     // Wait .1 seconds for render to finish
@@ -88,12 +79,5 @@ describe("ServeMetricsSection", () => {
     expect(screen.queryByTitle("QPS per application")).toBeNull();
     expect(screen.queryByTitle("Error QPS per application")).toBeNull();
     expect(screen.queryByTitle("P90 latency per application")).toBeNull();
-    expect(screen.queryByTitle("QPS per gRPC application method")).toBeNull();
-    expect(
-      screen.queryByTitle("Error QPS per gRPC application method"),
-    ).toBeNull();
-    expect(
-      screen.queryByTitle("P90 latency per gRPC application method"),
-    ).toBeNull();
   });
 });

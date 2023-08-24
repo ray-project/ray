@@ -56,8 +56,12 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate({{__name__=~ "ray_serve_num_http_requests|ray_serve_num_grpc_requests",application=~"$Application",application!~"",{global_filters}}}[5m])) by (application)',
-                legend="{{application}}",
+                expr='sum(rate(ray_serve_num_http_requests{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route)',
+                legend="{{application, route}}",
+            ),
+            Target(
+                expr='sum(rate(ray_serve_num_grpc_requests{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
+                legend="{{application, method}}",
             ),
         ],
         grid_pos=GridPos(8, 0, 8, 8),
@@ -69,8 +73,12 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate({{__name__=~ "ray_serve_num_http_error_requests|ray_serve_num_grpc_error_requests",application=~"$Application",application!~"",{global_filters}}}[5m])) by (application)',
-                legend="{{application}}",
+                expr='sum(rate(ray_serve_num_http_error_requests{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route)',
+                legend="{{application, route}}",
+            ),
+            Target(
+                expr='sum(rate(ray_serve_num_grpc_error_requests{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
+                legend="{{application, method}}",
             ),
         ],
         grid_pos=GridPos(16, 0, 8, 8),
@@ -82,8 +90,12 @@ SERVE_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.5, sum(rate({{__name__=~ "ray_serve_http_request_latency_ms_bucket|ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, le))',
-                legend="{{application}}",
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_http_request_latency_ms_bucket{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route, le))',
+                legend="{{application, route}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_grpc_request_latency_ms_bucket{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, le))',
+                legend="{{application, method}}",
             ),
             Target(
                 expr='histogram_quantile(0.5, sum(rate({{__name__=~ "ray_serve_http_request_latency_ms_bucket|ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
@@ -101,8 +113,12 @@ SERVE_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.9, sum(rate({{__name__=~ "ray_serve_http_request_latency_ms_bucket|ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, le))',
-                legend="{{application}}",
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_http_request_latency_ms_bucket{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route, le))',
+                legend="{{application, route}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_grpc_request_latency_ms_bucket{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, le))',
+                legend="{{application, method}}",
             ),
             Target(
                 expr='histogram_quantile(0.9, sum(rate({{__name__=~ "ray_serve_http_request_latency_ms_bucket|ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
@@ -120,8 +136,12 @@ SERVE_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.99, sum(rate({{__name__=~ "ray_serve_http_request_latency_ms_bucket|ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, le))',
-                legend="{{application}}",
+                expr='histogram_quantile(0.99, sum(rate(ray_serve_http_request_latency_ms_bucket{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route, le))',
+                legend="{{application, route}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.99, sum(rate(ray_serve_grpc_request_latency_ms_bucket{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, le))',
+                legend="{{application, method}}",
             ),
             Target(
                 expr='histogram_quantile(0.99, sum(rate({{__name__=~ "ray_serve_http_request_latency_ms_bucket|ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
@@ -131,89 +151,6 @@ SERVE_GRAFANA_PANELS = [
         fill=0,
         stack=False,
         grid_pos=GridPos(16, 1, 8, 8),
-    ),
-    Panel(
-        id=17,
-        title="QPS per gRPC application method",
-        description="QPS for each selected application method.",
-        unit="qps",
-        targets=[
-            Target(
-                expr='sum(rate({{__name__=~ "ray_serve_num_grpc_requests",application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, method)',
-                legend="{{application, method}}",
-            ),
-        ],
-        grid_pos=GridPos(0, 2, 12, 8),
-    ),
-    Panel(
-        id=18,
-        title="Error QPS per gRPC application method",
-        description="Error QPS for each selected application method.",
-        unit="qps",
-        targets=[
-            Target(
-                expr='sum(rate({{__name__=~ "ray_serve_num_grpc_error_requests",application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, method)',
-                legend="{{application, method}}",
-            ),
-        ],
-        grid_pos=GridPos(12, 2, 12, 8),
-    ),
-    Panel(
-        id=19,
-        title="P50 latency per gRPC application method",
-        description="P50 latency for selected application method.",
-        unit="ms",
-        targets=[
-            Target(
-                expr='histogram_quantile(0.5, sum(rate({{__name__=~ "ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, method, le))',
-                legend="{{application, method}}",
-            ),
-            Target(
-                expr='histogram_quantile(0.5, sum(rate({{__name__=~ "ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
-                legend="Total",
-            ),
-        ],
-        fill=0,
-        stack=False,
-        grid_pos=GridPos(0, 3, 8, 8),
-    ),
-    Panel(
-        id=20,
-        title="P90 latency per gRPC application method",
-        description="P90 latency for selected application method.",
-        unit="ms",
-        targets=[
-            Target(
-                expr='histogram_quantile(0.9, sum(rate({{__name__=~ "ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, method, le))',
-                legend="{{application, method}}",
-            ),
-            Target(
-                expr='histogram_quantile(0.9, sum(rate({{__name__=~ "ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
-                legend="Total",
-            ),
-        ],
-        fill=0,
-        stack=False,
-        grid_pos=GridPos(8, 3, 8, 8),
-    ),
-    Panel(
-        id=21,
-        title="P99 latency per gRPC application method",
-        description="P99 latency for selected application method.",
-        unit="ms",
-        targets=[
-            Target(
-                expr='histogram_quantile(0.99, sum(rate({{__name__=~ "ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, method, le))',
-                legend="{{application, method}}",
-            ),
-            Target(
-                expr='histogram_quantile(0.99, sum(rate({{__name__=~ "ray_serve_grpc_request_latency_ms_bucket",application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
-                legend="Total",
-            ),
-        ],
-        fill=0,
-        stack=False,
-        grid_pos=GridPos(16, 3, 8, 8),
     ),
     Panel(
         id=2,

@@ -73,18 +73,6 @@ const METRICS_CONFIG: MetricConfig[] = [
     title: "P90 latency per application",
     pathParams: "orgId=1&theme=light&panelId=15",
   },
-  {
-    title: "QPS per gRPC application method",
-    pathParams: "orgId=1&theme=light&panelId=17",
-  },
-  {
-    title: "Error QPS per gRPC application method",
-    pathParams: "orgId=1&theme=light&panelId=18",
-  },
-  {
-    title: "P90 latency per gRPC application method",
-    pathParams: "orgId=1&theme=light&panelId=21",
-  },
 ];
 
 type ServeMetricsSectionProps = ClassNameProps;
