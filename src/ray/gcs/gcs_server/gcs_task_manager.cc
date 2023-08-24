@@ -387,8 +387,9 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   auto limit = request.has_limit() ? request.limit() : -1;
   // Simple limit.
   auto count = 0;
-  int32_t num_profile_event_limit = 0;
-  int32_t num_status_event_limit = 0;
+  int64_t num_profile_event_limit = 0;
+  int64_t num_status_event_limit = 0;
+  int64_t num_limit_truncated = 0;
 
   // A lambda filter fn, where it returns true for task events to be included in the
   // result. Task ids and job ids are already filtered by the storage with indexing above.
@@ -415,9 +416,11 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     return true;
   };
 
+  int64_t num_filtered = 0;
   for (auto itr = task_events.rbegin(); itr != task_events.rend(); ++itr) {
     auto &task_event = *itr;
     if (!filter_fn(task_event)) {
+      num_filtered++;
       continue;
     }
 
@@ -428,13 +431,19 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       num_profile_event_limit +=
           task_event.has_profile_events() ? task_event.profile_events().events_size() : 0;
       num_status_event_limit += task_event.has_state_updates() ? 1 : 0;
+      num_limit_truncated++;
     }
   }
 
+  // Take into account truncation.
   reply->set_num_profile_task_events_dropped(reply->num_profile_task_events_dropped() +
                                              num_profile_event_limit);
   reply->set_num_status_task_events_dropped(reply->num_status_task_events_dropped() +
                                             num_status_event_limit);
+
+  reply->set_num_total_stored(task_events.size());
+  reply->set_num_truncated(num_limit_truncated);
+  reply->set_num_filtered_on_gcs(num_filtered);
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   return;
@@ -576,6 +585,9 @@ void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_
         // workers associated with the job will be killed.
         task_event_storage_->MarkTasksFailedOnJobEnds(job_id,
                                                       job_finish_time_ms * 1000 * 1000);
+
+        // Clear and summarize the job summary info (since it's now finalized).
+        task_event_storage_->UpdateJobSummaryOnJobDone(job_id);
       });
 }
 

@@ -27,6 +27,10 @@ ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
                            const std::string &event_name)
     : task_event_buffer_(task_event_buffer) {
   const auto &task_spec = worker_context.GetCurrentTask();
+  if (worker_context.GetWorkerType() == rpc::WorkerType::DRIVER &&
+      RayConfig::instance().task_events_skip_driver()) {
+    return;
+  }
   event_.reset(new TaskProfileEvent(worker_context.GetCurrentTaskID(),
                                     worker_context.GetCurrentJobID(),
                                     task_spec == nullptr ? 0 : task_spec->AttemptNumber(),
@@ -38,12 +42,18 @@ ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
 }
 
 ProfileEvent::~ProfileEvent() {
+  if (event_ == nullptr) {
+    return;
+  }
   event_->SetEndTime(absl::GetCurrentTimeNanos());
   // Add task event to the task event buffer
   task_event_buffer_.AddTaskEvent(std::move(event_));
 }
 
 void ProfileEvent::SetExtraData(const std::string &extra_data) {
+  if (event_ == nullptr) {
+    return;
+  }
   event_->SetExtraData(extra_data);
 }
 

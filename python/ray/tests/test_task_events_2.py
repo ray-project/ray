@@ -1,24 +1,31 @@
 import asyncio
+from collections import defaultdict
 import os
+from typing import Dict
 import pytest
 import sys
 import time
 from ray._private import ray_constants
+from functools import reduce
 
 import ray
 from ray._private.state_api_test_utils import (
     PidActor,
+    get_state_api_manager,
     verify_tasks_running_or_terminated,
     verify_failed_task,
 )
 from ray.util.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
+    async_wait_for_condition_async_predicate,
+    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
 from ray.util.state import (
     StateApiClient,
     list_actors,
+    list_jobs,
     list_tasks,
 )
 
@@ -958,6 +965,150 @@ def test_task_logs_info_running_task(shutdown_only):
         return True
 
     wait_for_condition(verify)
+
+
+@pytest.mark.asyncio
+async def test_task_events_gc_jobs(shutdown_only):
+    """
+    Test that later jobs should override previous jobs' task events.
+    """
+    ctx = ray.init(
+        num_cpus=8,
+        _system_config={
+            "task_events_max_num_task_in_gcs": 3,
+            "task_events_skip_driver": True,
+            "task_events_report_interval_ms": 100,
+        },
+    )
+
+    script = """
+import ray
+
+ray.init("auto")
+@ray.remote
+def f():
+    pass
+
+ray.get([f.options(name="f.{task_name}").remote() for _ in range(10)])
+"""
+
+    gcs_address = ctx.address_info["gcs_address"]
+    manager = get_state_api_manager(gcs_address)
+
+    def get_last_job() -> str:
+        jobs = list_jobs()
+        sorted(jobs, key=lambda x: x["job_id"])
+        return jobs[-1].job_id
+
+    async def verify_tasks(task_name: str):
+        # Query with job directly.
+        resp = await manager.list_tasks(
+            option=ListApiOptions(
+                filters=[("name", "=", task_name), ("job_id", "=", get_last_job())]
+            )
+        )
+        assert len(resp.result) == 3
+        assert resp.total == 10
+        assert resp.num_after_truncation == 3
+
+        return True
+
+    for i in range(10):
+        # Run the script
+        run_string_as_driver(script.format(task_name=i))
+
+        await async_wait_for_condition_async_predicate(
+            verify_tasks, task_name=f"f.{i}", retry_interval_ms=500
+        )
+
+
+def test_task_events_gc_default_policy(shutdown_only):
+    @ray.remote
+    def finish_task():
+        pass
+
+    @ray.remote
+    def running_task():
+        time.sleep(999)
+
+    @ray.remote
+    class Actor:
+        def actor_finish_task(self):
+            pass
+
+        def actor_running_task(self):
+            time.sleep(999)
+
+        def ready(self):
+            pass
+
+    @ray.remote(max_retries=0)
+    def error_task():
+        raise ValueError("Expected to fail")
+
+    ray.init(
+        num_cpus=8,
+        _system_config={
+            "task_events_max_num_task_in_gcs": 5,
+            "task_events_skip_driver": True,
+            "task_events_report_interval_ms": 100,
+        },
+    )
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+    # Run 10 and 5 should be evicted
+    ray.get([finish_task.remote() for _ in range(10)])
+
+    def verify_tasks(expected_tasks_cnt: Dict[str, int]):
+        tasks = list_tasks(raise_on_missing_output=False)
+        total_cnt = reduce(lambda x, y: x + y, expected_tasks_cnt.values())
+        assert len(tasks) == total_cnt
+        actual_cnt = defaultdict(int)
+        for task in tasks:
+            actual_cnt[task.name] += 1
+        assert actual_cnt == expected_tasks_cnt
+        return True
+
+    wait_for_condition(verify_tasks, expected_tasks_cnt={"finish_task": 5})
+
+    # Run a few other tasks to occupy the buffer
+    running_task.remote()
+    error_task.remote()
+
+    wait_for_condition(
+        verify_tasks,
+        expected_tasks_cnt={"finish_task": 3, "running_task": 1, "error_task": 1},
+    )
+
+    # Run more finished tasks should not evict those running/error tasks
+    for _ in range(3):
+        ray.get(a.actor_finish_task.remote())
+
+    wait_for_condition(
+        verify_tasks,
+        expected_tasks_cnt={
+            "Actor.actor_finish_task": 3,
+            "running_task": 1,
+            "error_task": 1,
+        },
+    )
+
+    # Run actor non-finished tasks should not evict those running/error tasks
+    [a.actor_running_task.remote() for _ in range(3)]
+
+    wait_for_condition(
+        verify_tasks,
+        expected_tasks_cnt={
+            "Actor.actor_running_task": 3,
+            "running_task": 1,
+            "error_task": 1,
+        },
+    )
+
+    # Run more error tasks now should evict the older "running_task"
+    [error_task.remote() for _ in range(5)]
+
+    wait_for_condition(verify_tasks, expected_tasks_cnt={"error_task": 5})
 
 
 if __name__ == "__main__":

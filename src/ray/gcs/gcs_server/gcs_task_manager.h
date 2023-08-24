@@ -247,6 +247,12 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
       return it->second;
     }
 
+    void UpdateJobSummaryOnJobDone(const JobID &job_id) {
+      auto it = job_task_summary_.find(job_id);
+      RAY_CHECK(it != job_task_summary_.end());
+      it->second.OnJobEnds();
+    }
+
     /// Return if a job exists in the storage.
     bool HasJob(const JobID &job_id) const {
       auto it = job_task_summary_.find(job_id);
@@ -314,6 +320,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     };
 
     /// A helper class to summarize the stats of a job.
+    /// TODO: we could probably do source side summary here per job.
     ///
     /// This class contains stats of:
     /// - Number of task attempts dropped, it's used to determine if task events should be
