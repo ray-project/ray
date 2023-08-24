@@ -69,6 +69,8 @@ PyTorch Lightning
     ~train.lightning.LightningCheckpoint
     ~train.lightning.LightningPredictor
 
+.. _train-transformers-integration:
+
 Hugging Face Transformers
 *************************
 

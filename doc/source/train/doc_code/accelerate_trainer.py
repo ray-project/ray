@@ -52,7 +52,7 @@ def train_loop_per_worker():
             print(f"epoch: {epoch}, loss: {loss.item()}")
 
         train.report(
-            {},
+            metrics={"epoch": epoch, "loss": loss.item()},
             checkpoint=Checkpoint.from_dict(
                 dict(epoch=epoch, model=accelerator.unwrap_model(model).state_dict())
             ),
