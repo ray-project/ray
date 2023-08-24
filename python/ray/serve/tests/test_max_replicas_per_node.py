@@ -31,7 +31,7 @@ def get_node_to_deployment_to_num_replicas():
     return node_to_deployment_to_num_replicas
 
 
-def test_basic(ray_shutdown):
+def test_basic():
     """Test that max_replicas_per_node is honored."""
 
     cluster = AutoscalingCluster(
@@ -78,10 +78,12 @@ def test_basic(ray_shutdown):
         assert deployment_to_num_replicas["deploy1"] == 3
         assert deployment_to_num_replicas["deploy2"] == 1
 
+    serve.shutdown()
+    ray.shutdown()
     cluster.shutdown()
 
 
-def test_update_max_replicas_per_node(ray_shutdown):
+def test_update_max_replicas_per_node():
     """Test re-deploying a deployment with different max_replicas_per_node."""
 
     cluster = AutoscalingCluster(
@@ -134,6 +136,8 @@ def test_update_max_replicas_per_node(ray_shutdown):
         # Every node has 1 replica.
         assert deployment_to_num_replicas["deploy1"] == 1
 
+    serve.shutdown()
+    ray.shutdown()
     cluster.shutdown()
 
 
