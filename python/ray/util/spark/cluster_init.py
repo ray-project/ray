@@ -410,6 +410,14 @@ def _append_default_spilling_dir_config(head_node_options, object_spilling_dir):
     return head_node_options
 
 
+def _append_resources_config(node_options, resources):
+    if "resources" not in node_options:
+        node_options["resources"] = {}
+
+    node_options["resources"].update(resources)
+    return node_options
+
+
 def _setup_ray_cluster(
     *,
     num_worker_nodes: int,
@@ -638,7 +646,6 @@ def _setup_ray_cluster(
                     object_store_memory_worker_node,
                     worker_node_options,
                     collect_log_to_path,
-                    resources=None,
                 )
             except Exception as e:
                 # NB:
@@ -1141,7 +1148,6 @@ def _start_ray_worker_nodes(
     object_store_memory_per_node,
     worker_node_options,
     collect_log_to_path,
-    resources,
 ):
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -1202,11 +1208,6 @@ def _start_ray_worker_nodes(
             f"--dashboard-agent-listen-port={ray_worker_node_dashboard_agent_port}",
             *_convert_ray_node_options(worker_node_options),
         ]
-
-        if resources is not None:
-            ray_worker_node_cmd.append(
-                f"--resources={json.dumps(resources)}"
-            )
 
         ray_worker_node_extra_envs = {
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",

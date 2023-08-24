@@ -34,7 +34,6 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
             object_store_memory_per_node = data["object_store_memory_per_node"]
             worker_node_options = data["worker_node_options"]
             collect_log_to_path = data["collect_log_to_path"]
-            resources = data["resources"]
 
             def start_ray_worker_thread_fn():
                 _start_ray_worker_nodes(
@@ -52,7 +51,6 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                     object_store_memory_per_node=object_store_memory_per_node,
                     worker_node_options=worker_node_options,
                     collect_log_to_path=collect_log_to_path,
-                    resources=resources,
                 )
 
             threading.Thread(

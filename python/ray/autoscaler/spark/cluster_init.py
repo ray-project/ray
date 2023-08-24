@@ -14,7 +14,7 @@ import ray._private.services
 from ray.util.annotations import DeveloperAPI
 from ray.autoscaler._private.spark.node_provider import RAY_ON_SPARK_HEAD_NODE_ID
 import ray._private.ray_constants as ray_constants
-from ray.util.spark.utils import setup_sigterm_on_parent_death
+from ray.util.spark.cluster_init import _append_resources_config
 
 
 logger = logging.getLogger(__name__)
@@ -77,6 +77,7 @@ class AutoscalingCluster:
         with open(autoscale_config, "w") as f:
             f.write(json.dumps(self._config))
 
+        head_node_options = _append_resources_config(head_node_options, self._head_resources)
         ray_head_node_cmd = [
             sys.executable,
             "-m",
@@ -99,7 +100,7 @@ class AutoscalingCluster:
             ray_head_node_cmd.append("--memory={}".format(self._head_resources.pop("memory")))
         if "object_store_memory" in self._head_resources:
             ray_head_node_cmd.append("--object-store-memory={}".format(self._head_resources.pop("object_store_memory")))
-        ray_head_node_cmd.append(f"--resources={json.dumps(self._head_resources)}")
+
         extra_env = {
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
@@ -107,6 +108,5 @@ class AutoscalingCluster:
         return exec_cmd(
             ray_head_node_cmd,
             synchronous=False,
-            preexec_fn=setup_sigterm_on_parent_death,
             extra_env=extra_env,
         )

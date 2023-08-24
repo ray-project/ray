@@ -25,6 +25,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
+from ray.util.spark.cluster_init import _append_resources_config
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,8 @@ class RayOnSparkNodeProvider(NodeProvider):
                 num_gpus_per_node = resources.pop('GPU')
                 heap_memory_per_node = resources.pop('memory')
                 object_store_memory_per_node = resources.pop('object_store_memory')
+
+                conf["worker_node_options"] = _append_resources_config(conf["worker_node_options"], resources)
                 response = requests.post(
                     url=self.server_url + "/create_node",
                     json={
@@ -174,7 +177,6 @@ class RayOnSparkNodeProvider(NodeProvider):
                         "object_store_memory_per_node": object_store_memory_per_node,
                         "worker_node_options": conf["worker_node_options"],
                         "collect_log_to_path": conf["collect_log_to_path"],
-                        "resources": resources,
                     }
                 )
                 if response.status_code != 200:
