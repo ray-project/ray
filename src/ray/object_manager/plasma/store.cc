@@ -74,7 +74,6 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
                          ray::FileSystemMonitor &fs_monitor,
                          const std::string &socket_name,
                          uint32_t delay_on_oom_ms,
-                         float object_spilling_threshold,
                          ray::SpillObjectsCallback spill_objects_callback,
                          std::function<void()> object_store_full_callback,
                          ray::AddObjectCallback add_object_callback,
@@ -89,7 +88,6 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
       delete_object_callback_(delete_object_callback),
       object_lifecycle_mgr_(allocator_, delete_object_callback_),
       delay_on_oom_ms_(delay_on_oom_ms),
-      object_spilling_threshold_(object_spilling_threshold),
       create_request_queue_(
           fs_monitor_,
           /*oom_grace_period_s=*/RayConfig::instance().oom_grace_period_s(),
@@ -150,8 +148,7 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                                    const std::vector<uint8_t> &message,
                                                    bool fallback_allocator,
-                                                   PlasmaObject *object,
-                                                   bool *spilling_required) {
+                                                   PlasmaObject *object) {
   uint8_t *input = (uint8_t *)message.data();
   size_t input_size = message.size();
   ray::ObjectInfo object_info;
@@ -360,14 +357,12 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     const size_t object_size = request->data_size() + request->metadata_size();
 
     // absl failed analyze mutex safety for lambda
-    auto handle_create =
-        [this, client, message](
-            bool fallback_allocator, PlasmaObject *result, bool *spilling_required)
-            ABSL_NO_THREAD_SAFETY_ANALYSIS {
-              mutex_.AssertHeld();
-              return HandleCreateObjectRequest(
-                  client, message, fallback_allocator, result, spilling_required);
-            };
+    auto handle_create = [this, client, message](
+                             bool fallback_allocator,
+                             PlasmaObject *result) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+      mutex_.AssertHeld();
+      return HandleCreateObjectRequest(client, message, fallback_allocator, result);
+    };
 
     if (request->try_immediately()) {
       RAY_LOG(DEBUG) << "Received request to create object " << object_id
