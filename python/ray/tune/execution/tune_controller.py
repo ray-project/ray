@@ -421,7 +421,7 @@ class TuneController:
     @property
     def experiment_path(self) -> str:
         if _use_storage_context():
-            return str(self._storage.storage_prefix / self._storage.experiment_fs_path)
+            return self._storage.experiment_fs_path
 
         return self._legacy_remote_experiment_path or self._legacy_local_experiment_path
 
@@ -2051,8 +2051,7 @@ class TuneController:
     # RESTORE
     def _schedule_trial_restore(self, trial: Trial) -> bool:
         if _use_storage_context():
-            cpm = trial.run_metadata.checkpoint_manager
-            checkpoint_result = cpm.latest_checkpoint_result
+            checkpoint_result = trial.latest_checkpoint_result
 
             if not checkpoint_result:
                 logger.debug(f"Not restoring trial {trial}: No checkpoint found.")
