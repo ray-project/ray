@@ -642,6 +642,7 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
             return False
 
         return True
+    raise ValueError
 
     wait_for_condition(check_resource_demand, 20)
     cluster.shutdown()
