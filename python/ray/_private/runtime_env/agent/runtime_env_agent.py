@@ -58,7 +58,7 @@ class CreatedEnvResult:
 UriType = str
 
 
-def runtime_env_summary(serialized_runtime_env: str) -> str:
+def summarize_runtime_env(serialized_runtime_env: str) -> str:
     """
     If the env is too long, returns a summary to avoid overloading the logs.
     Omits the last chars except for the last char which should be "}".
@@ -140,7 +140,7 @@ class ReferenceTable:
             default_logger.warn(f"Runtime env {serialized_env} does not exist.")
         if unused:
             default_logger.info(
-                f"Unused runtime env {runtime_env_summary(serialized_env)}."
+                f"Unused runtime env {summarize_runtime_env(serialized_env)}."
             )
             log_debug_runtime_env_if_too_long(default_logger, serialized_env)
             self._unused_runtime_env_callback(serialized_env)
@@ -272,7 +272,7 @@ class RuntimeEnvAgent:
             del self._env_cache[unused_runtime_env]
             self._logger.info(
                 "Runtime env %s removed from env-level cache.",
-                runtime_env_summary(unused_runtime_env),
+                summarize_runtime_env(unused_runtime_env),
             )
             log_debug_runtime_env_if_too_long(self._logger, unused_runtime_env)
 
@@ -300,7 +300,7 @@ class RuntimeEnvAgent:
 
     async def GetOrCreateRuntimeEnv(self, request):
 
-        runtime_env_summary = self.runtime_env_summary(request.serialized_runtime_env)
+        runtime_env_summary = summarize_runtime_env(request.serialized_runtime_env)
 
         self._logger.debug(
             f"Got request from {request.source_process} to increase "
@@ -522,7 +522,7 @@ class RuntimeEnvAgent:
 
     async def DeleteRuntimeEnvIfPossible(self, request):
 
-        runtime_env_summary = self.runtime_env_summary(request.serialized_runtime_env)
+        runtime_env_summary = summarize_runtime_env(request.serialized_runtime_env)
 
         self._logger.info(
             f"Got request from {request.source_process} to decrease "
