@@ -10,6 +10,7 @@ instance using Ray Serve and Fast API.
   [PyTorch Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/setup/torch-neuronx.html#setup-torch-neuronx)
   setup guide and installed AWS NeuronCore drivers/tools and torch-neuronx based on the instance-type.
 
+:::
 
 ```bash
 python -m pip install "ray[serve]" requests transformers
@@ -24,7 +25,6 @@ Use the following code to compile the model:
 :end-before: __compile_neuron_code_end__
 ```
 
-:::
 
 For compiling the model, you should see the following logs:
 ```text
@@ -43,6 +43,7 @@ Saved Neuron-compiled model ./sentiment_neuron.pt
 ```
 
 The traced model should be ready for deployment. Save the following code to a file named aws_neuron_core_inference_serve.py.
+
 Use `serve run aws_neuron_core_inference_serve:entrypoint` to start the serve application.
 ```{literalinclude} ../doc_code/aws_neuron_core_inference_serve.py
 :language: python
@@ -50,7 +51,8 @@ Use `serve run aws_neuron_core_inference_serve:entrypoint` to start the serve ap
 :end-before: __neuron_serve_code_end__
 ```
 
-To 
+
+You should see the following logs for a successful deployment:
 ```text
 (ServeController pid=43105) INFO 2023-08-23 20:29:32,694 controller 43105 deployment_state.py:1372 - Deploying new version of deployment default_BertBaseModel.
 (ServeController pid=43105) INFO 2023-08-23 20:29:32,695 controller 43105 deployment_state.py:1372 - Deploying new version of deployment default_APIIngress.
@@ -68,7 +70,7 @@ import requests
 response = requests.get(f"http://127.0.0.1:8000/infer?sentence=Ray is super cool")
 print(response.status_code, response.json())
 ```
-The response includes status code and the classifier
+The response includes status code and the classifier output
 
 ```text
 200 joy
