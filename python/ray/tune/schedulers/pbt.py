@@ -1176,16 +1176,16 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         )
         if _use_storage_context():
             training_result = result.resolve()
-            checkpoint = training_result.checkpoint
+            next_restore = training_result
         else:
-            checkpoint = result
+            next_restore = result
 
         new_tag = _make_experiment_tag(self.experiment_tag, new_config, new_config)
 
         tune_controller.pause_trial(trial, should_checkpoint=False)
         trial.set_experiment_tag(new_tag)
         trial.set_config(new_config)
-        trial.on_checkpoint(checkpoint)
+        trial.temporary_state.next_restore = next_restore
 
         self.current_config = new_config
         self._num_perturbations += 1

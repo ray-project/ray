@@ -17,6 +17,9 @@ from ray import tune
 from ray.train import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import TRAINING_ITERATION
+from ray.train._checkpoint import Checkpoint
+from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
+from ray.train._internal.storage import StorageContext, _use_storage_context
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
 from ray.tune.experiment.trial import _TemporaryTrialState
@@ -238,6 +241,14 @@ class EarlyStoppingSuite(unittest.TestCase):
         self._test_metrics(result2, "mean_loss", "min")
 
 
+class _FakeFutureResult(_FutureTrainingResult):
+    def __init__(self, result):
+        self.result = result
+
+    def resolve(self, block: bool = True):
+        return self.result
+
+
 class _MockTrialRunner:
     def __init__(self, scheduler):
         self._scheduler_alg = scheduler
@@ -295,6 +306,13 @@ class _MockTrialRunner:
     def _schedule_trial_save(
         self, trial, type=CheckpointStorage.PERSISTENT, result=None
     ):
+        if _use_storage_context():
+            return _FakeFutureResult(
+                _TrainingResult(
+                    checkpoint=Checkpoint.from_directory(trial.trainable_name),
+                    metrics=result,
+                )
+            )
         if type == CheckpointStorage.MEMORY:
             checkpoint = _TrackedCheckpoint(
                 dir_or_data={"data": trial.trainable_name},
@@ -864,7 +882,7 @@ class BOHBSuite(unittest.TestCase):
 
 
 class _MockTrial(Trial):
-    def __init__(self, i, config):
+    def __init__(self, i, config, storage):
         self.trainable_name = "trial_{}".format(i)
         self.trial_id = str(i)
         self.config = config
@@ -887,6 +905,7 @@ class _MockTrial(Trial):
             delete_fn=lambda c: None,
         )
         self.temporary_state = _TemporaryTrialState()
+        self.storage = storage
 
     def on_checkpoint(self, checkpoint):
         super().on_checkpoint(checkpoint)
@@ -898,7 +917,9 @@ class _MockTrial(Trial):
     @property
     def restored_checkpoint(self):
         if self.temporary_state.next_restore:
-            return self.temporary_state.next_restore.dir_or_data
+            if hasattr(self.temporary_state.next_restore, "dir_or_data"):
+                return self.temporary_state.next_restore.dir_or_data
+            return self.temporary_state.next_restore.checkpoint.path
         return self._restored_checkpoint
 
 
@@ -957,6 +978,11 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             synch=synch,
             require_attrs=require_attrs,
         )
+        tmpdir = tempfile.mkdtemp()
+        self.storage = StorageContext(
+            storage_path=tmpdir, experiment_dir_name="test_trial_scheduler"
+        )
+        self.storage.storage_local_path = tmpdir
         runner = _MockTrialRunner(pbt)
         for i in range(num_trials):
             trial_hyperparams = hyperparams or {
@@ -965,7 +991,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 "int_factor": 10,
                 "id_factor": i,
             }
-            trial = _MockTrial(i, trial_hyperparams)
+            trial = _MockTrial(i, trial_hyperparams, self.storage)
             runner.add_trial(trial)
             trial.status = Trial.RUNNING
         for i in range(num_trials):
@@ -1511,20 +1537,23 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         pbt, runner = self.basicSetup(log_config=True)
         trials = runner.get_trials()
-        tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
-            trial.local_experiment_path = tmpdir
             trial.run_metadata.last_result = {TRAINING_ITERATION: i}
         self.on_trial_result(pbt, runner, trials[0], result(15, -100))
         self.on_trial_result(pbt, runner, trials[0], result(20, -100))
         self.on_trial_result(pbt, runner, trials[2], result(20, 40))
         log_files = ["pbt_global.txt", "pbt_policy_0.txt", "pbt_policy_2.txt"]
         for log_file in log_files:
-            self.assertTrue(os.path.exists(os.path.join(tmpdir, log_file)))
-            raw_policy = open(os.path.join(tmpdir, log_file), "r").readlines()
+            self.assertTrue(
+                os.path.exists(
+                    os.path.join(self.storage.experiment_local_path, log_file)
+                )
+            )
+            raw_policy = open(
+                os.path.join(self.storage.experiment_local_path, log_file), "r"
+            ).readlines()
             for line in raw_policy:
                 check_policy(json.loads(line))
-        shutil.rmtree(tmpdir)
 
     def testLogConfigSynch(self):
         def check_policy(policy):
@@ -1547,18 +1576,21 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         pbt, runner = self.basicSetup(log_config=True, synch=True, step_once=False)
         trials = runner.get_trials()
-        tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
-            trial.local_experiment_path = tmpdir
             trial.run_metadata.last_result = {TRAINING_ITERATION: i}
             self.on_trial_result(pbt, runner, trials[i], result(10, i))
         log_files = ["pbt_global.txt", "pbt_policy_0.txt", "pbt_policy_1.txt"]
         for log_file in log_files:
-            self.assertTrue(os.path.exists(os.path.join(tmpdir, log_file)))
-            raw_policy = open(os.path.join(tmpdir, log_file), "r").readlines()
+            self.assertTrue(
+                os.path.exists(
+                    os.path.join(self.storage.experiment_local_path, log_file)
+                )
+            )
+            raw_policy = open(
+                os.path.join(self.storage.experiment_local_path, log_file), "r"
+            ).readlines()
             for line in raw_policy:
                 check_policy(json.loads(line))
-        shutil.rmtree(tmpdir)
 
     def testReplay(self):
         # Returns unique increasing parameter mutations
@@ -1582,7 +1614,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             },
         )
         trials = runner.get_trials()
-        tmpdir = tempfile.mkdtemp()
 
         # Internal trial state to collect the real PBT history
         class _TrialState:
@@ -1598,7 +1629,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         trial_state = []
         for i, trial in enumerate(trials):
-            trial.local_experiment_path = tmpdir
             trial.run_metadata.last_result = {TRAINING_ITERATION: 0}
             trial_state.append(_TrialState(trial.config))
 
@@ -1693,7 +1723,10 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 continue
 
             replay = PopulationBasedTrainingReplay(
-                os.path.join(tmpdir, "pbt_policy_{}.txt".format(trial.trial_id))
+                os.path.join(
+                    self.storage.experiment_local_path,
+                    "pbt_policy_{}.txt".format(trial.trial_id),
+                )
             )
             analysis = tune.run(
                 Playback,
@@ -1707,15 +1740,16 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # Trial 1 did not exploit anything and should raise an error
         with self.assertRaises(ValueError):
             replay = PopulationBasedTrainingReplay(
-                os.path.join(tmpdir, "pbt_policy_{}.txt".format(trials[1].trial_id))
+                os.path.join(
+                    self.storage.experiment_local_path,
+                    "pbt_policy_{}.txt".format(trials[1].trial_id),
+                )
             )
             tune.run(
                 Playback,
                 scheduler=replay,
                 stop={TRAINING_ITERATION: trial_state[1].step},
             )
-
-        shutil.rmtree(tmpdir)
 
     @unittest.skip("Pausing is now a multi-step action. This test needs refactoring.")
     def testReplaySynch(self):
@@ -1756,7 +1790,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         trial_state = []
         for i, trial in enumerate(trials):
-            trial.local_experiment_path = tmpdir
             trial.run_metadata.last_result = {TRAINING_ITERATION: 0}
             trial_state.append(_TrialState(trial.config))
 
@@ -1912,7 +1945,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
-            trial.local_experiment_path = tmpdir
             trial.run_metadata.last_result = {}
         self.on_trial_result(
             pbt, runner, trials[1], result(1, 10), TrialScheduler.CONTINUE

@@ -898,7 +898,9 @@ class Trainable:
         """
         if _use_storage_context():
             checkpoint_result: _TrainingResult = checkpoint_path
-            assert isinstance(checkpoint_result, _TrainingResult)
+            assert isinstance(checkpoint_result, _TrainingResult), type(
+                checkpoint_result
+            )
 
             checkpoint_metrics = checkpoint_result.metrics
             self._iteration = checkpoint_metrics[TRAINING_ITERATION]
