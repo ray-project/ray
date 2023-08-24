@@ -177,7 +177,8 @@ class Trainable:
 
         self._storage = storage
 
-        if _use_storage_context():
+        if _use_storage_context() and storage:
+            assert storage.trial_fs_path
             logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
 
         self.setup(copy.deepcopy(self.config))
@@ -523,7 +524,7 @@ class Trainable:
                         )
 
                 local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
-                
+
                 if self._storage:
                     persisted_checkpoint = self._storage.persist_current_checkpoint(
                         local_checkpoint
@@ -534,9 +535,15 @@ class Trainable:
                     self._storage.current_checkpoint_index += 1
 
                     checkpoint_result = _TrainingResult(
-                        checkpoint=persisted_checkpoint, metrics=self._last_result.copy()
+                        checkpoint=persisted_checkpoint,
+                        metrics=self._last_result.copy(),
                     )
                 else:
+                    # `storage=None` only happens when initializing the
+                    # Trainable manually, outside of Tune/Train.
+                    # In this case, no storage is set, so the default behavior
+                    # is to just not upload anything and report a local checkpoint.
+                    # This is fine for the main use case of local debugging.
                     checkpoint_result = _TrainingResult(
                         checkpoint=local_checkpoint, metrics=self._last_result.copy()
                     )
