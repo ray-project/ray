@@ -766,8 +766,7 @@ class RunConfig:
     local_dir: Optional[str] = None
 
     def __post_init__(self):
-        from ray.tune.syncer import SyncConfig, Syncer
-        from ray.tune.utils.util import _resolve_storage_path
+        from ray.train import SyncConfig
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
         if not self.failure_config:
@@ -779,12 +778,27 @@ class RunConfig:
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
 
+        if self.verbose is None:
+            # Default `verbose` value. For new output engine,
+            # this is AirVerbosity.DEFAULT.
+            # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
+            # Todo (krfricke): Currently uses number to pass test_configs::test_repr
+            self.verbose = get_air_verbosity(AirVerbosity.DEFAULT) or 3
+
         # Convert Paths to strings
         if isinstance(self.local_dir, Path):
             self.local_dir = str(self.local_dir)
 
         if isinstance(self.storage_path, Path):
             self.storage_path = str(self.storage_path)
+
+        # TODO(justinvyu): [code_removal] Legacy stuff below.
+        from ray.tune.utils.util import _resolve_storage_path
+        from ray.train._internal.storage import _use_storage_context
+        from ray.train._internal.syncer import Syncer
+
+        if _use_storage_context():
+            return
 
         local_path, remote_path = _resolve_storage_path(
             self.storage_path, self.local_dir, self.sync_config.upload_dir
@@ -833,13 +847,6 @@ class RunConfig:
             raise ValueError(
                 "Must specify a remote `storage_path` to use a custom `syncer`."
             )
-
-        if self.verbose is None:
-            # Default `verbose` value. For new output engine,
-            # this is AirVerbosity.DEFAULT.
-            # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
-            # Todo (krfricke): Currently uses number to pass test_configs::test_repr
-            self.verbose = get_air_verbosity(AirVerbosity.DEFAULT) or 3
 
     def __repr__(self):
         from ray.tune.syncer import SyncConfig

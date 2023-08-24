@@ -98,6 +98,19 @@ class SyncConfig:
         ]:
             self._deprecation_warning(attr_name, extra_msg)
 
+        # TODO(justinvyu): [code_removal]
+        from ray.train._internal.storage import _use_storage_context
+
+        if not _use_storage_context():
+            if self.upload_dir == _DEPRECATED_VALUE:
+                self.upload_dir = None
+            if self.syncer == _DEPRECATED_VALUE:
+                self.syncer = "auto"
+            if self.sync_artifacts == _DEPRECATED_VALUE:
+                self.sync_artifacts = True
+            if self.sync_on_checkpoint == _DEPRECATED_VALUE:
+                self.sync_on_checkpoint = True
+
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig."""
         return Template("scrollableTable.html.j2").render(
