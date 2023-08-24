@@ -1,4 +1,6 @@
-.. _train-overivew:
+.. _train-key-concepts:
+
+.. _train-overview:
 
 Ray Train Overview
 ==================

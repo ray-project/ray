@@ -56,7 +56,7 @@ Learn more
         Understand the key concepts for distributed training.
 
         +++
-        .. button-ref:: train_overview
+        .. button-ref:: train-overview
             :color: primary
             :outline:
             :expand:
@@ -71,7 +71,7 @@ Learn more
         Start with the guide for the framework you are using.
 
         +++
-        .. button-ref:: train_pytorch
+        .. button-ref:: train-pytorch
             :color: primary
             :outline:
             :expand:
@@ -85,7 +85,7 @@ Learn more
         Learn how to use Ray Train, from basic usage to end-to-end guides.
 
         +++
-        .. button-ref:: train_user_guides
+        .. button-ref:: train-user-guides
             :color: primary
             :outline:
             :expand:
