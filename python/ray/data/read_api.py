@@ -84,6 +84,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.util.spark.utils import (
     _convert_dbfs_path_to_local_path,
+    get_or_create_spark_session_for_delta,
     get_spark_session,
     is_in_databricks_runtime,
 )
@@ -707,9 +708,6 @@ def read_parquet(
 def read_delta(
     uri: str,
     *,
-    version: Optional[str] = None,
-    storage_options: Optional[Dict[str, str]] = None,
-    without_files: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
@@ -718,79 +716,43 @@ def read_delta(
     meta_provider: Optional[ParquetMetadataProvider] = None,
     **arrow_parquet_args,
 ) -> Dataset:
-    """Creates a :class:`~ray.data.Dataset` from parquet files.
+    """Creates a :class:`~ray.data.Dataset` from delta files.
 
 
     Examples:
-        Read a file in remote storage.
+        Read delta files.
 
         >>> import ray
-        >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
-        >>> ds.schema()
-        Column        Type
-        ------        ----
-        sepal.length  double
-        sepal.width   double
-        petal.length  double
-        petal.width   double
-        variety       string
+        >>> ds = ray.data.read_delta("/path/to/your/delta/file")
 
-
-        Read a directory in remote storage.
-        >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris-parquet/")
-
-        Read multiple local files.
-        >>> ray.data.read_parquet(
-        ...    ["local:///path/to/file1", "local:///path/to/file2"]) # doctest: +SKIP
-
-        Specify a schema for the parquet file.
-        >>> import pyarrow as pa
-        >>> fields = [("sepal.length", pa.float32()),
-        ...           ("sepal.width", pa.float32()),
-        ...           ("petal.length", pa.float32()),
-        ...           ("petal.width", pa.float32()),
-        ...           ("variety", pa.string())]
-        >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet",
-        ...     schema=pa.schema(fields))
-        >>> ds.schema()
-        Column        Type
-        ------        ----
-        sepal.length  float
-        sepal.width   float
-        petal.length  float
-        petal.width   float
-        variety       string
-
-
-        The Parquet reader also supports projection and filter pushdown, allowing column
-        selection and row filtering to be pushed down to the file scan.
+        The Delta reader requires a spark session to be created.
 
         .. testcode::
 
-            import pyarrow as pa
+            import ray
+            from pyspark.sql import SparkSession
 
-            # Create a Dataset by reading a Parquet file, pushing column selection and
-            # row filtering down to the file scan.
-            ds = ray.data.read_parquet(
-                "s3://anonymous@ray-example-data/iris.parquet",
-                columns=["sepal.length", "variety"],
-                filter=pa.dataset.field("sepal.length") > 5.0,
-            )
+            spark = (SparkSession.builder
+            .config("spark.jars.packages", "io.delta:delta-core_2.12:2.2.0")
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+            .config("spark.sql.catalog.spark_catalog",
+                    "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+            .getOrCreate())
 
-            ds.show(2)
+            # Create a delta table using spark
+            spark_df = spark.range(200).repartition(8)
+            spark_df.write.format("delta").save("DeltaTable")
 
-        .. testoutput::
+            # Use ray to read the delta table
+            data = ray.data.read_delta("DeltaTable")
+            assert data.count() == 200
+            assert data.columns() == ["id"]
+            assert data.schema().names == ["id"]
+            assert data.schema().types[0] == "int64"
 
-            {'sepal.length': 5.1, 'variety': 'Setosa'}
-            {'sepal.length': 5.4, 'variety': 'Setosa'}
-
-        For further arguments you can pass to PyArrow as a keyword argument, see the
-        `PyArrow API reference <https://arrow.apache.org/docs/python/generated/\
-        pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_.
 
     Args:
-        paths: A single file path or directory, or a list of file paths. Multiple
-            directories are not supported.
+        uri: A single file path or directory.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -832,14 +794,8 @@ def read_delta(
         paths = spark.read.load(uri, format="delta").inputFiles()
         paths = [_convert_dbfs_path_to_local_path(path) for path in paths]
     else:
-        try:
-            from deltalake import DeltaTable
-        except ImportError as e:
-            raise Exception("Please install deltalake to use read_delta.") from e
-
-        # TODO: check the limitations of DeltaTable and params each version supports
-        dt = DeltaTable(uri, version, storage_options)
-        paths = dt.file_uris()
+        spark = get_or_create_spark_session_for_delta()
+        paths = spark.read.load(uri, format="delta").inputFiles()
     return read_parquet(
         paths=paths,
         filesystem=filesystem,

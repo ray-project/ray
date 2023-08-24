@@ -130,6 +130,26 @@ def get_spark_session():
     return spark_session
 
 
+def get_or_create_spark_session_for_delta():
+    from pyspark.sql import SparkSession
+
+    spark_session = (
+        SparkSession.builder.config(
+            # This package version should vary with the Spark version.
+            "spark.jars.packages",
+            "io.delta:delta-core_2.12:2.2.0",
+        )
+        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+        .config(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )
+        .getOrCreate()
+    )
+
+    return spark_session
+
+
 def get_spark_application_driver_host(spark):
     return spark.conf.get("spark.driver.host")
 

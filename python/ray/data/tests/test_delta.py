@@ -2,9 +2,11 @@ import os
 import sys
 import tempfile
 
+import pandas as pd
 import pytest
 from pyspark.sql import SparkSession
 
+import ray.data
 from ray.data import read_delta
 
 
@@ -36,6 +38,21 @@ def test_read_delta_basic(spark):
         assert data.columns() == ["id"]
         assert data.schema().names == ["id"]
         assert data.schema().types[0] == "int64"
+
+
+def test_read_ray_data(spark):
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.data.from_pandas([df])
+    with tempfile.TemporaryDirectory() as tempdir:
+        ds.write_parquet(tempdir)
+        spark.sql(f"CONVERT TO DELTA parquet.`{tempdir}`")
+
+        data = read_delta(tempdir)
+        assert data.count() == 3
+        assert data.columns() == ["one", "two"]
+        assert data.schema().names == ["one", "two"]
+        assert data.schema().types[0] == "int64"
+        assert data.schema().types[1] == "string"
 
 
 if __name__ == "__main__":
