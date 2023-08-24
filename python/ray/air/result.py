@@ -1,6 +1,7 @@
 import os
 import json
 import pandas as pd
+import pyarrow
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,7 +47,6 @@ class Result:
             saved checkpoints is determined by the ``checkpoint_config``
             argument of ``run_config`` (by default, all checkpoints will
             be saved).
-
     """
 
     metrics: Optional[Dict[str, Any]]
@@ -56,7 +56,8 @@ class Result:
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]] = None
     _local_path: Optional[str] = None
     _remote_path: Optional[str] = None
-    _items_to_repr = ["error", "metrics", "path", "checkpoint"]
+    _storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
+    _items_to_repr = ["error", "metrics", "path", "filesystem", "checkpoint"]
     # Deprecate: raise in 2.5, remove in 2.6
     log_dir: Optional[Path] = None
 
@@ -86,12 +87,22 @@ class Result:
         """Path pointing to the result directory on persistent storage.
 
         This can point to a remote storage location (e.g. S3) or to a local
-        location (path on the head node).
+        location (path on the head node). The path is accessible via the result's
+        associated `filesystem`.
 
-        For instance, if your remote storage path is ``s3://bucket/location``,
-        this will point to ``s3://bucket/location/experiment_name/trial_name``.
+        For instance, for a result stored in S3 at ``s3://bucket/location``,
+        ``path`` will have the value ``bucket/location``.
         """
         return self._remote_path or self._local_path
+
+    @property
+    def filesystem(self) -> pyarrow.fs.FileSystem:
+        """Return the filesystem that can be used to access the result path.
+
+        Returns:
+            pyarrow.fs.FileSystem implementation.
+        """
+        return self._storage_filesystem or pyarrow.fs.LocalFileSystem()
 
     def _repr(self, indent: int = 0) -> str:
         """Construct the representation with specified number of space indent."""
@@ -103,6 +114,8 @@ class Result:
             shown_attributes["error"] = type(self.error).__name__
         else:
             shown_attributes.pop("error")
+
+        shown_attributes["filesystem"] = shown_attributes["filesystem"].type_name
 
         if self.metrics:
             exclude = set(AUTO_RESULT_KEYS)
@@ -218,6 +231,7 @@ class Result:
             checkpoint=latest_checkpoint,
             _local_path=local_path,
             _remote_path=None,
+            _storage_filesystem=pyarrow.fs.LocalFileSystem(),
             metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
             error=error,
