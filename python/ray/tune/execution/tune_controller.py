@@ -421,7 +421,7 @@ class TuneController:
     @property
     def experiment_path(self) -> str:
         if _use_storage_context():
-            return str(self._storage.storage_prefix / self._storage.experiment_fs_path)
+            return self._storage.experiment_fs_path
 
         return self._legacy_remote_experiment_path or self._legacy_local_experiment_path
 
@@ -1919,9 +1919,11 @@ class TuneController:
             return
 
         if storage == CheckpointStorage.MEMORY:
+            # This is now technically a persistent checkpoint, but
+            # we don't resolve it. Instead, we register it directly.
             future = self._schedule_trial_task(
                 trial=trial,
-                method_name="save_to_object",
+                method_name="save",
                 on_result=None,
                 on_error=self._trial_task_failure,
                 _return_future=True,
@@ -2049,8 +2051,7 @@ class TuneController:
     # RESTORE
     def _schedule_trial_restore(self, trial: Trial) -> bool:
         if _use_storage_context():
-            cpm = trial.run_metadata.checkpoint_manager
-            checkpoint_result = cpm.latest_checkpoint_result
+            checkpoint_result = trial.latest_checkpoint_result
 
             if not checkpoint_result:
                 logger.debug(f"Not restoring trial {trial}: No checkpoint found.")
@@ -2080,7 +2081,7 @@ class TuneController:
         kwargs = {}
 
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
-            method_name = "restore_from_object"
+            method_name = "restore"
             args = (checkpoint.dir_or_data,)
         elif (
             trial.uses_cloud_checkpointing
@@ -2099,9 +2100,9 @@ class TuneController:
             }
         elif trial.sync_on_checkpoint:
             checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint.dir_or_data)
-            obj = Checkpoint.from_directory(checkpoint_path).to_bytes()
+            obj = Checkpoint.from_directory(checkpoint_path)
 
-            method_name = "restore_from_object"
+            method_name = "restore"
             args = (obj,)
         else:
             raise _AbortTrialExecution(

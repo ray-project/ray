@@ -1350,8 +1350,10 @@ def deprecated(
     return deprecated_wrapper
 
 
-def import_attr(full_path: str):
+def import_attr(full_path: str, *, reload_module: bool = False):
     """Given a full import path to a module attr, return the imported attr.
+
+    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
 
     For example, the following are equivalent:
         MyClass = import_attr("module.submodule:MyClass")
@@ -1377,6 +1379,8 @@ def import_attr(full_path: str):
         attr_name = full_path[last_period_idx + 1 :]
 
     module = importlib.import_module(module_name)
+    if reload_module:
+        importlib.reload(module)
     return getattr(module, attr_name)
 
 
@@ -2115,18 +2119,11 @@ def update_envs(env_vars: Dict[str, str]):
     if not env_vars:
         return
 
-    replaceable_keys = [
-        "PATH",
-        "LD_LIBRARY_PATH",
-        "DYLD_LIBRARY_PATH",
-        "LD_PRELOAD",
-    ]
-
     for key, value in env_vars.items():
-        if key in replaceable_keys:
-            os.environ[key] = value.replace("${" + key + "}", os.environ.get(key, ""))
-        else:
-            os.environ[key] = value
+        expanded = os.path.expandvars(value)
+        # Replace non-existant env vars with an empty string.
+        result = re.sub(r"\$\{[A-Z0-9_]+\}", "", expanded)
+        os.environ[key] = result
 
 
 def parse_node_labels_json(

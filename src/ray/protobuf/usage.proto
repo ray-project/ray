@@ -77,6 +77,10 @@ enum TagKey {
   SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED = 21;
   // Whether multuplexed API is was used.
   SERVE_MULTIPLEXED_API_USED = 22;
+  // Whether or not an HTTP proxy was used ("1" if used).
+  SERVE_HTTP_PROXY_USED = 23;
+  // Whether or not an gRPC proxy was used ("1" if used).
+  SERVE_GRPC_PROXY_USED = 24;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of

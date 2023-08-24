@@ -137,18 +137,10 @@ py_test(
 
 py_test(
     name = "test_experiment_analysis",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_experiment_analysis.py"],
     deps = [":tune_lib", ":conftest"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
-)
-
-py_test(
-    name = "test_experiment_analysis_mem",
-    size = "medium",
-    srcs = ["tests/test_experiment_analysis_mem.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
@@ -239,7 +231,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_result_grid.py"],
     deps = [":tune_lib", ":conftest"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
@@ -485,7 +477,7 @@ py_test(
     size = "large",
     srcs = ["tests/execution/test_controller_checkpointing_integration.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"]
+    tags = ["team:ml", "exclusive", "new_storage"]
 )
 
 py_test(

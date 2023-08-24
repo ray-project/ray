@@ -1415,6 +1415,9 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
+    if job_config is None:
+        job_config = ray.job_config.JobConfig()
+
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
         if runtime_env:
             logger.warning(
@@ -1423,16 +1426,26 @@ def init(
                 "job_config. Please ensure no runtime_env is used in driver "
                 "script's ray.init() when using job submission API."
             )
-        # Set runtime_env in job_config if passed as env variable, such as
-        # ray job submission with driver script executed in subprocess
-        job_config_json = json.loads(os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR))
-        job_config = ray.job_config.JobConfig.from_json(job_config_json)
+        injected_job_config_json = json.loads(
+            os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR)
+        )
+        injected_job_config: ray.job_config.JobConfig = (
+            ray.job_config.JobConfig.from_json(injected_job_config_json)
+        )
+        # NOTE: We always prefer runtime_env injected via RAY_JOB_CONFIG_JSON_ENV_VAR,
+        #       as compared to via ray.init(runtime_env=...) to make sure runtime_env
+        #       specified via job submission API takes precedence
+        runtime_env = injected_job_config.runtime_env
 
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
-                job_config.runtime_env
+                runtime_env
             )
-            job_config.set_runtime_env(runtime_env)
+
+        job_config.set_runtime_env(runtime_env)
+        # Similarly, we prefer metadata provided via job submission API
+        for key, value in injected_job_config.metadata.items():
+            job_config.set_metadata(key, value)
 
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
     # higher priority in case user also provided runtime_env for ray.init()
@@ -1444,8 +1457,6 @@ def init(
 
         if runtime_env:
             # Set runtime_env in job_config if passed in as part of ray.init()
-            if job_config is None:
-                job_config = ray.job_config.JobConfig()
             job_config.set_runtime_env(runtime_env)
 
     redis_address, gcs_address = None, None
@@ -2341,7 +2352,7 @@ def connect(
         b"tracing_startup_hook", ray_constants.KV_NAMESPACE_TRACING
     )
     if tracing_hook_val is not None:
-        ray.util.tracing.tracing_helper._enbale_tracing()
+        ray.util.tracing.tracing_helper._enable_tracing()
         if not getattr(ray, "__traced__", False):
             _setup_tracing = _import_from_string(tracing_hook_val.decode("utf-8"))
             _setup_tracing()

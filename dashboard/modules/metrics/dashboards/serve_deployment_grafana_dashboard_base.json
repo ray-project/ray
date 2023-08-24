@@ -25,6 +25,22 @@
   "templating": {
     "list": [
       {
+        "current": {
+          "selected": false
+        },
+        "description": "Filter queries to specific prometheus type.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
         "allValue": ".*",
         "current": {
           "selected": true,
@@ -35,7 +51,7 @@
             "$__all"
           ]
         },
-        "datasource": "Prometheus",
+        "datasource": "${datasource}",
         "definition": "label_values(ray_serve_deployment_replica_healthy{{{global_filters}}}, deployment)",
         "description": null,
         "error": null,
@@ -70,7 +86,7 @@
             "$__all"
           ]
         },
-        "datasource": "Prometheus",
+        "datasource": "${datasource}",
         "definition": "label_values(ray_serve_deployment_replica_healthy{{deployment=~\"$Deployment\",{global_filters}}}, replica)",
         "description": null,
         "error": null,
@@ -105,7 +121,7 @@
             "$__all"
           ]
         },
-        "datasource": "Prometheus",
+        "datasource": "${datasource}",
         "definition": "label_values(ray_serve_deployment_request_counter{{deployment=~\"$Deployment\",{global_filters}}}, route)",
         "description": null,
         "error": null,
