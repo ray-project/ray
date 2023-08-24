@@ -12,14 +12,14 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
+    BatchMapTransformFn,
     BlocksToBatchesMapTransformFn,
     BlocksToRowsMapTransformFn,
     BuildOutputBlocksMapTransformFn,
     MapTransformCallable,
     MapTransformer,
-    MapTransformFn,
-    MapTransformFnDataType,
     Row,
+    RowMapTransformFn,
 )
 from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.logical.operators.map_operator import (
@@ -279,9 +279,7 @@ def _create_map_transformer_for_map_batches_op(
             zero_copy_batch=zero_copy_batch,
         ),
         # Apply the UDF.
-        MapTransformFn(
-            batch_fn, MapTransformFnDataType.Batch, MapTransformFnDataType.Batch
-        ),
+        BatchMapTransformFn(batch_fn),
         # Convert output batches to blocks.
         BuildOutputBlocksMapTransformFn.for_batches(),
     ]
@@ -298,7 +296,7 @@ def _create_map_transformer_for_row_based_map_op(
         # Convert input blocks to rows.
         BlocksToRowsMapTransformFn.instance(),
         # Apply the UDF.
-        MapTransformFn(row_fn, MapTransformFnDataType.Row, MapTransformFnDataType.Row),
+        RowMapTransformFn(row_fn),
         # Convert output rows to blocks.
         BuildOutputBlocksMapTransformFn.for_rows(),
     ]
