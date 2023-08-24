@@ -73,23 +73,30 @@ class SyncConfig:
     sync_artifacts: bool = _DEPRECATED_VALUE
     sync_on_checkpoint: bool = _DEPRECATED_VALUE
 
-    def _deprecation_warning(self, attr_name: str):
+    def _deprecation_warning(self, attr_name: str, extra_msg: str):
         if getattr(self, attr_name) != _DEPRECATED_VALUE:
             if log_once(f"sync_config_param_deprecation_{attr_name}"):
                 warnings.warn(
                     f"`SyncConfig({attr_name})` is a deprecated configuration "
                     "and will be ignored. Please remove it from your `SyncConfig`, "
                     "as this will raise an error in a future version of Ray."
+                    f"{extra_msg}"
                 )
 
     def __post_init__(self):
-        for attr_name in [
-            "upload_dir",
-            "syncer",
-            "sync_artifacts",
-            "sync_on_checkpoint",
+        for (attr_name, extra_msg) in [
+            ("upload_dir", "\nPlease specify `train.RunConfig(storage_path)` instead."),
+            # TODO(justinvyu): Point users to some user guide for custom fs.
+            (
+                "syncer",
+                "\nPlease implement custom syncing logic with a custom "
+                "`pyarrow.fs.FileSystem` instead, and pass it into "
+                "`train.RunConfig(storage_filesystem)`.",
+            ),
+            ("sync_artifacts", ""),
+            ("sync_on_checkpoint", ""),
         ]:
-            self._deprecation_warning(attr_name)
+            self._deprecation_warning(attr_name, extra_msg)
 
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig."""
