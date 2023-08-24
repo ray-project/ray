@@ -452,6 +452,13 @@ class Deployment:
                 "future!"
             )
 
+        if not _internal and route_prefix is not DEFAULT.VALUE:
+            logger.warning(
+                "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
+                "deprecated. To specify a route prefix for an application, pass it "
+                "into `serve.run` instead."
+            )
+
         if num_replicas not in [DEFAULT.VALUE, None]:
             new_deployment_config.num_replicas = num_replicas
         if user_config is not DEFAULT.VALUE:

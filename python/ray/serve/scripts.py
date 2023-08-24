@@ -10,6 +10,7 @@ import click
 import yaml
 import traceback
 import re
+import watchfiles
 from pydantic import ValidationError
 
 import ray
@@ -323,6 +324,17 @@ def deploy(config_file_name: str, address: str):
         "as the ingress deployment."
     ),
 )
+@click.option(
+    "--reload",
+    "-r",
+    is_flag=True,
+    help=(
+        "Listens for changes to files in the working directory, --working-dir "
+        "or the working_dir in the --runtime-env, and automatically redeploys "
+        "the application. This will block until Ctrl-C'd, then clean up the "
+        "app."
+    ),
+)
 def run(
     config_or_import_path: str,
     arguments: Tuple[str],
@@ -335,6 +347,7 @@ def run(
     port: int,
     blocking: bool,
     gradio: bool,
+    reload: bool,
 ):
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
@@ -453,11 +466,36 @@ def run(
 
             visualizer = GraphVisualizer()
             visualizer.visualize_with_gradio(handle)
-        else:
-            if blocking:
-                while True:
-                    # Block, letting Ray print logs to the terminal.
-                    time.sleep(10)
+        elif reload:
+            if not blocking:
+                raise click.ClickException(
+                    "The --non-blocking option conflicts with the --reload option."
+                )
+            if working_dir:
+                watch_dir = working_dir
+            else:
+                watch_dir = app_dir
+
+            for changes in watchfiles.watch(
+                watch_dir,
+                rust_timeout=10000,
+                yield_on_timeout=True,
+            ):
+                if changes:
+                    cli_logger.info(
+                        f"Detected file change in path {watch_dir}. Redeploying app."
+                    )
+                    # The module needs to be reloaded with `importlib` in order to pick
+                    # up any changes.
+                    app = _private_api.call_app_builder_with_args_if_necessary(
+                        import_attr(import_path, reload_module=True), args_dict
+                    )
+                    serve.run(app, host=host, port=port)
+
+        if blocking:
+            while True:
+                # Block, letting Ray print logs to the terminal.
+                time.sleep(10)
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")
