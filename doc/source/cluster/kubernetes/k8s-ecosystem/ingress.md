@@ -4,9 +4,10 @@
 
 Two examples show how to use ingress to access your Ray cluster:
 
-  * [AWS Application Load Balancer (ALB) Ingress support on AWS EKS](#example-aws-application-load-balancer-alb-ingress-support-on-aws-eks)
-  * [Manually setting up NGINX Ingress on Kind](#example-manually-setting-up-nginx-ingress-on-kind)
+  * [AWS Application Load Balancer (ALB) Ingress support on AWS EKS](kuberay-aws-alb)
+  * [Manually setting up NGINX Ingress on Kind](kuberay-nginx)
 
+(kuberay-aws-alb)=
 ## AWS Application Load Balancer (ALB) Ingress support on AWS EKS
 
 ### Prerequisite
@@ -71,6 +72,7 @@ kubectl describe ingress ray-cluster-ingress
 kubectl delete ingress ray-cluster-ingress
 ```
 
+(kuberay-nginx)=
 ## Manually setting up NGINX Ingress on Kind
 
 ```sh

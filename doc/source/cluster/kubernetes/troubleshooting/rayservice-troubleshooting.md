@@ -77,11 +77,24 @@ kubectl exec -it $HEAD_POD -- ray summary actors
 
 ## Common issues
 
+* {ref}`kuberay-raysvc-issue1`
+* {ref}`kuberay-raysvc-issue2`
+* {ref}`kuberay-raysvc-issue3-1`
+* {ref}`kuberay-raysvc-issue3-2`
+* {ref}`kuberay-raysvc-issue4`
+* {ref}`kuberay-raysvc-issue5`
+* {ref}`kuberay-raysvc-issue6`
+* {ref}`kuberay-raysvc-issue7`
+* {ref}`kuberay-raysvc-issue8`
+* {ref}`kuberay-raysvc-issue9`
+
+(kuberay-raysvc-issue1)=
 ### Issue 1: Ray Serve script is incorrect.
 
 We strongly recommend that you test your Ray Serve script locally or in a RayCluster before
 deploying it to a RayService. Please refer to [rayserve-dev-doc.md](https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayserve-dev-doc.md) for more details.
 
+(kuberay-raysvc-issue2)=
 ### Issue 2: `serveConfigV2` is incorrect.
 
 For the sake of flexibility, we have set `serveConfigV2` as a YAML multi-line string in the RayService CR.
@@ -92,6 +105,7 @@ Some tips to help you debug the `serveConfigV2` field:
 the Ray Serve Multi-application API `PUT "/api/serve/applications/"`.
 * Unlike `serveConfig`, `serveConfigV2` adheres to the snake case naming convention. For example, `numReplicas` is used in `serveConfig`, while `num_replicas` is used in `serveConfigV2`. 
 
+(kuberay-raysvc-issue3-1)=
 ### Issue 3-1: The Ray image does not include the required dependencies.
 
 You have two options to resolve this issue:
@@ -101,6 +115,7 @@ You have two options to resolve this issue:
   * For example, the MobileNet example requires `python-multipart`, which is not included in the Ray image `rayproject/ray-ml:2.5.0`.
 Therefore, the YAML file includes `python-multipart` in the runtime environment. For more details, refer to [the MobileNet example](kuberay-mobilenet-rayservice-example).
 
+(kuberay-raysvc-issue3-2)=
 ### Issue 3-2: Examples for troubleshooting dependency issues.
 
 > Note: We highly recommend testing your Ray Serve script locally or in a RayCluster before deploying it to a RayService. This helps identify any dependency issues in the early stages. Please refer to [rayserve-dev-doc.md](https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayserve-dev-doc.md) for more details.
@@ -142,6 +157,7 @@ The function `__call__()` will only be called when the Serve application receive
             ModuleNotFoundError: No module named 'tensorflow'
     ```
 
+(kuberay-raysvc-issue4)=
 ### Issue 4: Incorrect `import_path`.
 
 You can refer to [the documentation](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.schema.ServeApplicationSchema.html#ray.serve.schema.ServeApplicationSchema.import_path) for more details about the format of `import_path`.
@@ -160,6 +176,7 @@ and `app` is the name of the variable representing Ray Serve application within 
           pip: ["python-multipart==0.0.6"]
 ```
 
+(kuberay-raysvc-issue5)=
 ### Issue 5: Fail to create / update Serve applications.
 
 You may encounter the following error messages when KubeRay tries to create / update Serve applications:
@@ -185,6 +202,7 @@ Put "http://${HEAD_SVC_FQDN}:52365/api/serve/applications/": dial tcp $HEAD_IP:5
 
 One possible cause of this issue could be a Kubernetes NetworkPolicy blocking the traffic between the Ray Pods and the dashboard agent's port (i.e., 52365).
 
+(kuberay-raysvc-issue6)=
 ### Issue 6: `runtime_env`
 
 In `serveConfigV2`, you can specify the runtime environment for the Ray Serve applications via `runtime_env`.
@@ -194,6 +212,7 @@ Some common issues related to `runtime_env`:
 
 * The NetworkPolicy blocks the traffic between the Ray Pods and the external URLs specified in `runtime_env`.
 
+(kuberay-raysvc-issue7)=
 ### Issue 7: Failed to get Serve application statuses.
 
 You may encounter the following error message when KubeRay tries to get Serve application statuses:
@@ -239,6 +258,7 @@ If you consistently encounter this issue, there are several possible causes:
   # Get \"http://rayservice-sample-raycluster-rqlsl-head-svc.default.svc.cluster.local:52365/api/serve/applications/\": dial tcp 10.96.7.154:52365: connect: connection refused
   ```
 
+(kuberay-raysvc-issue8)=
 ### Issue 8: A loop of restarting the RayCluster occurs when the Kubernetes cluster runs out of resources. (KubeRay v0.6.1 or earlier)
 
 > Note: Currently, the KubeRay operator does not have a clear plan to handle situations where the Kubernetes cluster runs out of resources.
@@ -293,3 +313,25 @@ kubectl logs $KUBERAY_OPERATOR_POD -n $YOUR_NAMESPACE | tee operator-log
 # .
 # 2023-07-11T02:14:58.122Z	INFO	controllers.RayService	Restart RayCluster	{"ServiceName": "default/rayservice-sample", "AvailableWorkerReplicas": 1, "DesiredWorkerReplicas": 5, "restart reason": "The serve application is unhealthy, restarting the cluster. If the AvailableWorkerReplicas is not equal to DesiredWorkerReplicas, this may imply that the Autoscaler does not have enough resources to scale up the cluster. Hence, the serve application does not have enough resources to run. Please check https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayservice-troubleshooting.md for more details.", "RayCluster": {"apiVersion": "ray.io/v1alpha1", "kind": "RayCluster", "namespace": "default", "name": "rayservice-sample-raycluster-hvd9f"}}
 ```
+
+(kuberay-raysvc-issue9)=
+### Issue 9: Upgrade from Ray Serve's single-application API to its multi-application API without downtime
+
+KubeRay v0.6.0 has begun supporting Ray Serve API V2 (multi-application) by exposing `serveConfigV2` in the RayService CRD.
+However, Ray Serve does not support deploying both API V1 and API V2 in the cluster simultaneously.
+Hence, if users want to perform in-place upgrades by replacing `serveConfig` with `serveConfigV2`, they may encounter the following error message:
+
+```
+ray.serve.exceptions.RayServeException: You are trying to deploy a multi-application config, however a single-application 
+config has been deployed to the current Serve instance already. Mixing single-app and multi-app is not allowed. Please either
+redeploy using the single-application config format `ServeApplicationSchema`, or shutdown and restart Serve to submit a
+multi-app config of format `ServeDeploySchema`. If you are using the REST API, you can submit a multi-app config to the
+the multi-app API endpoint `/api/serve/applications/`.
+```
+
+To resolve this issue, you can replace `serveConfig` with `serveConfigV2` and modify `rayVersion` which has no effect when the Ray version is 2.0.0 or later to 2.100.0.
+This will trigger a new RayCluster preparation instead of an in-place update.
+
+If, after following the steps above, you still see the error message and GCS fault tolerance is enabled, it may be due to the `ray.io/external-storage-namespace` annotatoin being the same for both old and new RayClusters.
+You can remove the annotation and KubeRay will automatically generate a unique key for each RayCluster custom resource.
+You can refer to [kuberay#1297](https://github.com/ray-project/kuberay/issues/1297) for more details.
