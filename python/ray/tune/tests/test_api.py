@@ -371,9 +371,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
             train.report(dict(timesteps_total=1))
 
         register_trainable("f1", train_fn)
-        os.environ["TEST_TMPDIR"] = logdir
-        tune.run("f1")
-        os.environ.pop("TEST_TMPDIR")
+        with unittest.mock.patch.dict(os.environ, {"TEST_TMPDIR": logdir}):
+            tune.run("f1")
 
     def testLogdirStartingWithTilde(self):
         local_dir = "~/ray_results/local_dir"
@@ -385,16 +384,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
             train.report(dict(timesteps_total=1))
 
         register_trainable("f1", train_fn)
-        os.environ["TEST_TMPDIR"] = os.path.expanduser(local_dir)
-        run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                    "config": {"a": "b"},
+        with unittest.mock.patch.dict(
+            os.environ, {"TEST_TMPDIR": os.path.expanduser(local_dir)}
+        ):
+            run_experiments(
+                {
+                    "foo": {
+                        "run": "f1",
+                        "config": {"a": "b"},
+                    }
                 }
-            }
-        )
-        os.environ.pop("TEST_TMPDIR")
+            )
 
     def testLongFilename(self):
         logdir = os.path.join(ray._private.utils.get_user_temp_dir(), "logdir")
@@ -404,20 +404,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
             train.report(dict(timesteps_total=1))
 
         register_trainable("f1", train_fn)
-        os.environ["TEST_TMPDIR"] = logdir
 
-        run_experiments(
-            {
-                "foo": {
-                    "run": "f1",
-                    "config": {
-                        "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
-                        "b" * 50: tune.sample_from(lambda spec: "long" * 40),
-                    },
+        with unittest.mock.patch.dict(os.environ, {"TEST_TMPDIR": logdir}):
+            run_experiments(
+                {
+                    "foo": {
+                        "run": "f1",
+                        "config": {
+                            "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
+                            "b" * 50: tune.sample_from(lambda spec: "long" * 40),
+                        },
+                    }
                 }
-            }
-        )
-        os.environ.pop("TEST_TMPDIR")
+            )
 
     def testBadParams(self):
         def f():

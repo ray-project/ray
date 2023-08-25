@@ -271,6 +271,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             storage_path=self.logdir,
+            name="testFailResumeGridSearch",
             verbose=1,
         )
 
@@ -299,6 +300,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             storage_path=self.logdir,
+            name="testResourceUpdateInResume",
             verbose=1,
         )
 
@@ -345,6 +347,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             storage_path=self.logdir,
+            name="testConfigUpdateInResume",
             verbose=1,
         )
 
@@ -399,6 +402,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             storage_path=self.logdir,
+            name="testFailResumeWithPreset",
             verbose=1,
         )
         with self.assertRaises(RuntimeError):
@@ -442,6 +446,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             storage_path=self.logdir,
+            name="testFailResumeAfterPreset",
             verbose=1,
         )
 
@@ -478,7 +483,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             experiments.append(
                 tune.Experiment(
                     run=MyTrainableClass,
-                    name="trainable",
+                    name="testMultiExperimentFail",
                     num_samples=2,
                     config={
                         "test": tune.grid_search([1, 2, 3]),
@@ -516,6 +521,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             storage_path=self.logdir,
+            name="testWarningLargeGrid",
             verbose=1,
         )
         with self.assertWarnsRegex(UserWarning, "exceeds the serialization threshold"):
