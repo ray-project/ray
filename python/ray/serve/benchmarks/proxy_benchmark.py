@@ -2,11 +2,11 @@
 
 import aiohttp
 import asyncio
-from grpc import aio
+from grpc import aio, StatusCode
 import logging
 from pprint import pprint
 import time
-from typing import Callable, Dict, Union
+from typing import Callable, Dict
 
 import numpy as np
 from starlette.requests import Request
@@ -23,17 +23,22 @@ CALLS_PER_BATCH = 100
 DELTA = 10**-7
 
 
-async def timeit(name: str, fn: Callable, multiplier: int = CALLS_PER_BATCH):
+async def get_query_tps(name: str, fn: Callable, multiplier: int = CALLS_PER_BATCH):
+    """Get query TPS.
+
+    Run the function for 0.5 seconds 10 times to calculate how many requests can
+    be completed. And use those stats to calculate the mean and std of TPS.
+    """
     # warmup
     start = time.time()
     while time.time() - start < 0.1:
         await fn()
     # real run
     stats = []
-    for _ in range(1):
+    for _ in range(10):
         count = 0
         start = time.time()
-        while time.time() - start < 10:
+        while time.time() - start < 0.5:
             await fn()
             count += 1
         end = time.time()
@@ -42,22 +47,39 @@ async def timeit(name: str, fn: Callable, multiplier: int = CALLS_PER_BATCH):
     tps_std = round(np.std(stats), 2)
     print(f"\t{name} {tps_mean} +- {tps_std} requests/s")
 
-    return tps_mean
+    return tps_mean, tps_std
 
 
-async def fetch(session, data):
-    async with session.get("http://localhost:8000/", data=data) as response:
-        response = await response.text()
-        assert response == "ok", response
+async def get_query_latencies(name: str, fn: Callable):
+    """Get query latencies.
+
+    Take all the latencies from the function and calculate the mean and std.
+    """
+    many_client_results = np.asarray(await fn())
+    many_client_results.flatten()
+    latency_ms_mean = round(np.mean(many_client_results) * 1000, 2)
+    latency_ms_std = round(np.std(many_client_results) * 1000, 2)
+    print(f"\t{name} {latency_ms_mean} +- {latency_ms_std} ms")
+
+    return latency_ms_mean, latency_ms_std
+
+
+async def fetch_http(session, data):
+    # async with session.get("http://localhost:8000/", data=data) as response:
+    #     response = await response.text()
+    #     assert response == "ok", response
+
+    response = await session.get("http://localhost:8000/", data=data)
+    print("response", response.text())
+    assert response.status == 200, response
 
 
 async def fetch_grpc(stub, data):
-    response = await stub.grpc_call(serve_pb2.RawData(nums=data))
-    # print("Model output: ", response.output)
+    await stub.grpc_call(serve_pb2.RawData(nums=data))
 
 
 @ray.remote
-class Client:
+class HTTPClient:
     def __init__(self):
         self.session = aiohttp.ClientSession()
 
@@ -66,7 +88,16 @@ class Client:
 
     async def do_queries(self, num, data):
         for _ in range(num):
-            await fetch(self.session, data)
+            await fetch_http(self.session, data)
+
+    async def time_queries(self, num, data):
+        stats = []
+        for _ in range(num):
+            start = time.time()
+            await fetch_http(self.session, data)
+            end = time.time()
+            stats.append(end - start)
+        return stats
 
 
 @ray.remote
@@ -105,14 +136,18 @@ def build_app(
             # Turn off access log.
             logging.getLogger("ray.serve").setLevel(logging.WARNING)
 
+        def normalize(self, raw: np.ndarray) -> np.ndarray:
+            return (raw - np.min(raw)) / (np.max(raw) - np.min(raw) + DELTA)
+
         async def __call__(self, req: Request):
-            # TODO: fixit
-            obj_ref = await self._handle.remote(await req.body())
-            return await obj_ref
+            raw = np.asarray(await req.body())
+            processed = self.normalize(raw)
+            model_output_ref = await self._handle.remote(processed)
+            return await model_output_ref
 
         async def grpc_call(self, raq_data):
             raw = np.asarray(raq_data.nums)
-            processed = (raw - np.min(raw)) / (np.max(raw) - np.min(raw) + DELTA)
+            processed = self.normalize(raw)
             model_output_ref = await self._handle.remote(processed)
             return serve_pb2.ModelOutput(output=await model_output_ref)
 
@@ -138,6 +173,7 @@ async def trial(
     max_concurrent_queries: int,
     data_size: int,
     num_clients: int,
+    test_grpc: bool = False,
 ) -> Dict[str, float]:
     results = {}
 
@@ -145,12 +181,6 @@ async def trial(
         f"replica:{num_replicas}/"
         f"concurrent_queries:{max_concurrent_queries}/"
         f"data_size:{data_size}"
-    )
-
-    print(
-        f"num_replicas={num_replicas},"
-        f"max_concurrent_queries={max_concurrent_queries},"
-        f"data_size={data_size}"
     )
 
     app = build_app(
@@ -162,40 +192,32 @@ async def trial(
 
     data = [random() for _ in range(data_size)]
 
-    # async with aio.insecure_channel("localhost:9000") as channel:
-    #     stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
-    #
-    #     async def single_client():
-    #         for _ in range(CALLS_PER_BATCH):
-    #             await fetch_grpc(stub, data)
-    #
-    #     single_client_avg_tps = await timeit(
-    #         name=f"single client {data_size} data size",
-    #         fn=single_client,
-    #     )
-    #     key = f"num_client:1/{trial_key_base}"
-    #     results[key] = single_client_avg_tps
-
-    clients = [gRPCClient.remote() for _ in range(num_clients)]
+    # clients = [gRPCClient.remote() for _ in range(num_clients)]
+    clients = [HTTPClient.remote() for _ in range(num_clients)]
     ray.get([client.ready.remote() for client in clients])
 
-    async def get_query_latencies():
+    async def client_time_queries():
         return ray.get([a.time_queries.remote(CALLS_PER_BATCH, data) for a in clients])
 
-    async def many_clients():
+    async def client_do_queries():
         ray.get([a.do_queries.remote(CALLS_PER_BATCH, data) for a in clients])
 
-    many_client_results = np.asarray(await get_query_latencies())
-    many_client_results.flatten()
-    print("many_client_results", many_client_results)
-    latency_mean = np.mean(many_client_results)
-    print("many_client_results", latency_mean)
-    avg_tps = await timeit(
-        f"{len(clients)} clients {data_size} data size",
-        many_clients,
+    metrics_name = f"{len(clients)} clients {data_size} data size"
+    tps_mean, tps_sdt = await get_query_tps(
+        metrics_name,
+        client_do_queries,
     )
-    #
-    # results[f"num_client:{len(clients)}/{trial_key_base}"] = multi_client_avg_tps
+    latency_ms_mean, latency_ms_std = await get_query_latencies(
+        metrics_name,
+        client_time_queries,
+    )
+
+    results[f"num_client:{len(clients)}/{trial_key_base}"] = {
+        "tps_mean": tps_mean,
+        "tps_sdt": tps_sdt,
+        "latency_ms_mean": latency_ms_mean,
+        "latency_ms_std": latency_ms_std,
+    }
 
     return results
 
@@ -203,37 +225,18 @@ async def trial(
 async def main():
     results = {}
 
-    results.update(
-        await trial(
-            num_replicas=1,
-            max_concurrent_queries=1,
-            data_size=1,
-            num_clients=1,
-        )
-    )
-    results.update(
-        await trial(
-            num_replicas=1,
-            max_concurrent_queries=1,
-            data_size=2,
-            num_clients=1,
-        )
-    )
-    # for num_replicas in [1, 8]:
-    #     for max_batch_size, max_concurrent_queries in [
-    #         (1, 1),
-    #         (1, 10000),
-    #         (10000, 10000),
-    #     ]:
-    #         for data_size in ["small"]:
-    #             results.update(
-    #                 await trial(
-    #                     num_replicas,
-    #                     max_batch_size,
-    #                     max_concurrent_queries,
-    #                     data_size,
-    #                 )
-    #             )
+    for num_replicas in [1, 8]:
+        for max_concurrent_queries in [1, 10000]:
+            for data_size in [1, 100, 10_000]:
+                for num_clients in [1, 8]:
+                    results.update(
+                        await trial(
+                            num_replicas=num_replicas,
+                            max_concurrent_queries=max_concurrent_queries,
+                            data_size=data_size,
+                            num_clients=num_clients,
+                        )
+                    )
 
     print("Results from all conditions:")
     pprint(results)
