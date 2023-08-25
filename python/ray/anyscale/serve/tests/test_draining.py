@@ -62,7 +62,7 @@ def test_draining_with_traffic(monkeypatch, ray_start_cluster):
         return {
             replica.replica_id: replica.node_id
             for replica in serve_details.applications["app"]
-            .deployments["app_deployment"]
+            .deployments["deployment"]
             .replicas
             if replica.state == replica_state
         }
@@ -179,7 +179,7 @@ def test_draining_without_traffic(monkeypatch, ray_start_cluster):
     replica_node_ids = {
         replica.node_id
         for replica in serve_details.applications["app"]
-        .deployments["app_deployment"]
+        .deployments["deployment"]
         .replicas
         if replica.state == ReplicaState.RUNNING
     }
@@ -215,7 +215,7 @@ def test_draining_without_traffic(monkeypatch, ray_start_cluster):
         replica_node_ids = {
             replica.node_id
             for replica in serve_details.applications["app"]
-            .deployments["app_deployment"]
+            .deployments["deployment"]
             .replicas
             if replica.state == ReplicaState.RUNNING
         }
