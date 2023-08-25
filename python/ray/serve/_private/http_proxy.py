@@ -840,9 +840,7 @@ class gRPCProxy(GenericProxy):
                 status_code=self.success_status_code, response=user_response_bytes
             )
         except asyncio.exceptions.TimeoutError:
-            return await self.timeout_response(
-                proxy_request=proxy_request, request_id=request_id
-            )
+            raise TimeoutError() from None
 
     async def send_request_to_replica_streaming(
         self,
