@@ -37,6 +37,7 @@ steps:
     - . ./ci/ci.sh init
     - ./ci/ci.sh build
     - export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER="1"
+    - export RAY_AIR_NEW_PERSISTENCE_MODE="0"
     - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then ./ci/ci.sh test_core; fi
     # The next command will be sharded into $parallelism shards.
     - ./ci/ci.sh test_python
