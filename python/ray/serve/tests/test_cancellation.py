@@ -19,18 +19,11 @@ from ray import serve
 from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
 
 
-"""
-- test call made from background task is *not* cancelled.
-"""
-
-
-async def send_signal_on_cancellation(signal_actor: ActorHandle, reraise: bool = False):
+async def send_signal_on_cancellation(signal_actor: ActorHandle):
     try:
         await asyncio.sleep(100000)
     except asyncio.CancelledError as e:
         await signal_actor.send.remote()
-        if reraise:
-            raise e from None
 
 
 @pytest.mark.skipif(
