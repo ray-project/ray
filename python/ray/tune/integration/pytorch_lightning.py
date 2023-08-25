@@ -203,7 +203,7 @@ class TuneReportCallback(TuneReportCheckpointCallback):
             warnings.warn(
                 "`ray.tune.integration.pytorch_lightning.TuneReportCallback` "
                 "is deprecated. Use "
-                "`ray.tune.integration.pytorch_lightning.TuneCheckpointReportCallback`"
+                "`ray.tune.integration.pytorch_lightning.TuneReportCheckpointCallback`"
                 " instead."
             )
         super(TuneReportCallback, self).__init__(
