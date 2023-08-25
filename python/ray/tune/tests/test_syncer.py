@@ -284,13 +284,14 @@ def test_syncer_wait_or_retry_failure(temp_data_dirs, tmp_path):
     """Check that the wait or retry API fails after max_retries."""
     tmp_source, tmp_target = temp_data_dirs
 
-    syncer = _FilesystemSyncer(storage_filesystem=None, sync_period=60)
+    syncer = _FilesystemSyncer(storage_filesystem=lambda: "error", sync_period=60)
 
-    # Will fail as the storage_filesystem = None
+    # Will fail since the storage filesystem is invalid
     syncer.sync_up(local_dir=tmp_source, remote_dir="/test/test_syncer_wait_or_retry")
     with pytest.raises(TuneError) as e:
         syncer.wait_or_retry(max_retries=3, backoff_s=0)
-        assert "Failed sync even after 3 retries." in str(e)
+
+    assert "Failed sync even after 3 retries." in str(e.value)
 
 
 def test_syncer_wait_or_retry_timeout(temp_data_dirs, tmp_path):
