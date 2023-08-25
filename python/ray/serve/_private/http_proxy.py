@@ -537,7 +537,7 @@ class GenericProxy(ABC):
         proxy_request: ProxyRequest,
         disconnected_task: Optional[asyncio.Task] = None,
         timeout_s: Optional[float] = None,
-    ) -> Optional[Union[ray.ObjectRef, StreamingObjectRefGenerator]]:
+    ) -> Union[None, ray.ObjectRef, StreamingObjectRefGenerator]:
         """Attempt to send a request on the handle within the timeout.
 
         If `timeout_s` is exceeded while trying to assign a replica, `TimeoutError`

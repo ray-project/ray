@@ -738,10 +738,18 @@ class RayServeReplica:
         self.processing_latency_tracker.observe(
             latency_ms, tags={"route": request_metadata.route}
         )
+
+        if user_exception is None:
+            status_str = "OK"
+        elif isinstance(user_exception, asyncio.CancelledError):
+            status_str = "CANCELLED"
+        else:
+            status_str = "ERROR"
+
         logger.info(
             access_log_msg(
                 method=request_metadata.call_method,
-                status="OK" if user_exception is None else "ERROR",
+                status=status_str,
                 latency_ms=latency_ms,
             )
         )
