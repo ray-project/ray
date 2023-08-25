@@ -258,7 +258,8 @@ class _TrainSession:
         self.continue_lock.release()
 
         # Force a final (blocking) sync of artifacts in the trial path to storage.
-        self.storage.persist_artifacts(force=True)
+        if _use_storage_context():
+            self.storage.persist_artifacts(force=True)
 
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
