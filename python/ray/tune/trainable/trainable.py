@@ -533,6 +533,8 @@ class Trainable:
 
                 local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
 
+                metrics = self._last_result.copy() if self._last_result else {}
+
                 if self._storage:
                     persisted_checkpoint = self._storage.persist_current_checkpoint(
                         local_checkpoint
@@ -543,8 +545,7 @@ class Trainable:
                     self._storage.current_checkpoint_index += 1
 
                     checkpoint_result = _TrainingResult(
-                        checkpoint=persisted_checkpoint,
-                        metrics=self._last_result.copy(),
+                        checkpoint=persisted_checkpoint, metrics=metrics
                     )
                 else:
                     # `storage=None` only happens when initializing the
@@ -553,7 +554,7 @@ class Trainable:
                     # is to just not upload anything and report a local checkpoint.
                     # This is fine for the main use case of local debugging.
                     checkpoint_result = _TrainingResult(
-                        checkpoint=local_checkpoint, metrics=self._last_result.copy()
+                        checkpoint=local_checkpoint, metrics=metrics
                     )
 
                 # Persist trial artifacts to storage.
