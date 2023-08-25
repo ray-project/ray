@@ -465,7 +465,10 @@ Models that have been trained with :ref:`Ray Train <train-docs>` can then be use
 
     checkpoint = result.checkpoint
 
-**Step 3:** Use Ray Data for batch inference. To load in the model from the :class:`Checkpoint <ray.train.Checkpoint>` inside the Python class, use one of the framework-specific Checkpoint classes.
+**Step 3:** Use Ray Data for batch inference. To load in the model from the :class:`Checkpoint <ray.train.Checkpoint>` inside the Python class, use the methodology corresponding to the Trainer used to train the model.
+
+- **Deep Learning Trainers:** :ref:`train-checkpointing`
+- **Tree-Based Trainers:** :ref:`train-gbdt-checkpoints`
 
 In this case, use :meth:`XGBoostTrainer.get_model() <ray.train.xgboost.XGBoostTrainer.get_model>` to load the model.
 
