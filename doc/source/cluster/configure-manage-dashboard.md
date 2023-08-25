@@ -71,7 +71,7 @@ Dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-
 There are two ways to expose Dashboard outside the Cluster:
 
 **1. Setting up ingress** <br/>
-Follow the [instructions](https://github.com/ray-project/kuberay/blob/master/docs/guidance/ingress.md) to set up ingress to access Ray Dashboard.
+Follow the [instructions](kuberay-ingress) to set up ingress to access Ray Dashboard.
 
 **2. Port forwarding** <br/>
 You can also view the dashboard from outside the Kubernetes cluster by using port-forwarding:
