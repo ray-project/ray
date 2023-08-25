@@ -550,18 +550,19 @@ class GenericProxy(ABC):
         result: DeploymentResponseBase = handle.remote(
             proxy_request.request_object(proxy_handle=self.self_actor_handle)
         )
-        to_object_ref = asyncio.ensure_future(
+        to_object_ref_task = asyncio.ensure_future(
             result._to_object_ref_or_gen(_record_telemetry=False)
         )
+        tasks = [to_object_ref_task]
+        if disconnected_task is not None:
+            tasks.append(disconnected_task)
         done, _ = await asyncio.wait(
-            [to_object_ref, disconnected_task]
-            if disconnected_task is not None
-            else [to_object_ref],
+            tasks,
             return_when=FIRST_COMPLETED,
             timeout=timeout_s,
         )
-        if to_object_ref in done:
-            return to_object_ref.result()
+        if to_object_ref_task in done:
+            return to_object_ref_task.result()
         elif disconnected_task is not None and disconnected_task in done:
             result.cancel()
             return None
@@ -847,6 +848,7 @@ class gRPCProxy(GenericProxy):
     ) -> ProxyResponse:
         start = time.time()
         try:
+            obj_ref = None
             try:
                 obj_ref = await self._assign_request_with_timeout(
                     handle=handle,
@@ -884,7 +886,8 @@ class gRPCProxy(GenericProxy):
                 logger.warning(
                     f"Request {request_id} timed out after {self.request_timeout_s}s."
                 )
-                ray.cancel(obj_ref)
+                if obj_ref is not None:
+                    ray.cancel(obj_ref)
                 await self.timeout_response(
                     proxy_request=proxy_request, request_id=request_id
                 )
@@ -1219,6 +1222,7 @@ class HTTPProxy(GenericProxy):
         status_code = ""
         start = time.time()
         try:
+            obj_ref_generator = None
             try:
                 obj_ref_generator = await self._assign_request_with_timeout(
                     handle=handle,
@@ -1237,7 +1241,8 @@ class HTTPProxy(GenericProxy):
                 logger.warning(
                     f"Request {request_id} timed out after {self.request_timeout_s}s."
                 )
-                ray.cancel(obj_ref_generator)
+                if obj_ref_generator is not None:
+                    ray.cancel(obj_ref_generator)
                 await self.timeout_response(
                     proxy_request=proxy_request, request_id=request_id
                 )
