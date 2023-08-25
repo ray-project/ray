@@ -1949,29 +1949,13 @@ class TuneController:
         return checkpoint
 
     def _on_saving_result(self, trial, checkpoint_value: Union[ray.ObjectRef, str]):
-        with warn_if_slow("process_trial_save") as _profile:
+        with warn_if_slow("process_trial_save"):
             self._process_trial_save(trial, checkpoint_value)
+
         with warn_if_slow("callbacks.on_trial_save"):
             self._callbacks.on_trial_save(
                 iteration=self._iteration, trials=self._trials, trial=trial
             )
-        if _profile.too_slow and trial.sync_on_checkpoint:
-            # TODO(ujvl): Suggest using cloud checkpointing once
-            #  API has converged.
-
-            msg = (
-                "Consider turning off forced head-worker trial "
-                "checkpoint syncs by setting sync_on_checkpoint=False"
-                ". Note that this may result in faulty trial "
-                "restoration if a failure occurs while the checkpoint "
-                "is being synced from the worker to the head node."
-            )
-
-            if trial.temporary_state.location.hostname and (
-                trial.temporary_state.location.hostname != get_node_ip_address()
-            ):
-                if log_once("tune_head_worker_checkpoint"):
-                    logger.warning(msg)
 
         self._maybe_execute_queued_decision(trial, after_save=True)
 

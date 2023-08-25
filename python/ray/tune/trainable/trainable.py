@@ -455,7 +455,7 @@ class Trainable:
 
         self._last_result = result
 
-        if _use_storage_context():
+        if _use_storage_context() and self._storage:
             # Launch background tasks to sync artifacts at some specified frequency.
             self._storage.persist_artifacts()
 
@@ -546,6 +546,10 @@ class Trainable:
                         checkpoint=persisted_checkpoint,
                         metrics=self._last_result.copy(),
                     )
+                    # Persist trial artifacts to storage.
+                    self._storage.persist_artifacts(
+                        force=self._storage.sync_config.sync_artifacts_on_checkpoint
+                    )
                 else:
                     # `storage=None` only happens when initializing the
                     # Trainable manually, outside of Tune/Train.
@@ -555,11 +559,6 @@ class Trainable:
                     checkpoint_result = _TrainingResult(
                         checkpoint=local_checkpoint, metrics=self._last_result.copy()
                     )
-
-                # Persist trial artifacts to storage.
-                self._storage.persist_artifacts(
-                    force=self._storage.sync_config.sync_on_checkpoint
-                )
             else:
                 checkpoint_result: _TrainingResult = checkpoint_dict_or_path
                 assert self._last_result

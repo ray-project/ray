@@ -570,7 +570,8 @@ class StorageContext:
         """Persists all artifacts within `trial_local_dir` to storage.
 
         This method possibly launches a background task to sync the trial dir,
-        depending on the `sync_period` + `sync_on_checkpoint` settings of `SyncConfig`.
+        depending on the `sync_period` + `sync_artifacts_on_checkpoint`
+        settings of `SyncConfig`.
 
         `(local_fs, trial_local_path) -> (storage_filesystem, trial_fs_path)`
 

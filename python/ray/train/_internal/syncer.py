@@ -110,7 +110,6 @@ class SyncConfig:
                 "`pyarrow.fs.FileSystem` instead, and pass it into "
                 "`train.RunConfig(storage_filesystem)`.",
             ),
-            ("sync_artifacts", ""),
             ("sync_on_checkpoint", ""),
         ]:
             self._deprecation_warning(attr_name, extra_msg)
