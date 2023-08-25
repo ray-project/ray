@@ -21,7 +21,7 @@ py_test_run_all_notebooks(
         "pbt_ppo_example.ipynb",
         "pbt_guide.ipynb",
         "tune-xgboost.ipynb",
-        "tune-xgboost.ipynb",
+        "pbt_transformers.ipynb",  # Transformers uses legacy Tune APIs.
         "sigopt_example.ipynb", # REGRESSION: no credentials
     ],
     data = ["//doc/source/tune/examples:tune_examples"],
