@@ -16,10 +16,12 @@ from ray.air._internal.remote_storage import (
     upload_to_uri,
     delete_at_uri,
 )
-from ray.train._internal.storage import StorageContext, _use_storage_context
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.logger import NoopLogger
 from ray.tune.syncer import _DefaultSyncer
 from ray.tune.trainable import wrap_function
+
+from ray.train.tests.util import mock_storage_context
 
 
 @pytest.fixture
@@ -102,7 +104,7 @@ def function_trainable_directory(config):
     # Do not test subdir/checkpoint path in new storage context
     + (["subdir", "checkpoint"] if not _use_storage_context() else []),
 )
-def test_save_load_checkpoint_path_class(ray_start_2_cpus, return_type, tmpdir):
+def test_save_load_checkpoint_path_class(ray_start_2_cpus, return_type):
     """Assert that restoring from a Trainable.save() future works with
     class trainables.
 
@@ -110,9 +112,7 @@ def test_save_load_checkpoint_path_class(ray_start_2_cpus, return_type, tmpdir):
     """
     trainable = ray.remote(SavingTrainable).remote(
         return_type=return_type,
-        storage=StorageContext(
-            storage_path=str(tmpdir), experiment_dir_name="test", trial_dir_name="test0"
-        ),
+        storage=mock_storage_context(),
     )
 
     # Train one step
