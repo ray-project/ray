@@ -491,6 +491,17 @@ py_test(
     args = ["--dir=tuned_examples/dqn"]
 )
 
+# DreamerV3
+py_test(
+    name = "learning_tests_cartpole_dreamerv3",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "tf_only", "no_tf_static_graph"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/dreamerv3/cartpole.py"],
+    args = ["--dir=tuned_examples/dreamerv3"]
+)
+
 # DT
 py_test(
    name = "learning_tests_pendulum_dt",
@@ -4479,7 +4490,6 @@ py_test_module_list(
   files = [
     "tests/test_dnc.py",
     "tests/test_perf.py",
-    "algorithms/dreamerv3/tests/test_dreamerv3.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",

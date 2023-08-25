@@ -95,17 +95,18 @@ def load_experiments_from_file(
         with open(config_file) as f:
             code = f.read()
 
-        exec(code)
-        local_vars = locals()
+        global_namespace = globals()
+        exec(code, global_namespace)
+        global_vars = globals()
 
-        if "config" not in local_vars:
+        if "config" not in global_vars:
             raise ValueError(
                 "Your Python file must contain a 'config' variable "
                 "that is an AlgorithmConfig object."
             )
-        algo_config = local_vars["config"]
+        algo_config = global_vars["config"]
         if stop_override is None:
-            stop_override = local_vars.get("stop", {})
+            stop_override = global_vars.get("stop", {})
         else:
             stop_override = json.loads(stop_override)
 

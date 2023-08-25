@@ -11,6 +11,9 @@ https://arxiv.org/pdf/2010.02193.pdf
 # Run with:
 # python run_regression_tests.py --dir [this file]
 
+import gymnasium_robotics  # noqa
+import gymnasium as gym
+
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 from ray import tune
 
@@ -18,27 +21,18 @@ from ray import tune
 # Number of GPUs to run on.
 num_gpus = 4
 
-
 # Register the gymnasium robotics env (including necessary wrappers and options) via the
 # `tune.register_env()` API.
-def env_creator(ctx):
-    import gymnasium_robotics  # noqa
-    import gymnasium as gym
-
-    # Create the specific gymnasium robotics env.
-    # e.g. AdroitHandHammerSparse-v1 or FrankaKitchen-v1.
-    # return gym.make("FrankaKitchen-v1", tasks_to_complete=["microwave", "kettle"])
-    return gym.make("AdroitHandHammer-v1")
-
-
-tune.register_env("flappy-bird", env_creator)
-
+# Create the specific gymnasium robotics env.
+# e.g. AdroitHandHammerSparse-v1 or FrankaKitchen-v1.
+# return gym.make("FrankaKitchen-v1", tasks_to_complete=["microwave", "kettle"])
+tune.register_env("flappy-bird", lambda ctx: gym.make("AdroitHandHammer-v1"))
 
 # Define the DreamerV3 config object to use.
 config = DreamerV3Config()
 w = config.world_model_lr
 c = config.critic_lr
-
+# Further specify the details of our config object.
 (
     config.resources(
         num_learner_workers=0 if num_gpus == 1 else num_gpus,

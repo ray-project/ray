@@ -1,16 +1,11 @@
 import numpy as np
 
 from ray.rllib.algorithms.appo import APPOConfig
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.tune.registry import register_env
 
 
-def env_creator(ctx):
-    from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-
-    return MultiAgentCartPole({"num_agents": 2})
-
-
-register_env("multi-cartpole", env_creator)
+register_env("multi_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
 
 # Number of policies overall in the PolicyMap.
 num_policies = 20
@@ -22,7 +17,7 @@ num_envs_per_worker = 5
 # Define the config as an APPOConfig object.
 config = (
     APPOConfig()
-    .environment("multi-cartpole")
+    .environment("multi_cartpole")
     .rollouts(
         num_rollout_workers=4,
         num_envs_per_worker=num_envs_per_worker,

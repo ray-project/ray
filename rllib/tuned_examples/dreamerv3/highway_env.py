@@ -11,6 +11,9 @@ https://arxiv.org/pdf/2010.02193.pdf
 # Run with:
 # python run_regression_tests.py --dir [this file]
 
+import highway_env  # noqa
+import gymnasium as gym
+
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 from ray import tune
 
@@ -18,20 +21,11 @@ from ray import tune
 # Number of GPUs to run on.
 num_gpus = 4
 
-
 # Register the highway env (including necessary wrappers and options) via the
 # `tune.register_env()` API.
-def env_creator(ctx):
-    import highway_env  # noqa
-    import gymnasium as gym
-
-    # Create the specific env.
-    # e.g. roundabout-v0 or racetrack-v0
-    return gym.make("intersection-v0", policy_freq=5)
-
-
-tune.register_env("flappy-bird", env_creator)
-
+# Create the specific env.
+# e.g. roundabout-v0 or racetrack-v0
+tune.register_env("flappy-bird", lambda ctx: gym.make("intersection-v0", policy_freq=5))
 
 # Define the DreamerV3 config object to use.
 config = DreamerV3Config()

@@ -17,10 +17,12 @@ config = (
     .environment("CartPole-v1")
     .training(
         model_size="XS",
-        training_ratio=1024,
+        training_ratio=32,
     )
 )
 
+# Keep it simple. DreamerV3 takes more time to learn stuff due to the large and complex
+# world-model mechanism, even on seemingly easy environments.
 stop = {
-    "sampler_results/episode_reward_mean": 30.0,
+    "sampler_results/episode_reward_mean": 100.0,
 }
