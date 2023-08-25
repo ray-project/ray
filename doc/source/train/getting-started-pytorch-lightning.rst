@@ -5,7 +5,7 @@ Getting Started with PyTorch Lightning
 
 This tutorial walks through the process of converting an existing PyTorch Lightning script to use Ray Train.
 
-By the end of this, you will learn how to:
+Learn how to:
 
 1. Configure your Lightning Trainer so that it runs distributed with Ray and is placed on the correct CPU/GPU device.
 2. Configure your training function to report metrics and save checkpoints.
@@ -15,7 +15,7 @@ By the end of this, you will learn how to:
 Quickstart
 ----------
 
-Before we begin, you can expect that the final code will look something like this:
+For reference, the final code looks like this:
 
 .. code-block:: python
 
@@ -33,7 +33,7 @@ Before we begin, you can expect that the final code will look something like thi
 2. Your `ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
 3. Your `TorchTrainer` launches the distributed training job.
 
-Let's compare a PyTorch Lightning training script with and without Ray Train.
+Compare a PyTorch Lightning training script with and without Ray Train.
 
 .. tabs::
 
@@ -146,8 +146,6 @@ Let's compare a PyTorch Lightning training script with and without Ray Train.
             trainer = TorchTrainer(train_func, scaling_config=scaling_config)
             result = trainer.fit()            
 
-
-Now, let's get started!
 
 Setting up your training function
 ---------------------------------
@@ -366,16 +364,16 @@ information about the training run, including the metrics and checkpoints report
 Next steps
 ---------- 
 
-Congratulations! You have successfully converted your PyTorch Lightningtraining script to use Ray Train.
+After you have converted your PyTorch Lightningtraining script to use Ray Train:
 
-* Head over to the :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
+* See :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
 * Browse the :ref:`Examples <train-examples>` for end-to-end examples of how to use Ray Train.
 * Dive into the :ref:`API Reference <train-api>` for more details on the classes and methods used in this tutorial.
 
 Version Compatibility
 ---------------------
 
-Ray Train is tested with `pytorch_lightning` versions `1.6.5` and `2.0.4`. For full compatibility, we recommend using ``pytorch_lightning>=1.6.5`` . 
+Ray Train is tested with `pytorch_lightning` versions `1.6.5` and `2.0.4`. For full compatibility, use ``pytorch_lightning>=1.6.5`` . 
 Earlier versions are not prohibited but may result in unexpected issues. If you run into any compatibility issues, consider upgrading your PyTorch Lightning version or 
 `file an issue <https://github.com/ray-project/ray/issues>`_. 
 
@@ -392,7 +390,7 @@ It then instantiates the model and trainer objects and runs a pre-defined
 training loop in a black box.
 
 
-This version of our LightningTrainer API was constraining and limited 
+This version of the LightningTrainer API was constraining and limited 
 the users' ability to manage the training functionality.
 
 Ray 2.7 introduces the newly unified :class:`~ray.train.torch.TorchTrainer` API, which offers 
