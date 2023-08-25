@@ -189,12 +189,16 @@ class GenericProxy(ABC):
             )
 
         def get_handle(deployment_name, app_name):
-            return serve.context.get_global_client().get_handle(
-                deployment_name,
-                app_name,
-                sync=False,
-                missing_ok=True,
-            ).options(use_new_handle_api=True)
+            return (
+                serve.context.get_global_client()
+                .get_handle(
+                    deployment_name,
+                    app_name,
+                    sync=False,
+                    missing_ok=True,
+                )
+                .options(use_new_handle_api=True)
+            )
 
         self.proxy_router = proxy_router_class(get_handle, self.protocol)
         self.long_poll_client = LongPollClient(

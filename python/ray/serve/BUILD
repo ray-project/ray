@@ -570,6 +570,14 @@ py_test(
 )
 
 py_test(
+    name = "test_cancellation",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_streaming_response",
     size = "medium",
     srcs = serve_tests_srcs,

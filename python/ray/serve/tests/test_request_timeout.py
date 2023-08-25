@@ -272,13 +272,11 @@ def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
 
     See https://github.com/ray-project/ray/issues/38368 for details.
     """
-    signal_actor = SignalActor.remote()
 
     @serve.deployment
     class Hang:
         async def __call__(self):
-            await signal_actor.wait.remote()
-            return "Success!"
+            await asyncio.sleep(1000000)
 
     serve.run(Hang.bind())
 
@@ -300,9 +298,7 @@ def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
     results = ray.get([do_request.remote() for _ in range(10)])
     assert all(r.status_code == 408 for r in results)
 
-    # Signal the handlers to exit. After that, no actor tasks should be running
-    # aside from long poll.
-    ray.get(signal_actor.send.remote())
+    # The tasks should all be cancelled.
     wait_for_condition(lambda: get_num_running_tasks() == 0)
 
 
