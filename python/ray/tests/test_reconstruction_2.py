@@ -59,9 +59,7 @@ def test_nondeterministic_output(config, ray_start_cluster, reconstruction_enabl
     def dependent_task(x):
         return
 
-    # Less iterations on macos
-    num_iter = 3 if sys.platform == "darwin" else 10
-    for _ in range(num_iter):
+    for _ in range(10):
         obj = nondeterministic_object.options(resources={"node1": 1}).remote()
         for _ in range(3):
             ray.get(dependent_task.remote(obj))
