@@ -18,7 +18,8 @@ from unittest import mock
 import ray
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
-from ray.train import CheckpointConfig, Checkpoint
+from ray.train import CheckpointConfig
+from ray.train._checkpoint import Checkpoint
 from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
 from ray.train._internal.session import _TrainingResult

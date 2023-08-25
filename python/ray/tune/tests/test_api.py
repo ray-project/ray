@@ -314,20 +314,20 @@ class TrainableFunctionApiTest(unittest.TestCase):
         # TODO(xwjiang): Throw TuneError after https://github.com/ray-project/ray/issues/19985.  # noqa
         os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "0"
 
-        with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.execution.tune_controller.logger, "warning"
+        with self.assertRaises(RuntimeError), patch(
+            "ray.tune.execution.tune_controller.logger.warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(100, 100))
             assert warn_mock.assert_called_once()
 
-        with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.execution.tune_controller.logger, "warning"
+        with self.assertRaises(RuntimeError), patch(
+            "ray.tune.execution.tune_controller.logger.warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(0, 100))
             assert warn_mock.assert_called_once()
 
-        with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.execution.tune_controller.logger, "warning"
+        with self.assertRaises(RuntimeError), patch(
+            "ray.tune.execution.tune_controller.logger.warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(100, 0))
             assert warn_mock.assert_called_once()
@@ -955,6 +955,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def _testDurableTrainable(self, trainable, function=False, cleanup=True):
         remote_checkpoint_dir = "mock:///unit-test/bucket"
+        tempdir = tempfile.mkdtemp()
         _ensure_directory(remote_checkpoint_dir)
 
         storage = StorageContext(
@@ -962,7 +963,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             experiment_dir_name="exp",
             trial_dir_name="trial",
         )
-        storage.storage_local_path = os.path.expanduser("~/tmp/ray_results")
+        storage.storage_local_path = tempdir
         test_trainable = trainable(storage=storage)
         result = test_trainable.train()
         self.assertEqual(result["metric"], 1)
@@ -974,7 +975,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         result = test_trainable.train()
         self.assertEqual(result["metric"], 4)
 
-        shutil.rmtree(os.path.expanduser("~/tmp/ray_results/exp"))
+        shutil.rmtree(tempdir)
         shutdown_session()
         if not function:
             test_trainable.state["hi"] = 2
