@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 import numpy as np
 
-from ray import tune
+from ray import train, tune
 from ray._private.test_utils import run_string_as_driver
 from ray.tune.progress_reporter import (
     CLIReporter,
@@ -282,7 +282,7 @@ VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------------------+--
 |-------------------+----------+-------------------+----------|
 | train_xxxxx_00000 | RUNNING  | 123.123.123.123:1 | complete |"""
 
-VERBOSE_CMD = """from ray import tune
+VERBOSE_CMD = """from ray import train as ray_train, tune
 import random
 import numpy as np
 import time
@@ -301,14 +301,14 @@ def mock_get_trial_location(trial, result):
 def train(config):
     if config["do"] == "complete":
         time.sleep(0.1)
-        tune.report(acc=5, done=True)
+        ray_train.report(dict(acc=5, done=True))
     elif config["do"] == "once":
         time.sleep(0.5)
-        tune.report(6)
+        return 6
     else:
         time.sleep(1.0)
-        tune.report(acc=7)
-        tune.report(acc=8)
+        ray_train.report(dict(acc=7))
+        ray_train.report(dict(acc=8))
 
 random.seed(1234)
 np.random.seed(1234)
@@ -398,11 +398,12 @@ class ProgressReporterTest(unittest.TestCase):
 
         def test(config):
             for i in range(3):
-                tune.report(**test_result)
+                train.report(test_result)
 
         analysis = tune.run(test, num_samples=3, verbose=3)
         all_trials = analysis.trials
         inferred_results = reporter._infer_user_metrics(all_trials)
+
         for metric in inferred_results:
             self.assertNotIn(metric, AUTO_RESULT_KEYS)
             self.assertTrue(metric in test_result)

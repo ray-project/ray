@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 import ray
+import ray.train
 from ray.tune import register_trainable, run_experiments, run, choice
 from ray.tune.result import TIMESTEPS_TOTAL
 from ray.tune.experiment import Experiment
@@ -11,15 +12,16 @@ from ray.tune.experiment import Trial
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
+def train(config):
+    for i in range(100):
+        ray.train.report(dict(timesteps_total=i))
+
+
 class RemoteTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
     def testRemoteRunExperiments(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
         register_trainable("f1", train)
         exp1 = Experiment(
             **{
@@ -32,20 +34,12 @@ class RemoteTest(unittest.TestCase):
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testRemoteRun(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
         analysis = run(train, _remote=True)
         [trial] = analysis.trials
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testRemoteRunArguments(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
         def mocked_run(*args, **kwargs):
             capture_args_kwargs = (args, kwargs)
             return run(*args, **kwargs), capture_args_kwargs
@@ -69,10 +63,6 @@ class RemoteTest(unittest.TestCase):
         self.assertDictEqual(kwargs, default_kwargs)
 
     def testRemoteRunWithSearcher(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
         analysis = run(
             train,
             search_alg=HyperOptSearch(),
@@ -91,10 +81,6 @@ class RemoteTest(unittest.TestCase):
         with ray_start_client_server():
             assert ray.util.client.ray.is_connected()
 
-            def train(config, reporter):
-                for i in range(100):
-                    reporter(timesteps_total=i)
-
             register_trainable("f1", train)
             exp1 = Experiment(
                 **{
@@ -111,10 +97,6 @@ class RemoteTest(unittest.TestCase):
         assert not ray.util.client.ray.is_connected()
         with ray_start_client_server():
             assert ray.util.client.ray.is_connected()
-
-            def train(config, reporter):
-                for i in range(100):
-                    reporter(timesteps_total=i)
 
             analysis = run(train)
             [trial] = analysis.trials
