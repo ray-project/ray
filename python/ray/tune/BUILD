@@ -647,7 +647,7 @@ py_test(
  size = "medium",
  srcs = ["examples/mlflow_example.py"],
  deps = [":tune_lib"],
- tags = ["team:ml", "exclusive", "example"]
+ tags = ["team:ml", "exclusive", "example", "new_storage"]
 )
 
 py_test(
