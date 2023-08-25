@@ -4,6 +4,8 @@ from ray import train
 from ray.train import DataConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
+from benchmark import Benchmark, BenchmarkMetric
+
 
 import time
 import os
@@ -108,9 +110,7 @@ def crop_and_flip_image_batch(image_batch):
     return image_batch
 
 
-if __name__ == "__main__":
-    args = parse_args()
-    metrics = {}
+def benchmark_code(args, cache_output_ds=False, cache_input_ds=False, prepartition_ds=False):
 
     # 1) Read in data with read_images() / read_parquet()
     if args.file_type == "image":
@@ -127,17 +127,17 @@ if __name__ == "__main__":
 
         for i in range(args.num_epochs):
             num_rows = 0
-            start_t = time.time()
+            # start_t = time.time()
             for batch in it.iter_batches(
                 batch_size=args.batch_size,
                 local_shuffle_buffer_size=args.local_shuffle_buffer_size,
                 prefetch_batches=10,
             ):
                 num_rows += args.batch_size
-            end_t = time.time()
+            # end_t = time.time()
             # Record throughput per epoch.
-            epoch_tput = num_rows / (end_t - start_t)
-            train.report({"tput": epoch_tput, "epoch": i})
+            # epoch_tput = num_rows / (end_t - start_t)
+            # train.report({"tput": epoch_tput, "epoch": i})
 
     # 3) Train TorchTrainer on processed data
     options = DataConfig.default_ingest_options()
@@ -151,28 +151,39 @@ if __name__ == "__main__":
             execution_options=options,
         ),
     )
+    train_start_t = time.time()
     result = torch_trainer.fit()
+    train_end_t = time.time()
 
     # Report the throughput of the last training epoch.
-    metrics["ray_TorchTrainer_fit"] = list(result.metrics_dataframe["tput"])[-1]
+    total_tput = ray_dataset.count() / (train_end_t - train_start_t)
+    return {BenchmarkMetric.THROUGHPUT: total_tput}
 
-    # Gather up collected metrics, and write to output JSON file.
-    metrics_dict = defaultdict(dict)
-    for label, tput in metrics.items():
-        metrics_dict[label].update({"THROUGHPUT": tput})
+if __name__ == "__main__":
+    args = parse_args()
 
-    test_name = f"read_{args.file_type}_train_{args.num_workers}workers"
-    result_dict = {
-        test_name: metrics_dict,
-        "success": 1,
-    }
+    benchmark = Benchmark("multi_node_train_benchmark")
 
-    test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/multi_node_train_benchmark.json"
-    )
+    benchmark.run_fn("default", benchmark_code, args=args)
+    benchmark.write_result("/tmp/multi_node_train_benchmark.json")
 
-    with open(test_output_json, "wt") as f:
-        json.dump(result_dict, f)
+    # # Gather up collected metrics, and write to output JSON file.
+    # metrics_dict = defaultdict(dict)
+    # for label, tput in metrics.items():
+    #     metrics_dict[label].update({"THROUGHPUT": tput})
 
-    print(f"Finished benchmark, metrics exported to {test_output_json}:")
-    print(result_dict)
+    # test_name = f"read_{args.file_type}_train_{args.num_workers}workers"
+    # result_dict = {
+    #     test_name: metrics_dict,
+    #     "success": 1,
+    # }
+
+    # test_output_json = os.environ.get(
+    #     "TEST_OUTPUT_JSON", "/tmp/multi_node_train_benchmark.json"
+    # )
+
+    # with open(test_output_json, "wt") as f:
+    #     json.dump(result_dict, f)
+
+    # print(f"Finished benchmark, metrics exported to {test_output_json}:")
+    # print(result_dict)

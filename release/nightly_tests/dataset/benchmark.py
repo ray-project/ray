@@ -5,7 +5,15 @@ import time
 from typing import Callable
 
 from ray.data.dataset import Dataset
+from typing import Any
 
+
+from enum import Enum
+
+# class syntax
+class BenchmarkMetric(Enum):
+    RUNTIME = "time"
+    THROUGHPUT = "tput"
 
 class Benchmark:
     """Benchmark class used for Ray Datasets.
@@ -51,11 +59,34 @@ class Benchmark:
         duration = time.perf_counter() - start_time
 
         # TODO(chengsu): Record more metrics based on dataset stats.
-        self.result[name] = {"time": duration}
+        self.result[name] = {BenchmarkMetric.RUNTIME: duration}
         print(f"Result of case {name}: {self.result[name]}")
+    
+    def run_fn(self, name: str, fn: Callable[..., Any], **fn_run_args):
+        gc.collect()
 
-    def write_result(self):
-        test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/result.json")
+        print(f"Running case: {name}")
+        start_time = time.perf_counter()
+        # e.g. fn may output a dict of metrics
+        fn_output = fn(**fn_run_args)
+        duration = time.perf_counter() - start_time
+
+        curr_case_metrics = {
+            BenchmarkMetric.RUNTIME: duration,
+        }
+        if isinstance(fn_output, dict):
+            for m in BenchmarkMetric:
+                metric_value = fn_output.get(m.value)
+                if metric_value:
+                    curr_case_metrics[m.value] = tput
+        
+        self.result[name] = curr_case_metrics
+        print(f"Result of case {name}: {curr_case_metrics}")
+
+    def write_result(self, output_path="/tmp/result.json"):
+        test_output_json = os.environ.get("TEST_OUTPUT_JSON", output_path)
         with open(test_output_json, "w") as f:
             f.write(json.dumps(self.result))
-        print(f"Finish benchmark: {self.name}")
+
+        print(f"Finished benchmark {self.name}, metrics exported to {test_output_json}:")
+        print(self.result)
