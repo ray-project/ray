@@ -139,7 +139,7 @@ class gRPCProxyRequest(ProxyRequest):
 
     @property
     def method(self) -> str:
-        return self.method_name
+        return self.service_method
 
     @property
     def route_path(self) -> str:

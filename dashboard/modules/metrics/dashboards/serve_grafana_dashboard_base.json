@@ -127,7 +127,7 @@
         "error": null,
         "hide": 0,
         "includeAll": true,
-        "label": "gRPC Method",
+        "label": "gRPC Service Method",
         "multi": true,
         "name": "gRPC_Method",
         "options": [],
