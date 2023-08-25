@@ -46,12 +46,12 @@
 
 
 - label: ":train: :key: Train examples with authentication"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_BRANCH_BUILD"]
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"] #, "RAY_CI_BRANCH_BUILD"]
   instance_size: medium
   commands:
-    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    # - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DOC_TESTING=1 ./ci/env/install-dependencies.sh
+    - TRAIN_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - python ./ci/env/setup_credentials.py wandb comet_ml
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials python/ray/train/...
