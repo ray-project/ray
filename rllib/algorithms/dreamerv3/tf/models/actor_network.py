@@ -10,6 +10,11 @@ from gymnasium.spaces import Box, Discrete
 import numpy as np
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_gru_units,
+    get_num_z_categoricals,
+    get_num_z_classes,
+)
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 
 _, tf, _ = try_import_tf()
@@ -48,10 +53,10 @@ class ActorNetwork(tf.keras.Model):
         # The EMA decay variables used for the [Percentile(R, 95%) - Percentile(R, 5%)]
         # diff to scale value targets for the actor loss.
         self.ema_value_target_pct5 = tf.Variable(
-            np.nan, dtype=tf.float32, trainable=False, name="value_target_pct5"
+            np.nan, trainable=False, name="value_target_pct5"
         )
         self.ema_value_target_pct95 = tf.Variable(
-            np.nan, dtype=tf.float32, trainable=False, name="value_target_pct95"
+            np.nan, trainable=False, name="value_target_pct95"
         )
 
         # For discrete actions, use a single MLP that computes logits.
@@ -80,8 +85,23 @@ class ActorNetwork(tf.keras.Model):
         else:
             raise ValueError(f"Invalid action space: {action_space}")
 
-    @tf.function
-    def call(self, h, z, return_distr_params=False):
+        # Trace self.call.
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
+        self.call = tf.function(
+            input_signature=[
+                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
+                tf.TensorSpec(
+                    shape=[
+                        None,
+                        get_num_z_categoricals(model_size),
+                        get_num_z_classes(model_size),
+                    ],
+                    dtype=dl_type,
+                ),
+            ]
+        )(self.call)
+
+    def call(self, h, z):
         """Performs a forward pass through this policy network.
 
         Args:
@@ -94,11 +114,21 @@ class ActorNetwork(tf.keras.Model):
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
-        z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
+        z = tf.reshape(z, shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
+        out.set_shape(
+            [
+                None,
+                (
+                    get_num_z_categoricals(self.model_size)
+                    * get_num_z_classes(self.model_size)
+                    + get_gru_units(self.model_size)
+                ),
+            ]
+        )
         # Send h-cat-z through MLP.
-        action_logits = self.mlp(out)
+        action_logits = tf.cast(self.mlp(out), tf.float32)
 
         if isinstance(self.action_space, Discrete):
             action_probs = tf.nn.softmax(action_logits)
@@ -125,7 +155,7 @@ class ActorNetwork(tf.keras.Model):
 
         elif isinstance(self.action_space, Box):
             # Send h-cat-z through MLP to compute stddev logits for Normal dist
-            std_logits = self.std_mlp(out)
+            std_logits = tf.cast(self.std_mlp(out), tf.float32)
             # minstd, maxstd taken from [1] from configs.yaml
             minstd = 0.1
             maxstd = 1.0
@@ -141,9 +171,7 @@ class ActorNetwork(tf.keras.Model):
 
             action = distr.sample()
 
-        if return_distr_params:
-            return action, distr_params
-        return action
+        return action, distr_params
 
     def get_action_dist_object(self, action_dist_params_T_B):
         """Helper method to create an action distribution object from (T, B, ..) params.
