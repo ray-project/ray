@@ -554,13 +554,15 @@ class GenericProxy(ABC):
             result._to_object_ref_or_gen(_record_telemetry=False)
         )
         done, _ = await asyncio.wait(
-            [to_object_ref, disconnected_task],
+            [to_object_ref, disconnected_task]
+            if disconnected_task is not None
+            else [to_object_ref],
             return_when=FIRST_COMPLETED,
             timeout=timeout_s,
         )
         if to_object_ref in done:
             return to_object_ref.result()
-        elif disconnected_task in done:
+        elif disconnected_task is not None and disconnected_task in done:
             result.cancel()
             return None
         else:
@@ -880,9 +882,9 @@ class gRPCProxy(GenericProxy):
                     )
             except TimeoutError:
                 logger.warning(
-                    f"Request {request_id} timed out after "
-                    f"{self.request_timeout_s}s while waiting for assignment."
+                    f"Request {request_id} timed out after {self.request_timeout_s}s."
                 )
+                ray.cancel(obj_ref)
                 await self.timeout_response(
                     proxy_request=proxy_request, request_id=request_id
                 )
@@ -1233,9 +1235,9 @@ class HTTPProxy(GenericProxy):
                     return ProxyResponse(status_code=DISCONNECT_ERROR_CODE)
             except TimeoutError:
                 logger.warning(
-                    f"Request {request_id} timed out after "
-                    f"{self.request_timeout_s}s while waiting for assignment."
+                    f"Request {request_id} timed out after {self.request_timeout_s}s."
                 )
+                ray.cancel(obj_ref_generator)
                 await self.timeout_response(
                     proxy_request=proxy_request, request_id=request_id
                 )
