@@ -7,6 +7,11 @@ from pyspark.util import inheritable_thread_target
 
 from ray.util.spark.cluster_init import get_spark_session
 from ray.util.spark.cluster_init import _start_ray_worker_nodes
+import logging
+
+
+_logger = logging.getLogger("ray.util.spark")
+_logger.setLevel(logging.INFO)
 
 
 class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
@@ -36,25 +41,34 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
             collect_log_to_path = data["collect_log_to_path"]
 
             def start_ray_worker_thread_fn():
-                _start_ray_worker_nodes(
-                    spark=self.server.spark,
-                    spark_job_group_id=spark_job_group_id,
-                    spark_job_group_desc=spark_job_group_desc,
-                    num_worker_nodes=num_worker_nodes,
-                    using_stage_scheduling=using_stage_scheduling,
-                    ray_head_ip=ray_head_ip,
-                    ray_head_port=ray_head_port,
-                    ray_temp_dir=ray_temp_dir,
-                    num_cpus_per_node=num_cpus_per_node,
-                    num_gpus_per_node=num_gpus_per_node,
-                    heap_memory_per_node=heap_memory_per_node,
-                    object_store_memory_per_node=object_store_memory_per_node,
-                    worker_node_options=worker_node_options,
-                    collect_log_to_path=collect_log_to_path,
-                )
+                try:
+                    _start_ray_worker_nodes(
+                        spark=self.server.spark,
+                        spark_job_group_id=spark_job_group_id,
+                        spark_job_group_desc=spark_job_group_desc,
+                        num_worker_nodes=num_worker_nodes,
+                        using_stage_scheduling=using_stage_scheduling,
+                        ray_head_ip=ray_head_ip,
+                        ray_head_port=ray_head_port,
+                        ray_temp_dir=ray_temp_dir,
+                        num_cpus_per_node=num_cpus_per_node,
+                        num_gpus_per_node=num_gpus_per_node,
+                        heap_memory_per_node=heap_memory_per_node,
+                        object_store_memory_per_node=object_store_memory_per_node,
+                        worker_node_options=worker_node_options,
+                        collect_log_to_path=collect_log_to_path,
+                        capture_spark_task_exception=True,
+                    )
+                except Exception:
+                    # TODO: Refine error handling.
+                    _logger.warning(
+                        f"Spark job {spark_job_group_id} hosting Ray worker node exit."
+                    )
 
             threading.Thread(
-                target=inheritable_thread_target(start_ray_worker_thread_fn), args=()
+                target=inheritable_thread_target(start_ray_worker_thread_fn),
+                args=(),
+                daemon=True,
             ).start()
             return {}
 
@@ -99,12 +113,13 @@ class SparkJobServer(ThreadingHTTPServer):
 
 
 def _start_spark_job_server(host, port, spark):
-    server = SparkJobServer((host, port), spark)\
-
+    server = SparkJobServer((host, port), spark)
 
     def run_server():
         server.serve_forever()
 
-    threading.Thread(target=run_server).start()
+    server_thread = threading.Thread(target=run_server)
+    server_thread.setDaemon(True)
+    server_thread.start()
 
     return server

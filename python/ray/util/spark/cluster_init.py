@@ -633,20 +633,23 @@ def _setup_ray_cluster(
             try:
                 _start_ray_worker_nodes(
                     spark,
-                    spark_job_group_id,
-                    "This job group is for spark job which runs the Ray cluster with ray "
-                    f"head node {ray_head_ip}:{ray_head_port}",
-                    num_worker_nodes,
-                    using_stage_scheduling,
-                    ray_head_ip,
-                    ray_head_port,
-                    ray_temp_dir,
-                    num_cpus_worker_node,
-                    num_gpus_worker_node,
-                    heap_memory_worker_node,
-                    object_store_memory_worker_node,
-                    worker_node_options,
-                    collect_log_to_path,
+                    spark_job_group_id=spark_job_group_id,
+                    spark_job_group_desc=(
+                        "This job group is for spark job which runs the Ray cluster with ray "
+                        f"head node {ray_head_ip}:{ray_head_port}"
+                    ),
+                    num_worker_nodes=num_worker_nodes,
+                    using_stage_scheduling=using_stage_scheduling,
+                    ray_head_ip=ray_head_ip,
+                    ray_head_port=ray_head_port,
+                    ray_temp_dir=ray_temp_dir,
+                    num_cpus_worker_node=num_cpus_worker_node,
+                    num_gpus_worker_node=num_gpus_worker_node,
+                    heap_memory_worker_node=heap_memory_worker_node,
+                    object_store_memory_worker_node=object_store_memory_worker_node,
+                    worker_node_options=worker_node_options,
+                    collect_log_to_path=collect_log_to_path,
+                    capture_spark_task_exception=False,
                 )
             except Exception as e:
                 # NB:
@@ -1149,6 +1152,7 @@ def _start_ray_worker_nodes(
     object_store_memory_per_node,
     worker_node_options,
     collect_log_to_path,
+    capture_spark_task_exception,
 ):
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -1241,16 +1245,25 @@ def _start_ray_worker_nodes(
             f"Start Ray worker, command: {' '.join(ray_worker_node_cmd)}"
         )
 
-        # Note:
-        # When a pyspark job cancelled, the UDF python worker process are killed by
-        # signal "SIGKILL", then `start_ray_node` process will detect the parent died
-        # event (see `ray.util.spark.start_ray_node.check_parent_alive`) and then
-        # kill ray worker node process and execute cleanup routine.
-        exec_cmd(
-            ray_worker_node_cmd,
-            synchronous=True,
-            extra_env=ray_worker_node_extra_envs,
-        )
+
+        try:
+            # Note:
+            # When a pyspark job cancelled, the UDF python worker process are killed by
+            # signal "SIGKILL", then `start_ray_node` process will detect the parent died
+            # event (see `ray.util.spark.start_ray_node.check_parent_alive`) and then
+            # kill ray worker node process and execute cleanup routine.
+            exec_cmd(
+                ray_worker_node_cmd,
+                synchronous=True,
+                extra_env=ray_worker_node_extra_envs,
+            )
+        except Exception as e:
+            if capture_spark_task_exception:
+                _logger.warning(
+                    f"Ray worker node process exit, reason: {repr(e)}."
+                )
+            else:
+                raise
 
         # NB: Not reachable.
         yield 0
