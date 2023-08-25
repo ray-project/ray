@@ -2,14 +2,16 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data._internal.planner.plan_read_op import _splitrange
+from ray.data._internal.planner.plan_read_op import AdditionalOutputSplitMapTransformFn
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
 def test_splitrange():
     def f(n, k):
-        assert _splitrange(n, k) == [len(a) for a in np.array_split(range(n), k)]
+        assert AdditionalOutputSplitMapTransformFn._splitrange(n, k) == [
+            len(a) for a in np.array_split(range(n), k)
+        ]
 
     f(0, 1)
     f(5, 1)
