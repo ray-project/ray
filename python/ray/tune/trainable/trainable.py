@@ -954,7 +954,7 @@ class Trainable:
             checkpoint = checkpoint.checkpoint
 
         # Ensure Checkpoints are converted
-        if isinstance(checkpoint, LegacyCheckpoint):
+        if isinstance(checkpoint, (LegacyCheckpoint, NewCheckpoint)):
             return self._restore_from_checkpoint_obj(checkpoint)
 
         assert isinstance(checkpoint, str), checkpoint
