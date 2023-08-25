@@ -1052,7 +1052,6 @@ class Node:
         # when possible.
         self._gcs_address = f"{self._node_ip_address}:" f"{gcs_server_port}"
         # Initialize gcs client, which also waits for GCS to start running.
-        self._init_gcs_client()
 
     def start_raylet(
         self,
@@ -1223,8 +1222,6 @@ class Node:
             self._redis_address = self._ray_params.external_addresses[0]
 
         self.start_gcs_server()
-        assert self.get_gcs_client() is not None
-        self._write_cluster_info_to_kv()
 
         if not self._ray_params.no_monitor:
             self.start_monitor()
@@ -1242,6 +1239,9 @@ class Node:
             include_dashboard=self._ray_params.include_dashboard,
             raise_on_failure=raise_on_api_server_failure,
         )
+
+        assert self.get_gcs_client() is not None
+        self._write_cluster_info_to_kv()
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
