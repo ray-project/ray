@@ -1888,7 +1888,7 @@ class DeploymentState:
         self.health_check_gauge.set(
             0,
             tags={
-                "deployment": str(self._id),
+                "deployment": self.deployment_name,
                 "replica": replica.replica_tag,
                 "application": self.app_name,
             },
@@ -1907,7 +1907,7 @@ class DeploymentState:
                 self.health_check_gauge.set(
                     1,
                     tags={
-                        "deployment": str(self._id),
+                        "deployment": self.deployment_name,
                         "replica": replica.replica_tag,
                         "application": self.app_name,
                     },
@@ -1922,7 +1922,7 @@ class DeploymentState:
                 self.health_check_gauge.set(
                     0,
                     tags={
-                        "deployment": str(self._id),
+                        "deployment": self.deployment_name,
                         "replica": replica.replica_tag,
                         "application": self.app_name,
                     },
