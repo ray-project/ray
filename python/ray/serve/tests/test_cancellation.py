@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import pytest
 import sys
 
@@ -8,28 +9,30 @@ from starlette.requests import Request
 
 import ray
 from ray.actor import ActorHandle
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import (
+    SignalActor,
+    async_wait_for_condition,
+    wait_for_condition,
+)
 
 from ray import serve
 from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
 
 
 """
-- test timeout during assignment
-- test timeout during execution
-- test handle call during assignment
-- test unary handle call during execution
 - test generator handle call during execution
 - test downstream calls are cancelled automatically
 - test call made from background task is *not* cancelled.
 """
 
 
-async def send_signal_on_cancellation(signal_actor: ActorHandle):
+async def send_signal_on_cancellation(signal_actor: ActorHandle, reraise: bool = False):
     try:
         await asyncio.sleep(100000)
-    except asyncio.CancelledError:
+    except asyncio.CancelledError as e:
         await signal_actor.send.remote()
+        if reraise:
+            raise e from None
 
 
 @pytest.mark.skipif(
@@ -109,9 +112,9 @@ def test_cancel_on_http_client_disconnect_during_assignment(
     h = serve.run(Ingress.bind()).options(use_new_handle_api=True)
 
     # Send a request and wait for it to be ongoing so we know that further requests
-    # will be blocking trying to assign a replica.
+    # will block trying to assign a replica.
     initial_response = h.remote()
-    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
 
     # Intentionally time out on the client, causing it to disconnect.
     with pytest.raises(requests.exceptions.ReadTimeout):
@@ -123,6 +126,165 @@ def test_cancel_on_http_client_disconnect_during_assignment(
     assert initial_response.result() == 1
     for i in range(2, 12):
         assert h.remote().result() == i
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="New routing feature flag is disabled.",
+)
+def test_cancel_sync_handle_call_during_execution(serve_instance):
+    """Test cancelling handle request during execution (sync context)."""
+    running_signal_actor = SignalActor.remote()
+    cancelled_signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class Ingress:
+        async def __call__(self, *args):
+            await running_signal_actor.send.remote()
+            await send_signal_on_cancellation(cancelled_signal_actor)
+
+    h = serve.run(Ingress.bind()).options(use_new_handle_api=True)
+
+    # Send a request and wait for it to start executing.
+    r = h.remote()
+    ray.get(running_signal_actor.wait.remote())
+
+    # Cancel it and verify that it is cancelled via signal.
+    r.cancel()
+    ray.get(cancelled_signal_actor.wait.remote())
+
+    # TODO(edoakes): this should be a `TaskCancelledError`, not sure why it isn't.
+    with pytest.raises(ray.exceptions.RayTaskError):
+        r.result()
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="New routing feature flag is disabled.",
+)
+def test_cancel_sync_handle_call_during_assignment(serve_instance):
+    """Test cancelling handle request during assignment (sync context)."""
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment(max_concurrent_queries=1)
+    class Ingress:
+        def __init__(self):
+            self._num_requests = 0
+
+        async def __call__(self, *args):
+            self._num_requests += 1
+            await signal_actor.wait.remote()
+
+            return self._num_requests
+
+    h = serve.run(Ingress.bind()).options(use_new_handle_api=True)
+
+    # Send a request and wait for it to be ongoing so we know that further requests
+    # will block trying to assign a replica.
+    initial_response = h.remote()
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
+
+    # Make a second request, cancel it, and verify that it is cancelled.
+    second_response = h.remote()
+    second_response.cancel()
+    with pytest.raises(concurrent.futures.CancelledError):
+        second_response.result()
+
+    # Now signal the initial request to finish and check that the second request
+    # never reached the replica.
+    ray.get(signal_actor.send.remote())
+    assert initial_response.result() == 1
+    for i in range(2, 12):
+        assert h.remote().result() == i
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="New routing feature flag is disabled.",
+)
+def test_cancel_async_handle_call_during_execution(serve_instance):
+    """Test cancelling handle request during execution (async context)."""
+    running_signal_actor = SignalActor.remote()
+    cancelled_signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class Downstream:
+        async def __call__(self, *args):
+            await running_signal_actor.send.remote()
+            await send_signal_on_cancellation(cancelled_signal_actor)
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, handle):
+            self._h = handle.options(use_new_handle_api=True)
+
+        async def __call__(self, *args):
+            # Send a request and wait for it to start executing.
+            r = self._h.remote()
+            await running_signal_actor.wait.remote()
+
+            # Cancel it and verify that it is cancelled via signal.
+            r.cancel()
+            await cancelled_signal_actor.wait.remote()
+
+            # TODO(edoakes): this should be a `TaskCancelledError`, not sure why it
+            # isn't.
+            with pytest.raises(ray.exceptions.RayTaskError):
+                await r
+
+    h = serve.run(Ingress.bind(Downstream.bind())).options(use_new_handle_api=True)
+    h.remote().result()  # Would raise if test failed.
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="New routing feature flag is disabled.",
+)
+def test_cancel_async_handle_call_during_assignment(serve_instance):
+    """Test cancelling handle request during assignment (async context)."""
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment(max_concurrent_queries=1)
+    class Downstream:
+        def __init__(self):
+            self._num_requests = 0
+
+        async def __call__(self, *args):
+            self._num_requests += 1
+            await signal_actor.wait.remote()
+
+            return self._num_requests
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, handle):
+            self._h = handle.options(use_new_handle_api=True)
+
+        async def __call__(self, *args):
+            # Send a request and wait for it to be ongoing so we know that further
+            # requests will block trying to assign a replica.
+            initial_response = self._h.remote()
+
+            async def one_waiter():
+                return await signal_actor.cur_num_waiters.remote() == 1
+
+            await async_wait_for_condition(one_waiter)
+
+            # Make a second request, cancel it, and verify that it is cancelled.
+            second_response = self._h.remote()
+            second_response.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await second_response
+
+            # Now signal the initial request to finish and check that the second request
+            # never reached the replica.
+            await signal_actor.send.remote()
+            assert await initial_response == 1
+            for i in range(2, 12):
+                assert await self._h.remote() == i
+
+    h = serve.run(Ingress.bind(Downstream.bind())).options(use_new_handle_api=True)
+    h.remote().result()  # Would raise if test failed.
 
 
 if __name__ == "__main__":

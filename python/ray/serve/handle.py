@@ -485,8 +485,9 @@ class _DeploymentResponseBase:
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
         if self._object_ref_future is None:
             raise RuntimeError(
-                "Sync methods should not be called from within an `asyncio` event loop."
-                "Use `await response` or `await response._to_object_ref()` instead."
+                "Sync methods should not be called from within an `asyncio` event "
+                "loop. Use `await response` or `await response._to_object_ref()` "
+                "instead."
             )
 
         if _record_telemetry:
@@ -506,8 +507,13 @@ class _DeploymentResponseBase:
           requests it makes.
 
         If the request is successfully cancelled, subsequent operations on the ref will
-        raise an `asyncio.CancelledError` (or a `concurrent.futures.CancelledError` if
-        using synchronous methods like `.result()`).
+        raise an exception:
+
+            - If the request was cancelled before assignment, they'll raise
+              `asyncio.CancelledError` (or a `concurrent.futures.CancelledError` for
+              synchronous methods like `.result()`.).
+            - If the request was cancelled after assignment, they'll raise
+              `ray.exceptions.TaskCancelledError`.
         """
         if not self._assign_request_task.done():
             self._assign_request_task.cancel()
