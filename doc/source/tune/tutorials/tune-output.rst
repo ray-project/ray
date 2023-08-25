@@ -186,11 +186,13 @@ or use a custom logging library that requires multi-process logging.
 For example, you may want to do this if you're trying to log images to TensorBoard.
 We refer to these saved files as **trial artifacts**.
 
-.. warning::
+.. note::
 
-    Trial artifacts are *not* uploaded automatically from remote workers
-    to the `RunConfig(storage_path)`. Instead, you should manually upload these files
-    to the shared storage if you want access to them after training.
+    If :class:`SyncConfig(sync_artifacts=True) <ray.train.SyncConfig>`, trial artifacts
+    are uploaded periodically from each trial (or from each remote training worker for Ray Train)
+    to the :class:`RunConfig(storage_path) <ray.train.RunConfig>`.
+
+    See the :class:`~ray.train.SyncConfig` API reference for artifact syncing configuration options.
 
 You can save trial artifacts directly in the trainable, as shown below:
 
