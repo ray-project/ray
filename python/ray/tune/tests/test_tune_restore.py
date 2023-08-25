@@ -4,6 +4,7 @@ import subprocess
 from collections import Counter
 import multiprocessing
 import os
+from pathlib import Path
 
 import pytest
 import shutil
@@ -51,6 +52,7 @@ class TuneRestoreTest(unittest.TestCase):
         logdir = os.path.expanduser(os.path.join(tmpdir, test_name))
         self.logdir = logdir
         self.checkpoint_path = recursive_fnmatch(logdir, "algorithm_state.pkl")[0]
+        self.checkpoint_parent = Path(self.checkpoint_path).parent
 
     def tearDown(self):
         shutil.rmtree(self.logdir)
@@ -64,7 +66,7 @@ class TuneRestoreTest(unittest.TestCase):
             name="TuneRestoreTest",
             stop={"training_iteration": 2},  # train one more iteration.
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
-            restore=self.checkpoint_path,  # Restore the checkpoint
+            restore=self.checkpoint_parent,  # Restore the checkpoint
             config={
                 "env": "CartPole-v0",
                 "framework": "tf",
@@ -82,7 +84,7 @@ class TuneRestoreTest(unittest.TestCase):
                 num_to_keep=1,
                 checkpoint_frequency=1,
             ),
-            restore=self.checkpoint_path,
+            restore=self.checkpoint_parent,
             config={
                 "env": "CartPole-v0",
                 "framework": "tf",
