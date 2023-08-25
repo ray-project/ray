@@ -843,6 +843,7 @@ class DeploymentReplica(VersionedReplica):
         return RunningReplicaInfo(
             deployment_name=self.deployment_name,
             replica_tag=self._replica_tag,
+            node_id=self.actor_node_id,
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
             is_cross_language=self._actor.is_cross_language,
@@ -1888,7 +1889,7 @@ class DeploymentState:
         self.health_check_gauge.set(
             0,
             tags={
-                "deployment": str(self._id),
+                "deployment": self.deployment_name,
                 "replica": replica.replica_tag,
                 "application": self.app_name,
             },
@@ -1907,7 +1908,7 @@ class DeploymentState:
                 self.health_check_gauge.set(
                     1,
                     tags={
-                        "deployment": str(self._id),
+                        "deployment": self.deployment_name,
                         "replica": replica.replica_tag,
                         "application": self.app_name,
                     },
@@ -1922,7 +1923,7 @@ class DeploymentState:
                 self.health_check_gauge.set(
                     0,
                     tags={
-                        "deployment": str(self._id),
+                        "deployment": self.deployment_name,
                         "replica": replica.replica_tag,
                         "application": self.app_name,
                     },

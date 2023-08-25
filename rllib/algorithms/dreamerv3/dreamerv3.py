@@ -128,6 +128,7 @@ class DreamerV3Config(AlgorithmConfig):
         self.critic_grad_clip_by_global_norm = 100.0
         self.actor_grad_clip_by_global_norm = 100.0
         self.symlog_obs = "auto"
+        self.use_float16 = False
 
         # Reporting.
         # DreamerV3 is super sample efficient and only needs very few episodes
@@ -169,6 +170,7 @@ class DreamerV3Config(AlgorithmConfig):
                 "horizon_H": self.horizon_H,
                 "model_size": self.model_size,
                 "symlog_obs": self.symlog_obs,
+                "use_float16": self.use_float16,
             }
         )
         return model
@@ -196,6 +198,7 @@ class DreamerV3Config(AlgorithmConfig):
         critic_grad_clip_by_global_norm: Optional[float] = NotProvided,
         actor_grad_clip_by_global_norm: Optional[float] = NotProvided,
         symlog_obs: Optional[Union[bool, str]] = NotProvided,
+        use_float16: Optional[bool] = NotProvided,
         replay_buffer_config: Optional[dict] = NotProvided,
         **kwargs,
     ) -> "DreamerV3Config":
@@ -257,6 +260,10 @@ class DreamerV3Config(AlgorithmConfig):
             symlog_obs: Whether to symlog observations or not. If set to "auto"
                 (default), will check for the environment's observation space and then
                 only symlog if not an image space.
+            use_float16: Whether to train with mixed float16 precision. In this mode,
+                model parameters are stored as float32, but all computations are
+                performed in float16 space (except for losses and distribution params
+                and outputs).
             replay_buffer_config: Replay buffer config.
                 Only serves in DreamerV3 to set the capacity of the replay buffer.
                 Note though that in the paper ([1]) a size of 1M is used for all
@@ -314,6 +321,8 @@ class DreamerV3Config(AlgorithmConfig):
             self.actor_grad_clip_by_global_norm = actor_grad_clip_by_global_norm
         if symlog_obs is not NotProvided:
             self.symlog_obs = symlog_obs
+        if use_float16 is not NotProvided:
+            self.use_float16 = use_float16
         if replay_buffer_config is not NotProvided:
             # Override entire `replay_buffer_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
@@ -441,6 +450,7 @@ class DreamerV3Config(AlgorithmConfig):
             ),
             actor_grad_clip_by_global_norm=self.actor_grad_clip_by_global_norm,
             critic_grad_clip_by_global_norm=self.critic_grad_clip_by_global_norm,
+            use_float16=self.use_float16,
             report_individual_batch_item_stats=(
                 self.report_individual_batch_item_stats
             ),
@@ -542,21 +552,36 @@ class DreamerV3(Algorithm):
                 # c) we have not sampled at all yet in this `training_step()` call.
                 or not have_sampled
             ):
+                # Sample using the env runner's module.
                 done_episodes, ongoing_episodes = env_runner.sample()
-                have_sampled = True
-
-                # We took B x T env steps.
-                env_steps_last_sample = sum(
-                    len(eps) for eps in done_episodes + ongoing_episodes
-                )
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += env_steps_last_sample
-                self._counters[NUM_ENV_STEPS_SAMPLED] += env_steps_last_sample
-
                 # Add ongoing and finished episodes into buffer. The buffer will
                 # automatically take care of properly concatenating (by episode IDs)
                 # the different chunks of the same episodes, even if they come in via
                 # separate `add()` calls.
                 self.replay_buffer.add(episodes=done_episodes + ongoing_episodes)
+                have_sampled = True
+
+                # We took B x T env steps.
+                env_steps_last_regular_sample = sum(
+                    len(eps) for eps in done_episodes + ongoing_episodes
+                )
+                total_sampled = env_steps_last_regular_sample
+
+                # If we have never sampled before (just started the algo and not
+                # recovered from a checkpoint), sample B random actions first.
+                if self._counters[NUM_AGENT_STEPS_SAMPLED] == 0:
+                    d_, o_ = env_runner.sample(
+                        num_timesteps=(
+                            self.config.batch_size_B * self.config.batch_length_T
+                        )
+                        - env_steps_last_regular_sample,
+                        random_actions=True,
+                    )
+                    self.replay_buffer.add(episodes=d_ + o_)
+                    total_sampled += sum(len(eps) for eps in d_ + o_)
+
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += total_sampled
+                self._counters[NUM_ENV_STEPS_SAMPLED] += total_sampled
 
         # Summarize environment interaction and buffer data.
         results[ALL_MODULES] = report_sampling_and_replay_buffer(
@@ -569,14 +594,13 @@ class DreamerV3(Algorithm):
         # go back and collect more samples again from the actual environment.
         # However, when calculating the `training_ratio` here, we use only the
         # trained steps in this very `training_step()` call over the most recent sample
-        # amount (`env_steps_last_sample`), not the global values. This is to avoid a
-        # heavy overtraining at the very beginning when we have just pre-filled the
-        # buffer with the minimum amount of samples.
+        # amount (`env_steps_last_regular_sample`), not the global values. This is to
+        # avoid a heavy overtraining at the very beginning when we have just pre-filled
+        # the buffer with the minimum amount of samples.
         replayed_steps_this_iter = sub_iter = 0
         while (
-            replayed_steps_this_iter / env_steps_last_sample
+            replayed_steps_this_iter / env_steps_last_regular_sample
         ) < self.config.training_ratio:
-
             # Time individual batch updates.
             with self._timers[LEARN_ON_BATCH_TIMER]:
                 logger.info(f"\tSub-iteration {self.training_iteration}/{sub_iter})")
@@ -589,10 +613,6 @@ class DreamerV3(Algorithm):
                 replayed_steps = self.config.batch_size_B * self.config.batch_length_T
                 replayed_steps_this_iter += replayed_steps
 
-                # Convert some bool columns to float32 and one-hot actions.
-                sample["is_first"] = sample["is_first"].astype(np.float32)
-                sample["is_last"] = sample["is_last"].astype(np.float32)
-                sample["is_terminated"] = sample["is_terminated"].astype(np.float32)
                 if isinstance(env_runner.env.single_action_space, gym.spaces.Discrete):
                     sample["actions_ints"] = sample[SampleBatch.ACTIONS]
                     sample[SampleBatch.ACTIONS] = one_hot(
@@ -612,7 +632,7 @@ class DreamerV3(Algorithm):
                 # update.
                 with self._timers["critic_ema_update"]:
                     self.learner_group.additional_update(
-                        timestep=self._counters[NUM_ENV_STEPS_TRAINED],
+                        timestep=self._counters[NUM_ENV_STEPS_SAMPLED],
                         reduce_fn=self._reduce_results,
                     )
 

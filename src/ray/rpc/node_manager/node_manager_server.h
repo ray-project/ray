@@ -23,30 +23,34 @@
 namespace ray {
 namespace rpc {
 
+/// TODO(vitsai): Remove this when auth is implemented for node manager
+#define RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(METHOD) \
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH(NodeManagerService, METHOD, -1, AuthType::NO_AUTH)
+
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
-#define RAY_NODE_MANAGER_RPC_HANDLERS                                 \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetResourceLoad, -1)        \
-  RPC_SERVICE_HANDLER(NodeManagerService, NotifyGCSRestart, -1)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease, -1)     \
-  RPC_SERVICE_HANDLER(NodeManagerService, ReportWorkerBacklog, -1)    \
-  RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker, -1)           \
-  RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers, -1)   \
-  RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease, -1)      \
-  RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs, -1)           \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats, -1)           \
-  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC, -1)               \
-  RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo, -1) \
-  RPC_SERVICE_HANDLER(NodeManagerService, PrepareBundleResources, -1) \
-  RPC_SERVICE_HANDLER(NodeManagerService, CommitBundleResources, -1)  \
-  RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve, -1)  \
-  RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage, -1)  \
-  RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedBundles, -1)   \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetSystemConfig, -1)        \
-  RPC_SERVICE_HANDLER(NodeManagerService, ShutdownRaylet, -1)         \
-  RPC_SERVICE_HANDLER(NodeManagerService, DrainRaylet, -1)            \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetTasksInfo, -1)           \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetObjectsInfo, -1)         \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetTaskFailureCause, -1)
+#define RAY_NODE_MANAGER_RPC_HANDLERS                          \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetResourceLoad)        \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(NotifyGCSRestart)       \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestWorkerLease)     \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReportWorkerBacklog)    \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReturnWorker)           \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedWorkers)   \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelWorkerLease)      \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PinObjectIDs)           \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetNodeStats)           \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GlobalGC)               \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(FormatGlobalMemoryInfo) \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources) \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestObjectSpillage)  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)   \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)        \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ShutdownRaylet)         \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(DrainRaylet)            \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTasksInfo)           \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)         \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTaskFailureCause)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
