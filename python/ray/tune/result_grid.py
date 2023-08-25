@@ -5,6 +5,7 @@ import pyarrow
 from typing import Optional, Union
 
 from ray.air.result import Result
+from ray.train._internal.session import TrainingResult
 from ray.train._internal.storage import _use_storage_context
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
@@ -293,8 +294,12 @@ class ResultGrid:
                 if trial.uses_cloud_checkpointing
                 else None
             )
+            if isinstance(trial.checkpoint, TrainingResult):
+                checkpoint = trial.checkpoint.checkpoint
+            else:
+                checkpoint = trial.checkpoint
 
-            checkpoint = trial.checkpoint.to_air_checkpoint(
+            checkpoint = checkpoint.to_air_checkpoint(
                 local_to_remote_path_fn,
             )
             best_checkpoints = [
