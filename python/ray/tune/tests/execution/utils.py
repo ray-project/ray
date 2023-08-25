@@ -11,10 +11,11 @@ from ray.air.execution.resources import (
 )
 
 from ray.air.execution._internal.tracked_actor import TrackedActor
-from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.utils.resource_updater import _ResourceUpdater
+
+from ray.train.tests.util import mock_storage_context
 
 
 class NoopClassCache:
@@ -106,6 +107,10 @@ class _FakeResourceUpdater(_ResourceUpdater):
 
 
 class TestingTrial(Trial):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("storage", mock_storage_context())
+        super().__init__(*args, **kwargs)
+
     def get_trainable_cls(self):
         return self.trainable_name
 
@@ -131,14 +136,7 @@ def create_execution_test_objects(
     storage_path = str(tmpdir)
     experiment_name = "test_exp"
 
-    storage = kwargs.pop("storage", None)
-    if not storage and _use_storage_context():
-        storage = StorageContext(
-            storage_path=storage_path,
-            experiment_dir_name=experiment_name,
-        )
-        storage.storage_path = tmpdir
-        storage.storage_local_path = tmpdir
+    storage = kwargs.pop("storage", mock_storage_context())
 
     tune_controller = tune_controller_cls(
         experiment_path=os.path.join(storage_path, experiment_name),
