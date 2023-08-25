@@ -351,7 +351,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_trial_scheduler.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "medium_instance", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "medium_instance", "new_storage"],
 )
 
 py_test(
@@ -359,7 +359,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "medium_instance", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "medium_instance", "new_storage"],
 )
 
 py_test(
@@ -367,7 +367,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_trial_scheduler_resource_changing.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive"],
 )
 
 py_test(
@@ -557,7 +557,7 @@ py_test(
     size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"]
+    tags = ["team:ml", "exclusive", "example", "new_storage"]
 )
 
 py_test(
@@ -753,7 +753,7 @@ py_test(
     size = "small",
     srcs = ["examples/pbt_convnet_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -762,7 +762,7 @@ py_test(
     size = "small",
     srcs = ["examples/pbt_convnet_function_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -771,7 +771,7 @@ py_test(
     size = "medium",
     srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_func.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -780,7 +780,7 @@ py_test(
     size = "medium",
     srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_trainable.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -789,7 +789,7 @@ py_test(
     size = "small",
     srcs = ["examples/pbt_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -807,7 +807,7 @@ py_test(
     size = "small",
     srcs = ["examples/pbt_memnn_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -821,6 +821,8 @@ py_test(
 #     args = ["--smoke-test"]
 # )
 
+# Exclude from new storage tests as transformers still uses the old tune
+# API.
 py_test(
     name = "pbt_transformers",
     size = "small",

@@ -26,7 +26,11 @@ from ray.air.constants import (
     TRAINING_ITERATION,
 )
 from ray.train._internal.checkpoint_manager import TrainingResult
-from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._internal.storage import (
+    _use_storage_context,
+    StorageContext,
+    _exists_at_fs_path,
+)
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -451,6 +455,10 @@ class Trainable:
 
         self._last_result = result
 
+        if _use_storage_context():
+            # Launch background tasks to sync artifacts at some specified frequency.
+            self._storage.persist_artifacts()
+
         return result
 
     def get_state(self):
@@ -549,6 +557,10 @@ class Trainable:
                         checkpoint=local_checkpoint, metrics=self._last_result.copy()
                     )
 
+                # Persist trial artifacts to storage.
+                self._storage.persist_artifacts(
+                    force=self._storage.sync_config.sync_on_checkpoint
+                )
             else:
                 checkpoint_result: TrainingResult = checkpoint_dict_or_path
                 assert self._last_result
@@ -908,8 +920,10 @@ class Trainable:
 
         """
         if _use_storage_context():
-            checkpoint_result = checkpoint
-            assert isinstance(checkpoint_result, TrainingResult)
+            checkpoint_result: TrainingResult = checkpoint_path
+            assert isinstance(checkpoint_result, TrainingResult), type(
+                checkpoint_result
+            )
 
             checkpoint_metrics = checkpoint_result.metrics
             self._iteration = checkpoint_metrics.get(TRAINING_ITERATION, 0)
@@ -922,12 +936,21 @@ class Trainable:
             self._timesteps_since_restore = 0
             self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
 
+            checkpoint = checkpoint_result.checkpoint
+            if not _exists_at_fs_path(checkpoint.filesystem, checkpoint.path):
+                raise ValueError(
+                    f"Could not recover from checkpoint as it does not exist on "
+                    f"storage anymore. "
+                    f"Got storage fs type `{checkpoint.filesystem.type_name}` and "
+                    f"path: {checkpoint.path}"
+                )
+
             # TODO(justinvyu): [cls_trainable_support]
             # This is to conform to the public class Trainable `load_checkpoint` API.
             if not isinstance(self, ray.tune.trainable.FunctionTrainable):
                 # Need to convert Checkpoint -> local path or dict
                 # (depending on what the output of save_checkpoint was)
-                with checkpoint_result.checkpoint.as_directory() as checkpoint_dir:
+                with checkpoint.as_directory() as checkpoint_dir:
                     checkpoint_path = Path(checkpoint_dir)
                     dict_checkpoint_file = checkpoint_path / _DICT_CHECKPOINT_FILE_NAME
                     if dict_checkpoint_file.exists():

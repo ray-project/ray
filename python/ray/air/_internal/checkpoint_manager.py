@@ -491,7 +491,7 @@ class _CheckpointManager:
             # Only remove if checkpoint data is different
             if worst_checkpoint.dir_or_data != checkpoint.dir_or_data:
                 self._maybe_delete_persisted_checkpoint(worst_checkpoint)
-                logger.debug(f"Removed worst checkpoint from " f"{worst_checkpoint}.")
+                logger.debug(f"Removed worst checkpoint from {worst_checkpoint}.")
 
             self._replace_latest_persisted_checkpoint(checkpoint)
         else:
