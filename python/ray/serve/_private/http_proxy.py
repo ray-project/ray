@@ -194,7 +194,6 @@ class GenericProxy(ABC):
                 app_name,
                 sync=False,
                 missing_ok=True,
-                use_new_handle_api=True,
             ).options(use_new_handle_api=True)
 
         self.proxy_router = proxy_router_class(get_handle, self.protocol)
