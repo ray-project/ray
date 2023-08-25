@@ -165,7 +165,7 @@ class _DeploymentHandleBase:
                 availability_zone,
                 event_loop=event_loop,
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
-                _prefer_local_routing=self.handle_options._prefer_local_routing,
+                _prefer_local_node_routing=self.handle_options._prefer_local_routing,
                 _router_cls=self.handle_options._router_cls,
             )
 

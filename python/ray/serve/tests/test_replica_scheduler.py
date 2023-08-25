@@ -96,7 +96,8 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     s = PowerOfTwoChoicesReplicaScheduler(
         get_or_create_event_loop(),
         DeploymentID("TEST_DEPLOYMENT", "TEST_APP"),
-        request.param.get("prefer_local", True),
+        request.param.get("prefer_local_node", False),
+        request.param.get("prefer_local_az", False),
         SCHEDULER_NODE_ID,
         request.param.get("az", None),
     )
@@ -131,7 +132,14 @@ def query_with_model_id(model_id: str):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler", [{"prefer_local": True}, {"prefer_local": False}], indirect=True
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
 )
 async def test_no_replicas_available_then_one_available(pow_2_scheduler, fake_query):
     """
@@ -154,7 +162,14 @@ async def test_no_replicas_available_then_one_available(pow_2_scheduler, fake_qu
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler", [{"prefer_local": True}, {"prefer_local": False}], indirect=True
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
 )
 async def test_replica_does_not_accept_then_accepts(pow_2_scheduler, fake_query):
     """
@@ -181,7 +196,14 @@ async def test_replica_does_not_accept_then_accepts(pow_2_scheduler, fake_query)
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler", [{"prefer_local": True}, {"prefer_local": False}], indirect=True
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
 )
 async def test_no_replicas_accept_then_new_one_accepts(pow_2_scheduler, fake_query):
     """
@@ -211,7 +233,14 @@ async def test_no_replicas_accept_then_new_one_accepts(pow_2_scheduler, fake_que
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler", [{"prefer_local": True}, {"prefer_local": False}], indirect=True
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
 )
 async def test_one_replica_available_then_none_then_one(pow_2_scheduler, fake_query):
     """
@@ -241,7 +270,14 @@ async def test_one_replica_available_then_none_then_one(pow_2_scheduler, fake_qu
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler", [{"prefer_local": True}, {"prefer_local": False}], indirect=True
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
 )
 async def test_two_replicas_available_then_one(pow_2_scheduler, fake_query):
     """
@@ -269,7 +305,14 @@ async def test_two_replicas_available_then_one(pow_2_scheduler, fake_query):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler", [{"prefer_local": True}, {"prefer_local": False}], indirect=True
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
 )
 async def test_two_replicas_one_accepts(pow_2_scheduler, fake_query):
     """
@@ -291,7 +334,14 @@ async def test_two_replicas_one_accepts(pow_2_scheduler, fake_query):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler", [{"prefer_local": True}, {"prefer_local": False}], indirect=True
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
 )
 async def test_three_replicas_two_accept(pow_2_scheduler, fake_query):
     """
@@ -316,7 +366,14 @@ async def test_three_replicas_two_accept(pow_2_scheduler, fake_query):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler", [{"prefer_local": True}, {"prefer_local": False}], indirect=True
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
 )
 async def test_two_replicas_choose_shorter_queue(pow_2_scheduler, fake_query):
     """
@@ -339,7 +396,14 @@ async def test_two_replicas_choose_shorter_queue(pow_2_scheduler, fake_query):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler", [{"prefer_local": True}, {"prefer_local": False}], indirect=True
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
 )
 async def test_tasks_scheduled_fifo(pow_2_scheduler, fake_query):
     """
@@ -374,7 +438,14 @@ async def test_tasks_scheduled_fifo(pow_2_scheduler, fake_query):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler", [{"prefer_local": True}, {"prefer_local": False}], indirect=True
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
 )
 async def test_cancellation(pow_2_scheduler, fake_query):
     """
@@ -405,7 +476,14 @@ async def test_cancellation(pow_2_scheduler, fake_query):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler", [{"prefer_local": True}, {"prefer_local": False}], indirect=True
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
 )
 async def test_only_task_cancelled(pow_2_scheduler, fake_query):
     """
@@ -440,7 +518,14 @@ async def test_only_task_cancelled(pow_2_scheduler, fake_query):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler", [{"prefer_local": True}, {"prefer_local": False}], indirect=True
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
 )
 async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
     """
@@ -493,7 +578,14 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "pow_2_scheduler", [{"prefer_local": True}, {"prefer_local": False}], indirect=True
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
 )
 async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query):
     """
@@ -534,7 +626,14 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("pow_2_scheduler", [{}], indirect=True)
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+    ],
+    indirect=True,
+)
 async def test_prefer_replica_on_same_node(pow_2_scheduler, fake_query):
     """
     Verify that the scheduler prefers replicas that are colocated on the same node ID
@@ -572,8 +671,12 @@ async def test_prefer_replica_on_same_node(pow_2_scheduler, fake_query):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("pow_2_scheduler", [{"az": SCHEDULER_AZ}], indirect=True)
-async def test_prefer_replica_on_same_az(pow_2_scheduler, fake_query):
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [{"prefer_local_node": True, "prefer_local_az": True, "az": SCHEDULER_AZ}],
+    indirect=True,
+)
+async def test_prefer_replica_in_same_az(pow_2_scheduler, fake_query):
     """
     Verify that the scheduler prefers
     * replicas that are colocated on the same node
@@ -633,7 +736,12 @@ async def test_prefer_replica_on_same_az(pow_2_scheduler, fake_query):
 class TestModelMultiplexing:
     @pytest.mark.parametrize(
         "pow_2_scheduler",
-        [{"prefer_local": True}, {"prefer_local": False}],
+        [
+            {"prefer_local_node": True, "prefer_local_az": True},
+            {"prefer_local_node": True, "prefer_local_az": False},
+            {"prefer_local_node": False, "prefer_local_az": True},
+            {"prefer_local_node": False, "prefer_local_az": False},
+        ],
         indirect=True,
     )
     async def test_replicas_with_model_id_always_chosen(self, pow_2_scheduler):
@@ -659,7 +767,12 @@ class TestModelMultiplexing:
 
     @pytest.mark.parametrize(
         "pow_2_scheduler",
-        [{"prefer_local": True}, {"prefer_local": False}],
+        [
+            {"prefer_local_node": True, "prefer_local_az": True},
+            {"prefer_local_node": True, "prefer_local_az": False},
+            {"prefer_local_node": False, "prefer_local_az": True},
+            {"prefer_local_node": False, "prefer_local_az": False},
+        ],
         indirect=True,
     )
     async def test_choose_least_number_of_models_replicas(self, pow_2_scheduler):
@@ -680,7 +793,12 @@ class TestModelMultiplexing:
 
     @pytest.mark.parametrize(
         "pow_2_scheduler",
-        [{"prefer_local": True}, {"prefer_local": False}],
+        [
+            {"prefer_local_node": True, "prefer_local_az": True},
+            {"prefer_local_node": True, "prefer_local_az": False},
+            {"prefer_local_node": False, "prefer_local_az": True},
+            {"prefer_local_node": False, "prefer_local_az": False},
+        ],
         indirect=True,
     )
     async def test_no_replica_has_model_id(self, pow_2_scheduler):
@@ -701,7 +819,12 @@ class TestModelMultiplexing:
 
     @pytest.mark.parametrize(
         "pow_2_scheduler",
-        [{"prefer_local": True}, {"prefer_local": False}],
+        [
+            {"prefer_local_node": True, "prefer_local_az": True},
+            {"prefer_local_node": True, "prefer_local_az": False},
+            {"prefer_local_node": False, "prefer_local_az": True},
+            {"prefer_local_node": False, "prefer_local_az": False},
+        ],
         indirect=True,
     )
     async def test_fall_back_to_replica_without_model_id(self, pow_2_scheduler):
@@ -727,7 +850,12 @@ class TestModelMultiplexing:
 
     @pytest.mark.parametrize(
         "pow_2_scheduler",
-        [{"prefer_local": True}, {"prefer_local": False}],
+        [
+            {"prefer_local_node": True, "prefer_local_az": True},
+            {"prefer_local_node": True, "prefer_local_az": False},
+            {"prefer_local_node": False, "prefer_local_az": True},
+            {"prefer_local_node": False, "prefer_local_az": False},
+        ],
         indirect=True,
     )
     async def test_multiple_queries_with_different_model_ids(self, pow_2_scheduler):
@@ -772,7 +900,12 @@ class TestModelMultiplexing:
 
     @pytest.mark.parametrize(
         "pow_2_scheduler",
-        [{"prefer_local": True}, {"prefer_local": False}],
+        [
+            {"prefer_local_node": True, "prefer_local_az": True},
+            {"prefer_local_node": True, "prefer_local_az": False},
+            {"prefer_local_node": False, "prefer_local_az": True},
+            {"prefer_local_node": False, "prefer_local_az": False},
+        ],
         indirect=True,
     )
     async def test_no_replicas_available_then_choose_one_with_id(self, pow_2_scheduler):
@@ -809,7 +942,12 @@ class TestModelMultiplexing:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "pow_2_scheduler",
-        [{"prefer_local": True}, {"prefer_local": False}],
+        [
+            {"prefer_local_node": True, "prefer_local_az": True},
+            {"prefer_local_node": True, "prefer_local_az": False},
+            {"prefer_local_node": False, "prefer_local_az": True},
+            {"prefer_local_node": False, "prefer_local_az": False},
+        ],
         indirect=True,
     )
     async def test_tasks_scheduled_fifo_among_model_ids(

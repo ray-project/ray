@@ -2,6 +2,7 @@ from abc import ABC
 import asyncio
 from collections import defaultdict, deque
 from dataclasses import dataclass
+import enum
 import itertools
 import logging
 import math
@@ -41,6 +42,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
+    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
 )
 from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -322,6 +324,11 @@ class PendingRequest:
     metadata: RequestMetadata
 
 
+class LocalityScope(str, enum.Enum):
+    NODE = "NODE"
+    AVAILABILITY_ZONE = "AVAILABILITY_ZONE"
+
+
 class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     """Chooses a replica for each request using the "power of two choices" procedure.
 
@@ -357,13 +364,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         event_loop: asyncio.AbstractEventLoop,
         deployment_id: DeploymentID,
-        prefer_local_routing: bool = False,
+        prefer_local_node_routing: bool = False,
+        prefer_local_az_routing: bool = False,
         self_node_id: Optional[str] = None,
         self_availability_zone: Optional[str] = None,
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
-        self._prefer_local_routing = prefer_local_routing
+        self._prefer_local_node_routing = prefer_local_node_routing
+        self._prefer_local_az_routing = prefer_local_az_routing
         self._self_node_id = self_node_id
         self._self_availability_zone = self_availability_zone
 
@@ -372,10 +381,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
         self._replicas_updated_event = make_asyncio_event_version_compat(event_loop)
-        # Replicas colocated on same node
-        self._node_colocated_replica_ids: Set[str] = set()
-        # Replicas colocated in same availability zone
-        self._az_colocated_replica_ids: Set[str] = set()
+        # Colocated replicas (e.g. wrt node, AZ)
+        self._colocated_replica_ids: DefaultDict[LocalityScope, Set[str]] = defaultdict(
+            set
+        )
         self._multiplexed_model_id_to_replica_ids: DefaultDict[Set[str]] = defaultdict(
             set
         )
@@ -442,19 +451,20 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         new_replicas = {}
         new_replica_id_set = set()
-        new_node_colocated_replica_ids = set()
-        new_az_colocated_replica_ids = set()
+        new_colocated_replica_ids = defaultdict(set)
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
         for r in replicas:
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
             if self._self_node_id is not None and r.node_id == self._self_node_id:
-                new_node_colocated_replica_ids.add(r.replica_id)
+                new_colocated_replica_ids[LocalityScope.NODE].add(r.replica_id)
             if (
                 self._self_availability_zone is not None
                 and r.availability_zone == self._self_availability_zone
             ):
-                new_az_colocated_replica_ids.add(r.replica_id)
+                new_colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE].add(
+                    r.replica_id
+                )
             for model_id in r.multiplexed_model_ids:
                 new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
 
@@ -468,8 +478,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         self._replicas = new_replicas
         self._replica_id_set = new_replica_id_set
-        self._node_colocated_replica_ids = new_node_colocated_replica_ids
-        self._az_colocated_replica_ids = new_az_colocated_replica_ids
+        self._colocated_replica_ids = new_colocated_replica_ids
         self._multiplexed_model_id_to_replica_ids = (
             new_multiplexed_model_id_to_replica_ids
         )
@@ -610,16 +619,22 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         )
                     )
             elif (
-                self._prefer_local_routing
+                self._prefer_local_node_routing
                 and not tried_same_node
-                and len(self._node_colocated_replica_ids) > 0
+                and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
             ):
                 # Attempt to schedule requests to replicas on the same node at most once
-                candidate_replica_ids = self._node_colocated_replica_ids
+                candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
                 tried_same_node = True
-            elif not tried_same_az and len(self._az_colocated_replica_ids) > 0:
+            elif (
+                not tried_same_az
+                and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE])
+                > 0
+            ):
                 # Attempt to schedule requests to replicas in the same AZ at most once
-                candidate_replica_ids = self._az_colocated_replica_ids
+                candidate_replica_ids = self._colocated_replica_ids[
+                    LocalityScope.AVAILABILITY_ZONE
+                ]
                 tried_same_az = True
             else:
                 # On subsequent iterations or when there are no replicas on the same
@@ -1083,7 +1098,7 @@ class Router:
         self_availability_zone: Optional[str],
         event_loop: asyncio.BaseEventLoop = None,
         _use_new_routing: bool = False,
-        _prefer_local_routing: bool = False,
+        _prefer_local_node_routing: bool = False,
         _router_cls: Optional[str] = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
@@ -1102,7 +1117,8 @@ class Router:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 event_loop,
                 deployment_id,
-                _prefer_local_routing,
+                _prefer_local_node_routing,
+                RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_node_id,
                 self_availability_zone,
             )

@@ -11,7 +11,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING,
+    RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
 )
 from ray.serve.handle import RayServeHandle
 
@@ -66,7 +66,7 @@ class LongestPrefixRouter(ProxyRouter):
                         and not info.app_is_cross_language
                     ),
                     use_new_handle_api=True,
-                    _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING,
+                    _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
                 )
                 handle._set_request_protocol(self._protocol)
                 self.handles[endpoint] = handle
@@ -153,7 +153,7 @@ class EndpointRouter(ProxyRouter):
                         and not info.app_is_cross_language
                     ),
                     use_new_handle_api=True,
-                    _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING,
+                    _prefer_local_node_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
                 )
                 handle._set_request_protocol(self._protocol)
                 self.handles[endpoint] = handle
