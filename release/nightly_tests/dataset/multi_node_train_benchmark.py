@@ -155,14 +155,19 @@ def benchmark_code(args, cache_output_ds=False, cache_input_ds=False, prepartiti
     result = torch_trainer.fit()
     train_end_t = time.time()
 
-    # Report the throughput of the last training epoch.
-    total_tput = ray_dataset.count() / (train_end_t - train_start_t)
-    return {BenchmarkMetric.THROUGHPUT: total_tput}
+    # Report the throughput of one epoch (averaged across epochs)
+    runtime_one_epoch = (train_end_t - train_start_t) / args.num_epochs
+    tput_one_epoch = ray_dataset.count() / runtime_one_epoch
+    print("===> tput last epoch:", tput_one_epoch)
+    return {BenchmarkMetric.THROUGHPUT.value: tput_one_epoch}
 
 if __name__ == "__main__":
     args = parse_args()
+    benchmark_name = f"read_{args.file_type}_train_{args.num_workers}workers"
+    if args.preserve_order:
+        benchmark_name = f"{benchmark_name}_preserve_order"
 
-    benchmark = Benchmark("multi_node_train_benchmark")
+    benchmark = Benchmark(benchmark_name)
 
     benchmark.run_fn("default", benchmark_code, args=args)
     benchmark.write_result("/tmp/multi_node_train_benchmark.json")

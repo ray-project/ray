@@ -59,7 +59,7 @@ class Benchmark:
         duration = time.perf_counter() - start_time
 
         # TODO(chengsu): Record more metrics based on dataset stats.
-        self.result[name] = {BenchmarkMetric.RUNTIME: duration}
+        self.result[name] = {BenchmarkMetric.RUNTIME.value: duration}
         print(f"Result of case {name}: {self.result[name]}")
     
     def run_fn(self, name: str, fn: Callable[..., Any], **fn_run_args):
@@ -72,13 +72,13 @@ class Benchmark:
         duration = time.perf_counter() - start_time
 
         curr_case_metrics = {
-            BenchmarkMetric.RUNTIME: duration,
+            BenchmarkMetric.RUNTIME.value: duration,
         }
         if isinstance(fn_output, dict):
             for m in BenchmarkMetric:
                 metric_value = fn_output.get(m.value)
                 if metric_value:
-                    curr_case_metrics[m.value] = tput
+                    curr_case_metrics[m.value] = metric_value
         
         self.result[name] = curr_case_metrics
         print(f"Result of case {name}: {curr_case_metrics}")
