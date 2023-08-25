@@ -1063,7 +1063,7 @@ class Router:
         )
         # TODO(zcin): use deployment name and application name instead of deployment id
         self.num_router_requests.set_default_tags(
-            {"deployment": str(deployment_id), "application": deployment_id.app}
+            {"deployment": deployment_id.name, "application": deployment_id.app}
         )
 
         self.num_queued_queries = 0
@@ -1077,7 +1077,7 @@ class Router:
         )
         # TODO(zcin): use deployment name and application name instead of deployment id
         self.num_queued_queries_gauge.set_default_tags(
-            {"deployment": str(deployment_id), "application": deployment_id.app}
+            {"deployment": deployment_id.name, "application": deployment_id.app}
         )
 
         self.long_poll_client = LongPollClient(
