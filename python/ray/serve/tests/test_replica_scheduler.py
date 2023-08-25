@@ -18,6 +18,7 @@ from ray.serve._private.router import (
 )
 
 SCHEDULER_NODE_ID = "scheduler_node_id"
+SCHEDULER_AZ = "scheduler_az"
 
 
 class FakeReplicaWrapper(ReplicaWrapper):
@@ -26,6 +27,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
         replica_id: str,
         *,
         node_id: str = "",
+        availability_zone: Optional[str] = None,
         reset_after_response: bool = False,
         model_ids: Optional[Set[str]] = None,
         sleep_time_s: float = 0.0
@@ -33,6 +35,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
 
         self._replica_id = replica_id
         self._node_id = node_id
+        self._availability_zone = availability_zone
         self._queue_len = 0
         self._accepted = False
         self._has_queue_len_response = asyncio.Event()
@@ -47,6 +50,10 @@ class FakeReplicaWrapper(ReplicaWrapper):
     @property
     def node_id(self) -> str:
         return self._node_id
+
+    @property
+    def availability_zone(self) -> Optional[str]:
+        return self._availability_zone
 
     @property
     def multiplexed_model_ids(self) -> Set[str]:
@@ -91,6 +98,7 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
         DeploymentID("TEST_DEPLOYMENT", "TEST_APP"),
         request.param.get("prefer_local", True),
         SCHEDULER_NODE_ID,
+        request.param.get("az", None),
     )
 
     # Update the RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S
@@ -561,6 +569,64 @@ async def test_prefer_replica_on_same_node(pow_2_scheduler, fake_query):
 
     # All requests should be scheduled to the other replica.
     assert all(replica == r2 for replica in await asyncio.gather(*tasks))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pow_2_scheduler", [{"az": SCHEDULER_AZ}], indirect=True)
+async def test_prefer_replica_on_same_az(pow_2_scheduler, fake_query):
+    """
+    Verify that the scheduler prefers
+    * replicas that are colocated on the same node
+    * then replicas that are colocated in the same AZ
+    * lastly fall back to all replicas
+    """
+
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+
+    r1 = FakeReplicaWrapper(
+        "r1", node_id=SCHEDULER_NODE_ID, availability_zone=SCHEDULER_AZ
+    )
+    print("r1:", r1.node_id, r1.availability_zone)
+    r1.set_queue_state_response(0, accepted=True)
+    r2 = FakeReplicaWrapper(
+        "r2",
+        node_id="some_other_node_in_the_stratosphere",
+        availability_zone=SCHEDULER_AZ,
+    )
+    print("r2:", r2.node_id, r2.availability_zone)
+    r2.set_queue_state_response(0, accepted=True)
+    r3 = FakeReplicaWrapper(
+        "r3",
+        node_id="some_other_node_in_the_stratosphere",
+        availability_zone="some_other_az_in_the_solar_system",
+    )
+    print("r3:", r3.node_id, r3.availability_zone)
+    r3.set_queue_state_response(0, accepted=True)
+    s.update_replicas([r1, r2, r3])
+
+    async def choose_replicas():
+        tasks = []
+        for _ in range(10):
+            tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+        return await asyncio.gather(*tasks)
+
+    # All requests should be scheduled to the replica on the same node if it accepts.
+    assert all(replica == r1 for replica in await choose_replicas())
+
+    # Update the replica on the same node to reject requests -- now requests should
+    # fall back to replica in the same az.
+    r1.set_queue_state_response(0, accepted=False)
+
+    # All requests should be scheduled to the replica in same az.
+    assert all(replica == r2 for replica in await choose_replicas())
+
+    # Update the replica on the same az to reject requests -- now requests should
+    # fall back to the last replica..
+    r2.set_queue_state_response(0, accepted=False)
+
+    # All requests should be scheduled to the third replica.
+    assert all(replica == r3 for replica in await choose_replicas())
 
 
 @pytest.mark.asyncio

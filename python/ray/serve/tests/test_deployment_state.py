@@ -155,6 +155,10 @@ class MockReplicaActorWrapper:
         return None
 
     @property
+    def availability_zone(self) -> Optional[str]:
+        return None
+
+    @property
     def node_ip(self) -> Optional[str]:
         return None
 

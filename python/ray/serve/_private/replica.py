@@ -20,6 +20,7 @@ from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray._private.async_compat import sync_to_async
 from ray._private.utils import get_or_create_event_loop
+from ray._raylet import GcsClient
 
 from ray.serve import metrics
 from ray.serve._private.common import (
@@ -42,6 +43,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
+from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import (
     make_buffered_asgi_receive,
     ASGIAppReplicaWrapper,
@@ -113,6 +115,9 @@ def create_replica_wrapper(actor_class_name: str):
             )
 
             self._event_loop = get_or_create_event_loop()
+            self._cluster_node_info_cache = create_cluster_node_info_cache(
+                GcsClient(address=ray.get_runtime_context().gcs_address)
+            )
 
             deployment_def = cloudpickle.loads(serialized_deployment_def)
 
@@ -406,12 +411,14 @@ def create_replica_wrapper(actor_class_name: str):
                 The PID, actor ID, node ID, node IP, and log filepath id of the replica.
             """
 
+            node_id = ray.get_runtime_context().get_node_id()
             return (
                 os.getpid(),
                 ray.get_runtime_context().get_actor_id(),
                 ray.get_runtime_context().get_worker_id(),
-                ray.get_runtime_context().get_node_id(),
+                node_id,
                 ray.util.get_node_ip_address(),
+                self._cluster_node_info_cache.get_node_az(node_id),
                 get_component_logger_file_path(),
             )
 
