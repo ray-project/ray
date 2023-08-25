@@ -68,9 +68,11 @@ class EliminateBuildOutputBlocks(ZeroCopyMapFusionRule):
         # 2. BuildOutputBlocksMapTransformFn.
         # 3. BlocksToRowsMapTransformFn or BlocksToBatchesMapTransformFn
         # We drop the BuildOutputBlocksMapTransformFn in the middle.
-        # Note, for the 3rd fn, we need to check the concrete types, instead of accepting
-        # any fn with block input. This is because for read op with additional split, we
-        # cannot drop the BuildOutputBlocksMapTransformFn.
+        #
+        # Note, for the 3rd fn, we need to check the concrete types, instead of
+        # accepting any fn with block input. This is because for read op with
+        # additional splits (which has BuildOutputBlocksMapTransformFn ->
+        # BlockMapTransformFn), we cannot drop the BuildOutputBlocksMapTransformFn.
         new_transform_fns = []
 
         for i in range(len(transform_fns)):
