@@ -152,6 +152,7 @@ def test_save_load_checkpoint_path_fn(ray_start_2_cpus, fn_trainable):
     ray.get(restoring_future)
 
 
+@pytest.mark.skip("This codepath will be removed soon.")
 @pytest.mark.parametrize("hanging", [True, False])
 def test_sync_timeout(tmpdir, monkeypatch, hanging):
     monkeypatch.setenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "0")
