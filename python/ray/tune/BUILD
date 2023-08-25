@@ -790,7 +790,7 @@ py_test(
     size = "small",
     srcs = ["examples/pbt_function.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "new_storage"],
     args = ["--smoke-test"]
 )
 
