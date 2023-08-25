@@ -551,7 +551,6 @@ class FunctionTrainable(Trainable):
         if _use_storage_context():
             # TRAIN -> SAVE remote calls get processed sequentially,
             # so `_last_training_result.checkpoint` holds onto the latest ckpt.
-            assert self._last_training_result.checkpoint
             return self._last_training_result
 
         checkpoint = self._status_reporter.get_checkpoint()
