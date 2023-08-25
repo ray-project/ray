@@ -26,6 +26,7 @@ from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
 - test unary handle call during execution
 - test generator handle call during execution
 - test downstream calls are cancelled automatically
+- test call made from background task is *not* cancelled.
 """
 
 

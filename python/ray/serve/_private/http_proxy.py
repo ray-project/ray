@@ -1031,8 +1031,6 @@ class HTTPProxy(GenericProxy):
                     extra={"log_to_stderr": False},
                 )
                 result_ref.cancel()
-            else:
-                client_disconnection_task.cancel()
 
             try:
                 # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
@@ -1042,10 +1040,18 @@ class HTTPProxy(GenericProxy):
                 # at another replica. Release tests should kill the head node and
                 # check if latency drops significantly. See
                 # https://github.com/ray-project/ray/pull/29534 for more info.
-                _, request_timed_out = await asyncio.wait(
-                    [result_ref], timeout=self.request_timeout_s
+                done, pending = await asyncio.wait(
+                    [result_ref, client_disconnection_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                    timeout=self.request_timeout_s,
                 )
-                if request_timed_out:
+                if client_disconnection_task in done:
+                    logger.info(
+                        "Client disconnected, cancelling request."
+                    )
+                    result_ref.cancel()
+                    raise asyncio.CancelledError()
+                elif len(done) == 0:
                     logger.info(
                         f"Request didn't finish within {self.request_timeout_s} seconds"
                         ". Retrying with another replica. You can modify this timeout "
@@ -1053,6 +1059,7 @@ class HTTPProxy(GenericProxy):
                         "`http_options` field."
                     )
                     should_backoff = True
+                    result_ref.cancel()
                 else:
                     result = await result_ref
                     break
@@ -1251,7 +1258,9 @@ class HTTPProxy(GenericProxy):
             try:
                 status_code = await self._consume_and_send_asgi_message_generator(
                     obj_ref_generator,
+                    cancellation_task,
                     proxy_request.send,
+                    disconnected_task=proxy_asgi_receive_task,
                     timeout_s=calculate_remaining_timeout(
                         timeout_s=self.request_timeout_s,
                         start_time_s=start,
