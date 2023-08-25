@@ -45,12 +45,12 @@
       python/ray/train/...
     # # Only setup credentials in branch builds
     # - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
-    - python ./ci/env/setup_credentials.py wandb comet
+    - python ./ci/env/setup_credentials.py wandb comet_ml
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest,-new_storage,needs_credentials
       python/ray/train/...
-    - python ./ci/env/cleanup_test_state.py wandb comet
+    - python ./ci/env/cleanup_test_state.py wandb comet_ml
 
 - label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
@@ -365,12 +365,12 @@
       python/ray/train/...
     # # Only setup credentials in branch builds
     # - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
-    - python ./ci/env/setup_credentials.py wandb comet
+    - python ./ci/env/setup_credentials.py wandb comet_ml
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest,-new_storage,needs_credentials
       python/ray/train/...
-    - python ./ci/env/cleanup_test_state.py wandb comet
+    - python ./ci/env/cleanup_test_state.py wandb comet_ml
 
 # TODO(krfricke): Add new test for this suite
 # - label: ":steam_locomotive: :octopus: :floppy_disk: New persistence mode: Train + Tune tests and examples"

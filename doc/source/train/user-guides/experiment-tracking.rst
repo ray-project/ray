@@ -54,8 +54,7 @@ Step 2: Make sure that all nodes and processes have access to credentials
 
 **MLflow:**
 
-- This is done by having ``databrickscfg`` accessible by all nodes. See below for
-code snippet.
+- This is done by having ``databrickscfg`` accessible by all nodes. See below for code snippet.
 
 Step 3: Initialize the run 
 --------------------------
