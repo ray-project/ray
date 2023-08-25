@@ -718,7 +718,7 @@ py_test(
     size = "small",
     srcs = ["examples/optuna_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "new_storage"],
     args = ["--smoke-test"]
 )
 
