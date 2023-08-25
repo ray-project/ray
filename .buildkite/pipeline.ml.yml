@@ -43,14 +43,19 @@
       --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest,-new_storage,-needs_credentials
       python/ray/train/...
-    # # Only setup credentials in branch builds
-    # - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+
+
+- label: ":train: :key: Train examples with authentication"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_BRANCH_BUILD"]
+  instance_size: medium
+  commands:
+    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DOC_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
     - python ./ci/env/setup_credentials.py wandb comet_ml
-    - ./ci/run/run_bazel_test_with_sharding.sh
-      --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest,-new_storage,needs_credentials
-      python/ray/train/...
-    - python ./ci/env/cleanup_test_state.py wandb comet_ml
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials python/ray/train/...
+      
 
 - label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
@@ -363,14 +368,6 @@
       --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest,-no_new_storage,-needs_credentials
       --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
       python/ray/train/...
-    # # Only setup credentials in branch builds
-    # - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
-    - python ./ci/env/setup_credentials.py wandb comet_ml
-    - ./ci/run/run_bazel_test_with_sharding.sh
-      --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest,-new_storage,needs_credentials
-      python/ray/train/...
-    - python ./ci/env/cleanup_test_state.py wandb comet_ml
 
 # TODO(krfricke): Add new test for this suite
 # - label: ":steam_locomotive: :octopus: :floppy_disk: New persistence mode: Train + Tune tests and examples"
