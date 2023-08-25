@@ -13,5 +13,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci -- //python/ray/serve/... serve --except-tags post_wheel_build,gpu,xcommit
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
     depends_on: servebuild
     job_env: servebuild
