@@ -1,5 +1,6 @@
 import argparse
 import os
+import tempfile
 
 import torch
 import torch.nn as nn
@@ -10,8 +11,10 @@ from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
 import ray
+import ray.cloudpickle as cpickle
 from ray import train, tune
-from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
+from ray.train import FailureConfig, RunConfig, ScalingConfig
+from ray.train._checkpoint import Checkpoint
 from ray.train.torch import TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.tune_config import TuneConfig
@@ -80,7 +83,9 @@ def train_func(config):
 
     starting_epoch = 0
     if train.get_checkpoint():
-        checkpoint_dict = train.get_checkpoint().to_dict()
+        with train.get_checkpoint().as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "data.ckpt"), "rb") as fp:
+                checkpoint_dict = cpickle.load(fp)
 
         # Load in model
         model_state = checkpoint_dict["model"]
@@ -144,15 +149,19 @@ def train_func(config):
     for epoch in range(starting_epoch, epochs):
         train_epoch(train_loader, model, criterion, optimizer)
         result = validate_epoch(validation_loader, model, criterion)
-        checkpoint = Checkpoint.from_dict(
-            {
-                "epoch": epoch,
-                "model": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-            }
-        )
 
-        train.report(result, checkpoint=checkpoint)
+        with tempfile.TemporaryDirectory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "data.ckpt"), "wb") as fp:
+                cpickle.dump(
+                    {
+                        "epoch": epoch,
+                        "model": model.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                    },
+                    fp,
+                )
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            train.report(result, checkpoint=checkpoint)
 
 
 if __name__ == "__main__":

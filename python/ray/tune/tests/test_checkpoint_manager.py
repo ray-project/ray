@@ -39,7 +39,7 @@ class CheckpointManagerTest(unittest.TestCase):
         )
         checkpoint_manager.on_checkpoint(memory_checkpoint)
         persistent_checkpoint = _TrackedCheckpoint(
-            dir_or_data={"a": 1},
+            dir_or_data="a1",
             storage_mode=CheckpointStorage.PERSISTENT,
             metrics=self.mock_result(1, 1),
         )
@@ -57,7 +57,7 @@ class CheckpointManagerTest(unittest.TestCase):
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
             _TrackedCheckpoint(
-                dir_or_data={i},
+                dir_or_data=f"{i}",
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=self.mock_result(i, i),
             )
@@ -89,7 +89,7 @@ class CheckpointManagerTest(unittest.TestCase):
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
             _TrackedCheckpoint(
-                dir_or_data={i},
+                dir_or_data=f"{i}",
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=self.mock_result(i, i),
             )
