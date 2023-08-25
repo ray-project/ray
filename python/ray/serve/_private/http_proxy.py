@@ -29,7 +29,7 @@ from ray._raylet import StreamingObjectRefGenerator
 from ray import serve
 from ray.serve.handle import (
     DeploymentHandle,
-    DeploymentResponseBase,
+    _DeploymentResponseBase,
 )
 from ray.serve._private.grpc_util import (
     create_serve_grpc_server,
@@ -547,7 +547,7 @@ class GenericProxy(ABC):
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
-        result: DeploymentResponseBase = handle.remote(
+        result: _DeploymentResponseBase = handle.remote(
             proxy_request.request_object(proxy_handle=self.self_actor_handle)
         )
         to_object_ref_task = asyncio.ensure_future(
