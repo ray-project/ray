@@ -535,7 +535,7 @@ class StorageContext:
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train._checkpoint import Checkpoint
 
-        logger.info(
+        logger.debug(
             "Copying checkpoint files to storage path:\n"
             "({source_fs}, {source}) -> ({dest_fs}, {destination})".format(
                 source=checkpoint.path,
@@ -565,6 +565,38 @@ class StorageContext:
         )
         logger.info(f"Checkpoint successfully created at: {persisted_checkpoint}")
         return persisted_checkpoint
+
+    def persist_artifacts(self, force: bool = False) -> None:
+        """Persists all artifacts within `trial_local_dir` to storage.
+
+        This method possibly launches a background task to sync the trial dir,
+        depending on the `sync_period` + `sync_on_checkpoint` settings of `SyncConfig`.
+
+        `(local_fs, trial_local_path) -> (storage_filesystem, trial_fs_path)`
+
+        Args:
+            force: If True, wait for a previous sync to finish, launch a new one,
+                and wait for that one to finish. By the end of a `force=True call`, the
+                latest version of the trial artifacts will be persisted.
+        """
+        if not self.sync_config.sync_artifacts:
+            return
+
+        # Skip if we don't need to sync (e.g., storage_path == storage_local_path, and
+        # all trial artifacts are already in the right place)
+        if not self.syncer:
+            return
+
+        if force:
+            self.syncer.wait()
+            self.syncer.sync_up(
+                local_dir=self.trial_local_path, remote_dir=self.trial_fs_path
+            )
+            self.syncer.wait()
+        else:
+            self.syncer.sync_up_if_needed(
+                local_dir=self.trial_local_path, remote_dir=self.trial_fs_path
+            )
 
     @property
     def experiment_fs_path(self) -> str:
