@@ -104,6 +104,8 @@ AUTO_RESULT_KEYS = (
     "timesteps_since_restore",
     "iterations_since_restore",
     "config",
+    # TODO(justinvyu): Move this stuff to train to avoid cyclical dependency.
+    "checkpoint_dir_name",
 )
 
 # __duplicate__ is a magic keyword used internally to

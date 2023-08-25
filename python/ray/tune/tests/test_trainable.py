@@ -1,25 +1,20 @@
 import json
 import os
 import tempfile
-import time
 import uuid
 from typing import Dict, Union
-from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray import train, tune
 from ray.train import Checkpoint
-from ray.air._internal.remote_storage import (
-    download_from_uri,
-    upload_to_uri,
-    delete_at_uri,
-)
-from ray.train._internal.storage import StorageContext, _use_storage_context
-from ray.train._internal.syncer import _DefaultSyncer
+from ray.air._internal.remote_storage import delete_at_uri
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.logger import NoopLogger
 from ray.tune.trainable import wrap_function
+
+from ray.train.tests.util import mock_storage_context
 
 
 @pytest.fixture
@@ -102,7 +97,7 @@ def function_trainable_directory(config):
     # Do not test subdir/checkpoint path in new storage context
     + (["subdir", "checkpoint"] if not _use_storage_context() else []),
 )
-def test_save_load_checkpoint_path_class(ray_start_2_cpus, return_type, tmpdir):
+def test_save_load_checkpoint_path_class(ray_start_2_cpus, return_type):
     """Assert that restoring from a Trainable.save() future works with
     class trainables.
 
@@ -110,9 +105,7 @@ def test_save_load_checkpoint_path_class(ray_start_2_cpus, return_type, tmpdir):
     """
     trainable = ray.remote(SavingTrainable).remote(
         return_type=return_type,
-        storage=StorageContext(
-            storage_path=str(tmpdir), experiment_dir_name="test", trial_dir_name="test0"
-        ),
+        storage=mock_storage_context(),
     )
 
     # Train one step
@@ -150,52 +143,6 @@ def test_save_load_checkpoint_path_fn(ray_start_2_cpus, fn_trainable):
     restoring_future = trainable.restore.remote(saving_future)
 
     ray.get(restoring_future)
-
-
-@pytest.mark.skip("This codepath will be removed soon.")
-@pytest.mark.parametrize("hanging", [True, False])
-def test_sync_timeout(tmpdir, monkeypatch, hanging):
-    monkeypatch.setenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "0")
-
-    orig_upload_fn = upload_to_uri
-
-    def _hanging_upload(*args, **kwargs):
-        time.sleep(200 if hanging else 0)
-        orig_upload_fn(*args, **kwargs)
-
-    class HangingSyncer(_DefaultSyncer):
-        def _sync_up_command(self, local_path: str, uri: str, exclude: list = None):
-            return (
-                _hanging_upload,
-                dict(local_path=local_path, uri=uri, exclude=exclude),
-            )
-
-    trainable = SavingTrainable(
-        "object",
-        remote_checkpoint_dir=f"memory:///test/location_hanging_{hanging}",
-        sync_config=train.SyncConfig(syncer=HangingSyncer(sync_timeout=0.5)),
-    )
-
-    with patch("ray.air.checkpoint.upload_to_uri", _hanging_upload):
-        trainable.save()
-
-    check_dir = tmpdir / "check_save_obj"
-
-    try:
-        download_from_uri(
-            uri=f"memory:///test/location_hanging_{hanging}", local_path=str(check_dir)
-        )
-    except FileNotFoundError:
-        hung = True
-    else:
-        hung = False
-
-    assert hung == hanging
-
-    if hanging:
-        assert not check_dir.exists()
-    else:
-        assert check_dir.listdir()
 
 
 def test_find_latest_checkpoint_local(tmpdir):
