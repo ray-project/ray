@@ -2,7 +2,7 @@ import inspect
 import logging
 import os
 from types import FunctionType
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 from pydantic.main import ModelMetaclass
 
