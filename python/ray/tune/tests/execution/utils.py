@@ -137,14 +137,7 @@ def create_execution_test_objects(
     storage_path = str(tmpdir)
     experiment_name = "test_exp"
 
-    storage = kwargs.pop("storage", None)
-    if not storage and _use_storage_context():
-        storage = StorageContext(
-            storage_path=storage_path,
-            experiment_dir_name=experiment_name,
-        )
-        storage.storage_path = tmpdir
-        storage.storage_local_path = tmpdir
+    storage = kwargs.pop("storage", mock_storage_context())
 
     tune_controller = tune_controller_cls(
         experiment_path=os.path.join(storage_path, experiment_name),
