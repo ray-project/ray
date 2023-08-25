@@ -25,7 +25,6 @@ from ray.air._internal.remote_storage import (
 )
 from ray.air._internal.uri_utils import URI
 from ray.train.torch import TorchTrainer
-from ray.tune import TuneError
 from ray.train._internal.syncer import (
     _BackgroundProcess,
     _DefaultSyncer,
