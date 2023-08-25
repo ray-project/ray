@@ -30,6 +30,7 @@ def test_handle_options():
     assert only_set_method.method_name == "hi"
     assert only_set_method.multiplexed_model_id == ""
     assert only_set_method.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
@@ -42,6 +43,7 @@ def test_handle_options():
     assert only_set_model_id.method_name == "__call__"
     assert only_set_model_id.multiplexed_model_id == "hi"
     assert only_set_model_id.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
@@ -54,6 +56,7 @@ def test_handle_options():
     assert only_set_stream.method_name == "__call__"
     assert only_set_stream.multiplexed_model_id == ""
     assert only_set_stream.stream is True
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"

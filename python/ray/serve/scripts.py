@@ -4,7 +4,7 @@ import pathlib
 import sys
 import time
 from dataclasses import asdict
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import click
 import yaml
@@ -20,8 +20,9 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.api import build as build_app
-from ray.serve.config import DeploymentMode
+from ray.serve.config import DeploymentMode, gRPCOptions
 from ray.serve._private.constants import (
+    DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_NAMESPACE,
@@ -163,6 +164,7 @@ def cli():
     help="DEPRECATED: Use `--proxy-location` instead.",
 )
 @click.option(
+<<<<<<< HEAD
     "--proxy-location",
     default=DeploymentMode.EveryNode,
     required=False,
@@ -178,6 +180,25 @@ def start(address, http_host, http_port, http_location, proxy_location):
 
         proxy_location = http_location
 
+=======
+    "--grpc-port",
+    default=DEFAULT_GRPC_PORT,
+    required=False,
+    type=int,
+    help="Port for gRPC proxies to listen on. " f"Defaults to {DEFAULT_GRPC_PORT}.",
+)
+@click.option(
+    "--grpc-servicer-functions",
+    default=[],
+    required=False,
+    multiple=True,
+    help="Servicer function for adding the method handler to the gRPC server."
+    "Defaults to empty list and no gRPC server will be started.",
+)
+def start(
+    address, http_host, http_port, http_location, grpc_port, grpc_servicer_functions
+):
+>>>>>>> cc0b7196555eece052ba33e91691bdb381e90c05
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
@@ -188,6 +209,10 @@ def start(address, http_host, http_port, http_location, proxy_location):
         http_options=dict(
             host=http_host,
             port=http_port,
+        ),
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
         ),
     )
 
@@ -466,12 +491,19 @@ def run(
         )
 
     http_options = {"host": host, "port": port, "location": "EveryNode"}
-    # Merge http_options with the ones on ServeDeploySchema. If host and/or port is
-    # passed by cli, those continue to take the priority
+    grpc_options = gRPCOptions()
+    # Merge http_options and grpc_options with the ones on ServeDeploySchema. If host
+    # and/or port is passed by cli, those continue to take the priority
     if is_config and isinstance(config, ServeDeploySchema):
         config_http_options = config.http_options.dict()
         http_options = {**config_http_options, **http_options}
-    client = _private_api.serve_start(detached=True, http_options=http_options)
+        grpc_options = gRPCOptions(**config.grpc_options.dict())
+
+    client = _private_api.serve_start(
+        detached=True,
+        http_options=http_options,
+        grpc_options=grpc_options,
+    )
 
     try:
         if is_config:
@@ -735,6 +767,14 @@ def shutdown(address: str, yes: bool):
     is_flag=True,
     help="Generate a single-application config from one target.",
 )
+@click.option(
+    "--grpc-servicer-functions",
+    default=[],
+    required=False,
+    multiple=True,
+    help="Servicer function for adding the method handler to the gRPC server."
+    "Defaults to empty list and no gRPC server will be started.",
+)
 def build(
     import_paths: Tuple[str],
     app_dir: str,
@@ -743,6 +783,7 @@ def build(
     # This is no longer used, it is only kept here to avoid breaking existing CLI usage
     multi_app: bool,
     single_app: bool,
+    grpc_servicer_functions: List[str],
 ):
     # Add logger messages for users who are still using --multi-app
     if multi_app:
@@ -824,6 +865,10 @@ def build(
             "http_options": {
                 "host": "0.0.0.0",
                 "port": 8000,
+            },
+            "grpc_options": {
+                "port": DEFAULT_GRPC_PORT,
+                "grpc_servicer_functions": grpc_servicer_functions,
             },
             "applications": app_configs,
         }

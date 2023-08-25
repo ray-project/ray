@@ -27,7 +27,6 @@ from ray.air.constants import (
 )
 from ray.train._internal.storage import (
     _use_storage_context,
-    _is_directory,
     _list_at_fs_path,
     _exists_at_fs_path,
     get_fs_and_path,
@@ -88,10 +87,11 @@ class NewExperimentAnalysis:
     def __init__(
         self,
         experiment_checkpoint_path: Union[str, os.PathLike],
+        *,
+        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trials: Optional[List[Trial]] = None,
         default_metric: Optional[str] = None,
         default_mode: Optional[str] = None,
-        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
     ):
         self.default_metric = default_metric
         if default_mode and default_mode not in ["min", "max"]:
@@ -101,41 +101,31 @@ class NewExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
-        (
-            self._fs,
-            self._experiment_fs_path,
-            self._experiment_json_fs_path,
-        ) = self._get_experiment_fs_and_path(
-            experiment_checkpoint_path, storage_filesystem
-        )
+        # Resolve the filesystem if not specified.
+        if storage_filesystem:
+            self._fs = storage_filesystem
+        else:
+            self._fs, experiment_checkpoint_path = get_fs_and_path(
+                experiment_checkpoint_path
+            )
+
+        # Find the json state file.
+        experiment_checkpoint_path = str(experiment_checkpoint_path)
+        if experiment_checkpoint_path.endswith(".json"):
+            self._experiment_fs_path = os.path.dirname(experiment_checkpoint_path)
+            self._experiment_json_fs_path = experiment_checkpoint_path
+        else:
+            self._experiment_fs_path = experiment_checkpoint_path
+            self._experiment_json_fs_path = os.path.join(
+                experiment_checkpoint_path,
+                NewExperimentAnalysis._find_newest_experiment_checkpoint(
+                    self._fs, experiment_checkpoint_path
+                ),
+            )
 
         self.trials = trials or self._load_trials()
         self._trial_dataframes = self._fetch_trial_dataframes()
         self._configs = self.get_all_configs()
-
-    def _get_experiment_fs_and_path(
-        self,
-        experiment_path: Union[str, os.PathLike],
-        storage_filesystem: Optional[pyarrow.fs.FileSystem],
-    ) -> Tuple[pyarrow.fs.FileSystem, str, str]:
-        """Returns the filesystem and paths to the experiment directory
-        + the experiment checkpoint file."""
-        if storage_filesystem:
-            fs, experiment_fs_path = storage_filesystem, str(experiment_path)
-        else:
-            fs, experiment_fs_path = get_fs_and_path(experiment_path)
-
-        if not _is_directory(fs, experiment_fs_path):
-            experiment_json_fs_path = experiment_fs_path
-            experiment_fs_path = os.path.dirname(experiment_fs_path)
-        else:
-            experiment_json_fs_path = os.path.join(
-                experiment_fs_path,
-                NewExperimentAnalysis._find_newest_experiment_checkpoint(
-                    fs, experiment_fs_path
-                ),
-            )
-        return fs, experiment_fs_path, experiment_json_fs_path
 
     def _load_trials(self) -> List[Trial]:
         with self._fs.open_input_stream(self._experiment_json_fs_path) as f:

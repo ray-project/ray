@@ -14,6 +14,7 @@ from ray.util.annotations import Deprecated, PublicAPI, DeveloperAPI
 
 from ray.serve.built_application import BuiltApplication
 from ray.serve.config import (
+    gRPCOptions,
     AutoscalingConfig,
     DeploymentConfig,
     DeploymentMode,
@@ -69,6 +70,7 @@ def start(
     proxy_location: Optional[Union[str, DeploymentMode]] = None,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
+    grpc_options: Optional[gRPCOptions] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -122,6 +124,13 @@ def start(
               internal Serve HTTP proxy actor.
         dedicated_cpu: [DEPRECATED] Whether to reserve a CPU core for the
           Serve controller actor.
+        grpc_options: [Experimental] Configuration options for gRPC proxy. You can pass
+          in a gRPCOptions object with fields:
+
+            - grpc_servicer_functions: List of import paths for gRPC
+              `add_servicer_to_server` functions to add to Serve's gRPC proxy. Default
+              empty list, meaning not to start the gRPC server.
+            - port: Port for gRPC server. Defaults to 9000.
     """
     if not detached:
         warnings.warn(
@@ -149,7 +158,13 @@ def start(
 
         http_options.location = proxy_location
 
-    _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
+    _private_api.serve_start(
+        detached=detached,
+        http_options=http_options,
+        dedicated_cpu=dedicated_cpu,
+        grpc_options=grpc_options,
+        **kwargs,
+    )
 
 
 @PublicAPI(stability="stable")
@@ -834,6 +849,7 @@ def status() -> ServeStatus:
         # Serve has not started yet
         return ServeStatus()
 
+    ServeUsageTag.SERVE_STATUS_API_USED.record("1")
     details = ServeInstanceDetails(**client.get_serve_details())
     return details._get_status()
 
@@ -870,6 +886,7 @@ def get_app_handle(
     if ingress is None:
         raise RayServeException(f"Application '{name}' does not exist.")
 
+    ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
     # Default to async within a deployment and sync outside a deployment.
     sync = get_internal_replica_context() is None
     return client.get_handle(ingress, name, sync=sync).options(
@@ -883,6 +900,8 @@ def get_deployment_handle(
     app_name: Optional[str] = None,
 ) -> DeploymentHandle:
     """Get a handle to the named deployment.
+
+    This is a developer API and is for advanced Ray users and library developers.
 
     Args:
         deployment_name: Name of deployment to get a handle to.
@@ -909,6 +928,7 @@ def get_deployment_handle(
         else:
             app_name = internal_replica_context.app_name
 
+    ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
     # Default to async within a deployment and sync outside a deployment.
     sync = internal_replica_context is None
     return client.get_handle(deployment_name, app_name, sync=sync).options(
