@@ -15,6 +15,12 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    BatchMapTransformFn,
+    BlockMapTransformFn,
+    BlocksToBatchesMapTransformFn,
+    BuildOutputBlocksMapTransformFn,
+)
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -1467,6 +1473,61 @@ def test_schema_partial_execution(
     assert ds._plan._in_blocks._num_blocks == 1
     assert str(ds._plan._logical_plan.dag) == (
         "Read[ReadParquet->SplitBlocks(2)] -> MapBatches[MapBatches(<lambda>)]"
+    )
+
+
+def check_transform_fns(op, expected_types):
+    assert isinstance(op, MapOperator)
+    transform_fns = op.get_map_transformer().get_transform_fns()
+    assert len(transform_fns) == len(expected_types), transform_fns
+    for i, transform_fn in enumerate(transform_fns):
+        assert isinstance(transform_fn, expected_types[i]), transform_fn
+
+
+@pytest.mark.skip("Needs zero-copy optimization for read->map_batches.")
+def test_zero_copy_fusion_eliminate_build_output_blocks(
+    ray_start_regular_shared, enable_optimizer
+):
+    # Test the EliminateBuildOutputBlocks optimization rule.
+    planner = Planner()
+    read_op = get_parquet_read_logical_op()
+    op = MapBatches(read_op, lambda x: x)
+    logical_plan = LogicalPlan(op)
+    physical_plan = planner.plan(logical_plan)
+
+    # Before optimization, there should be a map op and and read op.
+    # And they should have the following transform_fns.
+    map_op = physical_plan.dag
+    check_transform_fns(
+        map_op,
+        [
+            BlocksToBatchesMapTransformFn,
+            BatchMapTransformFn,
+            BuildOutputBlocksMapTransformFn,
+        ],
+    )
+    read_op = map_op.input_dependencies[0]
+    check_transform_fns(
+        read_op,
+        [
+            BlockMapTransformFn,
+            BuildOutputBlocksMapTransformFn,
+        ],
+    )
+
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    fused_op = physical_plan.dag
+
+    # After optimization, read and map ops should be fused as one op.
+    # And the BuidlOutputBlocksMapTransformFn in the middle should be dropped.
+    check_transform_fns(
+        fused_op,
+        [
+            BlockMapTransformFn,
+            BlocksToBatchesMapTransformFn,
+            BatchMapTransformFn,
+            BuildOutputBlocksMapTransformFn,
+        ],
     )
 
 
