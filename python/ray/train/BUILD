@@ -138,7 +138,7 @@ py_test(
     size = "medium",
     main = "examples/pytorch/tune_cifar_torch_pbt_example.py",
     srcs = ["examples/pytorch/tune_cifar_torch_pbt_example.py"],
-    tags = ["team:ml", "exclusive", "pytorch", "tune", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "pytorch", "tune", "new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -169,7 +169,7 @@ py_test(
     name = "horovod_cifar_pbt_example",
     size = "small",
     srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
-    tags = ["team:ml", "exlusive", "no_new_storage"],
+    tags = ["team:ml", "exlusive", "new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
