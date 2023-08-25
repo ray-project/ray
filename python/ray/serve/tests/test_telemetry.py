@@ -329,7 +329,22 @@ def test_rest_api(manage_ray, tmp_dir, version):
 
     storage = TelemetryStorage.remote()
 
-    # TODO (shrekris-anyscale): add checks that telemetry hasn't been set.
+    serve.run(
+        receiver_app,
+        host="0.0.0.0",
+        name="telemetry",
+        route_prefix=TELEMETRY_ROUTE_PREFIX,
+    )
+
+    wait_for_condition(
+        lambda: ray.get(storage.get_reports_received.remote()) > 1, timeout=15
+    )
+
+    # Check that REST API telemetry is not set
+    report = ray.get(storage.get_report.remote())
+    assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) is None
+
+    serve.delete(name="telemetry", _blocking=True)
 
     if version == "v1":
         config = {"import_path": "ray.serve.tests.test_telemetry.receiver_app"}
@@ -374,8 +389,11 @@ def test_rest_api(manage_ray, tmp_dir, version):
             timeout=15,
         )
 
+    current_num_reports = ray.get(storage.get_reports_received.remote())
+
     wait_for_condition(
-        lambda: ray.get(storage.get_reports_received.remote()) > 10, timeout=15
+        lambda: ray.get(storage.get_reports_received.remote()) > current_num_reports,
+        timeout=5,
     )
     report = ray.get(storage.get_report.remote())
 
@@ -464,7 +482,22 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
     wait_for_condition(check_ray_started, timeout=5)
     storage = TelemetryStorage.remote()
 
-    # TODO (shrekris-anyscale): add checks that telemetry hasn't been set.
+    serve.run(
+        receiver_app,
+        host="0.0.0.0",
+        name="telemetry",
+        route_prefix=TELEMETRY_ROUTE_PREFIX,
+    )
+
+    wait_for_condition(
+        lambda: ray.get(storage.get_reports_received.remote()) > 1, timeout=15
+    )
+
+    # Check that REST API telemetry is not set
+    report = ray.get(storage.get_report.remote())
+    assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) is None
+
+    serve.delete(name="telemetry", _blocking=True)
 
     config = {
         "applications": [
@@ -494,8 +527,12 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
         == ApplicationStatus.RUNNING,
         timeout=15,
     )
+
+    current_num_reports = ray.get(storage.get_reports_received.remote())
+
     wait_for_condition(
-        lambda: ray.get(storage.get_reports_received.remote()) > 0, timeout=5
+        lambda: ray.get(storage.get_reports_received.remote()) > current_num_reports,
+        timeout=5,
     )
     report = ray.get(storage.get_report.remote())
 
