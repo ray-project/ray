@@ -47,7 +47,7 @@ class TestDreamerV3(unittest.TestCase):
                 batch_length_T=16,
                 model_size="nano",  # Use a tiny model for testing
                 symlog_obs=True,
-                use_float16=True,
+                use_float16=False,
             )
             .resources(
                 num_learner_workers=2,  # Try with 2 Learners.

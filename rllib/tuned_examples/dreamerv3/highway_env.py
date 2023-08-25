@@ -11,7 +11,11 @@ https://arxiv.org/pdf/2010.02193.pdf
 # Run with:
 # python run_regression_tests.py --dir [this file]
 
-import highway_env  # noqa
+try:
+    import highway_env  # noqa
+except (ImportError, ModuleNotFoundError):
+    print("You have to `pip install highway_env` in order to run this example!")
+
 import gymnasium as gym
 
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config

@@ -11,7 +11,13 @@ https://arxiv.org/pdf/2010.02193.pdf
 # Run with:
 # python run_regression_tests.py --dir [this file]
 
-import flappy_bird_gymnasium  # noqa
+try:
+    import flappy_bird_gymnasium  # noqa
+except (ImportError, ModuleNotFoundError):
+    print(
+        "You have to `pip install flappy_bird_gymnasium` in order to run this example!"
+    )
+
 import gymnasium as gym
 from supersuit.generic_wrappers import resize_v1
 
