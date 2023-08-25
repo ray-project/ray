@@ -160,6 +160,7 @@ test:ci --nocache_test_results
 test:ci --spawn_strategy=local
 test:ci --test_output=errors
 test:ci --test_verbose_timeout_warnings
+test:air-new-persistence-mode-off --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
 test:ci-debug -c dbg
 test:ci-debug --copt="-g"
 test:ci-debug --flaky_test_attempts=3
