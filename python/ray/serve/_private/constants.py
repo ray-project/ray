@@ -220,6 +220,12 @@ RAY_SERVE_ENABLE_NEW_HANDLE_API = (
     os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "0") == "1"
 )
 
+# Feature flag to turn on locality routing for HTTP proxies.
+# This is currently ON BY DEFAULT.
+RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING = (
+    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING", "0") == "1"
+)
+
 # Serve HTTP proxy callback import path.
 RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH = os.environ.get(
     "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH", None
