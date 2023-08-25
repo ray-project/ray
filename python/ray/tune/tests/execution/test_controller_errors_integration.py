@@ -13,7 +13,12 @@ from ray.tune.experiment import Trial
 from ray.tune.registry import TRAINABLE_CLASS, _global_registry
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
+
+from ray.train.tests.util import mock_storage_context
 from ray.tune.tests.execution.utils import BudgetResourceManager
+
+
+STORAGE = mock_storage_context()
 
 
 @pytest.fixture(scope="function")
@@ -53,11 +58,12 @@ def test_invalid_trainable(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     Legacy test: test_trial_runner_2.py::TrialRunnerTest::testErrorHandling
     """
     runner = TuneController(
-        resource_manager_factory=lambda: resource_manager_cls(),
+        resource_manager_factory=lambda: resource_manager_cls(), storage=STORAGE
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 1},
         "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+        "storage": STORAGE,
     }
     _global_registry.register(TRAINABLE_CLASS, "asdf", None)
     trials = [Trial("asdf", **kwargs), Trial("__fake", **kwargs)]
@@ -78,6 +84,7 @@ def test_overstep(ray_start_4_cpus_2_gpus_extra):
     os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
     runner = TuneController(
         resource_manager_factory=lambda: BudgetResourceManager({"CPU": 4}),
+        storage=STORAGE,
     )
     runner.step()
     with pytest.raises(TuneError):
@@ -106,6 +113,7 @@ def test_failure_recovery(
         search_alg=searchalg,
         scheduler=scheduler,
         resource_manager_factory=lambda: resource_manager_cls(),
+        storage=STORAGE,
     )
     kwargs = {
         "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
@@ -113,6 +121,7 @@ def test_failure_recovery(
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
         "max_failures": max_failures,
         "config": {"mock_error": True, "persistent_error": persistent_error},
+        "storage": STORAGE,
     }
     runner.add_trial(Trial("__fake", **kwargs))
     trials = runner.get_trials()
@@ -155,7 +164,9 @@ def test_fail_fast(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, fail_fas
     """
 
     runner = TuneController(
-        resource_manager_factory=lambda: resource_manager_cls(), fail_fast=fail_fast
+        resource_manager_factory=lambda: resource_manager_cls(),
+        fail_fast=fail_fast,
+        storage=STORAGE,
     )
     kwargs = {
         "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
@@ -165,6 +176,7 @@ def test_fail_fast(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, fail_fas
             "mock_error": True,
             "persistent_error": True,
         },
+        "storage": STORAGE,
     }
     runner.add_trial(Trial("__fake", **kwargs))
     runner.add_trial(Trial("__fake", **kwargs))

@@ -77,7 +77,9 @@
     - pip install transformers==4.30.2 datasets==2.14.0
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=doctest,-cpu python/ray/... doc/...
+      --test_tag_filters=doctest,-cpu 
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
+      python/ray/... doc/...
 
 - label: ":zap: :python: Lightning 2.0 Train GPU tests"
   conditions:
