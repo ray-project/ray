@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict
 
 try:
     from packaging.version import Version
@@ -9,15 +9,11 @@ except ImportError:
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.train.xgboost.xgboost_checkpoint import LegacyXGBoostCheckpoint
 from ray.util.annotations import PublicAPI
 
 import xgboost
 import xgboost_ray
 from xgboost_ray.tune import TuneReportCheckpointCallback
-
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="beta")
@@ -104,12 +100,8 @@ class XGBoostTrainer(GBDTTrainer):
     def _train(self, **kwargs):
         return xgboost_ray.train(**kwargs)
 
-    def _load_checkpoint(
-        self, checkpoint: Checkpoint
-    ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
-        # TODO(matt): Replace this when preprocessor arg is removed.
-        checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(checkpoint)
-        return checkpoint.get_model(), checkpoint.get_preprocessor()
+    def _load_checkpoint(self, checkpoint: Checkpoint) -> xgboost.Booster:
+        return self.__class__.get_model(checkpoint)
 
     def _save_model(self, model: xgboost.Booster, path: str):
         model.save_model(path)
