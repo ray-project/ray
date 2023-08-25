@@ -111,7 +111,7 @@ class _DeploymentHandleBase:
         self.request_counter.set_default_tags(
             {
                 "handle": handle_tag,
-                "deployment": str(self.deployment_id),
+                "deployment": self.deployment_id.name,
                 "application": self.deployment_id.app,
             }
         )
