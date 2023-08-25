@@ -310,7 +310,7 @@ ppo_algo.evaluate()
             <img src="_static/img/download.png" width="44px" height="44px" />
             <h3 style="font-size:20px;">Install Ray</h3>
         </div>
-        <p><pre style="border:none; margin:0px;"><code class="nohighlight" style="margin:10px;">pip install -U "ray[air]"</code></pre></p>      
+        <p style="color:#515151;">Install Ray libraries that map to your workload.</p>      
         <p style="font-weight:600; margin-bottom: 0px;">Installation guide ></p>
   </div></a>
   <a class="no-underline" href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Introductory_modules/Quickstart_with_Ray_AIR_Colab.ipynb"  target="_blank" 
