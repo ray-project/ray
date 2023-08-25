@@ -22,10 +22,14 @@ and macOS by choosing the option that best matches your use case.
 
         .. code-block:: shell
 
-          pip install -U "ray[air]"
+          # Data prep, Training, and Tuning
+          pip install -U "ray[data,train,tune]"
+
+          # Model Serving
+          pip install -U "ray[serve]"
 
           # For reinforcement learning support, install RLlib instead.
-          # pip install -U "ray[rllib]"
+          pip install -U "ray[rllib]"
 
         **For general Python applications**
 
