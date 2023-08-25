@@ -6,11 +6,21 @@ from ray.data._internal.logical.interfaces import (
     PhysicalPlan,
     Rule,
 )
-from ray.data._internal.logical.rules._default_optimizer_rules import (
-    get_logical_optimizer_rules,
-    get_physical_optimizer_rules,
+from ray.data._internal.logical.rules._user_provided_optimizer_rules import (
+    USER_PROVIDED_LOGICAL_RULES,
+    USER_PROVIDED_PHYSICAL_RULES,
 )
+from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
+from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
 from ray.data._internal.planner.planner import Planner
+
+DEFAULT_LOGICAL_RULES = [
+    ReorderRandomizeBlocksRule,
+]
+
+DEFAULT_PHYSICAL_RULES = [
+    OperatorFusionRule,
+]
 
 
 class LogicalOptimizer(Optimizer):
@@ -18,7 +28,8 @@ class LogicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List[Rule]:
-        return [rule_cls() for rule_cls in get_logical_optimizer_rules()]
+        rules = DEFAULT_LOGICAL_RULES + USER_PROVIDED_LOGICAL_RULES
+        return [rule_cls() for rule_cls in rules]
 
 
 class PhysicalOptimizer(Optimizer):
@@ -26,7 +37,8 @@ class PhysicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List["Rule"]:
-        return [rule_cls() for rule_cls in get_physical_optimizer_rules()]
+        rules = DEFAULT_PHYSICAL_RULES + USER_PROVIDED_PHYSICAL_RULES
+        return [rule_cls() for rule_cls in rules]
 
 
 def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
