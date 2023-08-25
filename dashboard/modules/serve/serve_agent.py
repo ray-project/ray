@@ -175,16 +175,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @routes.delete("/api/serve/applications/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def delete_serve_applications(self, req: Request) -> Response:
-        try:
-            from ray import serve
-        except ImportError:
-            return Response(
-                status=501,
-                text=(
-                    "Ray Serve dependencies are not installed. Please run `pip install "
-                    '"ray[serve]"`.'
-                ),
-            )
+        from ray import serve
 
         if await self.get_serve_controller() is not None:
             serve.shutdown()
