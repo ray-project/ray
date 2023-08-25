@@ -58,12 +58,6 @@ class Stage:
         self.name = name
         self.num_blocks = num_blocks
 
-    def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool
-    ) -> Tuple[BlockList, dict]:
-        """Execute this stage against the given blocks."""
-        raise NotImplementedError
-
     def can_fuse(self, other: "Stage") -> bool:
         """Return whether this can be fused with another stage."""
         raise NotImplementedError
@@ -1025,36 +1019,6 @@ class OneToOneStage(Stage):
             fn_constructor_kwargs=self.fn_constructor_kwargs,
         )
 
-    def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool, run_by_consumer: bool
-    ) -> Tuple[BlockList, dict]:
-        compute = get_compute(self.compute)
-        assert (
-            self.fn_constructor_args is None and self.fn_constructor_kwargs is None
-        ) or isinstance(compute, ActorPoolStrategy)
-
-        if blocks._owned_by_consumer:
-            assert (
-                run_by_consumer
-            ), "Blocks owned by consumer can only be consumed by consumer"
-
-        blocks = compute._apply(
-            self.block_fn,
-            self.ray_remote_args,
-            blocks,
-            clear_input_blocks,
-            name=self.name,
-            target_block_size=self.target_block_size,
-            fn=self.fn,
-            fn_args=self.fn_args,
-            fn_kwargs=self.fn_kwargs,
-            fn_constructor_args=self.fn_constructor_args,
-            fn_constructor_kwargs=self.fn_constructor_kwargs,
-        )
-        assert isinstance(blocks, BlockList), blocks
-        blocks._owned_by_consumer = run_by_consumer
-        return blocks, {}
-
 
 class AllToAllStage(Stage):
     """A stage that transforms blocks holistically (e.g., shuffle)."""
@@ -1129,30 +1093,6 @@ class AllToAllStage(Stage):
             prev.ray_remote_args,
             self.sub_stage_names,
         )
-
-    def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool, run_by_consumer: bool
-    ) -> Tuple[BlockList, dict]:
-        from ray.data._internal.stage_impl import RandomizeBlocksStage
-
-        in_blocks_owned_by_consumer = blocks._owned_by_consumer
-        if in_blocks_owned_by_consumer:
-            assert (
-                run_by_consumer
-            ), "Blocks owned by consumer can only be consumed by consumer"
-        blocks, stage_info = self.fn(
-            blocks, clear_input_blocks, self.block_udf, self.ray_remote_args
-        )
-        assert isinstance(blocks, BlockList), blocks
-
-        # RandomizeBlocksStage is an in-place transformation, so the ownership
-        # of blocks doesn't change.
-        if isinstance(self, RandomizeBlocksStage):
-            blocks._owned_by_consumer = in_blocks_owned_by_consumer
-        else:
-            blocks._owned_by_consumer = run_by_consumer
-
-        return blocks, stage_info
 
 
 def _rewrite_read_stages(
