@@ -21,7 +21,7 @@ training.
 
 If you have a training function that already runs with the `Horovod Ray
 Executor <https://horovod.readthedocs.io/en/stable/ray_include.html#horovod-ray-executor>`_,
-you should not need to make any additional changes!
+you should not need to make any additional changes.
 
 To onboard onto Horovod, please visit the `Horovod guide
 <https://horovod.readthedocs.io/en/stable/index.html#get-started>`_.
