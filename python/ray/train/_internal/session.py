@@ -80,6 +80,36 @@ class TrainingResult:
     metadata: Optional[Dict] = None
 
 
+class _FutureTrainingResult:
+    """A future that will be resolved to a `_TrainingResult`.
+
+    This is needed for specific schedulers such as PBT that schedule saves.
+
+    This wrapper should be removed after refactoring PBT to not schedule saves anymore.
+    """
+
+    def __init__(self, future: ray.ObjectRef):
+        self.future = future
+
+    def resolve(self, block: bool = True) -> Optional["_TrainingResult"]:
+        """Resolve into ``_TrainingResult``.
+
+        This will return None for function trainables if no checkpoint has been
+        saved before.
+        """
+        if block:
+            timeout = None
+        else:
+            timeout = 1e-9
+        try:
+            return ray.get(self.future, timeout=timeout)
+        except TimeoutError:
+            # Not ready, yet
+            pass
+        except Exception as exc:
+            logger.error(f"Error resolving result: {exc}")
+
+
 class _TrainingResult:
     """A (checkpoint, metrics) result reported by the user."""
 
