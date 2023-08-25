@@ -329,6 +329,8 @@ def test_rest_api(manage_ray, tmp_dir, version):
 
     storage = TelemetryStorage.remote()
 
+    # TODO (shrekris-anyscale): add checks that telemetry hasn't been set.
+
     if version == "v1":
         config = {"import_path": "ray.serve.tests.test_telemetry.receiver_app"}
     elif version == "v2":
@@ -461,6 +463,8 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(check_ray_started, timeout=5)
     storage = TelemetryStorage.remote()
+
+    # TODO (shrekris-anyscale): add checks that telemetry hasn't been set.
 
     config = {
         "applications": [
