@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 
 import ray
 from ray import train, tune
-from ray.train import Checkpoint, RunConfig
+from ray.train import RunConfig
 from ray.tune import Tuner
 from ray.tune.progress_reporter import JupyterNotebookReporter
 from ray.util.client.ray_client_helpers import ray_start_client_server
