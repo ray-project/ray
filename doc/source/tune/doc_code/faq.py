@@ -1,6 +1,7 @@
 # flake8: noqa
 
 # __reproducible_start__
+import os
 import numpy as np
 from ray import train, tune
 from ray.train import ScalingConfig
@@ -436,16 +437,19 @@ if not MOCK:
 from ray import train, tune
 from ray.train import Checkpoint
 import random
+from tempfile import TemporaryDirectory
 
 
 def trainable(config):
     for epoch in range(1, config["num_epochs"]):
         # Do some training...
 
-        train.report(
-            {"score": random.random()},
-            checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
-        )
+        with TemporaryDirectory() as tmpdir:
+            # Dump your checkpoint to tmpdir
+            train.report(
+                {"score": random.random()},
+                checkpoint=Checkpoint.from_directory(tmpdir),
+            )
 
 
 tuner = tune.Tuner(
@@ -462,22 +466,24 @@ best_checkpoint = best_result.checkpoint
 
 # __iter_experimentation_resume_start__
 import ray
+from tempfile import TemporaryDirectory
 
 
 def trainable(config):
     # Add logic to handle the initial checkpoint.
     checkpoint_ref = config["start_from_checkpoint"]
     checkpoint: Checkpoint = ray.get(checkpoint_ref)
-    model_state_dict = checkpoint.to_dict()["model_state_dict"]
     # Initialize a model from the checkpoint...
 
     for epoch in range(1, config["num_epochs"]):
         # Do some training...
 
-        train.report(
-            {"score": random.random()},
-            checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
-        )
+        with TemporaryDirectory() as tmpdir:
+            # Dump checkpoints into tmpdir
+
+            train.report(
+                {"score": random.random()}, checkpoint=Checkpoint.from_directory(tmpdir)
+            )
 
 
 new_tuner = tune.Tuner(

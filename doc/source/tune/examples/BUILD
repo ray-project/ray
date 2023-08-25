@@ -20,6 +20,9 @@ py_test_run_all_notebooks(
         "pbt_ppo_example.ipynb",
         "tune-xgboost.ipynb",
         "sigopt_example.ipynb", # REGRESSION: no credentials
+        # TODO(justinvyu): enable these after PBT is ready
+        "pbt_guide.ipynb",
+        "pbt_visualization/pbt_visualization.ipynb",
     ],
     data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],

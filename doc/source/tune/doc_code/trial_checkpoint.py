@@ -88,34 +88,6 @@ tuner.fit()
 # __class_api_end_checkpointing_end__
 
 
-# __function_api_checkpointing_start__
-from ray import train, tune
-from ray.train import Checkpoint
-
-
-def train_func(config):
-    epochs = config.get("epochs", 2)
-    start = 0
-    loaded_checkpoint = train.get_checkpoint()
-    if loaded_checkpoint:
-        last_step = loaded_checkpoint.to_dict()["step"]
-        start = last_step + 1
-
-    for epoch in range(start, epochs):
-        # Model training here
-        # ...
-
-        # Report metrics and save a checkpoint
-        metrics = {"metric": "my_metric"}
-        checkpoint = Checkpoint.from_dict({"epoch": epoch})
-        train.report(metrics, checkpoint=checkpoint)
-
-
-tuner = tune.Tuner(train_func)
-results = tuner.fit()
-# __function_api_checkpointing_end__
-
-
 class MyModel:
     pass
 
