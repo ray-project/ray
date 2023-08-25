@@ -89,6 +89,8 @@ class TensorflowTrainer(DataParallelTrainer):
 
     .. testcode::
 
+        import os
+        import tempfile
         import tensorflow as tf
 
         import ray
@@ -118,13 +120,17 @@ class TensorflowTrainer(DataParallelTrainer):
             )
             for epoch in range(config["num_epochs"]):
                 model.fit(tf_dataset)
-                # You can also use ray.air.integrations.keras.Callback
-                # for reporting and checkpointing instead of reporting manually.
+
+                # Create checkpoint.
+                checkpoint_dir = tempfile.mkdtemp()
+                model.save_weights(
+                    os.path.join(checkpoint_dir, "my_checkpoint")
+                )
+                checkpoint = Checkpoint.from_directory(checkpoint_dir)
+
                 train.report(
                     {},
-                    checkpoint=Checkpoint.from_dict(
-                        dict(epoch=epoch, model=model.get_weights())
-                    ),
+                    checkpoint=checkpoint,
                 )
 
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
