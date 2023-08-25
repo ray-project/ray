@@ -1,22 +1,32 @@
 # flake8: noqa
 
 # __ft_initial_run_start__
+import pickle
+from tempdir import TemporaryDirectory
 from ray import train, tune
-from ray.train import Checkpoint
+from ray.train._checkpoint import Checkpoint
 
 
 def trainable(config):
     # Checkpoint loading
     checkpoint = train.get_checkpoint()
-    start = 1 if not checkpoint else checkpoint.to_dict()["epoch"] + 1
+    if checkpoint:
+        with checkpoint.as_directory() as tmpdir:
+            with open(f"{tmpdir}/ckpt.pkl", "rb") as fin:
+                state_dict = pickle.load(fin)
+        start = state_dict["epoch"] + 1
+    else:
+        start = 1
 
     for epoch in range(start, config["num_epochs"]):
         # Do some training...
 
         # Checkpoint saving
-        train.report(
-            {"epoch": epoch}, checkpoint=Checkpoint.from_dict({"epoch": epoch})
-        )
+        with TemporaryDirectory() as tmpdir:
+            with open(f"{tmpdir}/ckpt.pkl", "wb") as fout:
+                pickle.dump({"epoch": epoch}, fout)
+
+            train.report({"epoch": epoch}, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 tuner = tune.Tuner(
