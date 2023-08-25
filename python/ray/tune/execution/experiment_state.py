@@ -27,6 +27,8 @@ _EXPERIMENT_SYNC_TIMEOUT_MESSAGE = (
     "`sync_timeout` in `SyncConfig`."
 )
 
+_DRIVER_SYNC_EXCLUDE_PATTERNS = ["*/checkpoint_*"]
+
 
 @dataclass
 class _ResumeConfig:
@@ -281,14 +283,14 @@ class _ExperimentCheckpointManager:
             # TODO(justinvyu, krfricke): Ideally, this excludes all trial directories.
             # But for now, this is needed to upload driver artifacts that live in the
             # trial directory.
-            exclude = ["*/checkpoint_*"]
+            exclude = _DRIVER_SYNC_EXCLUDE_PATTERNS
             experiment_local_path = self._storage.experiment_local_path
             experiment_fs_path = self._storage.experiment_fs_path
         else:
             if bool(self._legacy_remote_checkpoint_dir):
                 # If an upload dir is given, trainable actors upload checkpoints
                 # themselves. Then the driver does not need to sync checkpoints.
-                exclude = ["*/checkpoint_*"]
+                exclude = _DRIVER_SYNC_EXCLUDE_PATTERNS
             else:
                 # Otherwise, we sync the full trial dir.
                 exclude = None
