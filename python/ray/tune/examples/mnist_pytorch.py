@@ -8,10 +8,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
+from tempfile import TemporaryDirectory
 
 import ray
 from ray import train, tune
-from ray.train.torch import LegacyTorchCheckpoint
+from ray.train import Checkpoint
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 # Change these values if you want the training to run quicker or slower.
@@ -106,9 +107,11 @@ def train_mnist(config):
         acc = test_func(model, test_loader, device)
         checkpoint = None
         if should_checkpoint:
-            checkpoint = LegacyTorchCheckpoint.from_state_dict(model.state_dict())
-        # Report metrics (and possibly a checkpoint) to Tune
-        train.report({"mean_accuracy": acc}, checkpoint=checkpoint)
+            with TemporaryDirectory() as tmpdir:
+                torch.save(model.state_dict(), os.path.join(tmpdir, "model.bin"))
+                checkpoint = Checkpoint.from_directory(tmpdir)
+                # Report metrics (and possibly a checkpoint) to Tune
+                train.report({"mean_accuracy": acc}, checkpoint=checkpoint)
 
 
 if __name__ == "__main__":

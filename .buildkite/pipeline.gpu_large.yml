@@ -8,7 +8,7 @@
     - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only,-ray_air python/ray/train/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only,-ray_air --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1 python/ray/train/...
 
 - label: ":tv: :database: :steam_locomotive: Datasets Train Integration GPU Tests and Examples (Python 3.7)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
@@ -37,6 +37,7 @@
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
       rllib/...
 
+# TODO(yunxuanx): convert python/ray/air test use new checkpoint 
 - label: ":tv: :airplane: AIR GPU tests (ray/air)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_ML_AFFECTED"]
   commands:
@@ -88,4 +89,4 @@
     - pip uninstall -y pytorch-lightning
     - pip install lightning==2.0.4 pytorch-lightning==2.0.4  # todo move to requirements-test.txt
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=ptl_v2 python/ray/train/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=ptl_v2 --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1 python/ray/train/...

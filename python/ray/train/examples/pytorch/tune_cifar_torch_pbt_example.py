@@ -79,25 +79,28 @@ def train_func(config):
     optimizer = torch.optim.SGD(model.parameters(), **optimizer_config)
 
     starting_epoch = 0
-    if train.get_checkpoint():
-        checkpoint_dict = train.get_checkpoint().to_dict()
+    checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as tmpdir:
+            checkpoint_dict = torch.load(os.path.join(tmpdir, "checkpoint.bin"))
 
-        # Load in model
-        model_state = checkpoint_dict["model"]
-        model.load_state_dict(model_state)
-        model = train.torch.prepare_model(model)
+            # Load in model
+            model_state = checkpoint_dict["model"]
+            model.load_state_dict(model_state)
+            model = train.torch.prepare_model(model)
 
-        # Load in optimizer
-        optimizer_state = checkpoint_dict["optimizer_state_dict"]
-        optimizer.load_state_dict(optimizer_state)
+            # Load in optimizer
+            optimizer_state = checkpoint_dict["optimizer_state_dict"]
+            optimizer.load_state_dict(optimizer_state)
 
-        # Optimizer configs (`lr`, `momentum`) are being mutated by PBT and passed in
-        # through config, so we need to update the optimizer loaded from the checkpoint
-        update_optimizer_config(optimizer, optimizer_config)
+            # Optimizer configs (`lr`, `momentum`) are being mutated by PBT and
+            # passed in through config, so we need to update the optimizer
+            # loaded from the checkpoint
+            update_optimizer_config(optimizer, optimizer_config)
 
-        # The current epoch increments the loaded epoch by 1
-        checkpoint_epoch = checkpoint_dict["epoch"]
-        starting_epoch = checkpoint_epoch + 1
+            # The current epoch increments the loaded epoch by 1
+            checkpoint_epoch = checkpoint_dict["epoch"]
+            starting_epoch = checkpoint_epoch + 1
 
     # Load in training and validation data.
     transform_train = transforms.Compose(
@@ -144,15 +147,19 @@ def train_func(config):
     for epoch in range(starting_epoch, epochs):
         train_epoch(train_loader, model, criterion, optimizer)
         result = validate_epoch(validation_loader, model, criterion)
-        checkpoint = Checkpoint.from_dict(
-            {
-                "epoch": epoch,
-                "model": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-            }
-        )
 
-        train.report(result, checkpoint=checkpoint)
+        checkpoint_state = {
+            "epoch": epoch,
+            "model": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+        }
+
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            torch.save(checkpoint_state, os.path.join(tmpdir, "checkpoint.bin"))
+            checkpoint = Checkpoint.from_directory(tmpdir)
+            train.report(result, checkpoint=checkpoint)
 
 
 if __name__ == "__main__":

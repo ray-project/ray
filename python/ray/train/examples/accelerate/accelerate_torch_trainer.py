@@ -20,7 +20,7 @@ from transformers import (
 )
 
 import ray.train
-from ray.train import DataConfig, ScalingConfig, Checkpoint
+from ray.train import Checkpoint, DataConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
 

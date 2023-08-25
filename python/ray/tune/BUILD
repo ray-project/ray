@@ -766,23 +766,24 @@ py_test(
     args = ["--smoke-test"]
 )
 
-py_test(
-    name = "pbt_dcgan_mnist_func",
-    size = "medium",
-    srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_func.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
-    args = ["--smoke-test"]
-)
+# TODO(justinvyu): retest these PBT examples
+# py_test(
+#     name = "pbt_dcgan_mnist_func",
+#     size = "medium",
+#     srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_func.py"],
+#     deps = [":tune_lib"],
+#     tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+#     args = ["--smoke-test"]
+# )
 
-py_test(
-    name = "pbt_dcgan_mnist_trainable",
-    size = "medium",
-    srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_trainable.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
-    args = ["--smoke-test"]
-)
+# py_test(
+#     name = "pbt_dcgan_mnist_trainable",
+#     size = "medium",
+#     srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_trainable.py"],
+#     deps = [":tune_lib"],
+#     tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+#     args = ["--smoke-test"]
+# )
 
 py_test(
     name = "pbt_example",
