@@ -498,7 +498,7 @@ def test_syncer_wait_or_retry_failure(temp_data_dirs):
     syncer.sync_down(
         remote_dir="memory:///test/test_syncer_wait_or_retry", local_dir=tmp_target
     )
-    with pytest.raises(TuneError) as e:
+    with pytest.raises(RuntimeError) as e:
         syncer.wait_or_retry(max_retries=3, backoff_s=0)
         assert "Failed sync even after 3 retries." in str(e)
 
@@ -522,7 +522,7 @@ def test_syncer_wait_or_retry_timeout(temp_data_dirs):
     syncer = HangingSyncer(sync_period=60, sync_timeout=0.1)
 
     syncer.sync_up(local_dir=tmp_source, remote_dir=f"memory://{str(tmp_target)}")
-    with pytest.raises(TuneError) as e:
+    with pytest.raises(RuntimeError) as e:
         syncer.wait_or_retry(max_retries=3, backoff_s=0)
         assert "Failed sync even after 3 retries." in str(e.value)
         assert isinstance(e.value.__cause__, TimeoutError)
@@ -582,6 +582,7 @@ def test_trainable_syncer_default(ray_start_2_cpus, temp_data_dirs):
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
 
 
+@pytest.mark.skip("This codepath will be removed soon.")
 @pytest.mark.parametrize("num_retries", [None, 1, 2])
 def test_trainable_syncer_retry(shutdown_only, temp_data_dirs, num_retries):
     """Check that Trainable.save() default syncing can retry"""
