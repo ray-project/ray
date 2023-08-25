@@ -551,7 +551,6 @@ class FunctionTrainable(Trainable):
         if _use_storage_context():
             # TRAIN -> SAVE remote calls get processed sequentially,
             # so `_last_training_result.checkpoint` holds onto the latest ckpt.
-            assert self._last_training_result.checkpoint
             return self._last_training_result
 
         checkpoint = self._status_reporter.get_checkpoint()
@@ -587,11 +586,6 @@ class FunctionTrainable(Trainable):
     ) -> Optional[str]:
         return None
 
-    def save_to_object(self):
-        checkpoint_path = self.save()
-        checkpoint = Checkpoint.from_directory(checkpoint_path)
-        return checkpoint.to_bytes()
-
     def load_checkpoint(self, checkpoint):
         if _use_storage_context():
             checkpoint_result = checkpoint
@@ -617,15 +611,6 @@ class FunctionTrainable(Trainable):
             self.logdir
         )
         checkpoint.to_directory(self.temp_checkpoint_dir)
-        self.restore(self.temp_checkpoint_dir)
-
-    def restore_from_object(self, obj):
-        self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
-            self.logdir
-        )
-        checkpoint = Checkpoint.from_bytes(obj)
-        checkpoint.to_directory(self.temp_checkpoint_dir)
-
         self.restore(self.temp_checkpoint_dir)
 
     def cleanup(self):

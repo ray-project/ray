@@ -1,16 +1,19 @@
-from typing import Iterator, List
+import functools
+from typing import Iterable, List, Optional
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray.data._internal.execution.interfaces import (
-    PhysicalOperator,
-    RefBundle,
-    TaskContext,
-)
+from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    BlockMapTransformFn,
+    BuildOutputBlocksMapTransformFn,
+    MapTransformer,
+)
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
 
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
@@ -34,7 +37,44 @@ def cleaned_metadata(read_task):
     return block_meta
 
 
-def _plan_read_op(op: Read) -> PhysicalOperator:
+def _splitrange(n, k):
+    """Calculates array lens of np.array_split().
+
+    This is the equivalent of
+    `[len(x) for x in np.array_split(range(n), k)]`.
+    """
+    base = n // k
+    output = [base] * k
+    rem = n - sum(output)
+    for i in range(len(output)):
+        if rem > 0:
+            output[i] += 1
+            rem -= 1
+    assert rem == 0, (rem, output, n, k)
+    assert sum(output) == n, (output, n, k)
+    return output
+
+
+def _do_additional_splits(
+    blocks: Iterable[Block], _: TaskContext, additional_output_splits: int
+) -> Iterable[Block]:
+    """Do additional splits to the output blocks of a ReadTask.
+
+    Args:
+      blocks: The input blocks.
+      additional_output_splits: The number of additional splits, must be greater than 1.
+    """
+    assert additional_output_splits > 1
+    for block in blocks:
+        block = BlockAccessor.for_block(block)
+        offset = 0
+        split_sizes = _splitrange(block.num_rows(), additional_output_splits)
+        for size in split_sizes:
+            yield block.slice(offset, offset + size, copy=True)
+            offset += size
+
+
+def plan_read_op(op: Read) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for Read.
 
     Note this method only converts the given `op`, but not its input dependencies.
@@ -43,9 +83,6 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
 
     def get_input_data() -> List[RefBundle]:
         read_tasks = op._reader.get_read_tasks(op._parallelism)
-        if op._additional_split_factor is not None:
-            for r in read_tasks:
-                r._set_additional_split_factor(op._additional_split_factor)
         return [
             RefBundle(
                 [
@@ -65,13 +102,68 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
         input_data_factory=get_input_data, num_output_blocks=op._estimated_num_blocks
     )
 
-    def do_read(blocks: Iterator[ReadTask], _: TaskContext) -> Iterator[Block]:
+    def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
         for read_task in blocks:
             yield from read_task()
 
+    # Create a MapTransformer for a read operator
+    transform_fns = [
+        # First, execute the read tasks.
+        BlockMapTransformFn(do_read),
+        # Then build the output blocks.
+        BuildOutputBlocksMapTransformFn.for_blocks(),
+    ]
+
+    if op._additional_split_factor is not None:
+        # If addtional split is needed, do it in the last.
+        transform_fns.append(
+            BlockMapTransformFn(
+                functools.partial(
+                    _do_additional_splits,
+                    additional_output_splits=op._additional_split_factor,
+                )
+            ),
+        )
+
+    map_transformer = MapTransformer(transform_fns)
+
     return MapOperator.create(
-        do_read,
+        map_transformer,
         inputs,
         name=op.name,
         ray_remote_args=op._ray_remote_args,
     )
+
+
+def apply_output_blocks_handling_to_read_task(
+    read_task: ReadTask,
+    additional_split_factor: Optional[int],
+):
+    """Patch the read task and apply output blocks handling logic.
+
+    This function is only used for compability with the legacy LazyBlockList code path.
+    """
+    transform_fns: List[BlockMapTransformFn] = [
+        BuildOutputBlocksMapTransformFn.for_blocks()
+    ]
+
+    if additional_split_factor is not None:
+        transform_fns.append(
+            BlockMapTransformFn(
+                functools.partial(
+                    _do_additional_splits,
+                    additional_output_splits=additional_split_factor,
+                )
+            ),
+        )
+    map_transformer = MapTransformer(transform_fns)
+
+    original_read_fn = read_task._read_fn
+
+    def new_read_fn():
+        blocks = original_read_fn()
+        # We pass None as the TaskContext because we don't have access to it here.
+        # This is okay because the transform functions don't use the TaskContext.
+        return map_transformer.apply_transform(blocks, None)  # type: ignore
+
+    read_task._read_fn = new_read_fn
