@@ -55,6 +55,7 @@ export const useServeApplications = () => {
   const serveDetails: ServeDetails | undefined = data
     ? {
         http_options: data.http_options,
+        grpc_options: data.grpc_options,
         proxy_location: data.proxy_location,
         controller_info: data.controller_info,
       }
@@ -213,7 +214,7 @@ export const useServeHTTPProxyDetails = (httpProxyId: string | undefined) => {
   const httpProxy = httpProxyId ? data?.http_proxies?.[httpProxyId] : undefined;
 
   // Need to expose loading because it's not clear if undefined values
-  // for http proxies means loading or missing data.
+  // for proxies means loading or missing data.
   return {
     loading: isLoading,
     httpProxy,
