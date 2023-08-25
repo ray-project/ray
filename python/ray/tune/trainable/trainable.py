@@ -920,7 +920,7 @@ class Trainable:
 
         """
         if _use_storage_context():
-            checkpoint_result: TrainingResult = checkpoint_path
+            checkpoint_result: TrainingResult = checkpoint
             assert isinstance(checkpoint_result, TrainingResult), type(
                 checkpoint_result
             )

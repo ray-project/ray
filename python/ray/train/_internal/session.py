@@ -81,7 +81,7 @@ class _LegacyTrainingResult:
 
 
 class _FutureTrainingResult:
-    """A future that will be resolved to a `_TrainingResult`.
+    """A future that will be resolved to a `TrainingResult`.
 
     This is needed for specific schedulers such as PBT that schedule saves.
 
@@ -91,8 +91,8 @@ class _FutureTrainingResult:
     def __init__(self, future: ray.ObjectRef):
         self.future = future
 
-    def resolve(self, block: bool = True) -> Optional["_TrainingResult"]:
-        """Resolve into ``_TrainingResult``.
+    def resolve(self, block: bool = True) -> Optional["TrainingResult"]:
+        """Resolve into ``TrainingResult``.
 
         This will return None for function trainables if no checkpoint has been
         saved before.

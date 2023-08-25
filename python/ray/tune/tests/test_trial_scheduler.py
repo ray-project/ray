@@ -18,7 +18,7 @@ from ray.train import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import TRAINING_ITERATION
 from ray.train._checkpoint import Checkpoint
-from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
+from ray.train._internal.session import TrainingResult, _FutureTrainingResult
 from ray.train._internal.storage import StorageContext, _use_storage_context
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.execution.checkpoint_manager import (
@@ -311,7 +311,7 @@ class _MockTrialRunner:
     ):
         if _use_storage_context():
             return _FakeFutureResult(
-                _TrainingResult(
+                TrainingResult(
                     checkpoint=Checkpoint.from_directory(trial.trainable_name),
                     metrics=result,
                 )

@@ -616,7 +616,7 @@ def test_trainable_syncer_default(ray_start_2_cpus, temp_data_dirs):
         remote_checkpoint_dir=f"file://{tmp_target}"
     )
 
-    checkpoint_dir = ray.get(trainable.save.remote())
+    checkpoint_dir = ray.get(trainable.save.remote()).checkpoint.path
 
     assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "custom_syncer.txt"))
@@ -688,7 +688,7 @@ def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):
         sync_config=sync_config,
     )
 
-    checkpoint_dir = ray.get(trainable.save.remote())
+    checkpoint_dir = ray.get(trainable.save.remote()).checkpoint.path
 
     assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
     assert_file(True, tmp_target, os.path.join(checkpoint_dir, "custom_syncer.txt"))
@@ -715,7 +715,7 @@ def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
         sync_config=sync_config,
     )
 
-    checkpoint_dir = ray.get(trainable.save.remote())
+    checkpoint_dir = ray.get(trainable.save.remote()).checkpoint.path
 
     assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
 
@@ -745,7 +745,7 @@ def test_artifact_syncing_on_save_restore(ray_start_2_cpus, temp_data_dirs, tmp_
     for i in range(1, 4):
         # Step, save, then check that artifacts are uploaded
         ray.get(trainable.train.remote())
-        checkpoint_dir = ray.get(trainable.save.remote())
+        checkpoint_dir = ray.get(trainable.save.remote()).checkpoint.path
         assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
         assert_file(True, tmp_target, "artifact.txt")
         with open(os.path.join(tmp_target, "artifact.txt"), "r") as f:
@@ -781,7 +781,7 @@ def test_artifact_syncing_disabled(ray_start_2_cpus, temp_data_dirs, tmp_path):
     )
 
     ray.get(trainable.train.remote())
-    checkpoint_dir = ray.get(trainable.save.remote())
+    checkpoint_dir = ray.get(trainable.save.remote()).checkpoint.path
     assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
     assert_file(False, tmp_target, "artifact.txt")
 
