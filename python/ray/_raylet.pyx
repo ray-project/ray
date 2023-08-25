@@ -2839,7 +2839,7 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
         cdef:
             CLogBatch log_batch
             c_string key_id
-            int64_t timeout_ms = timeout_to_int_ms(timeout)
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] c_log_lines
             c_string c_log_line
 
@@ -2892,7 +2892,7 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
         cdef:
             CActorTableData actor_data
             c_string key_id
-            int64_t timeout_ms = timeout_to_int_ms(timeout)
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
 
         with nogil:
             check_status(self.inner.get().PollActor(
@@ -2926,7 +2926,7 @@ def check_health(address: str, timeout=2, skip_version_check=False):
     cdef:
         c_string c_gcs_address = gcs_address
         int c_gcs_port = int(gcs_port)
-        int64_t timeout_ms = timeout_to_int_ms(timeout)
+        int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         c_string c_ray_version = ray.__version__
         c_bool c_skip_version_check = skip_version_check
         c_bool c_is_healthy = True
