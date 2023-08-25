@@ -85,8 +85,8 @@ def main(bucket, smoke_test):
             "checkpoint_iters": 10,
         },
         run_config=RunConfig(
+            storage_path=bucket,
             callbacks=[ProgressCallback()],
-            sync_config=tune.SyncConfig(upload_dir=bucket),
             checkpoint_config=CheckpointConfig(num_to_keep=2),
         ),
     )
