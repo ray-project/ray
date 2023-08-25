@@ -246,14 +246,14 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         # Check user log file
         if json_log_format:
             user_method_log_regexes = [
-                f'.*"deployment": "app1_fn", '
+                f'.*"deployment": "fn", '
                 f'"replica": "{resp["replica"]}", '
                 f'"request_id": "{resp["request_id"]}", '
                 f'"route": "{resp["route"]}", '
                 f'"application": "{resp["app_name"]}", "message":.* user func.*',
             ]
             user_class_method_log_regexes = [
-                f'.*"deployment": "app2_Model", '
+                f'.*"deployment": "Model", '
                 f'"replica": "{resp2["replica"]}", '
                 f'"request_id": "{resp2["request_id"]}", '
                 f'"route": "{resp2["route"]}", '
