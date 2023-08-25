@@ -257,6 +257,10 @@ class _TrainSession:
         # Release the lock so that training thread can process this event.
         self.continue_lock.release()
 
+        # Force a final (blocking) sync of artifacts in the trial path to storage.
+        if _use_storage_context():
+            self.storage.persist_artifacts(force=True)
+
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
         # SystemError
@@ -550,6 +554,7 @@ class _TrainSession:
 
         persisted_checkpoint = None
         if checkpoint:
+            # TODO(justinvyu): [code_removal]
             if not isinstance(checkpoint, NewCheckpoint):
                 raise ValueError(
                     "You must pass a `ray.train.Checkpoint` "
@@ -558,6 +563,12 @@ class _TrainSession:
 
             # Persist the reported checkpoint files to storage.
             persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
+
+        # Persist trial artifacts to storage.
+        force_artifact_sync = (
+            persisted_checkpoint and self.storage.sync_config.sync_on_checkpoint
+        )
+        self.storage.persist_artifacts(force=force_artifact_sync)
 
         metrics = self._auto_fill_metrics(metrics)
 
@@ -571,10 +582,7 @@ class _TrainSession:
                     user_metadata[k] = v
             persisted_checkpoint.set_metadata(user_metadata)
 
-        result = _TrainingResult(
-            checkpoint=persisted_checkpoint,
-            metrics=metrics,
-        )
+        result = _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
 
         self._report_training_result(result)
 
