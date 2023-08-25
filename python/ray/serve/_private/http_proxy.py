@@ -8,7 +8,7 @@ import pickle
 import socket
 import time
 import grpc
-from typing import Callable, Dict, List, Generator, Optional, Tuple, Any, Type
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type, Union
 import uuid
 
 import uvicorn
@@ -28,9 +28,8 @@ from ray._raylet import StreamingObjectRefGenerator
 
 from ray import serve
 from ray.serve.handle import (
-    DeploymentResponse,
-    DeploymentResponseGenerator,
-    RayServeHandle,
+    DeploymentHandle,
+    DeploymentResponseBase,
 )
 from ray.serve._private.grpc_util import (
     create_serve_grpc_server,
@@ -195,6 +194,7 @@ class GenericProxy(ABC):
                 app_name,
                 sync=False,
                 missing_ok=True,
+                use_new_handle_api=True,
             )
 
         self.proxy_router = proxy_router_class(get_handle, self.protocol)
@@ -534,11 +534,11 @@ class GenericProxy(ABC):
 
     async def _assign_request_with_timeout(
         self,
-        handle: RayServeHandle,
+        handle: DeploymentHandle,
         proxy_request: ProxyRequest,
         disconnected_task: Optional[asyncio.Task] = None,
         timeout_s: Optional[float] = None,
-    ) -> Optional[StreamingObjectRefGenerator]:
+    ) -> Optional[Union[ray.ObjectRef, StreamingObjectRefGenerator]]:
         """Attempt to send a request on the handle within the timeout.
 
         If `timeout_s` is exceeded while trying to assign a replica, `TimeoutError`
@@ -547,25 +547,14 @@ class GenericProxy(ABC):
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
-        result = handle.remote(
+        result: DeploymentResponseBase = handle.remote(
             proxy_request.request_object(proxy_handle=self.self_actor_handle)
         )
-        to_object_ref = None
-        if isinstance(result, DeploymentResponse):
-            to_object_ref = asyncio.ensure_future(
-                result._to_object_ref(_record_telemetry=False)
-            )
-        elif isinstance(result, DeploymentResponseGenerator):
-            to_object_ref = asyncio.ensure_future(
-                result._to_object_ref_gen(_record_telemetry=False)
-            )
-        tasks = []
-        if to_object_ref is not None:
-            tasks.append(to_object_ref)
-        if disconnected_task is not None:
-            tasks.append(disconnected_task)
+        to_object_ref = asyncio.ensure_future(
+            result._to_object_ref_or_gen(_record_telemetry=False)
+        )
         done, _ = await asyncio.wait(
-            tasks,
+            [to_object_ref, disconnected_task],
             return_when=FIRST_COMPLETED,
             timeout=timeout_s,
         )
@@ -581,7 +570,7 @@ class GenericProxy(ABC):
     @abstractmethod
     async def send_request_to_replica_unary(
         self,
-        handle: RayServeHandle,
+        handle: DeploymentHandle,
         proxy_request: ProxyRequest,
     ) -> ProxyResponse:
         """Send the request to the replica and handle unary response.
@@ -595,10 +584,10 @@ class GenericProxy(ABC):
     def setup_request_context_and_handle(
         self,
         app_name: str,
-        handle: RayServeHandle,
+        handle: DeploymentHandle,
         route_path: str,
         proxy_request: ProxyRequest,
-    ) -> Tuple[RayServeHandle, str]:
+    ) -> Tuple[DeploymentHandle, str]:
         """Setup the request context and handle for the request.
 
         Each proxy needs to implement its own logic for setting up the request context
@@ -610,7 +599,7 @@ class GenericProxy(ABC):
     async def send_request_to_replica_streaming(
         self,
         request_id: str,
-        handle: RayServeHandle,
+        handle: DeploymentHandle,
         proxy_request: ProxyRequest,
     ) -> ProxyResponse:
         """Send the request to the replica and handle streaming response.
@@ -746,7 +735,7 @@ class gRPCProxy(GenericProxy):
 
     async def send_request_to_replica_unary(
         self,
-        handle: RayServeHandle,
+        handle: DeploymentHandle,
         proxy_request: ProxyRequest,
     ) -> ProxyResponse:
         return await self.send_request_to_replica_streaming(
@@ -758,10 +747,10 @@ class gRPCProxy(GenericProxy):
     def setup_request_context_and_handle(
         self,
         app_name: str,
-        handle: RayServeHandle,
+        handle: DeploymentHandle,
         route_path: str,
         proxy_request: ProxyRequest,
-    ) -> Tuple[RayServeHandle, str]:
+    ) -> Tuple[DeploymentHandle, str]:
         """Setup request context and handle for the request.
 
         Unpack gRPC request metadata and extract info to set up request context and
@@ -851,7 +840,7 @@ class gRPCProxy(GenericProxy):
     async def send_request_to_replica_streaming(
         self,
         request_id: str,
-        handle: RayServeHandle,
+        handle: DeploymentHandle,
         proxy_request: ProxyRequest,
     ) -> ProxyResponse:
         start = time.time()
@@ -994,7 +983,7 @@ class HTTPProxy(GenericProxy):
 
     async def send_request_to_replica_unary(
         self,
-        handle: RayServeHandle,
+        handle: DeploymentHandle,
         proxy_request: ProxyRequest,
     ) -> ProxyResponse:
         http_body_bytes = await receive_http_body(
@@ -1179,10 +1168,10 @@ class HTTPProxy(GenericProxy):
     def setup_request_context_and_handle(
         self,
         app_name: str,
-        handle: RayServeHandle,
+        handle: DeploymentHandle,
         route_path: str,
         proxy_request: ProxyRequest,
-    ) -> Tuple[RayServeHandle, str]:
+    ) -> Tuple[DeploymentHandle, str]:
         """Setup request context and handle for the request.
 
         Unpack HTTP request headers and extract info to set up request context and
@@ -1213,7 +1202,7 @@ class HTTPProxy(GenericProxy):
     async def send_request_to_replica_streaming(
         self,
         request_id: str,
-        handle: RayServeHandle,
+        handle: DeploymentHandle,
         proxy_request: ProxyRequest,
     ) -> ProxyResponse:
         # Proxy the receive interface by placing the received messages on a queue.
