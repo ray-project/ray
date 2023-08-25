@@ -2021,6 +2021,11 @@ class TuneController:
                 self._checkpoint_manager.on_trial_checkpoint(trial)
                 self._mark_trial_to_checkpoint(trial)
             else:
+                if isinstance(checkpoint_value, TrainingResult):
+                    checkpoint_value = getattr(
+                        checkpoint_value.checkpoint, "path", None
+                    )
+
                 trial.temporary_state.saving_to.dir_or_data = checkpoint_value
                 self._callbacks.on_checkpoint(
                     iteration=self._iteration,
