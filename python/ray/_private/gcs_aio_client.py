@@ -6,6 +6,17 @@ from ray.core.generated import (
     gcs_pb2,
 )
 import ray._private.utils
+from ray._private.ray_constants import env_integer
+
+# Number of executor threads. No more than this number of concurrent GcsAioClient calls
+# can happen. Extra requests will need to wait for the existing requests to finish.
+# Executor rules:
+# If the arg `executor` in GcsAioClient constructor is set, use it.
+# Otherwise if env var `GCS_AIO_CLIENT_DEFAULT_THREAD_COUNT` is set, use it.
+# Otherwise, use 5.
+GCS_AIO_CLIENT_DEFAULT_THREAD_COUNT = env_integer(
+    "GCS_AIO_CLIENT_DEFAULT_THREAD_COUNT", 5
+)
 
 
 logger = logging.getLogger(__name__)
@@ -45,9 +56,9 @@ class GcsAioClient:
         if loop is None:
             loop = ray._private.utils.get_or_create_event_loop()
         if executor is None:
-            # TODO(ryw): make this number configurable
             executor = ThreadPoolExecutor(
-                max_workers=1, thread_name_prefix="gcs_aio_client"
+                max_workers=GCS_AIO_CLIENT_DEFAULT_THREAD_COUNT,
+                thread_name_prefix="gcs_aio_client",
             )
 
         self._gcs_client = GcsClient(address, nums_reconnect_retry)
