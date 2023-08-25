@@ -954,7 +954,7 @@ class Trainable:
             checkpoint = checkpoint.checkpoint
 
         # Ensure Checkpoints are converted
-        if isinstance(checkpoint, (LegacyCheckpoint, NewCheckpoint)):
+        if isinstance(checkpoint, LegacyCheckpoint):
             return self._restore_from_checkpoint_obj(checkpoint)
 
         assert isinstance(checkpoint, str), checkpoint
@@ -1045,6 +1045,12 @@ class Trainable:
         Args:
             checkpoint_path: Path to checkpoint.
         """
+        if _use_storage_context():
+            raise DeprecationWarning(
+                "Checkpoint deletion should be scheduled directly using the "
+                "Checkpoint filesystem and path."
+            )
+
         # Ensure Checkpoints are converted
         if (
             isinstance(checkpoint_path, LegacyCheckpoint)

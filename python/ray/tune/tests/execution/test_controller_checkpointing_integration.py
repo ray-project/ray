@@ -9,7 +9,7 @@ from ray.train import CheckpointConfig
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.air.constants import TRAINING_ITERATION
 from ray.train._checkpoint import Checkpoint
-from ray.train._internal.session import _TrainingResult
+from ray.train._internal.session import TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.tune import PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
@@ -228,7 +228,7 @@ def test_checkpoint_num_to_keep(
             json.dump(result, f)
 
         checkpoint = Checkpoint.from_directory(checkpoint_dir)
-        return _TrainingResult(checkpoint=checkpoint, metrics=result)
+        return TrainingResult(checkpoint=checkpoint, metrics=result)
 
     def get_checkpoint_dirs(trial: Trial):
         return [d for d in os.listdir(tmp_path) if d.startswith("checkpoint_")]

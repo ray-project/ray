@@ -74,7 +74,7 @@ class TrialInfo:
 
 
 @dataclass
-class _InternalTrainingResult:
+class _LegacyTrainingResult:
     type: TrainingResultType
     data: Union[Dict, Checkpoint, str]
     metadata: Optional[Dict] = None
@@ -90,8 +90,6 @@ class TrainingResult:
 
     def __repr__(self) -> str:
         return f"TrainingResult(checkpoint={self.checkpoint}, metrics={self.metrics})"
-
-    __module__ = "ray.train"
 
 
 # TODO(xwjiang): This needs a better name.
@@ -368,7 +366,7 @@ class _TrainSession:
 
         kwargs = self._auto_fill_metrics(kwargs)
 
-        result = _InternalTrainingResult(type=TrainingResultType.REPORT, data=kwargs)
+        result = _LegacyTrainingResult(type=TrainingResultType.REPORT, data=kwargs)
 
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
@@ -492,7 +490,7 @@ class _TrainSession:
         # Save the rank of the worker that created this checkpoint.
         metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
 
-        result = _InternalTrainingResult(
+        result = _LegacyTrainingResult(
             type=TrainingResultType.CHECKPOINT,
             data=checkpoint,
             metadata=metadata,

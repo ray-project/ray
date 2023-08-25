@@ -17,7 +17,6 @@ from ray.train._internal.session import (
     get_checkpoint,
     get_dataset_shard,
     report,
-    TrainingResult,
 )
 from ray.train.backend import BackendConfig
 from ray.train.constants import TRAIN_DATASET_KEY
@@ -51,6 +50,5 @@ __all__ = [
     "RunConfig",
     "ScalingConfig",
     "TrainingIterator",
-    "TrainingResult",
     "TRAIN_DATASET_KEY",
 ]

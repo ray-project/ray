@@ -549,10 +549,10 @@ class Trial:
 
         # Restoration fields
         self.restore_path = restore_path
-        self._restore_checkpoint_result: Optional[_TrainingResult] = None
+        self._restore_checkpoint_result: Optional[TrainingResult] = None
         if restore_path:
             # tune.run(restore) passes in a path without metrics.
-            self._restore_checkpoint_result = _TrainingResult(
+            self._restore_checkpoint_result = TrainingResult(
                 checkpoint=Checkpoint.from_directory(restore_path), metrics={}
             )
 
@@ -839,7 +839,7 @@ class Trial:
         return config.checkpoint_frequency
 
     @property
-    def latest_checkpoint_result(self) -> Optional[_TrainingResult]:
+    def latest_checkpoint_result(self) -> Optional[TrainingResult]:
         # NOTE: Fallback to the checkpoint passed in from `tune.run(restore)`
         # if the trial hasn't saved any checkpoints itself yet.
         return (
