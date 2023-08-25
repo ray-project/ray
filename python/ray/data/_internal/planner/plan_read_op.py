@@ -8,10 +8,9 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
+    BlockMapTransformFn,
     BuildOutputBlocksMapTransformFn,
     MapTransformer,
-    MapTransformFn,
-    MapTransformFnDataType,
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data.block import Block, BlockAccessor
@@ -110,9 +109,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     # Create a MapTransformer for a read operator
     transform_fns = [
         # First, execute the read tasks.
-        MapTransformFn(
-            do_read, MapTransformFnDataType.Block, MapTransformFnDataType.Block
-        ),
+        BlockMapTransformFn(do_read),
         # Then build the output blocks.
         BuildOutputBlocksMapTransformFn.for_blocks(),
     ]
@@ -120,13 +117,11 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     if op._additional_split_factor is not None:
         # If addtional split is needed, do it in the last.
         transform_fns.append(
-            MapTransformFn(
+            BlockMapTransformFn(
                 functools.partial(
                     _do_additional_splits,
                     additional_output_splits=op._additional_split_factor,
-                ),
-                MapTransformFnDataType.Block,
-                MapTransformFnDataType.Block,
+                )
             ),
         )
 
@@ -148,17 +143,17 @@ def apply_output_blocks_handling_to_read_task(
 
     This function is only used for compability with the legacy LazyBlockList code path.
     """
-    transform_fns: List[MapTransformFn] = [BuildOutputBlocksMapTransformFn.for_blocks()]
+    transform_fns: List[BlockMapTransformFn] = [
+        BuildOutputBlocksMapTransformFn.for_blocks()
+    ]
 
     if additional_split_factor is not None:
         transform_fns.append(
-            MapTransformFn(
+            BlockMapTransformFn(
                 functools.partial(
                     _do_additional_splits,
                     additional_output_splits=additional_split_factor,
-                ),
-                MapTransformFnDataType.Block,
-                MapTransformFnDataType.Block,
+                )
             ),
         )
     map_transformer = MapTransformer(transform_fns)
