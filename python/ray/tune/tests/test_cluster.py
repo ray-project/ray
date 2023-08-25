@@ -1,4 +1,5 @@
 import inspect
+import tempfile
 import time
 import os
 
@@ -12,6 +13,7 @@ from ray import tune
 from ray.train import CheckpointConfig
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray.train._internal.storage import StorageContext
 from ray.tune.experiment import Experiment
 from ray.tune.error import TuneError
 from ray.tune.search import BasicVariantGenerator
@@ -80,16 +82,24 @@ def start_connected_emptyhead_cluster():
     cluster.shutdown()
 
 
-def test_counting_resources(start_connected_cluster):
+@pytest.fixture
+def tmp_storage():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        storage = StorageContext(storage_path=tmpdir, experiment_dir_name="exp")
+        yield storage
+
+
+def test_counting_resources(start_connected_cluster, tmp_storage):
     """Tests that Tune accounting is consistent with actual cluster."""
 
     cluster = start_connected_cluster
     nodes = []
     assert ray.cluster_resources()["CPU"] == 1
-    runner = TuneController(search_alg=BasicVariantGenerator())
+    runner = TuneController(search_alg=BasicVariantGenerator(), storage=tmp_storage)
     kwargs = {
         "stopping_criterion": {"training_iteration": 10},
         "config": {"sleep": 1.5},
+        "storage": tmp_storage,
     }
 
     trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
@@ -128,19 +138,21 @@ def test_counting_resources(start_connected_cluster):
     ]
 
 
-def test_trial_processed_after_node_failure(start_connected_emptyhead_cluster):
+def test_trial_processed_after_node_failure(
+    start_connected_emptyhead_cluster, tmp_storage
+):
     """Tests that Tune processes a trial as failed if its node died."""
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    runner = TuneController(search_alg=BasicVariantGenerator())
+    runner = TuneController(search_alg=BasicVariantGenerator(), storage=tmp_storage)
     mock_process_failure = MagicMock(side_effect=runner._process_trial_failure)
     runner._process_trial_failure = mock_process_failure
     # Disable recursion in magic mock when saving experiment state
     runner.save_to_dir = lambda *args, **kwargs: None
 
-    runner.add_trial(Trial("__fake"))
+    runner.add_trial(Trial("__fake", storage=tmp_storage))
     trial = runner.get_trials()[0]
 
     while trial.status != Trial.RUNNING:
@@ -154,17 +166,18 @@ def test_trial_processed_after_node_failure(start_connected_emptyhead_cluster):
     assert mock_process_failure.called
 
 
-def test_remove_node_before_result(start_connected_emptyhead_cluster):
+def test_remove_node_before_result(start_connected_emptyhead_cluster, tmp_storage):
     """Tune continues when node is removed before trial returns."""
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    runner = TuneController(search_alg=BasicVariantGenerator())
+    runner = TuneController(search_alg=BasicVariantGenerator(), storage=tmp_storage)
     kwargs = {
         "stopping_criterion": {"training_iteration": 3},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=2),
         "max_failures": 2,
+        "storage": tmp_storage,
     }
     trial = Trial("__fake", **kwargs)
     runner.add_trial(trial)
@@ -295,7 +308,9 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
 
 
 @pytest.mark.parametrize("durable", [False, True])
-def test_trial_requeue(start_connected_emptyhead_cluster, tmpdir, durable):
+def test_trial_requeue(
+    start_connected_emptyhead_cluster, tmpdir, durable, mock_s3_bucket_uri
+):
     """Removing a node in full cluster causes Trial to be requeued."""
     os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
@@ -304,21 +319,19 @@ def test_trial_requeue(start_connected_emptyhead_cluster, tmpdir, durable):
     cluster.wait_for_nodes()
 
     if durable:
-        experiment_path = "file://" + str(tmpdir) + "/exp"
-        syncer_callback = SyncerCallback()
+        storage = StorageContext(
+            storage_path=mock_s3_bucket_uri, experiment_dir_name="durable"
+        )
+        storage.storage_local_path = tmpdir
     else:
-        experiment_path = None
-        syncer_callback = custom_driver_logdir_callback(str(tmpdir))
+        storage = StorageContext(storage_path=tmpdir, experiment_dir_name="durable")
 
-    runner = TuneController(
-        search_alg=BasicVariantGenerator(), callbacks=[syncer_callback]
-    )  # noqa
+    runner = TuneController(search_alg=BasicVariantGenerator(), storage=storage)  # noqa
     kwargs = {
         "stopping_criterion": {"training_iteration": 5},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
-        "experiment_path": experiment_path,
-        "experiment_dir_name": "exp",
         "max_failures": 1,
+        "storage": storage,
     }
 
     trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
@@ -344,7 +357,7 @@ def test_trial_requeue(start_connected_emptyhead_cluster, tmpdir, durable):
 
 @pytest.mark.parametrize("durable", [False, True])
 def test_migration_checkpoint_removal(
-    start_connected_emptyhead_cluster, tmpdir, durable
+    start_connected_emptyhead_cluster, tmpdir, durable, mock_s3_bucket_uri
 ):
     """Test checks that trial restarts if checkpoint is lost w/ node fail."""
     cluster = start_connected_emptyhead_cluster
@@ -352,21 +365,22 @@ def test_migration_checkpoint_removal(
     cluster.wait_for_nodes()
 
     if durable:
-        experiment_path = "file://" + str(tmpdir) + "/exp"
-        syncer_callback = SyncerCallback()
+        storage = StorageContext(
+            storage_path=mock_s3_bucket_uri, experiment_dir_name="durable"
+        )
+        storage.storage_local_path = tmpdir
     else:
-        experiment_path = None
-        syncer_callback = custom_driver_logdir_callback(str(tmpdir))
+        storage = StorageContext(storage_path=tmpdir, experiment_dir_name="durable")
 
     runner = TuneController(
-        search_alg=BasicVariantGenerator(), callbacks=[syncer_callback]
+        search_alg=BasicVariantGenerator(),
+        storage=storage,
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 4},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=2),
-        "experiment_path": experiment_path,
-        "experiment_dir_name": "exp",
         "max_failures": 2,
+        "storage": storage,
     }
 
     # Test recovery of trial that has been checkpointed
@@ -398,17 +412,20 @@ def test_migration_checkpoint_removal(
 
 
 @pytest.mark.parametrize("durable", [False, True])
-def test_cluster_down_full(start_connected_cluster, tmpdir, durable):
+def test_cluster_down_full(
+    start_connected_cluster, tmpdir, durable, mock_s3_bucket_uri
+):
     """Tests that run_experiment restoring works on cluster shutdown."""
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
 
     if durable:
-        storage_path = "file://" + str(tmpdir)
-        syncer_callback = SyncerCallback()
+        storage = StorageContext(
+            storage_path=mock_s3_bucket_uri, experiment_dir_name="durable"
+        )
+        storage.storage_local_path = tmpdir
     else:
-        storage_path = None
-        syncer_callback = custom_driver_logdir_callback(str(tmpdir))
+        storage = StorageContext(storage_path=tmpdir, experiment_dir_name="durable")
 
     from ray.tune.result import DEFAULT_RESULTS_DIR
 
@@ -418,7 +435,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, durable):
         run="__fake",
         stop=dict(training_iteration=3),
         local_dir=local_dir,
-        storage_path=storage_path,
+        storage_path=storage.storage_path,
     )
 
     exp1_args = base_dict
@@ -441,9 +458,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, durable):
         "exp4": exp4_args,
     }
 
-    tune.run_experiments(
-        all_experiments, callbacks=[syncer_callback], raise_on_failed_trial=False
-    )
+    tune.run_experiments(all_experiments, raise_on_failed_trial=False)
 
     ray.shutdown()
     cluster.shutdown()
