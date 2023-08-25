@@ -16,7 +16,7 @@ def get_node_to_deployment_to_num_replicas():
     # {node_id: {deployment_name: num_replicas}}
     node_to_deployment_to_num_replicas = defaultdict(dict)
     for actor in actors:
-        if "app_deploy" not in actor["name"] or actor["state"] != "ALIVE":
+        if "app#deploy" not in actor["name"] or actor["state"] != "ALIVE":
             continue
         deployment_name = None
         if "deploy1" in actor["name"]:
