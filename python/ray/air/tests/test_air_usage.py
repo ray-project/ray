@@ -110,9 +110,9 @@ def test_tag_ray_air_storage_config(
 
     local_path = str(tmp_path / "local_path")
     sync_config = (
-        tune.SyncConfig(syncer=None)
+        train.SyncConfig(syncer=None)
         if storage_test_config.syncing_disabled
-        else tune.SyncConfig()
+        else train.SyncConfig()
     )
 
     air_usage.tag_ray_air_storage_config(

@@ -432,6 +432,7 @@ def test_tuner(
                 verbose=0,
                 failure_config=train.FailureConfig(max_failures=1),
                 checkpoint_config=checkpoint_config,
+                sync_config=train.SyncConfig(sync_artifacts=True),
             ),
             # 2 samples (from the grid search). Run 1 at at time to test actor reuse
             tune_config=tune.TuneConfig(num_samples=1, max_concurrent_trials=1),
@@ -552,6 +553,7 @@ def test_trainer(
                 verbose=0,
                 checkpoint_config=checkpoint_config,
                 failure_config=train.FailureConfig(max_failures=1),
+                sync_config=train.SyncConfig(sync_artifacts=True),
             ),
         )
         print("\nStarting initial run.\n")
