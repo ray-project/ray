@@ -10,14 +10,6 @@ We will use an image classification workload.  The example is based on <https://
 
 You must have a Kubernetes cluster running and `kubectl` configured to use it, and GPUs available.  We provide a brief tutorial for setting up the necessary GPUs on Google Kubernetes Engine (GKE), but you can use any Kubernetes cluster with GPUs.
 
-## Deploy KubeRay
-
-Make sure your KubeRay operator version is at least v0.6.0.
-
-The latest released KubeRay version is recommended.
-
-For installation instructions, please follow [the documentation](../deploy/installation.md).
-
 ## Step 0: Create a Kubernetes cluster on GKE (Optional)
 
 If you already have a Kubernetes cluster with GPUs, you can skip this step.
@@ -69,22 +61,24 @@ For more details, see the [GKE documentation](https://cloud.google.com/kubernete
 
 Once `kubectl` is configured to connect to your cluster, you can install the KubeRay operator.
 
-```sh
-# Install both CRDs and KubeRay operator v0.5.0.
-helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 0.5.0
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
 
-# It should be scheduled on the CPU node. If it is not, something is wrong.
-```
+It should be scheduled on the CPU pod.
 
 ## Step 2: Submit the RayJob
 
-Now we can submit the RayJob.  Our RayJob spec is defined in [ray_v1alpha1_rayjob.batch-inference.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray_v1alpha1_rayjob.batch-inference.yaml).
+Now we can submit the RayJob.  Our RayJob spec is defined in [ray_v1alpha1_rayjob.batch-inference.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.batch-inference.yaml).
+
+You can download the file via `curl` as follows:
+
+```bash
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.batch-inference.yaml
+```
 
 Note that the `RayJob` spec contains a spec for the `RayCluster` that is to be created for the job. For this tutorial, we use a single-node cluster with 4 GPUs.  For production use cases, we recommend using a multi-node cluster where the head node does not have GPUs, so that Ray can automatically schedule GPU workloads on worker nodes and they won't interfere with critical Ray processes on the head node.
 
 Note the following fields in the `RayJob` spec, which specify the Ray image and the GPU resources for our Ray node:
+
 ```yaml
         spec:
           containers:
@@ -93,7 +87,10 @@ Note the following fields in the `RayJob` spec, which specify the Ray image and 
               resources:
                 limits:
                   nvidia.com/gpu: "4"
+                  cpu: "54"
+                  memory: "54Gi"
                 requests:
+                  nvidia.com/gpu: "4"
                   cpu: "54"
                   memory: "54Gi"
               volumeMounts:
@@ -106,7 +103,7 @@ Note the following fields in the `RayJob` spec, which specify the Ray image and 
 To submit the job, run the following command:
 
 ```bash
-kubectl apply -f ray_v1alpha1_rayjob.batch-inference.yaml
+kubectl apply -f ray-job.batch-inference.yaml
 ```
 
 We can check the status with `kubectl describe rayjob rayjob-sample`.
