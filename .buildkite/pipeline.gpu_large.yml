@@ -8,7 +8,9 @@
     - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only,-ray_air python/ray/train/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only,-ray_air 
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
+      python/ray/train/...
 
 - label: ":tv: :database: :steam_locomotive: Datasets Train Integration GPU Tests and Examples (Python 3.7)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
