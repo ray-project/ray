@@ -382,7 +382,7 @@ pyasn1-modules==0.3.0
 pycodestyle==2.7.0
 pycparser==2.21
 pycryptodome==3.18.0
-pydantic==1.9.2 ; python_version < "3.11"
+pydantic==1.10.12
 pydeprecate==0.3.2
 pydot==1.4.2
 pydub==0.25.1

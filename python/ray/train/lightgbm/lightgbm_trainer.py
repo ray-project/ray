@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Any, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Dict, Any, Union
 
 try:
     from packaging.version import Version
@@ -10,15 +10,11 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.util.annotations import PublicAPI
-from ray.train.lightgbm.lightgbm_checkpoint import LegacyLightGBMCheckpoint
 
 import lightgbm
 import lightgbm_ray
 import xgboost_ray
 from lightgbm_ray.tune import TuneReportCheckpointCallback
-
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="beta")
@@ -29,7 +25,7 @@ class LightGBMTrainer(GBDTTrainer):
     using multiple Ray Actors.
 
     If you would like to take advantage of LightGBM's built-in handling
-    for features with the categorical data type, consider using the
+    for features with the categorical data type, consider applying the
     :class:`Categorizer` preprocessor to set the dtypes in the dataset.
 
     .. note::
@@ -64,11 +60,8 @@ class LightGBMTrainer(GBDTTrainer):
 
     Args:
         datasets: The Ray Datasets to use for training and validation. Must include a
-            "train" key denoting the training dataset. If a ``preprocessor``
-            is provided and has not already been fit, it will be fit on the training
-            dataset. All datasets will be transformed by the ``preprocessor`` if
-            one is provided. All non-training datasets will be used as separate
-            validation sets, each reporting a separate metric.
+            "train" key denoting the training dataset. All non-training datasets will
+            be used as separate validation sets, each reporting a separate metric.
         label_column: Name of the label column. A column with this name
             must be present in the training dataset.
         params: LightGBM training parameters passed to ``lightgbm.train()``.
@@ -114,12 +107,8 @@ class LightGBMTrainer(GBDTTrainer):
     def _train(self, **kwargs):
         return lightgbm_ray.train(**kwargs)
 
-    def _load_checkpoint(
-        self, checkpoint: Checkpoint
-    ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
-        # TODO(matt): Replace this when preprocessor arg is removed.
-        checkpoint = LegacyLightGBMCheckpoint.from_checkpoint(checkpoint)
-        return checkpoint.get_model(), checkpoint.get_preprocessor()
+    def _load_checkpoint(self, checkpoint: Checkpoint) -> lightgbm.Booster:
+        return self.__class__.get_model(checkpoint)
 
     def _save_model(self, model: lightgbm.LGBMModel, path: str):
         model.booster_.save_model(path)
