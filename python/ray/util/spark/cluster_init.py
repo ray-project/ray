@@ -201,6 +201,8 @@ class RayClusterOnSpark:
             self.disconnect()
             os.environ.pop("RAY_ADDRESS", None)
             if self.autoscale:
+                # TODO:
+                #  Cancel all backgroud spark jobs
                 self.spark_job_server.shutdown()
             if cancel_background_job:
                 if self.autoscale:
