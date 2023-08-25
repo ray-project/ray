@@ -11,6 +11,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BuildOutputBlocksMapTransformFn,
     MapTransformer,
     MapTransformFn,
+    MapTransformFnDataType,
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data.block import Block, BlockAccessor
@@ -37,34 +38,39 @@ def cleaned_metadata(read_task):
     return block_meta
 
 
-class AdditionalOutputSplitMapTransformFn(BlockMapTransformFn):
+def _splitrange(n, k):
+    """Calculates array lens of np.array_split().
+
+    This is the equivalent of
+    `[len(x) for x in np.array_split(range(n), k)]`.
+    """
+    base = n // k
+    output = [base] * k
+    rem = n - sum(output)
+    for i in range(len(output)):
+        if rem > 0:
+            output[i] += 1
+            rem -= 1
+    assert rem == 0, (rem, output, n, k)
+    assert sum(output) == n, (output, n, k)
+    return output
+
+
+class BuildOutputBlocksWithAdditionalSplit(MapTransformFn):
     """Do additional splits to the output blocks of a ReadTask."""
 
     def __init__(self, additional_split_factor: int):
         assert additional_split_factor > 1
         self._additional_split_factor = additional_split_factor
-        super().__init__(self._do_additional_splits)
+        super().__init__(MapTransformFnDataType.Block, MapTransformFnDataType.Block)
 
-    @classmethod
-    def _splitrange(cls, n, k):
-        """Calculates array lens of np.array_split().
-
-        This is the equivalent of
-        `[len(x) for x in np.array_split(range(n), k)]`.
-        """
-        base = n // k
-        output = [base] * k
-        rem = n - sum(output)
-        for i in range(len(output)):
-            if rem > 0:
-                output[i] += 1
-                rem -= 1
-        assert rem == 0, (rem, output, n, k)
-        assert sum(output) == n, (output, n, k)
-        return output
+    def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        blocks = BuildOutputBlocksMapTransformFn.for_blocks()(blocks, ctx)
+        return self._do_additional_splits(blocks)
 
     def _do_additional_splits(
-        self, blocks: Iterable[Block], _: TaskContext
+        self,
+        blocks: Iterable[Block],
     ) -> Iterable[Block]:
         """Do additional splits to the output blocks of a ReadTask.
 
@@ -75,9 +81,7 @@ class AdditionalOutputSplitMapTransformFn(BlockMapTransformFn):
         for block in blocks:
             block = BlockAccessor.for_block(block)
             offset = 0
-            split_sizes = AdditionalOutputSplitMapTransformFn._splitrange(
-                block.num_rows(), self._additional_split_factor
-            )
+            split_sizes = _splitrange(block.num_rows(), self._additional_split_factor)
             for size in split_sizes:
                 yield block.slice(offset, offset + size, copy=True)
                 offset += size
@@ -116,17 +120,19 @@ def plan_read_op(op: Read) -> PhysicalOperator:
             yield from read_task()
 
     # Create a MapTransformer for a read operator
-    transform_fns = [
+    transform_fns: List[MapTransformFn] = [
         # First, execute the read tasks.
         BlockMapTransformFn(do_read),
-        # Then build the output blocks.
-        BuildOutputBlocksMapTransformFn.for_blocks(),
     ]
-
-    if op._additional_split_factor is not None:
-        # If addtional split is needed, do it in the last.
+    if op._additional_split_factor is None:
+        # Then build the output blocks.
+        transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
+    elif op._additional_split_factor is not None:
+        # Build the output blocks and do additional splits.
+        # NOTE, we explictly do these two steps in one MapTransformFn to avoid
+        # `BuildOutputBlocksMapTransformFn` getting dropped by the optimizer.
         transform_fns.append(
-            AdditionalOutputSplitMapTransformFn(op._additional_split_factor)
+            BuildOutputBlocksWithAdditionalSplit(op._additional_split_factor)
         )
 
     map_transformer = MapTransformer(transform_fns)
