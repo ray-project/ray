@@ -127,6 +127,20 @@ def test_fastapi_detected(manage_ray):
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(check_ray_started, timeout=5)
 
+    storage_handle = start_telemetry_app()
+
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+
+    # Check that telemetry related to FastAPI app is not set
+    report = ray.get(storage_handle.get_report.remote())
+    assert ServeUsageTag.FASTAPI_USED.get_value_from_report(report) is None
+    assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
+    assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 1
+    assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 1
+    assert int(ServeUsageTag.NUM_GPU_DEPLOYMENTS.get_value_from_report(report)) == 0
+
     app = FastAPI()
 
     @serve.deployment
@@ -142,8 +156,6 @@ def test_fastapi_detected(manage_ray):
 
     fastapi_app = FastAPIDeployment.bind()
     serve.run(fastapi_app, name="fastapi_app", route_prefix="/fastapi")
-
-    storage_handle = start_telemetry_app()
 
     wait_for_condition(
         lambda: serve.status().applications["fastapi_app"].status
