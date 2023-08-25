@@ -163,8 +163,12 @@ def test_fastapi_detected(manage_ray):
         timeout=15,
     )
 
+    current_num_reports = ray.get(storage_handle.get_reports_received.remote())
+
     wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+        lambda: ray.get(storage_handle.get_reports_received.remote())
+        > current_num_reports,
+        timeout=5,
     )
     report = ray.get(storage_handle.get_report.remote())
 
@@ -190,6 +194,16 @@ def test_grpc_detected(manage_ray):
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(check_ray_started, timeout=5)
 
+    storage_handle = start_telemetry_app()
+
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+
+    # Check that telemetry related to gRPC ingress app is not set
+    report = ray.get(storage_handle.get_report.remote())
+    assert ServeUsageTag.GRPC_INGRESS_USED.get_value_from_report(report) is None
+
     @serve.deployment(ray_actor_options={"num_cpus": 0})
     def greeter(inputs: Dict[str, bytes]):
         return "Hello!"
@@ -200,16 +214,18 @@ def test_grpc_detected(manage_ray):
 
     serve.run(grpc_app, name="grpc_app", route_prefix="/grpc")
 
-    storage_handle = start_telemetry_app()
-
     wait_for_condition(
         lambda: serve.status().applications["grpc_app"].status
         == ApplicationStatus.RUNNING,
         timeout=15,
     )
 
+    current_num_reports = ray.get(storage_handle.get_reports_received.remote())
+
     wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+        lambda: ray.get(storage_handle.get_reports_received.remote())
+        > current_num_reports,
+        timeout=5,
     )
     report = ray.get(storage_handle.get_report.remote())
 
@@ -236,6 +252,17 @@ def test_graph_detected(manage_ray, use_adapter):
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(check_ray_started, timeout=5)
 
+    storage_handle = start_telemetry_app()
+
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+
+    # Check that telemetry related to DAGDriver app is not set
+    report = ray.get(storage_handle.get_report.remote())
+    assert ServeUsageTag.DAG_DRIVER_USED.get_value_from_report(report) is None
+    assert ServeUsageTag.HTTP_ADAPTER_USED.get_value_from_report(report) is None
+
     @serve.deployment(ray_actor_options={"num_cpus": 0})
     def greeter(input):
         return "Hello!"
@@ -256,10 +283,12 @@ def test_graph_detected(manage_ray, use_adapter):
         timeout=15,
     )
 
-    storage_handle = start_telemetry_app()
+    current_num_reports = ray.get(storage_handle.get_reports_received.remote())
 
     wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+        lambda: ray.get(storage_handle.get_reports_received.remote())
+        > current_num_reports,
+        timeout=5,
     )
     report = ray.get(storage_handle.get_report.remote())
 
