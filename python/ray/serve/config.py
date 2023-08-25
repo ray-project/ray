@@ -71,6 +71,8 @@ class AutoscalingConfig(BaseModel):
 
     # Multiplicative "gain" factor to limit scaling decisions
     smoothing_factor: PositiveFloat = 1.0
+    upscale_smoothing_factor: Optional[PositiveFloat] = None
+    downscale_smoothing_factor: Optional[PositiveFloat] = None
 
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
@@ -102,6 +104,12 @@ class AutoscalingConfig(BaseModel):
                 )
 
         return max_replicas
+
+    def get_upscale_smoothing_factor(self) -> PositiveFloat:
+        return self.upscale_smoothing_factor or self.smoothing_factor
+
+    def get_downscale_smoothing_factor(self) -> PositiveFloat:
+        return self.downscale_smoothing_factor or self.smoothing_factor
 
     # TODO(architkulkarni): implement below
     # The num_ongoing_requests_per_replica error ratio (desired / current)
@@ -202,7 +210,6 @@ class DeploymentConfig(BaseModel):
 
     class Config:
         validate_assignment = True
-        extra = "forbid"
         arbitrary_types_allowed = True
 
     # Dynamic default for max_concurrent_queries
@@ -274,6 +281,10 @@ class DeploymentConfig(BaseModel):
             else:
                 data["user_config"] = None
         if "autoscaling_config" in data:
+            if not data["autoscaling_config"].get("upscale_smoothing_factor"):
+                data["autoscaling_config"]["upscale_smoothing_factor"] = None
+            if not data["autoscaling_config"].get("downscale_smoothing_factor"):
+                data["autoscaling_config"]["downscale_smoothing_factor"] = None
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
@@ -749,7 +760,6 @@ class HTTPOptions(pydantic.BaseModel):
 
     class Config:
         validate_assignment = True
-        extra = "forbid"
         arbitrary_types_allowed = True
 
 
@@ -763,10 +773,10 @@ class gRPCOptions(BaseModel):
             updated once Serve has started running. Serve must be shut down and
             restarted with the new port instead.
         grpc_servicer_functions (List[str]):
-            The servicer functions used to add the method handlers to the gRPC server.
-            Default to empty list, which means no gRPC methods will be added
-            and no gRPC server will be started. The servicer functions need to be
-            importable from the context of where Serve is running.
+            List of import paths for gRPC `add_servicer_to_server` functions to add to
+            Serve's gRPC proxy. Default to empty list, which means no gRPC methods will
+            be added and no gRPC server will be started. The servicer functions need to
+            be importable from the context of where Serve is running.
     """
 
     port: int = DEFAULT_GRPC_PORT

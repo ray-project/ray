@@ -14,6 +14,12 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve._private.utils import DEFAULT
 from ray.serve.generated.serve_pb2_grpc import add_UserDefinedServiceServicer_to_server
 from ray.serve._private.constants import DEFAULT_GRPC_PORT
+from ray.serve.schema import (
+    ServeDeploySchema,
+    HTTPOptionsSchema,
+    ServeApplicationSchema,
+    DeploymentSchema,
+)
 
 
 def test_autoscaling_config_validation():
@@ -59,9 +65,8 @@ def test_autoscaling_config_validation():
 
 class TestDeploymentConfig:
     def test_deployment_config_validation(self):
-        # Test unknown key.
-        with pytest.raises(ValidationError):
-            DeploymentConfig(unknown_key=-1)
+        # Test config ignoring unknown keys (required for forward-compatibility)
+        DeploymentConfig(new_version_key=-1)
 
         # Test num_replicas validation.
         DeploymentConfig(num_replicas=1)
@@ -397,9 +402,36 @@ class TestReplicaConfig:
         assert config.init_kwargs == dict()
 
 
+def test_config_schemas_forward_compatible():
+    # Test configs ignoring unknown keys (required for forward-compatibility)
+    ServeDeploySchema(
+        http_options=HTTPOptionsSchema(
+            new_version_config_key="this config is from newer version of Ray"
+        ),
+        applications=[
+            ServeApplicationSchema(
+                import_path="module.app",
+                deployments=[
+                    DeploymentSchema(
+                        name="deployment",
+                        new_version_config_key="this config is from newer version"
+                        " of Ray",
+                    )
+                ],
+                new_version_config_key="this config is from newer version of Ray",
+            ),
+        ],
+        new_version_config_key="this config is from newer version of Ray",
+    )
+
+
 def test_http_options():
     HTTPOptions()
     HTTPOptions(host="8.8.8.8", middlewares=[object()])
+
+    # Test configs ignoring unknown keys (required for forward-compatibility)
+    HTTPOptions(new_version_config_key="this config is from newer version of Ray")
+
     assert HTTPOptions(host=None).location == "NoServer"
     assert HTTPOptions(location=None).location == "NoServer"
     assert HTTPOptions(location=DeploymentMode.EveryNode).location == "EveryNode"

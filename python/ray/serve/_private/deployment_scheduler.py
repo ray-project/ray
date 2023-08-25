@@ -10,6 +10,7 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
 )
 
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.utils import (
     get_head_node_id,
 )
@@ -36,7 +37,7 @@ class ReplicaSchedulingRequest:
     based on the deployment scheduling policy.
     """
 
-    deployment_name: str
+    deployment_id: DeploymentID
     replica_name: str
     actor_def: ray.actor.ActorClass
     actor_resources: Dict
@@ -58,7 +59,7 @@ class DeploymentDownscaleRequest:
     choosing the replicas to stop.
     """
 
-    deployment_name: str
+    deployment_id: DeploymentID
     num_to_stop: int
 
 
@@ -69,22 +70,22 @@ class DeploymentScheduler:
     """
 
     def __init__(self, cluster_node_info_cache: ClusterNodeInfoCache):
-        # {deployment_name: scheduling_policy}
+        # {deployment_id: scheduling_policy}
         self._deployments = {}
         # Replicas that are waiting to be scheduled.
-        # {deployment_name: {replica_name: deployment_upscale_request}}
+        # {deployment_id: {replica_name: deployment_upscale_request}}
         self._pending_replicas = defaultdict(dict)
         # Replicas that are being scheduled.
         # The underlying actors have been submitted.
-        # {deployment_name: {replica_name: target_node_id}}
+        # {deployment_id: {replica_name: target_node_id}}
         self._launching_replicas = defaultdict(dict)
         # Replicas that are recovering.
         # We don't know where those replicas are running.
-        # {deployment_name: {replica_name}}
+        # {deployment_id: {replica_name}}
         self._recovering_replicas = defaultdict(set)
         # Replicas that are running.
         # We know where those replicas are running.
-        # {deployment_name: {replica_name: running_node_id}}
+        # {deployment_id: {replica_name: running_node_id}}
         self._running_replicas = defaultdict(dict)
 
         self._cluster_node_info_cache = cluster_node_info_cache
@@ -93,66 +94,70 @@ class DeploymentScheduler:
 
     def on_deployment_created(
         self,
-        deployment_name: str,
+        deployment_id: DeploymentID,
         scheduling_policy: Union[
             SpreadDeploymentSchedulingPolicy, DriverDeploymentSchedulingPolicy
         ],
     ) -> None:
         """Called whenever a new deployment is created."""
-        assert deployment_name not in self._pending_replicas
-        assert deployment_name not in self._launching_replicas
-        assert deployment_name not in self._recovering_replicas
-        assert deployment_name not in self._running_replicas
-        self._deployments[deployment_name] = scheduling_policy
+        assert deployment_id not in self._pending_replicas
+        assert deployment_id not in self._launching_replicas
+        assert deployment_id not in self._recovering_replicas
+        assert deployment_id not in self._running_replicas
+        self._deployments[deployment_id] = scheduling_policy
 
-    def on_deployment_deleted(self, deployment_name: str) -> None:
+    def on_deployment_deleted(self, deployment_id: DeploymentID) -> None:
         """Called whenever a deployment is deleted."""
-        assert not self._pending_replicas[deployment_name]
-        self._pending_replicas.pop(deployment_name, None)
+        assert not self._pending_replicas[deployment_id]
+        self._pending_replicas.pop(deployment_id, None)
 
-        assert not self._launching_replicas[deployment_name]
-        self._launching_replicas.pop(deployment_name, None)
+        assert not self._launching_replicas[deployment_id]
+        self._launching_replicas.pop(deployment_id, None)
 
-        assert not self._recovering_replicas[deployment_name]
-        self._recovering_replicas.pop(deployment_name, None)
+        assert not self._recovering_replicas[deployment_id]
+        self._recovering_replicas.pop(deployment_id, None)
 
-        assert not self._running_replicas[deployment_name]
-        self._running_replicas.pop(deployment_name, None)
+        assert not self._running_replicas[deployment_id]
+        self._running_replicas.pop(deployment_id, None)
 
-        del self._deployments[deployment_name]
+        del self._deployments[deployment_id]
 
-    def on_replica_stopping(self, deployment_name: str, replica_name: str) -> None:
+    def on_replica_stopping(
+        self, deployment_id: DeploymentID, replica_name: str
+    ) -> None:
         """Called whenever a deployment replica is being stopped."""
-        self._pending_replicas[deployment_name].pop(replica_name, None)
-        self._launching_replicas[deployment_name].pop(replica_name, None)
-        self._recovering_replicas[deployment_name].discard(replica_name)
-        self._running_replicas[deployment_name].pop(replica_name, None)
+        self._pending_replicas[deployment_id].pop(replica_name, None)
+        self._launching_replicas[deployment_id].pop(replica_name, None)
+        self._recovering_replicas[deployment_id].discard(replica_name)
+        self._running_replicas[deployment_id].pop(replica_name, None)
 
     def on_replica_running(
-        self, deployment_name: str, replica_name: str, node_id: str
+        self, deployment_id: DeploymentID, replica_name: str, node_id: str
     ) -> None:
         """Called whenever a deployment replica is running with a known node id."""
-        assert replica_name not in self._pending_replicas[deployment_name]
+        assert replica_name not in self._pending_replicas[deployment_id]
 
-        self._launching_replicas[deployment_name].pop(replica_name, None)
-        self._recovering_replicas[deployment_name].discard(replica_name)
+        self._launching_replicas[deployment_id].pop(replica_name, None)
+        self._recovering_replicas[deployment_id].discard(replica_name)
 
-        self._running_replicas[deployment_name][replica_name] = node_id
+        self._running_replicas[deployment_id][replica_name] = node_id
 
-    def on_replica_recovering(self, deployment_name: str, replica_name: str) -> None:
+    def on_replica_recovering(
+        self, deployment_id: DeploymentID, replica_name: str
+    ) -> None:
         """Called whenever a deployment replica is recovering."""
-        assert replica_name not in self._pending_replicas[deployment_name]
-        assert replica_name not in self._launching_replicas[deployment_name]
-        assert replica_name not in self._running_replicas[deployment_name]
-        assert replica_name not in self._recovering_replicas[deployment_name]
+        assert replica_name not in self._pending_replicas[deployment_id]
+        assert replica_name not in self._launching_replicas[deployment_id]
+        assert replica_name not in self._running_replicas[deployment_id]
+        assert replica_name not in self._recovering_replicas[deployment_id]
 
-        self._recovering_replicas[deployment_name].add(replica_name)
+        self._recovering_replicas[deployment_id].add(replica_name)
 
     def schedule(
         self,
-        upscales: Dict[str, List[ReplicaSchedulingRequest]],
-        downscales: Dict[str, DeploymentDownscaleRequest],
-    ) -> Dict[str, Set[str]]:
+        upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]],
+        downscales: Dict[DeploymentID, DeploymentDownscaleRequest],
+    ) -> Dict[DeploymentID, Set[str]]:
         """Called for each update cycle to do batch scheduling.
 
         Args:
@@ -164,40 +169,38 @@ class DeploymentScheduler:
         """
         for upscale in upscales.values():
             for replica_scheduling_request in upscale:
-                self._pending_replicas[replica_scheduling_request.deployment_name][
+                self._pending_replicas[replica_scheduling_request.deployment_id][
                     replica_scheduling_request.replica_name
                 ] = replica_scheduling_request
 
-        for deployment_name, pending_replicas in self._pending_replicas.items():
+        for deployment_id, pending_replicas in self._pending_replicas.items():
             if not pending_replicas:
                 continue
 
-            deployment_scheduling_policy = self._deployments[deployment_name]
+            deployment_scheduling_policy = self._deployments[deployment_id]
             if isinstance(
                 deployment_scheduling_policy, SpreadDeploymentSchedulingPolicy
             ):
-                self._schedule_spread_deployment(deployment_name)
+                self._schedule_spread_deployment(deployment_id)
             else:
                 assert isinstance(
                     deployment_scheduling_policy, DriverDeploymentSchedulingPolicy
                 )
-                self._schedule_driver_deployment(deployment_name)
+                self._schedule_driver_deployment(deployment_id)
 
         deployment_to_replicas_to_stop = {}
         for downscale in downscales.values():
             deployment_to_replicas_to_stop[
-                downscale.deployment_name
+                downscale.deployment_id
             ] = self._get_replicas_to_stop(
-                downscale.deployment_name, downscale.num_to_stop
+                downscale.deployment_id, downscale.num_to_stop
             )
 
         return deployment_to_replicas_to_stop
 
-    def _schedule_spread_deployment(self, deployment_name: str) -> None:
-        for pending_replica_name in list(
-            self._pending_replicas[deployment_name].keys()
-        ):
-            replica_scheduling_request = self._pending_replicas[deployment_name][
+    def _schedule_spread_deployment(self, deployment_id: DeploymentID) -> None:
+        for pending_replica_name in list(self._pending_replicas[deployment_id].keys()):
+            replica_scheduling_request = self._pending_replicas[deployment_id][
                 pending_replica_name
             ]
 
@@ -236,35 +239,33 @@ class DeploymentScheduler:
                 **actor_options,
             ).remote(*replica_scheduling_request.actor_init_args)
 
-            del self._pending_replicas[deployment_name][pending_replica_name]
-            self._launching_replicas[deployment_name][pending_replica_name] = None
+            del self._pending_replicas[deployment_id][pending_replica_name]
+            self._launching_replicas[deployment_id][pending_replica_name] = None
             replica_scheduling_request.on_scheduled(
                 actor_handle, placement_group=placement_group
             )
 
-    def _schedule_driver_deployment(self, deployment_name: str) -> None:
-        if self._recovering_replicas[deployment_name]:
+    def _schedule_driver_deployment(self, deployment_id: DeploymentID) -> None:
+        if self._recovering_replicas[deployment_id]:
             # Wait until recovering is done before scheduling new replicas
             # so that we can make sure we don't schedule two replicas on the same node.
             return
 
         all_active_nodes = self._cluster_node_info_cache.get_active_node_ids()
         scheduled_nodes = set()
-        for node_id in self._launching_replicas[deployment_name].values():
+        for node_id in self._launching_replicas[deployment_id].values():
             assert node_id is not None
             scheduled_nodes.add(node_id)
-        for node_id in self._running_replicas[deployment_name].values():
+        for node_id in self._running_replicas[deployment_id].values():
             assert node_id is not None
             scheduled_nodes.add(node_id)
         unscheduled_nodes = all_active_nodes - scheduled_nodes
 
-        for pending_replica_name in list(
-            self._pending_replicas[deployment_name].keys()
-        ):
+        for pending_replica_name in list(self._pending_replicas[deployment_id].keys()):
             if not unscheduled_nodes:
                 return
 
-            replica_scheduling_request = self._pending_replicas[deployment_name][
+            replica_scheduling_request = self._pending_replicas[deployment_id][
                 pending_replica_name
             ]
 
@@ -275,14 +276,14 @@ class DeploymentScheduler:
                 ),
                 **replica_scheduling_request.actor_options,
             ).remote(*replica_scheduling_request.actor_init_args)
-            del self._pending_replicas[deployment_name][pending_replica_name]
-            self._launching_replicas[deployment_name][
+            del self._pending_replicas[deployment_id][pending_replica_name]
+            self._launching_replicas[deployment_id][
                 pending_replica_name
             ] = target_node_id
             replica_scheduling_request.on_scheduled(actor_handle, placement_group=None)
 
     def _get_replicas_to_stop(
-        self, deployment_name: str, max_num_to_stop: int
+        self, deployment_id: DeploymentID, max_num_to_stop: int
     ) -> Set[str]:
         """Prioritize replicas running on a node with fewest replicas of all deployments.
 
@@ -296,9 +297,9 @@ class DeploymentScheduler:
         # Replicas not in running state don't have node id.
         # We will prioritize those first.
         pending_launching_recovering_replicas = set().union(
-            self._pending_replicas[deployment_name].keys(),
-            self._launching_replicas[deployment_name].keys(),
-            self._recovering_replicas[deployment_name],
+            self._pending_replicas[deployment_id].keys(),
+            self._launching_replicas[deployment_id].keys(),
+            self._recovering_replicas[deployment_id],
         )
         for (
             pending_launching_recovering_replica
@@ -309,7 +310,7 @@ class DeploymentScheduler:
                 replicas_to_stop.add(pending_launching_recovering_replica)
 
         node_to_running_replicas_of_target_deployment = defaultdict(set)
-        for running_replica, node_id in self._running_replicas[deployment_name].items():
+        for running_replica, node_id in self._running_replicas[deployment_id].items():
             node_to_running_replicas_of_target_deployment[node_id].add(running_replica)
 
         node_to_num_running_replicas_of_all_deployments = {}
