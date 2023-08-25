@@ -30,9 +30,9 @@ _CHECKPOINT_TEMP_DIR_PREFIX = "checkpoint_tmp_"
 class Checkpoint:
     """A reference to data persisted as a directory in local or remote storage.
 
-    Access checkpoint contents locally using `checkpoint.to_directory()`.
+    Access checkpoint contents locally using ``checkpoint.to_directory()``.
 
-    Example creating a checkpoint using `Checkpoint.from_directory`:
+    Example creating a checkpoint using ``Checkpoint.from_directory``:
 
         >>> from ray.train._checkpoint import Checkpoint
         >>> checkpoint = Checkpoint.from_directory("/tmp/example_checkpoint_dir")
@@ -85,7 +85,7 @@ class Checkpoint:
         self._uuid = uuid.uuid4()
 
     def __repr__(self):
-        return f"Checkpoint(filesystem={self.filesystem}, path={self.path})"
+        return f"Checkpoint(filesystem={self.filesystem.type_name}, path={self.path})"
 
     def get_metadata(self) -> Dict[str, Any]:
         """Return the metadata dict stored with the checkpoint.

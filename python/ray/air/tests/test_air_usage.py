@@ -110,9 +110,9 @@ def test_tag_ray_air_storage_config(
 
     local_path = str(tmp_path / "local_path")
     sync_config = (
-        tune.SyncConfig(syncer=None)
+        train.SyncConfig(syncer=None)
         if storage_test_config.syncing_disabled
-        else tune.SyncConfig()
+        else train.SyncConfig()
     )
 
     air_usage.tag_ray_air_storage_config(
@@ -202,6 +202,7 @@ def test_tag_env_vars(ray_start_4_cpus, mock_record, tuner):
     variables are ignored."""
     env_vars_to_record = {
         "RAY_AIR_LOCAL_CACHE_DIR": "~/ray_results",
+        "RAY_AIR_NEW_PERSISTENCE_MODE": "0",
         "TUNE_DISABLE_AUTO_CALLBACK_SYNCER": "1",
     }
     untracked_env_vars = {"RANDOM_USER_ENV_VAR": "asdf"}

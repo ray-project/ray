@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict
 
 try:
     from packaging.version import Version
@@ -9,15 +9,11 @@ except ImportError:
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.train.xgboost.xgboost_checkpoint import LegacyXGBoostCheckpoint
 from ray.util.annotations import PublicAPI
 
 import xgboost
 import xgboost_ray
-from xgboost_ray.tune import TuneReportCheckpointCallback, TuneReportCallback
-
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
+from xgboost_ray.tune import TuneReportCheckpointCallback
 
 
 @PublicAPI(stability="beta")
@@ -59,11 +55,8 @@ class XGBoostTrainer(GBDTTrainer):
 
     Args:
         datasets: The Ray Datasets to use for training and validation. Must include a
-            "train" key denoting the training dataset. If a ``preprocessor``
-            is provided and has not already been fit, it will be fit on the training
-            dataset. All datasets will be transformed by the ``preprocessor`` if
-            one is provided. All non-training datasets will be used as separate
-            validation sets, each reporting a separate metric.
+            "train" key denoting the training dataset. All non-training datasets will
+            be used as separate validation sets, each reporting a separate metric.
         label_column: Name of the label column. A column with this name
             must be present in the training dataset.
         params: XGBoost training parameters.
@@ -88,7 +81,6 @@ class XGBoostTrainer(GBDTTrainer):
 
     _dmatrix_cls: type = xgboost_ray.RayDMatrix
     _ray_params_cls: type = xgboost_ray.RayParams
-    _tune_callback_report_cls: type = TuneReportCallback
     _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
     _default_ray_params: Dict[str, Any] = {
         "num_actors": 1,
@@ -108,12 +100,8 @@ class XGBoostTrainer(GBDTTrainer):
     def _train(self, **kwargs):
         return xgboost_ray.train(**kwargs)
 
-    def _load_checkpoint(
-        self, checkpoint: Checkpoint
-    ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
-        # TODO(matt): Replace this when preprocessor arg is removed.
-        checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(checkpoint)
-        return checkpoint.get_model(), checkpoint.get_preprocessor()
+    def _load_checkpoint(self, checkpoint: Checkpoint) -> xgboost.Booster:
+        return self.__class__.get_model(checkpoint)
 
     def _save_model(self, model: xgboost.Booster, path: str):
         model.save_model(path)

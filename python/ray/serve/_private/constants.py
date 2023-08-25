@@ -33,12 +33,6 @@ DEFAULT_GRPC_PORT = 9000
 #: Default Serve application name
 SERVE_DEFAULT_APP_NAME = "default"
 
-#: Separator between app name and deployment name when we prepend
-#: the app name to each deployment name. This prepending is currently
-#: used to manage deployments from different applications holding the
-#: same names.
-DEPLOYMENT_NAME_PREFIX_SEPARATOR = "_"
-
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
@@ -219,6 +213,17 @@ RAY_SERVE_REQUEST_ID_HEADER = "RAY_SERVE_REQUEST_ID"
 RAY_SERVE_ENABLE_NEW_ROUTING = (
     os.environ.get("RAY_SERVE_ENABLE_NEW_ROUTING", "1") == "1"
     or RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
+)
+
+# Feature flag to enable new handle API.
+RAY_SERVE_ENABLE_NEW_HANDLE_API = (
+    os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "0") == "1"
+)
+
+# Feature flag to turn on locality routing for HTTP proxies.
+# This is currently ON BY DEFAULT.
+RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING = (
+    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING", "0") == "1"
 )
 
 # Serve HTTP proxy callback import path.

@@ -26,7 +26,11 @@ from ray.air.constants import (
     TRAINING_ITERATION,
 )
 from ray.train._internal.checkpoint_manager import _TrainingResult
-from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._internal.storage import (
+    _use_storage_context,
+    StorageContext,
+    _exists_at_fs_path,
+)
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -55,7 +59,7 @@ from ray.tune.utils.callback import (
 )
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
+from ray.train._internal.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
 from ray.util.annotations import PublicAPI
@@ -138,7 +142,7 @@ class Trainable:
                 This is **per trial** directory,
                 which is different from **per checkpoint** directory.
             sync_config: Configuration object for syncing.
-                See :class:`~ray.tune.syncer.SyncConfig`.
+                See :class:`~ray.train.SyncConfig`.
         """
 
         self.config = config or {}
@@ -177,8 +181,7 @@ class Trainable:
 
         self._storage = storage
 
-        if _use_storage_context():
-            assert storage
+        if _use_storage_context() and storage:
             assert storage.trial_fs_path
             logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
 
@@ -452,6 +455,10 @@ class Trainable:
 
         self._last_result = result
 
+        if _use_storage_context() and self._storage:
+            # Launch background tasks to sync artifacts at some specified frequency.
+            self._storage.persist_artifacts()
+
         return result
 
     def get_state(self):
@@ -521,21 +528,37 @@ class Trainable:
                         raise ValueError(
                             "The returned checkpoint path from `save_checkpoint` "
                             "must be None or the same as the provided path argument."
+                            f"Got {checkpoint_dict_or_path} != {checkpoint_dir}"
                         )
 
                 local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
-                persisted_checkpoint = self._storage.persist_current_checkpoint(
-                    local_checkpoint
-                )
-                # The checkpoint index needs to be incremented.
-                # NOTE: This is no longer using "iteration" as the folder indexing
-                # to be consistent with fn trainables.
-                self._storage.current_checkpoint_index += 1
 
-                checkpoint_result = _TrainingResult(
-                    checkpoint=persisted_checkpoint, metrics=self._last_result.copy()
-                )
+                if self._storage:
+                    persisted_checkpoint = self._storage.persist_current_checkpoint(
+                        local_checkpoint
+                    )
+                    # The checkpoint index needs to be incremented.
+                    # NOTE: This is no longer using "iteration" as the folder indexing
+                    # to be consistent with fn trainables.
+                    self._storage.current_checkpoint_index += 1
 
+                    checkpoint_result = _TrainingResult(
+                        checkpoint=persisted_checkpoint,
+                        metrics=self._last_result.copy(),
+                    )
+                    # Persist trial artifacts to storage.
+                    self._storage.persist_artifacts(
+                        force=self._storage.sync_config.sync_artifacts_on_checkpoint
+                    )
+                else:
+                    # `storage=None` only happens when initializing the
+                    # Trainable manually, outside of Tune/Train.
+                    # In this case, no storage is set, so the default behavior
+                    # is to just not upload anything and report a local checkpoint.
+                    # This is fine for the main use case of local debugging.
+                    checkpoint_result = _TrainingResult(
+                        checkpoint=local_checkpoint, metrics=self._last_result.copy()
+                    )
             else:
                 checkpoint_result: _TrainingResult = checkpoint_dict_or_path
                 assert self._last_result
@@ -839,20 +862,10 @@ class Trainable:
         return True
 
     def save_to_object(self):
-        """Saves the current model state to a Python object.
-
-        It also saves to disk but does not return the checkpoint path.
-        It does not save the checkpoint to cloud storage.
-
-        Returns:
-            Object holding checkpoint data.
-        """
-        temp_container_dir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
-        checkpoint_dir = self.save(temp_container_dir, prevent_upload=True)
-
-        obj_ref = self._checkpoint_cls.from_directory(checkpoint_dir).to_bytes()
-        shutil.rmtree(temp_container_dir)
-        return obj_ref
+        raise DeprecationWarning(
+            "Trainable.save_to_object() has been removed. "
+            "Use Trainable.save() instead."
+        )
 
     def _restore_from_checkpoint_obj(self, checkpoint: Checkpoint):
         with checkpoint.as_directory() as converted_checkpoint_path:
@@ -902,12 +915,14 @@ class Trainable:
 
         """
         if _use_storage_context():
-            checkpoint_result = checkpoint_path
-            assert isinstance(checkpoint_result, _TrainingResult)
+            checkpoint_result: _TrainingResult = checkpoint_path
+            assert isinstance(checkpoint_result, _TrainingResult), type(
+                checkpoint_result
+            )
 
             checkpoint_metrics = checkpoint_result.metrics
-            self._iteration = checkpoint_metrics[TRAINING_ITERATION]
-            self._time_total = checkpoint_metrics[TIME_TOTAL_S]
+            self._iteration = checkpoint_metrics.get(TRAINING_ITERATION, 0)
+            self._time_total = checkpoint_metrics.get(TIME_TOTAL_S, 0)
             self._time_since_restore = 0.0
             self._iterations_since_restore = 0
 
@@ -916,12 +931,21 @@ class Trainable:
             self._timesteps_since_restore = 0
             self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
 
+            checkpoint = checkpoint_result.checkpoint
+            if not _exists_at_fs_path(checkpoint.filesystem, checkpoint.path):
+                raise ValueError(
+                    f"Could not recover from checkpoint as it does not exist on "
+                    f"storage anymore. "
+                    f"Got storage fs type `{checkpoint.filesystem.type_name}` and "
+                    f"path: {checkpoint.path}"
+                )
+
             # TODO(justinvyu): [cls_trainable_support]
             # This is to conform to the public class Trainable `load_checkpoint` API.
             if not isinstance(self, ray.tune.trainable.FunctionTrainable):
                 # Need to convert Checkpoint -> local path or dict
                 # (depending on what the output of save_checkpoint was)
-                with checkpoint_result.checkpoint.as_directory() as checkpoint_dir:
+                with checkpoint.as_directory() as checkpoint_dir:
                     checkpoint_path = Path(checkpoint_dir)
                     dict_checkpoint_file = checkpoint_path / _DICT_CHECKPOINT_FILE_NAME
                     if dict_checkpoint_file.exists():
@@ -1034,14 +1058,10 @@ class Trainable:
         logger.info("Current state after restoring: %s", state)
 
     def restore_from_object(self, obj):
-        """Restores training state from a checkpoint object.
-
-        These checkpoints are returned from calls to save_to_object().
-        """
-        checkpoint = self._checkpoint_cls.from_bytes(obj)
-
-        with checkpoint.as_directory() as checkpoint_path:
-            self.restore(checkpoint_path)
+        raise DeprecationWarning(
+            "Trainable.restore_from_object() has been removed. "
+            "Use Trainable.restore() instead."
+        )
 
     def delete_checkpoint(self, checkpoint_path: Union[str, Checkpoint]):
         """Deletes local copy of checkpoint.
@@ -1369,7 +1389,7 @@ class Trainable:
         """
         raise NotImplementedError
 
-    def save_checkpoint(self, checkpoint_dir: str) -> Optional[Union[str, Dict]]:
+    def save_checkpoint(self, checkpoint_dir: str) -> Optional[Dict]:
         """Subclasses should override this to implement ``save()``.
 
         Warning:
@@ -1382,8 +1402,6 @@ class Trainable:
         >>> from ray.tune.utils import validate_save_restore
         >>> MyTrainableClass = ... # doctest: +SKIP
         >>> validate_save_restore(MyTrainableClass) # doctest: +SKIP
-        >>> validate_save_restore( # doctest: +SKIP
-        ...     MyTrainableClass, use_object_store=True)
 
         .. versionadded:: 0.8.7
 
@@ -1393,11 +1411,9 @@ class Trainable:
                 the provided path may be temporary and moved.
 
         Returns:
-            A dict or string. If string, the return value is expected to be
-            prefixed by `checkpoint_dir`. If dict, the return value will
-            be automatically serialized by Tune. In both cases, the return value
-            is exactly what will be passed to ``Trainable.load_checkpoint()``
-            upon restore.
+            A dict or None. If dict, the return value will
+            be automatically serialized by Tune. In that case,
+            ``Trainable.load_checkpoint()`` will receive the dict upon restore.
 
         Example:
             >>> trainable, trainable1, trainable2 = ... # doctest: +SKIP
@@ -1410,7 +1426,7 @@ class Trainable:
         """
         raise NotImplementedError
 
-    def load_checkpoint(self, checkpoint: Union[Dict, str]):
+    def load_checkpoint(self, checkpoint: Optional[Dict]):
         """Subclasses should override this to implement restore().
 
         Warning:
@@ -1439,10 +1455,10 @@ class Trainable:
             ...        print(my_checkpoint_path)
             >>> trainer = Example()
             >>> # This is used when PAUSED.
-            >>> obj = trainer.save_to_object() # doctest: +SKIP
+            >>> checkpoint = trainer.save() # doctest: +SKIP
             <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/path
             >>> # Note the different prefix.
-            >>> trainer.restore_from_object(obj) # doctest: +SKIP
+            >>> trainer.restore(checkpoint) # doctest: +SKIP
             <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/path
 
         If `Trainable.save_checkpoint` returned a dict, then Tune will directly pass
@@ -1460,10 +1476,8 @@ class Trainable:
 
         Args:
             checkpoint: If dict, the return value is as
-                returned by `save_checkpoint`. If a string, then it is
-                a checkpoint path that may have a different prefix than that
-                returned by `save_checkpoint`. The directory structure
-                underneath the `checkpoint_dir` from `save_checkpoint` is preserved.
+                returned by ``save_checkpoint``. Otherwise, the directory
+                the checkpoint was stored in.
         """
         raise NotImplementedError
 
