@@ -1208,7 +1208,7 @@ provider:
             expected_payload["tune_searcher"] = "BasicVariantGenerator"
             expected_payload["air_storage_configuration"] = "driver"
             expected_payload["air_entrypoint"] = "Tuner.fit"
-            expected_payload["RAY_AIR_NEW_PERSISTENCE_MODE"] = "0"
+            expected_payload["air_env_vars"] = '["RAY_AIR_NEW_PERSISTENCE_MODE"]'
         assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
