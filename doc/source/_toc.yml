@@ -347,6 +347,7 @@ parts:
                   - file: cluster/kubernetes/examples/stable-diffusion-rayservice.md
                   - file: cluster/kubernetes/examples/mobilenet-rayservice.md
                   - file: cluster/kubernetes/examples/text-summarizer-rayservice.md
+                  - file: cluster/kubernetes/examples/rayjob-batch-inference-example.md
               - file: cluster/kubernetes/k8s-ecosystem
                 sections:
                   - file: cluster/kubernetes/k8s-ecosystem/ingress.md

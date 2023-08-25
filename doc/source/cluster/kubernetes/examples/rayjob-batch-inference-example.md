@@ -1,4 +1,4 @@
-(rayjob-batch-inference-example)
+(rayjob-batch-inference-example)=
 
 # RayJob Batch Inference Example
 

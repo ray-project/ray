@@ -9,3 +9,4 @@ This section presents example Ray workloads to try out on your Kubernetes cluste
 - {ref}`kuberay-mobilenet-rayservice-example` (CPU-only)
 - {ref}`kuberay-stable-diffusion-rayservice-example`
 - {ref}`kuberay-text-summarizer-rayservice-example`
+- {ref}`kuberay-batch-inference-example`
