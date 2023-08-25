@@ -29,6 +29,7 @@ try:
     import prometheus_client
 except ImportError:
     prometheus_client = None
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -701,6 +702,32 @@ TASK = {
     "attempt_number": 0,
     "node_id": "ffffffffffffffffffffffffffffffffffffffff01000000",
 }
+
+
+def test_get_traceback(shutdown_only):
+    """
+    Verify that we throw an error for a non-running task.
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    def f():
+        return os.getpid()
+
+    ray.get([f.remote() for _ in range(5)])
+    result_id = f.remote()
+    pid = ray.get(result_id)
+
+    params = {"pid": pid}
+
+    def verify():
+        resp = requests.get(f"{webui_url}/worker/traceback", params=params)
+        print(f"resp.text {type(resp.text)}: {resp.text}")
+        assert "Process" in resp.text
+        return True
+
+    wait_for_condition(verify, timeout=10)
 
 
 def test_get_task_traceback_running_task(shutdown_only):
