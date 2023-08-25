@@ -3,7 +3,6 @@ import glob
 import inspect
 import logging
 import os
-import tempfile
 import threading
 import time
 import urllib.parse

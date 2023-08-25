@@ -14,7 +14,6 @@ import logging
 import os
 
 import ray
-from ray._private.services import get_node_ip_address
 from ray.air import Checkpoint, ResourceRequest
 from ray.air._internal.uri_utils import URI
 from ray.air.config import CheckpointConfig
