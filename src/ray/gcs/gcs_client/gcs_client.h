@@ -34,8 +34,6 @@
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 
 namespace ray {
-class GcsClientTest;
-class GcsClientTest_TestCheckAlive_Test;
 
 namespace gcs {
 
@@ -159,7 +157,10 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *placement_group_accessor_;
   }
 
-  const ClusterID &GetClusterId() { return client_call_manager_->GetClusterId(); }
+  const ClusterID &GetClusterId() {
+    RAY_CHECK(client_call_manager_) << "Cannot retrieve cluster ID before it is set.";
+    return client_call_manager_->GetClusterId();
+  }
 
   /// Get the sub-interface for accessing worker information in GCS.
   /// This function is thread safe.
@@ -181,8 +182,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
 
-  friend class ray::GcsClientTest;
-  FRIEND_TEST(ray::GcsClientTest, TestCheckAlive);
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
 
  private:
