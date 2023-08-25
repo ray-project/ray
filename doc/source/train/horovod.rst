@@ -16,14 +16,14 @@ Quickstart
 Updating your training function
 -------------------------------
 
-First, you'll want to update your training function to support distributed
+First, update your training function to support distributed
 training.
 
 If you have a training function that already runs with the `Horovod Ray
 Executor <https://horovod.readthedocs.io/en/stable/ray_include.html#horovod-ray-executor>`_,
-you should not need to make any additional changes.
+you shouldn't need to make any additional changes.
 
-To onboard onto Horovod, please visit the `Horovod guide
+To onboard onto Horovod, visit the `Horovod guide
 <https://horovod.readthedocs.io/en/stable/index.html#get-started>`_.
 
 
@@ -46,7 +46,7 @@ that you can setup like this:
     )
 
 When training with Horovod, we will always use a HorovodTrainer,
-irrespective of the training framework (e.g. PyTorch or Tensorflow).
+irrespective of the training framework, for example, PyTorch or TensorFlow.
 
 To customize the backend setup, you can pass a
 :class:`~ray.train.horovod.HorovodConfig`:
@@ -62,13 +62,13 @@ To customize the backend setup, you can pass a
         scaling_config=ScalingConfig(num_workers=2),
     )
 
-For more configurability, please reference the :py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` API.
+For more configurability, see the :py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` API.
 
 Running your training function
 ------------------------------
 
 With a distributed training function and a Ray Train ``Trainer``, you are now
-ready to start training!
+ready to start training.
 
 .. code-block:: python
 

@@ -18,8 +18,8 @@ Ray Train is the simplest way to train large models with large datasets:
 Ray Train provides Pythonic wrapper classes for many frameworks:
 
 * PyTorch trainers: PyTorch, PyTorch Lightning, HuggingFace Transformers, HuggingFace Accelerate
-* Other deep learning libraries: Tensorflow and Keras
-* Tree-based trainers: XGboost, LightGBM
+* Other deep learning libraries: TensorFlow and Keras
+* Tree-based trainers: XGBoost, LightGBM
 
 Install Ray Train
 -----------------
