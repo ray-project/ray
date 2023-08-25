@@ -138,12 +138,12 @@ def crop_and_flip_image_batch(image_batch):
     )
     return image_batch
 
+
 def crop_and_flip_image(row):
     transform = get_transform(False)
     # Make sure to use torch.tensor here to avoid a copy from numpy.
     row["image"] = transform(torch.tensor(np.transpose(row["image"], axes=(2, 0, 1))))
     return row
-
 
 
 if __name__ == "__main__":
