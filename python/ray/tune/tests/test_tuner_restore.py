@@ -512,8 +512,8 @@ def test_tuner_restore_latest_available_checkpoint(
     del tuner
     fail_marker.remove(ignore_errors=True)
 
-    shutil.rmtree(os.path.join(result.path, "checkpoint_000003"))
-    shutil.rmtree(os.path.join(result.path, "checkpoint_000002"))
+    shutil.rmtree(os.path.join(result._local_path, "checkpoint_000003"))
+    shutil.rmtree(os.path.join(result._local_path, "checkpoint_000002"))
 
     if upload_uri:
         delete_at_uri(upload_uri + "/checkpoint_000003")
