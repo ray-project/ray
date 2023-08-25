@@ -218,7 +218,6 @@ steps:
             - py311
           type:
             - cpu
-            - gpu
             - cu115
             - cu116
             - cu117
@@ -249,7 +248,8 @@ steps:
             - py311
           type:
             - cpu
-            - gpu
+            - cu118 # gpu
+            - cu121
       retry:
         automatic:
           limit: 1
@@ -270,11 +270,18 @@ steps:
       matrix:
         setup:
           py:
+            - py37
             - py38
             - py39
+            - py310
+            - py311
           type:
             - cpu
-            - gpu
+            - cu115
+            - cu116
+            - cu117
+            - cu118
+            - cu121
       retry:
         automatic:
           limit: 1
@@ -295,9 +302,11 @@ steps:
           py:
             - py38
             - py39
+            - py311
           type:
             - cpu
-            - gpu
+            - cu118 #gpu
+            - cu121
       retry:
         automatic:
           limit: 1

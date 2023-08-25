@@ -24,9 +24,6 @@ fi
 # Needs to sync with ci/build/build-docker-images.py
 if [[ "${IMAGE_TYPE}" == "cpu" ]]; then
     BASE_IMAGE="ubuntu:focal"
-elif [[ "${IMAGE_TYPE}" == "gpu" ]]; then
-    # TODO(can): de-duplicate with cu118
-    BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04"
 elif [[ "${IMAGE_TYPE}" == "cu115" ]]; then
     BASE_IMAGE="nvidia/cuda:11.5.2-cudnn8-devel-ubuntu20.04"
 elif [[ "${IMAGE_TYPE}" == "cu116" ]]; then

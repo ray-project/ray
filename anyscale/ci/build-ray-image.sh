@@ -4,6 +4,7 @@ set -euo pipefail
 
 PYTHON_VERSION_CODE="$1"
 IMAGE_TYPE="$2"
+ML_CUDA_VERSION="cu118"
 
 if [[ "$(uname -m)" == "x86_64" ]]; then
     HOSTTYPE="x86_64"
@@ -86,6 +87,11 @@ if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
     DEST_COMMIT_IMAGE="${RUNTIME_REPO}:${SHORT_COMMIT}-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}${IMAGE_SUFFIX}"
     docker tag "${DEST_IMAGE}" "${DEST_COMMIT_IMAGE}"
     docker push "${DEST_COMMIT_IMAGE}"
+    if [[ "${IMAGE_TYPE}" == "${ML_CUDA_VERSION}" ]]; then
+        DEST_ALIAS_IMAGE="${RUNTIME_REPO}:${SHORT_COMMIT}-${PYTHON_VERSION_CODE}-gpu${IMAGE_SUFFIX}"
+        docker tag "${DEST_IMAGE}" "${DEST_ALIAS_IMAGE}"
+        docker push "${DEST_ALIAS_IMAGE}"
+    fi
 fi
 
 # This retagging is required because the Dockerfile hardcodes the base image.
@@ -133,6 +139,11 @@ if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
     DEST_COMMIT_ML_IMAGE="${RUNTIME_ML_REPO}:${SHORT_COMMIT}-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}${IMAGE_SUFFIX}"
     docker tag "${DEST_ML_IMAGE}" "${DEST_COMMIT_ML_IMAGE}"
     docker push "${DEST_COMMIT_ML_IMAGE}"
+    if [[ "${IMAGE_TYPE}" == "${ML_CUDA_VERSION}" ]]; then
+        DEST_ALIAS_IMAGE="${RUNTIME_ML_REPO}:${SHORT_COMMIT}-${PYTHON_VERSION_CODE}-gpu${IMAGE_SUFFIX}"
+        docker tag "${DEST_IMAGE}" "${DEST_ALIAS_IMAGE}"
+        docker push "${DEST_ALIAS_IMAGE}"
+    fi
 fi
 
 buildkite-agent annotate --style=info \
