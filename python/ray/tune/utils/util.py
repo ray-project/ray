@@ -674,20 +674,9 @@ def validate_save_restore(
     """
     assert ray.is_initialized(), "Need Ray to be initialized."
 
-    from ray.train._internal.storage import _use_storage_context, StorageContext
-
-    storage = None
-    if _use_storage_context():
-        tmpdir = tempfile.mkdtemp()
-        storage = StorageContext(
-            storage_path=tmpdir,
-            experiment_dir_name="validate_save_restore",
-            trial_dir_name="val1",
-        )
-
     remote_cls = ray.remote(num_gpus=num_gpus)(trainable_cls)
-    trainable_1 = remote_cls.remote(config=config, storage=storage)
-    trainable_2 = remote_cls.remote(config=config, storage=storage)
+    trainable_1 = remote_cls.remote(config=config)
+    trainable_2 = remote_cls.remote(config=config)
 
     from ray.air.constants import TRAINING_ITERATION
 
