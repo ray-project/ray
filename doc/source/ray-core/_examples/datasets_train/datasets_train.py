@@ -14,6 +14,7 @@ import os
 import sys
 import time
 from typing import Tuple
+from tempfile import TemporaryDirectory
 
 import boto3
 import mlflow
@@ -464,19 +465,20 @@ def train_func(config):
         )
 
         # Checkpoint model.
-        checkpoint = Checkpoint.from_dict(dict(model=net.state_dict()))
+        with TemporaryDirectory() as tmpdir:
+            torch.save(net.state_dict(), os.path.join(tmpdir, "checkpoint.pt"))
 
-        # Record and log stats.
-        print(f"train report on {train.get_context().get_world_rank()}")
-        train.report(
-            dict(
-                train_acc=train_acc,
-                train_loss=train_running_loss,
-                test_acc=test_acc,
-                test_loss=test_running_loss,
-            ),
-            checkpoint=checkpoint,
-        )
+            # Record and log stats.
+            print(f"train report on {train.get_context().get_world_rank()}")
+            train.report(
+                dict(
+                    train_acc=train_acc,
+                    train_loss=train_running_loss,
+                    test_acc=test_acc,
+                    test_loss=test_running_loss,
+                ),
+                checkpoint=Checkpoint.from_directory(tmpdir),
+            )
 
 
 if __name__ == "__main__":
@@ -640,7 +642,9 @@ if __name__ == "__main__":
         dataset_config=DataConfig(datasets_to_split=["train", "test"]),
     )
     results = trainer.fit()
-    state_dict = results.checkpoint.to_dict()["model"]
+
+    with results.checkpoint.as_directory() as tmpdir:
+        state_dict = torch.load(os.path.join(tmpdir, "checkpoint.pt"))
 
     def load_model_func():
         num_layers = config["num_layers"]
