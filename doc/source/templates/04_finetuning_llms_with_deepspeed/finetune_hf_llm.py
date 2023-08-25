@@ -77,7 +77,6 @@ def get_pretrained_path(model_id: str):
 
 
 def get_tokenizer(model_name, special_tokens):
-
     pretrained_path = get_pretrained_path(model_name)
     # Context for legacy=True: https://github.com/huggingface/transformers/issues/25176
     tokenizer = AutoTokenizer.from_pretrained(pretrained_path, legacy=True)
@@ -284,7 +283,6 @@ def training_function(kwargs: dict):
         print("Number of batches on main process", train_ds_len // batch_size)
 
     for epoch in range(num_epochs):
-
         fwd_time_sum, bwd_time_sum, optim_step_time_sum = 0, 0, 0
         s_epoch = time.time()
         model.train()
@@ -298,7 +296,6 @@ def training_function(kwargs: dict):
         for step, batch in tqdm.tqdm(
             enumerate(train_dataloader), total=train_ds_len // batch_size + 1
         ):
-
             # We could avoid this line since we set the accelerator with
             # `device_placement=True`.
             with accelerator.accumulate(model):
@@ -461,7 +458,6 @@ def training_function(kwargs: dict):
 
 
 def parse_args():
-
     parser = argparse.ArgumentParser(description="Simple example of training script.")
     parser.add_argument(
         "--mx",
@@ -524,7 +520,10 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=5e-6, help="Learning rate to use.")
 
     parser.add_argument(
-        "--ctx-len", type=int, default=512, help="Learning rate to use."
+        "--ctx-len",
+        type=int,
+        default=512,
+        help="Maximum context length for the model input sequences.",
     )
 
     parser.add_argument(
@@ -545,7 +544,6 @@ def parse_args():
 
 
 def main():
-
     args = parse_args()
 
     if not args.output_dir:
