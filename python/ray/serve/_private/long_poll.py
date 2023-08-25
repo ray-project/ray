@@ -46,9 +46,6 @@ class LongPollNamespace(Enum):
     ROUTE_TABLE = auto()
 
 
-T, Diff = Any, Any
-
-
 class LongPollNamespacePartialUpdateInterface:
     """Interface for partial updates in the LongPollClient and LongPollHost.
 
@@ -60,6 +57,8 @@ class LongPollNamespacePartialUpdateInterface:
     coalesced into a single diff using `join_diffs` Each LongPollNamespace
     option must have corresponding `diff`, `join`, and `join_diffs` methods.
     """
+
+    T, Diff = Any, Any
 
     @staticmethod
     def diff(base_obj: T, updated_obj: T) -> Diff:
@@ -139,9 +138,16 @@ class LongPollNamespaceDiffConfig:
     # The number of diffs to store for this namespace.
     num_diffs_stored: int
 
-    # The interface to use when calculating diffs.
+    # The class containing the interface to use when calculating diffs.
     # Can be None only if num_diffs_stored is 0.
-    partial_update_methods: Optional[LongPollNamespacePartialUpdateInterface]
+    partial_update_method_class: Optional[type[LongPollNamespacePartialUpdateInterface]]
+
+
+LONG_POLL_NAMESPACE_DIFF_CONFIGS = {
+    LongPollNamespace.RUNNING_REPLICAS: LongPollNamespaceDiffConfig(
+        num_diffs_stored=5, partial_update_methods=RunningReplicasPartialUpdate
+    )
+}
 
 
 @dataclass
