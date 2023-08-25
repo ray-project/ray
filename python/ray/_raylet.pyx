@@ -4392,6 +4392,10 @@ cdef class CoreWorker:
         return tasks_count
 
     def set_get_async_callback(self, ObjectRef object_ref, callback):
+        # NOTE: we need to manually increment the Python reference count to avoid the
+        # callback object being garbage collected before it's called by the core worker.
+        # This means we *must* guarantee that the ref is manually decremented to avoid
+        # a leak.
         cpython.Py_INCREF(callback)
         CCoreWorkerProcess.GetCoreWorker().GetAsync(
             object_ref.native(),
@@ -4561,6 +4565,8 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         py_callback = <object>user_callback
         py_callback(result)
     finally:
+        # NOTE: we manually increment the Python reference count of the callback when
+        # registering it in the core worker, so we must decrement here to avoid a leak.
         cpython.Py_DECREF(py_callback)
 
 
