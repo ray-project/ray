@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
+
 .. |tensorflow| image:: images/tensorflow.png
     :class: inline-figure
     :width: 16
@@ -11,12 +13,14 @@
     :width: 16
 
 
+.. _rlmodule-guide:
+
 RL Modules (Alpha)
 ==================
 
 .. note::
 
-    This is an experimental module that serves as a general replacement for ModelV2, and is subject to change. It will eventually match the functionality of the previous stack. If you only use high-level RLlib APIs such as :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` you should not experience siginficant changes, except for a few new parameters to the configuration object. If you've used custom models or policies before, you'll need to migrate them to the new modules. Check the Migration guide for more information.
+    This is an experimental module that serves as a general replacement for ModelV2, and is subject to change. It will eventually match the functionality of the previous stack. If you only use high-level RLlib APIs such as :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` you should not experience significant changes, except for a few new parameters to the configuration object. If you've used custom models or policies before, you'll need to migrate them to the new modules. Check the Migration guide for more information.
 
     The table below shows the list of migrated algorithms and their current supported features, which will be updated as we progress.
 
@@ -33,19 +37,19 @@ RL Modules (Alpha)
        * - **PPO**
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
-         - |pytorch|
+         - |pytorch| |tensorflow|
          -
          - |pytorch|
        * - **Impala**
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
-         - |pytorch|
+         - |pytorch| |tensorflow|
          -
          - |pytorch|
        * - **APPO**
-         - |tensorflow|
-         - |tensorflow|
-         - 
+         - |pytorch| |tensorflow|
+         - |pytorch| |tensorflow|
+         - |pytorch| |tensorflow|
          - 
          - 
 
@@ -140,7 +144,93 @@ The minimum requirement is for sub-classes of :py:class:`~ray.rllib.core.rl_modu
 
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`: Forward pass for exploration.
 
-Also the class's constrcutor requires a dataclass config object called `~ray.rllib.core.rl_module.rl_module.RLModuleConfig` which contains the following fields:
+For your custom :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`
+methods, you must return a dictionary that either contains the key "actions" and/or the key "action_dist_inputs".
+
+If you return the "actions" key:
+
+- RLlib will use the actions provided thereunder as-is.
+- If you also returned the "action_dist_inputs" key: RLlib will also create a :py:class:`~ray.rllib.models.distributions.Distribution` object from the distribution parameters under that key and - in the case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` - compute action probs and logp values from the given actions automatically.
+
+If you do not return the "actions" key:
+
+- You must return the "action_dist_inputs" key instead from your :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` methods.
+- RLlib will create a :py:class:`~ray.rllib.models.distributions.Distribution` object from the distribution parameters under that key and sample actions from the thus generated distribution.
+- In the case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration`, RLlib will also compute action probs and logp values from the sampled actions automatically.
+
+.. note::
+
+    In the case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`,
+    the generated distributions (from returned key "action_dist_inputs") will always be made deterministic first via
+    the :py:meth:`~ray.rllib.models.distributions.Distribution.to_deterministic` utility before a possible action sample step.
+    Thus, for example, sampling from a Categorical distribution will be reduced to simply selecting the argmax actions from the distribution's logits/probs.
+
+Commonly used distribution implementations can be found under ``ray.rllib.models.tf.tf_distributions`` for tensorflow and
+``ray.rllib.models.torch.torch_distributions`` for torch. You can choose to return determinstic actions, by creating a determinstic distribution instance.
+
+
+.. tab-set::
+
+    .. tab-item:: Returning "actions" key
+
+        .. code-block:: python
+
+            """
+            An RLModule whose forward_exploration/inference methods return the
+            "actions" key.
+            """
+
+            class MyRLModule(TorchRLModule):
+                ...
+
+                def _forward_inference(self, batch):
+                    ...
+                    return {
+                        "actions": ...  # actions will be used as-is
+                    }
+
+                def _forward_exploration(self, batch):
+                    ...
+                    return {
+                        "actions": ...  # actions will be used as-is (no sampling step!)
+                        "action_dist_inputs": ...  # optional: If provided, will be used to compute action probs and logp.
+                    }
+
+    .. tab-item:: Not returning "actions" key
+
+        .. code-block:: python
+
+            """
+            An RLModule whose forward_exploration/inference methods do NOT return the
+            "actions" key.
+            """
+
+            class MyRLModule(TorchRLModule):
+                ...
+
+                def _forward_inference(self, batch):
+                    ...
+                    return {
+                        # RLlib will:
+                        # - Generate distribution from these parameters.
+                        # - Convert distribution to a deterministic equivalent.
+                        # - "sample" from the deterministic distribution.
+                        "action_dist_inputs": ...
+                    }
+
+                def _forward_exploration(self, batch):
+                    ...
+                    return {
+                        # RLlib will:
+                        # - Generate distribution from these parameters.
+                        # - "sample" from the (stochastic) distribution.
+                        # - Compute action probs/logs automatically using the sampled
+                        #   actions and the generated distribution object.
+                        "action_dist_inputs": ...
+                    }
+
+
+Also the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` class's constrcutor requires a dataclass config object called `~ray.rllib.core.rl_module.rl_module.RLModuleConfig` which contains the following fields:
 
 - :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.observation_space`: The observation space of the environment (either processed or raw).
 - :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.action_space`: The action space of the environment.
@@ -216,7 +306,6 @@ In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the 
 To learn more, see the `SpecType` documentation.
 
 
-
 Writing Custom Multi-Agent RL Modules (Advanced)
 ------------------------------------------------
 
@@ -227,14 +316,11 @@ The :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule` offers 
 
 The following example creates a custom multi-agent RL module with underlying modules. The modules share an encoder, which gets applied to the global part of the observations space. The local part passes through a separate encoder, specific to each policy. 
 
-.. tab-set::
 
-    .. tab-item:: Multi agent with shared encoder (Torch)
-
-        .. literalinclude:: doc_code/rlmodule_guide.py
-            :language: python
-            :start-after: __write-custom-marlmodule-shared-enc-begin__
-            :end-before: __write-custom-marlmodule-shared-enc-end__
+.. literalinclude:: doc_code/rlmodule_guide.py
+    :language: python
+    :start-after: __write-custom-marlmodule-shared-enc-begin__
+    :end-before: __write-custom-marlmodule-shared-enc-end__
 
 
 To construct this custom multi-agent RL module, pass the class to the :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` constructor. Also, pass the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec` for each agent because RLlib requires the observation, action spaces, and model hyper-parameters for each agent.
@@ -248,7 +334,11 @@ To construct this custom multi-agent RL module, pass the class to the :py:class:
 Extending Existing RLlib RL Modules
 -----------------------------------
 
-RLlib provides a number of RL Modules for different frameworks (e.g., PyTorch, TensorFlow, etc.). Extend these modules by inheriting from them and overriding the methods you need to customize. For example, extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. Then pass the new customized class into the algorithm configuration.
+RLlib provides a number of RL Modules for different frameworks (e.g., PyTorch, TensorFlow, etc.).
+To customize existing RLModules you can change the RLModule directly by inheriting the class and changing the
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` or other methods.
+For example, extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization.
+Then pass the new customized class into the appropriate :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`.
 
 There are two possible ways to extend existing RL Modules:
 
@@ -256,7 +346,10 @@ There are two possible ways to extend existing RL Modules:
 
     .. tab-item:: Inheriting existing RL Modules
 
-        One way to extend existing RL Modules is to inherit from them and override the methods you need to customize. For example, extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. Then pass the new customized class into the algorithm configuration to use the PPO algorithm to optimize your custom RL Module.
+        The default way to extend existing RL Modules is to inherit from them and override the methods you need to customize.
+        Then pass the new customized class into the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` to optimize your custom RL Module.
+        This is the preferred approach. With it, we can define our own models explicitly within a given RL Module
+        and don't need to interact with a Catalog, so you don't need to learn about Catalog.
 
         .. code-block:: python
 
@@ -271,19 +364,39 @@ There are two possible ways to extend existing RL Modules:
                 rl_module_spec=SingleAgentRLModuleSpec(module_class=MyPPORLModule)
             )
 
+        A concrete example: If you want to replace the default encoder that RLlib builds for torch, PPO and a given observation space,
+        you can override :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule`'s
+        :py:meth:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule.__init__` to create your custom
+        encoder instead of the default one. We do this in the following example.
+
+        .. literalinclude:: ../../../rllib/examples/rl_module/mobilenet_rlm.py
+                :language: python
+                :start-after: __sphinx_doc_begin__
+                :end-before: __sphinx_doc_end__
+
 
     .. tab-item:: Extending RL Module Catalog
 
-        Another way to customize your module is by extending its :py:class:`~ray.rllib.core.models.catalog.Catalog`. The :py:class:`~ray.rllib.core.models.catalog.Catalog` is a component that defines the default architecture and behavior of a model based on factors such as ``observation_space``, ``action_space``, etc. To modify sub-components of an existing RL Module, extend the corresponding Catalog class.
+        An advanced way to customize your module is by extending its :py:class:`~ray.rllib.core.models.catalog.Catalog`.
+        The Catalog is a component that defines the default models and other sub-components for RL Modules based on factors such as ``observation_space``, ``action_space``, etc.
+        For more information on the :py:class:`~ray.rllib.core.models.catalog.Catalog` class, refer to the `Catalog user guide <rllib-catalogs.html>`__.
+        By modifying the Catalog, you can alter what sub-components are being built for existing RL Modules.
+        This approach is useful mostly if you want your custom component to integrate with the decision trees that the Catalogs represent.
+        The following use cases are examples of what may require you to extend the Catalogs:
 
-        For instance, to adapt the existing ``PPORLModule`` for a custom graph observation space not supported by RLlib out-of-the-box, extend the :py:class:`~ray.rllib.core.models.catalog.Catalog` class used to create the ``PPORLModule`` and override the method responsible for returning the encoder component to ensure that your custom encoder replaces the default one initially provided by RLlib. For more information on the :py:class:`~ray.rllib.core.models.catalog.Catalog` class, refer to the `Catalog user guide <rllib-catalogs.html>`__.
+            - Choosing a custom model only for a certain observation space.
+            - Using a custom action distribution in multiple distinct Algorithms.
+            - Reusing your custom component in many distinct RL Modules.
 
+        For instance, to adapt existing ``PPORLModules`` for a custom graph observation space not supported by RLlib out-of-the-box,
+        extend the :py:class:`~ray.rllib.core.models.catalog.Catalog` class used to create the ``PPORLModule``
+        and override the method responsible for returning the encoder component to ensure that your custom encoder replaces the default one initially provided by RLlib.
 
         .. code-block:: python
 
             class MyAwesomeCatalog(PPOCatalog):
 
-                def get_actor_critic_encoder_config():
+                def build_actor_critic_encoder():
                     # create your awesome graph encoder here and return it
                     pass
 
@@ -293,6 +406,17 @@ There are two possible ways to extend existing RL Modules:
                 rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyAwesomeCatalog)
             )
 
+
+Checkpointing RL Modules
+------------------------
+
+RL Modules can be checkpointed with their two methods :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.save_to_checkpoint` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.from_checkpoint`.
+The following example shows how these methods can be used outside of, or in conjunction with, an RLlib Algorithm.
+
+.. literalinclude:: doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __checkpointing-begin__
+        :end-before: __checkpointing-end__
 
 Migrating from Custom Policies and Models to RL Modules
 -------------------------------------------------------
@@ -426,7 +550,11 @@ What your customization could have looked like before:
                     return None, None, None
 
 
-All of the ``Policy.compute_***`` functions expect that `~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and `~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` return a dictionary that contains the key "action_dist" mapping to a ``ray.rllib.models.distributions.Distribution`` instance. Commonly used distribution implementations can be found under ``ray.rllib.models.tf.tf_distributions`` for tensorflow and ``ray.rllib.models.torch.torch_distributions`` for torch. You can choose to return determinstic actions, by creating a determinstic distribution instance. See `Writing Custom Single Agent RL Modules`_ for more details on how to implement your own custom RL Module.
+All of the ``Policy.compute_***`` functions expect that
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`
+return a dictionary that either contains the key "actions" and/or the key "action_dist_inputs".
+
+See `Writing Custom Single Agent RL Modules`_ for more details on how to implement your own custom RL Modules.
 
 .. tab-set::
 
@@ -452,11 +580,3 @@ All of the ``Policy.compute_***`` functions expect that `~ray.rllib.core.rl_modu
 
                 def _forward_exploration(self, batch):
                     ...
-
-
-Notable TODOs
--------------
-
-- [] Add support for RNNs.
-- [] Checkpointing.
-- [] End to end example for custom RL Modules extending PPORLModule (e.g. LLM)

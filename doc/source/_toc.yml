@@ -11,6 +11,11 @@ parts:
         title: "Installation"
       - file: ray-overview/use-cases
         title: "Use Cases"
+        sections:
+          - file: ray-air/getting-started
+
+      - file: ray-overview/examples
+        title: "Example Gallery"
       - file: ray-overview/ray-libraries
         title: "Ecosystem"
 
@@ -39,107 +44,59 @@ parts:
               - file: ray-core/examples/map_reduce
           - file: ray-core/api/index
 
-      - file: ray-air/getting-started
-        title: "Ray AI Runtime (AIR)"
-        sections:
-          - file: ray-air/key-concepts
-          - file: ray-air/user-guides
-            sections:
-              - file: ray-air/preprocessors
-              - file: ray-air/trainers
-              - file: ray-air/check-ingest
-              - file: ray-air/tuner
-              - file: ray-air/predictors
-              - file: ray-air/computer-vision
-              - file: ray-air/examples/serving_guide
-              - file: ray-air/deployment
-          - file: ray-air/examples/index
-            sections:
-              - file: ray-air/examples/opt_deepspeed_batch_inference
-              - file: ray-air/examples/torch_image_example
-              - file: ray-air/examples/torch_detection
-              - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
-              - file: ray-air/examples/convert_existing_tf_code_to_ray_air
-              - file: ray-air/examples/tfx_tabular_train_to_serve
-              - file: ray-air/examples/huggingface_text_classification
-              - file: ray-air/examples/sklearn_example
-              - file: ray-air/examples/xgboost_example
-              - file: ray-air/examples/analyze_tuning_results
-              - file: ray-air/examples/lightgbm_example
-              - file: ray-air/examples/torch_incremental_learning
-              - file: ray-air/examples/rl_serving_example
-              - file: ray-air/examples/rl_online_example
-              - file: ray-air/examples/rl_offline_example
-              - file: ray-air/examples/upload_to_comet_ml
-              - file: ray-air/examples/upload_to_wandb
-              - file: ray-air/examples/feast_example
-              - file: ray-air/examples/automl_with_ray_air
-              - file: ray-air/examples/batch_tuning
-              - file: ray-air/examples/batch_forecasting
-              - file: ray-air/examples/pytorch_resnet_batch_prediction
-              - file: ray-air/examples/stablediffusion_batch_prediction
-              - file: ray-air/examples/gptj_deepspeed_fine_tuning
-              - file: ray-air/examples/gptj_batch_prediction
-              - file: ray-air/examples/gptj_serving
-              - file: ray-air/examples/dreambooth_finetuning
-          - file: ray-air/api/api
-          - file: ray-air/benchmarks
-
       - file: data/data
         title: Ray Data
         sections:
-          - file: data/getting-started
+          - file: data/overview
+            title: Overview
           - file: data/key-concepts
           - file: data/user-guide
           - file: data/examples/index
-            sections:
-              - file: data/examples/nyc_taxi_basic_processing
-                title: Processing the NYC taxi dataset
-              - file: data/examples/batch_training
-                title: Batch Training with Ray Data
-              - file: data/examples/ocr_example
-                title: Scaling OCR with Ray Data
-              - file: data/examples/random-access
-          - file: data/faq
           - file: data/api/api
-          - file: data/glossary
-          - file: data/integrations
+          - file: data/data-internals
 
       - file: train/train
         title: Ray Train
         sections:
-          - file: train/getting-started
-            title: "Getting Started"
           - file: train/key-concepts
-            title: "Key Concepts"
-          - file: train/user-guides
-            title: "User Guides"
+            title: Key Concepts
+          - file: train/getting-started-pytorch
+            title: PyTorch Guide
+          - file: train/getting-started-pytorch-lightning
+            title: PyTorch Lightning Guide
+          - file: train/getting-started-transformers
+            title: Hugging Face Transformers Guide
+          - file: train/more-frameworks
             sections:
-              - file: train/config_guide
-                title: "Configuring Ray Train"
-              - file: train/dl_guide
-                title: "Deep Learning Guide"
-              - file: train/gbdt
-                title: "XGBoost/LightGBM guide"
-              - file: train/architecture
-                title: "Ray Train Architecture"
+              - file: train/huggingface-accelerate
+                title: Hugging Face Accelerate Guide
+              - file: train/deepspeed
+                title: DeepSpeed Guide
+              - file: train/distributed-tensorflow-keras
+                title: TensorFlow and Keras Guide
+              - file: train/distributed-xgboost-lightgbm
+                title: XGBoost and LightGBM Guide
+              - file: train/horovod
+                title: Horovod Guide
+          - file: train/user-guides
+            title: User Guides
           - file: train/examples
             title: "Examples"
             sections:
               - file: train/examples/pytorch/torch_fashion_mnist_example
                 title: "PyTorch Fashion MNIST Example"
+              - file: train/examples/transformers/transformers_torch_trainer_basic
+                title: "Hugging Face Transformers Basic Example"
               - file: train/examples/lightning/lightning_mnist_example
                 title: "PyTorch Lightning Basic Example"
               - file: train/examples/lightning/lightning_cola_advanced
                 title: "PyTorch Lightning Advanced Example"
-              - file: train/examples/transformers/transformers_example
-                title: "HF Transformers Example"
+              - file: train/examples/lightning/lightning_exp_tracking
+                title: "PyTorch Lightning with Experiment Tracking Tools"
               - file: train/examples/tf/tensorflow_mnist_example
                 title: "TensorFlow MNIST Example"
               - file: train/examples/horovod/horovod_example
                 title: "Horovod Example"
-              - file: train/examples/mlflow_fashion_mnist_example
-                title: "MLflow Callback Example"
               - file: train/examples/tf/tune_tensorflow_mnist_example
                 title: "Tune & TensorFlow Example"
               - file: train/examples/pytorch/tune_cifar_torch_pbt_example
@@ -148,8 +105,16 @@ parts:
                 title: "Torch Data Prefetching Benchmark"
               - file: train/examples/pytorch/pytorch_resnet_finetune
                 title: "PyTorch Finetuning ResNet Example"
-          - file: train/faq
+              - file: train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune
+                title: "Fine-tune Vicuna-13B with DeepSpeed and PyTorch Lightning"
+          - file: train/internals/index
+            title: "Internals"
+            sections:
+              - file: train/internals/architecture
+              - file: train/internals/benchmarks
+              - file: train/internals/environment-variables
           - file: train/api/api
+          - file: train/faq
 
       - file: tune/index
         title: Ray Tune
@@ -197,8 +162,6 @@ parts:
                     title: "PyTorch Example"
                   - file: tune/examples/tune-pytorch-lightning
                     title: "PyTorch Lightning Example"
-                  - file: tune/examples/mxnet_example
-                    title: "MXNet Example"
                   - file: tune/examples/tune-serve-integration-mnist
                     title: "Ray Serve Example"
                   - file: tune/examples/pbt_ppo_example
@@ -227,8 +190,6 @@ parts:
                     title: "Ax Example"
                   - file: tune/examples/dragonfly_example
                     title: "Dragonfly Example"
-                  - file: tune/examples/skopt_example
-                    title: "Skopt Example"
                   - file: tune/examples/hyperopt_example
                     title: "HyperOpt Example"
                   - file: tune/examples/bayesopt_example
@@ -241,12 +202,8 @@ parts:
                     title: "Nevergrad Example"
                   - file: tune/examples/optuna_example
                     title: "Optuna Example"
-                  - file: tune/examples/zoopt_example
-                    title: "ZOOpt Example"
                   - file: tune/examples/sigopt_example
                     title: "SigOpt Example"
-                  - file: tune/examples/hebo_example
-                    title: "HEBO Example"
               - file: tune/examples/other-examples
                 title: "Other Examples"
               - file: tune/examples/exercises
@@ -259,25 +216,37 @@ parts:
         sections:
           - file: serve/getting_started
           - file: serve/key-concepts
-          - file: serve/user-guide
+          - file: serve/develop-and-deploy
+          - file: serve/model_composition
+          - file: serve/deploy-many-models/index
             sections:
-              - file: serve/http-guide
-              - file: serve/scaling-and-resource-allocation
-              - file: serve/model_composition
-              - file: serve/dev-workflow
-              - file: serve/multi-app
-              - file: serve/production-guide/index
-                sections:
-                  - file: serve/production-guide/config
-                  - file: serve/production-guide/deploy-vm
-                  - file: serve/production-guide/kubernetes
-                  - file: serve/production-guide/monitoring
-                  - file: serve/production-guide/fault-tolerance
-              - file: serve/performance
-              - file: serve/handling-dependencies
-              - file: serve/managing-java-deployments
-              - file: serve/migration
-              - file: serve/direct-ingress
+            - file: serve/deploy-many-models/multi-app
+            - file: serve/deploy-many-models/model-multiplexing
+          - file: serve/configure-serve-deployment
+          - file: serve/http-guide
+          - file: serve/production-guide/index
+            title: Production Guide
+            sections:
+              - file: serve/production-guide/config
+              - file: serve/production-guide/kubernetes
+              - file: serve/production-guide/docker
+              - file: serve/production-guide/fault-tolerance
+              - file: serve/production-guide/handling-dependencies
+              - file: serve/production-guide/best-practices
+          - file: serve/monitoring
+          - file: serve/scaling-and-resource-allocation
+          - file: serve/advanced-guides/index
+            sections:
+              - file: serve/advanced-guides/app-builder-guide
+              - file: serve/advanced-guides/performance
+              - file: serve/advanced-guides/dyn-req-batch
+              - file: serve/advanced-guides/inplace-updates
+              - file: serve/advanced-guides/dev-workflow
+              - file: serve/advanced-guides/deployment-graphs
+              - file: serve/advanced-guides/direct-ingress
+              - file: serve/advanced-guides/managing-java-deployments
+              - file: serve/advanced-guides/migration
+              - file: serve/advanced-guides/deploy-vm
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:
@@ -307,6 +276,8 @@ parts:
               - file: rllib/rllib-catalogs
               - file: rllib/rllib-connector
               - file: rllib/rllib-rlmodule
+              - file: rllib/rllib-learner
+              - file: rllib/rllib-torch2x
               - file: rllib/rllib-fault-tolerance
               - file: rllib/rllib-dev
               - file: rllib/rllib-cli
@@ -319,7 +290,10 @@ parts:
           - file: ray-more-libs/joblib
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
-          - file: ray-more-libs/using-ray-with-pytorch-lightning
+          - file: ray-more-libs/dask-on-ray
+          - file: ray-more-libs/raydp
+          - file: ray-more-libs/mars-on-ray
+          - file: ray-more-libs/modin/index
           - file: workflows/index
             title: Ray Workflows (Alpha)
             sections:
@@ -365,6 +339,7 @@ parts:
               - file: cluster/vms/user-guides/launching-clusters/index
               - file: cluster/vms/user-guides/large-cluster-best-practices
               - file: cluster/vms/user-guides/configuring-autoscaling
+              - file: cluster/vms/user-guides/logging
               - file: cluster/vms/user-guides/community/index
                 title: Community-supported Cluster Managers
                 sections:
@@ -376,13 +351,40 @@ parts:
               sections:
               - file: cluster/vms/examples/ml-example
             - file: cluster/vms/references/index
+          - file: cluster/metrics
+          - file: cluster/configure-manage-dashboard
           - file: cluster/running-applications/index
             title: Applications Guide
           - file: cluster/faq
           - file: cluster/package-overview
 
-      - file: ray-observability/monitoring-debugging/monitoring-debugging
+      - file: ray-observability/index
         title: "Monitoring and Debugging"
+        sections:
+          - file: ray-observability/getting-started
+          - file: ray-observability/key-concepts
+          - file: ray-observability/user-guides/index
+            title: User Guides
+            sections:
+              - file: ray-observability/user-guides/debug-apps/index
+                title: Debugging Applications
+                sections:
+                  - file: ray-observability/user-guides/debug-apps/general-debugging
+                  - file: ray-observability/user-guides/debug-apps/debug-memory
+                  - file: ray-observability/user-guides/debug-apps/debug-hangs
+                  - file: ray-observability/user-guides/debug-apps/debug-failures
+                  - file: ray-observability/user-guides/debug-apps/optimize-performance
+                  - file: ray-observability/user-guides/debug-apps/ray-debugging
+              - file: ray-observability/user-guides/cli-sdk
+              - file: ray-observability/user-guides/configure-logging
+              - file: ray-observability/user-guides/add-app-metrics
+              - file: ray-observability/user-guides/ray-tracing
+          - file: ray-observability/reference/index
+            title: Reference
+            sections:
+              - file: ray-observability/reference/api
+              - file: ray-observability/reference/cli
+              - file: ray-observability/reference/system-metrics
 
       - file: ray-references/api
         title: References
@@ -400,5 +402,7 @@ parts:
               - file: ray-contribute/writing-code-snippets
               - file: ray-contribute/fake-autoscaler
               - file: ray-core/examples/testing-tips
+              - file: ray-contribute/debugging.rst
+              - file: ray-contribute/profiling.rst
           - file: ray-core/configure
           - file: ray-contribute/whitepaper

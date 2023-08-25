@@ -1,8 +1,10 @@
 import os
 import threading
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
+import ray
 from ray._private.ray_constants import env_integer
+from ray.data._default_config import DEFAULT_FILE_METADATA_SHUFFLER
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -13,7 +15,7 @@ if TYPE_CHECKING:
 _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
 
-# An estimate of what fraction of the object store a Datastream can use without too high
+# An estimate of what fraction of the object store a Dataset can use without too high
 # a risk of triggering spilling. This is used to generate user warnings only.
 ESTIMATED_SAFE_MEMORY_FRACTION = 0.25
 
@@ -21,7 +23,7 @@ ESTIMATED_SAFE_MEMORY_FRACTION = 0.25
 # We choose 512MiB as 8x less than the typical memory:core ratio of 4:1.
 DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
 
-# Datastream will avoid creating blocks smaller than this size in bytes on read.
+# Dataset will avoid creating blocks smaller than this size in bytes on read.
 # This takes precedence over DEFAULT_MIN_PARALLELISM.
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
@@ -30,18 +32,14 @@ DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 # which is very sensitive to the buffer size.
 DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 
-# Whether dynamic block splitting is enabled.
-# NOTE: disable dynamic block splitting when using Ray client.
-DEFAULT_BLOCK_SPLITTING_ENABLED = True
-
 # Whether pandas block format is enabled.
 # TODO (kfstorm): Remove this once stable.
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
-# Whether to enable stage-fusion optimizations for datastream pipelines.
+# Whether to enable stage-fusion optimizations for dataset pipelines.
 DEFAULT_OPTIMIZE_FUSE_STAGES = True
 
-# Whether to enable stage-reorder optimizations for datastream pipelines.
+# Whether to enable stage-reorder optimizations for dataset pipelines.
 DEFAULT_OPTIMIZE_REORDER_STAGES = True
 
 # Whether to furthermore fuse read stages.
@@ -50,7 +48,7 @@ DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True
 # Whether to furthermore fuse prior map tasks with shuffle stages.
 DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
 
-# Minimum amount of parallelism to auto-detect for a datastream. Note that the min
+# Minimum amount of parallelism to auto-detect for a dataset. Note that the min
 # block size config takes precedence over this.
 DEFAULT_MIN_PARALLELISM = 200
 
@@ -62,10 +60,20 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
 
-# The default global scheduling strategy.
-DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
+# The default global scheduling strategy. Note that for tasks with large args,
+# DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS applies.
+DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
-# Whether to use Polars for tabular datastream sorts, groupbys, and aggregations.
+# Default scheduling strategy for tasks with large args. This enables locality-based
+# scheduling in Ray for tasks where arg data transfer is a bottleneck.
+DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS = "DEFAULT"
+
+# Size in bytes after which point task arguments are considered large. Choose a value
+# here at which point data transfer overhead becomes significant in comparison to
+# task scheduling (i.e., low tens of ms).
+DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
+
+# Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
 
 # Whether to use the new executor backend.
@@ -93,21 +101,17 @@ DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 # extension columns.
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 
-# Whether to automatically print Datastream stats after execution.
-# If disabled, users can still manually print stats with Datastream.stats().
+# Whether to automatically print Dataset stats after execution.
+# If disabled, users can still manually print stats with Dataset.stats().
 DEFAULT_AUTO_LOG_STATS = False
 
 # Whether to enable optimizer.
 DEFAULT_OPTIMIZER_ENABLED = bool(
-    int(os.environ.get("RAY_DATA_NEW_EXECUTION_OPTIMIZER", "0"))
+    int(os.environ.get("RAY_DATA_NEW_EXECUTION_OPTIMIZER", "1"))
 )
 
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
-
-# Enable strict schema mode (experimental). In this mode, we only allow structured
-# schemas, and default to numpy as the batch format.
-DEFAULT_STRICT_MODE = bool(int(os.environ.get("RAY_DATA_STRICT_MODE", "1")))
 
 # Set this to True to use the legacy iter_batches codepath prior to 2.4.
 DEFAULT_USE_LEGACY_ITER_BATCHES = False
@@ -132,7 +136,7 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
 
 @DeveloperAPI
 class DataContext:
-    """Singleton for shared Datastream resources and configurations.
+    """Singleton for shared Dataset resources and configurations.
 
     This object is automatically propagated to workers and can be retrieved
     from the driver and remote workers via DataContext.get_current().
@@ -140,7 +144,6 @@ class DataContext:
 
     def __init__(
         self,
-        block_splitting_enabled: bool,
         target_max_block_size: int,
         target_min_block_size: int,
         streaming_read_buffer_size: int,
@@ -153,6 +156,8 @@ class DataContext:
         use_push_based_shuffle: bool,
         pipeline_push_based_shuffle_reduce_tasks: bool,
         scheduling_strategy: SchedulingStrategyT,
+        scheduling_strategy_large_args: SchedulingStrategyT,
+        large_args_threshold: int,
         use_polars: bool,
         new_execution_backend: bool,
         use_streaming_executor: bool,
@@ -166,11 +171,10 @@ class DataContext:
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
         use_legacy_iter_batches: bool,
-        strict_mode: bool,
         enable_progress_bars: bool,
+        file_metadata_shuffler: str,
     ):
         """Private constructor (use get_current() instead)."""
-        self.block_splitting_enabled = block_splitting_enabled
         self.target_max_block_size = target_max_block_size
         self.target_min_block_size = target_min_block_size
         self.streaming_read_buffer_size = streaming_read_buffer_size
@@ -185,6 +189,8 @@ class DataContext:
             pipeline_push_based_shuffle_reduce_tasks
         )
         self.scheduling_strategy = scheduling_strategy
+        self.scheduling_strategy_large_args = scheduling_strategy_large_args
+        self.large_args_threshold = large_args_threshold
         self.use_polars = use_polars
         self.new_execution_backend = new_execution_backend
         self.use_streaming_executor = use_streaming_executor
@@ -195,12 +201,12 @@ class DataContext:
         self.enable_auto_log_stats = enable_auto_log_stats
         self.trace_allocations = trace_allocations
         self.optimizer_enabled = optimizer_enabled
-        # TODO: expose execution options in Datastream public APIs.
+        # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
         self.use_ray_tqdm = use_ray_tqdm
         self.use_legacy_iter_batches = use_legacy_iter_batches
-        self.strict_mode = strict_mode
         self.enable_progress_bars = enable_progress_bars
+        self.file_metadata_shuffler = file_metadata_shuffler
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -209,15 +215,12 @@ class DataContext:
         If the context has not yet been created in this process, it will be
         initialized with default settings.
         """
-        from ray.data._internal.execution.interfaces import ExecutionOptions
 
         global _default_context
 
         with _context_lock:
-
             if _default_context is None:
                 _default_context = DataContext(
-                    block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
                     streaming_read_buffer_size=DEFAULT_STREAMING_READ_BUFFER_SIZE,
@@ -233,6 +236,10 @@ class DataContext:
                     # See https://github.com/ray-project/ray/issues/25412.
                     pipeline_push_based_shuffle_reduce_tasks=True,
                     scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
+                    scheduling_strategy_large_args=(
+                        DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
+                    ),
+                    large_args_threshold=DEFAULT_LARGE_ARGS_THRESHOLD,
                     use_polars=DEFAULT_USE_POLARS,
                     new_execution_backend=DEFAULT_NEW_EXECUTION_BACKEND,
                     use_streaming_executor=DEFAULT_USE_STREAMING_EXECUTOR,
@@ -245,11 +252,11 @@ class DataContext:
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                     optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
-                    execution_options=ExecutionOptions(),
+                    execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
-                    strict_mode=DEFAULT_STRICT_MODE,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
+                    file_metadata_shuffler=DEFAULT_FILE_METADATA_SHUFFLER,
                 )
 
             return _default_context
@@ -258,7 +265,7 @@ class DataContext:
     def _set_current(context: "DataContext") -> None:
         """Set the current context in a remote worker.
 
-        This is used internally by Datastream to propagate the driver context to
+        This is used internally by Dataset to propagate the driver context to
         remote workers used for parallelization.
         """
         global _default_context

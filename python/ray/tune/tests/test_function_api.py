@@ -6,14 +6,20 @@ import tempfile
 import unittest
 
 import ray
+from ray.train import CheckpointConfig
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune.logger import NoopLogger
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import TrainableUtil
-from ray.tune.trainable import with_parameters, wrap_function, FuncCheckpointUtil
-from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.tune.trainable import (
+    with_parameters,
+    wrap_function,
+    FuncCheckpointUtil,
+)
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers import ResourceChangingScheduler
 
 
@@ -90,35 +96,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
             new_trainable.stop()
         assert result[TRAINING_ITERATION] == 10
 
-    def testCheckpointReuseObject(self):
-        """Test that repeated save/restore never reuses same checkpoint dir."""
-
-        def train(config, checkpoint_dir=None):
-            if checkpoint_dir:
-                count = sum(
-                    "checkpoint-" in path for path in os.listdir(checkpoint_dir)
-                )
-                assert count == 1, os.listdir(checkpoint_dir)
-
-            for step in range(20):
-                with tune.checkpoint_dir(step=step) as checkpoint_dir:
-                    path = os.path.join(checkpoint_dir, "checkpoint-{}".format(step))
-                    open(path, "a").close()
-                tune.report(test=step)
-
-        wrapped = wrap_function(train)
-        checkpoint = None
-        for i in range(5):
-            new_trainable = wrapped(logger_creator=self.logger_creator)
-            if checkpoint:
-                new_trainable.restore_from_object(checkpoint)
-            for i in range(2):
-                result = new_trainable.train()
-            checkpoint = new_trainable.save_to_object()
-            new_trainable.stop()
-        self.assertTrue(result[TRAINING_ITERATION] == 10)
-
-    def testCheckpointReuseObjectWithoutTraining(self):
+    def testCheckpointReuseWithoutTraining(self):
         """Test that repeated save/restore never reuses same checkpoint dir."""
 
         def train(config, checkpoint_dir=None):
@@ -138,15 +116,15 @@ class FunctionCheckpointingTest(unittest.TestCase):
         new_trainable = wrapped(logger_creator=self.logger_creator)
         for i in range(2):
             result = new_trainable.train()
-        checkpoint = new_trainable.save_to_object()
+        checkpoint = new_trainable.save()
         new_trainable.stop()
 
         new_trainable2 = wrapped(logger_creator=self.logger_creator)
-        new_trainable2.restore_from_object(checkpoint)
+        new_trainable2.restore(checkpoint)
         new_trainable2.stop()
 
         new_trainable2 = wrapped(logger_creator=self.logger_creator)
-        new_trainable2.restore_from_object(checkpoint)
+        new_trainable2.restore(checkpoint)
         result = new_trainable2.train()
         new_trainable2.stop()
         self.assertTrue(result[TRAINING_ITERATION] == 3)
@@ -196,23 +174,6 @@ class FunctionCheckpointingTest(unittest.TestCase):
             new_trainable.stop()
         self.assertTrue(result[TRAINING_ITERATION] == 1)
 
-    def testMultipleNullMemoryCheckpoints(self):
-        def train(config, checkpoint_dir=None):
-            assert not checkpoint_dir
-            for step in range(10):
-                tune.report(test=step)
-
-        wrapped = wrap_function(train)
-        checkpoint = None
-        for i in range(5):
-            new_trainable = wrapped(logger_creator=self.logger_creator)
-            if checkpoint:
-                new_trainable.restore_from_object(checkpoint)
-            result = new_trainable.train()
-            checkpoint = new_trainable.save_to_object()
-            new_trainable.stop()
-        assert result[TRAINING_ITERATION] == 1
-
     def testFunctionNoCheckpointing(self):
         def train(config, checkpoint_dir=None):
             if checkpoint_dir:
@@ -252,8 +213,8 @@ class FunctionCheckpointingTest(unittest.TestCase):
 
         new_trainable = wrapped(logger_creator=self.logger_creator)
         new_trainable.train()
-        checkpoint_obj = new_trainable.save_to_object()
-        new_trainable.restore_from_object(checkpoint_obj)
+        checkpoint_obj = new_trainable.save()
+        new_trainable.restore(checkpoint_obj)
         checkpoint = new_trainable.save()
 
         new_trainable.stop()
@@ -280,15 +241,14 @@ class FunctionCheckpointingTest(unittest.TestCase):
         new_trainable = wrapped(logger_creator=self.logger_creator)
         new_trainable.train()
         new_trainable.train()
-        checkpoint_obj = new_trainable.save_to_object()
+        checkpoint_obj = new_trainable.save()
         new_trainable.stop()
 
         new_trainable2 = wrapped(logger_creator=self.logger_creator)
-        new_trainable2.restore_from_object(checkpoint_obj)
-        checkpoint_obj = new_trainable2.save_to_object()
+        new_trainable2.restore(checkpoint_obj)
+        checkpoint_obj = new_trainable2.save()
         new_trainable2.train()
         result = new_trainable2.train()
-        assert sum("tmp" in path for path in os.listdir(self.logdir)) == 1
         new_trainable2.stop()
         assert sum("tmp" in path for path in os.listdir(self.logdir)) == 0
         assert result[TRAINING_ITERATION] == 4
@@ -307,9 +267,9 @@ class FunctionApiTest(unittest.TestCase):
             pass
 
         with self.assertRaises(ValueError):
-            tune.run(train, checkpoint_freq=1)
+            tune.run(train, checkpoint_config=CheckpointConfig(checkpoint_frequency=1))
         with self.assertRaises(ValueError):
-            tune.run(train, checkpoint_at_end=True)
+            tune.run(train, checkpoint_config=CheckpointConfig(checkpoint_at_end=True))
 
     def testCheckpointFunctionAtEnd(self):
         def train(config, checkpoint_dir=False):
@@ -348,7 +308,8 @@ class FunctionApiTest(unittest.TestCase):
                 with open(checkpoint_path, "w") as f:
                     f.write("goodbye")
 
-        [trial] = tune.run(train, keep_checkpoints_num=3).trials
+        checkpoint_config = CheckpointConfig(num_to_keep=3)
+        [trial] = tune.run(train, checkpoint_config=checkpoint_config).trials
         assert os.path.exists(os.path.join(trial.checkpoint.dir_or_data, "ckpt.log2"))
 
     def testReuseCheckpoint(self):

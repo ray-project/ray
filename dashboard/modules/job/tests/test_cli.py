@@ -41,6 +41,9 @@ def mock_sdk_client():
         # 'async for' requires an object with __aiter__ method, got MagicMock"
         mock_client().tail_job_logs.return_value = AsyncIterator(range(10))
 
+        # We need to return a string for the address and not a MagicMock
+        mock_client().get_address.return_value = ""
+
         yield mock_client
 
 
@@ -89,20 +92,28 @@ def _job_cli_group_test_address(mock_sdk_client, cmd, *args):
     create_cluster_if_needed = True if cmd == "submit" else False
     # Test passing address via command line.
     result = runner.invoke(job_cli_group, [cmd, "--address=arg_addr", *args])
-    mock_sdk_client.assert_called_with("arg_addr", create_cluster_if_needed)
+    mock_sdk_client.assert_called_with(
+        "arg_addr", create_cluster_if_needed, headers=None, verify=True
+    )
     with pytest.raises(AssertionError):
-        mock_sdk_client.assert_called_with("some_other_addr", True)
+        mock_sdk_client.assert_called_with(
+            "some_other_addr", True, headers=None, verify=True
+        )
     check_exit_code(result, 0)
     # Test passing address via env var.
     with set_env_var("RAY_ADDRESS", "env_addr"):
         result = runner.invoke(job_cli_group, [cmd, *args])
         check_exit_code(result, 0)
         # RAY_ADDRESS is read inside the SDK client.
-        mock_sdk_client.assert_called_with(None, create_cluster_if_needed)
+        mock_sdk_client.assert_called_with(
+            None, create_cluster_if_needed, headers=None, verify=True
+        )
     # Test passing no address.
     result = runner.invoke(job_cli_group, [cmd, *args])
     check_exit_code(result, 0)
-    mock_sdk_client.assert_called_with(None, create_cluster_if_needed)
+    mock_sdk_client.assert_called_with(
+        None, create_cluster_if_needed, headers=None, verify=True
+    )
 
 
 class TestList:
@@ -143,6 +154,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={},
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -157,6 +169,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={"working_dir": "blah"},
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -170,6 +183,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={"working_dir": "'.'"},
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -190,6 +204,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env=env_dict,
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -205,6 +220,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env=env_dict,
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -245,6 +261,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env=env_dict,
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -267,6 +284,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env=env_dict,
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -283,6 +301,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={},
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -297,6 +316,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id="my_job_id",
                 runtime_env={},
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -316,6 +336,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={},
+                metadata=None,
                 entrypoint_num_cpus=2,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -335,6 +356,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={},
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=2,
                 entrypoint_resources=None,
@@ -366,6 +388,7 @@ class TestSubmit:
                 "entrypoint": '"echo hello"',
                 "submission_id": None,
                 "runtime_env": {},
+                "metadata": None,
                 "entrypoint_num_cpus": None,
                 "entrypoint_num_gpus": None,
                 "entrypoint_resources": None,
@@ -383,12 +406,81 @@ class TestSubmit:
                     "submit",
                     """--entrypoint-resources={"Custom":3""",
                     "--",
-                    "echo hello",
+                    "echo hello world",
                 ],
             )
             print(result.output)
             assert result.exit_code == 1
             assert "not a valid JSON string" in result.output
+
+    def test_metadata(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                [
+                    "submit",
+                    "--metadata-json",
+                    '{"key": "value"}',
+                    "--",
+                    "echo hello",
+                ],
+            )
+            check_exit_code(result, 0)
+            mock_client_instance.submit_job.assert_called_with(
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env={},
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
+                metadata={"key": "value"},
+            )
+
+    def test_metadata_invalid_json(self, mock_sdk_client):
+        runner = CliRunner()
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                [
+                    "submit",
+                    "--metadata-json",
+                    '{"key": "value"',
+                    "--",
+                    "echo hello",
+                ],
+            )
+            print(result.output)
+            check_exit_code(result, 1)
+            assert "not a valid JSON string" in result.output
+
+    @pytest.mark.parametrize(
+        "cli_val, verify_param",
+        [
+            ("True", True),
+            ("true", True),
+            ("1", True),
+            ("False", False),
+            ("false", False),
+            ("0", False),
+            ("a/rel/path", "a/rel/path"),
+            ("/an/abs/path", "/an/abs/path"),
+        ],
+    )
+    def test_entrypoint_verify(self, mock_sdk_client, cli_val, verify_param):
+        runner = CliRunner()
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["submit", f"--verify={cli_val}", "--", "echo hello"],
+            )
+            assert result.exit_code == 0
+            mock_sdk_client.assert_called_with(
+                None, True, headers=None, verify=verify_param
+            )
 
 
 class TestDelete:

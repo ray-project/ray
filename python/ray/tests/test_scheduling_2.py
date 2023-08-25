@@ -9,12 +9,19 @@ import pytest
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._private.test_utils import make_global_state_accessor, wait_for_condition
+from ray._private.test_utils import (
+    make_global_state_accessor,
+    wait_for_condition,
+    get_metric_check_condition,
+    MetricSamplePattern,
+)
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+from ray.util.state import list_actors
 
 
 @pytest.mark.skipif(
@@ -466,6 +473,29 @@ def test_node_affinity_scheduling_strategy_spill_on_unavailable(ray_start_cluste
     assert target_node_id != soft_node_id
 
 
+def test_node_affinity_scheduling_strategy_fail_on_unavailable(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    a1 = Actor.remote()
+    target_node_id = ray.get(a1.get_node_id.remote())
+
+    a2 = Actor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            target_node_id, soft=False, _fail_on_unavailable=True
+        )
+    ).remote()
+
+    with pytest.raises(ray.exceptions.ActorUnschedulableError):
+        ray.get(a2.get_node_id.remote())
+
+
 @pytest.mark.parametrize("connect_to_client", [True, False])
 def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
@@ -733,6 +763,112 @@ def test_data_locality_spilled_objects(
         task = check_locality.remote(x)
         print(i, x, task)
         ray.get(task)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Metrics flake on Windows.")
+def test_workload_placement_metrics(ray_start_regular):
+    @ray.remote(num_cpus=1)
+    def task():
+        pass
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ready(self):
+            return True
+
+    t = task.remote()
+    ray.get(t)
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+    del a
+    pg = placement_group(bundles=[{"CPU": 1}], strategy="SPREAD")
+    ray.get(pg.ready())
+
+    placement_metric_condition = get_metric_check_condition(
+        [
+            MetricSamplePattern(
+                name="ray_scheduler_placement_time_s_bucket",
+                value=1.0,
+                partial_label_match={"WorkloadType": "Actor"},
+            ),
+            MetricSamplePattern(
+                name="ray_scheduler_placement_time_s_bucket",
+                value=1.0,
+                partial_label_match={"WorkloadType": "Task"},
+            ),
+            MetricSamplePattern(
+                name="ray_scheduler_placement_time_s_bucket",
+                value=1.0,
+                partial_label_match={"WorkloadType": "PlacementGroup"},
+            ),
+        ],
+    )
+    wait_for_condition(placement_metric_condition, timeout=60)
+
+
+def test_implicit_resource(ray_start_regular):
+    @ray.remote(num_cpus=1, resources={ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a": 1})
+    class Actor:
+        def ping(self):
+            return ray.get_runtime_context().get_node_id()
+
+    # The first actor is schedulable.
+    a1 = Actor.remote()
+    ray.get(a1.ping.remote())
+
+    # The second actor will be pending since
+    # only one such actor can run on a single node.
+    a2 = Actor.remote()
+    time.sleep(2)
+    actors = list_actors(filters=[("actor_id", "=", a2._actor_id.hex())])
+    assert actors[0]["state"] == "PENDING_CREATION"
+
+
+def test_implicit_resource_autoscaling():
+    from ray.cluster_utils import AutoscalingCluster
+
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "cpu_node": {
+                "resources": {
+                    "CPU": 8,
+                },
+                "node_config": {},
+                "min_workers": 1,
+                "max_workers": 100,
+            },
+        },
+    )
+
+    cluster.start()
+    ray.init()
+
+    @ray.remote(num_cpus=1, resources={ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a": 0.5})
+    class Actor:
+        def ping(self):
+            return ray.get_runtime_context().get_node_id()
+
+    actors = [Actor.remote() for _ in range(2)]
+    for actor in actors:
+        ray.get(actor.ping.remote())
+
+    # No new worker nodes should be started.
+    assert len(ray.nodes()) == 2
+
+    # 3 more worker nodes should be started.
+    actors.extend([Actor.remote() for _ in range(5)])
+    node_id_to_num_actors = {}
+    for actor in actors:
+        node_id = ray.get(actor.ping.remote())
+        node_id_to_num_actors[node_id] = node_id_to_num_actors.get(node_id, 0) + 1
+    assert len(ray.nodes()) == 5
+    assert len(node_id_to_num_actors) == 4
+    num_actors_per_node = list(node_id_to_num_actors.values())
+    num_actors_per_node.sort()
+    assert num_actors_per_node == [1, 2, 2, 2]
+
+    cluster.shutdown()
 
 
 if __name__ == "__main__":

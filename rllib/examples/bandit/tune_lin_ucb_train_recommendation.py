@@ -57,7 +57,7 @@ if __name__ == "__main__":
                 "user_time_budget": 1.0,
             },
         )
-        .framework(args.framework, eager_tracing=args.framework == "tf2")
+        .framework(args.framework)
         # Test with batched inference.
         .rollouts(num_envs_per_worker=2)
         .evaluation(
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     # Analyze cumulative regrets of the trials
     frame = pd.DataFrame()
     for result in results:
-        frame = frame.append(result.metrics_dataframe, ignore_index=True)
+        frame = pd.concat([frame, result.metrics_dataframe], ignore_index=True)
     x = frame.groupby("agent_timesteps_total")["episode_reward_mean"].aggregate(
         ["mean", "max", "min", "std"]
     )

@@ -2,7 +2,7 @@ import sys
 from typing import Optional
 
 import ray
-from ray.data.datastream import Dataset
+from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
 

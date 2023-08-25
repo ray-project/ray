@@ -8,16 +8,16 @@ from pydantic.main import ModelMetaclass
 
 import ray
 from ray._private.usage import usage_lib
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve.config import HTTPOptions
+from ray.serve.config import gRPCOptions, HTTPOptions
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     HTTP_PROXY_TIMEOUT,
     SERVE_CONTROLLER_NAME,
     SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY,
     SERVE_NAMESPACE,
-    RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
 )
 from ray.serve._private.client import ServeControllerClient
 
@@ -26,7 +26,6 @@ from ray.serve._private.utils import (
     get_random_letters,
 )
 from ray.serve.controller import ServeController
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.serve.context import (
     get_global_client,
     _set_global_client,
@@ -41,7 +40,7 @@ FLAG_DISABLE_HTTP_PROXY = (
 )
 
 
-def get_deployment(name: str):
+def get_deployment(name: str, app_name: str = ""):
     """Dynamically fetch a handle to a Deployment object.
 
     Args:
@@ -55,42 +54,36 @@ def get_deployment(name: str):
         (
             deployment_info,
             route_prefix,
-        ) = get_global_client().get_deployment_info(name)
+        ) = get_global_client().get_deployment_info(name, app_name)
     except KeyError:
         raise KeyError(
             f"Deployment {name} was not found. Did you call Deployment.deploy()?"
         )
     return Deployment(
-        deployment_info.replica_config.deployment_def,
         name,
         deployment_info.deployment_config,
+        deployment_info.replica_config,
         version=deployment_info.version,
-        init_args=deployment_info.replica_config.init_args,
-        init_kwargs=deployment_info.replica_config.init_kwargs,
         route_prefix=route_prefix,
-        ray_actor_options=deployment_info.replica_config.ray_actor_options,
         _internal=True,
     )
 
 
 def list_deployments() -> Dict[str, Deployment]:
-    """Returns a dictionary of all active deployments.
+    """Returns a dictionary of all active 1.x deployments.
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = get_global_client().list_deployments()
+    infos = get_global_client().list_deployments_v1()
 
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
-            deployment_info.replica_config.deployment_def,
             name,
             deployment_info.deployment_config,
+            deployment_info.replica_config,
             version=deployment_info.version,
-            init_args=deployment_info.replica_config.init_args,
-            init_kwargs=deployment_info.replica_config.init_kwargs,
             route_prefix=route_prefix,
-            ray_actor_options=deployment_info.replica_config.ray_actor_options,
             _internal=True,
         )
 
@@ -125,6 +118,7 @@ def _start_controller(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
+    grpc_options: Optional[Union[dict, gRPCOptions]] = None,
     **kwargs,
 ) -> Tuple[ActorHandle, str]:
     """Start Ray Serve controller.
@@ -138,7 +132,7 @@ def _start_controller(
     """
 
     # Initialize ray if needed.
-    ray._private.worker.global_worker.filter_logs_by_job = False
+    ray._private.worker.global_worker._filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
@@ -147,21 +141,13 @@ def _start_controller(
     else:
         controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
 
-    # Used for scheduling things to the head node explicitly.
-    # Assumes that `serve.start` runs on the head node.
-    head_node_id = ray.get_runtime_context().get_node_id()
     controller_actor_options = {
         "num_cpus": 1 if dedicated_cpu else 0,
         "name": controller_name,
         "lifetime": "detached" if detached else None,
         "max_restarts": -1,
         "max_task_retries": -1,
-        # Schedule the controller on the head node with a soft constraint. This
-        # prefers it to run on the head node in most cases, but allows it to be
-        # restarted on other nodes in an HA cluster.
-        "scheduling_strategy": NodeAffinitySchedulingStrategy(head_node_id, soft=True)
-        if RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE
-        else None,
+        "resources": {HEAD_NODE_RESOURCE_NAME: 0.001},
         "namespace": SERVE_NAMESPACE,
         "max_concurrency": CONTROLLER_MAX_CONCURRENCY,
     }
@@ -170,7 +156,6 @@ def _start_controller(
         controller = ServeController.options(**controller_actor_options).remote(
             controller_name,
             http_config=http_options,
-            head_node_id=head_node_id,
             detached=detached,
             _disable_http_proxy=True,
         )
@@ -189,11 +174,14 @@ def _start_controller(
         if http_options is None:
             http_options = HTTPOptions()
 
+        if isinstance(grpc_options, dict):
+            grpc_options = gRPCOptions(**grpc_options)
+
         controller = ServeController.options(**controller_actor_options).remote(
             controller_name,
             http_config=http_options,
-            head_node_id=head_node_id,
             detached=detached,
+            grpc_options=grpc_options,
         )
 
         proxy_handles = ray.get(controller.get_http_proxies.remote())
@@ -214,6 +202,7 @@ async def serve_start_async(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
+    grpc_options: Optional[Union[dict, gRPCOptions]] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -243,7 +232,7 @@ async def serve_start_async(
     controller, controller_name = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
-        .remote(detached, http_options, dedicated_cpu, **kwargs)
+        .remote(detached, http_options, dedicated_cpu, grpc_options, **kwargs)
     )
 
     client = ServeControllerClient(
@@ -263,6 +252,7 @@ def serve_start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
+    grpc_options: Optional[Union[dict, gRPCOptions]] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -302,6 +292,12 @@ def serve_start(
               internal Serve HTTP proxy actor.  Defaults to 0.
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
+        grpc_options (Optional[Union[dict, gRPCOptions]]): [Experimental] Configuration
+            options for gRPC proxy. You can pass in a gRPCOptions object with fields:
+                - port(int): Port for gRPC server. Defaults to 9000.
+                - grpc_servicer_functions(list): List of import paths for gRPC
+                    `add_servicer_to_server` functions to add to Serve's gRPC proxy.
+                    Default empty list, meaning not to start the gRPC server.
     """
 
     usage_lib.record_library_usage("serve")
@@ -319,7 +315,7 @@ def serve_start(
         pass
 
     controller, controller_name = _start_controller(
-        detached, http_options, dedicated_cpu, **kwargs
+        detached, http_options, dedicated_cpu, grpc_options, **kwargs
     )
 
     client = ServeControllerClient(

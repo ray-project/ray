@@ -19,12 +19,13 @@ from ray.serve.generated.serve_pb2 import (
 
 
 def test_replica_tag_formatting():
+    app_name = "my_app"
     deployment_tag = "DeploymentA"
     replica_suffix = get_random_letters()
 
-    replica_name = ReplicaName(deployment_tag, replica_suffix)
-    assert replica_name.replica_tag == f"{deployment_tag}#{replica_suffix}"
-    assert str(replica_name) == f"{deployment_tag}#{replica_suffix}"
+    replica_name = ReplicaName(app_name, deployment_tag, replica_suffix)
+    assert replica_name.replica_tag == f"{app_name}#{deployment_tag}#{replica_suffix}"
+    assert str(replica_name) == f"{app_name}#{deployment_tag}#{replica_suffix}"
 
 
 def test_replica_name_from_str():
@@ -196,9 +197,9 @@ def test_running_replica_info():
     fake_h1 = FakeActorHandler("1")
     fake_h2 = FakeActorHandler("1")
     assert fake_h1 != fake_h2
-    replica1 = RunningReplicaInfo("my_deployment", "1", fake_h1, 1, False)
-    replica2 = RunningReplicaInfo("my_deployment", "1", fake_h2, 1, False)
-    replica3 = RunningReplicaInfo("my_deployment", "1", fake_h2, 1, True)
+    replica1 = RunningReplicaInfo("my_deployment", "1", "node_id", fake_h1, 1, False)
+    replica2 = RunningReplicaInfo("my_deployment", "1", "node_id", fake_h2, 1, False)
+    replica3 = RunningReplicaInfo("my_deployment", "1", "node_id", fake_h2, 1, True)
     assert replica1._hash == replica2._hash
     assert replica3._hash != replica1._hash
 

@@ -1,25 +1,25 @@
 import copy
 import os
 import posixpath
+import time
 
-import pytest
-import pyarrow as pa
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pyarrow as pa
+import pytest
 
 import ray
-
-from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.tests.mock_server import *  # noqa
-from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
-from ray._private.utils import _get_pyarrow_version
+from ray.data.block import BlockExecStats, BlockMetadata
+from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
+from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
 from ray.tests.conftest import _ray_start
-from ray.tests.conftest import *  # noqa
 
 
 @pytest.fixture(scope="module")
@@ -34,22 +34,6 @@ def ray_start_10_cpus_shared(request):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=10, **param) as res:
         yield res
-
-
-@pytest.fixture(scope="module")
-def enable_strict_mode():
-    ctx = ray.data.DataContext.get_current()
-    ctx.strict_mode = True
-    yield
-    ctx.strict_mode = False
-
-
-@pytest.fixture(scope="module")
-def enable_nonstrict_mode():
-    ctx = ray.data.DataContext.get_current()
-    ctx.strict_mode = False
-    yield
-    ctx.strict_mode = True
 
 
 @pytest.fixture(scope="function")
@@ -129,8 +113,9 @@ def s3_fs_with_anonymous_crendential(
 
 
 def _s3_fs(aws_credentials, s3_server, s3_path):
-    from pkg_resources._vendor.packaging.version import parse as parse_version
     import urllib.parse
+
+    from pkg_resources._vendor.packaging.version import parse as parse_version
 
     kwargs = aws_credentials.copy()
 
@@ -166,26 +151,24 @@ def local_fs():
 
 
 @pytest.fixture(scope="function")
-def test_block_write_path_provider():
-    class TestBlockWritePathProvider(BlockWritePathProvider):
+def mock_block_write_path_provider():
+    class MockBlockWritePathProvider(BlockWritePathProvider):
         def _get_write_path_for_block(
             self,
             base_path,
             *,
             filesystem=None,
-            datastream_uuid=None,
-            block=None,
+            dataset_uuid=None,
+            task_index=None,
             block_index=None,
             file_format=None,
         ):
-            num_rows = BlockAccessor.for_block(block).num_rows()
             suffix = (
-                f"{block_index:06}_{num_rows:02}_{datastream_uuid}"
-                f".test.{file_format}"
+                f"{task_index:06}_{block_index:06}_{dataset_uuid}.test.{file_format}"
             )
             return posixpath.join(base_path, suffix)
 
-    yield TestBlockWritePathProvider()
+    yield MockBlockWritePathProvider()
 
 
 @pytest.fixture(scope="function")
@@ -269,7 +252,7 @@ def assert_base_partitioned_ds():
         actual_input_files = ds.input_files()
         assert len(actual_input_files) == num_input_files, actual_input_files
 
-        # For Datastreams with long string representations, the format will include
+        # For Datasets with long string representations, the format will include
         # whitespace and newline characters, which is difficult to generalize
         # without implementing the formatting logic again (from
         # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
@@ -279,12 +262,12 @@ def assert_base_partitioned_ds():
                 ds_str = ds_str.replace(c, "")
             return ds_str
 
-        assert "Datastream(num_blocks={},num_rows={},schema={})".format(
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
             num_input_files,
             num_rows,
             _remove_whitespace(schema),
         ) == _remove_whitespace(str(ds)), ds
-        assert "Datastream(num_blocks={},num_rows={},schema={})".format(
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
             num_input_files,
             num_rows,
             _remove_whitespace(schema),
@@ -344,15 +327,6 @@ def enable_auto_log_stats(request):
     ctx.enable_auto_log_stats = original
 
 
-@pytest.fixture(params=[True])
-def enable_dynamic_block_splitting(request):
-    ctx = ray.data.context.DataContext.get_current()
-    original = ctx.block_splitting_enabled
-    ctx.block_splitting_enabled = request.param
-    yield request.param
-    ctx.block_splitting_enabled = original
-
-
 @pytest.fixture(params=[1024])
 def target_max_block_size(request):
     ctx = ray.data.context.DataContext.get_current()
@@ -386,7 +360,7 @@ def enable_streaming_executor():
     ctx.use_streaming_executor = use_streaming_executor
 
 
-# ===== Pandas datastream formats =====
+# ===== Pandas dataset formats =====
 @pytest.fixture(scope="function")
 def ds_pandas_single_column_format(ray_start_regular_shared):
     in_df = pd.DataFrame({"column_1": [1, 2, 3, 4]})
@@ -405,7 +379,7 @@ def ds_pandas_list_multi_column_format(ray_start_regular_shared):
     yield ray.data.from_pandas([in_df] * 4)
 
 
-# ===== Arrow datastream formats =====
+# ===== Arrow dataset formats =====
 @pytest.fixture(scope="function")
 def ds_arrow_single_column_format(ray_start_regular_shared):
     yield ray.data.from_arrow(pa.table({"column_1": [1, 2, 3, 4]}))
@@ -441,7 +415,7 @@ def ds_list_arrow_multi_column_format(ray_start_regular_shared):
     yield ray.data.from_arrow([pa.table({"column_1": [1], "column_2": [1]})] * 4)
 
 
-# ===== Numpy datastream formats =====
+# ===== Numpy dataset formats =====
 @pytest.fixture(scope="function")
 def ds_numpy_single_column_tensor_format(ray_start_regular_shared):
     yield ray.data.from_numpy(np.arange(16).reshape((4, 2, 2)))
@@ -482,9 +456,16 @@ def stage_two_block():
         "cpu_time": [1.2, 3.4],
         "node_id": ["a1", "b2"],
     }
+
+    block_delay = 20
     block_meta_list = []
     for i in range(len(block_params["num_rows"])):
         block_exec_stats = BlockExecStats()
+        # The blocks are executing from [0, 5] and [20, 30].
+        block_exec_stats.start_time_s = time.perf_counter() + i * block_delay
+        block_exec_stats.end_time_s = (
+            block_exec_stats.start_time_s + block_params["wall_time"][i]
+        )
         block_exec_stats.wall_time_s = block_params["wall_time"][i]
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]

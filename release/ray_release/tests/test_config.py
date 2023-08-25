@@ -1,11 +1,11 @@
-import os
 import sys
 import yaml
 import pytest
 
+from ray_release.bazel import bazel_runfile
+from ray_release.test import Test
 from ray_release.config import (
     read_and_validate_release_test_collection,
-    Test,
     validate_cluster_compute,
     load_schema_file,
     parse_test_definition,
@@ -13,10 +13,7 @@ from ray_release.config import (
 )
 from ray_release.exception import ReleaseTestConfigError
 
-TEST_COLLECTION_FILE = os.path.join(
-    os.path.dirname(__file__), "..", "..", "release_tests.yaml"
-)
-
+_TEST_COLLECTION_FILE = bazel_runfile("release/release_tests.yaml")
 
 VALID_TEST = Test(
     **{
@@ -27,7 +24,7 @@ VALID_TEST = Test(
         "frequency": "nightly",
         "team": "release",
         "cluster": {
-            "cluster_env": "app_config.yaml",
+            "byod": {"type": "gpu"},
             "cluster_compute": "tpl_cpu_small.yaml",
             "autosuspend_mins": 10,
         },
@@ -56,7 +53,8 @@ def test_parse_test_definition():
           frequency: nightly
           team: sample
           cluster:
-            cluster_env: env.yaml
+            byod:
+              type: gpu
             cluster_compute: compute.yaml
           run:
             timeout: 100
@@ -78,7 +76,7 @@ def test_parse_test_definition():
     assert not validate_test(gce_test, schema)
     assert aws_test["name"] == "sample_test.aws"
     assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
-    assert gce_test["cluster"]["cluster_env"] == "env.yaml"
+    assert gce_test["cluster"]["byod"]["type"] == "gpu"
     invalid_test_definition = test_definitions[0]
     # Intentionally make the test definition invalid by create an empty 'variations'
     # field. Check that the parser throws exception at runtime
@@ -219,7 +217,7 @@ def test_compute_config_invalid_ebs():
 
 
 def test_load_and_validate_test_collection_file():
-    read_and_validate_release_test_collection(TEST_COLLECTION_FILE)
+    read_and_validate_release_test_collection(_TEST_COLLECTION_FILE)
 
 
 if __name__ == "__main__":

@@ -1,15 +1,27 @@
 import copy
 import importlib
 import inspect
+import logging
+import math
 import os
-import pickle
 import random
 import string
 import time
 import traceback
 from enum import Enum
 from functools import wraps
-from typing import Dict, Iterable, List, Tuple, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Tuple,
+    TypeVar,
+    Union,
+    Optional,
+)
+import threading
 
 import fastapi.encoders
 import numpy as np
@@ -21,11 +33,15 @@ import ray
 import ray.util.serialization_addons
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
-from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, RAY_GCS_RPC_TIMEOUT_S
-from ray.serve._private.http_util import HTTPRequestWrapper, build_starlette_request
+from ray.serve._private.constants import (
+    HTTP_PROXY_TIMEOUT,
+    SERVE_LOGGER_NAME,
+)
+from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._private.utils import import_attr
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 import __main__
 
@@ -61,16 +77,7 @@ class DeploymentOptionUpdateType(str, Enum):
 T = TypeVar("T")
 Default = Union[DEFAULT, T]
 
-
-def parse_request_item(request_item):
-    if len(request_item.args) == 1:
-        arg = request_item.args[0]
-        if request_item.metadata.http_arg_is_pickled:
-            assert isinstance(arg, bytes)
-            arg: HTTPRequestWrapper = pickle.loads(arg)
-            return (build_starlette_request(arg.scope, arg.body),), {}
-
-    return request_item.args, request_item.kwargs
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class _ServeCustomEncoders:
@@ -166,33 +173,15 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     return name
 
 
-def get_all_node_ids(gcs_client) -> List[Tuple[str, str]]:
-    """Get IDs for all live nodes in the cluster.
-
-    Returns a list of (node_id: str, ip_address: str). The node_id can be
-    passed into the Ray SchedulingPolicy API.
-    """
-    nodes = gcs_client.get_all_node_info(timeout=RAY_GCS_RPC_TIMEOUT_S)
-    node_ids = [
-        (ray.NodeID.from_binary(node_id).hex(), node["node_name"])
-        for (node_id, node) in nodes.items()
-        if node["state"] == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
-    ]
-
-    # Sort on NodeID to ensure the ordering is deterministic across the cluster.
-    sorted(node_ids)
-    return node_ids
-
-
 def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
     """Given two iterables, return the entries that's (added, removed, updated).
 
     Usage:
-        >>> from ray.serve.utils import compute_iterable_delta
+        >>> from ray.serve._private.utils import compute_iterable_delta
         >>> old = {"a", "b"}
         >>> new = {"a", "d"}
         >>> compute_iterable_delta(old, new)
-        ({"d"}, {"b"}, {"a"})
+        ({'d'}, {'b'}, {'a'})
     """
     old_keys, new_keys = set(old), set(new)
     added_keys = new_keys - old_keys
@@ -205,11 +194,11 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
     """Given two dicts, return the entries that's (added, removed, updated).
 
     Usage:
-        >>> from ray.serve.utils import compute_dict_delta
+        >>> from ray.serve._private.utils import compute_dict_delta
         >>> old = {"a": 1, "b": 2}
         >>> new = {"a": 3, "d": 4}
         >>> compute_dict_delta(old, new)
-        ({"d": 4}, {"b": 2}, {"a": 3})
+        ({'d': 4}, {'b': 2}, {'a': 3})
     """
     added_keys, removed_keys, updated_keys = compute_iterable_delta(
         old_dict.keys(), new_dict.keys()
@@ -279,7 +268,7 @@ def get_deployment_import_path(
         with __main__'s file name if the deployment's module is __main__
     """
 
-    body = deployment._func_or_class
+    body = deployment.func_or_class
 
     if isinstance(body, str):
         # deployment's func_or_class is already an import path
@@ -401,7 +390,7 @@ def require_packages(packages: List[str]):
     """Decorator making sure function run in specified environments
 
     Examples:
-        >>> from ray.serve.utils import require_packages
+        >>> from ray.serve._private.utils import require_packages
         >>> @require_packages(["numpy", "package_a"]) # doctest: +SKIP
         ... def func(): # doctest: +SKIP
         ...     import numpy as np # doctest: +SKIP
@@ -497,41 +486,214 @@ def dict_keys_snake_to_camel_case(snake_dict: dict) -> dict:
     return camel_dict
 
 
-serve_telemetry_tag_map = {
-    "SERVE_API_VERSION": TagKey.SERVE_API_VERSION,
-    "SERVE_NUM_DEPLOYMENTS": TagKey.SERVE_NUM_DEPLOYMENTS,
-    "GCS_STORAGE": TagKey.GCS_STORAGE,
-    "SERVE_NUM_GPU_DEPLOYMENTS": TagKey.SERVE_NUM_GPU_DEPLOYMENTS,
-    "SERVE_FASTAPI_USED": TagKey.SERVE_FASTAPI_USED,
-    "SERVE_DAG_DRIVER_USED": TagKey.SERVE_DAG_DRIVER_USED,
-    "SERVE_HTTP_ADAPTER_USED": TagKey.SERVE_HTTP_ADAPTER_USED,
-    "SERVE_GRPC_INGRESS_USED": TagKey.SERVE_GRPC_INGRESS_USED,
-    "SERVE_REST_API_VERSION": TagKey.SERVE_REST_API_VERSION,
-    "SERVE_NUM_APPS": TagKey.SERVE_NUM_APPS,
-    "SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED": (
-        TagKey.SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED
-    ),
-    "SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED": (
-        TagKey.SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED
-    ),
-    "SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED": (
-        TagKey.SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED
-    ),
-}
+def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
+    """Check if ray object reference is ready without waiting for it."""
+    finished, _ = ray.wait([obj_ref], timeout=0)
+    return len(finished) == 1
 
 
-def record_serve_tag(key: str, value: str):
-    """Record telemetry.
+def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
+    """Check if this is a method rather than a function.
 
-    TagKey objects cannot be pickled, so deployments can't directly record
-    telemetry using record_extra_usage_tag. They can instead call this function
-    which records telemetry for them.
+    Does this by checking to see if `func` is the attribute of the first
+    (`self`) argument under `func.__name__`. Unfortunately, this is the most
+    robust solution to this I was able to find. It would also be preferable
+    to do this check when the decorator runs, rather than when the method is.
+
+    Returns the `self` object if it's a method call, else None.
+
+    Arguments:
+        args: arguments to the function/method call.
+        func: the unbound function that was called.
+    """
+    if len(args) > 0:
+        method = getattr(args[0], func.__name__, False)
+        if method:
+            wrapped = getattr(method, "__wrapped__", False)
+            if wrapped and wrapped == func:
+                return args[0]
+
+    return None
+
+
+class _MetricTask:
+    def __init__(self, task_func, interval_s, callback_func):
+        """
+        Args:
+            task_func: a callable that MetricsPusher will try to call in each loop.
+            interval_s: the interval of each task_func is supposed to be called.
+            callback_func: callback function is called when task_func is done, and
+                the result of task_func is passed to callback_func as the first
+                argument, and the timestamp of the call is passed as the second
+                argument.
+        """
+        self.task_func: Callable = task_func
+        self.interval_s: float = interval_s
+        self.callback_func: Callable[[Any, float]] = callback_func
+        self.last_ref: Optional[ray.ObjectRef] = None
+        self.last_call_succeeded_time: Optional[float] = time.time()
+
+
+class MetricsPusher:
+    """
+    Metrics pusher is a background thread that run the registered tasks in a loop.
     """
 
-    if key not in serve_telemetry_tag_map:
-        raise ValueError(
-            f'The TagKey "{key}" does not exist. Expected a key from: '
-            f"{list(serve_telemetry_tag_map.keys())}."
-        )
+    def __init__(
+        self,
+    ):
 
-    record_extra_usage_tag(serve_telemetry_tag_map[key], value)
+        self.tasks: List[_MetricTask] = []
+        self.pusher_thread: Union[threading.Thread, None] = None
+        self.stop_event = threading.Event()
+
+    def register_task(self, task_func, interval_s, process_func=None):
+        self.tasks.append(_MetricTask(task_func, interval_s, process_func))
+
+    def start(self):
+        """Start a background thread to run the registered tasks in a loop.
+
+        We use this background so it will be not blocked by user's code and ensure
+        consistently metrics delivery. Python GIL will ensure that this thread gets
+        fair timeshare to execute and run.
+        """
+
+        def send_forever():
+            while True:
+                if self.stop_event.is_set():
+                    return
+
+                start = time.time()
+                for task in self.tasks:
+                    try:
+                        if start - task.last_call_succeeded_time >= task.interval_s:
+                            if task.last_ref:
+                                ready_refs, _ = ray.wait([task.last_ref], timeout=0)
+                                if len(ready_refs) == 0:
+                                    continue
+                            data = task.task_func()
+                            task.last_call_succeeded_time = time.time()
+                            if task.callback_func and ray.is_initialized():
+                                task.last_ref = task.callback_func(
+                                    data, send_timestamp=time.time()
+                                )
+                    except Exception as e:
+                        logger.warning(
+                            f"MetricsPusher thread failed to run metric task: {e}"
+                        )
+
+                # For all tasks, check when the task should be executed
+                # next. Sleep until the next closest time.
+                least_interval_s = math.inf
+                for task in self.tasks:
+                    time_until_next_push = task.interval_s - (
+                        time.time() - task.last_call_succeeded_time
+                    )
+                    least_interval_s = min(least_interval_s, time_until_next_push)
+
+                time.sleep(max(least_interval_s, 0))
+
+        if len(self.tasks) == 0:
+            raise ValueError("MetricsPusher has zero tasks registered.")
+
+        self.pusher_thread = threading.Thread(target=send_forever)
+        # Making this a daemon thread so it doesn't leak upon shutdown, and it
+        # doesn't need to block the replica's shutdown.
+        self.pusher_thread.setDaemon(True)
+        self.pusher_thread.start()
+
+    def __del__(self):
+        self.shutdown()
+
+    def shutdown(self):
+        """Shutdown metrics pusher gracefully.
+
+        This method will ensure idempotency of shutdown call.
+        """
+        if not self.stop_event.is_set():
+            self.stop_event.set()
+
+        if self.pusher_thread:
+            self.pusher_thread.join()
+
+
+def call_function_from_import_path(import_path: str) -> Any:
+    """Call the function given import path.
+
+    Args:
+        import_path: The import path of the function to call.
+    Raises:
+        ValueError: If the import path is invalid.
+        TypeError: If the import path is not callable.
+        RuntimeError: if the function raise exeception during execution.
+    Returns:
+        The result of the function call.
+    """
+    try:
+        callback_func = import_attr(import_path)
+    except Exception as e:
+        raise ValueError(f"The import path {import_path} cannot be imported: {e}")
+
+    if not callable(callback_func):
+        raise TypeError(f"The import path {import_path} is not callable.")
+
+    try:
+        return callback_func()
+    except Exception as e:
+        raise RuntimeError(f"The function {import_path} raised an exception: {e}")
+
+
+def get_head_node_id() -> str:
+    """Get the head node id.
+
+    Iterate through all nodes in the ray cluster and return the node id of the first
+    alive node with head node resource.
+    """
+    head_node_id = None
+    for node in ray.nodes():
+        if HEAD_NODE_RESOURCE_NAME in node["Resources"] and node["Alive"]:
+            head_node_id = node["NodeID"]
+            break
+    assert head_node_id is not None, "Cannot find alive head node."
+
+    return head_node_id
+
+
+def calculate_remaining_timeout(
+    *,
+    timeout_s: Optional[float],
+    start_time_s: float,
+    curr_time_s: float,
+) -> Optional[float]:
+    """Get the timeout remaining given an overall timeout, start time, and curr time.
+
+    If the timeout passed in was `None` or negative, will always return that timeout
+    directly.
+
+    If the timeout is >= 0, the returned remaining timeout always be >= 0.
+    """
+    if timeout_s is None or timeout_s < 0:
+        return timeout_s
+
+    time_since_start_s = curr_time_s - start_time_s
+    return max(0, timeout_s - time_since_start_s)
+
+
+def get_all_live_placement_group_names() -> List[str]:
+    """Fetch and parse the Ray placement group table for live placement group names.
+
+    Placement groups are filtered based on their `scheduling_state`; any placement
+    group not in the "REMOVED" state is considered live.
+    """
+    placement_group_table = ray.util.placement_group_table()
+
+    live_pg_names = []
+    for entry in placement_group_table.values():
+        pg_name = entry.get("name", "")
+        if (
+            pg_name
+            and entry.get("stats", {}).get("scheduling_state", "UNKNOWN") != "REMOVED"
+        ):
+            live_pg_names.append(pg_name)
+
+    return live_pg_names

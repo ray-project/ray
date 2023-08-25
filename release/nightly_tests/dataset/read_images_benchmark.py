@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple
 from PIL import Image
 
 import ray
-from ray.data.datastream import Dataset
+from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
 

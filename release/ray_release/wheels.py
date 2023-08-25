@@ -10,7 +10,8 @@ import time
 import urllib.request
 from typing import Optional, List, Tuple
 
-from ray_release.config import DEFAULT_PYTHON_VERSION, parse_python_version
+from ray_release.config import parse_python_version
+from ray_release.test import DEFAULT_PYTHON_VERSION
 from ray_release.template import set_test_env_var
 from ray_release.exception import (
     RayWheelsUnspecifiedError,

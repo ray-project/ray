@@ -4,8 +4,6 @@ import sys
 import threading
 from typing import Any, Dict, List, Optional, Tuple
 
-import grpc
-
 import ray._private.ray_constants as ray_constants
 from ray._private.client_mode_hook import (
     _explicitly_disable_client_mode,
@@ -19,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2022-12-06"
+CURRENT_PROTOCOL_VERSION = "2023-06-27"
 
 
 class _ClientContext:
@@ -42,7 +40,7 @@ class _ClientContext:
         namespace: str = None,
         *,
         ignore_version: bool = False,
-        _credentials: Optional[grpc.ChannelCredentials] = None,
+        _credentials: Optional["grpc.ChannelCredentials"] = None,  # noqa: F821
         ray_init_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Connect the Ray Client to a server.

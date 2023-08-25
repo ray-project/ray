@@ -1,8 +1,8 @@
 import collections
-from dataclasses import dataclass
 import time
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Set, Tuple, Union, Any
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 
@@ -14,8 +14,8 @@ from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-STATS_ACTOR_NAME = "datastreams_stats_actor"
-STATS_ACTOR_NAMESPACE = "_datastream_stats_actor"
+STATS_ACTOR_NAME = "datasets_stats_actor"
+STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
 
 StatsDict = Dict[str, List[BlockMetadata]]
 
@@ -76,24 +76,24 @@ class Timer:
         return self._value / self._total_count if self._total_count else float("inf")
 
 
-class _DatastreamStatsBuilder:
-    """Helper class for building datastream stats.
+class _DatasetStatsBuilder:
+    """Helper class for building dataset stats.
 
     When this class is created, we record the start time. When build() is
-    called with the final blocks of the new datastream, the time delta is
+    called with the final blocks of the new dataset, the time delta is
     saved as part of the stats."""
 
     def __init__(
         self,
         stage_name: str,
-        parent: "DatastreamStats",
+        parent: "DatasetStats",
         override_start_time: Optional[float],
     ):
         self.stage_name = stage_name
         self.parent = parent
         self.start_time = override_start_time or time.perf_counter()
 
-    def build_multistage(self, stages: StatsDict) -> "DatastreamStats":
+    def build_multistage(self, stages: StatsDict) -> "DatasetStats":
         stage_infos = {}
         for i, (k, v) in enumerate(stages.items()):
             capped_k = capfirst(k)
@@ -104,7 +104,7 @@ class _DatastreamStatsBuilder:
                     stage_infos[self.stage_name.split("->")[-1] + capped_k] = v
             else:
                 stage_infos[self.stage_name] = v
-        stats = DatastreamStats(
+        stats = DatasetStats(
             stages=stage_infos,
             parent=self.parent,
             base_name=self.stage_name,
@@ -112,8 +112,8 @@ class _DatastreamStatsBuilder:
         stats.time_total_s = time.perf_counter() - self.start_time
         return stats
 
-    def build(self, final_blocks: BlockList) -> "DatastreamStats":
-        stats = DatastreamStats(
+    def build(self, final_blocks: BlockList) -> "DatasetStats":
+        stats = DatasetStats(
             stages={self.stage_name: final_blocks.get_metadata()},
             parent=self.parent,
         )
@@ -125,7 +125,7 @@ class _DatastreamStatsBuilder:
 class _StatsActor:
     """Actor holding stats for blocks created by LazyBlockList.
 
-    This actor is shared across all datastreams created in the same cluster.
+    This actor is shared across all datasets created in the same cluster.
     In order to cap memory usage, we set a max number of stats to keep
     in the actor. When this limit is exceeded, the stats will be garbage
     collected in FIFO order.
@@ -196,31 +196,31 @@ def _get_or_create_stats_actor():
     ).remote()
 
 
-class DatastreamStats:
-    """Holds the execution times for a given Datastream.
+class DatasetStats:
+    """Holds the execution times for a given Dataset.
 
-    This object contains a reference to the parent Datastream's stats as well,
-    but not the Datastream object itself, to allow its blocks to be dropped from
+    This object contains a reference to the parent Dataset's stats as well,
+    but not the Dataset object itself, to allow its blocks to be dropped from
     memory."""
 
     def __init__(
         self,
         *,
         stages: StatsDict,
-        parent: Union[Optional["DatastreamStats"], List["DatastreamStats"]],
+        parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
         needs_stats_actor: bool = False,
         stats_uuid: str = None,
         base_name: str = None,
     ):
-        """Create datastream stats.
+        """Create dataset stats.
 
         Args:
-            stages: Dict of stages used to create this Datastream from the
+            stages: Dict of stages used to create this Dataset from the
                 previous one. Typically one entry, e.g., {"map": [...]}.
-            parent: Reference to parent Datastream's stats, or a list of parents
+            parent: Reference to parent Dataset's stats, or a list of parents
                 if there are multiple.
-            needs_stats_actor: Whether this Datastream's stats needs a stats actor for
-                stats collection. This is currently only used for Datastreams using a
+            needs_stats_actor: Whether this Dataset's stats needs a stats actor for
+                stats collection. This is currently only used for Datasets using a
                 lazy datasource (i.e. a LazyBlockList).
             stats_uuid: The uuid for the stats, used to fetch the right stats
                 from the stats actor.
@@ -230,25 +230,26 @@ class DatastreamStats:
         self.stages: StatsDict = stages
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
-        self.parents: List["DatastreamStats"] = parent or []
+        self.parents: List["DatasetStats"] = parent or []
         self.number: int = (
             0 if not self.parents else max(p.number for p in self.parents) + 1
         )
         self.base_name = base_name
-        # TODO(ekl) deprecate and remove the notion of datastream UUID once we move
+        # TODO(ekl) deprecate and remove the notion of dataset UUID once we move
         # fully to streaming execution.
-        self.datastream_uuid: str = "unknown_uuid"
+        self.dataset_uuid: str = "unknown_uuid"
         self.time_total_s: float = 0
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
 
         self._legacy_iter_batches = False
-        # Iteration stats, filled out if the user iterates over the datastream.
+        # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
         self.iter_get_s: Timer = Timer()
         self.iter_next_batch_s: Timer = Timer()
         self.iter_format_batch_s: Timer = Timer()
         self.iter_collate_batch_s: Timer = Timer()
+        self.iter_finalize_batch_s: Timer = Timer()
         self.iter_total_blocked_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
@@ -270,36 +271,32 @@ class DatastreamStats:
 
     def child_builder(
         self, name: str, override_start_time: Optional[float] = None
-    ) -> _DatastreamStatsBuilder:
+    ) -> _DatasetStatsBuilder:
         """Start recording stats for an op of the given name (e.g., map)."""
-        return _DatastreamStatsBuilder(name, self, override_start_time)
+        return _DatasetStatsBuilder(name, self, override_start_time)
 
-    def child_TODO(self, name: str) -> "DatastreamStats":
+    def child_TODO(self, name: str) -> "DatasetStats":
         """Placeholder for child ops not yet instrumented."""
-        return DatastreamStats(stages={name + "_TODO": []}, parent=self)
+        return DatasetStats(stages={name + "_TODO": []}, parent=self)
 
     @staticmethod
     def TODO():
         """Placeholder for ops not yet instrumented."""
-        return DatastreamStats(stages={"TODO": []}, parent=None)
+        return DatasetStats(stages={"TODO": []}, parent=None)
 
-    def to_summary(self) -> "DatastreamStatsSummary":
-        """Generate a `DatastreamStatsSummary` object from the given `DatastreamStats`
+    def to_summary(self) -> "DatasetStatsSummary":
+        """Generate a `DatasetStatsSummary` object from the given `DatasetStats`
         object, which can be used to generate a summary string."""
         if self.needs_stats_actor:
             ac = self.stats_actor
             # TODO(chengsu): this is a super hack, clean it up.
             stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
-            if DataContext.get_current().block_splitting_enabled:
-                # Only populate stats when stats from all read tasks are ready at
-                # stats actor.
-                if len(stats_map.items()) == len(self.stages["Read"]):
-                    self.stages["Read"] = []
-                    for _, blocks_metadata in sorted(stats_map.items()):
-                        self.stages["Read"] += blocks_metadata
-            else:
-                for i, metadata in stats_map.items():
-                    self.stages["Read"][i] = metadata[0]
+            # Only populate stats when stats from all read tasks are ready at
+            # stats actor.
+            if len(stats_map.items()) == len(self.stages["Read"]):
+                self.stages["Read"] = []
+                for _, blocks_metadata in sorted(stats_map.items()):
+                    self.stages["Read"] += blocks_metadata
 
         stages_stats = []
         is_substage = len(self.stages) > 1
@@ -307,7 +304,6 @@ class DatastreamStats:
             stages_stats.append(
                 StageStatsSummary.from_block_metadata(
                     metadata,
-                    self.time_total_s,
                     stage_name,
                     is_substage=is_substage,
                 )
@@ -320,6 +316,7 @@ class DatastreamStats:
             self.iter_next_batch_s,
             self.iter_format_batch_s,
             self.iter_collate_batch_s,
+            self.iter_finalize_batch_s,
             self.iter_total_blocked_s,
             self.iter_user_s,
             self.iter_total_s,
@@ -330,12 +327,12 @@ class DatastreamStats:
         stats_summary_parents = []
         if self.parents is not None:
             stats_summary_parents = [p.to_summary() for p in self.parents]
-        return DatastreamStatsSummary(
+        return DatasetStatsSummary(
             stages_stats,
             iter_stats,
             stats_summary_parents,
             self.number,
-            self.datastream_uuid,
+            self.dataset_uuid,
             self.time_total_s,
             self.base_name,
             self.extra_metrics,
@@ -344,12 +341,12 @@ class DatastreamStats:
 
 @DeveloperAPI
 @dataclass
-class DatastreamStatsSummary:
+class DatasetStatsSummary:
     stages_stats: List["StageStatsSummary"]
     iter_stats: "IterStatsSummary"
-    parents: List["DatastreamStatsSummary"]
+    parents: List["DatasetStatsSummary"]
     number: int
-    datastream_uuid: str
+    dataset_uuid: str
     time_total_s: float
     base_name: str
     extra_metrics: Dict[str, Any]
@@ -357,7 +354,7 @@ class DatastreamStatsSummary:
     def to_string(
         self, already_printed: Optional[Set[str]] = None, include_parent: bool = True
     ) -> str:
-        """Return a human-readable summary of this Datastream's stats.
+        """Return a human-readable summary of this Dataset's stats.
 
         Args:
             already_printed: Set of stage IDs that have already had its stats printed
@@ -365,7 +362,7 @@ class DatastreamStatsSummary:
             include_parent: If true, also include parent stats summary; otherwise, only
             log stats of the latest stage.
         Returns:
-            String with summary statistics for executing the Datastream.
+            String with summary statistics for executing the Dataset.
         """
         if already_printed is None:
             already_printed = set()
@@ -380,7 +377,7 @@ class DatastreamStatsSummary:
         if len(self.stages_stats) == 1:
             stage_stats_summary = self.stages_stats[0]
             stage_name = stage_stats_summary.stage_name
-            stage_uuid = self.datastream_uuid + stage_name
+            stage_uuid = self.dataset_uuid + stage_name
             out += "Stage {} {}: ".format(self.number, stage_name)
             if stage_uuid in already_printed:
                 out += "[execution cached]\n"
@@ -397,7 +394,7 @@ class DatastreamStatsSummary:
             )
             for n, stage_stats_summary in enumerate(self.stages_stats):
                 stage_name = stage_stats_summary.stage_name
-                stage_uuid = self.datastream_uuid + stage_name
+                stage_uuid = self.dataset_uuid + stage_name
                 out += "\n"
                 out += "\tSubstage {} {}: ".format(n, stage_name)
                 if stage_uuid in already_printed:
@@ -426,8 +423,8 @@ class DatastreamStatsSummary:
         parent_stats = f"\n{parent_stats},\n{indent}   " if parent_stats else ""
         extra_metrics = f"\n{extra_metrics}\n{indent}   " if extra_metrics else ""
         return (
-            f"{indent}DatastreamStatsSummary(\n"
-            f"{indent}   datastream_uuid={self.datastream_uuid},\n"
+            f"{indent}DatasetStatsSummary(\n"
+            f"{indent}   dataset_uuid={self.dataset_uuid},\n"
             f"{indent}   base_name={self.base_name},\n"
             f"{indent}   number={self.number},\n"
             f"{indent}   extra_metrics={{{extra_metrics}}},\n"
@@ -451,6 +448,9 @@ class DatastreamStatsSummary:
     def get_max_heap_memory(self) -> float:
         parent_memory = [p.get_max_heap_memory() for p in self.parents]
         parent_max = max(parent_memory) if parent_memory else 0
+        if not self.stages_stats:
+            return parent_max
+
         return max(
             parent_max,
             *[ss.memory.get("max", 0) for ss in self.stages_stats],
@@ -463,7 +463,7 @@ class StageStatsSummary:
     # Whether the stage associated with this StageStatsSummary object is a substage
     is_substage: bool
     # This is the total walltime of the entire stage, typically obtained from
-    # `DatastreamStats.time_total_s`. An important distinction is that this is the
+    # `DatasetStats.time_total_s`. An important distinction is that this is the
     # overall runtime of the stage, pulled from the stats actor, whereas the
     # computed walltimes in `self.wall_time` are calculated on a substage level.
     time_total_s: float
@@ -485,7 +485,6 @@ class StageStatsSummary:
     def from_block_metadata(
         cls,
         block_metas: List[BlockMetadata],
-        time_total_s: float,
         stage_name: str,
         is_substage: bool,
     ) -> "StageStatsSummary":
@@ -494,24 +493,32 @@ class StageStatsSummary:
 
         Args:
             block_metas: List of `BlockMetadata` to calculate stats of
-            time_total_s: Total execution time of stage
             stage_name: Name of stage associated with `blocks`
             is_substage: Whether this set of blocks belongs to a substage.
         Returns:
             A `StageStatsSummary` object initialized with the calculated statistics
         """
         exec_stats = [m.exec_stats for m in block_metas if m.exec_stats is not None]
+        rounded_total = 0
+        time_total_s = 0
 
         if is_substage:
             exec_summary_str = "{}/{} blocks executed\n".format(
                 len(exec_stats), len(block_metas)
             )
         else:
-            rounded_total = round(time_total_s, 2)
-            if rounded_total <= 0:
-                # Handle -0.0 case.
-                rounded_total = 0
             if exec_stats:
+                # Calculate the total execution time of stage as
+                # the difference between the latest end time and
+                # the earliest start time of all blocks in the stage.
+                earliest_start_time = min(s.start_time_s for s in exec_stats)
+                latest_end_time = max(s.end_time_s for s in exec_stats)
+                time_total_s = latest_end_time - earliest_start_time
+
+                rounded_total = round(time_total_s, 2)
+                if rounded_total <= 0:
+                    # Handle -0.0 case.
+                    rounded_total = 0
                 exec_summary_str = "{}/{} blocks executed in {}s".format(
                     len(exec_stats), len(block_metas), rounded_total
                 )
@@ -726,11 +733,13 @@ class IterStatsSummary:
     format_time: Timer
     # Time spent in collate fn, in seconds
     collate_time: Timer
+    # Time spent in finalize_fn, in seconds
+    finalize_batch_time: Timer
     # Total time user thread is blocked by iter_batches
     block_time: Timer
     # Time spent in user code, in seconds
     user_time: Timer
-    # Total time taken by Datastream iterator, in seconds
+    # Total time taken by Dataset iterator, in seconds
     total_time: Timer
     # Num of blocks that are in local object store
     iter_blocks_local: int
@@ -754,8 +763,9 @@ class IterStatsSummary:
             or self.next_time.get()
             or self.format_time.get()
             or self.collate_time.get()
+            or self.finalize_batch_time.get()
         ):
-            out += "\nDatastream iterator time breakdown:\n"
+            out += "\nDataset iterator time breakdown:\n"
             if self.block_time.get():
                 out += "* Total time user code is blocked: {}\n".format(
                     fmt(self.block_time.get())
@@ -808,6 +818,16 @@ class IterStatsSummary:
                     fmt(self.collate_time.avg()),
                     fmt(self.collate_time.get()),
                 )
+            if self.finalize_batch_time.get():
+                format_str = (
+                    "   * In host->device transfer: {} min, {} max, {} avg, {} total\n"
+                )
+                out += format_str.format(
+                    fmt(self.finalize_batch_time.min()),
+                    fmt(self.finalize_batch_time.max()),
+                    fmt(self.finalize_batch_time.avg()),
+                    fmt(self.finalize_batch_time.get()),
+                )
 
         return out
 
@@ -822,7 +842,7 @@ class IterStatsSummary:
             or self.format_time.get()
             or self.get_time.get()
         ):
-            out += "\nDatastream iterator time breakdown:\n"
+            out += "\nDataset iterator time breakdown:\n"
             out += "* In ray.wait(): {}\n".format(fmt(self.wait_time.get()))
             out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
             out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
@@ -854,16 +874,16 @@ class IterStatsSummary:
 
 
 class DatasetPipelineStats:
-    """Holds the execution times for a pipeline of Datastreams."""
+    """Holds the execution times for a pipeline of Datasets."""
 
     def __init__(self, *, max_history: int = 3):
-        """Create a datastream pipeline stats object.
+        """Create a dataset pipeline stats object.
 
         Args:
-            max_history: The max number of datastream window stats to track.
+            max_history: The max number of dataset window stats to track.
         """
         self.max_history: int = max_history
-        self.history_buffer: List[Tuple[int, DatastreamStats]] = []
+        self.history_buffer: List[Tuple[int, DatasetStats]] = []
         self.count = 0
         self.wait_time_s = []
 
@@ -875,6 +895,7 @@ class DatasetPipelineStats:
             "iter_next_batch_s": Timer(),
             "iter_format_batch_s": Timer(),
             "iter_collate_batch_s": Timer(),
+            "iter_finalize_batch_s": Timer(),
             "iter_user_s": Timer(),
             "iter_total_s": Timer(),
         }
@@ -887,7 +908,7 @@ class DatasetPipelineStats:
             return self._iter_stats[name]
         raise AttributeError
 
-    def add(self, stats: DatastreamStats) -> None:
+    def add(self, stats: DatasetStats) -> None:
         """Called to add stats for a newly computed window."""
         self.history_buffer.append((self.count, stats))
         if len(self.history_buffer) > self.max_history:
@@ -900,8 +921,8 @@ class DatasetPipelineStats:
         `other_stats` should cover a disjoint set of windows than
         the current stats.
         """
-        for _, datastream_stats in other_stats.history_buffer:
-            self.add(datastream_stats)
+        for _, dataset_stats in other_stats.history_buffer:
+            self.add(dataset_stats)
 
         self.wait_time_s.extend(other_stats.wait_time_s)
 
@@ -918,7 +939,7 @@ class DatasetPipelineStats:
             or self.iter_get_s.get()
         ):
             out += "\nDatasetPipeline iterator time breakdown:\n"
-            out += "* Waiting for next datastream: {}\n".format(
+            out += "* Waiting for next dataset: {}\n".format(
                 fmt(self.iter_ds_wait_s.get())
             )
             out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s.get()))
@@ -947,7 +968,7 @@ class DatasetPipelineStats:
         wait_time_s = self.wait_time_s[1 if exclude_first_window else 0 :]
         if wait_time_s:
             out += (
-                "* Time stalled waiting for next datastream: "
+                "* Time stalled waiting for next dataset: "
                 "{} min, {} max, {} mean, {} total\n".format(
                     fmt(min(wait_time_s)),
                     fmt(max(wait_time_s)),

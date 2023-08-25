@@ -55,37 +55,6 @@
 </div>
 
 
-<div class="container" style="margin-bottom:30px; margin-top:80px; padding:0px;">
-    <h2 style="font-weight:600;">Getting Started</h2>
-    
-<div class="grid-container">
-  <a class="no-underline" href="./ray-overview/index.html" target="_blank"> <div class="info-box">
-        <div class="image-header" style="padding:0px;">
-            <img src="_static/img/ray_logo.png" width="44px" height="44px" />
-            <h3 style="font-size:20px;">Learn basics</h3>
-        </div>
-        <p style="color:#515151;">Understand how the Ray framework scales your ML workflows.</p>      
-        <p style="font-weight:600;">Learn more > </p>  
-  </div> </a>  
-   <div class="info-box">
-        <div class="image-header" style="padding:0px;">
-            <img src="_static/img/download.png" width="44px" height="44px" />
-            <h3 style="font-size:20px;">Install Ray</h3>
-        </div>
-        <p><pre style="border:none; margin:0px;"><code class="nohighlight" style="margin:10px;">pip install "ray[default]"</code></pre></p>      
-        <a class="no-underline" href="./ray-overview/installation.html" target="_blank"> <p style="font-weight:600; margin-bottom: 0px;">Installation guide ></p></a>
-  </div>
-  <a class="no-underline" href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Introductory_modules/Quickstart_with_Ray_AIR_Colab.ipynb"  target="_blank" 
-        ><div class="info-box">
-        <div class="image-header" style="padding:0px;">
-            <img src="_static/img/code.png" width="44px" height="44px" />
-            <h3 style="font-size:20px;">Try it out</h3>
-        </div>
-        <p style="color:#515151;">Experiment with Ray with an introductory notebook.</p>
-        <p style="font-weight:600;">Open the notebook></p> 
-  </div></a>
-</div>
-  
 <div class="container remove-mobile" style="margin-bottom:30px; margin-top:80px; padding:0px;">
 
 
@@ -94,18 +63,14 @@
 <div class="row">
     <div class="col-4">
         <div class="nav flex-column nav-pills" id="v-pills-tab" role="tablist" aria-orientation="vertical" style="border-bottom:none;">
-          <a class="nav-link active" id="v-pills-data-tab" data-toggle="pill" href="#v-pills-data" role="tab" aria-controls="v-pills-data" aria-selected="true" style="color:black; font-weigth: 500; margin-top:8px;">
-            Distributed Data Ingest
+          <a class="nav-link active" id="v-pills-batch-tab" data-toggle="pill" href="#v-pills-data" role="tab" aria-controls="v-pills-data" aria-selected="true" style="color:black; font-weigth: 500; margin-top:8px;">
+            Batch Inference
           </a>
           <a class="nav-link" id="v-pills-training-tab" data-toggle="pill" href="#v-pills-training" role="tab" aria-controls="v-pills-training" aria-selected="false" style="color:black; font-weigth: 500; margin-top:8px;">
             Model Training
           </a>
           <a class="nav-link" id="v-pills-tuning-tab" data-toggle="pill" href="#v-pills-tuning" role="tab" aria-controls="v-pills-tuning" aria-selected="false" style="color:black; font-weigth: 500; margin-top:8px;">
             Hyperparameter Tuning
-          </a>
-          <a class="nav-link" id="v-pills-batch-tab" data-toggle="pill" href="#v-pills-batch" role="tab" aria-controls="v-pills-batch" aria-selected="false" style="color:black; font-weigth: 500; margin-top:12px;">
-            Batch Inference
-          </a>
           <a class="nav-link" id="v-pills-serving-tab" data-toggle="pill" href="#v-pills-serving" role="tab" aria-controls="v-pills-serving" aria-selected="false" style="color:black; font-weigth: 500; margin-top:8px;">
             Model Serving
           </a>
@@ -118,17 +83,40 @@
         <div class="tab-content" id="v-pills-tabContent" style="box-shadow: 0px 6px 30px 5px rgba(3,28,74,0.12); border-radius:8px;">
           <div class="tab-pane fade show active" id="v-pills-data" role="tabpanel" aria-labelledby="v-pills-data-tab" style="user-select:none;">
             <pre style="margin:0;"><code class="language-python not-selectable">
-from ray import data
+from typing import Dict
+import numpy as np
 
-# Step 1: read 100 files in parallel from S3 directory
-dataset = data.read_csv(paths="s3://structured/data", parallelism=100)
+import ray
 
-# Step 2: partition the dataset into blocks
-dataset = dataset.repartition(num_blocks=1000)
+# Step 1: Create a Ray Dataset from in-memory Numpy arrays.
+ds = ray.data.from_numpy(np.asarray(["Complete this", "for me"]))
 
-# Step 3: preprocess the data at scale, 1000 blocks in parallel
-preprocessor = data.preprocessors.StandardScaler(columns=["value"])
-dataset_transformed = preprocessor.fit_transform(dataset=dataset)
+# Step 2: Define a Predictor class for inference.
+class HuggingFacePredictor:
+    def __init__(self):
+        from transformers import pipeline
+        # Initialize a pre-trained GPT2 Huggingface pipeline.
+        self.model = pipeline("text-generation", model="gpt2")
+
+    # Logic for inference on 1 batch of data.
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, list]:
+        # Get the predictions from the input batch.
+        predictions = self.model(
+            list(batch["data"]), max_length=20, num_return_sequences=1)
+        # `predictions` is a list of length-one lists. For example:
+        # [[{'generated_text': 'output_1'}], ..., [{'generated_text': 'output_2'}]]
+        # Modify the output to get it into the following format instead:
+        # ['output_1', 'output_2']
+        batch["output"] = [sequences[0]["generated_text"] for sequences in predictions]
+        return batch
+
+# Use 2 parallel actors for inference. Each actor predicts on a
+# different partition of data.
+scale = ray.data.ActorPoolStrategy(size=2)
+# Step 3: Map the Predictor over the Dataset to get predictions.
+predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
+# Step 4: Show one prediction output.
+predictions.show(limit=1)
 
             </code></pre>
               <div class="row" style="padding:16px;">
@@ -136,15 +124,15 @@ dataset_transformed = preprocessor.fit_transform(dataset=dataset)
                   <a href="./data/data.html" target="_blank">Learn more </a> | <a href="./data/api/api.html" target="_blank"> API references</a>
                 </div>
                 <div class="col-6" style="display: flex; justify-content: flex-end;">
-                    <a href="https://colab.research.google.com/github/ray-project/ray/blob/master/doc/source/data/examples/nyc_taxi_basic_processing.ipynb" target="_blank" style="color:black;">
-                        <img src="_static/img/colab.png" height="25px" /> Open in colab
+                    <a href="https://github.com/ray-project/ray/blob/master/doc/source/data/examples/huggingface_vit_batch_prediction.ipynb" style="color:black;" target="_blank">
+                        <img src="_static/img/github-fill.png" height="25px" /> Open in Github
                     </a>
                 </div>
               </div>
           </div>
           <div class="tab-pane fade" id="v-pills-training" role="tabpanel" aria-labelledby="v-pills-training-tab" style="user-select:none;">
             <pre style="margin:0;"><code class="language-python not-selectable">
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
 # Step 1: setup PyTorch model training as you normally would
@@ -178,7 +166,7 @@ result = trainer.fit()
           <div class="tab-pane fade" id="v-pills-tuning" role="tabpanel" aria-labelledby="v-pills-tuning-tab" style="user-select:none;" style="user-select:none;">
             <pre style="margin:0;"><code class="language-python not-selectable">
 from ray import tune
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.lightgbm import LightGBMTrainer
 
 train_dataset, eval_dataset = ...
@@ -194,8 +182,7 @@ trainer = LightGBMTrainer(
 tuner = tune.Tuner(
     trainer=trainer,
     param_space=hyper_param_space,
-    tune_config=tune.TuneConfig(num_sa
-    les=1000),
+    tune_config=tune.TuneConfig(num_samples=1000),
 )
 
 # Step 3: run distributed HPO with 1000 trials; each trial runs on 64 CPUs
@@ -213,50 +200,44 @@ result_grid = tuner.fit()
                 </div>
               </div>
           </div>
-          <div class="tab-pane fade" id="v-pills-batch" role="tabpanel" aria-labelledby="v-pills-batch-tab" style="user-select:none;" style="user-select:none;">
-            <pre style="margin:0;"><code class="language-python">
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.torch import TorchPredictor
-
-dataset = ...
-
-# Step 1: create batch predictor to run inference at scale
-batch_predictor = BatchPredictor.from_checkpoint(
-    checkpoint=model_checkpoint, predictor_cls=TorchPredictor
-)
-
-# Step 2: run batch inference on 64 GPUs
-results = batch_predictor.predict(dataset, batch_size=512, num_gpus_per_worker=64)
-            </code></pre>
-              <div class="row" style="padding:16px;">
-                <div class="col-6">
-                  <a href="./ray-core/examples/batch_prediction.html" target="_blank">Learn more </a>
-                </div>
-                <div class="col-6" style="display: flex; justify-content: flex-end;">
-                    <a href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference_colab.ipynb" style="color:black;" target="_blank">
-                        <img src="_static/img/colab.png" height="25px" /> Open in colab
-                    </a>
-                </div>
-              </div>
-          </div>
           <div class="tab-pane fade" id="v-pills-serving" role="tabpanel" aria-labelledby="v-pills-serving-tab" style="user-select:none;" style="user-select:none;">
             <pre style="margin:0;"><code class="language-python">
-from ray import serve
-from ray.serve import PredictorDeployment
-from ray.train.lightgbm import LightGBMPredictor
+import pandas as pd
 
-# Deploy 50 replicas of the LightGBM model as a live endpoint.
-# Convert incoming JSON requests into a DataFrame.
-serve.run(
-    PredictorDeployment.options(
-        name="LightGBM_Service",
-        num_replicas=50,
-    ).bind(
-        predictor_cls=LightGBMPredictor,
-        checkpoint=lgbm_best_checkpoint,
-        http_adapter=serve.http_adapters.pandas_read_json,
-    )
-)
+from ray import serve
+from starlette.requests import Request
+
+
+@serve.deployment(ray_actor_options={"num_gpus": 1})
+class PredictDeployment:
+    def __init__(self, model_id: str, revision: str = None):
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        import torch
+
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            …
+        )
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+
+    def generate(self, text: str) -> pd.DataFrame:
+        input_ids = self.tokenizer(text, return_tensors="pt").input_ids.to(
+            self.model.device
+        )
+
+        gen_tokens = self.model.generate(
+            input_ids,
+            …
+        )
+        return pd.DataFrame(
+            self.tokenizer.batch_decode(gen_tokens), columns=["responses"]
+        )
+
+    async def __call__(self, http_request: Request) -> str:
+        prompts: list[str] = await http_request.json()["prompts"]
+        return self.generate(prompts)
+
+
             </code></pre>
               <div class="row" style="padding:16px;">
                 <div class="col-6">
@@ -311,6 +292,39 @@ ppo_algo.evaluate()
 </div>
 
 
+
+<div class="container" style="margin-bottom:30px; margin-top:80px; padding:0px;">
+    <h2 style="font-weight:600;">Getting Started</h2>
+    
+<div class="grid-container">
+  <a class="no-underline" href="./ray-overview/index.html" target="_blank"> <div class="info-box" style="height:100%;">
+        <div class="image-header" style="padding:0px;">
+            <img src="_static/img/ray_logo.png" width="44px" height="44px" />
+            <h3 style="font-size:20px;">Learn basics</h3>
+        </div>
+        <p style="color:#515151;">Understand how the Ray framework scales your ML workflows.</p>      
+        <p style="font-weight:600;">Learn more > </p>  
+  </div> </a>  
+   <a class="no-underline" href="./ray-overview/installation.html" target="_blank"> <div class="info-box" style="height:100%;">
+        <div class="image-header" style="padding:0px;">
+            <img src="_static/img/download.png" width="44px" height="44px" />
+            <h3 style="font-size:20px;">Install Ray</h3>
+        </div>
+        <p><pre style="border:none; margin:0px;"><code class="nohighlight" style="margin:10px;">pip install -U "ray[air]"</code></pre></p>      
+        <p style="font-weight:600; margin-bottom: 0px;">Installation guide ></p>
+  </div></a>
+  <a class="no-underline" href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Introductory_modules/Quickstart_with_Ray_AIR_Colab.ipynb"  target="_blank" 
+        ><div class="info-box" style="height:100%;">
+        <div class="image-header" style="padding:0px;">
+            <img src="_static/img/code.png" width="44px" height="44px" />
+            <h3 style="font-size:20px;">Try it out</h3>
+        </div>
+        <p style="color:#515151;">Experiment with Ray with an introductory notebook.</p>
+        <p style="font-weight:600;">Open the notebook></p> 
+  </div></a>
+</div>
+
+
 <div class="container" style="margin-bottom:30px; margin-top:80px; padding:0px;">
     <h2 style="font-weight:600;">Beyond the basics</h2>
 </div>
@@ -319,10 +333,10 @@ ppo_algo.evaluate()
   <div class="info-box-2">
         <div class="image-header" style="padding:0px;">
             <img src="_static/img/AIR.png" width="32px" height="32px" />
-            <h3 style="font-size:20px; font-weight:600;">Ray AI Runtime</h3>
+            <h3 style="font-size:20px; font-weight:600;">Ray Libraries</h3>
         </div>
         <p>Scale the entire ML pipeline from data ingest to model serving with high-level Python APIs that integrate with popular ecosystem frameworks.</p>      
-        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-air/getting-started.html" target="_blank">Learn more about AIR ></a>      
+        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-overview/getting-started.html#ray-ai-runtime-libraries-quickstart" target="_blank">Learn more about Ray Libraries></a>
   </div>
   <div class="info-box-2">
         <div class="image-header" style="padding:0px;">

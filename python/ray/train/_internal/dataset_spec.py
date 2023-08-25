@@ -4,27 +4,26 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 from ray.actor import ActorHandle
 from ray.air.config import DatasetConfig
 
-from ray.data import Datastream, DatasetPipeline
+from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors import Chain
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
 
-RayDataset = Union["Datastream", "DatasetPipeline"]
+RayDataset = Union["Dataset", "DatasetPipeline"]
 
 
 @dataclass
 class RayDatasetSpec:
-    """Configuration for Datastreams to pass to the training workers.
+    """Configuration for Datasets to pass to the training workers.
 
-    dataset_or_dict: An optional Datastream (or DatasetPipeline) or a dictionary of
+    dataset_or_dict: An optional Dataset (or DatasetPipeline) or a dictionary of
         datasets to be sharded across all the training workers, which can be accessed
-        from the training function via ``session.get_dataset_shard()``. Multiple
+        from the training function via ``ray.train.get_dataset_shard()``. Multiple
         Datasets can be passed in as a dictionary that maps each name key to a
         Dataset value, and each Dataset can be accessed from the training function
-        by passing in a `dataset_name` argument to ``session.get_dataset_shard()``.
+        by passing in a `dataset_name` argument to ``ray.train.get_dataset_shard()``.
     dataset_split_fn: An optional callable to specify how the provided ``dataset``
         should be split across the training workers. It is expected to take in two
         arguments. The first one is the ``dataset``, just as is passed in to the
@@ -32,7 +31,7 @@ class RayDatasetSpec:
         training workers (to use as locality hints). The Callable is expected to
         return a list of RayDatasets or a list of dictionaries of RayDatasets,
         with the length of the list equal to the length of the list of actor handles.
-        If None is provided, the provided Datastream(s) will be equally split.
+        If None is provided, the provided Dataset(s) will be equally split.
 
     """
 
@@ -91,7 +90,7 @@ class RayDatasetSpec:
             )
             if not len(splits) == len(training_worker_handles):
                 raise RuntimeError(
-                    "The list of Datastreams returned by the "
+                    "The list of Datasets returned by the "
                     f"`dataset_split_fn`: {len(splits)} does not match "
                     f"the number of training workers: {len(training_worker_handles)}"
                 )
@@ -109,14 +108,14 @@ class DataParallelIngestSpec:
                 with all defaults filled in.
         """
         self.dataset_config = dataset_config
-        self.preprocessed_datasets: Optional[Dict[str, "Datastream"]] = None
+        self.preprocessed_datasets: Optional[Dict[str, "Dataset"]] = None
         self.preprocessor: Optional["Preprocessor"] = None
 
     def preprocess_datasets(
         self,
         prep: "Preprocessor",
-        datasets: Dict[str, "Datastream"],
-    ) -> Dict[str, "Datastream"]:
+        datasets: Dict[str, "Dataset"],
+    ) -> Dict[str, "Dataset"]:
         """Preprocess the given datasets.
 
         This will be called prior to `get_dataset_shards()`.
@@ -194,17 +193,10 @@ class DataParallelIngestSpec:
                 )
                 dataset = dataset.window(bytes_per_window=stream_window_size).repeat()
                 # In windowed mode, we re-apply the preprocessor on each iteration.
-                if self.preprocessor or config.per_epoch_preprocessor:
-                    if self.preprocessor is not None:
-                        preprocessor = self.preprocessor
-                        if config.per_epoch_preprocessor is not None:
-                            preprocessor = Chain(
-                                preprocessor, config.per_epoch_preprocessor
-                            )
-                    else:
-                        preprocessor = config.per_epoch_preprocessor
-
-                    dataset = preprocessor._transform_pipeline(dataset)
+                if self.preprocessor is not None:
+                    dataset = self.preprocessor._transform_pipeline(dataset)
+                if config.per_epoch_preprocessor is not None:
+                    dataset = config.per_epoch_preprocessor._transform_pipeline(dataset)
 
                 # Always re-randomize each window; this doesn't help with reducing
                 # cluster hot-spots since we already randomized the based blocks, but
@@ -215,7 +207,7 @@ class DataParallelIngestSpec:
                     dataset = dataset.randomize_block_order_each_window()
             elif config.per_epoch_preprocessor is not None:
                 # Reapply the per epoch preprocessor on each epoch.
-                if isinstance(dataset, Datastream):
+                if isinstance(dataset, Dataset):
                     dataset = dataset.repeat()
                 dataset = config.per_epoch_preprocessor._transform_pipeline(dataset)
 
@@ -223,7 +215,7 @@ class DataParallelIngestSpec:
                 # If global shuffle is requested, then we should try to overlap
                 # this with other computation, so convert to a DatasetPipeline
                 # if not already being used.
-                if isinstance(dataset, Datastream):
+                if isinstance(dataset, Dataset):
                     dataset = dataset.repeat()
                 dataset = dataset.random_shuffle_each_window()
 

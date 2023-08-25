@@ -32,6 +32,7 @@ import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -61,7 +62,6 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.offline.offline_evaluation_utils import remove_time_dim
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
@@ -132,6 +132,48 @@ from ray.util import log_once
 from ray.util.timer import _Timer
 from ray.tune.registry import get_trainable_cls
 
+
+try:
+    from ray.rllib.extensions import AlgorithmBase
+except ImportError:
+
+    class AlgorithmBase:
+        @staticmethod
+        def _get_learner_bundles(cf: AlgorithmConfig) -> List[Dict[str, int]]:
+            """Selects the right resource bundles for learner workers based off of cf.
+
+            Args:
+                cf: The algorithm config.
+
+            Returns:
+                A list of resource bundles for the learner workers.
+            """
+            if cf.num_learner_workers > 0:
+                if cf.num_gpus_per_learner_worker:
+                    learner_bundles = [
+                        {"GPU": cf.num_learner_workers * cf.num_gpus_per_learner_worker}
+                    ]
+                elif cf.num_cpus_per_learner_worker:
+                    learner_bundles = [
+                        {
+                            "CPU": cf.num_cpus_per_learner_worker
+                            * cf.num_learner_workers,
+                        }
+                    ]
+            else:
+                learner_bundles = [
+                    {
+                        # sampling and training is not done concurrently when local is
+                        # used, so pick the max.
+                        "CPU": max(
+                            cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
+                        ),
+                        "GPU": cf.num_gpus_per_learner_worker,
+                    }
+                ]
+            return learner_bundles
+
+
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
@@ -147,7 +189,7 @@ def with_common_config(*args, **kwargs):
 
 
 @PublicAPI
-class Algorithm(Trainable):
+class Algorithm(Trainable, AlgorithmBase):
     """An RLlib algorithm responsible for optimizing one or more Policies.
 
     Algorithms contain a WorkerSet under `self.workers`. A WorkerSet is
@@ -190,7 +232,6 @@ class Algorithm(Trainable):
         "env_config",
         "model",
         "optimizer",
-        "multiagent",
         "custom_resources_per_worker",
         "evaluation_config",
         "exploration_config",
@@ -221,7 +262,7 @@ class Algorithm(Trainable):
 
     @staticmethod
     def from_checkpoint(
-        checkpoint: Union[str, Checkpoint],
+        checkpoint: Union[str, Checkpoint, NewCheckpoint],
         policy_ids: Optional[Container[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -364,7 +405,9 @@ class Algorithm(Trainable):
             # Last resort: Create core AlgorithmConfig from merged dicts.
             if isinstance(default_config, dict):
                 config = AlgorithmConfig.from_dict(
-                    config_dict=self.merge_trainer_configs(default_config, config, True)
+                    config_dict=self.merge_algorithm_configs(
+                        default_config, config, True
+                    )
                 )
             # Default config is an AlgorithmConfig -> update its properties
             # from the given config dict.
@@ -571,17 +614,17 @@ class Algorithm(Trainable):
             )
             self.config.off_policy_estimation_methods = ope_dict
 
-        # Deprecated way of implementing Trainer sub-classes (or "templates"
+        # Deprecated way of implementing Algorithm sub-classes (or "templates"
         # via the `build_trainer` utility function).
         # Instead, sub-classes should override the Trainable's `setup()`
         # method and call super().setup() from within that override at some
         # point.
-        # Old design: Override `Trainer._init`.
+        # Old design: Override `Algorithm._init`.
         _init = False
         try:
             self._init(self.config, self.env_creator)
             _init = True
-        # New design: Override `Trainable.setup()` (as indented by tune.Trainable)
+        # New design: Override `Algorithm.setup()` (as indented by tune.Trainable)
         # and do or don't call `super().setup()` from within your override.
         # By default, `super().setup()` will create both worker sets:
         # "rollout workers" for collecting samples for training and - if
@@ -593,11 +636,7 @@ class Algorithm(Trainable):
 
         # Only if user did not override `_init()`:
         if _init is False:
-            # - Create rollout workers here automatically.
-            # - Run the execution plan to create the local iterator to `next()`
-            #   in each training iteration.
-            # This matches the behavior of using `build_trainer()`, which
-            # has been deprecated.
+            # Create a set of env runner actors via a WorkerSet.
             self.workers = WorkerSet(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,
@@ -621,13 +660,6 @@ class Algorithm(Trainable):
                 self.train_exec_impl = self.execution_plan(
                     self.workers, self.config, **self._kwargs_for_execution_plan()
                 )
-
-            # Now that workers have been created, update our policies
-            # dict in config[multiagent] (with the correct original/
-            # unpreprocessed spaces).
-            self.config["multiagent"][
-                "policies"
-            ] = self.workers.local_worker().policy_dict
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -666,17 +698,8 @@ class Algorithm(Trainable):
             # the num worker is set to 0 to avoid creating shards. The dataset will not
             # be repartioned to num_workers blocks.
             logger.info("Creating evaluation dataset ...")
-            ds, _ = get_dataset_and_shards(self.evaluation_config, num_workers=0)
-
-            # Dataset should be in form of one episode per row. in case of bandits each
-            # row is just one time step. To make the computation more efficient later
-            # we remove the time dimension here.
-            parallelism = self.evaluation_config.evaluation_num_workers or 1
-            batch_size = max(ds.count() // parallelism, 1)
-            self.evaluation_dataset = ds.map_batches(
-                remove_time_dim,
-                batch_size=batch_size,
-                batch_format="pandas",
+            self.evaluation_dataset, _ = get_dataset_and_shards(
+                self.evaluation_config, num_workers=0
             )
             logger.info("Evaluation dataset created")
 
@@ -728,18 +751,44 @@ class Algorithm(Trainable):
             #  the two we need to loop through the policy modules and create a simple
             #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
-            module_spec = local_worker.marl_module_spec
+            policy_dict, _ = self.config.get_multi_agent_setup(
+                env=local_worker.env,
+                spaces=getattr(local_worker, "spaces", None),
+            )
+            # TODO (Sven): Unify the inference of the MARLModuleSpec. Right now,
+            #  we get this from the RolloutWorker's `marl_module_spec` property.
+            #  However, this is hacky (information leak) and should not remain this
+            #  way. For other EnvRunner classes (that don't have this property),
+            #  Algorithm should infer this itself.
+            if hasattr(local_worker, "marl_module_spec"):
+                module_spec = local_worker.marl_module_spec
+            else:
+                module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
 
-            # sync the weights from local rollout worker to trainers
-            weights = local_worker.get_weights()
-            self.learner_group.set_weights(weights)
+            # check if there are modules to load from the module_spec
+            rl_module_ckpt_dirs = {}
+            marl_module_ckpt_dir = module_spec.load_state_path
+            modules_to_load = module_spec.modules_to_load
+            for module_id, sub_module_spec in module_spec.module_specs.items():
+                if sub_module_spec.load_state_path:
+                    rl_module_ckpt_dirs[module_id] = sub_module_spec.load_state_path
+            if marl_module_ckpt_dir or rl_module_ckpt_dirs:
+                self.learner_group.load_module_state(
+                    marl_module_ckpt_dir=marl_module_ckpt_dir,
+                    modules_to_load=modules_to_load,
+                    rl_module_ckpt_dirs=rl_module_ckpt_dirs,
+                )
+            # sync the weights from the learner group to the rollout workers
+            weights = self.learner_group.get_weights()
+            local_worker.set_weights(weights)
+            self.workers.sync_weights()
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
 
-    # TODO: Deprecated: In your sub-classes of Trainer, override `setup()`
+    # TODO: Deprecated: In your sub-classes of Algorithm, override `setup()`
     #  directly and call super().setup() from within it if you would like the
     #  default setup behavior plus some own setup logic.
     #  If you don't need the env/workers/config/etc.. setup for you by super,
@@ -758,18 +807,20 @@ class Algorithm(Trainable):
         This class will be used by an Algorithm in case
         the policy class is not provided by the user in any single- or
         multi-agent PolicySpec.
+
+        Note: This method is ignored when the RLModule API is enabled.
         """
         return None
 
     @override(Trainable)
     def step(self) -> ResultDict:
-        """Implements the main `Trainer.train()` logic.
+        """Implements the main `Algorithm.train()` logic.
 
         Takes n attempts to perform a single training step. Thereby
         catches RayErrors resulting from worker failures. After n attempts,
         fails gracefully.
 
-        Override this method in your Trainer sub-classes if you would like to
+        Override this method in your Algorithm sub-classes if you would like to
         handle worker failures yourself.
         Otherwise, override only `training_step()` to implement the core
         algorithm logic.
@@ -811,15 +862,15 @@ class Algorithm(Trainable):
         if not evaluate_this_iter and self.config.always_attach_evaluation_results:
             assert isinstance(
                 self.evaluation_metrics, dict
-            ), "Trainer.evaluate() needs to return a dict."
+            ), "Algorithm.evaluate() needs to return a dict."
             results.update(self.evaluation_metrics)
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             # Sync filters on workers.
             self._sync_filters_if_needed(
-                from_worker=self.workers.local_worker(),
+                central_worker=self.workers.local_worker(),
                 workers=self.workers,
-                timeout_seconds=self.config.sync_filters_on_rollout_workers_timeout_s,
+                config=self.config,
             )
             # TODO (avnishn): Remove the execution plan API by q1 2023
             # Collect worker metrics and add combine them with `results`.
@@ -861,9 +912,6 @@ class Algorithm(Trainable):
     ) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
-        Note that this default implementation does not do anything beyond
-        merging evaluation_config with the normal trainer config.
-
         Args:
             duration_fn: An optional callable taking the already run
                 num episodes as only arg and returning the number of
@@ -879,12 +927,12 @@ class Algorithm(Trainable):
         # Sync weights to the evaluation WorkerSet.
         if self.evaluation_workers is not None:
             self.evaluation_workers.sync_weights(
-                from_worker_or_trainer=self.workers.local_worker()
+                from_worker_or_learner_group=self.workers.local_worker()
             )
             self._sync_filters_if_needed(
-                from_worker=self.workers.local_worker(),
+                central_worker=self.workers.local_worker(),
                 workers=self.evaluation_workers,
-                timeout_seconds=self.config.sync_filters_on_rollout_workers_timeout_s,
+                config=self.evaluation_config,
             )
 
         self.callbacks.on_evaluate_start(algorithm=self)
@@ -910,7 +958,7 @@ class Algorithm(Trainable):
             ):
                 raise ValueError(
                     "Cannot evaluate w/o an evaluation worker set in "
-                    "the Trainer or w/o an env on the local worker!\n"
+                    "the Algorithm or w/o an env on the local worker!\n"
                     "Try one of the following:\n1) Set "
                     "`evaluation_interval` >= 0 to force creating a "
                     "separate evaluation worker set.\n2) Set "
@@ -1101,7 +1149,7 @@ class Algorithm(Trainable):
                     metrics["off_policy_estimator"][name] = avg_estimate
 
         # Evaluation does not run for every step.
-        # Save evaluation metrics on trainer, so it can be attached to
+        # Save evaluation metrics on Algorithm, so it can be attached to
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
 
@@ -1154,9 +1202,9 @@ class Algorithm(Trainable):
 
         # TODO(Jun): Implement solution via connectors.
         self._sync_filters_if_needed(
-            from_worker=self.workers.local_worker(),
+            central_worker=self.workers.local_worker(),
             workers=self.evaluation_workers,
-            timeout_seconds=eval_cfg.sync_filters_on_rollout_workers_timeout_s,
+            config=eval_cfg,
         )
 
         if self.config.custom_evaluation_function:
@@ -1294,7 +1342,7 @@ class Algorithm(Trainable):
                 metrics["off_policy_estimator"][name] = estimates
 
         # Evaluation does not run for every step.
-        # Save evaluation metrics on trainer, so it can be attached to
+        # Save evaluation metrics on Algorithm, so it can be attached to
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
 
@@ -1356,7 +1404,7 @@ class Algorithm(Trainable):
         """Default single iteration logic of an algorithm.
 
         - Collect on-policy samples (SampleBatches) in parallel using the
-          Trainer's RolloutWorkers (@ray.remote).
+          Algorithm's RolloutWorkers (@ray.remote).
         - Concatenate collected SampleBatches into one train batch.
         - Note that we may have more than one policy in the multi-agent case:
           Call the different policies' `learn_on_batch` (simple optimizer) OR
@@ -1417,7 +1465,7 @@ class Algorithm(Trainable):
             if self.config._enable_learner_api:
                 from_worker_or_trainer = self.learner_group
             self.workers.sync_weights(
-                from_worker_or_trainer=from_worker_or_trainer,
+                from_worker_or_learner_group=from_worker_or_trainer,
                 policies=list(train_results.keys()),
                 global_vars=global_vars,
             )
@@ -1427,10 +1475,10 @@ class Algorithm(Trainable):
     @staticmethod
     def execution_plan(workers, config, **kwargs):
         raise NotImplementedError(
-            "It is not longer recommended to use Trainer's `execution_plan` method/API."
+            "It is no longer supported to use the `Algorithm.execution_plan()` API!"
             " Set `_disable_execution_plan_api=True` in your config and override the "
-            "`Trainer.training_step()` method with your algo's custom "
-            "execution logic."
+            "`Algorithm.training_step()` method with your algo's custom "
+            "execution logic instead."
         )
 
     @PublicAPI
@@ -1450,9 +1498,6 @@ class Algorithm(Trainable):
         episode: Optional[Episode] = None,
         unsquash_action: Optional[bool] = None,
         clip_action: Optional[bool] = None,
-        # Deprecated args.
-        unsquash_actions=DEPRECATED_VALUE,
-        clip_actions=DEPRECATED_VALUE,
         # Kwargs placeholder for future compatibility.
         **kwargs,
     ) -> Union[
@@ -1502,24 +1547,9 @@ class Algorithm(Trainable):
             or we have an RNN-based Policy.
 
         Raises:
-            KeyError: If the `policy_id` cannot be found in this Trainer's
-                local worker.
+            KeyError: If the `policy_id` cannot be found in this Algorithm's local
+                worker.
         """
-        if clip_actions != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="Trainer.compute_single_action(`clip_actions`=...)",
-                new="Trainer.compute_single_action(`clip_action`=...)",
-                error=True,
-            )
-            clip_action = clip_actions
-        if unsquash_actions != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="Trainer.compute_single_action(`unsquash_actions`=...)",
-                new="Trainer.compute_single_action(`unsquash_action`=...)",
-                error=True,
-            )
-            unsquash_action = unsquash_actions
-
         # `unsquash_action` is None: Use value of config['normalize_actions'].
         if unsquash_action is None:
             unsquash_action = self.config.normalize_actions
@@ -1531,7 +1561,7 @@ class Algorithm(Trainable):
         # are all None.
         err_msg = (
             "Provide either `input_dict` OR [`observation`, ...] as "
-            "args to Trainer.compute_single_action!"
+            "args to `Algorithm.compute_single_action()`!"
         )
         if input_dict is not None:
             assert (
@@ -1545,12 +1575,12 @@ class Algorithm(Trainable):
             assert observation is not None, err_msg
 
         # Get the policy to compute the action for (in the multi-agent case,
-        # Trainer may hold >1 policies).
+        # Algorithm may hold >1 policies).
         policy = self.get_policy(policy_id)
         if policy is None:
             raise KeyError(
                 f"PolicyID '{policy_id}' not found in PolicyMap of the "
-                f"Trainer's local worker!"
+                f"Algorithm's local worker!"
             )
         local_worker = self.workers.local_worker()
 
@@ -1653,8 +1683,6 @@ class Algorithm(Trainable):
         episodes: Optional[List[Episode]] = None,
         unsquash_actions: Optional[bool] = None,
         clip_actions: Optional[bool] = None,
-        # Deprecated.
-        normalize_actions=None,
         **kwargs,
     ):
         """Computes an action for the specified policy on the local Worker.
@@ -1696,14 +1724,6 @@ class Algorithm(Trainable):
             the full output of policy.compute_actions_from_input_dict() if
             full_fetch=True or we have an RNN-based Policy.
         """
-        if normalize_actions is not None:
-            deprecation_warning(
-                old="Trainer.compute_actions(`normalize_actions`=...)",
-                new="Trainer.compute_actions(`unsquash_actions`=...)",
-                error=True,
-            )
-            unsquash_actions = normalize_actions
-
         # `unsquash_actions` is None: Use value of config['normalize_actions'].
         if unsquash_actions is None:
             unsquash_actions = self.config.normalize_actions
@@ -1830,8 +1850,6 @@ class Algorithm(Trainable):
         ] = None,
         evaluation_workers: bool = True,
         module_spec: Optional[SingleAgentRLModuleSpec] = None,
-        # Deprecated.
-        workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> Optional[Policy]:
         """Adds a new policy to this Algorithm.
 
@@ -1869,26 +1887,12 @@ class Algorithm(Trainable):
             module_spec: In the new RLModule API we need to pass in the module_spec for
                 the new module that is supposed to be added. Knowing the policy spec is
                 not sufficient.
-            workers: A list of RolloutWorker/ActorHandles (remote
-                RolloutWorkers) to add this policy to. If defined, will only
-                add the given policy to these workers.
-
 
         Returns:
             The newly added policy (the copy that got added to the local
             worker). If `workers` was provided, None is returned.
         """
         validate_policy_id(policy_id, error=True)
-
-        if workers is not DEPRECATED_VALUE:
-            deprecation_warning(
-                old="Algorithm.add_policy(.., workers=..)",
-                help=(
-                    "The `workers` argument to `Algorithm.add_policy()` is deprecated! "
-                    "Please do not use it anymore."
-                ),
-                error=True,
-            )
 
         self.workers.add_policy(
             policy_id,
@@ -2012,7 +2016,6 @@ class Algorithm(Trainable):
     def export_policy_checkpoint(
         self,
         export_dir: str,
-        filename_prefix=DEPRECATED_VALUE,  # deprecated arg, do not use anymore
         policy_id: PolicyID = DEFAULT_POLICY_ID,
     ) -> None:
         """Exports Policy checkpoint to a local directory and returns an AIR Checkpoint.
@@ -2035,14 +2038,6 @@ class Algorithm(Trainable):
             >>>     algo.train() # doctest: +SKIP
             >>> algo.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
-        # `filename_prefix` should not longer be used as new Policy checkpoints
-        # contain more than one file with a fixed filename structure.
-        if filename_prefix != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="Algorithm.export_policy_checkpoint(filename_prefix=...)",
-                error=True,
-            )
-
         policy = self.get_policy(policy_id)
         if policy is None:
             raise KeyError(f"Policy with ID {policy_id} not found in Algorithm!")
@@ -2072,8 +2067,8 @@ class Algorithm(Trainable):
         self._sync_weights_to_workers(worker_set=self.workers)
 
     @override(Trainable)
-    def save_checkpoint(self, checkpoint_dir: str) -> str:
-        """Exports AIR Checkpoint to a local directory and returns its directory path.
+    def save_checkpoint(self, checkpoint_dir: str) -> None:
+        """Exports checkpoint to a local directory.
 
         The structure of an Algorithm checkpoint dir will be as follows::
 
@@ -2099,9 +2094,6 @@ class Algorithm(Trainable):
 
         Args:
             checkpoint_dir: The directory where the checkpoint files will be stored.
-
-        Returns:
-            The path to the created AIR Checkpoint directory.
         """
         state = self.__getstate__()
 
@@ -2151,25 +2143,24 @@ class Algorithm(Trainable):
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.save_state(learner_state_dir)
 
-        return checkpoint_dir
-
     @override(Trainable)
-    def load_checkpoint(self, checkpoint: str) -> None:
-        # Checkpoint is provided as a directory name.
+    def load_checkpoint(self, checkpoint_dir: str) -> None:
+        # Checkpoint is provided as a local directory.
         # Restore from the checkpoint file or dir.
 
-        checkpoint_info = get_checkpoint_info(checkpoint)
+        checkpoint_info = get_checkpoint_info(checkpoint_dir)
         checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
         if self.config._enable_learner_api:
-            learner_state_dir = os.path.join(checkpoint, "learner")
+            learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.load_state(learner_state_dir)
 
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
         # Log after the callback is invoked, so that the user has a chance
         # to mutate the result.
-        # TODO: Remove `trainer` arg at some point to fully deprecate the old signature.
+        # TODO: Remove `algorithm` arg at some point to fully deprecate the old
+        #  signature.
         self.callbacks.on_train_result(algorithm=self, result=result)
         # Then log according to Trainable's logging logic.
         Trainable.log_result(self, result)
@@ -2210,22 +2201,12 @@ class Algorithm(Trainable):
             if cf.num_learner_workers == 0:
                 # in this case local_worker only does sampling and training is done on
                 # local learner worker
-                driver = {
-                    # sampling and training is not done concurrently when local is
-                    # used, so pick the max.
-                    "CPU": max(
-                        cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
-                    ),
-                    "GPU": cf.num_gpus_per_learner_worker,
-                }
+                driver = cls._get_learner_bundles(cf)[0]
             else:
                 # in this case local_worker only does sampling and training is done on
                 # remote learner workers
                 driver = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
         else:
-            # Without Learner API, the local_worker can do both sampling and training.
-            # So, we need to allocate the same resources for the driver as for the
-            # local_worker.
             driver = {
                 "CPU": cf.num_cpus_for_local_worker,
                 "GPU": 0 if cf._fake_gpus else cf.num_gpus,
@@ -2272,13 +2253,7 @@ class Algorithm(Trainable):
         # resources for remote learner workers
         learner_bundles = []
         if cf._enable_learner_api and cf.num_learner_workers > 0:
-            learner_bundles = [
-                {
-                    "CPU": cf.num_cpus_per_learner_worker,
-                    "GPU": cf.num_gpus_per_learner_worker,
-                }
-                for _ in range(cf.num_learner_workers)
-            ]
+            learner_bundles = cls._get_learner_bundles(cf)
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 
@@ -2386,21 +2361,35 @@ class Algorithm(Trainable):
 
     def _sync_filters_if_needed(
         self,
-        from_worker: RolloutWorker,
+        *,
+        central_worker: RolloutWorker,
         workers: WorkerSet,
-        timeout_seconds: Optional[float] = None,
-    ):
-        if (
-            from_worker
-            and self.config.get("observation_filter", "NoFilter") != "NoFilter"
-        ):
+        config: AlgorithmConfig,
+    ) -> None:
+        """Synchronizes the filter stats from `workers` to `central_worker`.
+
+        .. and broadcasts the central_worker's filter stats back to all `workers`
+        (if configured).
+
+        Args:
+            central_worker: The worker to sync/aggregate all `workers`' filter stats to
+                and from which to (possibly) broadcast the updated filter stats back to
+                `workers`.
+            workers: The WorkerSet, whose workers' filter stats should be used for
+                aggregation on `central_worker` and which (possibly) get updated
+                from `central_worker` after the sync.
+            config: The algorithm config instance. This is used to determine, whether
+                syncing from `workers` should happen at all and whether broadcasting
+                back to `workers` (after possible syncing) should happen.
+        """
+        if central_worker and config.observation_filter != "NoFilter":
             FilterManager.synchronize(
-                from_worker.filters,
+                central_worker.filters,
                 workers,
-                update_remote=self.config.synchronize_filters,
-                timeout_seconds=timeout_seconds,
+                update_remote=config.update_worker_filter_stats,
+                timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
+                use_remote_data_for_update=config.use_worker_filter_stats,
             )
-            logger.debug("synchronized filters: {}".format(from_worker.filters))
 
     @DeveloperAPI
     def _sync_weights_to_workers(
@@ -2450,7 +2439,7 @@ class Algorithm(Trainable):
         return auto_filled
 
     @classmethod
-    def merge_trainer_configs(
+    def merge_algorithm_configs(
         cls,
         config1: AlgorithmConfigDict,
         config2: PartialAlgorithmConfigDict,
@@ -2727,7 +2716,7 @@ class Algorithm(Trainable):
             if isinstance(default_config, AlgorithmConfig):
                 new_config = default_config.update_from_dict(state["config"])
             else:
-                new_config = Algorithm.merge_trainer_configs(
+                new_config = Algorithm.merge_algorithm_configs(
                     default_config, state["config"]
                 )
 
@@ -3119,21 +3108,8 @@ class Algorithm(Trainable):
             alg = "USER_DEFINED"
         record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
-    @Deprecated(new="Algorithm.compute_single_action()", error=True)
-    def compute_action(self, *args, **kwargs):
-        return self.compute_single_action(*args, **kwargs)
-
-    @Deprecated(new="construct WorkerSet(...) instance directly", error=True)
-    def _make_workers(self, *args, **kwargs):
-        pass
-
-    @Deprecated(new="AlgorithmConfig.validate()", error=False)
-    def validate_config(self, config):
-        pass
-
-    @staticmethod
     @Deprecated(new="AlgorithmConfig.validate()", error=True)
-    def _validate_config(config, trainer_or_none):
+    def validate_config(self, config):
         pass
 
 

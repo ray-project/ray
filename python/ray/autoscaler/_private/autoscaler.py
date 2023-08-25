@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
-import grpc
 import yaml
 
+import ray
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -76,13 +76,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
-
-try:
-    from urllib3.exceptions import MaxRetryError
-except ImportError:
-    MaxRetryError = None
-
+from ray.exceptions import RpcError
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +184,7 @@ class StandardAutoscaler:
         # TODO(ekl): require config reader to be a callable always.
         config_reader: Union[str, Callable[[], dict]],
         load_metrics: LoadMetrics,
-        gcs_node_info_stub: gcs_service_pb2_grpc.NodeInfoGcsServiceStub,
+        gcs_client: "ray._raylet.GcsClient",
         session_name: Optional[str] = None,
         max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
         max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -220,8 +214,8 @@ class StandardAutoscaler:
             prefix_cluster_info: Whether to add the cluster name to info strs.
             event_summarizer: Utility to consolidate duplicated messages.
             prom_metrics: Prometheus metrics for autoscaler-related operations.
-            gcs_node_info_stub: Stub for interactions with Ray nodes via gRPC
-                request to the GCS. Used to drain nodes before termination.
+            gcs_client: client for interactions with the GCS. Used to drain nodes
+                before termination.
         """
 
         if isinstance(config_reader, str):
@@ -361,7 +355,7 @@ class StandardAutoscaler:
             for remote, local in self.config["file_mounts"].items()
         }
 
-        self.gcs_node_info_stub = gcs_node_info_stub
+        self.gcs_client = gcs_client
 
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
@@ -681,36 +675,26 @@ class StandardAutoscaler:
 
         logger.info(f"Draining {len(raylet_ids_to_drain)} raylet(s).")
         try:
-            request = gcs_service_pb2.DrainNodeRequest(
-                drain_node_data=[
-                    gcs_service_pb2.DrainNodeData(node_id=raylet_id)
-                    for raylet_id in raylet_ids_to_drain
-                ]
-            )
-
             # A successful response indicates that the GCS has marked the
             # desired nodes as "drained." The cloud provider can then terminate
             # the nodes without the GCS printing an error.
-            response = self.gcs_node_info_stub.DrainNode(request, timeout=5)
-
             # Check if we succeeded in draining all of the intended nodes by
             # looking at the RPC response.
-            drained_raylet_ids = {
-                status_item.node_id for status_item in response.drain_node_status
-            }
+            drained_raylet_ids = set(
+                self.gcs_client.drain_nodes(raylet_ids_to_drain, timeout=5)
+            )
             failed_to_drain = raylet_ids_to_drain - drained_raylet_ids
             if failed_to_drain:
                 self.prom_metrics.drain_node_exceptions.inc()
                 logger.error(f"Failed to drain {len(failed_to_drain)} raylet(s).")
-
         # If we get a gRPC error with an UNIMPLEMENTED code, fail silently.
         # This error indicates that the GCS is using Ray version < 1.8.0,
         # for which DrainNode is not implemented.
-        except grpc.RpcError as e:
+        except RpcError as e:
             # If the code is UNIMPLEMENTED, pass.
-            if e.code() == grpc.StatusCode.UNIMPLEMENTED:
+            if e.rpc_code == ray._raylet.GRPC_STATUS_CODE_UNIMPLEMENTED:
                 pass
-            # Otherwise, it's a plane old gRPC error and we should log it.
+            # Otherwise, it's a plain old gRPC error and we should log it.
             else:
                 self.prom_metrics.drain_node_exceptions.inc()
                 logger.exception("Failed to drain Ray nodes. Traceback follows.")
@@ -741,6 +725,7 @@ class StandardAutoscaler:
         ):
             if node_id is not None:
                 resources = self._node_resources(node_id)
+                labels = self._node_labels(node_id)
                 logger.debug(f"{node_id}: Starting new thread runner.")
                 T.append(
                     threading.Thread(
@@ -750,6 +735,7 @@ class StandardAutoscaler:
                             setup_commands,
                             ray_start_commands,
                             resources,
+                            labels,
                             docker_config,
                         ),
                     )
@@ -1024,6 +1010,13 @@ class StandardAutoscaler:
         else:
             return {}
 
+    def _node_labels(self, node_id):
+        node_type = self.provider.node_tags(node_id).get(TAG_RAY_USER_NODE_TYPE)
+        if self.available_node_types:
+            return self.available_node_types.get(node_type, {}).get("labels", {})
+        else:
+            return {}
+
     def reset(self, errors_fatal=False):
         sync_continuously = False
         if hasattr(self, "config"):
@@ -1043,6 +1036,10 @@ class StandardAutoscaler:
                         "available until you upgrade ray on your cluster.",
                         exc_info=e,
                     )
+            logger.debug(
+                f"New config after validation: {new_config},"
+                f" of type: {type(new_config)}"
+            )
             (new_runtime_hash, new_file_mounts_contents_hash) = hash_runtime_conf(
                 new_config["file_mounts"],
                 new_config["cluster_synced_files"],
@@ -1247,6 +1244,7 @@ class StandardAutoscaler:
             is_head_node=False,
             docker_config=self.config.get("docker"),
             node_resources=self._node_resources(node_id),
+            node_labels=self._node_labels(node_id),
             for_recovery=True,
         )
         updater.start()
@@ -1317,7 +1315,13 @@ class StandardAutoscaler:
         )
 
     def spawn_updater(
-        self, node_id, setup_commands, ray_start_commands, node_resources, docker_config
+        self,
+        node_id,
+        setup_commands,
+        ray_start_commands,
+        node_resources,
+        node_labels,
+        docker_config,
     ):
         logger.info(
             f"Creating new (spawn_updater) updater thread for node" f" {node_id}."
@@ -1351,6 +1355,7 @@ class StandardAutoscaler:
             use_internal_ip=True,
             docker_config=docker_config,
             node_resources=node_resources,
+            node_labels=node_labels,
         )
         updater.start()
         self.updaters[node_id] = updater

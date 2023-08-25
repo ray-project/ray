@@ -11,12 +11,12 @@ from ray._private.state_api_test_utils import (
     verify_tasks_running_or_terminated,
     verify_failed_task,
 )
-from ray.experimental.state.common import ListApiOptions, StateResource
+from ray.util.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-from ray.experimental.state.api import (
+from ray.util.state import (
     StateApiClient,
     list_actors,
     list_tasks,
@@ -474,6 +474,111 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
     )
 
 
+def test_ray_intentional_errors(shutdown_only):
+    """
+    Test in the below cases, ray task should not be marked as failure:
+    1. ray.actor_exit_actor()
+    2. __ray_terminate__.remote()
+    3. max calls reached.
+    4. task that exit with exit(0)
+    """
+
+    # Test `exit_actor`
+    @ray.remote
+    class Actor:
+        def ready(self):
+            pass
+
+        def exit(self):
+            ray.actor.exit_actor()
+
+        def exit_normal(self):
+            exit(0)
+
+    ray.init(num_cpus=1)
+
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+
+    a.exit.remote()
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "Actor.exit")])
+        assert len(ts) == 1
+        t = ts[0]
+
+        assert t["state"] == "FINISHED"
+        return True
+
+    wait_for_condition(verify)
+
+    # Test `__ray_terminate__`
+    b = Actor.remote()
+
+    ray.get(b.ready.remote())
+
+    b.__ray_terminate__.remote()
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "Actor.__ray_terminate__")])
+        assert len(ts) == 1
+        t = ts[0]
+
+        assert t["state"] == "FINISHED"
+        return True
+
+    wait_for_condition(verify)
+
+    # Test max calls reached exiting workers should not fail the task.
+    @ray.remote(max_calls=1)
+    def f():
+        pass
+
+    for _ in range(3):
+        ray.get(f.remote())
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "f")])
+        assert len(ts) == 3
+        workers = set()
+        for t in ts:
+            assert t["state"] == "FINISHED"
+            workers.add(t["worker_id"])
+
+        assert len(workers) == 3
+        return True
+
+    wait_for_condition(verify)
+
+    # Test tasks that fail with exit(0)
+    @ray.remote
+    def g():
+        exit(0)
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "g")])
+        assert len(ts) == 1
+        t = ts[0]
+
+        assert t["state"] == "FINISHED"
+        return True
+
+    c = Actor.remote()
+    ray.get(c.ready.remote())
+
+    c.exit_normal.remote()
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "Actor.exit_normal")])
+        assert len(ts) == 1
+        t = ts[0]
+
+        assert t["state"] == "FINISHED"
+        return True
+
+    wait_for_condition(verify)
+
+
 @pytest.mark.parametrize(
     "exit_type",
     ["exit_kill", "exit_exception"],
@@ -485,7 +590,6 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
 def test_fault_tolerance_chained_task_fail(
     shutdown_only, exit_type, actor_or_normal_tasks
 ):
-
     ray.init(_system_config=_SYSTEM_CONFIG)
 
     def sleep_or_fail(pid_actor=None, exit_type=None):
@@ -740,8 +844,11 @@ def check_file(type, task_name, expected_log, expect_no_end=False):
 
 
 @pytest.mark.skipif(
-    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
-    reason="Skipping if not recording task logs offsets.",
+    not ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING or sys.platform == "win32",
+    reason=(
+        "Skipping if not recording task logs offsets, "
+        "and windows has logging race issues."
+    ),
 )
 def test_task_logs_info_basic(shutdown_only):
     """Test tasks (normal tasks/actor tasks) execution logging
@@ -799,7 +906,7 @@ def test_task_logs_info_basic(shutdown_only):
 
 
 @pytest.mark.skipif(
-    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    not ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING,
     reason="Skipping if not recording task logs offsets.",
 )
 def test_task_logs_info_disabled(shutdown_only, monkeypatch):
@@ -828,7 +935,7 @@ def test_task_logs_info_disabled(shutdown_only, monkeypatch):
 
 
 @pytest.mark.skipif(
-    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    not ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING,
     reason="Skipping if not recording task logs offsets.",
 )
 def test_task_logs_info_running_task(shutdown_only):

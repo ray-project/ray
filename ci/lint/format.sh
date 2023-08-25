@@ -51,6 +51,7 @@ check_docstyle() {
     return 0
 }
 
+# TODO(can): add shellcheck, clang-format, and google-java-format to this check
 check_python_command_exist black
 check_python_command_exist flake8
 check_python_command_exist mypy
@@ -102,7 +103,7 @@ fi
 
 if command -v clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
-  tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "12.0.0"
+  tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "12.0.1"
 else
     echo "WARNING: clang-format is not installed!"
 fi
@@ -125,9 +126,9 @@ if [[ $(flake8 --version) != *"flake8-bugbear"* ]]; then
 fi
 
 SHELLCHECK_FLAGS=(
-  --exclude=1090  # "Can't follow non-constant source. Use a directive to specify location."
-  --exclude=1091  # "Not following {file} due to some error"
-  --exclude=2207  # "Prefer mapfile or read -a to split command output (or quote to avoid splitting)." -- these aren't compatible with macOS's old Bash
+  "--exclude=1090"  # "Can't follow non-constant source. Use a directive to specify location."
+  "--exclude=1091"  # "Not following {file} due to some error"
+  "--exclude=2207"  # "Prefer mapfile or read -a to split command output (or quote to avoid splitting)." -- these aren't compatible with macOS's old Bash
 )
 
 # TODO(dmitri): When more of the codebase is typed properly, the mypy flags
@@ -155,12 +156,14 @@ BLACK_EXCLUDES=(
     `'python/ray/core/src/ray/gcs/*|'`
     `'python/ray/thirdparty_files/*|'`
     `'python/ray/_private/thirdparty/*|'`
-    `'python/ray/serve/tests/test_config_files/syntax_error\.py'
+    `'python/ray/serve/tests/test_config_files/syntax_error\.py|'`
+    `'doc/external/*'
 )
 
 GIT_LS_EXCLUDES=(
   ':(exclude)python/ray/cloudpickle/'
   ':(exclude)python/ray/_private/runtime_env/_clonevirtualenv.py'
+  ':(exclude)doc/external/'
 )
 
 JAVA_EXCLUDES=(
@@ -284,13 +287,13 @@ format_all_scripts() {
     fi
 
     if command -v shellcheck >/dev/null; then
-      local shell_files non_shell_files
-      non_shell_files=($(git ls-files -- ':(exclude)*.sh'))
+      local shell_files bin_like_files
       shell_files=($(git ls-files -- '*.sh'))
-      if [ 0 -lt "${#non_shell_files[@]}" ]; then
-        shell_files+=($(git --no-pager grep -l -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${non_shell_files[@]}" || true))
+      bin_like_files=($(git ls-files -- ':!:*.*' ':!:*/BUILD' ':!:*/Dockerfile' ':!:*README' ':!:*LICENSE' ':!:*WORKSPACE'))
+      if [[ 0 -lt "${#bin_like_files[@]}" ]]; then
+        shell_files+=($(git --no-pager grep -l -I -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${bin_like_files[@]}" || true))
       fi
-      if [ 0 -lt "${#shell_files[@]}" ]; then
+      if [[ 0 -lt "${#shell_files[@]}" ]]; then
         echo "$(date)" "shellcheck scripts...."
         shellcheck_scripts "${shell_files[@]}"
       fi
@@ -334,20 +337,20 @@ format_changed() {
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
             black "${BLACK_EXCLUDES[@]}"
-        if which flake8 >/dev/null; then
+        if command -v flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
                  flake8 --config=.flake8
         fi
     fi
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
-        if which flake8 >/dev/null; then
+        if command -v flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
                  flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
         fi
     fi
 
-    if which clang-format >/dev/null; then
+    if command -v clang-format >/dev/null; then
         if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.cc' '*.h' &>/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.cc' '*.h' | xargs -P 5 \
                  clang-format -i
@@ -361,11 +364,11 @@ format_changed() {
     fi
 
     if command -v shellcheck >/dev/null; then
-        local shell_files non_shell_files
-        non_shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- ':(exclude)*.sh'))
+        local shell_files bin_like_files
+        bin_like_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- ':!:*.*' ':!:*/BUILD' ':!:*/Dockerfile' ':!:*README' ':!:*LICENSE' ':!:*WORKSPACE'))
         shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.sh'))
-        if [ 0 -lt "${#non_shell_files[@]}" ]; then
-            shell_files+=($(git --no-pager grep -l -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${non_shell_files[@]}" || true))
+        if [ 0 -lt "${#bin_like_files[@]}" ]; then
+            shell_files+=($(git --no-pager grep -l -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${bin_like_files[@]}" || true))
         fi
         if [ 0 -lt "${#shell_files[@]}" ]; then
             shellcheck_scripts "${shell_files[@]}"

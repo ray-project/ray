@@ -3,22 +3,24 @@ import logging
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Type, Union
 
-from ray.air import Checkpoint, CheckpointConfig, session
+from ray.air import Checkpoint, CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.air._internal.checkpoint_manager import (
     _CheckpointManager as CommonCheckpointManager,
 )
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+from ray.train._internal import session
 from ray.train._internal.session import TrainingResult
 from ray.train._internal.utils import construct_path
 from ray.train.constants import (
-    TIMESTAMP,
+    CHECKPOINT_RANK_KEY,
     TRAIN_CHECKPOINT_SUBDIR,
     TUNE_CHECKPOINT_ID,
     TUNE_INSTALLED,
     CHECKPOINT_METADATA_KEY,
     LAZY_CHECKPOINT_MARKER_FILE,
 )
+from ray.air.constants import TIMESTAMP
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -98,15 +100,12 @@ class CheckpointManager(CommonCheckpointManager):
 
     def _process_checkpoint(
         self,
-        checkpoint_results: List[TrainingResult],
+        checkpoint_result: TrainingResult,
         decode_checkpoint_fn: Callable,
-    ) -> None:
-        """Ray Train entrypoint. Perform all processing for a checkpoint."""
-        # Get checkpoint from first worker.
-        checkpoint_result = checkpoint_results[0]
-
+    ) -> _TrackedCheckpoint:
         checkpoint_data = checkpoint_result.data
         checkpoint_metadata = checkpoint_result.metadata or {}
+        checkpoint_rank = checkpoint_metadata.get(CHECKPOINT_RANK_KEY, 0)
 
         if isinstance(checkpoint_data, str):
             checkpoint_class: Type[Checkpoint] = checkpoint_metadata[
@@ -128,16 +127,34 @@ class CheckpointManager(CommonCheckpointManager):
                 f"checkpoint_score_attribute: "
                 f"{score_attr}. "
                 f"Include this attribute in the call to "
-                f"`session.report()`."
+                f"`train.report()`."
             )
 
-        tracked_checkpoint = _TrackedCheckpoint(
+        return _TrackedCheckpoint(
             dir_or_data=checkpoint_data,
             checkpoint_id=self._latest_checkpoint_id,
             storage_mode=CheckpointStorage.MEMORY,
             metrics={score_attr: checkpoint_metadata.get(score_attr, 0.0)},
+            rank=checkpoint_rank,
         )
-        self.register_checkpoint(checkpoint=tracked_checkpoint)
+
+    def _process_checkpoints(
+        self,
+        checkpoint_results: List[TrainingResult],
+        decode_checkpoint_fn: Callable,
+    ) -> None:
+        """Ray Train entrypoint. Perform all processing for a checkpoint."""
+        if self._checkpoint_strategy._checkpoint_keep_all_ranks:
+            tracked_checkpoints = [
+                self._process_checkpoint(checkpoint_result, decode_checkpoint_fn)
+                for checkpoint_result in checkpoint_results
+            ]
+        else:
+            # Get checkpoint from first worker.
+            tracked_checkpoints = [
+                self._process_checkpoint(checkpoint_results[0], decode_checkpoint_fn)
+            ]
+        self.register_checkpoints(checkpoints=tracked_checkpoints)
 
     def _get_next_checkpoint_path(self) -> Optional[Path]:
         """Path to the next checkpoint to persist."""
@@ -249,7 +266,12 @@ class TuneCheckpointManager(CheckpointManager):
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
         self.add_tune_checkpoint_id(checkpoint.dir_or_data)
-        # If inside a Tune Trainable, then checkpoint with Tune.
+
+        # Train may choose not to commit a checkpoint, but make sure the
+        # checkpoint is always committed for Tuning purpose.
+        # After this is committed, checkpoint.dir_or_path will become a string,
+        # which will prevent this checkpoint from being commtted again in the
+        # subsequent super()._process_persistent_checkpoint() call.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
             path = Path(checkpoint_dir)
             checkpoint.commit(path)

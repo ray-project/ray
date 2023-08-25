@@ -17,7 +17,7 @@ Then you select a `search algorithm` to effectively optimize your parameters and
 `scheduler` to stop searches early and speed up your experiments.
 Together with other configuration, your `trainable`, search algorithm, and scheduler are passed into ``Tuner``,
 which runs your experiments and creates `trials`.
-These trials can then be used in `analyses` to inspect your experiment results.
+The `Tuner` returns a `ResultGrid` to inspect your experiment results.
 The following figure shows an overview of these components, which we cover in detail in the next sections.
 
 .. image:: images/tune_flow.png
@@ -216,10 +216,6 @@ Here's an overview of all available search algorithms in Tune:
      - Scalable Bayesian Optimization
      - [`Dragonfly <https://dragonfly-opt.readthedocs.io/>`__]
      - :doc:`/tune/examples/includes/dragonfly_example`
-   * - :ref:`SkoptSearch <skopt>`
-     - Bayesian Optimization
-     - [`Scikit-Optimize <https://scikit-optimize.github.io>`__]
-     - :doc:`/tune/examples/includes/skopt_example`
    * - :ref:`HyperOptSearch <tune-hyperopt>`
      - Tree-Parzen Estimators
      - [`HyperOpt <http://hyperopt.github.io/hyperopt>`__]
@@ -240,18 +236,10 @@ Here's an overview of all available search algorithms in Tune:
      - Optuna search algorithms
      - [`Optuna <https://optuna.org/>`__]
      - :doc:`/tune/examples/optuna_example`
-   * - :ref:`ZOOptSearch <zoopt>`
-     - Zeroth-order Optimization
-     - [`ZOOpt <https://github.com/polixir/ZOOpt>`__]
-     - :doc:`/tune/examples/includes/zoopt_example`
    * - :ref:`SigOptSearch <sigopt>`
      - Closed source
      - [`SigOpt <https://sigopt.com/>`__]
      - :doc:`/tune/examples/includes/sigopt_example`
-   * - :ref:`HEBOSearch <tune-hebo>`
-     - Heteroscedastic Evolutionary Bayesian Optimization
-     - [`HEBO <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
-     - :doc:`/tune/examples/includes/hebo_example`
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`,
     Tune Search Algorithms cannot affect or stop training processes.
@@ -350,8 +338,8 @@ Learn more about trial schedulers in :ref:`the scheduler API documentation <sche
 
 .. _tune-concepts-analysis:
 
-Tune Run Analyses
------------------
+Tune ResultGrid
+---------------
 
 ``Tuner.fit()`` returns an :ref:`ResultGrid <tune-analysis-docs>` object which has methods you can use for
 analyzing your training.
@@ -371,7 +359,7 @@ allowing you to do ad-hoc data analysis over your results.
     :start-after: __results_start__
     :end-before: __results_end__
 
-See :doc:`/tune/examples/tune_analyze_results` for more usage examples.
+See the :ref:`result analysis user guide <tune-analysis-guide>` for more usage examples.
 
 What's Next?
 -------------

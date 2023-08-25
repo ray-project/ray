@@ -1,107 +1,172 @@
 .. _data_key_concepts:
 
-============
 Key Concepts
 ============
 
-.. _datastream_concept:
+Learn about :class:`Dataset <ray.data.Dataset>` and the capabilities it provides.
 
-----------
-Datastream
-----------
+This guide provides a lightweight introduction to:
 
-A :term:`Datastream <Datastream (object)>` operates over a sequence of Ray object references to :term:`blocks <Block>`.
-Each block holds a set of records in an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`_ or
-`pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_.
-Having multiple blocks in a datastream allows for parallel transformation and ingest.
+* :ref:`Loading data <loading_key_concept>`
+* :ref:`Transforming data <transforming_key_concept>`
+* :ref:`Consuming data <consuming_key_concept>`
+* :ref:`Saving data <saving_key_concept>`
 
-For ML use cases, Datastream natively supports mixing tensors with tabular data. To
-learn more, read :ref:`Working with tensor data <working_with_tensors>`.
+Datasets
+--------
 
-The following figure visualizes a datastream with three blocks, each holding 1000 rows. Note that certain blocks
-may not be computed yet. Normally, callers iterate over datastream blocks in a streaming fashion, so that not all
-blocks need to be materialized in the cluster memory at once.
+Ray Data's main abstraction is a :class:`Dataset <ray.data.Dataset>`, which
+is a distributed data collection. Datasets are designed for machine learning, and they
+can represent data collections that exceed a single machine's memory.
 
-.. image:: images/datastream-arch.svg
+.. _loading_key_concept:
 
-..
-  https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
+Loading data
+------------
 
-Reading Data
-============
+Create datasets from on-disk files, Python objects, and cloud storage services like S3.
+Ray Data can read from any `filesystem supported by Arrow
+<http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__.
 
-Datastream uses Ray tasks to read data from remote storage in parallel. Each read task reads one or more files and produces an output block:
+.. testcode::
 
-.. image:: images/datastream-read.svg
-   :align: center
+    import ray
 
-..
-  https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
+    ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+    ds.show(limit=1)
 
-You can manually specify the number of read tasks, but the final parallelism is always capped by the number of files in the underlying datastream.
+.. testoutput::
 
-For an in-depth guide on creating datastreams, read :ref:`Loading Data <loading_data>`.
+    {'sepal length (cm)': 5.1, 'sepal width (cm)': 3.5, 'petal length (cm)': 1.4, 'petal width (cm)': 0.2, 'target': 0}
 
-Transforming Data
-=================
+To learn more about creating datasets, read :ref:`Loading data <loading_data>`.
 
-Datastream uses either Ray tasks or Ray actors to transform data blocks. By default, it uses tasks.
+.. _transforming_key_concept:
 
-To use Actors, pass an :class:`ActorPoolStrategy` to ``compute`` in methods like
-:meth:`~ray.data.Datastream.map_batches`. :class:`ActorPoolStrategy` creates an autoscaling
-pool of Ray actors. This allows you to cache expensive state initialization
-(e.g., model loading for GPU-based tasks).
+Transforming data
+-----------------
 
-.. image:: images/datastream-map.svg
-   :align: center
-..
-  https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
+Apply user-defined functions (UDFs) to transform datasets. Ray executes transformations
+in parallel for performance.
 
-For an in-depth guide on transforming datastreams, read :ref:`Transforming Data <transforming_data>`.
+.. testcode::
 
-Shuffling Data
-==============
+    from typing import Dict
+    import numpy as np
 
-Operations like :meth:`~ray.data.Datastream.sort` and :meth:`~ray.data.Datastream.groupby`
-require blocks to be partitioned by value or *shuffled*. Datastream uses tasks to shuffle blocks in a map-reduce
-style: map tasks partition blocks by value and then reduce tasks merge co-partitioned
-blocks.
+    # Compute a "petal area" attribute.
+    def transform_batch(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        vec_a = batch["petal length (cm)"]
+        vec_b = batch["petal width (cm)"]
+        batch["petal area (cm^2)"] = vec_a * vec_b
+        return batch
 
-Call :meth:`~ray.data.Datastream.repartition` to change the number of blocks in a :class:`~ray.data.Datastream`.
-Repartition has two modes:
+    transformed_ds = ds.map_batches(transform_batch)
+    print(transformed_ds.materialize())
 
-* ``shuffle=False`` - performs the minimal data movement needed to equalize block sizes
-* ``shuffle=True`` - performs a full distributed shuffle
+.. testoutput::
 
-.. image:: images/datastream-shuffle.svg
-   :align: center
+    MaterializedDataset(
+       num_blocks=...,
+       num_rows=150,
+       schema={
+          sepal length (cm): double,
+          sepal width (cm): double,
+          petal length (cm): double,
+          petal width (cm): double,
+          target: int64,
+          petal area (cm^2): double
+       }
+    )
 
-..
-  https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
+To learn more about transforming datasets, read
+:ref:`Transforming data <transforming_data>`.
 
-Datastream can shuffle multi-terabyte datasets, leveraging the Ray object store for disk spilling. For an in-depth guide on shuffle performance, read :ref:`Performance Tips and Tuning <shuffle_performance_tips>`.
-Note that operations like shuffle materialize the entire Datastream prior to their execution (shuffle execution is not streamed through memory).
+.. _consuming_key_concept:
 
-Iteration and materialization
-=============================
+Consuming data
+--------------
 
-Most transformations on a datastream are lazy. They don't execute until you iterate over the datastream or call
-:meth:`Datastream.materialize() <ray.data.Datastream.materialize>`. When a Datastream is materialized, its
-type becomes a `MaterializedDatastream`, which indicates that all its blocks are materialized in Ray
-object store memory.
+Pass datasets to Ray Tasks or Actors, and access records with methods like
+:meth:`~ray.data.Dataset.take_batch` and :meth:`~ray.data.Dataset.iter_batches`.
 
-Datastream transformations are executed in a streaming way, incrementally on the data and
-with operators processed in parallel, see :ref:`Streaming Execution <streaming_execution>`.
+.. tab-set::
 
-Datastreams and MaterializedDatastreams can be freely passed between Ray tasks, actors, and libraries without
-incurring copies of the underlying block data (pass by reference semantics).
+    .. tab-item:: Local
 
-Fault tolerance
-===============
+        .. testcode::
 
-Datastream performs *lineage reconstruction* to recover data. If an application error or
-system failure occurs, Datastream recreates lost blocks by re-executing tasks. If ``compute=ActorPoolStrategy(size=n)`` is used, then Ray
-restarts the actor used for computing the block prior to re-executing the task.
+            print(transformed_ds.take_batch(batch_size=3))
 
-Fault tolerance is not supported if the original worker process that created the Datastream dies.
-This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Datastream.
+        .. testoutput::
+            :options: +NORMALIZE_WHITESPACE
+
+            {'sepal length (cm)': array([5.1, 4.9, 4.7]),
+             'sepal width (cm)': array([3.5, 3. , 3.2]),
+             'petal length (cm)': array([1.4, 1.4, 1.3]),
+             'petal width (cm)': array([0.2, 0.2, 0.2]),
+             'target': array([0, 0, 0]),
+             'petal area (cm^2)': array([0.28, 0.28, 0.26])}
+
+    .. tab-item:: Tasks
+
+       .. testcode::
+
+            @ray.remote
+            def consume(ds: ray.data.Dataset) -> int:
+                num_batches = 0
+                for batch in ds.iter_batches(batch_size=8):
+                    num_batches += 1
+                return num_batches
+
+            ray.get(consume.remote(transformed_ds))
+
+    .. tab-item:: Actors
+
+        .. testcode::
+
+            @ray.remote
+            class Worker:
+
+                def train(self, data_iterator):
+                    for batch in data_iterator.iter_batches(batch_size=8):
+                        pass
+
+            workers = [Worker.remote() for _ in range(4)]
+            shards = transformed_ds.streaming_split(n=4, equal=True)
+            ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
+
+
+To learn more about consuming datasets, see
+:ref:`Iterating over Data <iterating-over-data>` and :ref:`Saving Data <saving-data>`.
+
+.. _saving_key_concept:
+
+Saving data
+-----------
+
+Call methods like :meth:`~ray.data.Dataset.write_parquet` to save dataset contents to local
+or remote filesystems.
+
+.. testcode::
+    :hide:
+
+    # The number of blocks can be non-determinstic. Repartition the dataset beforehand
+    # so that the number of written files is consistent.
+    transformed_ds = transformed_ds.repartition(2)
+
+.. testcode::
+
+    import os
+
+    transformed_ds.write_parquet("/tmp/iris")
+
+    print(os.listdir("/tmp/iris"))
+
+.. testoutput::
+    :options: +MOCK
+    
+    ['..._000000.parquet', '..._000001.parquet']
+
+
+To learn more about saving dataset contents, see :ref:`Saving data <saving-data>`.

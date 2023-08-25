@@ -1,5 +1,5 @@
 import ray
-from ray.data.datastream import Dataset
+from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
 from parquet_data_generator import generate_data

@@ -29,9 +29,10 @@ from ray_release.tests.utils import (
     MockSDK,
 )
 from ray_release.util import get_anyscale_sdk
+from ray_release.test import Test
 
 TEST_CLUSTER_ENV = {
-    "base_image": "anyscale/ray:nightly-py37",
+    "base_image": "anyscale/ray:nightly-py38",
     "env_vars": {},
     "python": {
         "pip_packages": [],
@@ -96,7 +97,12 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.cluster_manager = self.cls(
             project_id=UNIT_TEST_PROJECT_ID,
             sdk=self.sdk,
-            test_name=f"unit_test__{self.__class__.__name__}",
+            test=Test(
+                {
+                    "name": f"unit_test__{self.__class__.__name__}",
+                    "cluster": {},
+                }
+            ),
         )
         self.sdk.reset()
         self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
@@ -106,11 +112,17 @@ class MinimalSessionManagerTest(unittest.TestCase):
         sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
         sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
         cluster_manager = self.cls(
-            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False, sdk=sdk
+            test=Test({"name": "test"}),
+            project_id=UNIT_TEST_PROJECT_ID,
+            smoke_test=False,
+            sdk=sdk,
         )
         self.assertRegex(cluster_manager.cluster_name, r"^test_\d+$")
         cluster_manager = self.cls(
-            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=True, sdk=sdk
+            test=Test({"name": "test"}),
+            project_id=UNIT_TEST_PROJECT_ID,
+            smoke_test=True,
+            sdk=sdk,
         )
         self.assertRegex(cluster_manager.cluster_name, r"^test-smoke-test_\d+$")
 
@@ -119,7 +131,10 @@ class MinimalSessionManagerTest(unittest.TestCase):
         sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
         sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
         cluster_manager = self.cls(
-            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False, sdk=sdk
+            test=Test({"name": "test", "cluster": {}}),
+            project_id=UNIT_TEST_PROJECT_ID,
+            smoke_test=False,
+            sdk=sdk,
         )
         cluster_manager.set_cluster_env({})
         self.assertEqual(
@@ -127,7 +142,10 @@ class MinimalSessionManagerTest(unittest.TestCase):
             "test_name=test;smoke_test=False",
         )
         cluster_manager = self.cls(
-            test_name="Test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=True, sdk=sdk
+            test=Test({"name": "Test", "cluster": {}}),
+            project_id=UNIT_TEST_PROJECT_ID,
+            smoke_test=True,
+            sdk=sdk,
         )
         cluster_manager.set_cluster_env({})
         self.assertEqual(

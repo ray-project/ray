@@ -130,12 +130,15 @@ Status TaskExecutor::ExecuteTask(
     const std::string &serialized_retry_exception_allowlist,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
+    std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
     bool *is_retryable_error,
     std::string *application_error,
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
     const std::string name_of_concurrency_group_to_execute,
-    bool is_reattempt) {
+    bool is_reattempt,
+    bool is_streaming_generator,
+    bool retry_exception) {
   RAY_LOG(DEBUG) << "Execute task type: " << TaskType_Name(task_type)
                  << " name:" << task_name;
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
@@ -249,6 +252,7 @@ Status TaskExecutor::ExecuteTask(
         total,
         meta_buffer,
         std::vector<ray::ObjectID>(),
+        caller_address,
         &task_output_inlined_bytes,
         result_ptr));
 
@@ -275,7 +279,8 @@ Status TaskExecutor::ExecuteTask(
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
         result_id,
         result,
-        /*generator_id=*/ObjectID::Nil()));
+        /*generator_id=*/ObjectID::Nil(),
+        caller_address));
   } else {
     if (!status.ok()) {
       return ray::Status::CreationTaskError("");

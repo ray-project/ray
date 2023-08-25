@@ -1,468 +1,296 @@
-import unittest
-import shutil
+from contextlib import contextmanager
 import tempfile
-import random
 import os
+from pathlib import Path
 import pickle
 import pandas as pd
-from numpy import nan
+import numpy as np
+from typing import List
 
-import ray
-from ray import tune
-from ray.air._internal.remote_storage import upload_to_uri
-from ray.tune import ExperimentAnalysis
-import ray.tune.registry
-from ray.tune.tests.utils.experiment import create_test_experiment_checkpoint
-from ray.tune.utils.mock_trainable import MyTrainableClass
-from ray.tune.utils.util import is_nan
+import pytest
+
+from ray import train, tune
+from ray.air._internal.uri_utils import URI
+from ray.air.constants import EXPR_PROGRESS_FILE, EXPR_RESULT_FILE
+from ray.train._internal.storage import _delete_fs_path
+from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
+from ray.tune.experiment import Trial
+from ray.tune.utils import flatten_dict
+
+from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
-class ExperimentAnalysisSuite(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        ray.init(num_cpus=4, num_gpus=0, local_mode=True, include_dashboard=False)
+NUM_TRIALS = 3
+NON_NAN_VALUE = 42
+PEAK_VALUE = 100
 
-    @classmethod
-    def tearDownClass(cls):
-        if ray.is_initialized:
-            ray.shutdown()
 
-    def setUp(self):
-        self.test_dir = tempfile.mkdtemp()
-        self.test_name = "analysis_exp"
-        self.num_samples = 10
-        self.metric = "episode_reward_mean"
-        self.test_path = os.path.join(self.test_dir, self.test_name)
-        self.run_test_exp()
+def train_fn(config):
+    def report(metrics, should_checkpoint=True):
+        if should_checkpoint:
+            with create_dict_checkpoint(metrics) as checkpoint:
+                train.report(metrics, checkpoint=checkpoint)
+        else:
+            train.report(metrics)
 
-    def tearDown(self):
-        shutil.rmtree(self.test_dir, ignore_errors=True)
+    id = config["id"]
 
-    def run_test_exp(self):
-        self.ea = tune.run(
-            MyTrainableClass,
-            name=self.test_name,
-            storage_path=self.test_dir,
-            stop={"training_iteration": 1},
-            checkpoint_freq=1,
-            num_samples=self.num_samples,
-            config={
-                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(lambda spec: int(100 * random.random())),
-            },
+    report({"ascending": 1 * id, "peak": 0, "maybe_nan": np.nan, "iter": 1})
+    report({"ascending": 2 * id, "peak": 0, "maybe_nan": np.nan, "iter": 2})
+    report({"ascending": 3 * id, "peak": 0, "maybe_nan": np.nan, "iter": 3})
+    report(
+        {
+            "ascending": 4 * id,
+            "peak": 0,
+            "maybe_nan": NON_NAN_VALUE,
+            "iter": 4,
+        }
+    )
+    report({"ascending": 5 * id, "peak": PEAK_VALUE, "maybe_nan": np.nan, "iter": 5})
+
+    report(
+        {"ascending": 6 * id, "peak": -PEAK_VALUE, "maybe_nan": np.nan, "iter": 6},
+        should_checkpoint=False,
+    )
+    report(
+        {"ascending": 7 * id, "peak": 0, "maybe_nan": np.nan, "iter": 7},
+        should_checkpoint=False,
+    )
+
+
+def _get_trial_with_id(trials: List[Trial], id: int) -> Trial:
+    return [trial for trial in trials if trial.config["id"] == id][0]
+
+
+@contextmanager
+def dummy_context_manager():
+    yield "dummy value"
+
+
+@pytest.fixture(scope="module", params=["dir", "memory", "cloud"])
+def experiment_analysis(request):
+    load_from = request.param
+    tmp_path = Path(tempfile.mkdtemp())
+
+    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = str(tmp_path / "ray_results")
+
+    context_manager = (
+        mock_s3_bucket_uri if load_from == "cloud" else dummy_context_manager
+    )
+
+    with context_manager() as cloud_storage_path:
+        storage_path = (
+            str(cloud_storage_path)
+            if load_from == "cloud"
+            else str(tmp_path / "fake_nfs")
         )
-
-    def nan_test_exp(self):
-        nan_ea = tune.run(
-            lambda x: nan,
-            name="testing_nan",
-            storage_path=self.test_dir,
-            stop={"training_iteration": 1},
-            num_samples=self.num_samples,
-            config={
-                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(lambda spec: int(100 * random.random())),
-            },
-        )
-        return nan_ea
-
-    def testDataframe(self):
-        df = self.ea.dataframe(self.metric, mode="max")
-
-        self.assertTrue(isinstance(df, pd.DataFrame))
-        self.assertEqual(df.shape[0], self.num_samples)
-
-    def testLoadJson(self):
-        all_dataframes_via_csv = self.ea.fetch_trial_dataframes()
-
-        self.ea.set_filetype("json")
-        all_dataframes_via_json = self.ea.fetch_trial_dataframes()
-
-        assert set(all_dataframes_via_csv) == set(all_dataframes_via_json)
-
-        with self.assertRaises(ValueError):
-            self.ea.set_filetype("bad")
-
-        self.ea.set_filetype("csv")
-        all_dataframes_via_csv2 = self.ea.fetch_trial_dataframes()
-        assert set(all_dataframes_via_csv) == set(all_dataframes_via_csv2)
-
-    def testStats(self):
-        assert self.ea.stats()
-        assert self.ea.runner_data()
-
-    def testTrialDataframe(self):
-        checkpoints = self.ea._checkpoints_and_paths
-        idx = random.randint(0, len(checkpoints) - 1)
-        logdir_from_trial = self.ea.trials[idx].local_path
-        trial_df = self.ea.trial_dataframes[logdir_from_trial]
-
-        self.assertTrue(isinstance(trial_df, pd.DataFrame))
-        self.assertEqual(trial_df.shape[0], 1)
-
-    def testBestConfig(self):
-        best_config = self.ea.get_best_config(self.metric, mode="max")
-        self.assertTrue(isinstance(best_config, dict))
-        self.assertTrue("width" in best_config)
-        self.assertTrue("height" in best_config)
-
-    def testBestConfigNan(self):
-        nan_ea = self.nan_test_exp()
-        best_config = nan_ea.get_best_config(self.metric, mode="max")
-        self.assertIsNone(best_config)
-
-    def testBestLogdir(self):
-        logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        self.assertTrue(logdir.startswith(self.test_path))
-        logdir2 = self.ea.get_best_logdir(self.metric, mode="min")
-        self.assertTrue(logdir2.startswith(self.test_path))
-        self.assertNotEqual(logdir, logdir2)
-
-    def testBestLogdirNan(self):
-        nan_ea = self.nan_test_exp()
-        logdir = nan_ea.get_best_logdir(self.metric, mode="max")
-        self.assertIsNone(logdir)
-
-    def testGetTrialCheckpointsPathsByTrial(self):
-        best_trial = self.ea.get_best_trial(self.metric, mode="max")
-        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
-        logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        expected_path = os.path.join(logdir, "checkpoint_000001")
-        assert os.path.normpath(checkpoints_metrics[0][0]) == expected_path
-        assert checkpoints_metrics[0][1] == 1
-
-    def testGetTrialCheckpointsPathsByPath(self):
-        logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(logdir)
-        expected_path = os.path.join(logdir, "checkpoint_000001")
-        assert os.path.normpath(checkpoints_metrics[0][0]) == expected_path
-        assert checkpoints_metrics[0][1] == 1
-
-    def testGetTrialCheckpointsPathsWithMetricByTrial(self):
-        best_trial = self.ea.get_best_trial(self.metric, mode="max")
-        paths = self.ea.get_trial_checkpoints_paths(best_trial, self.metric)
-        logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        expected_path = os.path.join(logdir, "checkpoint_000001")
-        assert os.path.normpath(paths[0][0]) == expected_path
-        assert paths[0][1] == best_trial.metric_analysis[self.metric]["last"]
-
-    def testGetTrialCheckpointsPathsWithMetricByPath(self):
-        best_trial = self.ea.get_best_trial(self.metric, mode="max")
-        logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        paths = self.ea.get_trial_checkpoints_paths(best_trial, self.metric)
-        expected_path = os.path.join(logdir, "checkpoint_000001")
-        assert os.path.normpath(paths[0][0]) == expected_path
-        assert paths[0][1] == best_trial.metric_analysis[self.metric]["last"]
-
-    def testGetBestCheckpoint(self):
-        best_trial = self.ea.get_best_trial(self.metric, mode="max")
-        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(
-            best_trial, metric=self.metric
-        )
-        expected_path = max(checkpoints_metrics, key=lambda x: x[1])[0]
-        best_checkpoint = self.ea.get_best_checkpoint(
-            best_trial, self.metric, mode="max"
-        )
-        assert expected_path == best_checkpoint._local_path
-
-    def testGetBestCheckpointNan(self):
-        """Tests if nan values are excluded from best checkpoint."""
-        metric = "loss"
-
-        def train(config):
-            for i in range(config["steps"]):
-                if i == 0:
-                    value = float("nan")
-                else:
-                    value = i
-                result = {metric: value}
-                with tune.checkpoint_dir(step=i):
-                    pass
-                tune.report(**result)
-
-        ea = tune.run(train, storage_path=self.test_dir, config={"steps": 3})
-        best_trial = ea.get_best_trial(metric, mode="min")
-        best_checkpoint = ea.get_best_checkpoint(best_trial, metric, mode="min")
-        checkpoints_metrics = ea.get_trial_checkpoints_paths(best_trial, metric=metric)
-        expected_checkpoint_no_nan = min(
-            [
-                checkpoint_metric
-                for checkpoint_metric in checkpoints_metrics
-                if not is_nan(checkpoint_metric[1])
-            ],
-            key=lambda x: x[1],
-        )[0]
-        assert best_checkpoint._local_path == expected_checkpoint_no_nan
-
-    def testGetLastCheckpoint(self):
-        # one more experiment with 2 iterations
-        new_ea = tune.run(
-            MyTrainableClass,
-            name=self.test_name,
-            storage_path=self.test_dir,
-            stop={"training_iteration": 2},
-            checkpoint_freq=1,
-            config={
-                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(lambda spec: int(100 * random.random())),
-            },
-        )
-
-        # check if it's loaded correctly
-        last_checkpoint = new_ea.get_last_checkpoint()._local_path
-        assert self.test_path in last_checkpoint
-        assert "checkpoint_000002" in last_checkpoint
-
-        # test restoring the checkpoint and running for another iteration
-        tune.run(
-            MyTrainableClass,
-            name=self.test_name,
-            storage_path=self.test_dir,
-            restore=last_checkpoint,
-            stop={"training_iteration": 3},
-            checkpoint_freq=1,
-            config={
-                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(lambda spec: int(100 * random.random())),
-            },
-        )
-
-    def testAllDataframes(self):
-        dataframes = self.ea.trial_dataframes
-        self.assertEqual(len(dataframes), self.num_samples)
-
-        self.assertTrue(isinstance(dataframes, dict))
-        for df in dataframes.values():
-            self.assertEqual(df.training_iteration.max(), 1)
-
-    def testIgnoreOtherExperiment(self):
-        analysis = tune.run(
-            MyTrainableClass,
-            name="test_example",
-            storage_path=self.test_dir,
-            stop={"training_iteration": 1},
-            num_samples=1,
-            config={
-                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(lambda spec: int(100 * random.random())),
-            },
-        )
-        df = analysis.dataframe(self.metric, mode="max")
-        self.assertEqual(df.shape[0], 1)
-
-    def testGetTrialCheckpointsPathsByPathWithSpecialCharacters(self):
-        analysis = tune.run(
-            MyTrainableClass,
-            name="test_example",
-            storage_path=self.test_dir,
-            stop={"training_iteration": 1},
-            num_samples=1,
-            config={"test": tune.grid_search([[1, 2], [3, 4]])},
-            checkpoint_at_end=True,
-        )
-        logdir = analysis.get_best_logdir(self.metric, mode="max")
-        checkpoints_metrics = analysis.get_trial_checkpoints_paths(logdir)
-        expected_path = os.path.join(logdir, "checkpoint_000001")
-        assert os.path.normpath(checkpoints_metrics[0][0]) == expected_path
-        assert checkpoints_metrics[0][1] == 1
-
-    def testGetTrialCheckpointsPathsWithTemporaryCheckpoints(self):
-        analysis = tune.run(
-            MyTrainableClass,
-            name="test_example",
-            storage_path=self.test_dir,
-            stop={"training_iteration": 2},
-            num_samples=1,
-            config={"test": tune.grid_search([[1, 2], [3, 4]])},
-            checkpoint_at_end=True,
-        )
-        logdir = analysis.get_best_logdir(self.metric, mode="max")
-
-        shutil.copytree(
-            os.path.join(logdir, "checkpoint_000002"),
-            os.path.join(logdir, "checkpoint_tmpxxx"),
-        )
-
-        checkpoints_metrics = analysis.get_trial_checkpoints_paths(logdir)
-        expected_path = os.path.join(logdir, "checkpoint_000002")
-
-        assert len(checkpoints_metrics) == 1
-
-        assert os.path.normpath(checkpoints_metrics[0][0]) == expected_path
-        assert checkpoints_metrics[0][1] == 2
-
-
-class ExperimentAnalysisPropertySuite(unittest.TestCase):
-    def testBestProperties(self):
-        def train(config):
-            for i in range(10):
-                with tune.checkpoint_dir(i):
-                    pass
-                tune.report(res=config["base"] + i)
-
         ea = tune.run(
-            train,
-            config={"base": tune.grid_search([100, 200, 300])},
-            metric="res",
+            train_fn,
+            config={"id": tune.grid_search(list(range(1, NUM_TRIALS + 1)))},
+            metric="ascending",
             mode="max",
+            storage_path=storage_path,
+            name="test_experiment_analysis",
         )
 
-        trials = ea.trials
-
-        self.assertEqual(ea.best_trial, trials[2])
-        self.assertEqual(ea.best_config, trials[2].config)
-        self.assertEqual(ea.best_logdir, trials[2].local_path)
-        self.assertEqual(
-            ea.best_checkpoint._local_path, trials[2].checkpoint.dir_or_data
-        )
-        self.assertTrue(all(ea.best_dataframe["trial_id"] == trials[2].trial_id))
-        self.assertEqual(ea.results_df.loc[trials[2].trial_id, "res"], 309)
-        self.assertEqual(ea.best_result["res"], 309)
-        self.assertEqual(ea.best_result_df.loc[trials[2].trial_id, "res"], 309)
-
-    def testDataframeBestResult(self):
-        def train(config):
-            if config["var"] == 1:
-                tune.report(loss=9)
-                tune.report(loss=7)
-                tune.report(loss=5)
-            else:
-                tune.report(loss=10)
-                tune.report(loss=4)
-                tune.report(loss=10)
-
-        analysis = tune.run(
-            train, config={"var": tune.grid_search([1, 2])}, metric="loss", mode="min"
-        )
-
-        self.assertEqual(analysis.best_config["var"], 1)
-
-        with self.assertRaises(ValueError):
-            # Should raise because we didn't pass a metric
-            df = analysis.dataframe(mode="max")
-
-        # If we specify `min`, we expect the lowest ever observed result
-        df = analysis.dataframe(metric="loss", mode="min")
-        var = df[df.loss == df.loss.min()]["config/var"].values[0]
-        self.assertEqual(var, 2)
-
-        # If we don't pass a mode, we just fetch the last result
-        df = analysis.dataframe(metric="loss")
-        var = df[df.loss == df.loss.min()]["config/var"].values[0]
-        self.assertEqual(var, 1)
-
-        df = analysis.dataframe()
-        var = df[df.loss == df.loss.min()]["config/var"].values[0]
-        self.assertEqual(var, 1)
-
-
-def run_test_exp(path: str) -> ExperimentAnalysis:
-    with create_test_experiment_checkpoint(path) as creator:
-        for i in range(10):
-            trial = creator.create_trial(f"trial_{i}", config={"id": i, "hparam": 1})
-            creator.trial_result(
-                trial,
-                {
-                    "training_iteration": 1,
-                    "episode_reward_mean": 10 + int(90 * random.random()),
-                },
+        if load_from in ["dir", "cloud"]:
+            # Test init without passing in in-memory trials.
+            # Load them from an experiment directory instead.
+            yield NewExperimentAnalysis(
+                str(URI(storage_path) / "test_experiment_analysis"),
+                default_metric="ascending",
+                default_mode="max",
             )
-
-    return ExperimentAnalysis(path, trials=creator.get_trials())
-
-
-class ExperimentAnalysisStubSuite(unittest.TestCase):
-    def setUp(self):
-        self.test_dir = tempfile.mkdtemp()
-        self.test_name = "analysis_exp"
-        self.num_samples = 2
-        self.metric = "episode_reward_mean"
-        self.test_path = os.path.join(self.test_dir, self.test_name)
-
-    def tearDown(self):
-        shutil.rmtree(self.test_dir, ignore_errors=True)
-
-    def testPickling(self):
-        analysis = run_test_exp(self.test_path)
-        pickle_path = os.path.join(self.test_dir, "analysis.pickle")
-        with open(pickle_path, "wb") as f:
-            pickle.dump(analysis, f)
-
-        self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
-
-        with open(pickle_path, "rb") as f:
-            analysis = pickle.load(f)
-
-        self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
-
-    def testFromLocalPath(self):
-        run_test_exp(self.test_path)
-        analysis = ExperimentAnalysis(self.test_path)
-
-        self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
-
-        analysis = ExperimentAnalysis(self.test_path)
-
-        # This will be None if validate_trainable during loading fails
-        self.assertTrue(analysis.get_best_trial(metric=self.metric, mode="max"))
-
-    def testEmptyCheckpoint(self):
-        """Test that empty checkpoints can still be loaded in experiment analysis.
-
-        Background: If restore from a checkpoint fails, we overwrite the checkpoint
-        data with ``None`` (because we assume the current contents are invalid, e.g.
-        an invalid object ref, or a corrupted directory). But ExperimentAnalysis
-        currently previously failed loading if it is None. This tests makes
-        sure we can still load the checkpoint.
-
-        """
-        with create_test_experiment_checkpoint(self.test_path) as creator:
-            for i in range(10):
-                trial = creator.create_trial(f"trial_{i}", config={})
-                creator.trial_result(
-                    trial,
-                    {
-                        "training_iteration": 1,
-                        "episode_reward_mean": 10 + int(90 * random.random()),
-                    },
-                )
-                creator.trial_checkpoint(trial, "first")
-                creator.trial_checkpoint(trial, None)
-                creator.trial_checkpoint(trial, "third")
-
-        ea = ExperimentAnalysis(self.test_dir)
-        assert len(ea.trials) == 10
+        elif load_from == "memory":
+            yield ea
+        else:
+            raise NotImplementedError(f"Invalid param: {load_from}")
 
 
-def test_create_from_remote_path(tmp_path, mock_s3_bucket_uri):
-    run_test_exp(str(tmp_path))
-    upload_to_uri(str(tmp_path), mock_s3_bucket_uri)
+@pytest.mark.parametrize("filetype", ["json", "csv"])
+def test_fetch_trial_dataframes(experiment_analysis, filetype):
+    if filetype == "csv":
+        # Delete all json files so that we can test fallback to csv loading
+        for trial in experiment_analysis.trials:
+            _delete_fs_path(
+                fs=trial.storage.storage_filesystem,
+                fs_path=os.path.join(trial.storage.trial_fs_path, EXPR_RESULT_FILE),
+            )
+    else:
+        assert filetype == "json"
 
-    local_analysis = ExperimentAnalysis(str(tmp_path))
-    remote_analysis = ExperimentAnalysis(mock_s3_bucket_uri)
+    dfs = experiment_analysis._fetch_trial_dataframes()
+    assert len(dfs) == NUM_TRIALS
+    assert all(isinstance(df, pd.DataFrame) for df in dfs.values())
+    assert {trial.trial_id for trial in experiment_analysis.trials} == set(dfs)
 
-    metric = "episode_reward_mean"
-    mode = "max"
+    for trial_id, df in dfs.items():
+        trial_config = experiment_analysis.get_all_configs()[trial_id]
+        assert np.all(
+            df["ascending"].to_numpy() == np.arange(1, 8) * trial_config["id"]
+        )
 
-    # Tracked metric data is the same
+
+def test_fetch_trial_dataframes_with_errors(
+    experiment_analysis, tmp_path, propagate_logs, caplog
+):
+    # Add "corrupted" json files)
+    for trial in experiment_analysis.trials:
+        fs = trial.storage.storage_filesystem
+        with fs.open_output_stream(
+            os.path.join(trial.storage.trial_fs_path, EXPR_RESULT_FILE)
+        ) as f:
+            f.write(b"malformed")
+
+    experiment_analysis._fetch_trial_dataframes()
+    assert "Failed to fetch metrics" in caplog.text
+    caplog.clear()
+
+    # Delete ALL metrics files to check that a warning gets logged.
+    for trial in experiment_analysis.trials:
+        fs = trial.storage.storage_filesystem
+
+        # Delete ALL metrics files to check that a warning gets logged.
+        _delete_fs_path(
+            fs=trial.storage.storage_filesystem,
+            fs_path=os.path.join(trial.storage.trial_fs_path, EXPR_RESULT_FILE),
+        )
+        _delete_fs_path(
+            fs=trial.storage.storage_filesystem,
+            fs_path=os.path.join(trial.storage.trial_fs_path, EXPR_PROGRESS_FILE),
+        )
+
+    experiment_analysis._fetch_trial_dataframes()
+    assert "Could not fetch metrics for" in caplog.text
+    assert "FileNotFoundError" in caplog.text
+    caplog.clear()
+
+
+def test_get_all_configs(experiment_analysis):
+    configs = experiment_analysis.get_all_configs()
+    assert len(configs) == NUM_TRIALS
+    assert all(isinstance(config, dict) for config in configs.values())
+    assert {trial.trial_id for trial in experiment_analysis.trials} == set(configs)
+    for trial_id, config in configs.items():
+        trial = [
+            trial for trial in experiment_analysis.trials if trial.trial_id == trial_id
+        ][0]
+        assert trial.config == config
+
+
+def test_dataframe(experiment_analysis):
+    with pytest.raises(ValueError):
+        # Invalid mode
+        df = experiment_analysis.dataframe(mode="bad")
+
+    with pytest.raises(ValueError):
+        # Should raise because we didn't pass a metric
+        df = experiment_analysis.dataframe(mode="max")
+
+    # If we specify `max`, we expect the largets ever observed result
+    df = experiment_analysis.dataframe(metric="peak", mode="max")
+    assert df.iloc[0]["peak"] == PEAK_VALUE
+
+    # If we specify `min`, we expect the lowest ever observed result
+    df = experiment_analysis.dataframe(metric="peak", mode="min")
+    assert df.iloc[0]["peak"] == -PEAK_VALUE
+
+    # If we don't pass a mode, we just fetch the last result
+    df = experiment_analysis.dataframe(metric="peak")
+    assert df.iloc[0]["peak"] == 0
+    assert df.iloc[0]["iter"] == 7
+
+
+def test_default_properties(experiment_analysis):
+    # The last trial has the highest score (according to the default metric/mode).
+    best_trial = _get_trial_with_id(experiment_analysis.trials, NUM_TRIALS)
+    assert experiment_analysis.best_trial == best_trial
+    assert experiment_analysis.best_config == best_trial.config
+    # The last (most recent) checkpoint has the highest score.
+    assert experiment_analysis.best_checkpoint == best_trial.checkpoint
+    # NaN != NaN, so fill them in for this equality check.
+    assert experiment_analysis.best_dataframe.fillna(-1).equals(
+        experiment_analysis.trial_dataframes[best_trial.trial_id].fillna(-1)
+    )
+    assert experiment_analysis.best_result == best_trial.last_result
+
+    result_df_dict = experiment_analysis.best_result_df.iloc[0].to_dict()
+    # Converting -> pandas -> dict flattens the dict.
+    best_trial_dict = flatten_dict(best_trial.last_result, delimiter="/")
+    assert result_df_dict["ascending"] == best_trial_dict["ascending"]
+
+    assert len(experiment_analysis.results) == NUM_TRIALS
+    assert len(experiment_analysis.results_df) == NUM_TRIALS
+
+
+def test_get_best_config(experiment_analysis):
+    assert experiment_analysis.get_best_config()["id"] == NUM_TRIALS
     assert (
-        local_analysis.get_best_trial(metric=metric, mode=mode).trial_id
-        == remote_analysis.get_best_trial(metric=metric, mode=mode).trial_id
+        experiment_analysis.get_best_config(metric="ascending", mode="min")["id"] == 1
     )
 
-    # Trial result dataframes are the same
-    assert all(
-        local_df.equals(remote_df)
-        for local_df, remote_df in zip(
-            local_analysis.trial_dataframes.values(),
-            remote_analysis.trial_dataframes.values(),
+    assert not experiment_analysis.get_best_config(metric="maybe_nan", scope="last")
+
+
+def test_get_best_trial(experiment_analysis):
+    assert (
+        experiment_analysis.get_best_trial().config
+        == experiment_analysis.get_best_config()
+    )
+
+    assert not experiment_analysis.get_best_trial(metric="maybe_nan")
+    assert experiment_analysis.get_best_trial(
+        metric="maybe_nan", filter_nan_and_inf=False
+    )
+
+
+def test_get_best_checkpoint(experiment_analysis):
+    best_trial = experiment_analysis.get_best_trial()
+    best_checkpoint = load_dict_checkpoint(
+        experiment_analysis.get_best_checkpoint(best_trial)
+    )
+    # NOTE: There are 7 reports, but only the first 5 include a checkpoint.
+    assert best_checkpoint["ascending"] == 5 * NUM_TRIALS
+
+    best_checkpoint = load_dict_checkpoint(
+        experiment_analysis.get_best_checkpoint(
+            best_trial, metric="ascending", mode="min"
         )
     )
+    assert best_checkpoint["ascending"] == 1 * NUM_TRIALS
 
-    # Trial configs are the same
-    assert list(local_analysis.get_all_configs().values()) == list(
-        remote_analysis.get_all_configs().values()
+    # Filter checkpoints w/ NaN metrics
+    best_checkpoint = load_dict_checkpoint(
+        experiment_analysis.get_best_checkpoint(best_trial, metric="maybe_nan")
     )
+    assert best_checkpoint["maybe_nan"] == NON_NAN_VALUE
+
+
+def test_get_last_checkpoint(experiment_analysis):
+    # Defaults to getting the last checkpoint of the best trial.
+    last_checkpoint = load_dict_checkpoint(experiment_analysis.get_last_checkpoint())
+    assert last_checkpoint["iter"] == 5  # See note
+
+    last_checkpoint = load_dict_checkpoint(
+        experiment_analysis.get_last_checkpoint(
+            trial=_get_trial_with_id(experiment_analysis.trials, 1)
+        )
+    )
+    assert last_checkpoint["ascending"] == 5 * 1  # See note
+
+
+def test_pickle(experiment_analysis, tmp_path):
+    pickle_path = os.path.join(tmp_path, "analysis.pkl")
+    with open(pickle_path, "wb") as f:
+        pickle.dump(experiment_analysis, f)
+
+    assert experiment_analysis.get_best_trial(metric="ascending", mode="max")
+
+    with open(pickle_path, "rb") as f:
+        loaded_analysis = pickle.load(f)
+
+    assert loaded_analysis.get_best_trial(metric="ascending", mode="max")
 
 
 if __name__ == "__main__":

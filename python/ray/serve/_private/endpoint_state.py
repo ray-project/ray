@@ -34,6 +34,14 @@ class EndpointState:
     def shutdown(self):
         self._kv_store.delete(CHECKPOINT_KEY)
 
+    def is_ready_for_shutdown(self) -> bool:
+        """Returns whether the endpoint checkpoint has been deleted.
+
+        Get the endpoint checkpoint from the kv store. If it is None, then it has been
+        deleted.
+        """
+        return self._kv_store.get(CHECKPOINT_KEY) is None
+
     def _checkpoint(self):
         self._kv_store.put(CHECKPOINT_KEY, cloudpickle.dumps(self._endpoints))
 
@@ -66,9 +74,9 @@ class EndpointState:
         if existing_route_endpoint is not None and existing_route_endpoint != endpoint:
             logger.debug(
                 f'route_prefix "{endpoint_info.route}" is currently '
-                f'registered to deployment "{existing_route_endpoint}". '
+                f'registered to deployment "{existing_route_endpoint.name}". '
                 f'Re-registering route_prefix "{endpoint_info.route}" to '
-                f'deployment "{endpoint}".'
+                f'deployment "{endpoint.name}".'
             )
             del self._endpoints[existing_route_endpoint]
 

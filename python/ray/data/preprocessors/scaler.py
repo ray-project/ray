@@ -3,8 +3,8 @@ from typing import List, Tuple
 import numpy as np
 import pandas as pd
 
-from ray.data import Datastream
-from ray.data.aggregate import Mean, Std, Min, Max, AbsMax
+from ray.data import Dataset
+from ray.data.aggregate import AbsMax, Max, Mean, Min, Std
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 
@@ -66,10 +66,10 @@ class StandardScaler(Preprocessor):
     def __init__(self, columns: List[str]):
         self.columns = columns
 
-    def _fit(self, datastream: Datastream) -> Preprocessor:
+    def _fit(self, dataset: Dataset) -> Preprocessor:
         mean_aggregates = [Mean(col) for col in self.columns]
         std_aggregates = [Std(col, ddof=0) for col in self.columns]
-        self.stats_ = datastream.aggregate(*mean_aggregates, *std_aggregates)
+        self.stats_ = dataset.aggregate(*mean_aggregates, *std_aggregates)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -150,9 +150,9 @@ class MinMaxScaler(Preprocessor):
     def __init__(self, columns: List[str]):
         self.columns = columns
 
-    def _fit(self, datastream: Datastream) -> Preprocessor:
+    def _fit(self, dataset: Dataset) -> Preprocessor:
         aggregates = [Agg(col) for Agg in [Min, Max] for col in self.columns]
-        self.stats_ = datastream.aggregate(*aggregates)
+        self.stats_ = dataset.aggregate(*aggregates)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -230,9 +230,9 @@ class MaxAbsScaler(Preprocessor):
     def __init__(self, columns: List[str]):
         self.columns = columns
 
-    def _fit(self, datastream: Datastream) -> Preprocessor:
+    def _fit(self, dataset: Dataset) -> Preprocessor:
         aggregates = [AbsMax(col) for col in self.columns]
-        self.stats_ = datastream.aggregate(*aggregates)
+        self.stats_ = dataset.aggregate(*aggregates)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -315,12 +315,12 @@ class RobustScaler(Preprocessor):
         self.columns = columns
         self.quantile_range = quantile_range
 
-    def _fit(self, datastream: Datastream) -> Preprocessor:
+    def _fit(self, dataset: Dataset) -> Preprocessor:
         low = self.quantile_range[0]
         med = 0.50
         high = self.quantile_range[1]
 
-        num_records = datastream.count()
+        num_records = dataset.count()
         max_index = num_records - 1
         split_indices = [int(percentile * max_index) for percentile in (low, med, high)]
 
@@ -328,15 +328,15 @@ class RobustScaler(Preprocessor):
 
         # TODO(matt): Handle case where quantile lands between 2 numbers.
         # The current implementation will simply choose the closest index.
-        # This will affect the results of small datastreams more than large datastreams.
+        # This will affect the results of small datasets more than large datasets.
         for col in self.columns:
-            filtered_datastream = datastream.map_batches(
+            filtered_dataset = dataset.map_batches(
                 lambda df: df[[col]], batch_format="pandas"
             )
-            sorted_datastream = filtered_datastream.sort(col)
-            _, low, med, high = sorted_datastream.split_at_indices(split_indices)
+            sorted_dataset = filtered_dataset.sort(col)
+            _, low, med, high = sorted_dataset.split_at_indices(split_indices)
 
-            def _get_first_value(ds: Datastream, c: str):
+            def _get_first_value(ds: Dataset, c: str):
                 return ds.take(1)[0][c]
 
             low_val = _get_first_value(low, col)

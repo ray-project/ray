@@ -1,6 +1,7 @@
 import { ThemeProvider } from "@material-ui/styles";
 import React, { PropsWithChildren } from "react";
 import { MemoryRouter } from "react-router-dom";
+import { SWRConfig } from "swr";
 import { GlobalContext, GlobalContextType } from "../App";
 import { lightTheme } from "../theme";
 
@@ -19,13 +20,19 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
     },
     prometheusHealth: true,
     sessionName: "session-name",
+    dashboardDatasource: "Prometheus",
   };
 
   return (
     <ThemeProvider theme={lightTheme}>
-      <GlobalContext.Provider value={context}>
-        <MemoryRouter>{children}</MemoryRouter>
-      </GlobalContext.Provider>
+      {/*
+        Clear SWR cache between tests so that tests do impact each other.
+      */}
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <GlobalContext.Provider value={context}>
+          <MemoryRouter>{children}</MemoryRouter>
+        </GlobalContext.Provider>
+      </SWRConfig>
     </ThemeProvider>
   );
 };

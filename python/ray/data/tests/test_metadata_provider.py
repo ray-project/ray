@@ -1,39 +1,38 @@
-from functools import partial
 import logging
 import os
-import pytest
 import posixpath
-from unittest.mock import patch
 import urllib.parse
+from functools import partial
+from unittest.mock import patch
 
-import pyarrow as pa
-from pyarrow.fs import LocalFileSystem
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
+from pyarrow.fs import LocalFileSystem
 from pytest_lazyfixture import lazy_fixture
+
+from ray.data.datasource import (
+    BaseFileMetadataProvider,
+    DefaultFileMetadataProvider,
+    DefaultParquetMetadataProvider,
+    FastFileMetadataProvider,
+    FileMetadataProvider,
+    ParquetMetadataProvider,
+)
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
 )
 from ray.data.datasource.file_meta_provider import (
-    _get_file_infos_serial,
     _get_file_infos_common_path_prefix,
     _get_file_infos_parallel,
+    _get_file_infos_serial,
 )
-
-from ray.tests.conftest import *  # noqa
-from ray.data.datasource import (
-    FileMetadataProvider,
-    BaseFileMetadataProvider,
-    ParquetMetadataProvider,
-    DefaultFileMetadataProvider,
-    DefaultParquetMetadataProvider,
-    FastFileMetadataProvider,
-    PathPartitionEncoder,
-)
-
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.test_partitioning import PathPartitionEncoder
+from ray.tests.conftest import *  # noqa
 
 
 def df_to_csv(dataframe, path, **kwargs):
@@ -71,7 +70,7 @@ def test_file_metadata_providers_not_implemented():
         meta_provider.expand_paths(["/foo/bar.csv"], None)
     meta_provider = ParquetMetadataProvider()
     with pytest.raises(NotImplementedError):
-        meta_provider(["/foo/bar.csv"], None, pieces=[], prefetched_metadata=None)
+        meta_provider(["/foo/bar.csv"], None, num_pieces=0, prefetched_metadata=None)
     assert meta_provider.prefetch_file_metadata(["test"]) is None
 
 
@@ -113,7 +112,7 @@ def test_default_parquet_metadata_provider(fs, data_path):
     meta = meta_provider(
         [p.path for p in pq_ds.pieces],
         pq_ds.schema,
-        pieces=pq_ds.pieces,
+        num_pieces=len(pq_ds.pieces),
         prefetched_metadata=file_metas,
     )
     expected_meta_size_bytes = _get_parquet_file_meta_size_bytes(file_metas)

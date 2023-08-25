@@ -1,23 +1,23 @@
 import argparse
+from filelock import FileLock
+import os
+import tempfile
+
 import torch
 import torch.utils.data
-
 import torchvision
 from torchvision import transforms, datasets
 
-from torchmetrics.classification.accuracy import Accuracy
-
-
 import ray
-from ray.air.config import ScalingConfig
-import ray.train as train
-from ray.air import session
+from ray import train
+from ray.train import ScalingConfig
 
 
 def trainer_init_per_worker(config):
     from composer.core.evaluator import Evaluator
     from composer.models.tasks import ComposerClassifier
     import composer.optim
+    from torchmetrics.classification.accuracy import Accuracy
 
     BATCH_SIZE = 64
     # prepare the model for distributed training and wrap with ComposerClassifier for
@@ -31,21 +31,22 @@ def trainer_init_per_worker(config):
         [transforms.ToTensor(), transforms.Normalize(mean, std)]
     )
 
-    data_directory = "~/data"
-    train_dataset = torch.utils.data.Subset(
-        datasets.CIFAR10(
-            data_directory, train=True, download=True, transform=cifar10_transforms
-        ),
-        list(range(BATCH_SIZE * 10)),
-    )
-    test_dataset = torch.utils.data.Subset(
-        datasets.CIFAR10(
-            data_directory, train=False, download=True, transform=cifar10_transforms
-        ),
-        list(range(BATCH_SIZE * 10)),
-    )
+    data_directory = tempfile.mkdtemp(prefix="cifar_data")
+    with FileLock(os.path.join(data_directory, "data.lock")):
+        train_dataset = torch.utils.data.Subset(
+            datasets.CIFAR10(
+                data_directory, train=True, download=True, transform=cifar10_transforms
+            ),
+            list(range(BATCH_SIZE * 10)),
+        )
+        test_dataset = torch.utils.data.Subset(
+            datasets.CIFAR10(
+                data_directory, train=False, download=True, transform=cifar10_transforms
+            ),
+            list(range(BATCH_SIZE * 10)),
+        )
 
-    batch_size_per_worker = BATCH_SIZE // session.get_world_size()
+    batch_size_per_worker = BATCH_SIZE // train.get_context().get_world_size()
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size_per_worker, shuffle=True
     )
@@ -57,7 +58,9 @@ def trainer_init_per_worker(config):
     test_dataloader = train.torch.prepare_data_loader(test_dataloader)
 
     evaluator = Evaluator(
-        dataloader=test_dataloader, label="my_evaluator", metrics=Accuracy()
+        dataloader=test_dataloader,
+        label="my_evaluator",
+        metrics=Accuracy(task="multiclass", num_classes=10, top_k=1),
     )
 
     # prepare optimizer
@@ -115,6 +118,6 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    runtime_env = {"pip": ["mosaicml==0.10.1"]}
+    runtime_env = {"pip": ["mosaicml==0.12.1"]}
     ray.init(address=args.address, runtime_env=runtime_env)
     train_mosaic_cifar10(num_workers=args.num_workers, use_gpu=args.use_gpu)

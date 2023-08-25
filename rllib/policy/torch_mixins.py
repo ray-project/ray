@@ -2,21 +2,22 @@ from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
 
 torch, nn = try_import_torch()
 
 
-# TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
-#   and for all possible hyperparams, not just lr.
-@DeveloperAPI
+@Deprecated(error=False)
 class LearningRateSchedule:
     """Mixin for TorchPolicy that adds a learning rate schedule."""
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self._lr_schedule = None
+        # Disable any scheduling behavior related to learning if Learner API is active.
+        # Schedules are handled by Learner class.
         if lr_schedule is None:
             self.cur_lr = lr
         else:
@@ -28,21 +29,25 @@ class LearningRateSchedule:
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
-        if self._lr_schedule:
+        if self._lr_schedule and not self.config.get("_enable_learner_api", False):
             self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
             for opt in self._optimizers:
                 for p in opt.param_groups:
                     p["lr"] = self.cur_lr
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class EntropyCoeffSchedule:
     """Mixin for TorchPolicy that adds entropy coeff decay."""
 
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self._entropy_coeff_schedule = None
-        if entropy_coeff_schedule is None:
+        # Disable any scheduling behavior related to learning if Learner API is active.
+        # Schedules are handled by Learner class.
+        if entropy_coeff_schedule is None or (
+            self.config.get("_enable_learner_api", False)
+        ):
             self.entropy_coeff = entropy_coeff
         else:
             # Allows for custom schedule similar to lr_schedule format
@@ -70,6 +75,7 @@ class EntropyCoeffSchedule:
             )
 
 
+@Deprecated(error=False)
 class KLCoeffMixin:
     """Assigns the `update_kl()` method to a TorchPolicy.
 
@@ -108,6 +114,7 @@ class KLCoeffMixin:
         super().set_state(state)
 
 
+@Deprecated(error=False)
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TorchPolicy.
 
@@ -122,7 +129,7 @@ class ValueNetworkMixin:
     def __init__(self, config):
         # When doing GAE, we need the value function estimate on the
         # observation.
-        if config["use_gae"]:
+        if config.get("use_gae") or config.get("vtrace"):
             # Input dict is provided to us automatically via the Model's
             # requirements. It's a single-timestep (last one in trajectory)
             # input_dict.
@@ -167,6 +174,7 @@ class ValueNetworkMixin:
         }
 
 
+@Deprecated(error=False)
 class TargetNetworkMixin:
     """Mixin class adding a method for (soft) target net(s) synchronizations.
 

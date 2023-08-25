@@ -1,12 +1,11 @@
-import os
 import logging
 
 import pytest
 
 import ray
-from ray import tune
-from ray.air import Checkpoint, session
-from ray.air.config import FailureConfig, RunConfig, ScalingConfig
+from ray import train, tune
+from ray.air.constants import TRAINING_ITERATION
+from ray.train import FailureConfig, RunConfig, ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -14,13 +13,14 @@ from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
 from ray.train.examples.pytorch.torch_fashion_mnist_example import (
-    train_func as fashion_mnist_train_func,
+    train_func_per_worker as fashion_mnist_train_func,
 )
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
-from ray.tune.impl.tuner_internal import _TUNER_PKL
+
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 @pytest.fixture(scope="module")
@@ -63,7 +63,7 @@ def torch_fashion_mnist(num_workers, use_gpu, num_samples):
         param_space={
             "train_loop_config": {
                 "lr": tune.loguniform(1e-4, 1e-1),
-                "batch_size": tune.choice([32, 64, 128]),
+                "batch_size_per_worker": tune.choice([32, 64, 128]),
                 "epochs": 2,
             }
         },
@@ -74,7 +74,7 @@ def torch_fashion_mnist(num_workers, use_gpu, num_samples):
     analysis = tuner.fit()._experiment_analysis
 
     # Check that loss decreases in each trial.
-    for path, df in analysis.trial_dataframes.items():
+    for df in analysis.trial_dataframes.values():
         assert df.loc[1, "loss"] < df.loc[0, "loss"]
 
 
@@ -103,7 +103,7 @@ def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
     analysis = tuner.fit()._experiment_analysis
 
     # Check that loss decreases in each trial.
-    for path, df in analysis.trial_dataframes.items():
+    for df in analysis.trial_dataframes.values():
         assert df.loc[1, "loss"] < df.loc[0, "loss"]
 
 
@@ -132,10 +132,9 @@ def test_tune_error(ray_start_4_cpus):
 def test_tune_checkpoint(ray_start_4_cpus):
     def train_func():
         for i in range(9):
-            session.report(dict(test=i))
-        session.report(
-            dict(test=i + 1), checkpoint=Checkpoint.from_dict(dict(hello="world"))
-        )
+            train.report(dict(test=i))
+        with create_dict_checkpoint(dict(hello="world")) as checkpoint:
+            train.report(dict(test=i + 1), checkpoint=checkpoint)
 
     trainer = DataParallelTrainer(
         train_func,
@@ -147,26 +146,24 @@ def test_tune_checkpoint(ray_start_4_cpus):
         param_space={"train_loop_config": {"max_iter": 5}},
     )
 
-    [trial] = tuner.fit()._experiment_analysis.trials
-    checkpoint_path = trial.checkpoint.dir_or_data
-    assert os.path.exists(checkpoint_path)
-    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
-    assert checkpoint["hello"] == "world"
+    result_grid = tuner.fit()
+    assert len(result_grid) == 1
+    result = result_grid[0]
+    assert result.checkpoint
+    assert load_dict_checkpoint(result.checkpoint)["hello"] == "world"
 
 
 def test_reuse_checkpoint(ray_start_4_cpus):
     def train_func(config):
         itr = 0
-        ckpt = session.get_checkpoint()
+        ckpt = train.get_checkpoint()
         if ckpt is not None:
-            ckpt = ckpt.to_dict()
+            ckpt = load_dict_checkpoint(ckpt)
             itr = ckpt["iter"] + 1
 
         for i in range(itr, config["max_iter"]):
-            session.report(
-                dict(test=i, training_iteration=i),
-                checkpoint=Checkpoint.from_dict(dict(iter=i)),
-            )
+            with create_dict_checkpoint(dict(iter=i)) as checkpoint:
+                train.report(dict(test=i, training_iteration=i), checkpoint=checkpoint)
 
     trainer = DataParallelTrainer(
         train_func,
@@ -177,36 +174,34 @@ def test_reuse_checkpoint(ray_start_4_cpus):
         trainer,
         param_space={"train_loop_config": {"max_iter": 5}},
     )
-    [trial] = tuner.fit()._experiment_analysis.trials
-    checkpoint_path = trial.checkpoint.dir_or_data
-    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
-    assert checkpoint["iter"] == 4
+    result_grid = tuner.fit()
+    assert len(result_grid) == 1
+    result = result_grid[0]
+    assert result.checkpoint
+    assert load_dict_checkpoint(result.checkpoint)["iter"] == 4
 
-    tuner = Tuner(
-        trainer,
-        param_space={"train_loop_config": {"max_iter": 10}},
-    ).restore(trial.local_dir, trainable=trainer)
-    analysis = tuner.fit()._experiment_analysis
-    trial_dfs = list(analysis.trial_dataframes.values())
-    assert len(trial_dfs[0]["training_iteration"]) == 5
+    tuner = Tuner.restore(result_grid.experiment_path, trainable=trainer)
+    result_grid = tuner.fit()
+    assert len(result_grid) == 1
+    assert len(result_grid[0].metrics_dataframe) == 5
 
 
-def test_retry(ray_start_4_cpus):
+def test_retry_with_max_failures(ray_start_4_cpus):
+    """Tests trainer retry with max_failures > 0 when integrating with Tune."""
+
     def train_func():
-        ckpt = session.get_checkpoint()
+        ckpt = train.get_checkpoint()
         restored = bool(ckpt)  # Does a previous checkpoint exist?
         itr = 0
         if ckpt:
-            ckpt = ckpt.to_dict()
+            ckpt = load_dict_checkpoint(ckpt)
             itr = ckpt["iter"] + 1
 
         for i in range(itr, 4):
             if i == 2 and not restored:
                 raise Exception("try to fail me")
-            session.report(
-                dict(test=i, training_iteration=i),
-                checkpoint=Checkpoint.from_dict(dict(iter=i)),
-            )
+            with create_dict_checkpoint(dict(iter=i)) as checkpoint:
+                train.report(dict(test=i, training_iteration=i), checkpoint=checkpoint)
 
     trainer = DataParallelTrainer(
         train_func,
@@ -217,13 +212,11 @@ def test_retry(ray_start_4_cpus):
         trainer, run_config=RunConfig(failure_config=FailureConfig(max_failures=3))
     )
 
-    analysis = tuner.fit()._experiment_analysis
-    checkpoint_path = analysis.trials[0].checkpoint.dir_or_data
-    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
+    result_grid = tuner.fit()
+    checkpoint = load_dict_checkpoint(result_grid[0].checkpoint)
     assert checkpoint["iter"] == 3
-
-    trial_dfs = list(analysis.trial_dataframes.values())
-    assert len(trial_dfs[0]["training_iteration"]) == 4
+    df = result_grid[0].metrics_dataframe
+    assert len(df[TRAINING_ITERATION]) == 4
 
 
 def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, caplog):
@@ -241,8 +234,8 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
     assert results.errors
 
     def train_func(config):
-        dataset = session.get_dataset_shard("train")
-        assert session.get_world_size() == 2
+        dataset = train.get_dataset_shard("train")
+        assert train.get_context().get_world_size() == 2
         rows = 0
         for _ in dataset.iter_rows():
             rows += 1
@@ -275,14 +268,11 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
 @pytest.mark.parametrize("in_trainer", [True, False])
 @pytest.mark.parametrize("in_tuner", [True, False])
 def test_run_config_in_trainer_and_tuner(
-    propagate_logs, tmp_path, caplog, in_trainer, in_tuner
+    propagate_logs, tmp_path, monkeypatch, caplog, in_trainer, in_tuner
 ):
-    trainer_run_config = (
-        RunConfig(name="trainer", local_dir=str(tmp_path)) if in_trainer else None
-    )
-    tuner_run_config = (
-        RunConfig(name="tuner", local_dir=str(tmp_path)) if in_tuner else None
-    )
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
+    trainer_run_config = RunConfig(name="trainer") if in_trainer else None
+    tuner_run_config = RunConfig(name="tuner") if in_tuner else None
     trainer = DataParallelTrainer(
         lambda config: None,
         backend_config=TestConfig(),
@@ -296,13 +286,16 @@ def test_run_config_in_trainer_and_tuner(
         "`RunConfig` was passed to both the `Tuner` and the `DataParallelTrainer`"
     )
     if in_trainer and in_tuner:
-        assert list((tmp_path / "tuner").glob(_TUNER_PKL))
+        assert (tmp_path / "tuner").exists()
+        assert not (tmp_path / "trainer").exists()
         assert both_msg in caplog.text
     elif in_trainer and not in_tuner:
-        assert list((tmp_path / "trainer").glob(_TUNER_PKL))
+        assert not (tmp_path / "tuner").exists()
+        assert (tmp_path / "trainer").exists()
         assert both_msg not in caplog.text
     elif not in_trainer and in_tuner:
-        assert list((tmp_path / "tuner").glob(_TUNER_PKL))
+        assert (tmp_path / "tuner").exists()
+        assert not (tmp_path / "trainer").exists()
         assert both_msg not in caplog.text
     else:
         assert tuner._local_tuner.get_run_config() == RunConfig()

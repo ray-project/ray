@@ -1,18 +1,25 @@
+import warnings
 from typing import TYPE_CHECKING, Union
+
 from ray.air.util.data_batch_conversion import BatchFormat
-from ray.data import Datastream, DatasetPipeline
+from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
     from ray.air.data_batch_type import DataBatchType
 
+CHAIN_DEPRECATION_MESSAGE = (
+    "The Chain preprocessor is deprecated as of Ray 2.7. Instead, manually apply your "
+    "sequence of Preprocessor `fit` and `transform` calls directly on the Ray Dataset."
+)
 
-@PublicAPI(stability="alpha")
+
+@Deprecated(message=CHAIN_DEPRECATION_MESSAGE)
 class Chain(Preprocessor):
     """Combine multiple preprocessors into a single :py:class:`Preprocessor`.
 
-    When you call ``fit``, each preprocessor is fit on the datastream produced by the
+    When you call ``fit``, each preprocessor is fit on the dataset produced by the
     preceeding preprocessor's ``fit_transform``.
 
     Example:
@@ -67,24 +74,25 @@ class Chain(Preprocessor):
             return Preprocessor.FitStatus.NOT_FITTABLE
 
     def __init__(self, *preprocessors: Preprocessor):
+        warnings.warn(CHAIN_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
         self.preprocessors = preprocessors
 
-    def _fit(self, ds: Datastream) -> Preprocessor:
+    def _fit(self, ds: Dataset) -> Preprocessor:
         for preprocessor in self.preprocessors[:-1]:
             ds = preprocessor.fit_transform(ds)
         self.preprocessors[-1].fit(ds)
         return self
 
-    def fit_transform(self, ds: Datastream) -> Datastream:
+    def fit_transform(self, ds: Dataset) -> Dataset:
         for preprocessor in self.preprocessors:
             ds = preprocessor.fit_transform(ds)
         return ds
 
     def _transform(
-        self, ds: Union[Datastream, DatasetPipeline]
-    ) -> Union[Datastream, DatasetPipeline]:
+        self, ds: Union[Dataset, DatasetPipeline]
+    ) -> Union[Dataset, DatasetPipeline]:
         for preprocessor in self.preprocessors:
-            if isinstance(ds, Datastream):
+            if isinstance(ds, Dataset):
                 ds = preprocessor.transform(ds)
             elif isinstance(ds, DatasetPipeline):
                 ds = preprocessor._transform_pipeline(ds)

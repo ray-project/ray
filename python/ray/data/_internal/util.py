@@ -1,24 +1,28 @@
 import importlib
 import logging
 import os
-from typing import Any, List, Union, Optional, TYPE_CHECKING
-from types import ModuleType
+import pathlib
 import sys
+import urllib.parse
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Union
 
 import numpy as np
 
 import ray
-from ray.air.constants import TENSOR_COLUMN_NAME
+from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data.context import DataContext
-from ray._private.utils import _get_pyarrow_version
 
 if TYPE_CHECKING:
+    import pandas
+    import pyarrow
+
+    from ray.data._internal.compute import ComputeStrategy
+    from ray.data._internal.sort import SortKey
+    from ray.data.block import Block, BlockMetadata, UserDefinedFunction
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
-    import pyarrow
-    import pandas
-    from ray.data.block import Block, BlockMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +67,7 @@ def _check_pyarrow_version():
 
             if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
-                    f"Datastream requires pyarrow >= {MIN_PYARROW_VERSION}, but "
+                    f"Dataset requires pyarrow >= {MIN_PYARROW_VERSION}, but "
                     f"{version} is installed. Reinstall with "
                     f'`pip install -U "pyarrow"`. '
                     "If you want to disable this pyarrow version check, set the "
@@ -74,7 +78,7 @@ def _check_pyarrow_version():
                 "You are using the 'pyarrow' module, but the exact version is unknown "
                 "(possibly carried as an internal component by another module). Please "
                 f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION} to ensure "
-                "compatibility with Ray Datastream. "
+                "compatibility with Ray Dataset. "
                 "If you want to disable this pyarrow version check, set the "
                 f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
             )
@@ -87,7 +91,7 @@ def _autodetect_parallelism(
     ctx: DataContext,
     reader: Optional["Reader"] = None,
     avail_cpus: Optional[int] = None,
-) -> (int, int):
+) -> (int, int, Optional[int]):
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
 
     This detects parallelism using the following heuristics, applied in order:
@@ -103,13 +107,14 @@ def _autodetect_parallelism(
     Args:
         parallelism: The user-requested parallelism, or -1 for auto-detection.
         cur_pg: The current placement group, to be used for avail cpu calculation.
-        ctx: The current Datastream context to use for configs.
+        ctx: The current Dataset context to use for configs.
         reader: The datasource reader, to be used for data size estimation.
         avail_cpus: Override avail cpus detection (for testing only).
 
     Returns:
-        Tuple of detected parallelism (only if -1 was specified), and the min safe
-        parallelism (which can be used to generate warnings about large blocks).
+        Tuple of detected parallelism (only if -1 was specified), the min safe
+        parallelism (which can be used to generate warnings about large blocks),
+        and the estimated inmemory size of the dataset.
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
@@ -137,11 +142,11 @@ def _autodetect_parallelism(
             f"estimated_available_cpus={avail_cpus} and "
             f"estimated_data_size={mem_size}."
         )
-    return parallelism, min_safe_parallelism
+    return parallelism, min_safe_parallelism, mem_size
 
 
 def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
-    """Estimates the available CPU parallelism for this Datastream in the cluster.
+    """Estimates the available CPU parallelism for this Dataset in the cluster.
 
     If we aren't in a placement group, this is trivially the number of CPUs in the
     cluster. Otherwise, we try to calculate how large the placement group is relative
@@ -155,7 +160,7 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
 
     # If we're in a placement group, we shouldn't assume the entire cluster's
     # resources are available for us to use. Estimate an upper bound on what's
-    # reasonable to assume is available for datastreams to use.
+    # reasonable to assume is available for datasets to use.
     if cur_pg:
         pg_cpus = 0
         for bundle in cur_pg.bundle_specs:
@@ -175,7 +180,7 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
 
 
 def _estimate_available_parallelism() -> int:
-    """Estimates the available CPU parallelism for this Datastream in the cluster.
+    """Estimates the available CPU parallelism for this Dataset in the cluster.
     If we are currently in a placement group, take that into account."""
     cur_pg = ray.util.get_current_placement_group()
     return _estimate_avail_cpus(cur_pg)
@@ -208,9 +213,6 @@ def _resolve_custom_scheme(path: str) -> str:
 
     The supported custom schemes are: "local", "example".
     """
-    import pathlib
-    import urllib.parse
-
     parsed_uri = urllib.parse.urlparse(path)
     if parsed_uri.scheme == _LOCAL_SCHEME:
         path = parsed_uri.netloc + parsed_uri.path
@@ -226,9 +228,6 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
     Note: The paths must be in same scheme, i.e. it's invalid and
     will raise error if paths are mixed with different schemes.
     """
-    import pathlib
-    import urllib.parse
-
     if isinstance(paths, str):
         paths = [paths]
     if isinstance(paths, pathlib.Path):
@@ -244,10 +243,6 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
             f"but found mixed {paths}"
         )
     return num == len(paths)
-
-
-def _is_tensor_schema(column_names: List[str]):
-    return column_names == [TENSOR_COLUMN_NAME]
 
 
 def _truncated_repr(obj: Any) -> str:
@@ -351,18 +346,18 @@ def _consumption_api(
     insert_after=False,
 ):
     """Annotate the function with an indication that it's a consumption API, and that it
-    will trigger Datastream execution.
+    will trigger Dataset execution.
     """
     base = (
         " will trigger execution of the lazy transformations performed on "
-        "this datastream."
+        "this dataset."
     )
     if delegate:
         message = delegate + base
     elif not if_more_than_read:
         message = "This operation" + base
     else:
-        condition = "If this datastream consists of more than a read, "
+        condition = "If this dataset consists of more than a read, "
         if datasource_metadata is not None:
             condition += (
                 f"or if the {datasource_metadata} can't be determined from the "
@@ -387,7 +382,7 @@ def _consumption_api(
 
 def ConsumptionAPI(*args, **kwargs):
     """Annotate the function with an indication that it's a consumption API, and that it
-    will trigger Datastream execution.
+    will trigger Dataset execution.
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return _consumption_api()(args[0])
@@ -409,6 +404,39 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
         arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
     ]
     return splits
+
+
+def validate_compute(
+    fn: "UserDefinedFunction",
+    compute: Optional[Union[str, "ComputeStrategy"]],
+    fn_constructor_args: Optional[Iterable[Any]] = None,
+) -> None:
+    # Lazily import these objects to avoid circular imports.
+    from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+    from ray.data.block import CallableClass
+
+    if isinstance(fn, CallableClass) and (
+        compute is None or compute == "tasks" or isinstance(compute, TaskPoolStrategy)
+    ):
+        raise ValueError(
+            "``compute`` must be specified when using a CallableClass, and must "
+            f"specify the actor compute strategy, but got: {compute}. "
+            "For example, use ``compute=ray.data.ActorPoolStrategy(size=n)``."
+        )
+
+    if fn_constructor_args is not None:
+        if compute is None or (
+            compute != "actors" and not isinstance(compute, ActorPoolStrategy)
+        ):
+            raise ValueError(
+                "fn_constructor_args can only be specified if using the actor "
+                f"pool compute strategy, but got: {compute}"
+            )
+        if not isinstance(fn, CallableClass):
+            raise ValueError(
+                "fn_constructor_args can only be specified if providing a "
+                f"CallableClass instance for fn, but got: {fn}"
+            )
 
 
 def capfirst(s: str):
@@ -456,10 +484,7 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
     DataContext._set_current(ctx)
 
     stats = BlockExecStats.builder()
-    if ctx.strict_mode:
-        block = BlockAccessor.batch_to_block({"data": ndarray})
-    else:
-        block = BlockAccessor.batch_to_block(ndarray)
+    block = BlockAccessor.batch_to_block({"data": ndarray})
     metadata = BlockAccessor.for_block(block).get_metadata(
         input_files=None, exec_stats=stats.build()
     )
@@ -505,3 +530,83 @@ def unify_block_metadata_schema(
         # return the first schema.
         return schemas_to_unify[0]
     return None
+
+
+def find_partition_index(
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
+    desired: List[Any],
+    sort_key: "SortKey",
+) -> int:
+    columns = sort_key.get_columns()
+    descending = sort_key.get_descending()
+
+    left, right = 0, len(table)
+    for i in range(len(desired)):
+        if left == right:
+            return right
+        col_name = columns[i]
+        col_vals = table[col_name].to_numpy()[left:right]
+        desired_val = desired[i]
+
+        prevleft = left
+        if descending is True:
+            left = prevleft + (
+                len(col_vals)
+                - np.searchsorted(
+                    col_vals,
+                    desired_val,
+                    side="right",
+                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                )
+            )
+            right = prevleft + (
+                len(col_vals)
+                - np.searchsorted(
+                    col_vals,
+                    desired_val,
+                    side="left",
+                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                )
+            )
+        else:
+            left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
+            right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
+    return right if descending is True else left
+
+
+def find_partitions(table, boundaries, sort_key):
+    partitions = []
+
+    # For each boundary value, count the number of items that are less
+    # than it. Since the block is sorted, these counts partition the items
+    # such that boundaries[i] <= x < boundaries[i + 1] for each x in
+    # partition[i]. If `descending` is true, `boundaries` would also be
+    # in descending order and we only need to count the number of items
+    # *greater than* the boundary value instead.
+    bounds = [
+        find_partition_index(table, boundary, sort_key) for boundary in boundaries
+    ]
+
+    last_idx = 0
+    for idx in bounds:
+        partitions.append(table[last_idx:idx])
+        last_idx = idx
+    partitions.append(table[last_idx:])
+    return partitions
+
+
+def get_attribute_from_class_name(class_name: str) -> Any:
+    """Get Python attribute from the provided class name.
+
+    The caller needs to make sure the provided class name includes
+    full module name, and can be imported successfully.
+    """
+    from importlib import import_module
+
+    paths = class_name.split(".")
+    if len(paths) < 2:
+        raise ValueError(f"Cannot create object from {class_name}.")
+
+    module_name = ".".join(paths[:-1])
+    attribute_name = paths[-1]
+    return getattr(import_module(module_name), attribute_name)

@@ -1,11 +1,12 @@
 import sys
-from typing import Dict, Callable, Optional, Union, Any, TYPE_CHECKING
+import warnings
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 import numpy as np
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -15,15 +16,20 @@ else:
 if TYPE_CHECKING:
     import pandas
 
+BATCH_MAPPER_DEPRECATION_MESSAGE = (
+    "The BatchMapper preprocessor is deprecated as of Ray 2.7. "
+    "Instead, transform your Ray Dataset directly using `map_batches`."
+)
 
-@PublicAPI(stability="alpha")
+
+@Deprecated(message=BATCH_MAPPER_DEPRECATION_MESSAGE)
 class BatchMapper(Preprocessor):
-    """Apply an arbitrary operation to a datastream.
+    """Apply an arbitrary operation to a dataset.
 
-    :class:`BatchMapper` applies a user-defined function to batches of a datastream. A
+    :class:`BatchMapper` applies a user-defined function to batches of a dataset. A
     batch is a Pandas ``DataFrame`` that represents a small amount of data. By modifying
     batches instead of individual records, this class can efficiently transform a
-    datastream with vectorized operations.
+    dataset with vectorized operations.
 
     Use this preprocessor to apply stateless operations that aren't already built-in.
 
@@ -48,25 +54,25 @@ class BatchMapper(Preprocessor):
         >>>
         >>> preprocessor = BatchMapper(fn, batch_format="pandas")
         >>> preprocessor.transform(ds)  # doctest: +SKIP
-        Datastream(num_blocks=1, num_rows=3, schema={X: int64})
+        Dataset(num_blocks=1, num_rows=3, schema={X: int64})
         >>>
         >>> def fn_numpy(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         ...     return {"X": batch["X"]}
         >>> preprocessor = BatchMapper(fn_numpy, batch_format="numpy")
         >>> preprocessor.transform(ds)  # doctest: +SKIP
-        Datastream(num_blocks=1, num_rows=3, schema={X: int64})
+        Dataset(num_blocks=1, num_rows=3, schema={X: int64})
 
     Args:
         fn: The function to apply to data batches.
         batch_size: The desired number of rows in each data batch provided to ``fn``.
-            Semantics are the same as in ```datastream.map_batches()``: specifying
+            Semantics are the same as in ```dataset.map_batches()``: specifying
             ``None`` wil use the entire underlying blocks as batches (blocks may
             contain different number of rows) and the actual size of the batch provided
             to ``fn`` may be smaller than ``batch_size`` if ``batch_size`` doesn't
             evenly divide the block(s) sent to a given map task. Defaults to 4096,
-            which is the same default value as ``datastream.map_batches()``.
+            which is the same default value as ``dataset.map_batches()``.
         batch_format: The preferred batch format to use in UDF. If not given,
-            we will infer based on the input datastream data format.
+            we will infer based on the input dataset data format.
     """
 
     _is_fittable = False
@@ -85,6 +91,10 @@ class BatchMapper(Preprocessor):
         # TODO: Introduce a "zero_copy" format
         # TODO: We should reach consistency of args between BatchMapper and map_batches.
     ):
+
+        warnings.warn(
+            BATCH_MAPPER_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2
+        )
 
         if batch_format not in [
             BatchFormat.PANDAS,

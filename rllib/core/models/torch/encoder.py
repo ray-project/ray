@@ -5,23 +5,23 @@ import tree
 from ray.rllib.core.models.base import (
     Encoder,
     ActorCriticEncoder,
+    StatefulActorCriticEncoder,
     STATE_IN,
     STATE_OUT,
     ENCODER_OUT,
 )
-from ray.rllib.core.models.base import Model
+from ray.rllib.core.models.base import Model, tokenize
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
     CNNEncoderConfig,
     MLPEncoderConfig,
     RecurrentEncoderConfig,
 )
+from ray.rllib.core.models.specs.specs_base import Spec
+from ray.rllib.core.models.specs.specs_base import TensorSpec
+from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
-from ray.rllib.core.models.specs.specs_base import Spec
-from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.core.models.specs.specs_base import TensorSpec
-from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -39,6 +39,16 @@ class TorchActorCriticEncoder(TorchModel, ActorCriticEncoder):
         ActorCriticEncoder.__init__(self, config)
 
 
+class TorchStatefulActorCriticEncoder(TorchModel, StatefulActorCriticEncoder):
+    """A stateful actor-critic encoder for torch."""
+
+    framework = "torch"
+
+    def __init__(self, config: ActorCriticEncoderConfig) -> None:
+        TorchModel.__init__(self, config)
+        StatefulActorCriticEncoder.__init__(self, config)
+
+
 class TorchMLPEncoder(TorchModel, Encoder):
     def __init__(self, config: MLPEncoderConfig) -> None:
         TorchModel.__init__(self, config)
@@ -50,9 +60,10 @@ class TorchMLPEncoder(TorchModel, Encoder):
             hidden_layer_dims=config.hidden_layer_dims,
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
-            output_dim=config.output_dims[0],
-            output_activation=config.output_activation,
-            use_bias=config.use_bias,
+            hidden_layer_use_bias=config.hidden_layer_use_bias,
+            output_dim=config.output_layer_dim,
+            output_activation=config.output_layer_activation,
+            output_use_bias=config.output_layer_use_bias,
         )
 
     @override(Model)
@@ -62,8 +73,6 @@ class TorchMLPEncoder(TorchModel, Encoder):
                 SampleBatch.OBS: TensorSpec(
                     "b, d", d=self.config.input_dims[0], framework="torch"
                 ),
-                STATE_IN: None,
-                SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -74,16 +83,12 @@ class TorchMLPEncoder(TorchModel, Encoder):
                 ENCODER_OUT: TensorSpec(
                     "b, d", d=self.config.output_dims[0], framework="torch"
                 ),
-                STATE_OUT: None,
             }
         )
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        return {
-            ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-            STATE_OUT: inputs[STATE_IN],
-        }
+        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
 class TorchCNNEncoder(TorchModel, Encoder):
@@ -98,26 +103,13 @@ class TorchCNNEncoder(TorchModel, Encoder):
             cnn_filter_specifiers=config.cnn_filter_specifiers,
             cnn_activation=config.cnn_activation,
             cnn_use_layernorm=config.cnn_use_layernorm,
-            use_bias=config.use_bias,
+            cnn_use_bias=config.cnn_use_bias,
         )
         layers.append(cnn)
 
         # Add a flatten operation to move from 2/3D into 1D space.
-        layers.append(nn.Flatten())
-
-        # Add a final linear layer to make sure that the outputs have the correct
-        # dimensionality (output_dims).
-        layers.append(
-            nn.Linear(
-                int(cnn.output_width) * int(cnn.output_height) * int(cnn.output_depth),
-                config.output_dims[0],
-            )
-        )
-        output_activation = get_activation_fn(
-            config.output_activation, framework="torch"
-        )
-        if output_activation is not None:
-            layers.append(output_activation())
+        if config.flatten_at_end:
+            layers.append(nn.Flatten())
 
         # Create the network from gathered layers.
         self.net = nn.Sequential(*layers)
@@ -133,8 +125,6 @@ class TorchCNNEncoder(TorchModel, Encoder):
                     c=self.config.input_dims[2],
                     framework="torch",
                 ),
-                STATE_IN: None,
-                SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -142,39 +132,55 @@ class TorchCNNEncoder(TorchModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TensorSpec(
-                    "b, d", d=self.config.output_dims[0], framework="torch"
-                ),
-                STATE_OUT: None,
+                ENCODER_OUT: (
+                    TensorSpec("b, d", d=self.config.output_dims[0], framework="torch")
+                    if self.config.flatten_at_end
+                    else TensorSpec(
+                        "b, w, h, c",
+                        w=self.config.output_dims[0],
+                        h=self.config.output_dims[1],
+                        d=self.config.output_dims[2],
+                        framework="torch",
+                    )
+                )
             }
         )
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        return {
-            ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-            STATE_OUT: inputs[STATE_IN],
-        }
+        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
 class TorchGRUEncoder(TorchModel, Encoder):
-    """An encoder that uses one or more GRU cells and a linear output layer."""
+    """A recurrent GRU encoder.
+
+    This encoder has...
+    - Zero or one tokenizers.
+    - One or more GRU layers.
+    - One linear output layer.
+    """
 
     def __init__(self, config: RecurrentEncoderConfig) -> None:
         TorchModel.__init__(self, config)
 
+        # Maybe create a tokenizer
+        if config.tokenizer_config is not None:
+            self.tokenizer = config.tokenizer_config.build(framework="torch")
+            gru_input_dims = config.tokenizer_config.output_dims
+        else:
+            self.tokenizer = None
+            gru_input_dims = config.input_dims
+
+        # We only support 1D spaces right now.
+        assert len(gru_input_dims) == 1
+        gru_input_dim = gru_input_dims[0]
+
         # Create the torch LSTM layer.
         self.gru = nn.GRU(
-            config.input_dims[0],
+            gru_input_dim,
             config.hidden_dim,
             config.num_layers,
             batch_first=config.batch_major,
-            bias=config.use_bias,
-        )
-        # Create the final dense layer.
-        self.linear = nn.Linear(
-            config.hidden_dim,
-            config.output_dims[0],
             bias=config.use_bias,
         )
 
@@ -225,7 +231,14 @@ class TorchGRUEncoder(TorchModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        out = inputs[SampleBatch.OBS].float()
+        outputs = {}
+
+        if self.tokenizer is not None:
+            # Push observations through the tokenizer encoder if we built one.
+            out = tokenize(self.tokenizer, inputs, framework="torch")
+        else:
+            # Otherwise, just use the raw observations.
+            out = inputs[SampleBatch.OBS].float()
 
         # States are batch-first when coming in. Make them layers-first.
         states_in = tree.map_structure(lambda s: s.transpose(0, 1), inputs[STATE_IN])
@@ -233,34 +246,42 @@ class TorchGRUEncoder(TorchModel, Encoder):
         out, states_out = self.gru(out, states_in["h"])
         states_out = {"h": states_out}
 
-        out = self.linear(out)
-
-        return {
-            ENCODER_OUT: out,
-            # Make states layer-first again.
-            STATE_OUT: tree.map_structure(lambda s: s.transpose(0, 1), states_out),
-        }
+        # Insert them into the output dict.
+        outputs[ENCODER_OUT] = out
+        outputs[STATE_OUT] = tree.map_structure(lambda s: s.transpose(0, 1), states_out)
+        return outputs
 
 
 class TorchLSTMEncoder(TorchModel, Encoder):
-    """An encoder that uses an LSTM cell and a linear layer."""
+    """A recurrent LSTM encoder.
+
+    This encoder has...
+    - Zero or one tokenizers.
+    - One or more LSTM layers.
+    - One linear output layer.
+    """
 
     def __init__(self, config: RecurrentEncoderConfig) -> None:
         TorchModel.__init__(self, config)
 
+        # Maybe create a tokenizer
+        if config.tokenizer_config is not None:
+            self.tokenizer = config.tokenizer_config.build(framework="torch")
+            lstm_input_dims = config.tokenizer_config.output_dims
+        else:
+            self.tokenizer = None
+            lstm_input_dims = config.input_dims
+
+        # We only support 1D spaces right now.
+        assert len(lstm_input_dims) == 1
+        lstm_input_dim = lstm_input_dims[0]
+
         # Create the torch LSTM layer.
         self.lstm = nn.LSTM(
-            # We only support 1D spaces right now.
-            config.input_dims[0],
+            lstm_input_dim,
             config.hidden_dim,
             config.num_layers,
             batch_first=config.batch_major,
-            bias=config.use_bias,
-        )
-        # Create the final dense layer.
-        self.linear = nn.Linear(
-            config.hidden_dim,
-            config.output_dims[0],
             bias=config.use_bias,
         )
 
@@ -322,7 +343,14 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        out = inputs[SampleBatch.OBS].float()
+        outputs = {}
+
+        if self.tokenizer is not None:
+            # Push observations through the tokenizer encoder if we built one.
+            out = tokenize(self.tokenizer, inputs, framework="torch")
+        else:
+            # Otherwise, just use the raw observations.
+            out = inputs[SampleBatch.OBS].float()
 
         # States are batch-first when coming in. Make them layers-first.
         states_in = tree.map_structure(lambda s: s.transpose(0, 1), inputs[STATE_IN])
@@ -330,10 +358,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         out, states_out = self.lstm(out, (states_in["h"], states_in["c"]))
         states_out = {"h": states_out[0], "c": states_out[1]}
 
-        out = self.linear(out)
-
-        return {
-            ENCODER_OUT: out,
-            # Make states layer-first again.
-            STATE_OUT: tree.map_structure(lambda s: s.transpose(0, 1), states_out),
-        }
+        # Insert them into the output dict.
+        outputs[ENCODER_OUT] = out
+        outputs[STATE_OUT] = tree.map_structure(lambda s: s.transpose(0, 1), states_out)
+        return outputs

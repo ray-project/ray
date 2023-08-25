@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 import numpy as np
 
-from ray import tune
+from ray import train, tune
 from ray._private.test_utils import run_string_as_driver
 from ray.tune.progress_reporter import (
     CLIReporter,
@@ -282,7 +282,7 @@ VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------------------+--
 |-------------------+----------+-------------------+----------|
 | train_xxxxx_00000 | RUNNING  | 123.123.123.123:1 | complete |"""
 
-VERBOSE_CMD = """from ray import tune
+VERBOSE_CMD = """from ray import train as ray_train, tune
 import random
 import numpy as np
 import time
@@ -301,14 +301,14 @@ def mock_get_trial_location(trial, result):
 def train(config):
     if config["do"] == "complete":
         time.sleep(0.1)
-        tune.report(acc=5, done=True)
+        ray_train.report(dict(acc=5, done=True))
     elif config["do"] == "once":
         time.sleep(0.5)
-        tune.report(6)
+        return 6
     else:
         time.sleep(1.0)
-        tune.report(acc=7)
-        tune.report(acc=8)
+        ray_train.report(dict(acc=7))
+        ray_train.report(dict(acc=8))
 
 random.seed(1234)
 np.random.seed(1234)
@@ -325,12 +325,10 @@ with patch("ray.tune.progress_reporter._get_trial_location",
 # Add "verbose=3)" etc
 
 
-@pytest.mark.skipif(
-    "AIR_VERBOSITY" in os.environ, reason="console v2 doesn't work with this v1 test."
-)
 class ProgressReporterTest(unittest.TestCase):
     def setUp(self) -> None:
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"
+        os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
 
     def mock_trial(self, status, i):
         mock = MagicMock()
@@ -400,11 +398,12 @@ class ProgressReporterTest(unittest.TestCase):
 
         def test(config):
             for i in range(3):
-                tune.report(**test_result)
+                train.report(test_result)
 
-        analysis = tune.run(test, num_samples=3)
+        analysis = tune.run(test, num_samples=3, verbose=3)
         all_trials = analysis.trials
         inferred_results = reporter._infer_user_metrics(all_trials)
+
         for metric in inferred_results:
             self.assertNotIn(metric, AUTO_RESULT_KEYS)
             self.assertTrue(metric in test_result)
@@ -421,7 +420,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self._output.append(progress_str)
 
         reporter = TestReporter()
-        analysis = tune.run(test, num_samples=3, progress_reporter=reporter)
+        analysis = tune.run(test, num_samples=3, progress_reporter=reporter, verbose=3)
         found = {k: False for k in test_result}
         for output in reporter._output:
             for key in test_result:
@@ -443,7 +442,8 @@ class ProgressReporterTest(unittest.TestCase):
                 t.status = "RUNNING"
             t.trial_id = "%05d" % i
             t.local_experiment_path = "/foo"
-            t.location = "here"
+            t.temporary_state = Mock()
+            t.temporary_state.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i, "b": i * 2, "n/k/0": i, "n/k/1": 2 * i}
             t.last_result = {
@@ -489,7 +489,11 @@ class ProgressReporterTest(unittest.TestCase):
         config = {"nested": {"conf": "nested_value"}, "toplevel": "toplevel_value"}
 
         trial = Trial("", config=config, stub=True)
-        trial.last_result = {"metric": 1, "config": config, "nested": {"metric": 2}}
+        trial.run_metadata.last_result = {
+            "metric": 1,
+            "config": config,
+            "nested": {"metric": 2},
+        }
 
         result = _best_trial_str(trial, "metric")
         self.assertIn("nested_value", result)
@@ -505,13 +509,13 @@ class ProgressReporterTest(unittest.TestCase):
 
     def testBestTrialZero(self):
         trial1 = Trial("", config={}, stub=True)
-        trial1.last_result = {"metric": 7, "config": {}}
+        trial1.run_metadata.last_result = {"metric": 7, "config": {}}
 
         trial2 = Trial("", config={}, stub=True)
-        trial2.last_result = {"metric": 0, "config": {}}
+        trial2.run_metadata.last_result = {"metric": 0, "config": {}}
 
         trial3 = Trial("", config={}, stub=True)
-        trial3.last_result = {"metric": 2, "config": {}}
+        trial3.run_metadata.last_result = {"metric": 2, "config": {}}
 
         reporter = TuneReporterBase(metric="metric", mode="min")
         best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
@@ -519,26 +523,26 @@ class ProgressReporterTest(unittest.TestCase):
 
     def testBestTrialNan(self):
         trial1 = Trial("", config={}, stub=True)
-        trial1.last_result = {"metric": np.nan, "config": {}}
+        trial1.run_metadata.last_result = {"metric": np.nan, "config": {}}
 
         trial2 = Trial("", config={}, stub=True)
-        trial2.last_result = {"metric": 0, "config": {}}
+        trial2.run_metadata.last_result = {"metric": 0, "config": {}}
 
         trial3 = Trial("", config={}, stub=True)
-        trial3.last_result = {"metric": 2, "config": {}}
+        trial3.run_metadata.last_result = {"metric": 2, "config": {}}
 
         reporter = TuneReporterBase(metric="metric", mode="min")
         best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
         assert best_trial == trial2
 
         trial1 = Trial("", config={}, stub=True)
-        trial1.last_result = {"metric": np.nan, "config": {}}
+        trial1.run_metadata.last_result = {"metric": np.nan, "config": {}}
 
         trial2 = Trial("", config={}, stub=True)
-        trial2.last_result = {"metric": 0, "config": {}}
+        trial2.run_metadata.last_result = {"metric": 0, "config": {}}
 
         trial3 = Trial("", config={}, stub=True)
-        trial3.last_result = {"metric": 2, "config": {}}
+        trial3.run_metadata.last_result = {"metric": 2, "config": {}}
 
         reporter = TuneReporterBase(metric="metric", mode="max")
         best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
@@ -573,7 +577,8 @@ class ProgressReporterTest(unittest.TestCase):
             t.status = "RUNNING"
             t.trial_id = "%05d" % i
             t.local_experiment_path = "/foo"
-            t.location = "here"
+            t.temporary_state = Mock()
+            t.temporary_state.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i}
             t.last_result = {"config": {"a": i}, "metric_1": i / 2}
@@ -607,7 +612,9 @@ class ProgressReporterTest(unittest.TestCase):
                 t.status = "RUNNING"
             t.trial_id = "%05d" % i
             t.local_experiment_path = "/foo"
-            t.location = "here"
+            t.temporary_state = Mock()
+            t.temporary_state.location = "here"
+            t.run_metadata = Mock()
             t.config = {"a": i}
             t.evaluated_params = {"a": i}
             t.last_result = {"config": {"a": i}}
@@ -691,7 +698,9 @@ class ProgressReporterTest(unittest.TestCase):
                 if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     assert EXPECTED_END_TO_END_START in output
                 assert EXPECTED_END_TO_END_END in output
-                assert "(raylet)" not in output, "Unexpected raylet log messages"
+                for line in output.splitlines():
+                    if "(raylet)" in line:
+                        assert "cluster ID" in line, "Unexpected raylet log messages"
             except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)
@@ -799,7 +808,12 @@ class ProgressReporterTest(unittest.TestCase):
             def report(self, trials, done, *sys_info):
                 pass
 
-        tune.run(lambda config: 2, num_samples=1, progress_reporter=CustomReporter())
+        tune.run(
+            lambda config: 2,
+            num_samples=1,
+            progress_reporter=CustomReporter(),
+            verbose=3,
+        )
 
     def testMaxLen(self):
         trials = []
@@ -808,7 +822,8 @@ class ProgressReporterTest(unittest.TestCase):
             t.status = "TERMINATED"
             t.trial_id = "%05d" % i
             t.local_experiment_path = "/foo"
-            t.location = "here"
+            t.temporary_state = Mock()
+            t.temporary_state.location = "here"
             t.config = {"verylong" * 20: i}
             t.evaluated_params = {"verylong" * 20: i}
             t.last_result = {"some_metric": "evenlonger" * 100}

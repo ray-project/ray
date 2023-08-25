@@ -114,7 +114,9 @@ enum class StatusCode : char {
   OutOfDisk = 28,
   ObjectUnknownOwner = 29,
   RpcError = 30,
-  OutOfResource = 31
+  OutOfResource = 31,
+  ObjectRefEndOfStream = 32,
+  AuthError = 33,
 };
 
 #if defined(__clang__)
@@ -144,6 +146,10 @@ class RAY_EXPORT Status {
 
   static Status KeyError(const std::string &msg) {
     return Status(StatusCode::KeyError, msg);
+  }
+
+  static Status ObjectRefEndOfStream(const std::string &msg) {
+    return Status(StatusCode::ObjectRefEndOfStream, msg);
   }
 
   static Status TypeError(const std::string &msg) {
@@ -246,6 +252,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::OutOfResource, msg);
   }
 
+  static Status AuthError(const std::string &msg) {
+    return Status(StatusCode::AuthError, msg);
+  }
+
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
@@ -254,6 +264,9 @@ class RAY_EXPORT Status {
   bool IsOutOfMemory() const { return code() == StatusCode::OutOfMemory; }
   bool IsOutOfDisk() const { return code() == StatusCode::OutOfDisk; }
   bool IsKeyError() const { return code() == StatusCode::KeyError; }
+  bool IsObjectRefEndOfStream() const {
+    return code() == StatusCode::ObjectRefEndOfStream;
+  }
   bool IsInvalid() const { return code() == StatusCode::Invalid; }
   bool IsIOError() const { return code() == StatusCode::IOError; }
   bool IsTypeError() const { return code() == StatusCode::TypeError; }
@@ -293,6 +306,8 @@ class RAY_EXPORT Status {
   bool IsRpcError() const { return code() == StatusCode::RpcError; }
 
   bool IsOutOfResource() const { return code() == StatusCode::OutOfResource; }
+
+  bool IsAuthError() const { return code() == StatusCode::AuthError; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

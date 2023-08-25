@@ -1,7 +1,8 @@
 import asyncio
 import logging
 
-from dataclasses import asdict, fields
+from dataclasses import fields
+import dataclasses
 from itertools import islice
 from typing import List, Tuple, Optional
 from datetime import datetime
@@ -11,9 +12,10 @@ from ray._private.profiling import chrome_tracing_dump
 
 import ray.dashboard.memory_utils as memory_utils
 
-from ray.experimental.state.common import (
+from ray.util.state.common import (
     protobuf_message_to_dict,
     ActorState,
+    JobState,
     ListApiOptions,
     ListApiResponse,
     NodeState,
@@ -36,12 +38,12 @@ from ray.experimental.state.common import (
     PredicateType,
     protobuf_to_task_state_dict,
 )
-from ray.experimental.state.state_manager import (
+from ray.util.state.state_manager import (
     DataSourceUnavailable,
     StateDataSourceClient,
 )
 from ray.runtime_env import RuntimeEnv
-from ray.experimental.state.util import convert_string_to_type
+from ray.util.state.util import convert_string_to_type
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +82,10 @@ def _convert_filters_type(
         A new list of filters with correct types that match the schema.
     """
     new_filter = []
-    schema = {field.name: field.type for field in fields(schema)}
+    if dataclasses.is_dataclass(schema):
+        schema = {field.name: field.type for field in fields(schema)}
+    else:
+        schema = schema.schema_dict()
 
     for col, predicate, val in filter:
         if col in schema:
@@ -95,7 +100,7 @@ def _convert_filters_type(
                 if isinstance(val, column_type):
                     # Do nothing.
                     pass
-                elif column_type is int:
+                elif column_type is int or column_type == "integer":
                     try:
                         val = convert_string_to_type(val, int)
                     except ValueError:
@@ -104,16 +109,19 @@ def _convert_filters_type(
                             "column. Please provide an integer filter "
                             f"`--filter {col} [int]`"
                         )
-                elif column_type is float:
+                elif column_type is float or column_type == "number":
                     try:
-                        val = convert_string_to_type(val, float)
+                        val = convert_string_to_type(
+                            val,
+                            float,
+                        )
                     except ValueError:
                         raise ValueError(
                             f"Invalid filter `--filter {col} {val}` for a float "
                             "type column. Please provide an integer filter "
                             f"`--filter {col} [float]`"
                         )
-                elif column_type is bool:
+                elif column_type is bool or column_type == "boolean":
                     try:
                         val = convert_string_to_type(val, bool)
                     except ValueError:
@@ -262,7 +270,6 @@ class StateAPIManager:
 
         result = []
         for message in reply.placement_group_table_data:
-
             data = protobuf_message_to_dict(
                 message=message,
                 fields_to_decode=["placement_group_id", "creator_job_id", "node_id"],
@@ -363,22 +370,21 @@ class StateAPIManager:
         )
 
     async def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
-        # TODO(sang): Support limit & timeout & async calls.
         try:
-            result = []
-            job_info = await self._client.get_job_info()
-            for job_id, data in job_info.items():
-                data = asdict(data)
-                data["job_id"] = job_id
-                result.append(data)
+            result = await self._client.get_job_info(timeout=option.timeout)
+            result = [job.dict() for job in result]
+            total = len(result)
+            result = self._filter(result, option.filters, JobState, option.detail)
+            num_filtered = len(result)
+            result.sort(key=lambda entry: entry["job_id"] or "")
+            result = list(islice(result, option.limit))
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
         return ListApiResponse(
             result=result,
-            # TODO(sang): Support this.
-            total=len(result),
-            num_after_truncation=len(result),
-            num_filtered=len(result),
+            total=total,
+            num_after_truncation=total,
+            num_filtered=num_filtered,
         )
 
     async def list_tasks(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -388,16 +394,10 @@ class StateAPIManager:
             {task_id -> task_data_in_dict}
             task_data_in_dict's schema is in TaskState
         """
-        job_id = None
-        for filter in option.filters:
-            if filter[0] == "job_id" and filter[1] == "=":
-                # Filtering by job_id == xxxx, pass it to source side filtering.
-                # tuple consists of (job_id, predicate, value)
-                job_id = filter[2]
         try:
             reply = await self._client.get_all_task_info(
                 timeout=option.timeout,
-                job_id=job_id,
+                filters=option.filters,
                 exclude_driver=option.exclude_driver,
             )
         except DataSourceUnavailable:
@@ -529,7 +529,7 @@ class StateAPIManager:
             We don't have id -> data mapping like other API because runtime env
             doesn't have unique ids.
         """
-        agent_ids = self._client.get_all_registered_agent_ids()
+        agent_ids = self._client.get_all_registered_runtime_env_agent_ids()
         replies = await asyncio.gather(
             *[
                 self._client.get_runtime_envs_info(node_id, timeout=option.timeout)
@@ -541,7 +541,9 @@ class StateAPIManager:
         result = []
         unresponsive_nodes = 0
         total_runtime_envs = 0
-        for node_id, reply in zip(self._client.get_all_registered_agent_ids(), replies):
+        for node_id, reply in zip(
+            self._client.get_all_registered_runtime_env_agent_ids(), replies
+        ):
             if isinstance(reply, DataSourceUnavailable):
                 unresponsive_nodes += 1
                 continue

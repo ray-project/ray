@@ -28,7 +28,6 @@
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
-#include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
@@ -42,6 +41,8 @@
 namespace ray {
 using raylet::ClusterTaskManager;
 using raylet::NoopLocalTaskManager;
+
+class GcsClientTest;
 namespace gcs {
 
 struct GcsServerConfig {
@@ -58,6 +59,7 @@ struct GcsServerConfig {
   std::string log_dir;
   // This includes the config list of raylet.
   std::string raylet_config_list;
+  std::string session_name;
 };
 
 class GcsNodeManager;
@@ -67,6 +69,7 @@ class GcsWorkerManager;
 class GcsPlacementGroupScheduler;
 class GcsPlacementGroupManager;
 class GcsTaskManager;
+class GcsAutoscalerStateManager;
 
 /// The GcsServer will take over all requests from GcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
@@ -94,6 +97,16 @@ class GcsServer {
 
   /// Check if gcs server is stopped.
   bool IsStopped() const { return is_stopped_; }
+
+  // TODO(vitsai): string <=> enum generator macro
+  enum class StorageType {
+    UNKNOWN = 0,
+    IN_MEMORY = 1,
+    REDIS_PERSIST = 2,
+  };
+
+  static constexpr char kInMemoryStorage[] = "memory";
+  static constexpr char kRedisStorage[] = "redis";
 
  protected:
   /// Generate the redis client options
@@ -134,11 +147,17 @@ class GcsServer {
   /// Initialize gcs task manager.
   void InitGcsTaskManager();
 
+  /// Initialize gcs autoscaling manager.
+  void InitGcsAutoscalerStateManager();
+
   /// Initialize usage stats client.
   void InitUsageStatsClient();
 
   /// Initialize KV manager.
   void InitKVManager();
+
+  /// Initialize KV service.
+  void InitKVService();
 
   /// Initialize function manager.
   void InitFunctionManager();
@@ -155,9 +174,11 @@ class GcsServer {
   /// Initialize monitor service.
   void InitMonitorServer();
 
+  friend class ray::GcsClientTest;
+
  private:
   /// Gets the type of KV storage to use from config.
-  std::string StorageType() const;
+  StorageType GetStorageType() const;
 
   /// Print debug info periodically.
   std::string GetDebugState() const;
@@ -167,6 +188,11 @@ class GcsServer {
 
   /// Collect stats from each module.
   void RecordMetrics() const;
+
+  /// Get cluster id if persisted, otherwise generate
+  /// a new one and persist as necessary.
+  /// Expected to be idempotent while server is up.
+  void GetOrGenerateClusterId(std::function<void(ClusterID cluster_id)> &&continuation);
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
@@ -179,7 +205,7 @@ class GcsServer {
   /// Gcs server configuration.
   const GcsServerConfig config_;
   // Type of storage to use.
-  const std::string storage_type_;
+  const StorageType storage_type_;
   /// The main io service to drive event posted from grpc threads.
   instrumented_io_context &main_service_;
   /// The io service used by Pubsub, for isolation from other workload.
@@ -196,8 +222,10 @@ class GcsServer {
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// The cluster task manager.
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+  /// The autoscaler state manager.
+  std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   /// The gcs node manager.
-  std::shared_ptr<GcsNodeManager> gcs_node_manager_;
+  std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
   std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   /// The gcs redis failure detector.
@@ -223,11 +251,6 @@ class GcsServer {
   std::unique_ptr<GcsMonitorServer> monitor_server_;
   /// Monitor service for monitor server
   std::unique_ptr<rpc::MonitorGrpcService> monitor_grpc_service_;
-
-  /// Synchronization service for ray.
-  /// TODO(iycheng): Deprecate this gcs_ray_syncer_ one once we roll out
-  /// to ray_syncer_.
-  std::unique_ptr<gcs_syncer::RaySyncer> gcs_ray_syncer_;
 
   /// Ray Syncer realted fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
@@ -259,6 +282,8 @@ class GcsServer {
   std::unique_ptr<GcsTaskManager> gcs_task_manager_;
   /// Independent task info service from the main grpc service.
   std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
+  /// Gcs Autoscaler state manager.
+  std::unique_ptr<rpc::autoscaler::AutoscalerStateGrpcService> autoscaler_state_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.

@@ -96,7 +96,7 @@ If you are running tests for the first time, you can install the required depend
 
 .. code-block:: shell
 
-    pip install -c python/requirements.txt -r python/requirements_test.txt
+    pip install -c python/requirements.txt -r python/requirements/test-requirements.txt
 
 Testing for Python development
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -112,7 +112,7 @@ The full suite of tests is too large to run on a single machine. However, you ca
 This will run all of the tests in the file. To run a specific test, use the following:
 
 .. code-block:: shell
-    
+
     # Directly calling `pytest -v ...` may lose import paths.
     python -m pytest -v -s test_file.py::name_of_the_test
 
@@ -136,9 +136,9 @@ Code Style
 
 In general, we follow the `Google style guide <https://google.github.io/styleguide/>`__ for C++ code and the `Black code style <https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html>`__ for Python code. Python imports follow `PEP8 style <https://peps.python.org/pep-0008/#imports>`__. However, it is more important for code to be in a locally consistent style than to strictly follow guidelines. Whenever in doubt, follow the local code style of the component.
 
-For Python documentation, we follow a subset of the `Google pydoc format <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__. The following code snippet demonstrates the canonical Ray pydoc formatting:
+For Python documentation, we follow a subset of the `Google pydoc format <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__. The following code snippets demonstrate the canonical Ray pydoc formatting:
 
-.. code-block:: python
+.. testcode::
 
     def ray_canonical_doc_style(param1: int, param2: str) -> bool:
         """First sentence MUST be inline with the quotes and fit on one line.
@@ -147,17 +147,19 @@ For Python documentation, we follow a subset of the `Google pydoc format <https:
         Do not introduce multi-line first sentences.
 
         Examples:
-            >>> # Provide code examples as possible.
-            >>> ray_canonical_doc_style(41, "hello")
-            True
+            .. doctest::
 
-            >>> # A second example.
-            >>> ray_canonical_doc_style(72, "goodbye")
-            False
+                >>> # Provide code examples for key use cases, as possible.
+                >>> ray_canonical_doc_style(41, "hello")
+                True
+
+                >>> # A second example.
+                >>> ray_canonical_doc_style(72, "goodbye")
+                False
 
         Args:
             param1: The first parameter. Do not include the types in the
-                docstring (they should be defined only in the signature).
+                docstring. They should be defined only in the signature.
                 Multi-line parameter docs should be indented by four spaces.
             param2: The second parameter.
 
@@ -165,16 +167,66 @@ For Python documentation, we follow a subset of the `Google pydoc format <https:
             The return value. Do not include types here.
         """
 
+.. testcode::
+
+    class RayClass:
+        """The summary line for a class docstring should fit on one line.
+
+        Additional explanatory text can be added in paragraphs such as this one.
+        Do not introduce multi-line first sentences.
+
+        The __init__ method is documented here in the class level docstring.
+
+        All the public methods and attributes should have docstrings.
+
+        Examples:
+            .. testcode::
+
+                obj = RayClass(12, "world")
+                obj.increment_attr1()
+
+        Args:
+            param1: The first parameter. Do not include the types in the
+                docstring. They should be defined only in the signature.
+                Multi-line parameter docs should be indented by four spaces.
+            param2: The second parameter.
+        """
+
+        def __init__(self, param1: int, param2: str):
+            #: Public attribute is documented here.
+            self.attr1 = param1
+            #: Public attribute is documented here.
+            self.attr2 = param2
+
+        @property
+        def attr3(self) -> str:
+            """Public property of the class.
+
+            Properties created with the @property decorator
+            should be documented here.
+            """
+            return "hello"
+
+        def increment_attr1(self) -> None:
+            """Class methods are similar to regular functions.
+
+            See above about how to document functions.
+            """
+
+            self.attr1 = self.attr1 + 1
+
+See :ref:`this <writing-code-snippets_ref>` for more details about how to write code snippets in docstrings.
+
 Lint and Formatting
 ~~~~~~~~~~~~~~~~~~~
 
 We also have tests for code formatting and linting that need to pass before merge.
 
-* For Python formatting, install the `required dependencies <https://github.com/ray-project/ray/blob/master/python/requirements_linters.txt>`_ first with:
+* For Python formatting, install the `required dependencies <https://github.com/ray-project/ray/blob/master/python/requirements/lint-requirements.txt>`_ first with:
 
 .. code-block:: shell
 
-  pip install -r python/requirements_linters.txt
+  pip install -r python/requirements/lint-requirements.txt
 
 * If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``12`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
 

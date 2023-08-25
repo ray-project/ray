@@ -66,7 +66,6 @@ def starlette_request(
     request: starlette.requests.Request,
 ) -> starlette.requests.Request:
     """Returns the raw request object."""
-    # NOTE(simon): This adapter is used for ease of getting started.
     return request
 
 

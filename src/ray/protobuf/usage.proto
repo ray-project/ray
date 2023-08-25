@@ -66,6 +66,27 @@ enum TagKey {
   SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED = 16;
   // Whether autoscaling_config changed as a lightweight config update
   SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED = 17;
+  // Whether the `RayServeHandle` API was used.
+  SERVE_RAY_SERVE_HANDLE_API_USED = 18;
+  // Whether the `RayServeSyncHandle` API was used.
+  SERVE_RAY_SERVE_SYNC_HANDLE_API_USED = 19;
+  // Whether the `DeploymentHandle` API was used.
+  SERVE_DEPLOYMENT_HANDLE_API_USED = 20;
+  // Whether the `to_object_ref` or any of its variants were used in the
+  // `DeploymentHandle` API.
+  SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED = 21;
+  // Whether multuplexed API is was used.
+  SERVE_MULTIPLEXED_API_USED = 22;
+  // Whether or not an HTTP proxy was used ("1" if used).
+  SERVE_HTTP_PROXY_USED = 23;
+  // Whether or not an gRPC proxy was used ("1" if used).
+  SERVE_GRPC_PROXY_USED = 24;
+  // Whether the serve.status API was used ("1" if used)
+  SERVE_STATUS_API_USED = 25;
+  // Whether the serve.get_app_handle API was used ("1" if used)
+  SERVE_GET_APP_HANDLE_API_USED = 26;
+  // Whether the serve.get_deployment_handle API was used ("1" if used)
+  SERVE_GET_DEPLOYMENT_HANDLE_API_USED = 27;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of
@@ -114,6 +135,8 @@ enum TagKey {
   NUM_ACTOR_TASKS = 306;
   NUM_NORMAL_TASKS = 307;
   NUM_DRIVERS = 308;
+  // State api import usage.
+  EXPERIMENTAL_STATE_API_IMPORT = 309;
 
   // Data
   // Logical operators, stored in JSON format with operator name and count.
@@ -130,4 +153,22 @@ enum TagKey {
   // Name of Tune scheduler algorithm or "Custom" if user-defined.
   // Example: "FIFOScheduler"
   TUNE_SCHEDULER = 502;
+  // Ray AIR environment variable usage stored in JSON list format
+  // This lists which of the environment variables exposed by the AIR libraries
+  // are provided by the user.
+  // Ex: ["RAY_AIR_LOCAL_CACHE_DIR", "TUNE_FALLBACK_TO_LATEST_CHECKPOINT"]
+  AIR_ENV_VARS = 503;
+  // Fully user-controlled experiment tracking integrations ("1" if used)
+  // NOTE: These tags + the callback metrics can be aggregated to extract
+  // total experiment tracking integration usage.
+  AIR_SETUP_WANDB_INTEGRATION_USED = 504;
+  AIR_SETUP_MLFLOW_INTEGRATION_USED = 505;
+  // Built-in callbacks, stored in JSON format with callback name -> count.
+  // Ex: {"WandbLoggerCallback": 1, "MLflowLoggerCallback": 1}
+  AIR_CALLBACKS = 506;
+  // Storage configuration for AIR experiment
+  AIR_STORAGE_CONFIGURATION = 507;
+  // AIR entrypoint
+  // One of: "Trainer.fit", "Tuner.fit", "tune.run", "tune.run_experiments"
+  AIR_ENTRYPOINT = 508;
 }

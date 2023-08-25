@@ -1,14 +1,17 @@
-from typing import Any, Dict, Mapping
+from typing import Mapping
 
-from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
+from ray.rllib.algorithms.impala.impala_learner import (
+    ImpalaLearner,
+    ImpalaLearnerHyperparameters,
+)
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
-from ray.rllib.algorithms.ppo.ppo_learner import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 _, tf, _ = try_import_tf()
@@ -18,10 +21,18 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
     """Implements the IMPALA loss function in tensorflow."""
 
     @override(TfLearner)
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    def compute_loss_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        hps: ImpalaLearnerHyperparameters,
+        batch: NestedDict,
+        fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
-        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
+        action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
+        target_policy_dist = action_dist_class_train.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
         values = fwd_out[SampleBatch.VF_PREDS]
 
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
@@ -29,25 +40,30 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
 
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
-            trajectory_len=self.hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.hps.recurrent_seq_len,
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
         )
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
-            trajectory_len=self.hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.hps.recurrent_seq_len,
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
+        )
+        rewards_time_major = make_time_major(
+            batch[SampleBatch.REWARDS],
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
         )
         values_time_major = make_time_major(
             values,
-            trajectory_len=self.hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.hps.recurrent_seq_len,
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
         )
-        bootstrap_value = values_time_major[-1]
-        rewards_time_major = make_time_major(
-            batch[SampleBatch.REWARDS],
-            trajectory_len=self.hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.hps.recurrent_seq_len,
+        bootstrap_values_time_major = make_time_major(
+            batch[SampleBatch.VALUES_BOOTSTRAPPED],
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
         )
+        bootstrap_value = bootstrap_values_time_major[-1]
 
         # the discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -56,12 +72,12 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
             - tf.cast(
                 make_time_major(
                     batch[SampleBatch.TERMINATEDS],
-                    trajectory_len=self.hps.rollout_frag_or_episode_len,
-                    recurrent_seq_len=self.hps.recurrent_seq_len,
+                    trajectory_len=hps.rollout_frag_or_episode_len,
+                    recurrent_seq_len=hps.recurrent_seq_len,
                 ),
                 dtype=tf.float32,
             )
-        ) * self.hps.discount_factor
+        ) * hps.discount_factor
 
         # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_tf2(
@@ -71,8 +87,8 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
-            clip_pg_rho_threshold=self.hps.vtrace_clip_pg_rho_threshold,
-            clip_rho_threshold=self.hps.vtrace_clip_rho_threshold,
+            clip_pg_rho_threshold=hps.vtrace_clip_pg_rho_threshold,
+            clip_rho_threshold=hps.vtrace_clip_rho_threshold,
         )
 
         # Sample size is T x B, where T is the trajectory length and B is the batch size
@@ -93,30 +109,23 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         # The summed weighted loss.
         total_loss = (
             pi_loss
-            + vf_loss * self.hps.vf_loss_coeff
-            + mean_entropy_loss * self.hps.entropy_coeff
+            + vf_loss * hps.vf_loss_coeff
+            + (
+                mean_entropy_loss
+                * self.entropy_coeff_schedulers_per_module[
+                    module_id
+                ].get_current_value()
+            )
         )
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            "pi_loss": mean_pi_loss,
-            "vf_loss": mean_vf_loss,
-            ENTROPY_KEY: -mean_entropy_loss,
-        }
 
-    @override(ImpalaLearner)
-    def additional_update_per_module(
-        self, module_id: ModuleID, timestep: int
-    ) -> Dict[str, Any]:
-        results = super().additional_update_per_module(
+        # Register important loss stats.
+        self.register_metrics(
             module_id,
-            timestep=timestep,
+            {
+                "pi_loss": mean_pi_loss,
+                "vf_loss": mean_vf_loss,
+                ENTROPY_KEY: -mean_entropy_loss,
+            },
         )
-
-        # Update entropy coefficient.
-        value = self.hps.entropy_coeff
-        if self.hps.entropy_coeff_schedule is not None:
-            value = self.entropy_coeff_schedule_per_module[module_id].value(t=timestep)
-            self.curr_entropy_coeffs_per_module[module_id].assign(value)
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: value})
-
-        return results
+        # Return the total loss.
+        return total_loss

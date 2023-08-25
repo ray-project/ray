@@ -1,4 +1,4 @@
-# Production requirements. This is what readthedocs.org picks up
+# Production requirements. This is what readthedocs.com picks up
 
 # Python / ML libraries
 accelerate>=0.17.0
@@ -12,21 +12,24 @@ fairscale<=0.4.0; python_version < '3.7'
 filelock
 flask
 flatbuffers
-fastapi
+fastapi==0.99.1
 jsonschema
 mock
 numpy
 scikit-image
 pandas
-pickle5
 pillow
 pyarrow
-pydantic < 1.10.0
+pydantic < 2
+# Note: more recent typing-extensions does not work well with pinned pydantic <1.10.0
+typing-extensions < 4.6.0
 pyyaml
+pytorch-lightning==1.6.5; sys_platform != 'darwin' or platform_machine != 'arm64'
+pytorch-lightning; sys_platform == 'darwin' and platform_machine == 'arm64'
 scikit-optimize
 redis
 starlette
-uvicorn==0.16.0
+uvicorn==0.22.0
 werkzeug
 wandb
 tensorflow; sys_platform != 'darwin' or platform_machine != 'arm64'
@@ -36,14 +39,10 @@ torch
 torchvision
 transformers
 
-# Train
-mxnet==1.8.0.post0
-
 # Ray libraries
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
 git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray
 git+https://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
-git+https://github.com/ray-project/ray_lightning@main#ray_lightning
 
 # Syntax highlighting
 Pygments==2.13.0
@@ -54,7 +53,6 @@ sphinx-click==3.0.2
 sphinx-copybutton==0.4.0
 sphinxemoji==0.2.0
 sphinx-jsonschema==1.17.2
-sphinx-panels==0.6.0
 sphinx-version-warning==1.1.2
 sphinx-book-theme==0.3.3
 sphinx-external-toc==0.2.4
@@ -74,3 +72,6 @@ jupytext==1.13.6
 
 # Pin urllib to avoid downstream ssl incompatibility issues
 urllib3 < 1.27
+
+# For `serve run --reload` CLI.
+watchfiles==0.19.0

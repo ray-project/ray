@@ -1,12 +1,14 @@
 import logging
 import os
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Any
 
 import ray
+from ray.data import Dataset
 from ray._private.ray_constants import env_integer
+from ray.air.config import CheckpointConfig
 from ray.exceptions import RayActorError
-from ray.train._internal.dataset_spec import RayDatasetSpec
+from ray.train import DataConfig
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.session import (
     TrainingResult,
@@ -15,6 +17,7 @@ from ray.train._internal.session import (
     init_session,
     shutdown_session,
 )
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
@@ -71,6 +74,7 @@ class BackendExecutor:
         num_gpus_per_worker: float = 0,
         additional_resources_per_worker: Optional[Dict[str, float]] = None,
         max_retries: int = 3,
+        checkpoint_config: Optional[CheckpointConfig] = None,
     ):
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
@@ -90,6 +94,13 @@ class BackendExecutor:
 
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
+
+        self._checkpoint_keep_all_ranks = (
+            checkpoint_config and checkpoint_config._checkpoint_keep_all_ranks
+        )
+        self._checkpoint_upload_from_workers = (
+            checkpoint_config and checkpoint_config._checkpoint_upload_from_workers
+        )
 
     def start(
         self,
@@ -117,9 +128,10 @@ class BackendExecutor:
         # trainable, thus allowing for lazy checkpoint transfer to be used.
         # See https://github.com/ray-project/ray/issues/33073
         # for more context.
-        # TODO remove
-        if self._trial_info and self._trial_info.driver_ip:
-            self.worker_group._move_workers_with_ip_to_front(self._trial_info.driver_ip)
+        # TODO remove passing in trial_driver_ip.
+
+        trial_driver_ip = self._trial_info.driver_ip if self._trial_info else None
+        self.worker_group.group_workers_by_ip(trial_driver_ip)
 
         worker_locs = [
             f"{w.metadata.pid} ({w.metadata.node_ip})"
@@ -332,8 +344,12 @@ class BackendExecutor:
     def start_training(
         self,
         train_func: Callable[[], T],
-        dataset_spec: RayDatasetSpec,
+        datasets: Dict[str, Dataset],
+        metadata: Dict[str, Any],
+        data_config: DataConfig,
+        storage: StorageContext,
         checkpoint: Optional[Checkpoint] = None,
+        on_session_init: Callable[[], None] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
 
@@ -341,9 +357,8 @@ class BackendExecutor:
 
         Args:
             train_func: The training function to run on each worker.
-            dataset_spec: A specification for the Datastream to be
-                passed to the training workers, and the logic on how to shard the Ray
-                Dataset.
+            datasets: The base datasets.
+            data_config: The config object for creating dataset shards for workers.
             checkpoint: The checkpoint data that
                 should be loaded onto each worker and accessed by the
                 training function via ``session.get_checkpoint()``. If this
@@ -365,7 +380,11 @@ class BackendExecutor:
             trial_info,
             checkpoint,
             dataset_shard,
+            metadata,
             encode_data_fn,
+            checkpoint_keep_all_ranks,
+            checkpoint_upload_from_workers,
+            storage,
         ):
             try:
                 init_session(
@@ -377,10 +396,14 @@ class BackendExecutor:
                     world_size=world_size,
                     trial_info=trial_info,
                     dataset_shard=dataset_shard,
+                    metadata=metadata,
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
                     enable_lazy_checkpointing=use_lazy_checkpointing,
+                    checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
+                    checkpoint_upload_from_workers=(checkpoint_upload_from_workers),
+                    storage=storage,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -392,7 +415,13 @@ class BackendExecutor:
 
         if self.dataset_shards is None:
             actors = [worker.actor for worker in self.worker_group.workers]
-            self.dataset_shards = dataset_spec.get_dataset_shards(actors)
+            node_ids = [worker.metadata.node_id for worker in self.worker_group.workers]
+            self.dataset_shards = data_config.configure(
+                datasets,
+                world_size=len(self.worker_group),
+                worker_handles=actors,
+                worker_node_ids=node_ids,
+            )
 
         (
             local_rank_map,
@@ -414,14 +443,23 @@ class BackendExecutor:
                     trial_info=self._trial_info,
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
+                    metadata=metadata,
                     checkpoint=checkpoint,
                     encode_data_fn=self._backend._encode_data,
+                    checkpoint_keep_all_ranks=self._checkpoint_keep_all_ranks,
+                    checkpoint_upload_from_workers=(
+                        self._checkpoint_upload_from_workers
+                    ),
+                    storage=storage,
                 )
             )
 
         self._backend.on_training_start(self.worker_group, self._backend_config)
 
         self.get_with_failure_handling(futures)
+
+        if on_session_init:
+            on_session_init()
 
         # Run the training function asynchronously in its own thread.
         def train_async():
@@ -473,16 +511,29 @@ class BackendExecutor:
             else:
                 # Return None if all results are None.
                 return None
-        first_result = results[0]
-        result_type = first_result.type
-        if any(r.type != result_type for r in results):
-            raise RuntimeError(
-                "Some workers returned results with "
-                "different types. Make sure that "
-                "`session.report()` are called the "
-                "same number of times on all workers."
-            )
+
+        if not _use_storage_context():
+            first_result = results[0]
+            result_type = first_result.type
+            if any(r.type != result_type for r in results):
+                raise RuntimeError(
+                    "Some workers returned results with "
+                    "different types. Make sure that "
+                    "`session.report()` are called the "
+                    "same number of times on all workers."
+                )
+
         return results
+
+    def _set_legacy_checkpoint_uri(self, uri: str):
+        """Tell remote sessions where to upload the chekcpoint."""
+
+        def set_uri():
+            session = _get_session("_set_legacy_checkpoint_uri")
+            session._set_legacy_checkpoint_uri(uri)
+
+        futures = self.worker_group.execute_async(set_uri)
+        self.get_with_failure_handling(futures)
 
     def pause_reporting(self):
         """Disable workers from enqueuing results from ``session.report()``.

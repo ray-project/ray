@@ -4,7 +4,7 @@ import os
 import time
 from typing import Callable
 
-from ray.data.datastream import Dataset
+from ray.data.dataset import Dataset
 
 
 class Benchmark:

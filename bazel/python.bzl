@@ -3,6 +3,38 @@ load("@bazel_skylib//lib:paths.bzl", "paths")
 # py_test_module_list creates a py_test target for each
 # Python file in `files`
 
+
+def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=[], size="medium", tags=[], **kwargs):
+    # NOTE: If you run `pytest` on `__init__.py`, it tries to test all files in that
+    # package. We don't want that, so we exclude it from the list of input files.
+    files = native.glob(include=files, exclude=["__init__.py"])
+    if gpu:
+        name += "[gpu]"
+        tags = tags + ["gpu"]
+    else:
+        tags = tags + ["cpu"]
+
+    native.py_test(
+        name = name,
+        srcs = ["//bazel:pytest_wrapper.py"] + srcs,
+        main = "//bazel:pytest_wrapper.py",
+        size = size,
+        args = [
+            "--doctest-modules",
+            "--doctest-glob='*.md'",
+            "-c=$(location //bazel:conftest.py)",
+            "--disable-warnings",
+            "-v"
+        ] + args + ["$(location :%s)" % file for file in files],
+        data = ["//bazel:conftest.py"] + files + data,
+        python_version = "PY3",
+        srcs_version = "PY3",
+        tags = ["doctest"] + tags,
+        deps = ["//:ray_lib"] + deps,
+        **kwargs
+    )
+
+
 def py_test_module_list(files, size, deps, extra_srcs=[], name_suffix="", **kwargs):
     for file in files:
         # remove .py

@@ -1,12 +1,12 @@
+import numpy as np
 import pandas as pd
 import pytest
 import tensorflow as tf
-import numpy as np
 
 import ray
-from ray.air import session
-from ray.air.config import ScalingConfig
+from ray import train
 from ray.data.preprocessors import Concatenator
+from ray.train import ScalingConfig
 from ray.train.tensorflow import TensorflowTrainer
 
 
@@ -168,13 +168,15 @@ class TestToTF:
                     metrics=[tf.keras.metrics.mean_squared_error],
                 )
 
-            dataset = session.get_dataset_shard("train").to_tf("X", "Y", batch_size=4)
+            dataset = train.get_dataset_shard("train").to_tf("X", "Y", batch_size=4)
             multi_worker_model.fit(dataset)
 
         dataset = ray.data.from_items(8 * [{"X0": 0, "X1": 0, "Y": 0}])
+        concatenator = Concatenator(exclude=["Y"], output_column_name="X")
+        dataset = concatenator.transform(dataset)
+
         trainer = TensorflowTrainer(
             train_loop_per_worker=train_func,
-            preprocessor=Concatenator(exclude=["Y"], output_column_name="X"),
             scaling_config=ScalingConfig(num_workers=2),
             datasets={"train": dataset},
         )

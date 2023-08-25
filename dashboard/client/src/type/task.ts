@@ -24,10 +24,11 @@ export enum TypeTaskType {
 export type Task = {
   task_id: string;
   name: string;
+  attempt_number: number;
   state: TypeTaskStatus;
   job_id: string;
   node_id: string;
-  actor_id: string;
+  actor_id: string | null;
   placement_group_id: string | null;
   type: TypeTaskType;
   func_or_class_name: string;
@@ -41,6 +42,7 @@ export type Task = {
   profiling_data: ProfilingData;
   error_type: string | null;
   error_message: string | null;
+  task_log_info: { [key: string]: string | null | number };
 };
 
 export type ProfilingData = {

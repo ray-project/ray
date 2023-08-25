@@ -1,8 +1,10 @@
+#ci:group=MacOS
+
 common: &common
   env:
     BUILDKITE: "true"
     CI: "true"
-    PYTHON: "3.7"
+    PYTHON: "3.8"
     RAY_USE_RANDOM_PORTS: "1"
     RAY_DEFAULT_BUILD: "1"
     LC_ALL: en_US.UTF-8
@@ -111,7 +113,7 @@ steps:
   conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
   commands:
     - *prelude_commands
-    - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
+    - TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
     # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
     # with dynamic linking.
     - bazel test --config=ci --dynamic_mode=off --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-post_wheel_build --

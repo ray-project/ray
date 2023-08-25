@@ -21,12 +21,20 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
+#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace rpc {
+
+// Authentication type of ServerCall.
+enum class AuthType {
+  NO_AUTH,     // Do not authenticate (accept all).
+  LAZY_AUTH,   // Accept missing cluster ID, but reject incorrect one.
+  EMPTY_AUTH,  // Accept only empty cluster ID.
+};
 
 /// Get the thread pool for the gRPC server.
 /// This pool is shared across gRPC servers.
@@ -62,6 +70,16 @@ enum class ServerCallState {
 };
 
 class ServerCallFactory;
+
+/// Represents a service handler that might not
+/// be ready to serve RPCs immediately after construction.
+class DelayedServiceHandler {
+ public:
+  virtual ~DelayedServiceHandler() = default;
+
+  /// Blocks until the service is ready to serve RPCs.
+  virtual void WaitUntilInitialized() = 0;
+};
 
 /// Represents an incoming request of a gRPC server.
 ///
@@ -136,7 +154,10 @@ using HandleRequestFunction = void (ServiceHandler::*)(Request,
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-template <class ServiceHandler, class Request, class Reply>
+template <class ServiceHandler,
+          class Request,
+          class Reply,
+          AuthType EnableAuth = AuthType::NO_AUTH>
 class ServerCallImpl : public ServerCall {
  public:
   /// Constructor.
@@ -147,13 +168,17 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] io_service The event loop.
   /// \param[in] call_name The name of the RPC call.
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
+  /// \param[in] preprocess_function If not nullptr, it will be called before handling
+  /// request.
   ServerCallImpl(
       const ServerCallFactory &factory,
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       instrumented_io_context &io_service,
       std::string call_name,
-      bool record_metrics)
+      const ClusterID &cluster_id,
+      bool record_metrics,
+      std::function<void()> preprocess_function = nullptr)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
@@ -161,6 +186,7 @@ class ServerCallImpl : public ServerCall {
         response_writer_(&context_),
         io_service_(io_service),
         call_name_(std::move(call_name)),
+        cluster_id_(cluster_id),
         start_time_(0),
         record_metrics_(record_metrics) {
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
@@ -178,21 +204,56 @@ class ServerCallImpl : public ServerCall {
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
+    bool auth_success = true;
+    if (::RayConfig::instance().enable_cluster_auth()) {
+      if constexpr (EnableAuth == AuthType::LAZY_AUTH) {
+        RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
+        auto &metadata = context_.client_metadata();
+        if (auto it = metadata.find(kClusterIdKey);
+            it != metadata.end() && it->second != cluster_id_.Hex()) {
+          RAY_LOG(WARNING) << "Wrong cluster ID token in request! Expected: "
+                           << cluster_id_.Hex() << ", but got: " << it->second;
+          auth_success = false;
+        }
+      } else if constexpr (EnableAuth == AuthType::EMPTY_AUTH) {
+        RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
+        auto &metadata = context_.client_metadata();
+        if (auto it = metadata.find(kClusterIdKey);
+            it != metadata.end() && it->second != ClusterID::Nil().Hex()) {
+          RAY_LOG(WARNING) << "Cluster ID token in request! Expected Nil, "
+                           << "but got: " << it->second;
+          auth_success = false;
+        }
+      } else {
+        if (!cluster_id_.IsNil()) {
+          RAY_LOG_EVERY_MS(WARNING, 5000) << "Unexpected cluster ID in server call!";
+        }
+      }
+    }
+
     start_time_ = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
       ray::stats::STATS_grpc_server_req_handling.Record(1.0, call_name_);
     }
     if (!io_service_.stopped()) {
-      io_service_.post([this] { HandleRequestImpl(); }, call_name_);
+      io_service_.post([this, auth_success] { HandleRequestImpl(auth_success); },
+                       call_name_);
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
       RAY_LOG(DEBUG) << "Handle service has been closed.";
-      SendReply(Status::Invalid("HandleServiceClosed"));
+      if (auth_success) {
+        SendReply(Status::Invalid("HandleServiceClosed"));
+      } else {
+        SendReply(Status::AuthError("WrongClusterID"));
+      }
     }
   }
 
-  void HandleRequestImpl() {
+  void HandleRequestImpl(bool auth_success) {
+    if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
+      service_handler_.WaitUntilInitialized();
+    }
     state_ = ServerCallState::PROCESSING;
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
     // a different thread, and will cause `this` to be deleted.
@@ -204,26 +265,27 @@ class ServerCallImpl : public ServerCall {
       // a new request comes in.
       factory.CreateCall();
     }
-    // TODO(jjyao) Remove after debugging is done.
-    if (call_name_ == "NodeManagerService.grpc_server.UpdateResourceUsage") {
-      static std::string gcs_address = "";
-      if (gcs_address == "" || gcs_address != context_.peer()) {
-        gcs_address = context_.peer();
-        RAY_LOG(INFO) << "Handle " << call_name_ << " request from " << context_.peer();
-      }
+    if (!auth_success) {
+      boost::asio::post(GetServerCallExecutor(), [this]() {
+        SendReply(
+            Status::AuthError("WrongClusterID: Perhaps the client is accessing GCS "
+                              "after it has restarted."));
+      });
+    } else {
+      (service_handler_.*handle_request_function_)(
+          std::move(request_),
+          reply_,
+          [this](Status status,
+                 std::function<void()> success,
+                 std::function<void()> failure) {
+            // These two callbacks must be set before `SendReply`, because `SendReply`
+            // is async and this `ServerCall` might be deleted right after `SendReply`.
+            send_reply_success_callback_ = std::move(success);
+            send_reply_failure_callback_ = std::move(failure);
+            boost::asio::post(GetServerCallExecutor(),
+                              [this, status]() { SendReply(status); });
+          });
     }
-    (service_handler_.*handle_request_function_)(
-        std::move(request_),
-        reply_,
-        [this](
-            Status status, std::function<void()> success, std::function<void()> failure) {
-          // These two callbacks must be set before `SendReply`, because `SendReply`
-          // is async and this `ServerCall` might be deleted right after `SendReply`.
-          send_reply_success_callback_ = std::move(success);
-          send_reply_failure_callback_ = std::move(failure);
-          boost::asio::post(GetServerCallExecutor(),
-                            [this, status]() { SendReply(status); });
-        });
   }
 
   void OnReplySent() override {
@@ -263,6 +325,7 @@ class ServerCallImpl : public ServerCall {
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     if (io_service_.stopped()) {
+      RAY_LOG_EVERY_N(WARNING, 100) << "Not sending reply because executor stopped.";
       return;
     }
     state_ = ServerCallState::SENDING_REPLY;
@@ -306,6 +369,10 @@ class ServerCallImpl : public ServerCall {
   /// Human-readable name for this RPC call.
   std::string call_name_;
 
+  /// ID of the cluster to check incoming RPC calls against.
+  /// Check skipped if empty.
+  const ClusterID &cluster_id_;
+
   /// The callback when sending reply successes.
   std::function<void()> send_reply_success_callback_ = nullptr;
 
@@ -318,7 +385,7 @@ class ServerCallImpl : public ServerCall {
   /// If true, the server call will generate gRPC server metrics.
   bool record_metrics_;
 
-  template <class T1, class T2, class T3, class T4>
+  template <class T1, class T2, class T3, class T4, AuthType T5>
   friend class ServerCallFactoryImpl;
 };
 
@@ -342,7 +409,11 @@ using RequestCallFunction =
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-template <class GrpcService, class ServiceHandler, class Request, class Reply>
+template <class GrpcService,
+          class ServiceHandler,
+          class Request,
+          class Reply,
+          AuthType EnableAuth = AuthType::NO_AUTH>
 class ServerCallFactoryImpl : public ServerCallFactory {
   using AsyncService = typename GrpcService::AsyncService;
 
@@ -368,6 +439,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       instrumented_io_context &io_service,
       std::string call_name,
+      const ClusterID &cluster_id,
       int64_t max_active_rpcs,
       bool record_metrics)
       : service_(service),
@@ -377,19 +449,21 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         cq_(cq),
         io_service_(io_service),
         call_name_(std::move(call_name)),
+        cluster_id_(cluster_id),
         max_active_rpcs_(max_active_rpcs),
         record_metrics_(record_metrics) {}
 
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
     // `GrpcServer::PollEventsFromCompletionQueue`.
-    auto call =
-        new ServerCallImpl<ServiceHandler, Request, Reply>(*this,
-                                                           service_handler_,
-                                                           handle_request_function_,
-                                                           io_service_,
-                                                           call_name_,
-                                                           record_metrics_);
+    auto call = new ServerCallImpl<ServiceHandler, Request, Reply, EnableAuth>(
+        *this,
+        service_handler_,
+        handle_request_function_,
+        io_service_,
+        call_name_,
+        cluster_id_,
+        record_metrics_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_,
@@ -423,6 +497,10 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
+
+  /// ID of the cluster to check incoming RPC calls against.
+  /// Check skipped if empty.
+  const ClusterID cluster_id_;
 
   /// Maximum request number to handle at the same time.
   /// -1 means no limit.

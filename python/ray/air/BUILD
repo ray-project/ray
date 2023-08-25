@@ -1,3 +1,10 @@
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    files = glob(["**/*.py"], exclude=glob(["examples/**/*", "tests/**/*", "callbacks/*.py", "integrations/wandb.py"])),  # TODO: Add note for callbacks
+    tags = ["team:ml"]
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/air/examples directory.
 # Please keep these sorted alphabetically.
@@ -35,6 +42,14 @@ py_test(
 )
 
 py_test(
+    name = "test_air_usage",
+    size = "small",
+    srcs = ["tests/test_air_usage.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_checkpoints",
     size = "small",
     srcs = ["tests/test_checkpoints.py"],
@@ -67,9 +82,17 @@ py_test(
 )
 
 py_test(
-    name = "test_dataset_config",
+    name = "test_legacy_dataset_config",
     size = "large",
-    srcs = ["tests/test_dataset_config.py"],
+    srcs = ["tests/test_legacy_dataset_config.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_new_dataset_config",
+    size = "large",
+    srcs = ["tests/test_new_dataset_config.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -259,6 +282,13 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test(
+    name = "test_result",
+    size = "medium",
+    srcs = ["tests/test_result.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
 
 
 # This is a dummy test dependency that causes the above tests to be

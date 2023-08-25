@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
+
 .. _rllib-getting-started:
 
 Getting Started with RLlib
@@ -608,4 +610,4 @@ hangs or performance issues.
 Next Steps
 ----------
 
-- To check how your application is doing, you can use the :ref:`Ray dashboard<ray-dashboard>`. 
+- To check how your application is doing, you can use the :ref:`Ray dashboard <observability-getting-started>`. 

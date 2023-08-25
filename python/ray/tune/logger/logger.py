@@ -1,13 +1,16 @@
 import abc
 import json
 import logging
+import os
+import pyarrow
 
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Type
 
 import yaml
 from ray.air._internal.json import SafeFallbackEncoder
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.callback import Callback
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
@@ -18,7 +21,17 @@ logger = logging.getLogger(__name__)
 # Apply flow style for sequences of this length
 _SEQUENCE_LEN_FLOW_STYLE = 3
 
+_LOGGER_DEPRECATION_WARNING = (
+    "The `{old} interface is deprecated in favor of the "
+    "`{new}` interface and will be removed in Ray 2.7."
+)
 
+
+@Deprecated(
+    message=_LOGGER_DEPRECATION_WARNING.format(
+        old="Logger", new="ray.tune.logger.LoggerCallback"
+    ),
+)
 @DeveloperAPI
 class Logger(abc.ABC):
     """Logging interface for ray.tune.
@@ -153,6 +166,28 @@ class LoggerCallback(Callback):
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
         self.log_trial_end(trial, failed=True)
+
+    def _restore_from_remote(self, file_name: str, trial: "Trial") -> None:
+        if not _use_storage_context():
+            return  # Legacy code path.
+
+        if not trial.checkpoint:
+            return
+
+        local_file = os.path.join(trial.local_path, file_name)
+        remote_file = os.path.join(trial.storage.trial_fs_path, file_name)
+
+        try:
+            pyarrow.fs.copy_files(
+                remote_file,
+                local_file,
+                source_filesystem=trial.storage.storage_filesystem,
+            )
+            logger.debug(f"Copied {remote_file} to {local_file}")
+        except FileNotFoundError:
+            logger.warning(f"Remote file not found: {remote_file}")
+        except Exception:
+            logger.exception(f"Error downloading {remote_file}")
 
 
 @DeveloperAPI

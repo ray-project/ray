@@ -68,13 +68,11 @@ class JobAgentSubmissionClient:
         raise RuntimeError(f"Request failed with status code {status}: {error_text}.")
 
     async def submit_job_internal(self, req: JobSubmitRequest) -> JobSubmitResponse:
-
         logger.debug(f"Submitting job with submission_id={req.submission_id}.")
 
         async with self._session.post(
             f"{self._agent_address}/api/job_agent/jobs/", json=dataclasses.asdict(req)
         ) as resp:
-
             if resp.status == 200:
                 result_json = await resp.json()
                 return JobSubmitResponse(**result_json)
@@ -82,13 +80,11 @@ class JobAgentSubmissionClient:
                 await self._raise_error(resp)
 
     async def stop_job_internal(self, job_id: str) -> JobStopResponse:
-
         logger.debug(f"Stopping job with job_id={job_id}.")
 
         async with self._session.post(
             f"{self._agent_address}/api/job_agent/jobs/{job_id}/stop"
         ) as resp:
-
             if resp.status == 200:
                 result_json = await resp.json()
                 return JobStopResponse(**result_json)
@@ -96,7 +92,6 @@ class JobAgentSubmissionClient:
                 await self._raise_error(resp)
 
     async def delete_job_internal(self, job_id: str) -> JobDeleteResponse:
-
         logger.debug(f"Deleting job with job_id={job_id}.")
 
         async with self._session.delete(
@@ -203,12 +198,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             await client.close()
 
         if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
-            node_id = sample(set(self._agents), 1)[0]
+            node_id = sample(list(set(self._agents)), 1)[0]
             return self._agents[node_id]
         else:
             # Randomly select one from among all agents, it is possible that
             # the selected one already exists in `self._agents`
-            node_id = sample(set(agent_infos), 1)[0]
+            node_id = sample(sorted(agent_infos), 1)[0]
             agent_info = agent_infos[node_id]
 
             if node_id not in self._agents:
@@ -401,6 +396,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             content_type="application/json",
         )
 
+    # TODO(rickyx): This endpoint's logic is also mirrored in state API's endpoint.
+    # We should eventually unify the backend logic (and keep the logic in sync before
+    # that).
     @routes.get("/api/jobs/")
     async def list_jobs(self, req: Request) -> Response:
         driver_jobs, submission_job_drivers = await get_driver_jobs(
