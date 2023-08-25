@@ -7,12 +7,14 @@ import shutil
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING
 
 try:
-    import fsspec
+    import fsspec  # noqa
     from fsspec.implementations.local import LocalFileSystem
 
-except ImportError:
-    fsspec = None
-    LocalFileSystem = object
+except (ImportError, ModuleNotFoundError) as e:
+    raise RuntimeError(
+        "fsspec is a required dependency of Ray Train and Ray Tune. "
+        "Please install with: `pip install fsspec`"
+    ) from e
 
 try:
     import pyarrow
@@ -48,28 +50,33 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
     """LocalFileSystem wrapper to exclude files according to patterns.
 
     Args:
+        root_path: Root path to strip when matching with the exclude pattern.
+            Ex: root_path="/tmp/a/b/c", exclude=["*a*"], will exclude
+            /tmp/a/b/c/_a_.txt but not ALL of /tmp/a/*.
         exclude: List of patterns that are applied to files returned by
             ``self.find()``. If a file path matches this pattern, it will
             be excluded.
 
     """
 
-    def __init__(self, exclude: List[str], **kwargs):
+    def __init__(self, root_path: Path, exclude: List[str], **kwargs):
         super().__init__(**kwargs)
         self._exclude = exclude
+        self._root_path = root_path
 
     @property
     def fsid(self):
         return "_excluding_local"
 
-    def _should_exclude(self, name: str) -> bool:
-        """Return True if `name` matches any of the ``self._exclude`` patterns."""
-        alt = None
-        if os.path.isdir(name):
-            # If this is a directory, also test it with trailing slash
-            alt = os.path.join(name, "")
+    def _should_exclude(self, path: str) -> bool:
+        """Return True if `path` (relative to `root_path`) matches any of the
+        `self._exclude` patterns."""
+        path = Path(path)
+        relative_path = path.relative_to(self._root_path).as_posix()
+        alt = os.path.join(relative_path, "") if path.is_dir() else None
+
         for excl in self._exclude:
-            if fnmatch.fnmatch(name, excl):
+            if fnmatch.fnmatch(relative_path, excl):
                 return True
             if alt and fnmatch.fnmatch(alt, excl):
                 return True
@@ -77,17 +84,17 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
 
     def find(self, path, maxdepth=None, withdirs=False, detail=False, **kwargs):
         """Call parent find() and exclude from result."""
-        names = super().find(
+        paths = super().find(
             path, maxdepth=maxdepth, withdirs=withdirs, detail=detail, **kwargs
         )
         if detail:
             return {
-                name: out
-                for name, out in names.items()
-                if not self._should_exclude(name)
+                path: out
+                for path, out in paths.items()
+                if not self._should_exclude(path)
             }
         else:
-            return [name for name in names if not self._should_exclude(name)]
+            return [path for path in paths if not self._should_exclude(path)]
 
 
 def _pyarrow_fs_copy_files(
@@ -198,6 +205,8 @@ def _upload_to_fs_path(
         fs_path: The filesystem path where the dir/file will be uploaded to.
         exclude: A list of filename matches to exclude from upload. This includes
             all files under subdirectories as well.
+            This pattern will match with the relative paths of all files under
+            `local_path`.
             Ex: ["*.png"] to exclude all .png images.
     """
     assert not is_uri(fs_path), fs_path
@@ -209,10 +218,6 @@ def _upload_to_fs_path(
         _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
         return
 
-    if not fsspec:
-        # TODO(justinvyu): Make fsspec a hard requirement of Tune/Train.
-        raise RuntimeError("fsspec is required to upload with exclude patterns.")
-
     _upload_to_uri_with_exclude_fsspec(
         local_path=local_path, fs=fs, fs_path=fs_path, exclude=exclude
     )
@@ -221,7 +226,7 @@ def _upload_to_fs_path(
 def _upload_to_uri_with_exclude_fsspec(
     local_path: str, fs: "pyarrow.fs", fs_path: str, exclude: Optional[List[str]]
 ) -> None:
-    local_fs = _ExcludingLocalFilesystem(exclude=exclude)
+    local_fs = _ExcludingLocalFilesystem(root_path=local_path, exclude=exclude)
     handler = pyarrow.fs.FSSpecHandler(local_fs)
     source_fs = pyarrow.fs.PyFileSystem(handler)
 
@@ -535,7 +540,7 @@ class StorageContext:
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train._checkpoint import Checkpoint
 
-        logger.info(
+        logger.debug(
             "Copying checkpoint files to storage path:\n"
             "({source_fs}, {source}) -> ({dest_fs}, {destination})".format(
                 source=checkpoint.path,
@@ -565,6 +570,38 @@ class StorageContext:
         )
         logger.info(f"Checkpoint successfully created at: {persisted_checkpoint}")
         return persisted_checkpoint
+
+    def persist_artifacts(self, force: bool = False) -> None:
+        """Persists all artifacts within `trial_local_dir` to storage.
+
+        This method possibly launches a background task to sync the trial dir,
+        depending on the `sync_period` + `sync_on_checkpoint` settings of `SyncConfig`.
+
+        `(local_fs, trial_local_path) -> (storage_filesystem, trial_fs_path)`
+
+        Args:
+            force: If True, wait for a previous sync to finish, launch a new one,
+                and wait for that one to finish. By the end of a `force=True call`, the
+                latest version of the trial artifacts will be persisted.
+        """
+        if not self.sync_config.sync_artifacts:
+            return
+
+        # Skip if we don't need to sync (e.g., storage_path == storage_local_path, and
+        # all trial artifacts are already in the right place)
+        if not self.syncer:
+            return
+
+        if force:
+            self.syncer.wait()
+            self.syncer.sync_up(
+                local_dir=self.trial_local_path, remote_dir=self.trial_fs_path
+            )
+            self.syncer.wait()
+        else:
+            self.syncer.sync_up_if_needed(
+                local_dir=self.trial_local_path, remote_dir=self.trial_fs_path
+            )
 
     @property
     def experiment_fs_path(self) -> str:
