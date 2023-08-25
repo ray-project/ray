@@ -355,14 +355,14 @@ def _assert_storage_contents(
                     )
                 } == {i for i in range(NUM_WORKERS) if i not in no_checkpoint_ranks}
 
-        # NOTE: These next 2 are technically synced by the driver.
-        assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
-        # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
         if test_trainer:
             expected_num_artifacts = NUM_ITERATIONS * NUM_WORKERS
         else:
             expected_num_artifacts = NUM_ITERATIONS
         assert len(list(trial_dir.glob("artifact-*"))) == expected_num_artifacts
+
+        # NOTE: This result file is synced by the driver.
+        assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
 
 
 @pytest.mark.parametrize("trainable", [train_fn, ClassTrainable])
@@ -496,9 +496,8 @@ def test_tuner(
 def test_trainer(
     tmp_path, monkeypatch, storage_path_type, checkpoint_config: train.CheckpointConfig
 ):
-    """
-    TODO(justinvyu): Test for these once implemented:
-    - artifacts
+    """Same end-to-end test as `test_tuner`, but also includes a
+    `DataParallelTrainer(resume_from_checkpoint)` test at the end.
 
     {storage_path}/{exp_name}
     ├── experiment_state-2023-07-28_10-00-38.json       <- Initial exp state
