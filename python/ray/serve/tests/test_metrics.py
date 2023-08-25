@@ -314,7 +314,7 @@ def test_proxy_metrics_fields(serve_start_shutdown):
     num_requests = get_metric_dictionaries("serve_num_grpc_requests")
     assert len(num_requests) == 1
     assert num_requests[0]["route"] == fake_app_name
-    assert num_requests[0]["method"] == "__call__"
+    assert num_requests[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert num_requests[0]["application"] == ""
     assert num_requests[0]["status_code"] == str(grpc.StatusCode.NOT_FOUND)
     print("serve_num_grpc_requests working as expected.")
@@ -330,7 +330,7 @@ def test_proxy_metrics_fields(serve_start_shutdown):
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == fake_app_name
     assert num_errors[0]["error_code"] == str(grpc.StatusCode.NOT_FOUND)
-    assert num_errors[0]["method"] == "__call__"
+    assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     print("serve_num_grpc_error_requests working as expected.")
 
     # Deployment should generate divide-by-zero errors
@@ -358,7 +358,9 @@ def test_proxy_metrics_fields(serve_start_shutdown):
     assert len(num_deployment_errors) == 1
     assert num_deployment_errors[0]["deployment"] == "f"
     assert num_deployment_errors[0]["error_code"] == str(grpc.StatusCode.INTERNAL)
-    assert num_deployment_errors[0]["method"] == "__call__"
+    assert (
+        num_deployment_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
+    )
     assert num_deployment_errors[0]["application"] == real_app_name
     print("serve_num_deployment_grpc_error_requests working as expected.")
 
@@ -372,7 +374,7 @@ def test_proxy_metrics_fields(serve_start_shutdown):
 
     latency_metrics = get_metric_dictionaries("serve_grpc_request_latency_ms_sum")
     assert len(latency_metrics) == 1
-    assert latency_metrics[0]["method"] == "__call__"
+    assert latency_metrics[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert latency_metrics[0]["route"] == real_app_name
     assert latency_metrics[0]["application"] == real_app_name
     assert latency_metrics[0]["status_code"] == str(grpc.StatusCode.INTERNAL)
