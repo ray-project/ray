@@ -656,10 +656,6 @@ def test_get_cluster_status(ray_start_with_dashboard):
 )
 def test_get_nodes_summary(call_ray_start):
 
-    # The sleep is needed since it seems a previous shutdown could be not yet
-    # done when the next test starts. This prevents a previous cluster to be
-    # connected the current test session.
-    time.sleep(5)
     address_info = ray.init(address=call_ray_start)
     webui_url = address_info["webui_url"]
     webui_url = format_web_url(webui_url)

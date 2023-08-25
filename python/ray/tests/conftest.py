@@ -605,7 +605,7 @@ def call_ray_start_context(request):
     # Disconnect from the Ray cluster.
     ray.shutdown()
     # Kill the Ray cluster.
-    subprocess.check_call(["ray", "stop"], env=env)
+    subprocess.check_call(["ray", "stop", "--force"], env=env)
     # Delete the cluster address just in case.
     ray._private.utils.reset_ray_address()
 

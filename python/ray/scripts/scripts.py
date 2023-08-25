@@ -1111,18 +1111,29 @@ def stop(force: bool, grace_period: int):
             gone_procs.add(proc)
             cli_logger.print(f"{len(gone_procs)}/{total_found} stopped.", end="\r")
 
-        stopped, alive = psutil.wait_procs(
+        stopped, to_kill = psutil.wait_procs(
             procs_to_kill, timeout=grace_period, callback=on_terminate
         )
         total_stopped = len(stopped)
 
         # For processes that are not killed within the grace period,
         # we send force termination signals.
-        for proc in alive:
+        for proc in to_kill:
             proc.kill()
+
         # Wait a little bit to make sure processes are killed forcefully.
-        psutil.wait_procs(alive, timeout=2)
-        return total_found, total_stopped, alive
+        still_alive = to_kill
+        start_kill_time = time.perf_counter()
+        while still_alive and time.perf_counter() - start_kill_time < 5:
+            _gone, still_alive = psutil.wait_procs(still_alive, timeout=1)
+
+        if still_alive:
+            cli_logger.warning(
+                f"Forcefully killed {len(still_alive)} processes "
+                "are still alive after 5 seconds: \n"
+                f"{still_alive}"
+            )
+        return total_found, total_stopped, to_kill
 
     # Process killing procedure: we put processes into 3 buckets.
     # Bucket 1: raylet
