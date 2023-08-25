@@ -18,13 +18,11 @@ from typing import (
 import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
-    ActorPoolStrategy,
     BlockTransform,
     CallableClass,
     ComputeStrategy,
     TaskPoolStrategy,
     UserDefinedFunction,
-    get_compute,
     is_task_compute,
 )
 from ray.data._internal.dataset_logger import DatasetLogger
