@@ -566,7 +566,7 @@ py_test(
     size = "medium",
     srcs = ["examples/cifar10_pytorch.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "pytorch", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example", "pytorch", "new_storage"],
     args = ["--smoke-test"]
 )
 
