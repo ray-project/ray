@@ -164,6 +164,16 @@ def train_fn(config):
 
         metrics = {"iter": i, _SCORE_KEY: i}
 
+        # Save an artifact in the local trial dir.
+        rank = train.get_context().get_world_rank()
+        artifact_file_name = (
+            f"artifact-rank={rank}-iter={i}.txt"
+            if in_trainer
+            else f"artifact-iter={i}.txt"
+        )
+        with open(artifact_file_name, "w") as f:
+            f.write(f"{i}")
+
         if in_trainer and train.get_context().get_world_rank() in config.get(
             "no_checkpoint_ranks", []
         ):
@@ -173,17 +183,10 @@ def train_fn(config):
                 with open(os.path.join(temp_dir, "checkpoint.pkl"), "wb") as f:
                     pickle.dump({"iter": i}, f)
 
-                # artifact_file_name = f"artifact-iter={i}.txt"
                 if in_trainer:
-                    rank = train.get_context().get_world_rank()
-                    # artifact_file_name = f"artifact-rank={rank}-iter={i}.txt"
-
                     checkpoint_file_name = _create_checkpoint_shard_filename(str(rank))
                     with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
                         pickle.dump({"iter": i}, f)
-
-                # with open(artifact_file_name, "w") as f:
-                #     f.write(f"{i}")
 
                 train.report(metrics, checkpoint=NewCheckpoint.from_directory(temp_dir))
                 # `train.report` should not have deleted this!
@@ -217,6 +220,12 @@ class ClassTrainable(tune.Trainable):
             if marker.exists():
                 marker.unlink()
                 raise RuntimeError(f"Failing on iter={self.iteration}")
+
+        # Save an artifact in the local trial dir.
+        artifact_file_name = f"artifact-iter={self.iteration}.txt"
+        with open(artifact_file_name, "w") as f:
+            f.write(f"{self.iteration}")
+
         return {
             "score": 1,
             "done": self.iteration >= self.config.get("num_iterations") - 1,
@@ -338,7 +347,11 @@ def _assert_storage_contents(
         # NOTE: These next 2 are technically synced by the driver.
         assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
         # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
-        # assert len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS * NUM_WORKER
+        if test_trainer:
+            expected_num_artifacts = NUM_ITERATIONS * NUM_WORKERS
+        else:
+            expected_num_artifacts = NUM_ITERATIONS
+        assert len(list(trial_dir.glob("artifact-*"))) == expected_num_artifacts
 
 
 @pytest.mark.parametrize("trainable", [train_fn, ClassTrainable])
@@ -503,6 +516,14 @@ def test_trainer(
     """
     LOCAL_CACHE_DIR = tmp_path / "ray_results"
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
+
+    # NOTE: Hack to make sure that the driver doesn't sync the artifacts.
+    from ray.tune import execution
+
+    execution.experiment_state._DRIVER_SYNC_EXCLUDE_PATTERNS = [
+        "*/checkpoint_*",
+        "*/artifact-*.txt",
+    ]
     exp_name = "trainer_new_persistence"
 
     no_checkpoint_ranks = [0]
