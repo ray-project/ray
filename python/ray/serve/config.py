@@ -71,6 +71,8 @@ class AutoscalingConfig(BaseModel):
 
     # Multiplicative "gain" factor to limit scaling decisions
     smoothing_factor: PositiveFloat = 1.0
+    upscale_smoothing_factor: Optional[PositiveFloat] = None
+    downscale_smoothing_factor: Optional[PositiveFloat] = None
 
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
@@ -102,6 +104,12 @@ class AutoscalingConfig(BaseModel):
                 )
 
         return max_replicas
+
+    def get_upscale_smoothing_factor(self) -> PositiveFloat:
+        return self.upscale_smoothing_factor or self.smoothing_factor
+
+    def get_downscale_smoothing_factor(self) -> PositiveFloat:
+        return self.downscale_smoothing_factor or self.smoothing_factor
 
     # TODO(architkulkarni): implement below
     # The num_ongoing_requests_per_replica error ratio (desired / current)
@@ -273,6 +281,10 @@ class DeploymentConfig(BaseModel):
             else:
                 data["user_config"] = None
         if "autoscaling_config" in data:
+            if not data["autoscaling_config"].get("upscale_smoothing_factor"):
+                data["autoscaling_config"]["upscale_smoothing_factor"] = None
+            if not data["autoscaling_config"].get("downscale_smoothing_factor"):
+                data["autoscaling_config"]["downscale_smoothing_factor"] = None
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
