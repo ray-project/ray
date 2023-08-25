@@ -84,30 +84,31 @@ def test_native_trainer_restore(ray_start_4_cpus_2_gpus):
 
     # Resume training for another 2 epochs
     num_epochs += 2
-    ckpt_dir = results.checkpoint.to_directory()
-    ckpt_path = f"{ckpt_dir}/{MODEL_KEY}"
 
-    lightning_config = (
-        config_builder.fit_params(ckpt_path=ckpt_path)
-        .trainer(max_epochs=num_epochs)
-        .build()
-    )
+    with results.checkpoint.as_directory() as tmpdir:
+        ckpt_path = os.path.join(tmpdir, MODEL_KEY)
 
-    trainer = LightningTrainer(
-        lightning_config=lightning_config,
-        scaling_config=scaling_config,
-        datasets={"train": train_dataset, "val": val_dataset},
-        datasets_iter_config={"batch_size": batch_size},
-    )
-    results = trainer.fit()
+        lightning_config = (
+            config_builder.fit_params(ckpt_path=ckpt_path)
+            .trainer(max_epochs=num_epochs)
+            .build()
+        )
 
-    assert results.metrics["epoch"] == num_epochs - 1
-    assert (
-        results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size
-    )
-    assert "loss" in results.metrics
-    assert "val_loss" in results.metrics
-    assert results.checkpoint
+        trainer = LightningTrainer(
+            lightning_config=lightning_config,
+            scaling_config=scaling_config,
+            datasets={"train": train_dataset, "val": val_dataset},
+            datasets_iter_config={"batch_size": batch_size},
+        )
+        results = trainer.fit()
+
+        assert results.metrics["epoch"] == num_epochs - 1
+        assert (
+            results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size
+        )
+        assert "loss" in results.metrics
+        assert "val_loss" in results.metrics
+        assert results.checkpoint
 
 
 @pytest.mark.parametrize("resume_from_ckpt_path", [True, False])
