@@ -26,7 +26,7 @@ except (ImportError, ModuleNotFoundError) as e:
 
 
 from ray.air._internal.filelock import TempFileLock
-from ray.air._internal.uri_utils import URI, is_uri
+from ray.air._internal.uri_utils import is_uri
 from ray.tune.syncer import Syncer, SyncConfig, _BackgroundSyncer
 from ray.tune.result import _get_defaults_results_dir
 
@@ -63,7 +63,7 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
         return "_excluding_local"
 
     def _should_exclude(self, name: str) -> bool:
-        """Return True if `name` matches any of the `self._exclude` patterns."""
+        """Return True if `name` matches any of the ``self._exclude`` patterns."""
         alt = None
         if os.path.isdir(name):
             # If this is a directory, also test it with trailing slash
@@ -402,10 +402,6 @@ class StorageContext:
         >>> storage.current_checkpoint_index = 1
         >>> storage.checkpoint_fs_path
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
-        >>> storage.storage_prefix
-        URI<mock://netloc?param=1>
-        >>> str(storage.storage_prefix / storage.experiment_fs_path)
-        'mock://netloc/bucket/path/exp_name?param=1'
 
     Example with storage_path=None:
 
@@ -429,10 +425,6 @@ class StorageContext:
         True
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
         <pyarrow._fs.LocalFileSystem object...
-        >>> storage.storage_prefix
-        URI<.>
-        >>> str(storage.storage_prefix / storage.experiment_fs_path)
-        '/tmp/ray_results/exp_name'
 
     Internal Usage Examples:
     - To copy files to the trial directory on the storage filesystem:
@@ -469,18 +461,6 @@ class StorageContext:
 
         self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
             self.storage_path, storage_filesystem
-        )
-
-        # The storage prefix is part of the URI that is stripped away
-        # from the user-provided `storage_path` by pyarrow's `from_uri`.
-        # Ex: `storage_path="s3://bucket/path?param=1`
-        #  -> `storage_prefix=URI<s3://.?param=1>`
-        # See the doctests for more examples.
-        # This is used to construct URI's of the same format as `storage_path`.
-        # However, we don't track these URI's internally, because pyarrow only
-        # needs to interact with the prefix-stripped fs_path.
-        self.storage_prefix: URI = URI(self.storage_path).rstrip_subpath(
-            Path(self.storage_fs_path)
         )
 
         # Syncing is always needed if a custom `storage_filesystem` is provided.
