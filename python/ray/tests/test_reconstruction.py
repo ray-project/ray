@@ -479,7 +479,9 @@ def test_multiple_downstream_tasks(config, ray_start_cluster, reconstruction_ena
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
     cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
+    print("Waiting for 2 nodes...")
     cluster.wait_for_nodes()
+    print("Nodes added...")
 
     @ray.remote
     def large_object():
@@ -498,11 +500,15 @@ def test_multiple_downstream_tasks(config, ray_start_cluster, reconstruction_ena
     for obj in downstream:
         ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
 
+    print("Killing node 1...")
     cluster.remove_node(node_to_kill, allow_graceful=False)
+    print("Adding node 1 again...")
     node_to_kill = cluster.add_node(
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
+    print("Node 1 added...")
 
+    print("Waiting for reconstruction...")
     if reconstruction_enabled:
         for obj in downstream:
             ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
@@ -512,9 +518,11 @@ def test_multiple_downstream_tasks(config, ray_start_cluster, reconstruction_ena
                 ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
         with pytest.raises(ray.exceptions.ObjectLostError):
             ray.get(obj)
-
+    print("Killing node 1 second time...")
     cluster.remove_node(node_to_kill, allow_graceful=False)
+    print("Adding node 1 third time...")
     cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+    print("Node 1 added...")
 
     if reconstruction_enabled:
         for obj in downstream:
@@ -523,6 +531,8 @@ def test_multiple_downstream_tasks(config, ray_start_cluster, reconstruction_ena
         for obj in downstream:
             with pytest.raises(ray.exceptions.ObjectLostError):
                 ray.get(obj)
+
+    print("Reconstruction done.")
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
