@@ -627,7 +627,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
                 tried_same_node = True
             elif (
-                not tried_same_az
+                self._prefer_local_az_routing
+                and not tried_same_az
                 and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE])
                 > 0
             ):

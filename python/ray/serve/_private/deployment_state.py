@@ -210,7 +210,6 @@ class ActorReplicaWrapper:
         self._worker_id: str = None
         self._node_id: str = None
         self._node_ip: str = None
-        self._availability_zone = None
         self._log_file_path: str = None
 
         # Populated in self.stop().
@@ -321,11 +320,6 @@ class ActorReplicaWrapper:
     def node_ip(self) -> Optional[str]:
         """Returns the node ip of the actor, None if not placed."""
         return self._node_ip
-
-    @property
-    def availability_zone(self) -> Optional[str]:
-        """Returns the availability zone the actor resides in, None if not placed."""
-        return self._availability_zone
 
     @property
     def log_file_path(self) -> Optional[str]:
@@ -573,7 +567,6 @@ class ActorReplicaWrapper:
                     self._worker_id,
                     self._node_id,
                     self._node_ip,
-                    self._availability_zone,
                     self._log_file_path,
                 ) = ray.get(self._allocated_obj_ref)
             except RayTaskError as e:
@@ -846,12 +839,14 @@ class DeploymentReplica(VersionedReplica):
         )
         self._multiplexed_model_ids: List = []
 
-    def get_running_replica_info(self) -> RunningReplicaInfo:
+    def get_running_replica_info(
+        self, cluster_node_info_cache: ClusterNodeInfoCache
+    ) -> RunningReplicaInfo:
         return RunningReplicaInfo(
             deployment_name=self.deployment_name,
             replica_tag=self._replica_tag,
             node_id=self.actor_node_id,
-            availability_zone=self.actor_availability_zone,
+            availability_zone=cluster_node_info_cache.get_node_az(self.actor_node_id),
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
             is_cross_language=self._actor.is_cross_language,
@@ -894,10 +889,6 @@ class DeploymentReplica(VersionedReplica):
     def actor_node_id(self) -> Optional[str]:
         """Returns the node id of the actor, None if not placed."""
         return self._actor.node_id
-
-    @property
-    def actor_availability_zone(self) -> Optional[str]:
-        return self._actor.availability_zone
 
     def start(self, deployment_info: DeploymentInfo) -> ReplicaSchedulingRequest:
         """
@@ -1294,7 +1285,7 @@ class DeploymentState:
 
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
-            replica.get_running_replica_info()
+            replica.get_running_replica_info(self._cluster_node_info_cache)
             for replica in self._replicas.get([ReplicaState.RUNNING])
         ]
 
