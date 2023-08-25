@@ -1046,9 +1046,7 @@ class HTTPProxy(GenericProxy):
                     timeout=self.request_timeout_s,
                 )
                 if client_disconnection_task in done:
-                    logger.info(
-                        "Client disconnected, cancelling request."
-                    )
+                    logger.info("Client disconnected, cancelling request.")
                     result_ref.cancel()
                     raise asyncio.CancelledError()
                 elif len(done) == 0:
@@ -1134,6 +1132,7 @@ class HTTPProxy(GenericProxy):
         self,
         obj_ref_generator: StreamingObjectRefGenerator,
         send: Send,
+        disconnected_task: asyncio.Task,
         timeout_s: Optional[float] = None,
     ) -> Optional[str]:
         """Consumes an obj ref generator that yields ASGI messages.
@@ -1150,13 +1149,27 @@ class HTTPProxy(GenericProxy):
         is_first_message = True
         while True:
             try:
-                obj_ref = await obj_ref_generator._next_async(
+                next_obj_ref_task = obj_ref_generator._next_async(
                     timeout_s=calculate_remaining_timeout(
                         timeout_s=timeout_s,
                         start_time_s=start,
                         curr_time_s=time.time(),
                     )
                 )
+                done, _ = await asyncio.wait(
+                    [disconnected_task, next_obj_ref_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                    # No timeout is set because it's already passed to `_next_async`.
+                )
+                if disconnected_task in done:
+                    logger.info(
+                        "Client disconnected during execution, cancelling request."
+                    )
+                    ray.cancel(obj_ref_generator)
+                    status_code = DISCONNECT_ERROR_CODE
+                    break
+
+                obj_ref = next_obj_ref_task.result()
                 if obj_ref.is_nil():
                     raise RayServeTimeout(is_first_message=is_first_message)
 
@@ -1258,7 +1271,6 @@ class HTTPProxy(GenericProxy):
             try:
                 status_code = await self._consume_and_send_asgi_message_generator(
                     obj_ref_generator,
-                    cancellation_task,
                     proxy_request.send,
                     disconnected_task=proxy_asgi_receive_task,
                     timeout_s=calculate_remaining_timeout(
