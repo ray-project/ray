@@ -190,6 +190,7 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
+  ///
   explicit ClientCallManager(instrumented_io_context &main_service,
                              const ClusterID &cluster_id = ClusterID::Nil(),
                              int num_threads = 1,
@@ -266,6 +267,9 @@ class ClientCallManager {
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
   }
+
+  /// Get the cluster ID.
+  const ClusterID &GetClusterId() const { return cluster_id_; }
 
   /// Get the main service of this rpc.
   instrumented_io_context &GetMainService() { return main_service_; }

@@ -95,7 +95,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     // Create GCS client.
     gcs::GcsClientOptions options("127.0.0.1:5397");
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
-    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
+    ReconnectClient();
   }
 
   void TearDown() override {
@@ -113,6 +113,15 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       TestSetupUtil::FlushAllRedisServers();
     }
     rpc::ResetServerCallExecutor();
+  }
+
+  void ReconnectClient() {
+    ClusterID cluster_id = gcs_server_->rpc_server_.GetClusterId();
+    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_, cluster_id));
+  }
+
+  void StampContext(grpc::ClientContext &context) {
+    context.AddMetadata(kClusterIdKey, gcs_client_->GetClusterId().Hex());
   }
 
   void RestartGcsServer() {
@@ -142,11 +151,14 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
                               grpc::InsecureChannelCredentials());
       auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
       grpc::ClientContext context;
+      StampContext(context);
       context.set_deadline(std::chrono::system_clock::now() + 1s);
       const rpc::CheckAliveRequest request;
       rpc::CheckAliveReply reply;
       auto status = stub->CheckAlive(&context, request, &reply);
-      if (!status.ok()) {
+      // If it is in memory, we don't have the new token until we connect again.
+      if (!((!no_redis_ && status.ok()) ||
+            (no_redis_ && GrpcStatusToRayStatus(status).IsAuthError()))) {
         RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
                          << status.error_message();
         continue;
@@ -923,6 +935,7 @@ TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
 
   // Restart GCS.
   RestartGcsServer();
+  ReconnectClient();
 
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
@@ -945,9 +958,49 @@ TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
   }
 }
 
-TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
+TEST_P(GcsClientTest, TestGcsEmptyAuth) {
+  RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
   // Restart GCS.
   RestartGcsServer();
+  auto channel = grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
+                                     grpc::InsecureChannelCredentials());
+  auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
+  grpc::ClientContext context;
+  StampContext(context);
+  context.set_deadline(std::chrono::system_clock::now() + 1s);
+  const rpc::GetClusterIdRequest request;
+  rpc::GetClusterIdReply reply;
+  auto status = stub->GetClusterId(&context, request, &reply);
+
+  // We expect the wrong cluster ID
+  EXPECT_TRUE(GrpcStatusToRayStatus(status).IsAuthError());
+}
+
+TEST_P(GcsClientTest, TestGcsAuth) {
+  RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
+  // Restart GCS.
+  RestartGcsServer();
+  auto node_info = Mocker::GenNodeInfo();
+  if (!no_redis_) {
+    // If we are backed by Redis, we can reuse cluster ID, so the RPC passes.
+    EXPECT_TRUE(RegisterNode(*node_info));
+    return;
+  }
+
+  // If we are not backed by Redis, we need to first fetch
+  // the new cluster ID, so we expect failure before success.
+  EXPECT_FALSE(RegisterNode(*node_info));
+  ReconnectClient();
+  EXPECT_TRUE(RegisterNode(*node_info));
+}
+
+TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
+  RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
+  // Restart GCS.
+  RestartGcsServer();
+  if (RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage) {
+    ReconnectClient();
+  }
 
   // Simulate the scenario of node dead.
   int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();

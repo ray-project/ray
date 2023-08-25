@@ -41,6 +41,8 @@
 namespace ray {
 using raylet::ClusterTaskManager;
 using raylet::NoopLocalTaskManager;
+
+class GcsClientTest;
 namespace gcs {
 
 struct GcsServerConfig {
@@ -171,6 +173,8 @@ class GcsServer {
 
   /// Initialize monitor service.
   void InitMonitorServer();
+
+  friend class ray::GcsClientTest;
 
  private:
   /// Gets the type of KV storage to use from config.

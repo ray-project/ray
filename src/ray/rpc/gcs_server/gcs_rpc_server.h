@@ -139,7 +139,6 @@ namespace rpc {
                       HANDLER,                            \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-// TODO(vitsai): Set auth for everything except GCS.
 #define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
@@ -382,7 +381,13 @@ class NodeInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
-    NODE_INFO_SERVICE_RPC_HANDLER(GetClusterId);
+    // We only allow one cluster ID in the lifetime of a client.
+    // So, if a client connects, it should not have a pre-existing different ID.
+    RPC_SERVICE_HANDLER_CUSTOM_AUTH(
+        NodeInfoGcsService,
+        GetClusterId,
+        RayConfig::instance().gcs_max_active_rpcs_per_handler(),
+        AuthType::EMPTY_AUTH);
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);

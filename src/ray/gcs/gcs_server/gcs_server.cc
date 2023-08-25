@@ -58,6 +58,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
                   config.node_ip_address == "127.0.0.1",
+                  ClusterID::Nil(),
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
@@ -167,7 +168,7 @@ void GcsServer::GetOrGenerateClusterId(
               kClusterIdKey,
               cluster_id.Binary(),
               false,
-              [&cluster_id,
+              [cluster_id,
                continuation = std::move(continuation)](bool added_entry) mutable {
                 RAY_CHECK(added_entry) << "Failed to persist new cluster ID!";
                 continuation(cluster_id);
