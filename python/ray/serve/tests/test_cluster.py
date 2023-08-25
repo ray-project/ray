@@ -59,7 +59,6 @@ def test_scale_up(ray_cluster):
         time.sleep(0.1)
         return os.getpid()
 
-<<<<<<< HEAD
     def get_pids(expected, timeout=30):
         pids = set()
         start = time.time()
@@ -70,9 +69,6 @@ def test_scale_up(ray_cluster):
         return pids
 
     serve.start()
-=======
-    serve.start(detached=True)
->>>>>>> 3f11cf4666b4042f9ef66c3ee51486e5ece3cb94
     client = serve.context._connect()
 
     D.deploy()
