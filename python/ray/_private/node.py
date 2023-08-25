@@ -931,7 +931,7 @@ class Node:
                 ports_by_node[self.unique_id][port_name] = port
                 with open(file_path, "w") as f:
                     json.dump(ports_by_node, f)
-
+        print("Using {} for {}".format(port, port_name))
         return port
 
     def start_reaper_process(self):
