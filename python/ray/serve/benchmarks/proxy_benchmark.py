@@ -20,9 +20,10 @@ from random import random
 
 NUM_CLIENTS = 8
 CALLS_PER_BATCH = 100
+DELTA = 10**-7
 
 
-async def timeit(name: str, fn: Callable, multiplier: int = 1):
+async def timeit(name: str, fn: Callable, multiplier: int = CALLS_PER_BATCH):
     # warmup
     start = time.time()
     while time.time() - start < 0.1:
@@ -30,25 +31,29 @@ async def timeit(name: str, fn: Callable, multiplier: int = 1):
     # real run
     stats = []
     for _ in range(1):
-        start = time.time()
         count = 0
-        while time.time() - start < 0.1:
+        start = time.time()
+        while time.time() - start < 10:
             await fn()
             count += 1
         end = time.time()
         stats.append(multiplier * count / (end - start))
-    print(
-        "\t{} {} +- {} requests/s".format(
-            name, round(np.mean(stats), 2), round(np.std(stats), 2)
-        )
-    )
-    return round(np.mean(stats), 2)
+    tps_mean = round(np.mean(stats), 2)
+    tps_std = round(np.std(stats), 2)
+    print(f"\t{name} {tps_mean} +- {tps_std} requests/s")
+
+    return tps_mean
 
 
 async def fetch(session, data):
     async with session.get("http://localhost:8000/", data=data) as response:
         response = await response.text()
         assert response == "ok", response
+
+
+async def fetch_grpc(stub, data):
+    response = await stub.grpc_call(serve_pb2.RawData(nums=data))
+    # print("Model output: ", response.output)
 
 
 @ray.remote
@@ -62,6 +67,29 @@ class Client:
     async def do_queries(self, num, data):
         for _ in range(num):
             await fetch(self.session, data)
+
+
+@ray.remote
+class gRPCClient:
+    def __init__(self):
+        channel = aio.insecure_channel("localhost:9000")
+        self.stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
+
+    def ready(self):
+        return "ok"
+
+    async def do_queries(self, num, data):
+        for _ in range(num):
+            await fetch_grpc(self.stub, data)
+
+    async def time_queries(self, num, data):
+        stats = []
+        for _ in range(num):
+            start = time.time()
+            await fetch_grpc(self.stub, data)
+            end = time.time()
+            stats.append(end - start)
+        return stats
 
 
 def build_app(
@@ -80,13 +108,13 @@ def build_app(
         async def __call__(self, req: Request):
             # TODO: fixit
             obj_ref = await self._handle.remote(await req.body())
-            return obj_ref
+            return await obj_ref
 
         async def grpc_call(self, raq_data):
             raw = np.asarray(raq_data.nums)
-            processed = (raw - np.min(raw)) / (np.max(raw) - np.min(raw))
-            model_output = await self._handle.remote(processed)
-            return serve_pb2.ModelOutput(output=model_output)
+            processed = (raw - np.min(raw)) / (np.max(raw) - np.min(raw) + DELTA)
+            model_output_ref = await self._handle.remote(processed)
+            return serve_pb2.ModelOutput(output=await model_output_ref)
 
     @serve.deployment(
         num_replicas=num_replicas,
@@ -109,6 +137,7 @@ async def trial(
     num_replicas: int,
     max_concurrent_queries: int,
     data_size: int,
+    num_clients: int,
 ) -> Dict[str, float]:
     results = {}
 
@@ -133,37 +162,41 @@ async def trial(
 
     data = [random() for _ in range(data_size)]
 
-    async with aio.insecure_channel("localhost:9000") as channel:
-        stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
-        response = await stub.grpc_call(serve_pb2.RawData(nums=data))
-        print("Model output: " + response.output)
-
-    # async with aiohttp.ClientSession() as session:
+    # async with aio.insecure_channel("localhost:9000") as channel:
+    #     stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
+    #
     #     async def single_client():
     #         for _ in range(CALLS_PER_BATCH):
-    #             await fetch(session, data)
+    #             await fetch_grpc(stub, data)
     #
     #     single_client_avg_tps = await timeit(
-    #         "single client {} data".format(data_size),
-    #         single_client,
-    #         multiplier=CALLS_PER_BATCH,
+    #         name=f"single client {data_size} data size",
+    #         fn=single_client,
     #     )
     #     key = f"num_client:1/{trial_key_base}"
     #     results[key] = single_client_avg_tps
-    #
-    # clients = [Client.remote() for _ in range(NUM_CLIENTS)]
-    # ray.get([client.ready.remote() for client in clients])
-    #
-    # async def many_clients():
-    #     ray.get([a.do_queries.remote(CALLS_PER_BATCH, data) for a in clients])
-    #
-    # multi_client_avg_tps = await timeit(
-    #     "{} clients {} data".format(len(clients), data_size),
-    #     many_clients,
-    #     multiplier=CALLS_PER_BATCH * len(clients),
-    # )
+
+    clients = [gRPCClient.remote() for _ in range(num_clients)]
+    ray.get([client.ready.remote() for client in clients])
+
+    async def get_query_latencies():
+        return ray.get([a.time_queries.remote(CALLS_PER_BATCH, data) for a in clients])
+
+    async def many_clients():
+        ray.get([a.do_queries.remote(CALLS_PER_BATCH, data) for a in clients])
+
+    many_client_results = np.asarray(await get_query_latencies())
+    many_client_results.flatten()
+    print("many_client_results", many_client_results)
+    latency_mean = np.mean(many_client_results)
+    print("many_client_results", latency_mean)
+    avg_tps = await timeit(
+        f"{len(clients)} clients {data_size} data size",
+        many_clients,
+    )
     #
     # results[f"num_client:{len(clients)}/{trial_key_base}"] = multi_client_avg_tps
+
     return results
 
 
@@ -175,6 +208,15 @@ async def main():
             num_replicas=1,
             max_concurrent_queries=1,
             data_size=1,
+            num_clients=1,
+        )
+    )
+    results.update(
+        await trial(
+            num_replicas=1,
+            max_concurrent_queries=1,
+            data_size=2,
+            num_clients=1,
         )
     )
     # for num_replicas in [1, 8]:
@@ -203,8 +245,7 @@ if __name__ == "__main__":
 
     grpc_port = 9000
     grpc_servicer_functions = [
-        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
-        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_RayServeBenchmarkServiceServicer_to_server",
     ]
     serve.start(
         grpc_options=gRPCOptions(
