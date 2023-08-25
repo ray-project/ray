@@ -6,7 +6,18 @@ from enum import Enum, auto
 import logging
 import os
 import random
-from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union, List
+from typing import (
+    Any,
+    Callable,
+    DefaultDict,
+    Dict,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    List,
+    Type,
+)
 from ray._private.utils import get_or_create_event_loop
 
 from ray.serve._private.common import ReplicaName, RunningReplicaInfo
@@ -140,7 +151,7 @@ class LongPollNamespaceDiffConfig:
 
     # The class containing the interface to use when calculating diffs.
     # Can be None only if num_diffs_stored is 0.
-    partial_update_method_class: Optional[type[LongPollNamespacePartialUpdateInterface]]
+    partial_update_method_class: Optional[Type[LongPollNamespacePartialUpdateInterface]]
 
 
 LONG_POLL_NAMESPACE_DIFF_CONFIGS = {
