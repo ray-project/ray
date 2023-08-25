@@ -22,9 +22,9 @@ from ray.train.trainer import TrainingIterator
 from ray.train._internal.storage import _use_storage_context
 
 if _use_storage_context():
-    from ray.air import Checkpoint
-else:
     from ray.train._checkpoint import Checkpoint
+else:
+    from ray.air import Checkpoint
 
 from ray.air.config import CheckpointConfig, FailureConfig, RunConfig, ScalingConfig
 from ray.air.result import Result
