@@ -1,5 +1,6 @@
 # flake8: noqa
 # isort: skip_file
+import os
 import tempfile
 
 tempdir = tempfile.mktemp()
