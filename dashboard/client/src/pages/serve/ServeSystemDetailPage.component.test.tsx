@@ -34,6 +34,7 @@ describe("ServeSystemDetailPage", () => {
     mockGetServeApplications.mockResolvedValue({
       data: {
         http_options: { host: "1.2.3.4", port: 8000 },
+        grpc_options: { port: 9000 },
         http_proxies: {
           foo: {
             node_id: "node:12345",
@@ -85,7 +86,7 @@ describe("ServeSystemDetailPage", () => {
     expect(screen.getByText("1.2.3.4")).toBeVisible();
     expect(screen.getByText("8000")).toBeVisible();
 
-    // HTTP Proxy row
+    // Proxy row
     expect(screen.getByText("HTTPProxyActor:node:12345")).toBeVisible();
     expect(screen.getByText("STARTING")).toBeVisible();
 

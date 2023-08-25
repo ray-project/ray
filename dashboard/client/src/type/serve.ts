@@ -114,6 +114,9 @@ export type ServeApplicationsRsp = {
         port: number;
       }
     | undefined;
+  grpc_options: {
+    port: number;
+  };
   proxy_location: ServeDeploymentMode;
   controller_info: ServeSystemActor;
   http_proxies: {
