@@ -111,6 +111,7 @@ class AccelerateTrainer(TorchTrainer):
     Example:
         .. testcode::
 
+            import os
             import tempfile
             import torch
             import torch.nn as nn

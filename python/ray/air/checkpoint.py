@@ -270,7 +270,7 @@ class Checkpoint:
 
         Example:
 
-            >>> from ray.train import Checkpoint
+            >>> from ray.air import Checkpoint
             >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
             >>> assert checkpoint.path == "s3://some-bucket/some-location"
             >>> checkpoint = Checkpoint.from_dict({"data": 1})
@@ -299,11 +299,11 @@ class Checkpoint:
 
         In all other cases, this will return None. Users can then choose to
         persist to cloud with
-        :meth:`Checkpoint.to_uri() <ray.train.Checkpoint.to_uri>`.
+        :meth:`Checkpoint.to_uri() <ray.air.Checkpoint.to_uri>`.
 
         Example:
 
-            >>> from ray.train import Checkpoint
+            >>> from ray.air import Checkpoint
             >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
             >>> assert checkpoint.uri == "s3://some-bucket/some-location"
             >>> checkpoint = Checkpoint.from_dict({"data": 1})
@@ -330,7 +330,7 @@ class Checkpoint:
             data: Data object containing pickled checkpoint data.
 
         Returns:
-            ray.train.Checkpoint: checkpoint object.
+            ray.air.Checkpoint: checkpoint object.
         """
         bytes_data = pickle.loads(data)
         if isinstance(bytes_data, dict):
@@ -359,7 +359,7 @@ class Checkpoint:
             data: Dictionary containing checkpoint data.
 
         Returns:
-            ray.train.Checkpoint: checkpoint object.
+            ray.air.Checkpoint: checkpoint object.
         """
         state = {}
         if _METADATA_KEY in data:
@@ -454,7 +454,7 @@ class Checkpoint:
                 Checkpoint).
 
         Returns:
-            ray.train.Checkpoint: checkpoint object.
+            ray.air.Checkpoint: checkpoint object.
         """
         state = {}
 
@@ -473,7 +473,7 @@ class Checkpoint:
     @classmethod
     @DeveloperAPI
     def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
-        """Create a checkpoint from a generic :class:`ray.train.Checkpoint`.
+        """Create a checkpoint from a generic :class:`ray.air.Checkpoint`.
 
         This method can be used to create a framework-specific checkpoint from a
         generic :class:`Checkpoint` object.
@@ -714,7 +714,7 @@ class Checkpoint:
             uri: Source location URI to read data from.
 
         Returns:
-            ray.train.Checkpoint: checkpoint object.
+            ray.air.Checkpoint: checkpoint object.
         """
         state = {}
         try:
