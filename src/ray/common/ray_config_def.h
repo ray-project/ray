@@ -34,6 +34,9 @@ RAY_CONFIG(bool, event_stats_metrics, false)
 /// TODO(ekl) remove this after Ray 1.8
 RAY_CONFIG(bool, legacy_scheduler_warnings, false)
 
+/// Whether to enable cluster authentication.
+RAY_CONFIG(bool, enable_cluster_auth, false)
+
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available to
 /// debug_state_*.txt
