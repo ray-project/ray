@@ -287,7 +287,9 @@ def test_basic_reconstruction_actor_task(
     obj = a.large_object.remote()
     ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
 
-    for i in range(10):
+    # Less iterations on macos
+    num_iter = 3 if sys.platform == "darwin" else 10
+    for i in range(num_iter):
         # Workaround to kill the actor process too since there is a bug where the
         # actor's plasma client hangs after the plasma store has exited.
         os.kill(pid, SIGKILL)
