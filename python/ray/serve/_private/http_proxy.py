@@ -800,7 +800,10 @@ class gRPCProxy(GenericProxy):
                     )
                 )
                 if obj_ref.is_nil():
-                    raise TimeoutError()
+                    await self.timeout_response(
+                        proxy_request=proxy_request, request_id=request_id
+                    )
+                    break
 
                 user_response_bytes = await obj_ref
                 yield user_response_bytes
@@ -833,12 +836,13 @@ class gRPCProxy(GenericProxy):
     ) -> ProxyResponse:
         try:
             user_response_bytes = await asyncio.wait_for(obj_ref, timeout=timeout_s)
+            response = ProxyResponse(
+                status_code=self.success_status_code, response=user_response_bytes
+            )
         except asyncio.exceptions.TimeoutError:
-            raise TimeoutError()
-
-        return ProxyResponse(
-            status_code=self.success_status_code, response=user_response_bytes
-        )
+            return await self.timeout_response(
+                proxy_request=proxy_request, request_id=request_id
+            )
 
     async def send_request_to_replica_streaming(
         self,
