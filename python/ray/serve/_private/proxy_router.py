@@ -153,7 +153,7 @@ class EndpointRouter(ProxyRouter):
                         and not info.app_is_cross_language
                     ),
                     use_new_handle_api=True,
-                    _prefer_local_node_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+                    _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
                 )
                 handle._set_request_protocol(self._protocol)
                 self.handles[endpoint] = handle
