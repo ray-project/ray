@@ -548,6 +548,7 @@ def parse_args():
 
 
 def main():
+
     args = parse_args()
 
     if not args.output_dir:
@@ -638,5 +639,4 @@ def main():
 
 
 if __name__ == "__main__":
-
     main()
