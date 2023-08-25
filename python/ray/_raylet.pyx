@@ -2796,7 +2796,7 @@ cdef class GcsErrorSubscriber(_GcsSubscriber):
         cdef:
             CErrorTableData error_data
             c_string key_id
-            int64_t timeout_ms = timeout_to_int_ms(timeout)
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
 
         with nogil:
             check_status(self.inner.get().PollError(&key_id, timeout_ms, &error_data))
