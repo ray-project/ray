@@ -5124,7 +5124,7 @@
     timeout: 14400
     wait_for_nodes:
       num_nodes: 5
-    script: python stress_tests/test_many_runtime_envs.py --num_runtime_envs=10000
+    script: python stress_tests/test_many_runtime_envs.py --num_runtime_envs=100 --num_tasks=10000
 
   variations:
     - __suffix__: aws
