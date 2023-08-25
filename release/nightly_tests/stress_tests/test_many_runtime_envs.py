@@ -40,6 +40,6 @@ if __name__ == "__main__":
                     f"STRESS_TEST_{j}": val for j in range(args.num_runtime_envs)
                 }
             },
-        ).remote("STRESS_TEST_", i, val)
+        ).remote("STRESS_TEST_", args.num_runtime_envs, val)
         tasks.append(task)
     ray.get(tasks)
