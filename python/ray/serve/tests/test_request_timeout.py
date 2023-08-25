@@ -311,7 +311,6 @@ def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
     not RAY_SERVE_ENABLE_NEW_ROUTING,
     reason="New routing feature flag is disabled.",
 )
-@pytest.mark.parametrize("use_fastapi", [False, True])
 @pytest.mark.parametrize(
     "ray_instance",
     [
@@ -321,6 +320,7 @@ def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
     ],
     indirect=True,
 )
+@pytest.mark.parametrize("use_fastapi", [False, True])
 def test_cancel_on_http_timeout_during_execution(ray_instance, use_fastapi: bool):
     """Test the request timing out while the handler is executing."""
     inner_signal_actor = SignalActor.remote()
@@ -376,6 +376,7 @@ def test_cancel_on_http_timeout_during_execution(ray_instance, use_fastapi: bool
     ],
     indirect=True,
 )
+@pytest.mark.parametrize("use_fastapi", [False, True])
 def test_cancel_on_http_timeout_during_assignment(ray_instance, use_fastapi: bool):
     """Test the client disconnecting while the proxy is assigning the request."""
     signal_actor = SignalActor.remote()
