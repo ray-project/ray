@@ -156,7 +156,7 @@ class LongPollNamespaceDiffConfig:
 
 LONG_POLL_NAMESPACE_DIFF_CONFIGS = {
     LongPollNamespace.RUNNING_REPLICAS: LongPollNamespaceDiffConfig(
-        num_diffs_stored=5, partial_update_methods=RunningReplicasPartialUpdate
+        num_diffs_stored=5, partial_update_method_class=RunningReplicasPartialUpdate
     )
 }
 
