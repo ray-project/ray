@@ -889,7 +889,7 @@ py_test(
     size = "medium",
     srcs = ["examples/tune_mnist_keras.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example", "new_storage"],
     args = ["--smoke-test"]
 )
 
