@@ -46,10 +46,10 @@
 
 
 - label: ":train: :key: Train examples with authentication"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"] #, "RAY_CI_BRANCH_BUILD"]
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_BRANCH_BUILD"]
   instance_size: medium
   commands:
-    # - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TRAIN_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
