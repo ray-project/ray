@@ -11,18 +11,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 # Run with:
 # python run_regression_tests.py --dir [this file]
 
-try:
-    import flappy_bird_gymnasium  # noqa
-except (ImportError, ModuleNotFoundError):
-    print(
-        "You have to `pip install flappy_bird_gymnasium` in order to run this example!"
-    )
-
-import gymnasium as gym
-from supersuit.generic_wrappers import resize_v1
-
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
-from ray.rllib.algorithms.dreamerv3.utils.env_runner import NormalizedImageEnv
 from ray import tune
 
 
@@ -34,16 +23,23 @@ config = DreamerV3Config()
 w = config.world_model_lr
 c = config.critic_lr
 
-# Register the FlappyBird-rgb-v0 env including necessary wrappers via the
-# `tune.register_env()` API.
-tune.register_env(
-    "flappy-bird",
-    lambda ctx: NormalizedImageEnv(
+
+def _env_creator(ctx):
+    import flappy_bird_gymnasium  # doctest: +SKIP
+    import gymnasium as gym
+    from supersuit.generic_wrappers import resize_v1
+    from ray.rllib.algorithms.dreamerv3.utils.env_runner import NormalizedImageEnv
+
+    return NormalizedImageEnv(
         resize_v1(  # resize to 64x64 and normalize images
             gym.make("FlappyBird-rgb-v0", audio_on=False), x_size=64, y_size=64
         )
-    ),
-)
+    )
+
+
+# Register the FlappyBird-rgb-v0 env including necessary wrappers via the
+# `tune.register_env()` API.
+tune.register_env("flappy-bird", _env_creator)
 
 # Further specify the DreamerV3 config object to use.
 (

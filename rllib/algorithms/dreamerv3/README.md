@@ -80,17 +80,11 @@ Now, let's create a new RLlib python config file for this experiment and call it
 
 ```python
 from ray import tune
-# Import our DreamerV3 algorithm config class:
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 
 
-# Register the FlappyBird-rgb-v0 env including necessary wrappers via the
-# `tune.register_env()` API.
-def env_creator(ctx):
-    # Import flappy bird and gymnasium
-    import flappy_bird_gymnasium  # noqa
+def _env_creator(ctx):
     import gymnasium as gym
-    # Our two env wrappers for a) resizing and b) image normalization.
     from supersuit.generic_wrappers import resize_v1
     from ray.rllib.algorithms.dreamerv3.utils.env_runner import NormalizedImageEnv
 
@@ -101,8 +95,9 @@ def env_creator(ctx):
     )
 
 
-tune.register_env("flappy-bird", env_creator)
-
+# Register the FlappyBird-rgb-v0 env including necessary wrappers via the
+# `tune.register_env()` API.
+tune.register_env("flappy-bird", _env_creator)
 
 # Define the `config` variable to use for training.
 config = (

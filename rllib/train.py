@@ -1,8 +1,10 @@
 #!/usr/bin/env python
+import importlib
 import json
 import os
 from pathlib import Path
 import re
+import sys
 import typer
 from typing import Optional
 import uuid
@@ -57,7 +59,7 @@ def _patch_path(path: str):
 def load_experiments_from_file(
     config_file: str,
     file_type: SupportedFileType,
-    stop_override: Optional[str] = None,
+    stop: Optional[str] = None,
     checkpoint_config: Optional[dict] = None,
 ) -> dict:
     """Load experiments from a file. Supports YAML and Python files.
@@ -70,7 +72,7 @@ def load_experiments_from_file(
         config_file: The yaml or python file to be used as experiment definition.
             Must only contain exactly one experiment.
         file_type: One value of the `SupportedFileType` enum (yaml or python).
-        stop_override: An optional stop json string, only used if file_type is python.
+        stop: An optional stop json string, only used if file_type is python.
             If None (and file_type is python), will try to extract stop information
             from a defined `stop` variable in the python file, otherwise, will use {}.
         checkpoint_config: An optional checkpoint config to add to the returned
@@ -84,42 +86,37 @@ def load_experiments_from_file(
     if file_type == SupportedFileType.yaml:
         with open(config_file) as f:
             experiments = yaml.safe_load(f)
-            if stop_override is not None and stop_override != "{}":
-                raise ValueError(
-                    "`stop_override` criteria only supported for python files."
-                )
-    # Python file case (ensured by file type enum).
+            if stop is not None and stop != "{}":
+                raise ValueError("`stop` criteria only supported for python files.")
+    # Python file case (ensured by file type enum)
     else:
-        # Read in the code and execute it so we'll have access to the `config` and
-        # `stop` variables defined in there.
-        with open(config_file) as f:
-            code = f.read()
+        module_name = os.path.basename(config_file).replace(".py", "")
+        spec = importlib.util.spec_from_file_location(module_name, config_file)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
 
-        global_namespace = globals()
-        exec(code, global_namespace)
-        global_vars = globals()
-
-        if "config" not in global_vars:
+        if not hasattr(module, "config"):
             raise ValueError(
                 "Your Python file must contain a 'config' variable "
                 "that is an AlgorithmConfig object."
             )
-        algo_config = global_vars["config"]
-        if stop_override is None:
-            stop_override = global_vars.get("stop", {})
+        algo_config = getattr(module, "config")
+        if stop is None:
+            stop = getattr(module, "stop", {})
         else:
-            stop_override = json.loads(stop_override)
+            stop = json.loads(stop)
 
         # Note: we do this gymnastics to support the old format that
         # "run_rllib_experiments" expects. Ideally, we'd just build the config and
         # run the algo.
-        config_dict = algo_config.to_dict()
+        config = algo_config.to_dict()
         experiments = {
             f"default_{uuid.uuid4().hex}": {
                 "run": algo_config.__class__.__name__.replace("Config", ""),
-                "env": config_dict.get("env"),
-                "config": config_dict,
-                "stop": stop_override,
+                "env": config.get("env"),
+                "config": config,
+                "stop": stop,
             }
         }
 
@@ -290,6 +287,7 @@ def run(
     # If no subcommand is specified, simply run the following lines as the
     # "rllib train" main command.
     if ctx.invoked_subcommand is None:
+
         # we only check for backends when actually running the command. otherwise the
         # start-up time is too slow.
         import_backends()
