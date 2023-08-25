@@ -685,7 +685,7 @@ def test_grpc_proxy_timeouts(ray_instance):
         ),
     )
 
-    @serve.deployment()
+    @serve.deployment
     class HelloModel:
         def __call__(self, user_message):
             time.sleep(5)

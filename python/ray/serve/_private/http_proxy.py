@@ -1282,6 +1282,8 @@ class HTTPProxy(GenericProxy):
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while executing."
                 )
+                ray.cancel(obj_ref_generator)
+
                 # We should only send timeout response if we have not sent
                 # any messages to the client yet. Header (including status code)
                 # messages can only be sent once.
