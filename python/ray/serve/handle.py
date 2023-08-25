@@ -13,9 +13,9 @@ from ray.serve._private.common import DeploymentID, RequestProtocol
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
 )
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     get_random_letters,
-    record_serve_tag,
     DEFAULT,
 )
 from ray.serve._private.router import Router, RequestMetadata
@@ -47,6 +47,7 @@ class _HandleOptions:
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
     stream: bool = False
+    _prefer_local_routing: bool = False
     _router_cls: str = ""
     _request_protocol: str = RequestProtocol.UNDEFINED
 
@@ -55,6 +56,7 @@ class _HandleOptions:
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
         _request_protocol: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "_HandleOptions":
@@ -68,6 +70,9 @@ class _HandleOptions:
                 else multiplexed_model_id
             ),
             stream=self.stream if stream == DEFAULT.VALUE else stream,
+            _prefer_local_routing=self._prefer_local_routing
+            if _prefer_local_routing == DEFAULT.VALUE
+            else _prefer_local_routing,
             _router_cls=self._router_cls
             if _router_cls == DEFAULT.VALUE
             else _router_cls,
@@ -109,7 +114,11 @@ class _DeploymentHandleBase:
 
         # TODO(zcin): Separate deployment_id into deployment and application tags
         self.request_counter.set_default_tags(
-            {"handle": handle_tag, "deployment": str(self.deployment_id)}
+            {
+                "handle": handle_tag,
+                "deployment": self.deployment_id.name,
+                "application": self.deployment_id.app,
+            }
         )
 
         self._router: Optional[Router] = _router
@@ -122,13 +131,12 @@ class _DeploymentHandleBase:
             and self.handle_options._request_protocol == RequestProtocol.UNDEFINED
         ):
             if self.__class__ == DeploymentHandle:
-                tag = "SERVE_DEPLOYMENT_HANDLE_API_USED"
+                ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.record("1")
             elif self.__class__ == RayServeHandle:
-                tag = "SERVE_RAY_SERVE_HANDLE_API_USED"
+                ServeUsageTag.RAY_SERVE_HANDLE_API_USED.record("1")
             else:
-                tag = "SERVE_RAY_SERVE_SYNC_HANDLE_API_USED"
+                ServeUsageTag.RAY_SERVE_SYNC_HANDLE_API_USED.record("1")
 
-            record_serve_tag(tag, "1")
             self._recorded_telemetry = True
 
     def _set_request_protocol(self, request_protocol: RequestProtocol):
@@ -146,8 +154,10 @@ class _DeploymentHandleBase:
             self._router = Router(
                 serve.context.get_global_client()._controller,
                 self.deployment_id,
+                ray.get_runtime_context().get_node_id(),
                 event_loop=event_loop,
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
+                _prefer_local_routing=self.handle_options._prefer_local_routing,
                 _router_cls=self.handle_options._router_cls,
             )
 
@@ -179,16 +189,22 @@ class _DeploymentHandleBase:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
         new_handle_options = self.handle_options.copy_and_update(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            _prefer_local_routing=_prefer_local_routing,
             _router_cls=_router_cls,
         )
 
-        if self._router is None and _router_cls == DEFAULT.VALUE:
+        if (
+            self._router is None
+            and _router_cls == DEFAULT.VALUE
+            and _prefer_local_routing == DEFAULT.VALUE
+        ):
             self._get_or_create_router()
 
         if use_new_handle_api is True:
@@ -302,6 +318,7 @@ class RayServeHandle(_DeploymentHandleBase):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
@@ -320,6 +337,7 @@ class RayServeHandle(_DeploymentHandleBase):
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            _prefer_local_routing=_prefer_local_routing,
             use_new_handle_api=use_new_handle_api,
             _router_cls=_router_cls,
         )
@@ -378,6 +396,7 @@ class RayServeSyncHandle(_DeploymentHandleBase):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
@@ -397,6 +416,7 @@ class RayServeSyncHandle(_DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             use_new_handle_api=use_new_handle_api,
+            _prefer_local_routing=_prefer_local_routing,
             _router_cls=_router_cls,
         )
 
@@ -456,7 +476,7 @@ class _DeploymentResponseBase:
         # `_record_telemetry` is used to filter other API calls that go through
         # this path as well as calls from the proxy.
         if _record_telemetry:
-            record_serve_tag("SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED", "1")
+            ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
         return await self._assign_request_task
 
     def _to_object_ref_or_gen_sync(
@@ -470,7 +490,7 @@ class _DeploymentResponseBase:
             )
 
         if _record_telemetry:
-            record_serve_tag("SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED", "1")
+            ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
         return self._object_ref_future.result()
 
@@ -768,6 +788,7 @@ class DeploymentHandle(_DeploymentHandleBase):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
@@ -786,6 +807,7 @@ class DeploymentHandle(_DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             use_new_handle_api=use_new_handle_api,
+            _prefer_local_routing=_prefer_local_routing,
             _router_cls=_router_cls,
         )
 

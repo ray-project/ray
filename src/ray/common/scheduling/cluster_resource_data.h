@@ -23,6 +23,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/fixed_point.h"
+#include "ray/common/scheduling/resource_instance_set.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
@@ -30,8 +31,6 @@
 namespace ray {
 
 using scheduling::ResourceID;
-
-bool IsPredefinedResource(scheduling::ResourceID resource_id);
 
 /// Represents a request of resources.
 class ResourceRequest {
@@ -151,6 +150,10 @@ class TaskResourceInstances {
     }
   }
 
+  explicit TaskResourceInstances(
+      absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources)
+      : resources_(std::move(resources)) {}
+
   /// Get the per-instance values of a particular resource.
   /// NOTE: the resource MUST already exist in this TaskResourceInstances, otherwise a
   /// check fail will occur.
@@ -199,23 +202,6 @@ class TaskResourceInstances {
       resources_[resource_id] = instances;
     }
     return *this;
-  }
-
-  /// Add values for each instance of the given resource.
-  /// Note, if the number of instances in this set is less than the given instance
-  /// vector, more instances will be appended to match the number.
-  void Add(const ResourceID resource_id, const std::vector<FixedPoint> &instances) {
-    if (!Has(resource_id)) {
-      Set(resource_id, instances);
-    } else {
-      auto &resource_instances = GetMutable(resource_id);
-      if (resource_instances.size() <= instances.size()) {
-        resource_instances.resize(instances.size());
-      }
-      for (size_t i = 0; i < instances.size(); ++i) {
-        resource_instances[i] += instances[i];
-      }
-    }
   }
 
   /// Remove a particular resource.
@@ -303,9 +289,10 @@ class TaskResourceInstances {
 class NodeResources {
  public:
   NodeResources() {}
-  NodeResources(const ResourceSet &resources) : total(resources), available(resources) {}
-  ResourceSet total;
-  ResourceSet available;
+  NodeResources(const NodeResourceSet &resources)
+      : total(resources), available(resources) {}
+  NodeResourceSet total;
+  NodeResourceSet available;
   /// Only used by light resource report.
   ResourceSet load;
   /// Resources owned by normal tasks.
@@ -352,20 +339,18 @@ class NodeResources {
 /// This is used to describe the resources of the local node.
 class NodeResourceInstances {
  public:
-  TaskResourceInstances available;
-  TaskResourceInstances total;
+  NodeResourceInstanceSet available;
+  NodeResourceInstanceSet total;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
 
   /// Extract available resource instances.
-  const TaskResourceInstances &GetAvailableResourceInstances() const;
-  const TaskResourceInstances &GetTotalResourceInstances() const;
+  const NodeResourceInstanceSet &GetAvailableResourceInstances() const;
+  const NodeResourceInstanceSet &GetTotalResourceInstances() const;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
   [[nodiscard]] std::string DebugString() const;
-  /// Returns true if it contains this resource.
-  bool Contains(scheduling::ResourceID id) const;
 };
 
 struct Node {

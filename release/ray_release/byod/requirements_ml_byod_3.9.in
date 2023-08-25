@@ -3,6 +3,7 @@ accelerate
 bitsandbytes
 dataset
 datasets
+decord
 deepspeed
 diffusers
 evaluate
@@ -24,3 +25,4 @@ torchtext
 torchvision
 transformers>=4.31.0
 wandb
+whisper
