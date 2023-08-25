@@ -5,14 +5,13 @@ import pandas as pd
 import pytest
 import torch
 
-from ray.train import Checkpoint
-from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY, PREPROCESSOR_KEY
+from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import (
     _convert_pandas_to_batch_type,
     _convert_batch_type_to_pandas,
 )
 from ray.train.predictor import TYPE_TO_ENUM
-from ray.train.torch import LegacyTorchCheckpoint, TorchPredictor
+from ray.train.torch import TorchCheckpoint, TorchPredictor
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
 
@@ -61,12 +60,15 @@ def test_repr(model):
 def test_init(model, preprocessor):
     predictor = TorchPredictor(model=model, preprocessor=preprocessor)
 
-    checkpoint = {MODEL_KEY: model, PREPROCESSOR_KEY: preprocessor}
     checkpoint_predictor = TorchPredictor.from_checkpoint(
-        Checkpoint.from_dict(checkpoint)
+        TorchCheckpoint.from_model(model, preprocessor=preprocessor)
     )
 
-    assert checkpoint_predictor.model == predictor.model
+    data_batch = np.array([1, 2, 3])
+    np.testing.assert_array_equal(
+        predictor.predict(data_batch)["predictions"],
+        checkpoint_predictor.predict(data_batch)["predictions"],
+    )
     assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
 
 
@@ -190,7 +192,7 @@ def test_predict_array_with_different_dtypes(
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array_no_training(model, use_gpu):
-    checkpoint = LegacyTorchCheckpoint.from_model(model)
+    checkpoint = TorchCheckpoint.from_model(model)
     predictor = TorchPredictor.from_checkpoint(checkpoint, use_gpu=use_gpu)
 
     data_batch = np.array([1, 2, 3])
