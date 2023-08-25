@@ -189,15 +189,11 @@ class GenericProxy(ABC):
             )
 
         def get_handle(deployment_name, app_name):
-            return (
-                serve.context.get_global_client()
-                .get_handle(
-                    deployment_name,
-                    app_name,
-                    sync=False,
-                    missing_ok=True,
-                )
-                .options(use_new_handle_api=True)
+            return serve.context.get_global_client().get_handle(
+                deployment_name,
+                app_name,
+                sync=False,
+                missing_ok=True,
             )
 
         self.proxy_router = proxy_router_class(get_handle, self.protocol)
@@ -1149,11 +1145,13 @@ class HTTPProxy(GenericProxy):
         is_first_message = True
         while True:
             try:
-                next_obj_ref_task = obj_ref_generator._next_async(
-                    timeout_s=calculate_remaining_timeout(
-                        timeout_s=timeout_s,
-                        start_time_s=start,
-                        curr_time_s=time.time(),
+                next_obj_ref_task = asyncio.ensure_future(
+                    obj_ref_generator._next_async(
+                        timeout_s=calculate_remaining_timeout(
+                            timeout_s=timeout_s,
+                            start_time_s=start,
+                            curr_time_s=time.time(),
+                        )
                     )
                 )
                 done, _ = await asyncio.wait(
