@@ -72,13 +72,43 @@ Learn more
 
     .. grid-item-card::
 
+        **Distributed Lightning**
+        ^^^
+
+        Get started on distributing your model training with Ray Train and Lightning.
+
+        +++
+        .. button-ref:: train-pytorch-lightning
+            :color: primary
+            :outline:
+            :expand:
+
+            Try Ray Train with Lightning
+
+    .. grid-item-card::
+
+        **Distributed Transformers**
+        ^^^
+
+        Get started on distributing your model training with Ray Train and Transformers.
+
+        +++
+        .. button-ref:: train-pytorch-transformers
+            :color: primary
+            :outline:
+            :expand:
+
+            Try Ray Train with Transformers
+
+    .. grid-item-card::
+
         **More Frameworks**
         ^^^
 
         Don't see your framework? See these guides.
 
         +++
-        .. button-ref:: train-user-guides
+        .. button-ref:: train-more-frameworks
             :color: primary
             :outline:
             :expand:
