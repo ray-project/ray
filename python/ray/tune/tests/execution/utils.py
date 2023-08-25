@@ -149,11 +149,7 @@ def create_execution_test_objects(
     tune_controller = tune_controller_cls(
         experiment_path=os.path.join(storage_path, experiment_name),
         reuse_actors=reuse_actors,
-<<<<<<< HEAD
-        storage=mock_storage_context(),
-=======
         storage=storage,
->>>>>>> 3f11cf4666b4042f9ef66c3ee51486e5ece3cb94
         **kwargs,
     )
     resource_manager = BudgetResourceManager(total_resources=resources)
