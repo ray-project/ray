@@ -391,6 +391,13 @@ decorator==5.1.1 \
     --hash=sha256:637996211036b6385ef91435e4fae22989472f9d571faba8927ba8253acbc330 \
     --hash=sha256:b8c3f85900b9dc423225913c5aace94729fe1fa9763b38939a95226f02d37186
     # via ipython
+decord==0.6.0 \
+    --hash=sha256:02665d7c4f1193a330205a791bc128f7e108eb6ae5b67144437a02f700943bad \
+    --hash=sha256:51997f20be8958e23b7c4061ba45d0efcd86bffd5fe81c695d0befee0d442976 \
+    --hash=sha256:85ef90d2f872384657d7774cc486c237c5b12df62d4ac5cb5c8d6001fa611323 \
+    --hash=sha256:9c20674964fb1490c677bd911d2023d2a09fec7a58a4bb0b7ddf1ccc269f107a \
+    --hash=sha256:a0eb1258beade34dceb29d97856a7764d179db1b5182899b61874f3418a1abc8
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 deepspeed==0.9.4 \
     --hash=sha256:155575707df5f4d83d3e180ffb8b6e38ada119053010f17bd6d384aa7b50adfc
     # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
@@ -1188,6 +1195,7 @@ numpy==1.24.3 \
     #   accelerate
     #   contourpy
     #   datasets
+    #   decord
     #   deepspeed
     #   diffusers
     #   evaluate
@@ -2135,6 +2143,7 @@ six==1.16.0 \
     #   retrying
     #   rouge-score
     #   triad
+    #   whisper
 smmap==5.0.0 \
     --hash=sha256:2aba19d6a040e78d8b09de5c57e96207b09ed71d8e55ce0959eeee6c8e190d94 \
     --hash=sha256:c840e62059cd3be204b0c9c9f74be2c09d5648eddd4580d9314c3ecde0b30936
@@ -2579,6 +2588,9 @@ wheel==0.40.0 \
     #   nvidia-curand-cu11
     #   nvidia-cusparse-cu11
     #   nvidia-nvtx-cu11
+whisper==1.1.10 \
+    --hash=sha256:435b4fb843c4c752719bdf0511a652d5be710e9bb35ad9ebe3b133268ee31c44
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 widgetsnbextension==4.0.7 \
     --hash=sha256:be3228a73bbab189a16be2d4a3cd89ecbd4e31948bfdc64edac17dcdee3cd99c \
     --hash=sha256:ea67c17a7cd4ae358f8f46c3b304c40698bc0423732e3f273321ee141232c8be

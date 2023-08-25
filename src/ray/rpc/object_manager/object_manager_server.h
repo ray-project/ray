@@ -23,10 +23,13 @@
 namespace ray {
 namespace rpc {
 
-#define RAY_OBJECT_MANAGER_RPC_HANDLERS               \
-  RPC_SERVICE_HANDLER(ObjectManagerService, Push, -1) \
-  RPC_SERVICE_HANDLER(ObjectManagerService, Pull, -1) \
-  RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects, -1)
+#define RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(METHOD) \
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH(ObjectManagerService, METHOD, -1, AuthType::NO_AUTH)
+
+#define RAY_OBJECT_MANAGER_RPC_HANDLERS        \
+  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Push) \
+  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Pull) \
+  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(FreeObjects)
 
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
 /// `src/ray/protobuf/object_manager.proto`.
