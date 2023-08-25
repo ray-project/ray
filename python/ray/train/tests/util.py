@@ -29,9 +29,10 @@ def mock_storage_context() -> StorageContext:
     storage_path = tempfile.mkdtemp()
     exp_name = "exp_name"
     trial_name = "trial_name"
-    os.makedirs(os.path.join(storage_path, exp_name, trial_name), exist_ok=True)
-    return StorageContext(
+    storage = StorageContext(
         storage_path=storage_path,
         experiment_dir_name=exp_name,
         trial_dir_name=trial_name,
     )
+    os.makedirs(os.path.join(storage_path, exp_name, trial_name), exist_ok=True)
+    os.makedirs(storage.trial_local_path, exist_ok=True)
