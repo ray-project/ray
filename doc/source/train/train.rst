@@ -7,8 +7,6 @@ Ray Train: Scalable Model Training
 
 Ray Train is a scalable model training library for distributed training and fine-tuning.
 
-<<<<<<INSERT image from Kamil comparing single-node to multi-node training>>>>>>
-
 Ray Train is the simplest way to train large models with large datasets:
 
 * Model training on a single node or multiple nodes, uses the same training code.
