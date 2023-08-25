@@ -50,7 +50,7 @@ py_test(
     name = "test_actor_reuse",
     size = "large",
     srcs = ["tests/test_actor_reuse.py"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
     deps = [":tune_lib", ":conftest"],
 )
 
@@ -92,15 +92,6 @@ py_test(
     srcs = ["tests/test_cluster.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "rllib"],
-)
-
-py_test(
-    name = "test_cluster_searcher",
-    size = "large",
-    srcs = ["tests/test_cluster_searcher.py"],
-    data = ["tests/_test_cluster_interrupt_searcher.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
 )
 
 py_test(
@@ -406,8 +397,8 @@ py_test(
     name = "test_tuner_restore",
     size = "large",
     srcs = ["tests/test_tuner_restore.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    deps = [":tune_lib", ":conftest"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
@@ -453,7 +444,7 @@ py_test(
     size = "small",
     srcs = ["tests/execution/test_actor_caching.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"]
+    tags = ["team:ml", "exclusive", "new_storage"]
 )
 
 py_test(
@@ -461,7 +452,7 @@ py_test(
     size = "large",
     srcs = ["tests/execution/test_controller_callback_integration.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"]
+    tags = ["team:ml", "exclusive", "new_storage"]
 )
 
 py_test(
@@ -477,7 +468,7 @@ py_test(
     size = "large",
     srcs = ["tests/execution/test_controller_control_integration.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"]
+    tags = ["team:ml", "exclusive", "new_storage"]
 )
 
 py_test(
@@ -485,7 +476,7 @@ py_test(
     size = "large",
     srcs = ["tests/execution/test_controller_errors_integration.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"]
+    tags = ["team:ml", "exclusive", "new_storage"]
 )
 
 py_test(
@@ -493,7 +484,7 @@ py_test(
     size = "large",
     srcs = ["tests/execution/test_controller_resources_integration.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"]
+    tags = ["team:ml", "exclusive", "new_storage"]
 )
 
 py_test(
@@ -501,7 +492,7 @@ py_test(
     size = "large",
     srcs = ["tests/execution/test_controller_search_alg_integration.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"]
+    tags = ["team:ml", "exclusive", "new_storage"]
 )
 
 # --------------------------------------------------------------------
