@@ -26,7 +26,7 @@ except (ImportError, ModuleNotFoundError) as e:
 
 
 from ray.air._internal.filelock import TempFileLock
-from ray.air._internal.uri_utils import URI, is_uri
+from ray.air._internal.uri_utils import is_uri
 from ray.tune.syncer import Syncer, SyncConfig, _BackgroundSyncer
 from ray.tune.result import _get_defaults_results_dir
 
@@ -34,12 +34,14 @@ if TYPE_CHECKING:
     from ray.train._checkpoint import Checkpoint
 
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 
 
 def _use_storage_context() -> bool:
     # Whether to enable the new simple persistence mode.
-    return bool(int(os.environ.get("RAY_AIR_NEW_PERSISTENCE_MODE", "0")))
+    from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
+
+    return bool(int(os.environ.get(RAY_AIR_NEW_PERSISTENCE_MODE, "0")))
 
 
 class _ExcludingLocalFilesystem(LocalFileSystem):
@@ -61,7 +63,7 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
         return "_excluding_local"
 
     def _should_exclude(self, name: str) -> bool:
-        """Return True if `name` matches any of the `self._exclude` patterns."""
+        """Return True if `name` matches any of the ``self._exclude`` patterns."""
         alt = None
         if os.path.isdir(name):
             # If this is a directory, also test it with trailing slash
@@ -91,12 +93,14 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
 def _pyarrow_fs_copy_files(
     source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
 ):
-    if isinstance(source_filesystem, pyarrow.fs.S3FileSystem) or isinstance(
-        destination_filesystem, pyarrow.fs.S3FileSystem
-    ):
-        # Workaround multi-threading issue with pyarrow
+    if isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
+        # Workaround multi-threading issue with pyarrow. Note that use_threads=True
+        # is safe for download, just not for uploads, see:
         # https://github.com/apache/arrow/issues/32372
         kwargs.setdefault("use_threads", False)
+
+    # Use a large chunk size to speed up large checkpoint transfers.
+    kwargs.setdefault("chunk_size", 64 * 1024 * 1024)
 
     return pyarrow.fs.copy_files(
         source,
@@ -113,8 +117,13 @@ def _pyarrow_fs_copy_files(
 def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
     assert not is_uri(fs_path), fs_path
 
+    is_dir = _is_directory(fs, fs_path)
+
     try:
-        fs.delete_dir(fs_path)
+        if is_dir:
+            fs.delete_dir(fs_path)
+        else:
+            fs.delete_file(fs_path)
     except Exception:
         logger.exception(f"Caught exception when deleting path at ({fs}, {fs_path}):")
 
@@ -167,7 +176,7 @@ def _download_from_fs_path(
         else:
             _pyarrow_fs_copy_files(fs_path, local_path, source_filesystem=fs)
     except Exception as e:
-        # Clean up the directory if downloading was unsuccessful.
+        # Clean up the directory if downloading was unsuccessful
         if not exists_before:
             shutil.rmtree(local_path, ignore_errors=True)
         raise e
@@ -240,7 +249,7 @@ def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     """Returns True if (fs, fs_path) exists."""
     assert not is_uri(fs_path), fs_path
 
-    valid = fs.get_file_info([fs_path])[0]
+    valid = fs.get_file_info(fs_path)
     return valid.type != pyarrow.fs.FileType.NotFound
 
 
@@ -251,7 +260,11 @@ def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
     assert not is_uri(fs_path), fs_path
+
     file_info = fs.get_file_info(fs_path)
+    if file_info.type == pyarrow.fs.FileType.NotFound:
+        raise FileNotFoundError(f"Path not found: ({fs}, {fs_path})")
+
     return not file_info.is_file
 
 
@@ -270,6 +283,44 @@ def _create_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> None:
         logger.exception(
             f"Caught exception when creating directory at ({fs}, {fs_path}):"
         )
+
+
+def get_fs_and_path(
+    storage_path: Union[str, os.PathLike],
+    storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+) -> Tuple[pyarrow.fs.FileSystem, str]:
+    """Returns the fs and path from a storage path and an optional custom fs.
+
+    Args:
+        storage_path: A storage path or URI. (ex: s3://bucket/path or /tmp/ray_results)
+        storage_filesystem: A custom filesystem to use. If not provided,
+            this will be auto-resolved by pyarrow. If provided, the storage_path
+            is assumed to be prefix-stripped already, and must be a valid path
+            on the filesystem.
+
+    Raises:
+        ValueError: if the storage path is a URI and a custom filesystem is given.
+    """
+    storage_path = str(storage_path)
+
+    if storage_filesystem:
+        if is_uri(storage_path):
+            raise ValueError(
+                "If you specify a custom `storage_filesystem`, the corresponding "
+                "`storage_path` must be a *path* on that filesystem, not a URI.\n"
+                "For example: "
+                "(storage_filesystem=CustomS3FileSystem(), "
+                "storage_path='s3://bucket/path') should be changed to "
+                "(storage_filesystem=CustomS3FileSystem(), "
+                "storage_path='bucket/path')\n"
+                "This is what you provided: "
+                f"(storage_filesystem={storage_filesystem}, "
+                f"storage_path={storage_path})\n"
+                "Note that this may depend on the custom filesystem you use."
+            )
+        return storage_filesystem, storage_path
+
+    return pyarrow.fs.FileSystem.from_uri(storage_path)
 
 
 class _FilesystemSyncer(_BackgroundSyncer):
@@ -351,10 +402,6 @@ class StorageContext:
         >>> storage.current_checkpoint_index = 1
         >>> storage.checkpoint_fs_path
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
-        >>> storage.storage_prefix
-        URI<mock://netloc?param=1>
-        >>> str(storage.storage_prefix / storage.experiment_fs_path)
-        'mock://netloc/bucket/path/exp_name?param=1'
 
     Example with storage_path=None:
 
@@ -378,10 +425,6 @@ class StorageContext:
         True
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
         <pyarrow._fs.LocalFileSystem object...
-        >>> storage.storage_prefix
-        URI<.>
-        >>> str(storage.storage_prefix / storage.experiment_fs_path)
-        '/tmp/ray_results/exp_name'
 
     Internal Usage Examples:
     - To copy files to the trial directory on the storage filesystem:
@@ -396,13 +439,13 @@ class StorageContext:
     def __init__(
         self,
         storage_path: Optional[str],
-        sync_config: SyncConfig,
         experiment_dir_name: str,
+        sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
         current_checkpoint_index: int = 0,
     ):
-        storage_path_provided = storage_path is not None
+        custom_fs_provided = storage_filesystem is not None
 
         self.storage_local_path = _get_defaults_results_dir()
         # If `storage_path=None`, then set it to the local path.
@@ -412,52 +455,27 @@ class StorageContext:
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
-        self.sync_config = dataclasses.replace(sync_config)
-
-        if storage_filesystem:
-            # Custom pyarrow filesystem
-            self.storage_filesystem = storage_filesystem
-            if is_uri(self.storage_path):
-                raise ValueError(
-                    "If you specify a custom `storage_filesystem`, the corresponding "
-                    "`storage_path` must be a *path* on that filesystem, not a URI.\n"
-                    "For example: "
-                    "(storage_filesystem=CustomS3FileSystem(), "
-                    "storage_path='s3://bucket/path') should be changed to "
-                    "(storage_filesystem=CustomS3FileSystem(), "
-                    "storage_path='bucket/path')\n"
-                    "This is what you provided: "
-                    f"(storage_filesystem={storage_filesystem}, "
-                    f"storage_path={storage_path})\n"
-                    "Note that this may depend on the custom filesystem you use."
-                )
-            self.storage_fs_path = self.storage_path
-        else:
-            (
-                self.storage_filesystem,
-                self.storage_fs_path,
-            ) = pyarrow.fs.FileSystem.from_uri(self.storage_path)
-
-        # The storage prefix is the URI that remains after stripping the
-        # URI prefix away from the user-provided `storage_path` (using `from_uri`).
-        # Ex: `storage_path="s3://bucket/path?param=1`
-        #  -> `storage_prefix=URI<s3://.?param=1>`
-        # See the doctests for more examples.
-        # This is used to construct URI's of the same format as `storage_path`.
-        # However, we don't track these URI's internally, because pyarrow only
-        # needs to interact with the prefix-stripped fs_path.
-        self.storage_prefix: URI = URI(self.storage_path).rstrip_subpath(
-            Path(self.storage_fs_path)
+        self.sync_config = (
+            dataclasses.replace(sync_config) if sync_config else SyncConfig()
         )
 
-        # Only initialize a syncer if a `storage_path` was provided.
+        self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
+            self.storage_path, storage_filesystem
+        )
+
+        # Syncing is always needed if a custom `storage_filesystem` is provided.
+        # Otherwise, syncing is only needed if storage_local_path
+        # and storage_fs_path point to different locations.
+        syncing_needed = (
+            custom_fs_provided or self.storage_fs_path != self.storage_local_path
+        )
         self.syncer: Optional[Syncer] = (
             _FilesystemSyncer(
                 storage_filesystem=self.storage_filesystem,
                 sync_period=self.sync_config.sync_period,
                 sync_timeout=self.sync_config.sync_timeout,
             )
-            if storage_path_provided
+            if syncing_needed
             else None
         )
 
@@ -503,9 +521,9 @@ class StorageContext:
         "Current" is defined by the `current_checkpoint_index` attribute of the
         storage context.
 
-        This method copies the checkpoint files to the storage location,
-        drops a marker at the storage path to indicate that the checkpoint
-        is completely uploaded, then deletes the original checkpoint directory.
+        This method copies the checkpoint files to the storage location.
+        It's up to the user to delete the original checkpoint files if desired.
+
         For example, the original directory is typically a local temp directory.
 
         Args:
@@ -517,7 +535,7 @@ class StorageContext:
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train._checkpoint import Checkpoint
 
-        logger.debug(
+        logger.info(
             "Copying checkpoint files to storage path:\n"
             "({source_fs}, {source}) -> ({dest_fs}, {destination})".format(
                 source=checkpoint.path,
@@ -526,6 +544,13 @@ class StorageContext:
                 dest_fs=self.storage_filesystem,
             )
         )
+
+        # Raise an error if the storage path is not accessible when
+        # attempting to upload a checkpoint from a remote worker.
+        # Ex: If storage_path is a local path, then a validation marker
+        # will only exist on the head node but not the worker nodes.
+        self._check_validation_file()
+
         self.storage_filesystem.create_dir(self.checkpoint_fs_path)
         _pyarrow_fs_copy_files(
             source=checkpoint.path,
@@ -534,17 +559,12 @@ class StorageContext:
             destination_filesystem=self.storage_filesystem,
         )
 
-        # Delete local checkpoint files.
-        # TODO(justinvyu): What if checkpoint.path == self.checkpoint_fs_path?
-        # TODO(justinvyu): What if users don't want to delete the local checkpoint?
-        checkpoint.filesystem.delete_dir(checkpoint.path)
-
-        uploaded_checkpoint = Checkpoint(
+        persisted_checkpoint = Checkpoint(
             filesystem=self.storage_filesystem,
             path=self.checkpoint_fs_path,
         )
-        logger.debug(f"Checkpoint successfully created at: {uploaded_checkpoint}")
-        return uploaded_checkpoint
+        logger.info(f"Checkpoint successfully created at: {persisted_checkpoint}")
+        return persisted_checkpoint
 
     @property
     def experiment_fs_path(self) -> str:
@@ -597,10 +617,12 @@ class StorageContext:
         The user of this class is responsible for setting the `current_checkpoint_index`
         (e.g., incrementing when needed).
         """
-        checkpoint_dir_name = StorageContext._make_checkpoint_dir_name(
-            self.current_checkpoint_index
-        )
-        return os.path.join(self.trial_fs_path, checkpoint_dir_name)
+        return os.path.join(self.trial_fs_path, self.checkpoint_dir_name)
+
+    @property
+    def checkpoint_dir_name(self) -> str:
+        """The current checkpoint directory name, based on the checkpoint index."""
+        return StorageContext._make_checkpoint_dir_name(self.current_checkpoint_index)
 
     @staticmethod
     def get_experiment_dir_name(run_obj: Union[str, Callable, Type]) -> str:
@@ -619,24 +641,3 @@ class StorageContext:
     def _make_checkpoint_dir_name(index: int):
         """Get the name of the checkpoint directory, given an index."""
         return f"checkpoint_{index:06d}"
-
-
-_storage_context: Optional[StorageContext] = None
-
-
-def init_shared_storage_context(storage_context: StorageContext):
-    """StorageContext can be made a global singleton by calling this method.
-
-    This singleton is only created on the initialization of remote Trainable actors.
-    On the driver, there is no global singleton, since each trial has its own
-    trial_dir_name."""
-    global _storage_context
-    _storage_context = storage_context
-
-
-def get_storage_context() -> StorageContext:
-    assert _storage_context, (
-        "You must first call `init_shared_storage_context` in order to access a "
-        "global shared copy of StorageContext."
-    )
-    return _storage_context

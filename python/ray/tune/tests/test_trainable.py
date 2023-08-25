@@ -16,6 +16,7 @@ from ray.air._internal.remote_storage import (
     upload_to_uri,
     delete_at_uri,
 )
+from ray.train._internal.storage import StorageContext, _use_storage_context
 from ray.tune.logger import NoopLogger
 from ray.tune.syncer import _DefaultSyncer
 from ray.tune.trainable import wrap_function
@@ -95,40 +96,35 @@ def function_trainable_directory(config):
     train.report({"metric": 4}, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
-@pytest.mark.parametrize("return_type", ["object", "root", "subdir", "checkpoint"])
-def test_save_load_checkpoint_path_class(ray_start_2_cpus, return_type):
+@pytest.mark.parametrize(
+    "return_type",
+    ["object", "root"]
+    # Do not test subdir/checkpoint path in new storage context
+    + (["subdir", "checkpoint"] if not _use_storage_context() else []),
+)
+def test_save_load_checkpoint_path_class(ray_start_2_cpus, return_type, tmpdir):
     """Assert that restoring from a Trainable.save() future works with
     class trainables.
 
     Needs Ray cluster so we get actual futures.
     """
-    trainable = ray.remote(SavingTrainable).remote(return_type=return_type)
+    trainable = ray.remote(SavingTrainable).remote(
+        return_type=return_type,
+        storage=StorageContext(
+            storage_path=str(tmpdir), experiment_dir_name="test", trial_dir_name="test0"
+        ),
+    )
 
+    # Train one step
+    ray.get(trainable.train.remote())
+
+    # Save checkpoint
     saving_future = trainable.save.remote()
 
     # Check for errors
     ray.get(saving_future)
 
     restoring_future = trainable.restore.remote(saving_future)
-
-    ray.get(restoring_future)
-
-
-@pytest.mark.parametrize("return_type", ["object", "root", "subdir", "checkpoint"])
-def test_save_load_checkpoint_object_class(ray_start_2_cpus, return_type):
-    """Assert that restoring from a Trainable.save_to_object() future works with
-    class trainables.
-
-    Needs Ray cluster so we get actual futures.
-    """
-    trainable = ray.remote(SavingTrainable).remote(return_type=return_type)
-
-    saving_future = trainable.save_to_object.remote()
-
-    # Check for errors
-    ray.get(saving_future)
-
-    restoring_future = trainable.restore_from_object.remote(saving_future)
 
     ray.get(restoring_future)
 
@@ -154,53 +150,6 @@ def test_save_load_checkpoint_path_fn(ray_start_2_cpus, fn_trainable):
     restoring_future = trainable.restore.remote(saving_future)
 
     ray.get(restoring_future)
-
-
-@pytest.mark.parametrize(
-    "fn_trainable", [function_trainable_dict, function_trainable_directory]
-)
-def test_save_load_checkpoint_object_fn(ray_start_2_cpus, fn_trainable):
-    """Assert that restoring from a Trainable.save_to_object() future works with
-    function trainables.
-
-    Needs Ray cluster so we get actual futures.
-    """
-    trainable_cls = wrap_function(fn_trainable)
-    trainable = ray.remote(trainable_cls).remote()
-    ray.get(trainable.train.remote())
-
-    saving_future = trainable.save_to_object.remote()
-
-    # Check for errors
-    ray.get(saving_future)
-
-    restoring_future = trainable.restore_from_object.remote(saving_future)
-
-    ray.get(restoring_future)
-
-
-def test_checkpoint_object_no_sync(tmpdir):
-    """Asserts that save_to_object() and restore_from_object() do not sync up/down"""
-    trainable = SavingTrainable(
-        "object", remote_checkpoint_dir="memory:///test/location"
-    )
-
-    # Save checkpoint
-    trainable.save()
-
-    check_dir = tmpdir / "check_save"
-    download_from_uri(uri="memory:///test/location", local_path=str(check_dir))
-    assert os.listdir(str(check_dir)) == ["checkpoint_000000"]
-
-    # Save to object
-    obj = trainable.save_to_object()
-
-    check_dir = tmpdir / "check_save_obj"
-    download_from_uri(uri="memory:///test/location", local_path=str(check_dir))
-    assert os.listdir(str(check_dir)) == ["checkpoint_000000"]
-
-    # Restore from object
-    trainable.restore_from_object(obj)
 
 
 @pytest.mark.parametrize("hanging", [True, False])

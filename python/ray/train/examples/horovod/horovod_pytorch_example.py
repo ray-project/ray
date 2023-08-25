@@ -7,11 +7,12 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data.distributed
 from torchvision import datasets, transforms
+import tempfile
 
 from ray import train
 from ray.train import ScalingConfig
+from ray.train._checkpoint import Checkpoint
 from ray.train.horovod import HorovodTrainer
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
 import ray.train.torch
 
 
@@ -142,7 +143,6 @@ def train_func(config):
     num_epochs = config.get("num_epochs", 10)
     log_interval = config.get("log_interval", 10)
     use_cuda = config.get("use_cuda", False)
-    save_model_as_dict = config.get("save_model_as_dict", False)
 
     model, optimizer, train_loader, train_sampler = setup(config)
 
@@ -151,12 +151,10 @@ def train_func(config):
         loss = train_epoch(
             model, optimizer, train_sampler, train_loader, epoch, log_interval, use_cuda
         )
-        if save_model_as_dict:
-            checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
-        else:
-            checkpoint = TorchCheckpoint.from_model(model)
         results.append(loss)
-        train.report(dict(loss=loss), checkpoint=checkpoint)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report({"loss": loss}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     # Only used for testing.
     return results

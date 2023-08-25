@@ -163,14 +163,32 @@ class ASGIMessageQueue(Send):
     """Queue enables polling for received or sent messages.
 
     This class assumes a single consumer of the queue (concurrent calls to
-    `get_messages_nowait` and `wait_for_message` may result in undefined behavior).
+    `get_messages_nowait` and `wait_for_message` is undefined behavior).
     """
 
     def __init__(self):
         self._message_queue = asyncio.Queue()
         self._new_message_event = asyncio.Event()
+        self._closed = False
+
+    def close(self):
+        """Close the queue, rejecting new messages.
+
+        Once the queue is closed, existing messages will be returned from
+        `get_messages_nowait` and subsequent calls to `wait_for_message` will
+        always return immediately.
+        """
+        self._closed = True
+        self._new_message_event.set()
 
     async def __call__(self, message: Message):
+        """Send a message, putting it on the queue.
+
+        `RuntimeError` is raised if the queue has been closed using `.close()`.
+        """
+        if self._closed:
+            raise RuntimeError("New messages cannot be sent after the queue is closed.")
+
         await self._message_queue.put(message)
         self._new_message_event.set()
 
@@ -193,8 +211,12 @@ class ASGIMessageQueue(Send):
 
         If a message is available, this method will return immediately on each call
         until `get_messages_nowait` is called.
+
+        After the queue is closed using `.close()`, this will always return
+        immediately.
         """
-        await self._new_message_event.wait()
+        if not self._closed:
+            await self._new_message_event.wait()
 
 
 class ASGIReceiveProxy:

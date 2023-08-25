@@ -24,6 +24,7 @@ from ray._private.test_utils import (
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
@@ -36,8 +37,8 @@ from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import (
     block_until_http_ready,
     format_actor_name,
-    get_all_node_ids,
 )
+from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve.schema import ServeApplicationSchema
 
 from ray.util.state import list_actors
@@ -91,6 +92,8 @@ def test_shutdown(ray_shutdown):
     ray.init(num_cpus=16)
     serve.start(http_options=dict(port=8003))
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
+    cluster_node_info_cache.update()
 
     @serve.deployment
     def f():
@@ -104,7 +107,7 @@ def test_shutdown(ray_shutdown):
         format_actor_name(
             SERVE_PROXY_NAME,
             serve.context._global_client._controller_name,
-            get_all_node_ids(gcs_client)[0][0],
+            cluster_node_info_cache.get_alive_nodes()[0][0],
         ),
     ]
 
@@ -191,7 +194,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
     actor_names = {
         "ServeController",
         "HTTPProxyActor",
-        "ServeReplica:app_f",
+        "ServeReplica:app:f",
     }
 
     def check_alive():
@@ -230,8 +233,8 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     actor_names = {
         "ServeController",
         "HTTPProxyActor",
-        "ServeReplica:app1_f",
-        "ServeReplica:app2_f",
+        "ServeReplica:app1:f",
+        "ServeReplica:app2:f",
     }
 
     def check_alive():
@@ -371,10 +374,12 @@ def test_multiple_routers(ray_cluster):
     serve.run(A.bind())
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
+    cluster_node_info_cache.update()
 
     def get_proxy_names():
         proxy_names = []
-        for node_id, _ in get_all_node_ids(gcs_client):
+        for node_id in cluster_node_info_cache.get_alive_node_ids():
             proxy_names.append(
                 format_actor_name(
                     SERVE_PROXY_NAME,
@@ -410,6 +415,7 @@ def test_multiple_routers(ray_cluster):
     # Add a new node to the cluster. This should trigger a new router to get
     # started.
     new_node = cluster.add_node(num_cpus=4)
+    cluster_node_info_cache.update()
 
     wait_for_condition(lambda: len(get_proxy_names()) == 3)
     (third_proxy,) = set(get_proxy_names()) - set(original_proxy_names)
@@ -429,6 +435,7 @@ def test_multiple_routers(ray_cluster):
     # Remove the newly-added node from the cluster. The corresponding actor
     # should be removed as well.
     cluster.remove_node(new_node)
+    cluster_node_info_cache.update()
 
     def third_actor_removed():
         try:
@@ -657,7 +664,7 @@ def test_fixed_number_proxies(monkeypatch, ray_cluster):
 
 def test_serve_shutdown(ray_shutdown):
     ray.init(namespace="serve")
-    serve.start(detached=True)
+    client = serve.start(detached=True)
 
     @serve.deployment
     class A:
@@ -666,16 +673,16 @@ def test_serve_shutdown(ray_shutdown):
 
     serve.run(A.bind())
 
-    assert len(serve.list_deployments()) == 1
+    assert len(client.list_deployments()) == 1
 
     serve.shutdown()
-    serve.start(detached=True)
+    client = serve.start(detached=True)
 
-    assert len(serve.list_deployments()) == 0
+    assert len(client.list_deployments()) == 0
 
     serve.run(A.bind())
 
-    assert len(serve.list_deployments()) == 1
+    assert len(client.list_deployments()) == 1
 
 
 def test_detached_namespace_default_ray_init(ray_shutdown):
@@ -714,50 +721,6 @@ serve.run(A.bind())"""
     run_string_as_driver(
         driver_template.format(address=address, namespace="test_namespace2", port=8001)
     )
-
-
-@pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)
-def test_snapshot_always_written_to_internal_kv(
-    ray_start_with_dashboard, ray_shutdown  # noqa: F811
-):
-    # https://github.com/ray-project/ray/issues/19752
-
-    @serve.deployment()
-    def hello(_):
-        return "hello"
-
-    def check():
-        try:
-            resp = requests.get("http://localhost:8000/hello")
-            assert resp.text == "hello"
-            return True
-        except Exception:
-            return False
-
-    serve.start(detached=True)
-    serve.run(hello.bind(), name="app")
-    check()
-
-    webui_url = ray_start_with_dashboard["webui_url"]
-
-    def get_deployment_snapshot():
-        snapshot = requests.get(f"http://{webui_url}/api/snapshot").json()["data"][
-            "snapshot"
-        ]
-        return snapshot["deployments"]
-
-    # Make sure /api/snapshot return non-empty deployment status.
-    def verify_snapshot():
-        return get_deployment_snapshot() != {}
-
-    wait_for_condition(verify_snapshot)
-
-    # Sanity check the snapshot is correct
-    snapshot = get_deployment_snapshot()
-    assert len(snapshot) == 1
-    hello_deployment = list(snapshot.values())[0]
-    assert hello_deployment["name"] == "app_hello"
-    assert hello_deployment["status"] == "RUNNING"
 
 
 def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, caplog):
@@ -826,8 +789,6 @@ def test_recovering_controller_no_redeploy():
 def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     """Check if status message says if a serve deployment has taken a long time"""
 
-    client = lower_slow_startup_threshold_and_reset
-
     @serve.deployment(
         num_replicas=5,
         ray_actor_options={"num_cpus": 1},
@@ -838,7 +799,9 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     serve.run(f.bind(), _blocking=False)
 
     def updating_message():
-        deployment_status = client.get_serve_status().deployment_statuses[0]
+        deployment_status = (
+            serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["f"]
+        )
         message_substring = "more than 1s to be scheduled."
         return (deployment_status.status == "UPDATING") and (
             message_substring in deployment_status.message
@@ -854,8 +817,6 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
     be unhealthy should be prioritized over this resource availability issue.
     """
 
-    client = lower_slow_startup_threshold_and_reset
-
     @serve.deployment
     class f:
         def __init__(self):
@@ -867,13 +828,20 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
     serve.run(f.bind(), _blocking=False)
 
     wait_for_condition(
-        lambda: client.get_serve_status().deployment_statuses[0].status == "UNHEALTHY",
+        lambda: serve.status()
+        .applications[SERVE_DEFAULT_APP_NAME]
+        .deployments["f"]
+        .status
+        == "UNHEALTHY",
         timeout=20,
     )
 
     with pytest.raises(RuntimeError):
         wait_for_condition(
-            lambda: client.get_serve_status().deployment_statuses[0].status
+            lambda: serve.status()
+            .applications[SERVE_DEFAULT_APP_NAME]
+            .deployments["f"]
+            .status
             == "UPDATING",
             timeout=10,
         )

@@ -23,6 +23,8 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/fixed_point.h"
+#include "ray/common/scheduling/resource_instance_set.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
 
@@ -30,18 +32,9 @@ namespace ray {
 
 using scheduling::ResourceID;
 
-bool IsPredefinedResource(scheduling::ResourceID resource_id);
-
-/// Represents a set of resources.
-/// NOTE: negative values are valid in this set, while 0 is not. This means if any
-/// resource value is changed to 0, the resource will be removed.
-/// TODO(hchen): This class should be independent with tasks. We should move out the
-/// "requires_object_store_memory_" field, and rename this class to ResourceSet.
+/// Represents a request of resources.
 class ResourceRequest {
  public:
-  using ResourceIdIterator =
-      boost::select_first_range<absl::flat_hash_map<ResourceID, FixedPoint>>;
-
   /// Construct an empty ResourceRequest.
   ResourceRequest() : ResourceRequest({}, false) {}
 
@@ -51,183 +44,76 @@ class ResourceRequest {
 
   ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
                   bool requires_object_store_memory)
-      : requires_object_store_memory_(requires_object_store_memory) {
-    for (auto entry : resource_map) {
-      if (entry.second != 0) {
-        resources_[entry.first] = entry.second;
-      }
-    }
-  }
-
-  ResourceRequest &operator=(const ResourceRequest &other) = default;
+      : resources_(resource_map),
+        requires_object_store_memory_(requires_object_store_memory) {}
 
   bool RequiresObjectStoreMemory() const { return requires_object_store_memory_; }
 
-  /// Get the value of a particular resource.
-  /// If the resource doesn't exist, return 0.
-  FixedPoint Get(ResourceID resource_id) const {
-    auto it = resources_.find(resource_id);
-    if (it == resources_.end()) {
-      return FixedPoint(0);
-    } else {
-      return it->second;
-    }
+  const ResourceSet &GetResourceSet() const { return resources_; }
+
+  FixedPoint Get(ResourceID resource_id) const { return resources_.Get(resource_id); }
+
+  void Set(ResourceID resource_id, FixedPoint value) {
+    resources_.Set(resource_id, value);
   }
 
-  /// Set a resource to the given value.
-  /// NOTE: if the new value is 0, the resource will be removed.
-  ResourceRequest &Set(ResourceID resource_id, FixedPoint value) {
-    if (value == 0) {
-      resources_.erase(resource_id);
-    } else {
-      resources_[resource_id] = value;
-    }
-    return *this;
-  }
+  bool Has(ResourceID resource_id) const { return resources_.Has(resource_id); }
 
-  /// Check whether a particular resource exist.
-  bool Has(ResourceID resource_id) const { return resources_.contains(resource_id); }
+  ResourceSet::ResourceIdIterator ResourceIds() const { return resources_.ResourceIds(); }
 
-  /// Clear the whole set.
-  void Clear() { resources_.clear(); }
-
-  /// Remove the negative values in this set.
-  void RemoveNegative() {
-    for (auto it = resources_.begin(); it != resources_.end();) {
-      if (it->second < 0) {
-        resources_.erase(it++);
-      } else {
-        it++;
-      }
-    }
-  }
-
-  /// Return the number of resources in this set.
-  size_t Size() const { return resources_.size(); }
-
-  /// Return true if this set is empty.
-  bool IsEmpty() const { return resources_.empty(); }
-
-  /// Return a boost::range object that can be used as an iterator of the resource IDs.
-  ResourceIdIterator ResourceIds() const { return boost::adaptors::keys(resources_); }
-
-  /// Return a map from the resource ids to the values.
-  absl::flat_hash_map<ResourceID, FixedPoint> ToMap() const {
-    absl::flat_hash_map<ResourceID, FixedPoint> res;
-    for (auto entry : resources_) {
-      res.emplace(entry.first, entry.second);
-    }
-    return res;
-  }
-
-  /// Return a map from resource names (string) to values (double).
   absl::flat_hash_map<std::string, double> ToResourceMap() const {
-    absl::flat_hash_map<std::string, double> resource_map;
-    for (auto entry : resources_) {
-      resource_map.emplace(entry.first.Binary(), entry.second.Double());
-    }
-    return resource_map;
+    return resources_.GetResourceMap();
   }
 
-  ResourceRequest operator+(const ResourceRequest &other) {
+  bool IsEmpty() const { return resources_.IsEmpty(); }
+
+  size_t Size() const { return resources_.Size(); }
+
+  void Clear() { resources_.Clear(); }
+
+  bool operator==(const ResourceRequest &other) const {
+    return this->resources_ == other.resources_;
+  }
+
+  bool operator<=(const ResourceRequest &other) const {
+    return this->resources_ <= other.resources_;
+  }
+
+  bool operator>=(const ResourceRequest &other) const {
+    return this->resources_ >= other.resources_;
+  }
+
+  bool operator!=(const ResourceRequest &other) const {
+    return this->resources_ != other.resources_;
+  }
+
+  ResourceRequest operator+(const ResourceRequest &other) const {
     ResourceRequest res = *this;
     res += other;
     return res;
   }
 
-  ResourceRequest operator-(const ResourceRequest &other) {
+  ResourceRequest operator-(const ResourceRequest &other) const {
     ResourceRequest res = *this;
     res -= other;
     return res;
   }
 
   ResourceRequest &operator+=(const ResourceRequest &other) {
-    for (auto &entry : other.resources_) {
-      auto it = resources_.find(entry.first);
-      if (it != resources_.end()) {
-        it->second += entry.second;
-        if (it->second == 0) {
-          resources_.erase(it);
-        }
-      } else {
-        resources_.emplace(entry.first, entry.second);
-      }
-    }
+    resources_ += other.resources_;
     return *this;
   }
 
   ResourceRequest &operator-=(const ResourceRequest &other) {
-    for (auto &entry : other.resources_) {
-      auto it = resources_.find(entry.first);
-      if (it != resources_.end()) {
-        it->second -= entry.second;
-        if (it->second == 0) {
-          resources_.erase(it);
-        }
-      } else {
-        resources_.emplace(entry.first, -entry.second);
-      }
-    }
+    resources_ -= other.resources_;
     return *this;
   }
 
-  bool operator==(const ResourceRequest &other) const {
-    return this->resources_ == other.resources_;
-  }
-
-  bool operator!=(const ResourceRequest &other) const { return !(*this == other); }
-
-  /// Check whether this set is a subset of another one.
-  /// If A <= B, it means for each resource, its value in A is less than or equqal to that
-  /// in B.
-  bool operator<=(const ResourceRequest &other) const {
-    // Check all resources that exist in this.
-    for (auto &entry : resources_) {
-      auto &this_value = entry.second;
-      auto other_value = FixedPoint(0);
-      auto it = other.resources_.find(entry.first);
-      if (it != other.resources_.end()) {
-        other_value = it->second;
-      }
-      if (this_value > other_value) {
-        return false;
-      }
-    }
-    // Check all resources that exist in other, but not in this.
-    for (auto &entry : other.resources_) {
-      if (!resources_.contains(entry.first)) {
-        if (entry.second < 0) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-
-  /// Check whether this set is a super set of another one.
-  /// If A >= B, it means for each resource, its value in A is larger than or equqal to
-  /// that in B.
-  bool operator>=(const ResourceRequest &other) const { return other <= *this; }
-
   /// Return a human-readable string for this set.
-  std::string DebugString() const {
-    std::stringstream buffer;
-    buffer << "{";
-    bool first = true;
-    for (auto &resource_id : ResourceIds()) {
-      if (!first) {
-        buffer << ", ";
-      }
-      first = false;
-      buffer << resource_id.Binary() << ": " << Get(resource_id);
-    }
-    buffer << "}";
-    return buffer.str();
-  }
+  std::string DebugString() const { return resources_.DebugString(); }
 
  private:
-  /// Map from the resource IDs to the resource values.
-  absl::flat_hash_map<ResourceID, FixedPoint> resources_;
+  ResourceSet resources_;
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
   bool requires_object_store_memory_ = false;
@@ -247,11 +133,11 @@ class TaskResourceInstances {
   /// Construct an empty TaskResourceInstances.
   TaskResourceInstances() {}
 
-  /// Construct a TaskResourceInstances with the values from a ResourceRequest.
-  TaskResourceInstances(const ResourceRequest &request) {
-    for (auto &resource_id : request.ResourceIds()) {
+  /// Construct a TaskResourceInstances with the values from a ResourceSet.
+  TaskResourceInstances(const ResourceSet &resources) {
+    for (auto &resource_id : resources.ResourceIds()) {
       std::vector<FixedPoint> instances;
-      auto value = request.Get(resource_id);
+      auto value = resources.Get(resource_id);
       if (resource_id.IsUnitInstanceResource()) {
         size_t num_instances = static_cast<size_t>(value.Double());
         for (size_t i = 0; i < num_instances; i++) {
@@ -263,6 +149,10 @@ class TaskResourceInstances {
       Set(resource_id, instances);
     }
   }
+
+  explicit TaskResourceInstances(
+      absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources)
+      : resources_(std::move(resources)) {}
 
   /// Get the per-instance values of a particular resource.
   /// NOTE: the resource MUST already exist in this TaskResourceInstances, otherwise a
@@ -314,23 +204,6 @@ class TaskResourceInstances {
     return *this;
   }
 
-  /// Add values for each instance of the given resource.
-  /// Note, if the number of instances in this set is less than the given instance
-  /// vector, more instances will be appended to match the number.
-  void Add(const ResourceID resource_id, const std::vector<FixedPoint> &instances) {
-    if (!Has(resource_id)) {
-      Set(resource_id, instances);
-    } else {
-      auto &resource_instances = GetMutable(resource_id);
-      if (resource_instances.size() <= instances.size()) {
-        resource_instances.resize(instances.size());
-      }
-      for (size_t i = 0; i < instances.size(); ++i) {
-        resource_instances[i] += instances[i];
-      }
-    }
-  }
-
   /// Remove a particular resource.
   void Remove(ResourceID resource_id) { resources_.erase(resource_id); }
 
@@ -347,13 +220,13 @@ class TaskResourceInstances {
     return this->resources_ == other.resources_;
   }
 
-  /// Return a ResourceRequest with the aggregated per-instance values.
-  ResourceRequest ToResourceRequest() const {
-    ResourceRequest resource_request;
+  /// Return a ResourceSet with the aggregated per-instance values.
+  ResourceSet ToResourceSet() const {
+    ResourceSet resource_set;
     for (auto &resource_id : ResourceIds()) {
-      resource_request.Set(resource_id, Sum(resource_id));
+      resource_set.Set(resource_id, Sum(resource_id));
     }
-    return resource_request;
+    return resource_set;
   }
 
   /// Returns human-readable string for these resources.
@@ -416,13 +289,14 @@ class TaskResourceInstances {
 class NodeResources {
  public:
   NodeResources() {}
-  NodeResources(const ResourceRequest &request) : total(request), available(request) {}
-  ResourceRequest total;
-  ResourceRequest available;
+  NodeResources(const NodeResourceSet &resources)
+      : total(resources), available(resources) {}
+  NodeResourceSet total;
+  NodeResourceSet available;
   /// Only used by light resource report.
-  ResourceRequest load;
+  ResourceSet load;
   /// Resources owned by normal tasks.
-  ResourceRequest normal_task_resources;
+  ResourceSet normal_task_resources;
 
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
@@ -465,20 +339,18 @@ class NodeResources {
 /// This is used to describe the resources of the local node.
 class NodeResourceInstances {
  public:
-  TaskResourceInstances available;
-  TaskResourceInstances total;
+  NodeResourceInstanceSet available;
+  NodeResourceInstanceSet total;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
 
   /// Extract available resource instances.
-  const TaskResourceInstances &GetAvailableResourceInstances() const;
-  const TaskResourceInstances &GetTotalResourceInstances() const;
+  const NodeResourceInstanceSet &GetAvailableResourceInstances() const;
+  const NodeResourceInstanceSet &GetTotalResourceInstances() const;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
   [[nodiscard]] std::string DebugString() const;
-  /// Returns true if it contains this resource.
-  bool Contains(scheduling::ResourceID id) const;
 };
 
 struct Node {

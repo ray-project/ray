@@ -4,14 +4,13 @@ import os
 import random
 import time
 import traceback
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from ray._raylet import GcsClient
-from ray.serve.config import HTTPOptions, DeploymentMode
+from ray.serve.config import gRPCOptions, HTTPOptions, DeploymentMode
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
     PROXY_HEALTH_CHECK_TIMEOUT_S,
@@ -26,9 +25,9 @@ from ray.serve._private.constants import (
 from ray.serve._private import http_proxy
 from ray.serve._private.utils import (
     format_actor_name,
-    get_all_node_ids,
 )
 from ray.serve._private.common import NodeId, HTTPProxyStatus
+from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve.schema import HTTPProxyDetails
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -129,6 +128,7 @@ class HTTPProxyState:
                 self._health_check_obj_ref = None
                 try:
                     ray.get(finished[0])
+                    self.try_update_status(HTTPProxyStatus.HEALTHY)
                 except ray.exceptions.RayActorError:
                     # The proxy actor dies.
                     self.set_status(HTTPProxyStatus.UNHEALTHY)
@@ -314,7 +314,8 @@ class HTTPProxyStateManager:
         detached: bool,
         config: HTTPOptions,
         head_node_id: str,
-        gcs_client: GcsClient,
+        cluster_node_info_cache: ClusterNodeInfoCache,
+        grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_name = controller_name
         self._detached = detached
@@ -322,10 +323,11 @@ class HTTPProxyStateManager:
             self._config = config
         else:
             self._config = HTTPOptions()
+        self._grpc_options = grpc_options or gRPCOptions()
         self._proxy_states: Dict[NodeId, HTTPProxyState] = dict()
         self._head_node_id: str = head_node_id
 
-        self._gcs_client = gcs_client
+        self._cluster_node_info_cache = cluster_node_info_cache
 
         assert isinstance(head_node_id, str)
 
@@ -395,7 +397,7 @@ class HTTPProxyStateManager:
 
         target_nodes = [
             (node_id, ip_address)
-            for node_id, ip_address in get_all_node_ids(self._gcs_client)
+            for node_id, ip_address in self._cluster_node_info_cache.get_alive_nodes()
             if node_id in http_proxy_nodes
         ]
 
@@ -438,21 +440,34 @@ class HTTPProxyStateManager:
         """Helper to start a single HTTP proxy.
 
         Takes the name of the proxy, the node id, and the node ip address. and creates a
-        new HTTPProxyActor actor handle for the proxy. Also, setting up
-        `TEST_WORKER_NODE_PORT` env var will help head node and worker nodes to be
-        opening on different ports.
+        new HTTPProxyActor actor handle for the proxy. In addition, setting up
+        `TEST_WORKER_NODE_HTTP_PORT` env var will help head node and worker nodes to be
+        opening on different HTTP ports. Setting up `TEST_WORKER_NODE_GRPC_PORT` env var
+        will help head node and worker nodes to be opening on different gRPC ports.
         """
         port = self._config.port
+        grpc_options = self._grpc_options
 
         if (
             node_id != self._head_node_id
-            and os.getenv("TEST_WORKER_NODE_PORT") is not None
+            and os.getenv("TEST_WORKER_NODE_HTTP_PORT") is not None
         ):
             logger.warning(
-                f"`TEST_WORKER_NODE_PORT` env var is set. "
+                f"`TEST_WORKER_NODE_HTTP_PORT` env var is set. "
                 f"Using it for worker node {node_id}."
             )
-            port = int(os.getenv("TEST_WORKER_NODE_PORT"))
+            port = int(os.getenv("TEST_WORKER_NODE_HTTP_PORT"))
+
+        if (
+            node_id != self._head_node_id
+            and os.getenv("TEST_WORKER_NODE_GRPC_PORT") is not None
+        ):
+            logger.warning(
+                f"`TEST_WORKER_NODE_GRPC_PORT` env var is set. "
+                f"Using it for worker node {node_id}."
+                f"{int(os.getenv('TEST_WORKER_NODE_GRPC_PORT'))}"
+            )
+            grpc_options.port = int(os.getenv("TEST_WORKER_NODE_GRPC_PORT"))
 
         proxy = http_proxy.HTTPProxyActor.options(
             num_cpus=self._config.num_cpus,
@@ -471,6 +486,8 @@ class HTTPProxyStateManager:
             node_id=node_id,
             http_middlewares=self._config.middlewares,
             request_timeout_s=self._config.request_timeout_s,
+            keep_alive_timeout_s=self._config.keep_alive_timeout_s,
+            grpc_options=grpc_options,
         )
         return proxy
 
@@ -505,10 +522,10 @@ class HTTPProxyStateManager:
 
         Removes proxy actors from any nodes that no longer exist or unhealthy proxy.
         """
-        all_node_ids = {node_id for node_id, _ in get_all_node_ids(self._gcs_client)}
+        alive_node_ids = self._cluster_node_info_cache.get_alive_node_ids()
         to_stop = []
         for node_id, proxy_state in self._proxy_states.items():
-            if node_id not in all_node_ids:
+            if node_id not in alive_node_ids:
                 logger.info(f"Removing HTTP proxy on removed node '{node_id}'.")
                 to_stop.append(node_id)
             elif proxy_state.status == HTTPProxyStatus.UNHEALTHY:

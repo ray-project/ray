@@ -20,6 +20,7 @@ import os
 import time
 from dataclasses import dataclass
 
+
 try:
     import fsspec
 except Exception:
@@ -55,6 +56,7 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
 
 if TYPE_CHECKING:
+    from ray.train._checkpoint import Checkpoint
     from ray.tune.experiment import Trial
 
 logger = logging.getLogger(__name__)
@@ -622,6 +624,10 @@ class _BackgroundSyncer(Syncer):
     def sync_down(
         self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
     ) -> bool:
+        from ray.train._internal.storage import _use_storage_context
+
+        assert not _use_storage_context(), "Should never be used in this mode."
+
         if self._should_continue_existing_sync():
             logger.warning(
                 f"Last sync still in progress, "
@@ -832,7 +838,7 @@ class SyncerCallback(Callback):
 
         if not source_ip:
             try:
-                source_ip = trial.get_runner_ip()
+                source_ip = trial.get_ray_actor_ip()
             except RayActorError as e:
                 logger.error(
                     f"Trial {trial}: An error occurred when trying to get the "
@@ -930,9 +936,17 @@ class SyncerCallback(Callback):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: _TrackedCheckpoint,
+        checkpoint: Union["_TrackedCheckpoint", "Checkpoint"],
         **info,
     ):
+        if not hasattr(checkpoint, "storage_mode"):
+            # Syncer should be disabled for new storage path
+            raise RuntimeError(
+                "Internal error: Got new Train Checkpoint object in Syncer: "
+                f"{checkpoint}. Please raise an error on "
+                f"https://github.com/ray-project/ray/issues"
+            )
+
         if not self._enabled or trial.uses_cloud_checkpointing:
             return
 

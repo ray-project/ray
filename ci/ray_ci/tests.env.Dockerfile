@@ -1,10 +1,24 @@
 # syntax=docker/dockerfile:1.3-labs
-# shellcheck disable=SC2148
 
 ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
-ARG TEST_ENVIRONMENT_SCRIPT
+ENV CC=clang
+ENV CXX=clang++-12
 
-COPY "$TEST_ENVIRONMENT_SCRIPT" /tmp/post_build_script.sh
-RUN /tmp/post_build_script.sh
+RUN mkdir /rayci
+WORKDIR /rayci
+COPY . .
+
+RUN <<EOF
+#!/bin/bash
+
+(
+  cd dashboard/client 
+  npm ci 
+  npm run build
+)
+
+pip install -v -e python/
+
+EOF

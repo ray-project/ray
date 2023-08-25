@@ -3,7 +3,6 @@ import sys
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import (
     In,
     NotIn,
@@ -23,6 +22,11 @@ class MyActor:
 
     def get_node_id(self):
         return ray.get_runtime_context().get_node_id()
+
+
+@ray.remote
+def get_node_id():
+    return ray.get_runtime_context().get_node_id()
 
 
 @pytest.mark.parametrize(
@@ -73,17 +77,28 @@ def test_node_label_scheduling_basic(call_ray_start):
 
 def test_node_label_scheduling_in_cluster(ray_start_cluster):
     cluster = ray_start_cluster
-    created_nodes = []
-    cluster.add_node(num_cpus=3, labels={"gpu_type": "A100", "azone": "azone-1"})
+    cluster.add_node(
+        resources={"worker1": 1},
+        num_cpus=3,
+        labels={"gpu_type": "A100", "azone": "azone-1"},
+    )
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
-    node_1 = get_new_node_id(created_nodes)
-    cluster.add_node(num_cpus=3, labels={"gpu_type": "T100", "azone": "azone-1"})
-    node_2 = get_new_node_id(created_nodes)
-    cluster.add_node(num_cpus=3, labels={"gpu_type": "T100", "azone": "azone-2"})
-    node_3 = get_new_node_id(created_nodes)
-    cluster.add_node(num_cpus=3)
-    node_4 = get_new_node_id(created_nodes)
+    node_1 = ray.get(get_node_id.options(resources={"worker1": 1}).remote())
+    cluster.add_node(
+        resources={"worker2": 1},
+        num_cpus=3,
+        labels={"gpu_type": "T100", "azone": "azone-1"},
+    )
+    node_2 = ray.get(get_node_id.options(resources={"worker2": 1}).remote())
+    cluster.add_node(
+        resources={"worker3": 1},
+        num_cpus=3,
+        labels={"gpu_type": "T100", "azone": "azone-2"},
+    )
+    node_3 = ray.get(get_node_id.options(resources={"worker3": 1}).remote())
+    cluster.add_node(resources={"worker4": 1}, num_cpus=3)
+    node_4 = ray.get(get_node_id.options(resources={"worker4": 1}).remote())
     cluster.wait_for_nodes()
 
     actor = MyActor.options(
@@ -145,17 +160,28 @@ def test_node_label_scheduling_in_cluster(ray_start_cluster):
 
 def test_node_label_scheduling_with_soft(ray_start_cluster):
     cluster = ray_start_cluster
-    created_nodes = []
-    cluster.add_node(num_cpus=3, labels={"gpu_type": "A100", "azone": "azone-1"})
+    cluster.add_node(
+        resources={"worker1": 1},
+        num_cpus=3,
+        labels={"gpu_type": "A100", "azone": "azone-1"},
+    )
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
-    node_1 = get_new_node_id(created_nodes)
-    cluster.add_node(num_cpus=3, labels={"gpu_type": "T100", "azone": "azone-1"})
-    node_2 = get_new_node_id(created_nodes)
-    cluster.add_node(num_cpus=3, labels={"gpu_type": "T100", "azone": "azone-2"})
-    node_3 = get_new_node_id(created_nodes)
-    cluster.add_node(num_cpus=3)
-    node_4 = get_new_node_id(created_nodes)
+    node_1 = ray.get(get_node_id.options(resources={"worker1": 1}).remote())
+    cluster.add_node(
+        resources={"worker2": 1},
+        num_cpus=3,
+        labels={"gpu_type": "T100", "azone": "azone-1"},
+    )
+    node_2 = ray.get(get_node_id.options(resources={"worker2": 1}).remote())
+    cluster.add_node(
+        resources={"worker3": 1},
+        num_cpus=3,
+        labels={"gpu_type": "T100", "azone": "azone-2"},
+    )
+    node_3 = ray.get(get_node_id.options(resources={"worker3": 1}).remote())
+    cluster.add_node(resources={"worker4": 1}, num_cpus=3)
+    node_4 = ray.get(get_node_id.options(resources={"worker4": 1}).remote())
     cluster.wait_for_nodes()
 
     # hard match and soft match
@@ -205,13 +231,52 @@ def test_node_label_scheduling_with_soft(ray_start_cluster):
         ray.get(actor.get_node_id.remote(), timeout=3)
 
 
-def get_new_node_id(created_nodes):
-    wait_for_condition(lambda: len(ray.nodes()) > len(created_nodes), timeout=30)
-    nodes = ray.nodes()
-    for node in nodes:
-        if node["NodeID"] not in created_nodes:
-            created_nodes.append(node["NodeID"])
-            return node["NodeID"]
+def test_node_not_available(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(resources={"worker1": 1}, num_cpus=1, labels={"gpu_type": "A100"})
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+    node_1 = ray.get(get_node_id.options(resources={"worker1": 1}).remote())
+    cluster.add_node(resources={"worker2": 1}, num_cpus=1)
+    node_2 = ray.get(get_node_id.options(resources={"worker2": 1}).remote())
+    cluster.wait_for_nodes()
+
+    # Infeasible
+    actor = MyActor.options(
+        num_cpus=2,
+        scheduling_strategy=NodeLabelSchedulingStrategy(hard={"gpu_type": In("A100")}),
+    ).remote()
+    with pytest.raises(TimeoutError):
+        ray.get(actor.get_node_id.remote(), timeout=3)
+
+    actor = MyActor.options(
+        num_cpus=1,
+        scheduling_strategy=NodeLabelSchedulingStrategy(hard={"gpu_type": In("A100")}),
+    ).remote()
+    assert ray.get(actor.get_node_id.remote(), timeout=3) == node_1
+
+    # Soft match node is not available, sheduling to other available node.
+    actor_2 = MyActor.options(
+        num_cpus=1,
+        scheduling_strategy=NodeLabelSchedulingStrategy(
+            hard={}, soft={"gpu_type": In("A100")}
+        ),
+    ).remote()
+    assert ray.get(actor_2.get_node_id.remote(), timeout=3) == node_2
+
+    # No available nodes.
+    actor_3 = MyActor.options(
+        num_cpus=1,
+        scheduling_strategy=NodeLabelSchedulingStrategy(
+            hard={}, soft={"gpu_type": In("A100")}
+        ),
+    ).remote()
+    with pytest.raises(TimeoutError):
+        ray.get(actor_3.get_node_id.remote(), timeout=3)
+
+    # node_1 change to available
+    ray.kill(actor)
+    assert ray.get(actor_3.get_node_id.remote(), timeout=3) == node_1
 
 
 def test_node_label_scheduling_invalid_paramter(call_ray_start):
@@ -263,6 +328,13 @@ def test_node_label_scheduling_invalid_paramter(call_ray_start):
         MyActor.options(
             scheduling_strategy=NodeLabelSchedulingStrategy({"gpu_type": "1111"})
         )
+
+    with pytest.raises(
+        ValueError,
+        match="The `hard` and `soft` parameter "
+        "of NodeLabelSchedulingStrategy cannot both be empty.",
+    ):
+        MyActor.options(scheduling_strategy=NodeLabelSchedulingStrategy(hard={}))
 
 
 if __name__ == "__main__":

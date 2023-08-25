@@ -41,6 +41,12 @@ void SequentialActorSubmitQueue::MarkDependencyFailed(uint64_t sequence_no) {
   requests.erase(sequence_no);
 }
 
+void SequentialActorSubmitQueue::MarkTaskCanceled(uint64_t sequence_no) {
+  requests.erase(sequence_no);
+  // No need to clean out_of_order_completed_tasks because
+  // it means a task has been already submitted and finished.
+}
+
 void SequentialActorSubmitQueue::MarkDependencyResolved(uint64_t sequence_no) {
   auto it = requests.find(sequence_no);
   RAY_CHECK(it != requests.end());

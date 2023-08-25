@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Union, Callable, Type, Optional, Any
+from typing import Any, Dict, Optional, Union
 import hashlib
 import json
 import logging
@@ -7,7 +7,7 @@ import time
 from ray.serve.config import ReplicaConfig, DeploymentConfig
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.common import DeploymentInfo
+from ray.serve._private.common import DeploymentInfo, DeploymentID
 
 import ray
 import ray.util.serialization_addons
@@ -17,63 +17,47 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 def get_deploy_args(
     name: str,
-    deployment_def: Union[Callable, Type[Callable], str],
-    init_args: Tuple[Any],
-    init_kwargs: Dict[Any, Any],
+    replica_config: ReplicaConfig,
     ingress: bool = False,
-    ray_actor_options: Optional[Dict] = None,
-    config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
+    deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
     is_driver_deployment: Optional[str] = None,
     docs_path: Optional[str] = None,
-    app_name: Optional[str] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
     for the controller to deploy it.
     """
 
-    if config is None:
-        config = {}
-    if ray_actor_options is None:
-        ray_actor_options = {}
+    if deployment_config is None:
+        deployment_config = {}
 
     curr_job_env = ray.get_runtime_context().runtime_env
-    if "runtime_env" in ray_actor_options:
+    if "runtime_env" in replica_config.ray_actor_options:
         # It is illegal to set field working_dir to None.
         if curr_job_env.get("working_dir") is not None:
-            ray_actor_options["runtime_env"].setdefault(
+            replica_config.ray_actor_options["runtime_env"].setdefault(
                 "working_dir", curr_job_env.get("working_dir")
             )
     else:
-        ray_actor_options["runtime_env"] = curr_job_env
+        replica_config.ray_actor_options["runtime_env"] = curr_job_env
 
-    replica_config = ReplicaConfig.create(
-        deployment_def,
-        init_args=init_args,
-        init_kwargs=init_kwargs,
-        ray_actor_options=ray_actor_options,
-    )
-
-    if isinstance(config, dict):
-        deployment_config = DeploymentConfig.parse_obj(config)
-    elif isinstance(config, DeploymentConfig):
-        deployment_config = config
-    else:
+    if isinstance(deployment_config, dict):
+        deployment_config = DeploymentConfig.parse_obj(deployment_config)
+    elif not isinstance(deployment_config, DeploymentConfig):
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
     deployment_config.version = version
 
     controller_deploy_args = {
-        "name": name,
+        "deployment_name": name,
         "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
         "replica_config_proto_bytes": replica_config.to_proto_bytes(),
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "is_driver_deployment": is_driver_deployment,
         "docs_path": docs_path,
-        "app_name": app_name,
         "ingress": ingress,
     }
 
@@ -89,6 +73,7 @@ def deploy_args_to_deployment_info(
     docs_path: Optional[str],
     is_driver_deployment: Optional[bool] = False,
     app_name: Optional[str] = None,
+    ingress: bool = False,
     **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
@@ -108,16 +93,18 @@ def deploy_args_to_deployment_info(
         ).hex()
 
     return DeploymentInfo(
-        actor_name=deployment_name,
+        actor_name=DeploymentID(
+            deployment_name, app_name
+        ).to_replica_actor_class_name(),
         version=version,
         deployment_config=deployment_config,
         replica_config=replica_config,
         deployer_job_id=deployer_job_id,
         start_time_ms=int(time.time() * 1000),
         is_driver_deployment=is_driver_deployment,
-        app_name=app_name,
         route_prefix=route_prefix,
         docs_path=docs_path,
+        ingress=ingress,
     )
 
 

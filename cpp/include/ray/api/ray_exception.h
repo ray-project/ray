@@ -58,5 +58,11 @@ class RayRuntimeEnvException : public RayException {
  public:
   RayRuntimeEnvException(const std::string &msg) : RayException(msg){};
 };
+
+class RayTimeoutException : public RayException {
+ public:
+  RayTimeoutException(const std::string &msg) : RayException(msg){};
+};
+
 }  // namespace internal
 }  // namespace ray

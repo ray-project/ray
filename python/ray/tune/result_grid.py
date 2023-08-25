@@ -1,6 +1,7 @@
 from functools import partial
 import os
 import pandas as pd
+import pyarrow
 from typing import Optional, Union
 
 from ray.air.result import Result
@@ -8,6 +9,7 @@ from ray.train._internal.storage import _use_storage_context
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
 from ray.tune.analysis import ExperimentAnalysis
+from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.trainable.util import TrainableUtil
@@ -84,26 +86,21 @@ class ResultGrid:
         ]
 
     @property
-    def _local_path(self) -> str:
-        """Return path pointing to the experiment directory on the local disk."""
-        return self._experiment_analysis._local_path
-
-    @property
-    def _remote_path(self) -> Optional[str]:
-        """Return path pointing to the experiment directory on remote storage."""
-        return self._experiment_analysis._remote_path
-
-    @property
     def experiment_path(self) -> str:
         """Path pointing to the experiment directory on persistent storage.
 
         This can point to a remote storage location (e.g. S3) or to a local
-        location (path on the head node).
+        location (path on the head node)."""
+        return self._experiment_analysis.experiment_path
 
-        For instance, if your remote storage path is ``s3://bucket/location``,
-        this will point to ``s3://bucket/location/experiment_name``.
+    @property
+    def filesystem(self) -> pyarrow.fs.FileSystem:
+        """Return the filesystem that can be used to access the experiment path.
+
+        Returns:
+            pyarrow.fs.FileSystem implementation.
         """
-        return self._remote_path or self._local_path
+        return self._experiment_analysis._fs
 
     def get_best_result(
         self,
@@ -276,13 +273,12 @@ class ResultGrid:
                 _CheckpointManager as _NewCheckpointManager,
             )
 
-            assert isinstance(trial.checkpoint_manager, _NewCheckpointManager)
+            cpm = trial.run_metadata.checkpoint_manager
+            assert isinstance(cpm, _NewCheckpointManager)
             checkpoint = None
-            if trial.checkpoint_manager.latest_checkpoint_result:
-                checkpoint = (
-                    trial.checkpoint_manager.latest_checkpoint_result.checkpoint
-                )
-            best_checkpoint_results = trial.checkpoint_manager.best_checkpoint_results
+            if cpm.latest_checkpoint_result:
+                checkpoint = cpm.latest_checkpoint_result.checkpoint
+            best_checkpoint_results = cpm.best_checkpoint_results
             best_checkpoints = [
                 (checkpoint_result.checkpoint, checkpoint_result.metrics)
                 for checkpoint_result in best_checkpoint_results
@@ -309,17 +305,23 @@ class ResultGrid:
                 for checkpoint in trial.get_trial_checkpoints()
             ]
 
+        if _use_storage_context():
+            metrics_df = self._experiment_analysis.trial_dataframes.get(trial.trial_id)
+        else:
+            metrics_df = self._experiment_analysis.trial_dataframes.get(
+                trial.local_path
+            )
+
         result = Result(
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
             _local_path=trial.local_path,
             _remote_path=trial.remote_path,
-            metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
-                trial.local_path
-            )
-            if self._experiment_analysis.trial_dataframes
+            _storage_filesystem=self._experiment_analysis._fs
+            if isinstance(self._experiment_analysis, NewExperimentAnalysis)
             else None,
+            metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
         )
         return result

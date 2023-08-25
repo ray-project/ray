@@ -26,14 +26,6 @@ Distributed Training Examples using Ray Train
             PyTorch Fashion MNIST Training Example
 
     .. grid-item-card::
-        :img-top: /images/hugging.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: train_transformers_example
-
-            Transformers with PyTorch Training Example
-
-    .. grid-item-card::
         :img-top: /images/tf_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
@@ -71,7 +63,7 @@ Distributed Training Examples using Ray Train
 
         .. button-ref:: dolly_lightning_fsdp_finetuning
 
-            Fine-tune LLM with AIR LightningTrainer and FSDP
+            Fine-tune LLM with LightningTrainer and FSDP
     
     .. grid-item-card::
         :img-top: /images/pytorch_lightning_small.png
@@ -89,14 +81,6 @@ Ray Train Examples Using Loggers & Callbacks
 .. grid:: 1 2 3 4
     :gutter: 1
     :class-container: container pb-3
-
-    .. grid-item-card::
-        :img-top: /images/mlflow.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: train_mlflow_example
-
-            Logging Training Runs with MLflow
 
     .. grid-item-card::
         :img-top: /images/pytorch_lightning_small.png

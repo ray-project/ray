@@ -12,6 +12,7 @@ from ray.includes.optional cimport (
 from ray.includes.unique_ids cimport (
     CActorID,
     CJobID,
+    CClusterID,
     CWorkerID,
     CObjectID,
     CTaskID,
@@ -360,6 +361,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
         UNKNOWN "grpc::StatusCode::UNKNOWN",
         DEADLINE_EXCEEDED "grpc::StatusCode::DEADLINE_EXCEEDED",
+        RESOURCE_EXHAUSTED "grpc::StatusCode::RESOURCE_EXHAUSTED",
+        UNIMPLEMENTED "grpc::StatusCode::UNIMPLEMENTED",
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &gcs_address)
@@ -367,8 +370,10 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
         CPythonGcsClient(const CGcsClientOptions &options)
 
-        CRayStatus Connect()
-
+        CRayStatus Connect(
+            const CClusterID &cluster_id,
+            int64_t timeout_ms,
+            size_t num_retries)
         CRayStatus CheckAlive(
             const c_vector[c_string] &raylet_addresses,
             int64_t timeout_ms,
@@ -391,13 +396,14 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus InternalKVExists(
             const c_string &ns, const c_string &key,
             int64_t timeout_ms, c_bool &exists)
-
         CRayStatus PinRuntimeEnvUri(
             const c_string &uri, int expiration_s, int64_t timeout_ms)
         CRayStatus GetAllNodeInfo(
             int64_t timeout_ms, c_vector[CGcsNodeInfo]& result)
         CRayStatus GetAllJobInfo(
             int64_t timeout_ms, c_vector[CJobTableData]& result)
+        CRayStatus GetAllResourceUsage(
+            int64_t timeout_ms, c_string& serialized_reply)
         CRayStatus RequestClusterResourceConstraint(
             int64_t timeout_ms,
             const c_vector[unordered_map[c_string, double]] &bundles,
@@ -405,13 +411,17 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus GetClusterStatus(
             int64_t timeout_ms,
             c_string &serialized_reply)
+        CClusterID GetClusterId()
         CRayStatus DrainNode(
             const c_string &node_id,
             int32_t reason,
             const c_string &reason_message,
             int64_t timeout_ms,
             c_bool &is_accepted)
-
+        CRayStatus DrainNodes(
+            const c_vector[c_string]& node_ids,
+            int64_t timeout_ms,
+            c_vector[c_string]& drained_node_ids)
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(
@@ -550,4 +560,5 @@ cdef extern from "ray/common/task/task_spec.h" nogil:
 cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kWorkerSetupHookKeyName
     cdef int kResourceUnitScaling
+    cdef const char[] kImplicitResourcePrefix
     cdef int kStreamingGeneratorReturn
