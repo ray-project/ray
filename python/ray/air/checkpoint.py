@@ -83,7 +83,7 @@ class Checkpoint:
 
     .. code-block:: python
 
-        from ray.train import Checkpoint
+        from ray.air import Checkpoint
 
         # Create checkpoint data dict
         checkpoint_data = {"data": 123}

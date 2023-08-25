@@ -467,7 +467,7 @@ Models that have been trained with :ref:`Ray Train <train-docs>` can then be use
 
 **Step 3:** Use Ray Data for batch inference. To load in the model from the :class:`Checkpoint <ray.train.Checkpoint>` inside the Python class, use one of the framework-specific Checkpoint classes.
 
-In this case, use :class:`XGBoostCheckpoint <ray.train.xgboost.XGBoostCheckpoint>` to load the model.
+In this case, use :meth:`~ray.train.xgboost.XGBoostTrainer.get_model>` to load the model.
 
 The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
 
@@ -479,14 +479,13 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
     import xgboost
 
     from ray.train import Checkpoint
-    from ray.train.xgboost import LegacyXGBoostCheckpoint
+    from ray.train.xgboost import XGBoostTrainer
 
     test_dataset = valid_dataset.drop_columns(["target"])
 
     class XGBoostPredictor:
         def __init__(self, checkpoint: Checkpoint):
-            xgboost_checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(checkpoint)
-            self.model = xgboost_checkpoint.get_model()
+            self.model = XGBoostTrainer.get_model(checkpoint)
         
         def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
             dmatrix = xgboost.DMatrix(data)
