@@ -14,7 +14,6 @@ import ray._private.services
 from ray.util.annotations import DeveloperAPI
 from ray.autoscaler._private.spark.node_provider import RAY_ON_SPARK_HEAD_NODE_ID
 import ray._private.ray_constants as ray_constants
-from ray.util.spark.cluster_init import _append_resources_config
 
 
 logger = logging.getLogger(__name__)
@@ -71,13 +70,17 @@ class AutoscalingCluster:
         After this call returns, you can connect to the cluster with
         ray.init("auto").
         """
-        from ray.util.spark.cluster_init import _convert_ray_node_options, exec_cmd, RAY_ON_SPARK_COLLECT_LOG_TO_PATH
+        from ray.util.spark.cluster_init import (
+            _convert_ray_node_options,
+            exec_cmd,
+            RAY_ON_SPARK_COLLECT_LOG_TO_PATH,
+            _append_resources_config,
+        )
 
         _, autoscale_config = tempfile.mkstemp()
         with open(autoscale_config, "w") as f:
             f.write(json.dumps(self._config))
 
-        head_node_options = _append_resources_config(head_node_options, self._head_resources)
         ray_head_node_cmd = [
             sys.executable,
             "-m",
@@ -89,7 +92,6 @@ class AutoscalingCluster:
             f"--port={ray_head_port}",
             f"--autoscaling-config={autoscale_config}",
             *dashboard_options,
-            *_convert_ray_node_options(head_node_options),
         ]
 
         if "CPU" in self._head_resources:
@@ -101,10 +103,16 @@ class AutoscalingCluster:
         if "object_store_memory" in self._head_resources:
             ray_head_node_cmd.append("--object-store-memory={}".format(self._head_resources.pop("object_store_memory")))
 
+        head_node_options = _append_resources_config(head_node_options, self._head_resources)
+        ray_head_node_cmd.extend(_convert_ray_node_options(head_node_options))
+
         extra_env = {
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
         }
+
+        self.ray_head_node_cmd = ray_head_node_cmd
+        
         return exec_cmd(
             ray_head_node_cmd,
             synchronous=False,

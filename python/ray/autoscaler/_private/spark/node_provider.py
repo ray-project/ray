@@ -25,7 +25,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray.util.spark.cluster_init import _append_resources_config
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +112,8 @@ class RayOnSparkNodeProvider(NodeProvider):
     def create_node_with_resources_and_labels(
         self, node_config, tags, count, resources, labels
     ):
+        from ray.util.spark.cluster_init import _append_resources_config
+
         for _ in range(count):
             with self.lock:
                 resources = resources.copy()

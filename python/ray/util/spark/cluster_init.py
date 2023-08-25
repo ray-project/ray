@@ -557,6 +557,7 @@ def _setup_ray_cluster(
             head_node_options,
             collect_log_to_path,
         )
+        ray_head_node_cmd = autoscaler_cluster.ray_head_node_cmd
     else:
         ray_head_node_cmd = [
             sys.executable,
