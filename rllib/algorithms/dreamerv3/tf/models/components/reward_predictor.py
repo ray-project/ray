@@ -9,6 +9,11 @@ from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 from ray.rllib.algorithms.dreamerv3.tf.models.components.reward_predictor_layer import (
     RewardPredictorLayer,
 )
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_gru_units,
+    get_num_z_categoricals,
+    get_num_z_classes,
+)
 from ray.rllib.utils.framework import try_import_tf
 
 _, tf, _ = try_import_tf()
@@ -50,6 +55,7 @@ class RewardPredictor(tf.keras.Model):
                 `lower_bound` and `upper_bound`.
         """
         super().__init__(name="reward_predictor")
+        self.model_size = model_size
 
         self.mlp = MLP(
             model_size=model_size,
@@ -61,7 +67,23 @@ class RewardPredictor(tf.keras.Model):
             upper_bound=upper_bound,
         )
 
-    def call(self, h, z, return_logits=False):
+        # Trace self.call.
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
+        self.call = tf.function(
+            input_signature=[
+                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
+                tf.TensorSpec(
+                    shape=[
+                        None,
+                        get_num_z_categoricals(model_size),
+                        get_num_z_classes(model_size),
+                    ],
+                    dtype=dl_type,
+                ),
+            ]
+        )(self.call)
+
+    def call(self, h, z):
         """Computes the expected reward using N equal sized buckets of possible values.
 
         Args:
@@ -74,11 +96,21 @@ class RewardPredictor(tf.keras.Model):
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
-        z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
+        z = tf.reshape(z, shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
+        out.set_shape(
+            [
+                None,
+                (
+                    get_num_z_categoricals(self.model_size)
+                    * get_num_z_classes(self.model_size)
+                    + get_gru_units(self.model_size)
+                ),
+            ]
+        )
         # Send h-cat-z through MLP.
         out = self.mlp(out)
         # Return a) mean reward OR b) a tuple: (mean reward, logits over the reward
         # buckets).
-        return self.reward_layer(out, return_logits=return_logits)
+        return self.reward_layer(out)
