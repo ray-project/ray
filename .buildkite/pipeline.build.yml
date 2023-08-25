@@ -499,4 +499,6 @@
       - TRAIN_MINIMAL_INSTALL=1 ./ci/env/install-minimal.sh
       - ./ci/env/env_info.sh
       - python ./ci/env/check_minimal_install.py
-      - bazel test --config=ci $(./ci/run/bazel_export_options)  --build_tests_only --test_tag_filters=minimal python/ray/train/...
+      - bazel test --config=ci $(./ci/run/bazel_export_options)  --build_tests_only --test_tag_filters=minimal 
+        --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
+        python/ray/train/...
