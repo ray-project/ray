@@ -831,7 +831,11 @@ class gRPCProxy(GenericProxy):
         obj_ref: ray.ObjectRef,
         timeout_s: Optional[float] = None,
     ) -> ProxyResponse:
-        user_response_bytes = await asyncio.wait_for(obj_ref, timeout=timeout_s)
+        try:
+            user_response_bytes = await asyncio.wait_for(obj_ref, timeout=timeout_s)
+        except asyncio.exceptions.TimeoutError:
+            raise TimeoutError
+
         return ProxyResponse(
             status_code=self.success_status_code, response=user_response_bytes
         )
