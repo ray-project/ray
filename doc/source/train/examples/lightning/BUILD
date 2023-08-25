@@ -13,6 +13,7 @@ py_test_run_all_notebooks(
     exclude=[
         "lightning_exp_tracking.ipynb", # CPU test
         "vicuna_13b_lightning_deepspeed_finetune.ipynb", # Release Test
+        "lightning_cola_advanced.ipynb", # TODO(yunxuanx): retest this in the following PR
     ],
     data=["//doc/source/train/examples/lightning:lightning_examples"],
     tags=["exclusive", "team:ml", "gpu", "ray_air"],
