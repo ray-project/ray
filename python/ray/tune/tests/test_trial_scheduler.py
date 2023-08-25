@@ -898,6 +898,7 @@ class _MockTrial(Trial):
         self.trial_name_creator = None
         self.logger_running = False
         self._restored_checkpoint = None
+        self._restore_checkpoint_result = None
         self.placement_group_factory = PlacementGroupFactory([{"CPU": 1}])
         self.custom_trial_name = None
         self.custom_dirname = None
