@@ -25,7 +25,7 @@ c = config.critic_lr
 
 
 def _env_creator(ctx):
-    import flappy_bird_gymnasium  # doctest: +SKIP
+    import flappy_bird_gymnasium  # noqa doctest: +SKIP
     import gymnasium as gym
     from supersuit.generic_wrappers import resize_v1
     from ray.rllib.algorithms.dreamerv3.utils.env_runner import NormalizedImageEnv
