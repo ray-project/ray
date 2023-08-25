@@ -22,6 +22,8 @@ py_test_run_all_notebooks(
         "pbt_guide.ipynb",
         "tune-xgboost.ipynb",
         "pbt_transformers.ipynb",  # Transformers uses legacy Tune APIs.
+        # TODO(justinvyu): tune_sklearn uses removed experiment analysis method
+        "tune-sklearn.ipynb",
         "sigopt_example.ipynb", # REGRESSION: no credentials
     ],
     data = ["//doc/source/tune/examples:tune_examples"],
