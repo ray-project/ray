@@ -207,6 +207,15 @@ def report(_metric=None, **kwargs):
             )
 
         return _session(_metric, **kwargs)
+    else:
+        # Backwards compatibility
+        from ray import train
+
+        report_dict = kwargs
+        if _metric is not None:
+            report_dict["_metric"] = _metric
+
+        train.report(report_dict)
 
 
 @Deprecated(message=_deprecation_msg)
