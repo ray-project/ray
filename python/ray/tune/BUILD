@@ -91,7 +91,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_cluster.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "rllib"],
+    tags = ["team:ml", "exclusive", "rllib", "new_storage"],
 )
 
 py_test(
