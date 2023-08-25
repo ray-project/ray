@@ -1,7 +1,8 @@
 base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] }}
-env_vars: {"RLLIB_TEST_NO_JAX_IMPORT": "1"}
+env_vars: {"RLLIB_TEST_NO_JAX_IMPORT": "1", "RAY_AIR_NEW_PERSISTENCE_MODE": "1"}
 
 debian_packages:
+
   - curl
   - unzip
 
