@@ -18,7 +18,7 @@ py_test_module_list(
     "test_ray_cluster_with_external_redis.py",
   ],
   size = "large",
-  tags = ["exclusive", "manual", "team:serverless"],
+  tags = ["exclusive", "manual", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -84,7 +84,7 @@ py_test_module_list(
     "test_client_reconnect.py",
   ],
   size = "large",
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "client_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -100,7 +100,7 @@ py_test_module_list(
     "test_client_library_integration.py",
   ],
   size = "medium",
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "client_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -238,7 +238,7 @@ py_test_module_list(
     "test_monitor_service.py",
   ],
   size = "medium",
-  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serverless"],
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -289,7 +289,7 @@ py_test_module_list(
     "test_dataclient_disconnect.py",
   ],
   size = "medium",
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:serverless"],
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -534,7 +534,7 @@ py_test_module_list(
   size = "large",
   name_suffix = "_client_mode",
   env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "client_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
