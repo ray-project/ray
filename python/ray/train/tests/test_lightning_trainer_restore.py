@@ -84,7 +84,7 @@ def test_native_trainer_restore(ray_start_4_cpus_2_gpus):
 
     # Resume training for another 2 epochs
     num_epochs += 2
-    ckpt_dir = results.checkpoint.to_directory
+    ckpt_dir = results.checkpoint.to_directory()
     ckpt_path = f"{ckpt_dir}/{MODEL_KEY}"
 
     lightning_config = (
