@@ -596,7 +596,8 @@ class _TrainSession:
 
         # Persist trial artifacts to storage.
         force_artifact_sync = (
-            persisted_checkpoint and self.storage.sync_config.sync_on_checkpoint
+            persisted_checkpoint
+            and self.storage.sync_config.sync_artifacts_on_checkpoint
         )
         self.storage.persist_artifacts(force=force_artifact_sync)
 

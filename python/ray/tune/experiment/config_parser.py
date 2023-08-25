@@ -5,10 +5,10 @@ import json
 from ray.air import CheckpointConfig
 from ray.tune.utils.serialization import TuneFunctionEncoder
 
+from ray.train import SyncConfig
 from ray.tune import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.resources import json_to_resources
-from ray.tune.syncer import SyncConfig
 from ray.tune.utils.util import SafeFallbackEncoder
 
 

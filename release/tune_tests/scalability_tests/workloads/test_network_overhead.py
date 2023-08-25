@@ -12,7 +12,6 @@ Theoretical minimum time: 300 seconds
 """
 import argparse
 import ray
-from ray import tune
 
 from ray.tune.utils.release_test_util import timed_tune_run
 
@@ -35,7 +34,6 @@ def main(smoke_test: bool = False):
         # One trial per worker node, none get scheduled on the head node.
         # See the compute config.
         resources_per_trial={"cpu": 2},
-        sync_config=tune.SyncConfig(syncer="auto"),
     )
 
     if not success:

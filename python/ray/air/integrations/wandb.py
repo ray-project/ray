@@ -19,7 +19,7 @@ from ray.air.util.node import _force_on_current_node
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
-from ray.tune.syncer import DEFAULT_SYNC_TIMEOUT
+from ray.train._internal.syncer import DEFAULT_SYNC_TIMEOUT
 
 from ray._private.storage import _load_class
 from ray.util import PublicAPI

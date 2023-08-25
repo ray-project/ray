@@ -114,7 +114,7 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
         scaling_config=ScalingConfig(num_workers=num_workers),
         run_config=RunConfig(
             name="data_parallel_restore_test",
-            local_dir=str(tmpdir),
+            storage_path=str(tmpdir),
             checkpoint_config=CheckpointConfig(num_to_keep=1),
         ),
     )

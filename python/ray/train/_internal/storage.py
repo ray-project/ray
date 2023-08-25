@@ -29,8 +29,8 @@ except (ImportError, ModuleNotFoundError) as e:
 
 from ray.air._internal.filelock import TempFileLock
 from ray.air._internal.uri_utils import is_uri
-from ray.tune.syncer import Syncer, SyncConfig, _BackgroundSyncer
-from ray.tune.result import _get_defaults_results_dir
+from ray.train._internal.syncer import Syncer, SyncConfig, _BackgroundSyncer
+from ray.train.constants import _get_defaults_results_dir
 
 if TYPE_CHECKING:
     from ray.train._checkpoint import Checkpoint
@@ -390,7 +390,6 @@ class StorageContext:
         >>> os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/ray_results"
         >>> storage = StorageContext(
         ...     storage_path="mock://netloc/bucket/path?param=1",
-        ...     sync_config=SyncConfig(),
         ...     experiment_dir_name="exp_name",
         ... )
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
@@ -415,7 +414,6 @@ class StorageContext:
         >>> os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/ray_results"
         >>> storage = StorageContext(
         ...     storage_path=None,
-        ...     sync_config=SyncConfig(),
         ...     experiment_dir_name="exp_name",
         ... )
         >>> storage.storage_path  # Auto-resolved
@@ -575,7 +573,8 @@ class StorageContext:
         """Persists all artifacts within `trial_local_dir` to storage.
 
         This method possibly launches a background task to sync the trial dir,
-        depending on the `sync_period` + `sync_on_checkpoint` settings of `SyncConfig`.
+        depending on the `sync_period` + `sync_artifacts_on_checkpoint`
+        settings of `SyncConfig`.
 
         `(local_fs, trial_local_path) -> (storage_filesystem, trial_fs_path)`
 

@@ -59,7 +59,7 @@ from ray.tune.utils.callback import (
 )
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
+from ray.train._internal.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
 from ray.util.annotations import PublicAPI
@@ -142,7 +142,7 @@ class Trainable:
                 This is **per trial** directory,
                 which is different from **per checkpoint** directory.
             sync_config: Configuration object for syncing.
-                See :class:`~ray.tune.syncer.SyncConfig`.
+                See :class:`~ray.train.SyncConfig`.
         """
 
         self.config = config or {}
@@ -455,7 +455,7 @@ class Trainable:
 
         self._last_result = result
 
-        if _use_storage_context():
+        if _use_storage_context() and self._storage:
             # Launch background tasks to sync artifacts at some specified frequency.
             self._storage.persist_artifacts()
 
@@ -546,6 +546,10 @@ class Trainable:
                         checkpoint=persisted_checkpoint,
                         metrics=self._last_result.copy(),
                     )
+                    # Persist trial artifacts to storage.
+                    self._storage.persist_artifacts(
+                        force=self._storage.sync_config.sync_artifacts_on_checkpoint
+                    )
                 else:
                     # `storage=None` only happens when initializing the
                     # Trainable manually, outside of Tune/Train.
@@ -555,11 +559,6 @@ class Trainable:
                     checkpoint_result = _TrainingResult(
                         checkpoint=local_checkpoint, metrics=self._last_result.copy()
                     )
-
-                # Persist trial artifacts to storage.
-                self._storage.persist_artifacts(
-                    force=self._storage.sync_config.sync_on_checkpoint
-                )
             else:
                 checkpoint_result: _TrainingResult = checkpoint_dict_or_path
                 assert self._last_result
