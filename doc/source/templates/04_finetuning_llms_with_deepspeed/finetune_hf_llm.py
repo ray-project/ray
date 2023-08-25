@@ -520,7 +520,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=5e-6, help="Learning rate to use.")
 
     parser.add_argument(
-        "--ctx-len", type=int, default=512, help="Learning rate to use."
+        "--ctx-len", type=int, default=512, help="Maximum context length for the model input sequences."
     )
 
     parser.add_argument(
