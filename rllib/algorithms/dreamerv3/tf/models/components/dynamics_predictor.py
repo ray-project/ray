@@ -9,6 +9,7 @@ from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 from ray.rllib.algorithms.dreamerv3.tf.models.components.representation_layer import (
     RepresentationLayer,
 )
+from ray.rllib.algorithms.dreamerv3.utils import get_gru_units
 from ray.rllib.utils.framework import try_import_tf
 
 _, tf, _ = try_import_tf()
@@ -45,8 +46,8 @@ class DynamicsPredictor(tf.keras.Model):
         super().__init__(name="dynamics_predictor")
 
         self.mlp = MLP(
-            # TODO: In Danijar's code, the Dynamics Net only has a single layer, no
-            #  matter the model size.
+            # In author's original code, the Dynamics Net only has a single layer, no
+            # matter the model size.
             num_dense_layers=1,
             model_size=model_size,
             output_layer_size=None,
@@ -58,16 +59,26 @@ class DynamicsPredictor(tf.keras.Model):
             num_classes_per_categorical=num_classes_per_categorical,
         )
 
-    def call(self, h, return_z_probs=False):
+        # Trace self.call.
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
+        self.call = tf.function(
+            input_signature=[
+                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
+            ]
+        )(self.call)
+
+    def call(self, h):
         """Performs a forward pass through the dynamics (or "prior") network.
 
         Args:
             h: The deterministic hidden state of the sequence model.
-            return_z_probs: Whether to return the probabilities for the categorical
-                distribution (in the shape of [B, num_categoricals, num_classes])
-                as a second return value.
+
+        Returns:
+            Tuple consisting of a differentiable z-sample and the probabilities for the
+            categorical distribution (in the shape of [B, num_categoricals,
+            num_classes]) that created this sample.
         """
         # Send internal state through MLP.
         out = self.mlp(h)
         # Generate a z vector (stochastic, discrete sample).
-        return self.representation_layer(out, return_z_probs=return_z_probs)
+        return self.representation_layer(out)
