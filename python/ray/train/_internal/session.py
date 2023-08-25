@@ -257,6 +257,9 @@ class _TrainSession:
         # Release the lock so that training thread can process this event.
         self.continue_lock.release()
 
+        # Force a final (blocking) sync of artifacts in the trial path to storage.
+        self.storage.persist_artifacts(force=True)
+
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
         # SystemError
@@ -559,6 +562,9 @@ class _TrainSession:
             # Persist the reported checkpoint files to storage.
             persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
 
+        # Persist trial artifacts to storage (may skip if recently persisted).
+        self.storage.persist_artifacts()
+
         metrics = self._auto_fill_metrics(metrics)
 
         # Set additional user metadata from the Trainer.
@@ -571,10 +577,7 @@ class _TrainSession:
                     user_metadata[k] = v
             persisted_checkpoint.set_metadata(user_metadata)
 
-        result = _TrainingResult(
-            checkpoint=persisted_checkpoint,
-            metrics=metrics,
-        )
+        result = _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
 
         self._report_training_result(result)
 
