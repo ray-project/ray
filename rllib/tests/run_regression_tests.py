@@ -26,11 +26,11 @@ import yaml
 import ray
 from ray import air
 from ray.air.integrations.wandb import WandbLoggerCallback
+from ray.rllib import _register_all
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray import tune
-
+from ray.tune import run_experiments
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -197,6 +197,12 @@ if __name__ == "__main__":
                 "sampler_results/episode_reward_mean"
             ] = args.override_mean_reward
 
+        # Checkpoint settings.
+        exp["checkpoint_config"] = air.CheckpointConfig(
+            checkpoint_frequency=args.checkpoint_freq,
+            checkpoint_at_end=args.checkpoint_freq > 0,
+        )
+
         # QMIX does not support tf yet -> skip.
         if exp["run"] == "QMIX" and args.framework != "torch":
             print(f"Skipping framework='{args.framework}' for QMIX.")
@@ -249,34 +255,16 @@ if __name__ == "__main__":
             except ConnectionError:
                 ray.init()
             else:
-                tuner = tune.Tuner(
-                    trainable=exp["run"],
-                    param_space=exp["config"],
-                    run_config=air.RunConfig(
-                        name=exp_name,
-                        callbacks=callbacks,
-                        stop=exp.get("stop", {}),
+                try:
+                    trials = run_experiments(
+                        experiments,
+                        resume=False,
                         verbose=args.verbose,
-                        checkpoint_config=air.CheckpointConfig(
-                            # Create checkpoint at end if checkpoints are activated.
-                            checkpoint_at_end=args.checkpoint_freq > 0,
-                            checkpoint_frequency=args.checkpoint_freq,
-                        ),
-                    ),
-                )
-                # Resume the experiment from a WandB-uploaded checkpoint.
-                # if args.wandb_from_checkpoint is not None:
-                #    artifact = wandb_run.use_artifact(
-                #        args.wandb_from_checkpoint,
-                #        type="model",
-                #    )
-                #    artifact_dir = artifact.download()
-
-                #    tuner.restore(
-                #        path=artifact_dir,
-                #        trainable=exp["run"],
-                #    )
-                trials = tuner.fit()
+                        callbacks=callbacks,
+                    )
+                finally:
+                    ray.shutdown()
+                    _register_all()
 
             for t in trials:
                 # If we have evaluation workers, use their rewards.
@@ -284,14 +272,16 @@ if __name__ == "__main__":
                 # we evaluate against an actual environment.
                 check_eval = exp["config"].get("evaluation_interval", None) is not None
                 reward_mean = (
-                    t.metrics["evaluation"]["sampler_results"]["episode_reward_mean"]
+                    t.last_result["evaluation"]["sampler_results"][
+                        "episode_reward_mean"
+                    ]
                     if check_eval
                     else (
                         # Some algos don't store sampler results under `sampler_results`
                         # e.g. ARS. Need to keep this logic around for now.
-                        t.metrics["sampler_results"]["episode_reward_mean"]
-                        if "sampler_results" in t.metrics
-                        else t.metrics["episode_reward_mean"]
+                        t.last_result["sampler_results"]["episode_reward_mean"]
+                        if "sampler_results" in t.last_result
+                        else t.last_result["episode_reward_mean"]
                     )
                 )
 
@@ -299,13 +289,15 @@ if __name__ == "__main__":
                 # a stopping criterion under the "evaluation/" scope. If
                 # not, use `episode_reward_mean`.
                 if check_eval:
-                    min_reward = exp["stop"].get(
+                    min_reward = t.stopping_criterion.get(
                         "evaluation/sampler_results/episode_reward_mean",
-                        exp["stop"].get("sampler_results/episode_reward_mean"),
+                        t.stopping_criterion.get("sampler_results/episode_reward_mean"),
                     )
                 # Otherwise, expect `episode_reward_mean` to be set.
                 else:
-                    min_reward = exp["stop"].get("sampler_results/episode_reward_mean")
+                    min_reward = t.stopping_criterion.get(
+                        "sampler_results/episode_reward_mean"
+                    )
 
                 # If min reward not defined, always pass.
                 if min_reward is None or reward_mean >= min_reward:

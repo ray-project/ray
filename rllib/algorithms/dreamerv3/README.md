@@ -76,7 +76,7 @@ First we quickly install ``flappy_bird_gymnasium`` in our dev environment:
 $ pip install flappy_bird_gymnasium 
 ```
 
-Now, let's create a new RLlib python config file for this experiment and call it ``flappy_bird.py``:
+Now, let's create a new python file for this RLlib experiment and call it ``flappy_bird.py``:
 
 ```python
 from ray import tune
@@ -84,6 +84,7 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 
 
 def _env_creator(ctx):
+    import flappy_bird_gymnasium  # doctest: +SKIP
     import gymnasium as gym
     from supersuit.generic_wrappers import resize_v1
     from ray.rllib.algorithms.dreamerv3.utils.env_runner import NormalizedImageEnv
@@ -110,13 +111,15 @@ config = (
         training_ratio=1024,
     )
 )
+
+# Run the tuner job.
+results = tune.Tuner(trainable="DreamerV3", param_space=config).fit()
 ```
 
-Great! Now, let's use this config file and start our experiment. We will use the exact same
-command line as the ones introduced above (for Atari100k and the DM Control Suite benchmarks):
+Great! Now, let's run this experiment:
 
 ```shell
-$ rllib train file flappy_bird.py
+$ python flappy_bird.py
 ```
 
 This should be it. Feel free to try out running this on multiple GPUs using these
