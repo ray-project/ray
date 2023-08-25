@@ -22,7 +22,7 @@ from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
 async def send_signal_on_cancellation(signal_actor: ActorHandle):
     try:
         await asyncio.sleep(100000)
-    except asyncio.CancelledError as e:
+    except asyncio.CancelledError:
         await signal_actor.send.remote()
 
 
