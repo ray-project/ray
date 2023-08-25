@@ -550,15 +550,18 @@ ray::Status NodeManager::RegisterGcs() {
         checking = true;
         RAY_CHECK_OK(gcs_client_->Nodes().AsyncCheckSelfAlive(
             // capture checking ptr here because vs17 fail to compile
-            [checking_ptr = &checking](auto status, auto alive) mutable {
-              if (status.ok()) {
-                if (!alive) {
-                  // GCS think this raylet is dead. Fail the node
-                  RAY_LOG(FATAL)
-                      << "GCS consider this node to be dead. This may happen when "
-                      << "GCS is not backed by a DB and restarted or there is data loss "
-                      << "in the DB.";
-                }
+            [this, checking_ptr = &checking](auto status, auto alive) mutable {
+              if ((status.ok() && !alive)) {
+                // GCS think this raylet is dead. Fail the node
+                RAY_LOG(FATAL)
+                    << "GCS consider this node to be dead. This may happen when "
+                    << "GCS is not backed by a DB and restarted or there is data loss "
+                    << "in the DB.";
+              } else if (status.IsAuthError()) {
+                RAY_LOG(FATAL)
+                    << "GCS returned an authentication error. This may happen when "
+                    << "GCS is not backed by a DB and restarted or there is data loss "
+                    << "in the DB. Local cluster ID: " << gcs_client_->GetClusterId();
               }
               *checking_ptr = false;
             },
