@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from typing import (
-    Optional,
     Set,
     List,
     Tuple,
@@ -55,7 +54,7 @@ class ClusterNodeInfoCache(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_node_az(self, node_id: str) -> Optional[str]:
+    def get_node_az(self, node_id: str) -> str:
         """Get availability zone of a node."""
         raise NotImplementedError
 
@@ -74,6 +73,6 @@ class DefaultClusterNodeInfoCache(ClusterNodeInfoCache):
     def get_draining_node_ids(self) -> Set[str]:
         return set()
 
-    def get_node_az(self, node_id: str) -> Optional[str]:
+    def get_node_az(self, node_id: str) -> str:
         """Get availability zone of a node."""
-        return None
+        return "UNKNOWN"
