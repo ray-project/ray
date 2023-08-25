@@ -116,7 +116,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_convergence.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
@@ -124,7 +124,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_dependency.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
@@ -132,7 +132,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_experiment.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
@@ -183,7 +183,7 @@ py_test(
         "tests/_test_multi_tenancy_run.py"
     ],
     deps = [":tune_lib"],
-    tags = ["team:ml", "no_new_storage"],
+    tags = ["team:ml", "new_storage"],
 )
 
 py_test(
@@ -199,7 +199,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_progress_reporter.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
@@ -215,7 +215,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_run_experiment.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
@@ -223,7 +223,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_remote.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
@@ -303,15 +303,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_syncer.py"],
     deps = [":tune_lib", ":conftest"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
-)
-
-py_test(
-    name = "test_syncer_callback",
-    size = "medium",
-    srcs = ["tests/test_syncer_callback.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
