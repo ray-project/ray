@@ -7,6 +7,7 @@ import logging
 from pprint import pprint
 import time
 from typing import Callable, Dict
+import json
 
 import numpy as np
 from starlette.requests import Request
@@ -65,17 +66,15 @@ async def get_query_latencies(name: str, fn: Callable):
 
 
 async def fetch_http(session, data):
-    # async with session.get("http://localhost:8000/", data=data) as response:
-    #     response = await response.text()
-    #     assert response == "ok", response
-
-    response = await session.get("http://localhost:8000/", data=data)
-    print("response", response.text())
-    assert response.status == 200, response
+    data_json = {"nums": data}
+    response = await session.get("http://localhost:8000/", json=data_json)
+    response_text = await response.read()
+    float(response_text.decode())
 
 
 async def fetch_grpc(stub, data):
-    await stub.grpc_call(serve_pb2.RawData(nums=data))
+    result = await stub.grpc_call(serve_pb2.RawData(nums=data))
+    result.output
 
 
 @ray.remote
@@ -140,12 +139,21 @@ def build_app(
             return (raw - np.min(raw)) / (np.max(raw) - np.min(raw) + DELTA)
 
         async def __call__(self, req: Request):
-            raw = np.asarray(await req.body())
+            """HTTP entrypoint.
+
+            It parses the request, normalize the data, and send to model for inference.
+            """
+            body = json.loads(await req.body())
+            raw = np.asarray(body["nums"])
             processed = self.normalize(raw)
             model_output_ref = await self._handle.remote(processed)
             return await model_output_ref
 
         async def grpc_call(self, raq_data):
+            """gRPC entrypoint.
+
+            It parses the request, normalize the data, and send to model for inference.
+            """
             raw = np.asarray(raq_data.nums)
             processed = self.normalize(raw)
             model_output_ref = await self._handle.remote(processed)
@@ -162,6 +170,7 @@ def build_app(
             self._model = np.random.randn(data_size, data_size)
 
         async def __call__(self, processed: np.ndarray) -> float:
+            # Run a dot product with a random matrix to simulate a model inference.
             model_output = np.dot(processed, self._model)
             return sum(model_output)
 
@@ -177,12 +186,10 @@ async def trial(
 ) -> Dict[str, float]:
     results = {}
 
-    trial_key_base = (
-        f"replica:{num_replicas}/"
-        f"concurrent_queries:{max_concurrent_queries}/"
-        f"data_size:{data_size}"
-    )
+    # Generate input data as array of random floats.
+    data = [random() for _ in range(data_size)]
 
+    # Build and deploy the app.
     app = build_app(
         num_replicas=num_replicas,
         max_concurrent_queries=max_concurrent_queries,
@@ -190,10 +197,11 @@ async def trial(
     )
     serve.run(app)
 
-    data = [random() for _ in range(data_size)]
-
-    # clients = [gRPCClient.remote() for _ in range(num_clients)]
-    clients = [HTTPClient.remote() for _ in range(num_clients)]
+    # Start clients.
+    if test_grpc:
+        clients = [gRPCClient.remote() for _ in range(num_clients)]
+    else:
+        clients = [HTTPClient.remote() for _ in range(num_clients)]
     ray.get([client.ready.remote() for client in clients])
 
     async def client_time_queries():
@@ -212,7 +220,14 @@ async def trial(
         client_time_queries,
     )
 
-    results[f"num_client:{len(clients)}/{trial_key_base}"] = {
+    trial_key_base = (
+        f"{'gRPC' if test_grpc else 'HTTP'}/"
+        f"num_client:{num_clients}/"
+        f"replica:{num_replicas}/"
+        f"concurrent_queries:{max_concurrent_queries}/"
+        f"data_size:{data_size}"
+    )
+    results[trial_key_base] = {
         "tps_mean": tps_mean,
         "tps_sdt": tps_sdt,
         "latency_ms_mean": latency_ms_mean,
@@ -229,14 +244,16 @@ async def main():
         for max_concurrent_queries in [1, 10000]:
             for data_size in [1, 100, 10_000]:
                 for num_clients in [1, 8]:
-                    results.update(
-                        await trial(
-                            num_replicas=num_replicas,
-                            max_concurrent_queries=max_concurrent_queries,
-                            data_size=data_size,
-                            num_clients=num_clients,
+                    for test_grpc in [True, False]:
+                        results.update(
+                            await trial(
+                                num_replicas=num_replicas,
+                                max_concurrent_queries=max_concurrent_queries,
+                                data_size=data_size,
+                                num_clients=num_clients,
+                                test_grpc=test_grpc,
+                            )
                         )
-                    )
 
     print("Results from all conditions:")
     pprint(results)
@@ -248,7 +265,8 @@ if __name__ == "__main__":
 
     grpc_port = 9000
     grpc_servicer_functions = [
-        "ray.serve.generated.serve_pb2_grpc.add_RayServeBenchmarkServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc."
+        "add_RayServeBenchmarkServiceServicer_to_server",
     ]
     serve.start(
         grpc_options=gRPCOptions(
