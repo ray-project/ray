@@ -287,7 +287,6 @@ class TestgRPCProxy:
             stream=stream,
             multiplexed_model_id=multiplexed_model_id,
             method_name=method_name,
-            use_new_handle_api=True,
         )
         expected_request_context = ray.serve.context.RequestContext(
             route=route_path,
