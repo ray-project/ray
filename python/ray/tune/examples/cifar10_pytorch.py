@@ -16,7 +16,7 @@ import torchvision.transforms as transforms
 from typing import Dict
 import ray
 from ray import train, tune
-from ray.train import Checkpoint
+from ray.train._checkpoint import Checkpoint
 from ray.tune.schedulers import ASHAScheduler
 # __import_end__
 

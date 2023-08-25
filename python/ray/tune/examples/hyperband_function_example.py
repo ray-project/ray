@@ -6,9 +6,11 @@ import os
 
 import numpy as np
 
+from tempfile import TemporaryDirectory
+
 import ray
 from ray import train, tune
-from ray.train import Checkpoint
+from ray.train._checkpoint import Checkpoint
 from ray.tune.schedulers import HyperBandScheduler
 
 
@@ -22,15 +24,21 @@ def train_func(config, checkpoint_dir=None):
         v = np.tanh(float(timestep) / config.get("width", 1))
         v *= config.get("height", 1)
 
-        # Checkpoint the state of the training every 3 steps
-        # Note that this is only required for certain schedulers
-        checkpoint = None
-        if timestep % 3 == 0:
-            checkpoint = Checkpoint.from_dict({"timestep": timestep})
-
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy.
-        train.report({"episode_reward_mean": v}, checkpoint=checkpoint)
+        metrics = {"episode_reward_mean": v}
+
+        # Checkpoint the state of the training every 3 steps
+        # Note that this is only required for certain schedulers
+        if timestep % 3 == 0:
+            with TemporaryDirectory() as tmpdir:
+                with open(f"{tmpdir}/checkpoint", "w") as fout:
+                    json.dump({"timestep": timestep}, fout)
+
+                checkpoint = Checkpoint.from_directory(tmpdir)
+                train.report(metrics=metrics, checkpoint=checkpoint)
+        else:
+            train.report(metrics=metrics)
 
 
 if __name__ == "__main__":

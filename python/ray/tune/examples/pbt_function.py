@@ -1,13 +1,16 @@
 #!/usr/bin/env python
 
+import json
 import numpy as np
 import argparse
 import random
 
 import ray
 from ray import train, tune
-from ray.train import Checkpoint
+from ray.train._checkpoint import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
+
+from tempfile import TemporaryDirectory
 
 
 def pbt_function(config):
@@ -38,8 +41,11 @@ def pbt_function(config):
 
     # NOTE: See below why step is initialized to 1
     step = 1
-    if train.get_checkpoint():
-        state = train.get_checkpoint().to_dict()
+    checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as tmpdir:
+            with open(f"{tmpdir}/checkpoint.json", "r") as fin:
+                state = json.load(fin)
         accuracy = state["acc"]
         last_step = state["step"]
         # Current step should be 1 more than the last checkpoint step
@@ -70,7 +76,14 @@ def pbt_function(config):
         accuracy += noise_level * np.random.normal()
         accuracy = max(0, accuracy)
 
-        checkpoint = None
+        metrics = {
+            "mean_accuracy": accuracy,
+            "cur_lr": lr,
+            "optimal_lr": optimal_lr,  # for debugging
+            "q_err": q_err,  # for debugging
+            "done": accuracy > midpoint * 2,  # this stops the training process
+        }
+
         if step % checkpoint_interval == 0:
             # Checkpoint every `checkpoint_interval` steps
             # NOTE: if we initialized `step=0` above, our checkpointing and perturbing
@@ -78,18 +91,16 @@ def pbt_function(config):
             # Ex: if `checkpoint_interval` = `perturbation_interval` = 3
             # step:                0 (checkpoint)  1     2            3 (checkpoint)
             # training_iteration:  1               2     3 (perturb)  4
-            checkpoint = Checkpoint.from_dict({"acc": accuracy, "step": step})
 
-        train.report(
-            {
-                "mean_accuracy": accuracy,
-                "cur_lr": lr,
-                "optimal_lr": optimal_lr,  # for debugging
-                "q_err": q_err,  # for debugging
-                "done": accuracy > midpoint * 2,  # this stops the training process
-            },
-            checkpoint=checkpoint,
-        )
+            with TemporaryDirectory() as tmpdir:
+                with open(f"{tmpdir}/checkpoint.json", "w") as fout:
+                    json.dump({"acc": accuracy, "step": step}, fout)
+
+                checkpoint = Checkpoint.from_directory(tmpdir)
+                train.report(metrics=metrics, checkpoint=checkpoint)
+        else:
+            train.report(metrics=metrics)
+
         step += 1
 
 

@@ -3,9 +3,11 @@
 # checkpoint through ``ray.train.TrainContext`` APIs.
 import time
 import argparse
+import json
 
 from ray import train, tune
-from ray.train import Checkpoint
+from ray.train._checkpoint import Checkpoint
+from tempfile import TemporaryDirectory
 
 
 def evaluation_fn(step, width, height):
@@ -17,16 +19,23 @@ def train_func(config):
     step = 0
     width, height = config["width"], config["height"]
 
-    if train.get_checkpoint():
-        loaded_checkpoint = train.get_checkpoint()
-        step = loaded_checkpoint.to_dict()["step"] + 1
+    checkpoint = train.get_checkpoint()
+
+    if checkpoint:
+        with checkpoint.as_directory() as tmpdir:
+            with open(f"{tmpdir}/ckpt.json", "r") as fin:
+                step = json.load(fin)["step"] + 1
 
     for step in range(step, 100):
         intermediate_score = evaluation_fn(step, width, height)
-        checkpoint = Checkpoint.from_dict({"step": step})
-        train.report(
-            {"iterations": step, "mean_loss": intermediate_score}, checkpoint=checkpoint
-        )
+
+        with TemporaryDirectory() as tmpdir:
+            with open(f"{tmpdir}/ckpt.json", "w") as fout:
+                json.dump({"step": step}, fout)
+            train.report(
+                {"iterations": step, "mean_loss": intermediate_score},
+                checkpoint=Checkpoint.from_directory(tmpdir),
+            )
 
 
 if __name__ == "__main__":
