@@ -30,6 +30,7 @@ from ray.serve._private.constants import (
     DEFAULT_MAX_CONCURRENT_QUERIES,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
+    MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.generated.serve_pb2 import (
@@ -514,10 +515,22 @@ class ReplicaConfig:
             self.ray_actor_options["num_cpus"] = 1
 
     def _validate_max_replicas_per_node(self) -> None:
-        if self.max_replicas_per_node is not None and self.max_replicas_per_node < 1:
+        if self.max_replicas_per_node is None:
+            return
+        if not isinstance(self.max_replicas_per_node, int):
+            raise TypeError(
+                f"Get invalid type '{type(self.max_replicas_per_node)}' for "
+                "max_replicas_per_node. Expected None or an integer "
+                f"in the range of [1, {MAX_REPLICAS_PER_NODE_MAX_VALUE}]."
+            )
+        if (
+            self.max_replicas_per_node < 1
+            or self.max_replicas_per_node > MAX_REPLICAS_PER_NODE_MAX_VALUE
+        ):
             raise ValueError(
                 f"Invalid max_replicas_per_node {self.max_replicas_per_node}. "
-                "Valid values are None or a positive integer."
+                "Valid values are None or an integer "
+                f"in the range of [1, {MAX_REPLICAS_PER_NODE_MAX_VALUE}]."
             )
 
     def _validate_placement_group_options(self) -> None:

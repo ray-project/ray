@@ -253,7 +253,9 @@ class DeploymentSchema(
     max_replicas_per_node: int = Field(
         default=DEFAULT.VALUE,
         description=(
-            "The max number of deployment replicas can run on a single node. "
+            "[EXPERIMENTAL] The max number of deployment replicas can "
+            "run on a single node. Valid values are None (no limitation) "
+            "or an integer in the range of [1, 100]. "
             "Defaults to no limitation."
         ),
     )

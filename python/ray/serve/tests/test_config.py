@@ -203,9 +203,19 @@ class TestReplicaConfig:
             max_replicas_per_node=5,
         )
 
-        # Invalid: non-postive max_replicas_per_node
+        # Invalid type
+        with pytest.raises(TypeError, match="Get invalid type"):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node="1",
+            )
+
+        # Invalid: not in the range of [1, 100]
         with pytest.raises(
-            ValueError, match="Valid values are None or a positive integer"
+            ValueError,
+            match="Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -215,7 +225,19 @@ class TestReplicaConfig:
             )
 
         with pytest.raises(
-            ValueError, match="Valid values are None or a positive integer"
+            ValueError,
+            match="Valid values are None or an integer in the range of \[1, 100\]",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node=110,
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,

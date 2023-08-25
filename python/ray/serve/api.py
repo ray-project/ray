@@ -320,8 +320,10 @@ def deployment(
             shut down before being forcefully killed. Defaults to 20s.
         is_driver_deployment: [EXPERIMENTAL] when set, exactly one replica of this
             deployment runs on every node (like a daemon set).
-        max_replicas_per_node: The max number of deployment replicas can
-            run on a single node. Defaults to no limitation.
+        max_replicas_per_node: [EXPERIMENTAL] The max number of deployment replicas can
+            run on a single node. Valid values are None (no limitation)
+            or an integer in the range of [1, 100].
+            Defaults to no limitation.
 
     Returns:
         `Deployment`

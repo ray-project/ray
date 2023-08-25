@@ -7,6 +7,7 @@ import ray
 from ray import serve
 from ray.cluster_utils import AutoscalingCluster
 from ray.util.state import list_actors
+from ray.serve.drivers import DAGDriver
 
 
 def get_node_to_deployment_to_num_replicas():
@@ -56,16 +57,15 @@ def test_basic():
         def __call__(self):
             return "hello"
 
-    # Requires 2 worker nodes.
-    serve.run(
-        D.options(num_replicas=6, max_replicas_per_node=3, name="deploy1").bind(),
-        name="app",
-    )
-    # Requires 2 worker nodes.
-    serve.run(
-        D.options(num_replicas=2, max_replicas_per_node=1, name="deploy2").bind(),
-        name="app",
-    )
+    deployments = {
+        "/deploy1": D.options(
+            num_replicas=6, max_replicas_per_node=3, name="deploy1"
+        ).bind(),
+        "/deploy2": D.options(
+            num_replicas=2, max_replicas_per_node=1, name="deploy2"
+        ).bind(),
+    }
+    serve.run(DAGDriver.bind(deployments), name="app")
 
     # 2 worker nodes should be started.
     # Each worker node should run 3 deploy1 replicas
