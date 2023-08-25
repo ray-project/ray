@@ -3,14 +3,13 @@ import yaml
 import pytest
 import requests
 import subprocess
+import time
 from typing import Dict
 from fastapi import FastAPI
-from starlette.requests import Request
 
 import ray
 from ray.dag.input_node import InputNode
 from ray._private.test_utils import wait_for_condition
-from ray._private.usage import usage_lib
 
 from ray import serve
 from ray.serve.context import get_global_client
@@ -21,105 +20,18 @@ from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
-    SERVE_NAMESPACE,
 )
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray.serve._private.usage import ServeUsageTag
+from ray.serve.tests.utils import (
+    check_ray_started,
+    start_telemetry_app,
+    TelemetryStorage,
+    TELEMETRY_ROUTE_PREFIX,
+)
 
 
-TELEMETRY_ROUTE_PREFIX = "/telemetry"
-STORAGE_ACTOR_NAME = "storage"
-
-
-def check_ray_stopped():
-    try:
-        requests.get("http://localhost:52365/api/ray/version")
-        return False
-    except Exception:
-        return True
-
-
-def check_ray_started():
-    return requests.get("http://localhost:52365/api/ray/version").status_code == 200
-
-
-@pytest.fixture
-def manage_ray(monkeypatch):
-    with monkeypatch.context() as m:
-        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv(
-            "RAY_USAGE_STATS_REPORT_URL",
-            f"http://127.0.0.1:8000{TELEMETRY_ROUTE_PREFIX}",
-        )
-        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        subprocess.check_output(["ray", "stop", "--force"])
-        wait_for_condition(check_ray_stopped, timeout=5)
-        yield
-
-        # Call Python API shutdown() methods to clear global variable state
-        serve.shutdown()
-        ray.shutdown()
-
-        # Reset global state (any keys that may have been set and cached while the
-        # workload was running).
-        usage_lib.reset_global_state()
-
-        # Shut down Ray cluster with CLI
-        subprocess.check_output(["ray", "stop", "--force"])
-        wait_for_condition(check_ray_stopped, timeout=5)
-
-
-@ray.remote(name=STORAGE_ACTOR_NAME, namespace=SERVE_NAMESPACE, num_cpus=0)
-class TelemetryStorage:
-    def __init__(self):
-        self.reports_received = 0
-        self.current_report = dict()
-
-    def store_report(self, report: Dict) -> None:
-        self.reports_received += 1
-        self.current_report = report
-
-    def get_report(self) -> Dict:
-        return self.current_report
-
-    def get_reports_received(self) -> int:
-        return self.reports_received
-
-
-@serve.deployment(ray_actor_options={"num_cpus": 0})
-class TelemetryReceiver:
-    def __init__(self):
-        self.storage = ray.get_actor(name=STORAGE_ACTOR_NAME, namespace=SERVE_NAMESPACE)
-
-    async def __call__(self, request: Request) -> bool:
-        report = await request.json()
-        ray.get(self.storage.store_report.remote(report))
-        return True
-
-
-receiver_app = TelemetryReceiver.bind()
-
-
-def start_telemetry_app():
-    """Start a telemetry Serve app.
-
-    Ray should be initialized before calling this method.
-
-    NOTE: If you're running the TelemetryReceiver Serve app to check telemetry,
-    remember that the receiver itself is counted in the telemetry. E.g. if you
-    deploy a Serve app other than the receiver, the number of apps in the
-    cluster is 2- not 1– since the receiver is also running.
-
-    Returns a handle to a TelemetryStorage actor. You can use this actor
-    to access the latest telemetry reports.
-    """
-
-    storage = TelemetryStorage.remote()
-    serve.run(receiver_app, name="telemetry", route_prefix=TELEMETRY_ROUTE_PREFIX)
-    return storage
-
-
-def test_fastapi_detected(manage_ray):
+def test_fastapi_detected(manage_ray_with_telemetry):
     """
     Check that FastAPI is detected by telemetry.
     """
@@ -186,7 +98,7 @@ def test_fastapi_detected(manage_ray):
     assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) is None
 
 
-def test_grpc_detected(manage_ray):
+def test_grpc_detected(manage_ray_with_telemetry):
     """
     Check that gRPCIngress is detected by telemetry.
     """
@@ -244,7 +156,7 @@ def test_grpc_detected(manage_ray):
 
 
 @pytest.mark.parametrize("use_adapter", [True, False])
-def test_graph_detected(manage_ray, use_adapter):
+def test_graph_detected(manage_ray_with_telemetry, use_adapter):
     """
     Check that DAGDriver and HTTP adapters are detected by telemetry.
     """
@@ -319,7 +231,7 @@ stub_app = Stub.bind()
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("version", ["v1", "v2"])
-def test_rest_api(manage_ray, tmp_dir, version):
+def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
     """
     Check that telemetry works with REST API.
     """
@@ -347,13 +259,13 @@ def test_rest_api(manage_ray, tmp_dir, version):
     serve.delete(name="telemetry", _blocking=True)
 
     if version == "v1":
-        config = {"import_path": "ray.serve.tests.test_telemetry.receiver_app"}
+        config = {"import_path": "ray.serve.tests.utils.receiver_app"}
     elif version == "v2":
         config = {
             "applications": [
                 {
                     "name": "receiver_app",
-                    "import_path": "ray.serve.tests.test_telemetry.receiver_app",
+                    "import_path": "ray.serve.tests.utils.receiver_app",
                     "route_prefix": TELEMETRY_ROUTE_PREFIX,
                 },
                 {
@@ -422,7 +334,7 @@ def test_rest_api(manage_ray, tmp_dir, version):
             "applications": [
                 {
                     "name": "receiver_app",
-                    "import_path": "ray.serve.tests.test_telemetry.receiver_app",
+                    "import_path": "ray.serve.tests.utils.receiver_app",
                     "route_prefix": TELEMETRY_ROUTE_PREFIX,
                 },
             ]
@@ -467,7 +379,9 @@ tester = Tester.bind()
         ("autoscaling_config", {"max_replicas": 5}),
     ],
 )
-def test_lightweight_config_options(manage_ray, lightweight_option, value):
+def test_lightweight_config_options(
+    manage_ray_with_telemetry, lightweight_option, value
+):
     """
     Check that lightweight config options are detected by telemetry.
     """
@@ -503,7 +417,7 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
         "applications": [
             {
                 "name": "receiver_app",
-                "import_path": "ray.serve.tests.test_telemetry.receiver_app",
+                "import_path": "ray.serve.tests.utils.receiver_app",
                 "route_prefix": TELEMETRY_ROUTE_PREFIX,
             },
             {
@@ -574,7 +488,9 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
 
 @pytest.mark.parametrize("use_new_handle_api", [False, True])
 @pytest.mark.parametrize("call_in_deployment", [False, True])
-def test_handle_apis_detected(manage_ray, use_new_handle_api, call_in_deployment):
+def test_handle_apis_detected(
+    manage_ray_with_telemetry, use_new_handle_api, call_in_deployment
+):
     """Check that the various handles are detected correctly by telemetry."""
 
     subprocess.check_output(["ray", "start", "--head"])
@@ -652,7 +568,7 @@ def test_handle_apis_detected(manage_ray, use_new_handle_api, call_in_deployment
 
 
 @pytest.mark.parametrize("mode", ["http", "outside_deployment", "inside_deployment"])
-def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
+def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
     """Check that the handle to_object_ref API is detected correctly by telemetry."""
 
     subprocess.check_output(["ray", "start", "--head"])
@@ -682,10 +598,13 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
         def __init__(self, h):
             self._h = h.options(use_new_handle_api=True)
 
-        async def __call__(self, call_downstream=False):
+        async def get(self, call_downstream=False):
             if call_downstream:
                 await self._h.remote()._to_object_ref()
             return "ok"
+
+        async def __call__(self):
+            return await self.get()
 
     handle = serve.run(Caller.bind(Downstream.bind()))
 
@@ -693,14 +612,14 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
         result = requests.get("http://localhost:8000").text
     elif mode == "outside_deployment":
         result = ray.get(
-            handle.options(use_new_handle_api=True).remote()._to_object_ref_sync()
+            handle.options(use_new_handle_api=True).get.remote()._to_object_ref_sync()
         )
     else:
         result = (
             handle.options(
                 use_new_handle_api=True,
             )
-            .remote(call_downstream=True)
+            .get.remote(call_downstream=True)
             .result()
         )
 
@@ -720,11 +639,12 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
     if mode == "http":
         for _ in range(20):
             check_telemetry(tag_should_be_set=False)
+            time.sleep(0.1)
     else:
         wait_for_condition(check_telemetry, tag_should_be_set=True)
 
 
-def test_multiplexed_detect(manage_ray):
+def test_multiplexed_detect(manage_ray_with_telemetry):
     """Check that multiplexed api is detected by telemetry."""
 
     subprocess.check_output(["ray", "start", "--head"])

@@ -15,5 +15,9 @@ deployments of Ray on Kubernetes.
 * {ref}`kuberay-autoscaling`
 * {ref}`kuberay-gpu`
 * {ref}`kuberay-logging`
+* {ref}`kuberay-dev-serve`
 * {ref}`kuberay-experimental`
+* {ref}`kuberay-pod-command`
+* {ref}`kuberay-pod-security`
+* {ref}`kuberay-tls`
 * {ref}`deploy-a-static-ray-cluster-without-kuberay`
