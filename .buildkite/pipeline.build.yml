@@ -39,7 +39,7 @@
       --test_tag_filters=team:serve
       release/...
 
-# the bulk of serve tests are now run on civ2 infra, and defined in 
+# the bulk of serve tests are now run on civ2 infra, and defined in
 # pipeline.build_serve.yml
 - label: ":serverless: Serve HA Tests"
   conditions:
@@ -202,6 +202,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
+    - bazel build $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:ray_pkg
     - bazel test --config=ci --config=asan $(./ci/run/bazel_export_options)
       --config=asan-buildkite
       --test_tag_filters=-kubernetes,asan_tests
@@ -219,10 +220,14 @@
     # Todo (krfricke): Move mosaicml to train-test-requirements.txt
     - pip install "mosaicml==0.12.1"
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
+    # TODO(scottjlee): Move datasets to train/data-test-requirements.txt 
+    # (see https://github.com/ray-project/ray/pull/38432/)
+    - pip install "datasets==2.14.0"
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=doctest,-gpu
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
       python/ray/... doc/...
 
 - label: ":python: Ray on Spark Test"
@@ -329,7 +334,7 @@
     - kubectl apply -f python/ray/tests/chaos/chaos_network_delay.yaml
     - echo "--- Running the script with fault of networking delay"
     - ray job submit --address http://localhost:8265 --runtime-env python/ray/tests/chaos/runtime_env.yaml --working-dir python/ray/tests/chaos -- python potato_passer.py --num-actors=3 --pass-times=1000 --sleep-secs=0.01
-    
+
 # TODO: write a test that needs bandwidth heavy lifting
 - label: ":kubernetes: :mending_heart: chaos bandwidth test"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -380,6 +385,57 @@
     - kubectl apply -f python/ray/tests/chaos/chaos_network_bandwidth.yaml
     - echo "--- Running the script with fault of bandwidth limit"
     - ray job submit --address http://localhost:8265 --runtime-env python/ray/tests/chaos/runtime_env.yaml --working-dir python/ray/tests/chaos -- python potato_passer.py --num-actors=3 --pass-times=1000 --sleep-secs=0.01
+
+
+- label: ":kubernetes: :mending_heart: :ray-serve: serve chaos network delay test"
+  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  instance_size: medium
+  commands:
+    - |
+      cleanup() {
+        if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi
+        kind delete cluster
+      }
+      trap cleanup EXIT
+    - ./ci/env/install-minimal.sh 3.8
+    - PYTHON=3.8 ./ci/env/install-dependencies.sh
+    # Specifying above somehow messes up the Ray install.
+    # Uninstall and re-install Ray so that we can use Ray Client.
+    # (Remove thirdparty_files to sidestep an issue with psutil.)
+    - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
+    - pip install -e /ray/python
+    - echo "--- Setting up local kind cluster."
+    - ./ci/k8s/prep-k8s-environment.sh
+    - ./ci/k8s/prep-helm.sh
+    - echo "--- Building py38-cpu Ray image for the test."
+    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - pip install -q docker
+    - python ci/build/build-docker-images.py --py-versions py38 --device-types cpu --build-type LOCAL --build-base
+    # Tag the image built in the last step. We want to be sure to distinguish the image from the real Ray nightly.
+    - docker tag rayproject/ray:nightly-py38-cpu ray-ci:kuberay-test
+    # Load the image into the kind node
+    - kind load docker-image ray-ci:kuberay-test
+    # Helm install KubeRay
+    - echo "--- Installing KubeRay operator and cluser."
+    - helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+    - helm install kuberay-operator kuberay/kuberay-operator
+    - kubectl wait pod  -l app.kubernetes.io/name=kuberay-operator --for=condition=Ready=True  --timeout=5m
+    # We are in m4i.xlarge and have 4 cpus. Can't have too many nodes.
+    - helm install raycluster kuberay/ray-cluster --set image.repository=ray-ci --set image.tag=kuberay-test --set worker.replicas=2 --set worker.resources.limits.cpu=500m --set worker.resources.requests.cpu=500m --set head.resources.limits.cpu=500m --set head.resources.requests.cpu=500m --set head.containerEnv[0].name=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING --set head.containerEnv[0].value=\"1\"
+    - kubectl wait pod -l ray.io/cluster=raycluster-kuberay --for=condition=Ready=True --timeout=5m
+    - kubectl port-forward --address 0.0.0.0 service/raycluster-kuberay-head-svc 8265:8265 &
+    # Helm install chaos-mesh
+    - echo "--- Installing chaos-mesh operator and CR."
+    - helm repo add chaos-mesh https://charts.chaos-mesh.org
+    - kubectl create ns chaos-mesh
+    - helm install chaos-mesh chaos-mesh/chaos-mesh -n=chaos-mesh --set chaosDaemon.runtime=containerd --set chaosDaemon.socketPath=/run/containerd/containerd.sock --version 2.6.1
+    - kubectl wait pod  --namespace chaos-mesh  -l app.kubernetes.io/instance=chaos-mesh --for=condition=Ready=True
+    - echo "--- Running the script without faults"
+    - ray job submit --address http://localhost:8265 --runtime-env python/ray/tests/chaos/streaming_llm.yaml --working-dir python/ray/tests/chaos -- python streaming_llm.py --num_queries_per_task=100 --num_tasks=2 --num_words_per_query=100
+    # Now add the delay, rerun the job
+    - kubectl apply -f python/ray/tests/chaos/chaos_network_delay.yaml
+    - echo "--- Running the script with fault of networking delay"
+    - ray job submit --address http://localhost:8265 --runtime-env python/ray/tests/chaos/streaming_llm.yaml --working-dir python/ray/tests/chaos -- python streaming_llm.py --num_queries_per_task=100 --num_tasks=2 --num_words_per_query=100
     
 
 - label: ":book: Documentation"
@@ -444,4 +500,6 @@
       - TRAIN_MINIMAL_INSTALL=1 ./ci/env/install-minimal.sh
       - ./ci/env/env_info.sh
       - python ./ci/env/check_minimal_install.py
-      - bazel test --config=ci $(./ci/run/bazel_export_options)  --build_tests_only --test_tag_filters=minimal python/ray/train/...
+      - bazel test --config=ci $(./ci/run/bazel_export_options)  --build_tests_only --test_tag_filters=minimal 
+        --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
+        python/ray/train/...
