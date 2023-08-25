@@ -104,7 +104,8 @@ def test_native_trainer_restore(ray_start_4_cpus_2_gpus):
 
         assert results.metrics["epoch"] == num_epochs - 1
         assert (
-            results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size
+            results.metrics["step"]
+            == num_epochs * dataset_size / num_workers / batch_size
         )
         assert "loss" in results.metrics
         assert "val_loss" in results.metrics
