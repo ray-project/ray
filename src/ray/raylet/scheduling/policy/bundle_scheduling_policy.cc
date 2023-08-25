@@ -64,7 +64,7 @@ bool AllocationWillExceedMaxCpuFraction(
 
   // Get the sum of all cpu allocated by placement group on this node.
   FixedPoint cpus_used_by_pg_before(0);
-  for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
+  for (const auto &resource_id : node_resources.total.ResourceIds()) {
     if (ray::GetOriginalResourceNameFromWildcardResource(resource_id.Binary()) == "CPU") {
       cpus_used_by_pg_before += node_resources.total.Get(resource_id);
     }
@@ -164,12 +164,12 @@ BundleSchedulingPolicy::SortRequiredResources(
     // Make sure that resources are always sorted in the same order
     std::set<scheduling::ResourceID> extra_resources_set;
     for (const auto &r : a.ResourceIds()) {
-      if (!r.IsPredefinedResource()) {
+      if (!IsPredefinedResource(r)) {
         extra_resources_set.insert(r);
       }
     }
     for (const auto &r : b.ResourceIds()) {
-      if (!r.IsPredefinedResource()) {
+      if (!IsPredefinedResource(r)) {
         extra_resources_set.insert(r);
       }
     }

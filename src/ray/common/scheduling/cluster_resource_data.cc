@@ -20,6 +20,10 @@
 namespace ray {
 using namespace ::ray::scheduling;
 
+bool IsPredefinedResource(scheduling::ResourceID resource) {
+  return resource.ToInt() >= 0 && resource.ToInt() < PredefinedResourcesEnum_MAX;
+}
+
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<std::string, double> &resource_map,
@@ -54,8 +58,8 @@ NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_available,
     const absl::flat_hash_map<std::string, std::string> &node_labels) {
   NodeResources node_resources;
-  node_resources.total = NodeResourceSet(resource_map_total);
-  node_resources.available = NodeResourceSet(resource_map_available);
+  node_resources.total = ResourceSet(resource_map_total);
+  node_resources.available = ResourceSet(resource_map_available);
   node_resources.labels = node_labels;
   return node_resources;
 }
@@ -96,13 +100,13 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
   if (!this->normal_task_resources.IsEmpty()) {
     auto available_resources = this->available;
     available_resources -= this->normal_task_resources;
-    return available_resources >= resource_request.GetResourceSet();
+    return resource_request.GetResourceSet() <= available_resources;
   }
-  return this->available >= resource_request.GetResourceSet();
+  return resource_request.GetResourceSet() <= this->available;
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
-  return this->total >= resource_request.GetResourceSet();
+  return resource_request.GetResourceSet() <= this->total;
 }
 
 bool NodeResources::operator==(const NodeResources &other) const {
@@ -116,8 +120,17 @@ bool NodeResources::operator!=(const NodeResources &other) const {
 
 std::string NodeResources::DebugString() const {
   std::stringstream buffer;
-  buffer << "{\"total\":" << total.DebugString();
-  buffer << "}, \"available\": " << available.DebugString();
+  buffer << "{\"resources\":{";
+  bool first = true;
+  for (auto &resource_id : total.ResourceIds()) {
+    if (!first) {
+      buffer << ", ";
+    }
+    first = false;
+    buffer << resource_id.Binary() << ": " << available.Get(resource_id) << "/"
+           << total.Get(resource_id);
+  }
+
   buffer << "}, \"labels\":{";
   for (const auto &[key, value] : labels) {
     buffer << "\"" << key << "\":\"" << value << "\",";
@@ -134,8 +147,17 @@ bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
 
 std::string NodeResourceInstances::DebugString() const {
   std::stringstream buffer;
-  buffer << "{\"total\":" << total.DebugString();
-  buffer << "}, \"available\": " << available.DebugString();
+  buffer << "{";
+  bool first = true;
+  for (auto &resource_id : total.ResourceIds()) {
+    if (!first) {
+      buffer << ", ";
+    }
+    first = false;
+    buffer << resource_id.Binary() << ": "
+           << FixedPointVectorToString(available.Get(resource_id)) << "/"
+           << FixedPointVectorToString(total.Get(resource_id));
+  }
   buffer << "}, \"labels\":{";
   for (const auto &[key, value] : labels) {
     buffer << "\"" << key << "\":\"" << value << "\",";
@@ -144,13 +166,17 @@ std::string NodeResourceInstances::DebugString() const {
   return buffer.str();
 };
 
-const NodeResourceInstanceSet &NodeResourceInstances::GetAvailableResourceInstances()
+const TaskResourceInstances &NodeResourceInstances::GetAvailableResourceInstances()
     const {
   return this->available;
 };
 
-const NodeResourceInstanceSet &NodeResourceInstances::GetTotalResourceInstances() const {
+const TaskResourceInstances &NodeResourceInstances::GetTotalResourceInstances() const {
   return this->total;
 };
+
+bool NodeResourceInstances::Contains(scheduling::ResourceID id) const {
+  return total.Has(id);
+}
 
 }  // namespace ray

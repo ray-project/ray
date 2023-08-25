@@ -58,9 +58,10 @@ void GcsResourceManager::HandleGetResources(rpc::GetResourcesRequest request,
     rpc::ResourceTableData resource_table_data;
     const auto &node_resources = iter->second.GetLocalView();
 
-    for (const auto &[resource_name, resource_value] :
-         node_resources.total.GetResourceMap()) {
-      resource_table_data.set_resource_capacity(resource_value);
+    for (const auto &resource_id : node_resources.total.ResourceIds()) {
+      const auto &resource_value = node_resources.total.Get(resource_id);
+      const auto &resource_name = resource_id.Binary();
+      resource_table_data.set_resource_capacity(resource_value.Double());
       (*reply->mutable_resources()).insert({resource_name, resource_table_data});
     }
   }
@@ -100,7 +101,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     const auto node_id = NodeID::FromBinary(node_resources_entry.first.Binary());
     bool using_resource_reports = RayConfig::instance().gcs_actor_scheduling_enabled() &&
                                   node_resource_usages_.contains(node_id);
-    for (const auto &resource_id : node_resources.available.ExplicitResourceIds()) {
+    for (const auto &resource_id : node_resources.available.ResourceIds()) {
       const auto &resource_name = resource_id.Binary();
       // Because gcs scheduler does not directly update the available resources of
       // `cluster_resource_manager_`, use the record from resource reports (stored in

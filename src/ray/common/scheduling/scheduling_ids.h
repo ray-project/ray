@@ -21,7 +21,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
@@ -166,14 +165,6 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
 
   /// Whether this resource is a unit-instance resource.
   bool IsUnitInstanceResource() const { return UnitInstanceResources().contains(id_); }
-
-  bool IsPredefinedResource() const {
-    return id_ >= 0 && id_ < PredefinedResourcesEnum_MAX;
-  }
-
-  bool IsImplicitResource() const {
-    return !IsPredefinedResource() && absl::StartsWith(Binary(), kImplicitResourcePrefix);
-  }
 
   /// Resource ID of CPU.
   static ResourceID CPU() { return ResourceID(PredefinedResourcesEnum::CPU); }

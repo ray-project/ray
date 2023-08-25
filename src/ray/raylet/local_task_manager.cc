@@ -977,8 +977,12 @@ bool LocalTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
   if (worker->GetAllocatedInstances() != nullptr) {
     if (worker->GetAllocatedInstances()->Has(ResourceID::CPU())) {
       auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
-      cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
-          ResourceID::CPU(), cpu_instances);
+      std::vector<double> overflow_cpu_instances =
+          cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
+              ResourceID::CPU(), cpu_instances);
+      for (unsigned int i = 0; i < overflow_cpu_instances.size(); i++) {
+        RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
+      }
       worker->MarkBlocked();
       return true;
     }

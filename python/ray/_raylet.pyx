@@ -129,7 +129,6 @@ from ray.includes.common cimport (
     WORKER_EXIT_TYPE_USER_ERROR,
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
     kResourceUnitScaling,
-    kImplicitResourcePrefix,
     kWorkerSetupHookKeyName,
     PythonCheckGcsHealth,
 )
