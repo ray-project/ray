@@ -836,7 +836,7 @@ class gRPCProxy(GenericProxy):
     ) -> ProxyResponse:
         try:
             user_response_bytes = await asyncio.wait_for(obj_ref, timeout=timeout_s)
-            response = ProxyResponse(
+            return ProxyResponse(
                 status_code=self.success_status_code, response=user_response_bytes
             )
         except asyncio.exceptions.TimeoutError:
