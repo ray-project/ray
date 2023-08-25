@@ -7,7 +7,7 @@ import numbers
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import ray
 from ray._private.dict import flatten_dict
@@ -17,6 +17,9 @@ from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
 from ray.air._internal.util import is_nan
 from ray.util import log_once
 from ray._private.ray_constants import env_integer
+
+if TYPE_CHECKING:
+    from ray.train._internal.session import TrainingResult
 
 
 logger = logging.getLogger(__name__)
@@ -60,7 +63,9 @@ class _TrackedCheckpoint:
 
     def __init__(
         self,
-        dir_or_data: Optional[Union[str, Path, Dict, ray.ObjectRef, Checkpoint]],
+        dir_or_data: Optional[
+            Union[str, Path, Dict, ray.ObjectRef, Checkpoint, "TrainingResult"]
+        ],
         storage_mode: CheckpointStorage,
         checkpoint_id: Optional[int] = None,
         metrics: Optional[Dict] = None,
@@ -68,6 +73,11 @@ class _TrackedCheckpoint:
         rank: Optional[int] = 0,
     ):
         from ray.tune.result import NODE_IP
+        from ray.train._internal.session import TrainingResult
+
+        if isinstance(dir_or_data, TrainingResult):
+            metrics = metrics or dir_or_data.result
+            dir_or_data = dir_or_data.metrics
 
         self.dir_or_data = dir_or_data
         self.id = checkpoint_id
@@ -170,6 +180,11 @@ class _TrackedCheckpoint:
 
         if isinstance(checkpoint_data, ray.ObjectRef):
             checkpoint_data = ray.get(checkpoint_data)
+
+            from ray.train._internal.session import TrainingResult
+
+            if isinstance(checkpoint_data, TrainingResult):
+                checkpoint_data = checkpoint_data.checkpoint.path
 
         if isinstance(checkpoint_data, Checkpoint):
             return checkpoint_data
