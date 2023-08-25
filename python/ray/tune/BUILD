@@ -383,7 +383,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tune_restore.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "rllib"],
+    tags = ["team:ml", "exclusive", "rllib", "new_storage"],
 )
 
 py_test(

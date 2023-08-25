@@ -17,10 +17,10 @@ from unittest import mock
 import ray
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
-from ray.train import CheckpointConfig
+from ray.train import CheckpointConfig, Checkpoint
 from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
+from ray.train._internal.session import _TrainingResult
 from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.search.basic_variant import BasicVariantGenerator
@@ -661,13 +661,11 @@ def test_trial_last_result_restore(trial_config):
     trial = Trial(trainable_name="stub", config=trial_config, stub=True)
     trial.update_last_result(metrics)
 
-    checkpoint = _TrackedCheckpoint(
-        dir_or_data="no_data",
-        storage_mode=CheckpointStorage.PERSISTENT,
-        metrics=metrics,
+    result = _TrainingResult(
+        checkpoint=Checkpoint(path="file:///tmp/no_data"), metrics=metrics
     )
 
-    trial.temporary_state.restoring_from = checkpoint
+    trial.temporary_state.restoring_from = result
     trial.on_restore()
     assert trial.run_metadata.last_result == metrics
 
