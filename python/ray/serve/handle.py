@@ -708,6 +708,12 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         )
         self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
 
+    def __await__(self):
+        raise TypeError(
+            "`DeploymentResponseGenerator` cannot be awaited directly. Use `async for` "
+            "or `_to_object_ref_gen` instead."
+        )
+
     def __aiter__(self) -> AsyncIterator[Any]:
         return self
 

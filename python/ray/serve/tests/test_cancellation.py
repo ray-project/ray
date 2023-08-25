@@ -20,8 +20,6 @@ from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
 
 
 """
-- test generator handle call during execution
-- test downstream calls are cancelled automatically
 - test call made from background task is *not* cancelled.
 """
 
@@ -285,6 +283,150 @@ def test_cancel_async_handle_call_during_assignment(serve_instance):
 
     h = serve.run(Ingress.bind(Downstream.bind())).options(use_new_handle_api=True)
     h.remote().result()  # Would raise if test failed.
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="New routing feature flag is disabled.",
+)
+def test_cancel_generator_sync(serve_instance):
+    """Test cancelling streaming handle request during execution."""
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class Ingress:
+        async def __call__(self, *args):
+            yield "hi"
+            await send_signal_on_cancellation(signal_actor)
+
+    h = serve.run(Ingress.bind()).options(use_new_handle_api=True, stream=True)
+
+    # Send a request and wait for it to start executing.
+    g = h.remote()
+
+    assert next(g) == "hi"
+
+    # Cancel it and verify that it is cancelled via signal.
+    g.cancel()
+
+    # TODO(edoakes): this should be a `TaskCancelledError`, not sure why it isn't.
+    with pytest.raises(ray.exceptions.RayTaskError):
+        next(g)
+
+    ray.get(signal_actor.wait.remote())
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="New routing feature flag is disabled.",
+)
+def test_cancel_generator_async(serve_instance):
+    """Test cancelling streaming handle request during execution."""
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class Downstream:
+        async def __call__(self, *args):
+            yield "hi"
+            await send_signal_on_cancellation(signal_actor)
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, handle):
+            self._h = handle.options(use_new_handle_api=True, stream=True)
+
+        async def __call__(self, *args):
+            # Send a request and wait for it to start executing.
+            g = self._h.remote()
+            assert await g.__anext__() == "hi"
+
+            # Cancel it and verify that it is cancelled via signal.
+            g.cancel()
+
+            # TODO(edoakes): this should be a `TaskCancelledError`, not sure why it
+            # isn't.
+            with pytest.raises(ray.exceptions.RayTaskError):
+                assert await g.__anext__() == "hi"
+
+            await signal_actor.wait.remote()
+
+    h = serve.run(Ingress.bind(Downstream.bind())).options(use_new_handle_api=True)
+    h.remote().result()  # Would raise if test failed.
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="New routing feature flag is disabled.",
+)
+def test_only_relevant_task_is_cancelled(serve_instance):
+    """Test cancelling one request doesn't affect others."""
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class Ingress:
+        async def __call__(self, *args):
+            await signal_actor.wait.remote()
+            return "ok"
+
+    h = serve.run(Ingress.bind()).options(use_new_handle_api=True)
+
+    r1 = h.remote()
+    r2 = h.remote()
+
+    # Wait for both requests to be executing.
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 2)
+
+    r1.cancel()
+    # TODO(edoakes): this should be a `TaskCancelledError`, not sure why it isn't.
+    with pytest.raises(ray.exceptions.RayTaskError):
+        r1.result()
+
+    # Now signal r2 to run to completion and check that it wasn't cancelled.
+    ray.get(signal_actor.send.remote())
+    assert r2.result() == "ok"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="New routing feature flag is disabled.",
+)
+def test_out_of_band_task_is_not_cancelled(serve_instance):
+    """Test cancelling a request doesn't tasks submitted outside a request context."""
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class Downstream:
+        async def hi(self):
+            await signal_actor.wait.remote()
+            return "ok"
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, handle):
+            self._h = handle.options(use_new_handle_api=True)
+            self._out_of_band_req = self._h.hi.remote()
+
+        async def __call__(self, *args):
+            await self._h.hi.remote()
+
+        async def get_out_of_band_response(self):
+            return await self._out_of_band_req
+
+    h = serve.run(Ingress.bind(Downstream.bind())).options(use_new_handle_api=True)
+
+    # Send a request, wait for downstream request to start, and cancel it.
+    r1 = h.remote()
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 2)
+
+    r1.cancel()
+    # TODO(edoakes): this should be a `TaskCancelledError`, not sure why it isn't.
+    with pytest.raises(ray.exceptions.RayTaskError):
+        r1.result()
+
+    # Now signal out of band request to run to completion and check that it wasn't
+    # cancelled.
+    ray.get(signal_actor.send.remote())
+    assert h.get_out_of_band_response.remote().result() == "ok"
 
 
 if __name__ == "__main__":
