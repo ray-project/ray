@@ -230,7 +230,6 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=doctest,-gpu
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/... doc/...
 
 - label: ":python: Ray on Spark Test"
