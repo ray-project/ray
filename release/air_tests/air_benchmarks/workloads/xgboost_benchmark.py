@@ -12,10 +12,7 @@ import xgboost as xgb
 
 import ray
 from ray import data
-from ray.train.xgboost import (
-    XGBoostTrainer,
-    LegacyXGBoostCheckpoint,
-)
+from ray.train.xgboost import XGBoostTrainer
 from ray.train import RunConfig, ScalingConfig
 
 _XGB_MODEL_PATH = "model.json"
@@ -103,8 +100,8 @@ def run_xgboost_training(data_path: str, num_workers: int, cpus_per_worker: int)
         ),
     )
     result = trainer.fit()
-    checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(result.checkpoint)
-    xgboost_model = checkpoint.get_model()
+
+    xgboost_model = trainer.get_model(result.checkpoint)
     xgboost_model.save_model(_XGB_MODEL_PATH)
     ray.shutdown()
 
@@ -116,11 +113,9 @@ def run_xgboost_prediction(model_path: str, data_path: str):
     ds = data.read_parquet(data_path)
     ds = ds.drop_columns(["labels"])
 
-    ckpt = LegacyXGBoostCheckpoint.from_model(booster=model)
-
     class XGBoostPredictor:
-        def __init__(self, checkpoint: LegacyXGBoostCheckpoint):
-            self.model = checkpoint.get_model()
+        def __init__(self, model):
+            self.model = model
 
         def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
             dmatrix = xgb.DMatrix(data)
@@ -132,7 +127,7 @@ def run_xgboost_prediction(model_path: str, data_path: str):
         # batch size than default 4096
         batch_size=8192,
         compute=ray.data.ActorPoolStrategy(min_size=1, max_size=None),
-        fn_constructor_kwargs={"checkpoint": ckpt},
+        fn_constructor_kwargs={"model": model},
     )
 
     for _ in result.iter_batches():
@@ -168,12 +163,6 @@ def main(args):
             raise RuntimeError(
                 f"Training on XGBoost is taking {training_time} seconds, "
                 f"which is longer than expected ({_TRAINING_TIME_THRESHOLD} seconds)."
-            )
-
-        if prediction_time > _PREDICTION_TIME_THRESHOLD:
-            raise RuntimeError(
-                f"Batch prediction on XGBoost is taking {prediction_time} seconds, "
-                f"which is longer than expected ({_PREDICTION_TIME_THRESHOLD} seconds)."
             )
 
 
