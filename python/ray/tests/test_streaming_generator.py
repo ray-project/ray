@@ -565,6 +565,7 @@ def test_streaming_generator_exception(shutdown_only):
     with pytest.raises(StopIteration):
         ray.get(next(g))
 
+
 if __name__ == "__main__":
     import os
 

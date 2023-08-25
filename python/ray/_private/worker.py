@@ -106,6 +106,7 @@ RESTORE_WORKER_MODE = 4
 logger = logging.getLogger(__name__)
 
 
+T = TypeVar("T")
 T0 = TypeVar("T0")
 T1 = TypeVar("T1")
 T2 = TypeVar("T2")
@@ -129,9 +130,15 @@ class RemoteFunctionNoArgs(Generic[R]):
     def __init__(self, function: Callable[[], R]) -> None:
         pass
 
+    @overload
     def remote(
         self,
-    ) -> "RayWaitable[R]":
+    ) -> StreamingObjectRefGenerator:
+        ...
+
+    def remote(
+        self,
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -144,10 +151,17 @@ class RemoteFunction0(Generic[R, T0]):
     def __init__(self, function: Callable[[T0], R]) -> None:
         pass
 
+    @overload
     def remote(
         self,
-        __arg0: "Union[T0, RayWaitable[T0]]",
-    ) -> "RayWaitable[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+    ) -> StreamingObjectRefGenerator:
+        ...
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -161,11 +175,19 @@ class RemoteFunction1(Generic[R, T0, T1]):
     def __init__(self, function: Callable[[T0, T1], R]) -> None:
         pass
 
+    @overload
     def remote(
         self,
-        __arg0: "Union[T0, RayWaitable[T0]]",
-        __arg1: "Union[T1, RayWaitable[T1]]",
-    ) -> "RayWaitable[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+    ) -> StreamingObjectRefGenerator:
+        ...
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -180,12 +202,21 @@ class RemoteFunction2(Generic[R, T0, T1, T2]):
     def __init__(self, function: Callable[[T0, T1, T2], R]) -> None:
         pass
 
+    @overload
     def remote(
         self,
-        __arg0: "Union[T0, RayWaitable[T0]]",
-        __arg1: "Union[T1, RayWaitable[T1]]",
-        __arg2: "Union[T2, RayWaitable[T2]]",
-    ) -> "RayWaitable[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+    ) -> StreamingObjectRefGenerator:
+        ...
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -201,13 +232,23 @@ class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
     def __init__(self, function: Callable[[T0, T1, T2, T3], R]) -> None:
         pass
 
+    @overload
     def remote(
         self,
-        __arg0: "Union[T0, RayWaitable[T0]]",
-        __arg1: "Union[T1, RayWaitable[T1]]",
-        __arg2: "Union[T2, RayWaitable[T2]]",
-        __arg3: "Union[T3, RayWaitable[T3]]",
-    ) -> "RayWaitable[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+    ) -> StreamingObjectRefGenerator:
+        ...
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -224,14 +265,25 @@ class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4], R]) -> None:
         pass
 
+    @overload
     def remote(
         self,
-        __arg0: "Union[T0, RayWaitable[T0]]",
-        __arg1: "Union[T1, RayWaitable[T1]]",
-        __arg2: "Union[T2, RayWaitable[T2]]",
-        __arg3: "Union[T3, RayWaitable[T3]]",
-        __arg4: "Union[T4, RayWaitable[T4]]",
-    ) -> "RayWaitable[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+    ) -> StreamingObjectRefGenerator:
+        ...
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -249,15 +301,27 @@ class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5], R]) -> None:
         pass
 
+    @overload
     def remote(
         self,
-        __arg0: "Union[T0, RayWaitable[T0]]",
-        __arg1: "Union[T1, RayWaitable[T1]]",
-        __arg2: "Union[T2, RayWaitable[T2]]",
-        __arg3: "Union[T3, RayWaitable[T3]]",
-        __arg4: "Union[T4, RayWaitable[T4]]",
-        __arg5: "Union[T5, RayWaitable[T5]]",
-    ) -> "RayWaitable[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+    ) -> StreamingObjectRefGenerator:
+        ...
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -276,16 +340,29 @@ class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]) -> None:
         pass
 
+    @overload
     def remote(
         self,
-        __arg0: "Union[T0, RayWaitable[T0]]",
-        __arg1: "Union[T1, RayWaitable[T1]]",
-        __arg2: "Union[T2, RayWaitable[T2]]",
-        __arg3: "Union[T3, RayWaitable[T3]]",
-        __arg4: "Union[T4, RayWaitable[T4]]",
-        __arg5: "Union[T5, RayWaitable[T5]]",
-        __arg6: "Union[T6, RayWaitable[T6]]",
-    ) -> "RayWaitable[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+    ) -> StreamingObjectRefGenerator:
+        ...
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -305,17 +382,31 @@ class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]) -> None:
         pass
 
+    @overload
     def remote(
         self,
-        __arg0: "Union[T0, RayWaitable[T0]]",
-        __arg1: "Union[T1, RayWaitable[T1]]",
-        __arg2: "Union[T2, RayWaitable[T2]]",
-        __arg3: "Union[T3, RayWaitable[T3]]",
-        __arg4: "Union[T4, RayWaitable[T4]]",
-        __arg5: "Union[T5, RayWaitable[T5]]",
-        __arg6: "Union[T6, RayWaitable[T6]]",
-        __arg7: "Union[T7, RayWaitable[T7]]",
-    ) -> "RayWaitable[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+    ) -> StreamingObjectRefGenerator:
+        ...
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -338,18 +429,33 @@ class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
     ) -> None:
         pass
 
+    @overload
     def remote(
         self,
-        __arg0: "Union[T0, RayWaitable[T0]]",
-        __arg1: "Union[T1, RayWaitable[T1]]",
-        __arg2: "Union[T2, RayWaitable[T2]]",
-        __arg3: "Union[T3, RayWaitable[T3]]",
-        __arg4: "Union[T4, RayWaitable[T4]]",
-        __arg5: "Union[T5, RayWaitable[T5]]",
-        __arg6: "Union[T6, RayWaitable[T6]]",
-        __arg7: "Union[T7, RayWaitable[T7]]",
-        __arg8: "Union[T8, RayWaitable[T8]]",
-    ) -> "RayWaitable[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+        __arg8: "Union[T8, ObjectRef[T8]]",
+    ) -> StreamingObjectRefGenerator:
+        ...
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+        __arg8: "Union[T8, ObjectRef[T8]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -373,19 +479,35 @@ class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     ) -> None:
         pass
 
+    @overload
     def remote(
         self,
-        __arg0: "Union[T0, RayWaitable[T0]]",
-        __arg1: "Union[T1, RayWaitable[T1]]",
-        __arg2: "Union[T2, RayWaitable[T2]]",
-        __arg3: "Union[T3, RayWaitable[T3]]",
-        __arg4: "Union[T4, RayWaitable[T4]]",
-        __arg5: "Union[T5, RayWaitable[T5]]",
-        __arg6: "Union[T6, RayWaitable[T6]]",
-        __arg7: "Union[T7, RayWaitable[T7]]",
-        __arg8: "Union[T8, RayWaitable[T8]]",
-        __arg9: "Union[T9, RayWaitable[T9]]",
-    ) -> "RayWaitable[R]":
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+        __arg8: "Union[T8, ObjectRef[T8]]",
+        __arg9: "Union[T9, ObjectRef[T9]]",
+    ) -> StreamingObjectRefGenerator:
+        ...
+
+    def remote(
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
+        __arg1: "Union[T1, ObjectRef[T1]]",
+        __arg2: "Union[T2, ObjectRef[T2]]",
+        __arg3: "Union[T3, ObjectRef[T3]]",
+        __arg4: "Union[T4, ObjectRef[T4]]",
+        __arg5: "Union[T5, ObjectRef[T5]]",
+        __arg6: "Union[T6, ObjectRef[T6]]",
+        __arg7: "Union[T7, ObjectRef[T7]]",
+        __arg8: "Union[T8, ObjectRef[T8]]",
+        __arg9: "Union[T9, ObjectRef[T9]]",
+    ) -> "ObjectRef[R]":
         ...
 
     def bind(
@@ -2453,33 +2575,31 @@ blocking_get_inside_async_warned = False
 
 @overload
 def get(
-    object_refs: "Sequence[RayWaitable[Any]]", *, timeout: Optional[float] = None
+    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
 ) -> List[Any]:
     ...
 
 
 @overload
 def get(
-    object_refs: "Sequence[RayWaitable[R]]", *, timeout: Optional[float] = None
+    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
 ) -> List[R]:
     ...
 
 
 @overload
-def get(object_refs: "RayWaitable[R]", *, timeout: Optional[float] = None) -> R:
+def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
     ...
 
 
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union["RayWaitable[Any]", Sequence["RayWaitable[Any]"]],
+    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"]],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
     """Get a remote object or a list of remote objects from the object store.
-
-    Passing :class:`~StreamingObjectRefGenerators` is not allowed.
 
     This method blocks until the object corresponding to the object ref is
     available in the local object store. If this object is not in the local
@@ -2494,6 +2614,8 @@ def get(
     This method will issue a warning if it's running inside async context,
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
+
+    Passing :class:`~StreamingObjectRefGenerators` is not allowed.
 
     Related patterns and anti-patterns:
 
@@ -2650,12 +2772,12 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    ray_waitables: List[RayWaitable[Any]],
+    ray_waitables: List[RayWaitable[T]],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
-) -> Tuple[List[RayWaitable[Any]], List[RayWaitable[Any]]]:
+) -> Tuple[List[RayWaitable[T]], List[RayWaitable[T]]]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of

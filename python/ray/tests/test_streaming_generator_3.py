@@ -8,6 +8,7 @@ from collections import Counter
 
 import ray
 from ray._raylet import StreamingObjectRefGenerator
+from ray.exceptions import WorkerCrashedError
 
 
 def test_threaded_actor_generator(shutdown_only):
