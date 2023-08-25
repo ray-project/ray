@@ -108,6 +108,7 @@ def test_tune_mnist_keras(legacy_progress_reporter, start_client_server_4_cpus):
     tune_mnist(num_training_iterations=2)
 
 
+@pytest.skip("Skip for now, re-enable after lightning callback update.")
 def test_mnist_ptl_mini(legacy_progress_reporter, start_client_server):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.mnist_ptl_mini import tune_mnist

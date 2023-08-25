@@ -898,7 +898,7 @@ py_test(
     size = "small",
     srcs = ["examples/xgboost_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"]
+    tags = ["team:ml", "exclusive", "example", "new_storage"]
 )
 
 py_test(
@@ -907,7 +907,7 @@ py_test(
     main = "examples/xgboost_example.py",
     srcs = ["examples/xgboost_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example", "new_storage"],
     args = ["--use-cv"]
 )
 
