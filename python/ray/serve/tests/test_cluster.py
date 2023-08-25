@@ -59,15 +59,6 @@ def test_scale_up(ray_cluster):
         time.sleep(0.1)
         return os.getpid()
 
-    def get_pids(expected, timeout=30):
-        pids = set()
-        start = time.time()
-        while len(pids) < expected:
-            pids.add(requests.get("http://localhost:8000/D").text)
-            if time.time() - start >= timeout:
-                raise TimeoutError("Timed out waiting for pids.")
-        return pids
-
     serve.start()
     client = serve.context._connect()
 
