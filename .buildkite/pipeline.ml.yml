@@ -32,7 +32,7 @@
 - label: ":steam_locomotive: Train tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   instance_size: large
-  parallelism: 4
+  parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     # Todo (krfricke): Move mosaicml to train-test-requirements.txt
@@ -344,7 +344,7 @@
 - label: ":steam_locomotive: :floppy_disk: New persistence mode: Train tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   instance_size: large
-  parallelism: 4
+  parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     # Todo (krfricke): Move mosaicml to train-test-requirements.txt
