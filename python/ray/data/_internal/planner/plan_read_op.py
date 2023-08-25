@@ -57,7 +57,7 @@ def _splitrange(n, k):
 
 
 class BuildOutputBlocksWithAdditionalSplit(MapTransformFn):
-    """Do additional splits to the output blocks of a ReadTask."""
+    """Build output blocks and do additional splits."""
 
     def __init__(self, additional_split_factor: int):
         """
