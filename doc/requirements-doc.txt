@@ -18,14 +18,14 @@ mock
 numpy
 scikit-image
 pandas
-pickle5
 pillow
 pyarrow
-pydantic==1.10.12
+pydantic < 2
 # Note: more recent typing-extensions does not work well with pinned pydantic <1.10.0
 typing-extensions < 4.6.0
 pyyaml
-pytorch-lightning==1.6.5
+pytorch-lightning==1.6.5; sys_platform != 'darwin' or platform_machine != 'arm64'
+pytorch-lightning; sys_platform == 'darwin' and platform_machine == 'arm64'
 scikit-optimize
 redis
 starlette
