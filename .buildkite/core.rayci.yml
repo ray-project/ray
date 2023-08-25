@@ -4,10 +4,9 @@ steps:
     instance_type: large
     parallelism: 6
     commands:
-      - bazel run //ci/ray_ci -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
+      - RAY_AIR_NEW_PERSISTENCE_MODE=0 bazel run //ci/ray_ci -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --except-tags debug_tests,asan_tests,post_wheel_build,xcommit
-        --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
     depends_on: corebuild
     job_env: corebuild
 

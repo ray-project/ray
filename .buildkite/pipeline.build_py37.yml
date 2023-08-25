@@ -19,14 +19,13 @@
     - >-
       set -x;
       {
-        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py37_compat/... python/ray/tests/xgboost/... &&
-        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-hdfs python/ray/air/... &&
-        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-hdfs,-new_storage python/ray/train/... &&
-        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air python/ray/data/...;
+        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0 python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py37_compat/... python/ray/tests/xgboost/... &&
+        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-hdfs --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0 python/ray/air/... &&
+        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-hdfs,-new_storage --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0 python/ray/train/... &&
+        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0 python/ray/data/...;
       } > test_shard.txt
     - cat test_shard.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       $(cat test_shard.txt)
 
 
@@ -49,14 +48,13 @@
     - >-
       set -x;
       {
-        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py37_compat/... python/ray/tests/xgboost/... &&
-        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-hdfs python/ray/air/... &&
-        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-hdfs,-new_storage python/ray/train/... &&
-        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air python/ray/data/...;
+        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0 python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py37_compat/... python/ray/tests/xgboost/... &&
+        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-hdfs --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0 python/ray/air/... &&
+        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-hdfs,-new_storage --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0 python/ray/train/... &&
+        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0 python/ray/data/...;
       } > test_shard.txt
     - cat test_shard.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       $(cat test_shard.txt)
 
 
