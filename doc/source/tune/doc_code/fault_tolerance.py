@@ -2,7 +2,7 @@
 
 # __ft_initial_run_start__
 import pickle
-from tempdir import TemporaryDirectory
+from tempfile import TemporaryDirectory
 from ray import train, tune
 from ray.train._checkpoint import Checkpoint
 
