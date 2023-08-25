@@ -10,7 +10,6 @@ import time
 import ray
 from ray import train, tune, logger
 from ray.train import CheckpointConfig
-from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 from ray.tune import Trainable, run_experiments, register_trainable
 from ray.tune.error import TuneError
 from ray.tune.result_grid import ResultGrid
@@ -146,15 +145,13 @@ def train_fn(config):
 
 
 @pytest.fixture(params=["function", "class"])
-def trainable(request, monkeypatch):
+def trainable(request):
     """Fixture that sets up a function/class trainable for testing.
     Make sure this fixture comes BEFORE the ray.init fixture in the arguments
     so that the env var is propagated to workers correctly."""
     trainable_type = request.param
     if trainable_type == "function":
-        monkeypatch.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "1")
         yield train_fn
-        monkeypatch.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "0")
     elif trainable_type == "class":
         yield MyResettableClass
     else:
