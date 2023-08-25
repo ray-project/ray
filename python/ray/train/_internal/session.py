@@ -553,6 +553,7 @@ class _TrainSession:
 
         persisted_checkpoint = None
         if checkpoint:
+            # TODO(justinvyu): [code_removal]
             if not isinstance(checkpoint, NewCheckpoint):
                 raise ValueError(
                     "You must pass a `ray.train.Checkpoint` "
@@ -562,8 +563,11 @@ class _TrainSession:
             # Persist the reported checkpoint files to storage.
             persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
 
-        # Persist trial artifacts to storage (may skip if recently persisted).
-        self.storage.persist_artifacts()
+        # Persist trial artifacts to storage.
+        force_artifact_sync = (
+            persisted_checkpoint and self.storage.sync_config.sync_on_checkpoint
+        )
+        self.storage.persist_artifacts(force=force_artifact_sync)
 
         metrics = self._auto_fill_metrics(metrics)
 

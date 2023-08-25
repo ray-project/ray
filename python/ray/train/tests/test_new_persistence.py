@@ -44,6 +44,17 @@ def enable_new_persistence_mode():
         mp.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "0")
 
 
+@pytest.fixture(autouse=True)
+def disable_driver_artifact_sync():
+    # NOTE: Hack to make sure that the driver doesn't sync the artifacts.
+    from ray.tune import execution
+
+    execution.experiment_state._DRIVER_SYNC_EXCLUDE_PATTERNS = [
+        "*/checkpoint_*",
+        "*/artifact-*.txt",
+    ]
+
+
 @pytest.fixture(autouse=True, scope="module")
 def ray_start_4_cpus(enable_new_persistence_mode):
     # Make sure to set the env var before calling ray.init()
@@ -516,16 +527,7 @@ def test_trainer(
     """
     LOCAL_CACHE_DIR = tmp_path / "ray_results"
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
-
-    # NOTE: Hack to make sure that the driver doesn't sync the artifacts.
-    from ray.tune import execution
-
-    execution.experiment_state._DRIVER_SYNC_EXCLUDE_PATTERNS = [
-        "*/checkpoint_*",
-        "*/artifact-*.txt",
-    ]
     exp_name = "trainer_new_persistence"
-
     no_checkpoint_ranks = [0]
 
     with _resolve_storage_type(storage_path_type, tmp_path) as (

@@ -452,6 +452,10 @@ class Trainable:
 
         self._last_result = result
 
+        if _use_storage_context():
+            # Launch background tasks to sync artifacts at some specified frequency.
+            self._storage.persist_artifacts()
+
         return result
 
     def get_state(self):
@@ -537,6 +541,10 @@ class Trainable:
                     checkpoint=persisted_checkpoint, metrics=self._last_result.copy()
                 )
 
+                # Persist trial artifacts to storage.
+                self._storage.persist_artifacts(
+                    force=self._storage.sync_config.sync_on_checkpoint
+                )
             else:
                 checkpoint_result: _TrainingResult = checkpoint_dict_or_path
                 assert self._last_result
