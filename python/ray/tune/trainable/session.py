@@ -211,6 +211,13 @@ def report(_metric=None, **kwargs):
         # Backwards compatibility
         from ray import train
 
+        if log_once("deprecate_tune_report"):
+            warnings.warn(
+                "`tune.report(**metrics)` is deprecated. Use `train.report(metrics)` "
+                "instead.",
+                DeprecationWarning,
+            )
+
         report_dict = kwargs
         if _metric is not None:
             report_dict["_metric"] = _metric
