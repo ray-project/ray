@@ -408,7 +408,8 @@ def create_replica_wrapper(actor_class_name: str):
             to PENDING_INITIALIZATION startup state.
 
             Returns:
-                The PID, actor ID, node ID, node IP, and log filepath id of the replica.
+                The PID, actor ID, node ID, node IP, node AZ, and log
+                filepath id of the replica.
             """
 
             node_id = ray.get_runtime_context().get_node_id()

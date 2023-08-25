@@ -614,16 +614,16 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 and not tried_same_node
                 and len(self._node_colocated_replica_ids) > 0
             ):
-                # Attempt to schedule requests to a replica on the same node in the
-                # first iteration only.
+                # Attempt to schedule requests to replicas on the same node at most once
                 candidate_replica_ids = self._node_colocated_replica_ids
                 tried_same_node = True
             elif not tried_same_az and len(self._az_colocated_replica_ids) > 0:
+                # Attempt to schedule requests to replicas in the same AZ at most once
                 candidate_replica_ids = self._az_colocated_replica_ids
                 tried_same_az = True
             else:
                 # On subsequent iterations or when there are no replicas on the same
-                # node, consider all available replicas.
+                # node or AZ, consider all available replicas.
                 candidate_replica_ids = self._replica_id_set
 
             if candidate_replica_ids:

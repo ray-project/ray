@@ -622,7 +622,7 @@ async def test_prefer_replica_on_same_az(pow_2_scheduler, fake_query):
     assert all(replica == r2 for replica in await choose_replicas())
 
     # Update the replica on the same az to reject requests -- now requests should
-    # fall back to the last replica..
+    # fall back to the last replica.
     r2.set_queue_state_response(0, accepted=False)
 
     # All requests should be scheduled to the third replica.

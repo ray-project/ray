@@ -55,7 +55,7 @@ class ClusterNodeInfoCache(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_node_az(self, node_id: str) -> str:
+    def get_node_az(self, node_id: str) -> Optional[str]:
         """Get availability zone of a node."""
         raise NotImplementedError
 
