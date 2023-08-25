@@ -924,7 +924,9 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
     channel = grpc.insecure_channel("localhost:9000")
 
     # Ensures ListApplications method succeeding.
-    ping_grpc_list_applications(channel, app_names)
+    wait_for_condition(
+        ping_grpc_list_applications, channel=channel, app_names=app_names
+    )
 
     # Ensures Healthz method succeeding.
     ping_grpc_healthz(channel)
@@ -964,7 +966,9 @@ def test_grpc_proxy_model_composition(ray_start_stop):
     channel = grpc.insecure_channel("localhost:9000")
 
     # Ensures ListApplications method succeeding.
-    ping_grpc_list_applications(channel, app_names)
+    wait_for_condition(
+        ping_grpc_list_applications, channel=channel, app_names=app_names
+    )
 
     # Ensures Healthz method succeeding.
     ping_grpc_healthz(channel)

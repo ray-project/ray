@@ -159,8 +159,8 @@ SERVE_GRAFANA_PANELS = [
         unit="replicas",
         targets=[
             Target(
-                expr="sum(ray_serve_deployment_replica_healthy{{{global_filters}}}) by (deployment)",
-                legend="{{deployment}}",
+                expr="sum(ray_serve_deployment_replica_healthy{{{global_filters}}}) by (application, deployment)",
+                legend="{{application, deployment}}",
             ),
         ],
         grid_pos=GridPos(0, 2, 8, 8),
@@ -172,8 +172,8 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_request_counter{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (deployment)',
-                legend="{{deployment}}",
+                expr='sum(rate(ray_serve_deployment_request_counter{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment)',
+                legend="{{application, deployment}}",
             ),
         ],
         grid_pos=GridPos(8, 2, 8, 8),
@@ -185,8 +185,8 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_error_counter{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (deployment)',
-                legend="{{deployment}}",
+                expr='sum(rate(ray_serve_deployment_error_counter{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment)',
+                legend="{{application, deployment}}",
             ),
         ],
         grid_pos=GridPos(16, 2, 8, 8),
@@ -198,8 +198,8 @@ SERVE_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (deployment, le))',
-                legend="{{deployment}}",
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment, le))',
+                legend="{{application, deployment}}",
             ),
             Target(
                 expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
@@ -217,8 +217,8 @@ SERVE_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (deployment, le))',
-                legend="{{deployment}}",
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment, le))',
+                legend="{{application, deployment}}",
             ),
             Target(
                 expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
@@ -236,8 +236,8 @@ SERVE_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (deployment, le))',
-                legend="{{deployment}}",
+                expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment, le))',
+                legend="{{application, deployment}}",
             ),
             Target(
                 expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (le))',
@@ -255,8 +255,8 @@ SERVE_GRAFANA_PANELS = [
         unit="requests",
         targets=[
             Target(
-                expr="sum(ray_serve_deployment_queued_queries{{{global_filters}}}) by (deployment)",
-                legend="{{deployment}}",
+                expr="sum(ray_serve_deployment_queued_queries{{{global_filters}}}) by (application, deployment)",
+                legend="{{application, deployment}}",
             ),
         ],
         fill=0,
