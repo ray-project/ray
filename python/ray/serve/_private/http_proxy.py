@@ -800,7 +800,7 @@ class gRPCProxy(GenericProxy):
                     )
                 )
                 if obj_ref.is_nil():
-                    raise TimeoutError("Object ref generator timed out.")
+                    raise TimeoutError()
 
                 user_response_bytes = await obj_ref
                 yield user_response_bytes
