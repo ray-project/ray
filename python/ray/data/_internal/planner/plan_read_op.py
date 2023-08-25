@@ -60,6 +60,11 @@ class BuildOutputBlocksWithAdditionalSplit(MapTransformFn):
     """Do additional splits to the output blocks of a ReadTask."""
 
     def __init__(self, additional_split_factor: int):
+        """
+        Args:
+          additional_output_splits: The number of additional splits, must be
+          greater than 1.
+        """
         assert additional_split_factor > 1
         self._additional_split_factor = additional_split_factor
         super().__init__(MapTransformFnDataType.Block, MapTransformFnDataType.Block)
@@ -72,12 +77,6 @@ class BuildOutputBlocksWithAdditionalSplit(MapTransformFn):
         self,
         blocks: Iterable[Block],
     ) -> Iterable[Block]:
-        """Do additional splits to the output blocks of a ReadTask.
-
-        Args:
-          blocks: The input blocks.
-          additional_output_splits: The number of additional splits, must be greater than 1.
-        """
         for block in blocks:
             block = BlockAccessor.for_block(block)
             offset = 0
@@ -127,7 +126,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     if op._additional_split_factor is None:
         # Then build the output blocks.
         transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
-    elif op._additional_split_factor is not None:
+    else:
         # Build the output blocks and do additional splits.
         # NOTE, we explictly do these two steps in one MapTransformFn to avoid
         # `BuildOutputBlocksMapTransformFn` getting dropped by the optimizer.
@@ -153,11 +152,13 @@ def apply_output_blocks_handling_to_read_task(
 
     This function is only used for compability with the legacy LazyBlockList code path.
     """
-    transform_fns: List[MapTransformFn] = [BuildOutputBlocksMapTransformFn.for_blocks()]
+    transform_fns: List[MapTransformFn] = []
 
-    if additional_split_factor is not None:
+    if additional_split_factor is None:
+        transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
+    else:
         transform_fns.append(
-            AdditionalOutputSplitMapTransformFn(additional_split_factor)
+            BuildOutputBlocksWithAdditionalSplit(additional_split_factor)
         )
     map_transformer = MapTransformer(transform_fns)
 
