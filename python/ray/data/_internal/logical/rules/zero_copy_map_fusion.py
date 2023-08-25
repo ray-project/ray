@@ -9,6 +9,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.interfaces.optimizer import Rule
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
+from ray.data._internal.planner.plan_read_op import AdditionalOutputSplitMapTransformFn
 
 
 class ZeroCopyMapFusionRule(Rule):
@@ -63,7 +64,8 @@ class EliminateBuildOutputBlocks(ZeroCopyMapFusionRule):
         # For the following subsquence,
         # 1. Any MapTransformFn with block output.
         # 2. BuildOutputBlocksMapTransformFn
-        # 3. Any MapTransformFn with block input.
+        # 3. Any MapTransformFn with block input (except
+        #    AdditionalOutputSplitMapTransformFn).
         # We drop the BuildOutputBlocksMapTransformFn in the middle.
         new_transform_fns = []
 
@@ -77,9 +79,13 @@ class EliminateBuildOutputBlocks(ZeroCopyMapFusionRule):
             ):
                 prev_fn = transform_fns[i - 1]
                 next_fn = transform_fns[i + 1]
+                # AdditionalOutputSplitMapTransformFn is a special case.
+                # It's intended to do additional splitting after
+                # BuildOutputBlocksMapTransformFn for some read ops.
                 if (
                     prev_fn.output_type == MapTransformFnDataType.Block
                     and next_fn.input_type == MapTransformFnDataType.Block
+                    and not isinstance(next_fn, AdditionalOutputSplitMapTransformFn)
                 ):
                     drop = True
             if not drop:
