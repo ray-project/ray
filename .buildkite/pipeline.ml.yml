@@ -523,7 +523,9 @@
     # (see https://github.com/ray-project/ray/pull/38432/)
     - pip install "transformers==4.30.2" "datasets==2.14.0"
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel 
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1 
+      doc/...
 
 - label: ":book: Doc tests and examples with time series libraries"
   conditions:
@@ -533,7 +535,9 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 INSTALL_TIMESERIES_LIBS=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=timeseries_libs,-external,-gpu,-post_wheel_build,-doctest doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=timeseries_libs,-external,-gpu,-post_wheel_build,-doctest 
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1 
+      doc/...
 
 - label: ":book: :airplane: Ray AIR examples"
   # Todo: check if this could be a medium test. Last time it failed because of dependency issues.
@@ -544,7 +548,9 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-external,-timeseries_libs,-gpu,-post_wheel_build,-doctest doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-external,-timeseries_libs,-gpu,-post_wheel_build,-doctest
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1 
+      doc/...
 
 - label: ":book: Doc examples for external code "
   conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]
@@ -553,7 +559,9 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=external,-timeseries_libs,-gpu,-post_wheel_build,-doctest doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=external,-timeseries_libs,-gpu,-post_wheel_build,-doctest 
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1 
+      doc/...
 
 
 - label: ":exploding_death_star: RLlib Contrib: A3C Tests"
