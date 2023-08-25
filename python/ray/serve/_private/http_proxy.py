@@ -804,10 +804,7 @@ class gRPCProxy(GenericProxy):
                     )
                 )
                 if obj_ref.is_nil():
-                    await self.timeout_response(
-                        proxy_request=proxy_request, request_id=request_id
-                    )
-                    break
+                    raise TimeoutError("Object ref generator timed out.")
 
                 user_response_bytes = await obj_ref
                 yield user_response_bytes
@@ -838,7 +835,7 @@ class gRPCProxy(GenericProxy):
         obj_ref: ray.ObjectRef,
         timeout_s: Optional[float] = None,
     ) -> ProxyResponse:
-        user_response_bytes = ray.get(obj_ref, timeout=timeout_s)
+        user_response_bytes = await asyncio.wait_for(obj_ref, timeout=timeout_s)
         return ProxyResponse(
             status_code=self.success_status_code, response=user_response_bytes
         )
