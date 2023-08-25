@@ -164,23 +164,13 @@ def cli():
     help="DEPRECATED: Use `--proxy-location` instead.",
 )
 @click.option(
-<<<<<<< HEAD
     "--proxy-location",
     default=DeploymentMode.EveryNode,
     required=False,
     type=click.Choice(list(DeploymentMode)),
     help="Location of the proxies. Defaults to EveryNode.",
 )
-def start(address, http_host, http_port, http_location, proxy_location):
-    if http_location != DeploymentMode.HeadOnly:
-        cli_logger.warning(
-            "The `--http-location` flag to `serve start` is deprecated, "
-            "use `--proxy-location` instead."
-        )
-
-        proxy_location = http_location
-
-=======
+@click.option(
     "--grpc-port",
     default=DEFAULT_GRPC_PORT,
     required=False,
@@ -196,9 +186,22 @@ def start(address, http_host, http_port, http_location, proxy_location):
     "Defaults to empty list and no gRPC server will be started.",
 )
 def start(
-    address, http_host, http_port, http_location, grpc_port, grpc_servicer_functions
+    address,
+    http_host,
+    http_port,
+    http_location,
+    proxy_location,
+    grpc_port,
+    grpc_servicer_functions,
 ):
->>>>>>> cc0b7196555eece052ba33e91691bdb381e90c05
+    if http_location != DeploymentMode.HeadOnly:
+        cli_logger.warning(
+            "The `--http-location` flag to `serve start` is deprecated, "
+            "use `--proxy-location` instead."
+        )
+
+        proxy_location = http_location
+
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
