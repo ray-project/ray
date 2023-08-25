@@ -6,10 +6,10 @@ from enum import Enum, auto
 import logging
 import os
 import random
-from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
+from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union, List
 from ray._private.utils import get_or_create_event_loop
 
-from ray.serve._private.common import ReplicaName
+from ray.serve._private.common import ReplicaName, RunningReplicaInfo
 from ray.serve.generated.serve_pb2 import (
     LongPollRequest,
     UpdatedObject as UpdatedObjectProto,
@@ -44,6 +44,105 @@ class LongPollNamespace(Enum):
 
     RUNNING_REPLICAS = auto()
     ROUTE_TABLE = auto()
+
+
+T, Diff = Any, Any
+
+
+class LongPollNamespacePartialUpdateInterface:
+    """Interface for partial updates in the LongPollClient and LongPollHost.
+
+    The `diff` method allows the host to calculate the diff between an updated
+    object and its original value. The host can send only the diff to a
+    client that already has the original value, reducing network traffic.
+    The client can reconstruct the updated object by applying the diff to the
+    original value locally using the `join` method. Many diffs can be
+    coalesced into a single diff using `join_diffs` Each LongPollNamespace
+    option must have corresponding `diff`, `join`, and `join_diffs` methods.
+    """
+
+    @staticmethod
+    def diff(base_obj: T, updated_obj: T) -> Diff:
+        """Returns object representing the diff between two other objects.
+
+        Args:
+            base_obj: Object of type T.
+            updated_obj: Object of type T that represents base_obj after
+                being updated.
+        Returns:
+            object that represent the diff between base_obj and updated_obj.
+            Calling join(base_obj, diff) should return the updated_obj.
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def join(base_obj: T, diff: Diff) -> T:
+        """Applies diff to base_obj and returns the resulting object."""
+        raise NotImplementedError
+
+    @staticmethod
+    def join_diffs(diffs: List[Diff]) -> Diff:
+        """Combines all the diffs from left to right.
+
+        This method must obey the associative property: given a list L,
+        join_diffs(L) == join_diffs(L[:1] + [join_diffs(L[1:])]).
+        """
+        raise NotImplementedError
+
+
+class RunningReplicasPartialUpdate(LongPollNamespacePartialUpdateInterface):
+
+    RunningReplicaDiff = Dict[str, Set[RunningReplicaInfo]]
+
+    @staticmethod
+    def diff(
+        base_obj: List[RunningReplicaInfo], updated_obj: List[RunningReplicaInfo]
+    ) -> RunningReplicaDiff:
+        base_replica_set, updated_replica_set = set(base_obj), set(updated_obj)
+        added_replicas = updated_replica_set - base_replica_set
+        removed_replicas = base_replica_set - updated_replica_set
+        return {
+            "added_replicas": added_replicas,
+            "removed_replicas": removed_replicas,
+        }
+
+    @staticmethod
+    def join(
+        base_obj: List[RunningReplicaInfo], diff: RunningReplicaDiff
+    ) -> List[RunningReplicaInfo]:
+        return list(set(base_obj) + diff["added_replicas"] - diff["removed_replicas"])
+
+    @staticmethod
+    def join_diffs(diffs: List[RunningReplicaDiff]) -> RunningReplicaDiff:
+        added_replicas, removed_replicas = set(), set()
+        for diff in diffs:
+            restored_replicas = removed_replicas.intersection(diff["added_replicas"])
+            removed_replicas -= restored_replicas
+            diff["added_replicas"] -= restored_replicas
+            added_replicas |= diff["added_replicas"]
+
+            relinquished_replicas = added_replicas.intersection(
+                diff["removed_replicas"]
+            )
+            added_replicas -= relinquished_replicas
+            diff["removed_replicas"] -= relinquished_replicas
+            removed_replicas |= diff["removed_replicas"]
+
+        return {
+            "added_replicas": added_replicas,
+            "removed_replicas": removed_replicas,
+        }
+
+
+class RouteTablePartialUpdate(LongPollNamespacePartialUpdateInterface):
+    ...
+
+
+# The number of diffs to store for each LongPollNamespace option. Default is 0.
+LongPollNamespaceDiffConfigs = {
+    LongPollNamespace.RUNNING_REPLICAS: 5,
+    LongPollNamespace.ROUTE_TABLE: 0,
+}
 
 
 @dataclass
