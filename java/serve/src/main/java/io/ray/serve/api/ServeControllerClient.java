@@ -308,7 +308,7 @@ public class ServeControllerClient {
         ServeProtoUtil.bytesToProto(
             (byte[])
                 ((PyActorHandle) controller)
-                    .task(PyActorMethod.of("list_deployments"))
+                    .task(PyActorMethod.of("list_deployments_v1"))
                     .remote()
                     .get(),
             DeploymentRouteList::parseFrom);

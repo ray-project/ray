@@ -42,38 +42,55 @@ def test_async_actor_cancel(shutdown_only):
     class VerifyActor:
         def __init__(self):
             self.called = False
+            self.running = False
 
         def called(self):
-            print("called")
             self.called = True
 
+        def set_running(self):
+            self.running = True
+
         def is_called(self):
-            print("is caled, ", self.called)
             return self.called
+
+        def is_running(self):
+            return self.running
+
+        def reset(self):
+            self.called = False
+            self.running = False
 
     @ray.remote
     class Actor:
         async def f(self, verify_actor):
             try:
-                await asyncio.sleep(5)
+                ray.get(verify_actor.set_running.remote())
+                await asyncio.sleep(10)
             except asyncio.CancelledError:
+                # It is False until this except block is finished.
+                print(asyncio.current_task().cancelled())
+                assert not asyncio.current_task().cancelled()
                 ray.get(verify_actor.called.remote())
-                assert asyncio.current_task().canceled()
+                raise
+            except Exception:
                 return True
-            return False
+            return True
 
     v = VerifyActor.remote()
     a = Actor.remote()
-    ref = a.f.remote(v)
-    ray.get(a.__ray_ready__.remote())
-    ray.get(v.__ray_ready__.remote())
-    ray.cancel(ref)
 
-    with pytest.raises(ray.exceptions.RayTaskError):
-        ray.get(ref)
+    for i in range(50):
+        ref = a.f.remote(v)
+        wait_for_condition(lambda: ray.get(v.is_running.remote()))
+        ray.cancel(ref)
 
-    # Verify asyncio.CancelledError is raised from the actor task.
-    assert ray.get(v.is_called.remote())
+        with pytest.raises(ray.exceptions.RayTaskError, match="was cancelled"):
+            ray.get(ref)
+
+        # Verify asyncio.CancelledError is raised from the actor task.
+        assert ray.get(v.is_running.remote())
+        assert ray.get(v.is_called.remote())
+        ray.get(v.reset.remote())
 
 
 def test_async_actor_client_side_cancel(ray_start_cluster):

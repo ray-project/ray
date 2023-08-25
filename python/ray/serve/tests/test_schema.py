@@ -187,10 +187,9 @@ class TestRayActorOptionsSchema:
         # Schema should be createable with valid fields
         RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
-        # Schema should raise error when a nonspecified field is included
-        ray_actor_options_schema["fake_field"] = None
-        with pytest.raises(ValidationError):
-            RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        # Schema should NOT raise error when extra field is included
+        ray_actor_options_schema["extra_field"] = None
+        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
     def test_dict_defaults_ray_actor_options(self):
         # Dictionary fields should have empty dictionaries as defaults, not None
@@ -339,10 +338,9 @@ class TestDeploymentSchema:
         # Schema should be createable with valid fields
         DeploymentSchema.parse_obj(deployment_schema)
 
-        # Schema should raise error when a nonspecified field is included
-        deployment_schema["fake_field"] = None
-        with pytest.raises(ValidationError):
-            DeploymentSchema.parse_obj(deployment_schema)
+        # Schema should NOT raise error when extra field is included
+        deployment_schema["extra_field"] = None
+        DeploymentSchema.parse_obj(deployment_schema)
 
     @pytest.mark.parametrize(
         "option",
@@ -430,10 +428,9 @@ class TestServeApplicationSchema:
         # Schema should be createable with valid fields
         ServeApplicationSchema.parse_obj(serve_application_schema)
 
-        # Schema should raise error when a nonspecified field is included
-        serve_application_schema["fake_field"] = None
-        with pytest.raises(ValidationError):
-            ServeApplicationSchema.parse_obj(serve_application_schema)
+        # Schema should NOT raise error when extra field is included
+        serve_application_schema["extra_field"] = None
+        ServeApplicationSchema.parse_obj(serve_application_schema)
 
     @pytest.mark.parametrize("env", get_valid_runtime_envs())
     def test_serve_application_valid_runtime_env(self, env):
@@ -671,6 +668,18 @@ class TestServeDeploySchema:
         with pytest.raises(ValidationError):
             ServeDeploySchema.parse_obj(deploy_config_dict)
 
+    def test_deploy_with_grpc_options(self):
+        """gRPC options can be specified."""
+
+        deploy_config_dict = {
+            "grpc_options": {
+                "port": 9000,
+                "grpc_servicer_functions": ["foo.bar"],
+            },
+            "applications": [],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
+
 
 class TestServeStatusSchema:
     def get_valid_serve_status_schema(self):
@@ -817,10 +826,10 @@ def test_status_schema_helpers():
     ).deployment_statuses
     assert len(f1_statuses) == 1
     assert f1_statuses[0].status in {"UPDATING", "HEALTHY"}
-    assert f1_statuses[0].name == "app1_f1"
+    assert f1_statuses[0].name == "f1"
     assert len(f2_statuses) == 1
     assert f2_statuses[0].status in {"UPDATING", "HEALTHY"}
-    assert f2_statuses[0].name == "app2_f2"
+    assert f2_statuses[0].name == "f2"
 
     serve.shutdown()
 
