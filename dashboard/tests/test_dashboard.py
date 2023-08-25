@@ -925,7 +925,7 @@ def test_dashboard_does_not_depend_on_serve():
     # Check that Serve-dependent features fail
     try:
         response = requests.get(f"http://{agent_url}/api/serve/deployments/")
-        assert response.status_code == 500
+        assert response.status_code == 501
     except Exception as e:
         # Fail to connect to service is fine.
         print(e)
@@ -963,7 +963,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     # Check that Serve-dependent features fail
     try:
         response = requests.get(f"http://{agent_url}/api/serve/deployments/")
-        assert response.status_code == 500
+        assert response.status_code == 501
     except Exception as e:
         # Fail to connect to service is fine.
         print(e)

@@ -1,3 +1,4 @@
+from functools import wraps
 import json
 import logging
 
@@ -18,6 +19,24 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 routes = optional_utils.ClassMethodRouteTable
+
+
+def gracefully_handle_missing_serve_dependencies(func):
+    @wraps(func)
+    def check(self, *args, **kwargs):
+        try:
+            from ray import serve  # noqa: F401
+        except ImportError:
+            return Response(
+                status=501,
+                text=(
+                    "Serve dependencies are not installed. Please run `pip install "
+                    '"ray[serve]"`.'
+                ),
+            )
+        return func(self, *args, **kwargs)
+
+    return check
 
 
 # NOTE (shrekris-anyscale): This class uses delayed imports for all
@@ -54,6 +73,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
+    @gracefully_handle_missing_serve_dependencies
     async def get_all_deployments(self, req: Request) -> Response:
         from ray.serve.schema import ServeApplicationSchema
 
@@ -85,6 +105,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.get("/api/serve/applications/")
     @optional_utils.init_ray_and_catch_exceptions()
+    @gracefully_handle_missing_serve_dependencies
     async def get_serve_instance_details(self, req: Request) -> Response:
         from ray.serve.schema import ServeInstanceDetails
 
@@ -115,6 +136,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.get("/api/serve/deployments/status")
     @optional_utils.init_ray_and_catch_exceptions()
+    @gracefully_handle_missing_serve_dependencies
     async def get_all_deployment_statuses(self, req: Request) -> Response:
         from ray.serve.schema import serve_status_to_schema, ServeStatusSchema
 
@@ -141,6 +163,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.delete("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
+    @gracefully_handle_missing_serve_dependencies
     async def delete_serve_application(self, req: Request) -> Response:
         from ray import serve
 
@@ -161,6 +184,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
+    @gracefully_handle_missing_serve_dependencies
     async def put_all_deployments(self, req: Request) -> Response:
         from ray.serve._private.api import serve_start_async
         from ray.serve.schema import ServeApplicationSchema
@@ -244,6 +268,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.put("/api/serve/applications/")
     @optional_utils.init_ray_and_catch_exceptions()
+    @gracefully_handle_missing_serve_dependencies
     async def put_all_applications(self, req: Request) -> Response:
         from ray.serve._private.api import serve_start_async
         from ray.serve.schema import ServeDeploySchema
