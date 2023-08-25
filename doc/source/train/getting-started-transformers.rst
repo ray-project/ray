@@ -3,9 +3,9 @@
 Getting Started with Hugging Face Transformers
 ==============================================
 
-This tutorial will walk you through the process of converting an existing Hugging Face Transformers script to use Ray Train.
+This tutorial walks through the process of converting an existing Hugging Face Transformers script to use Ray Train.
 
-By the end of this, you will learn how to:
+Learn how to:
 
 1. Configure your training function to report metrics and save checkpoints.
 2. Configure scale and CPU/GPU resource requirements for your training job.
@@ -288,7 +288,7 @@ information about the training run, including the metrics and checkpoints report
 Next steps
 ---------- 
 
-After you have converted your Hugging Face Transformers training script to use Ray Train.
+After you have converted your Hugging Face Transformers training script to use Ray Train:
 
 * See :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
 * Browse the :ref:`Examples <train-examples>` for end-to-end examples of how to use Ray Train.
@@ -303,7 +303,7 @@ After you have converted your Hugging Face Transformers training script to use R
 The `TransformersTrainer` was added in Ray 2.1. It exposes a `trainer_init_per_worker` interface 
 to define `transformers.Trainer`, then runs a pre-defined training loop in a black box.
 
-Ray 2.7, introduces the newly unified :class:`~ray.train.torch.TorchTrainer` API, 
+Ray 2.7 introduces the newly unified :class:`~ray.train.torch.TorchTrainer` API, 
 which offers enhanced transparency, flexibility, and simplicity. This API is more aligned
 with standard Hugging Face Transformers scripts, ensuring users have better control over their 
 native Transformers training code.

@@ -15,7 +15,7 @@ Learn how to:
 Quickstart
 ----------
 
-For reference, the final code looks like this:
+For reference, the final code follows:
 
 .. code-block:: python
 
