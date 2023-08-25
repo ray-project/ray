@@ -134,15 +134,14 @@ class RunningReplicasPartialUpdate(LongPollNamespacePartialUpdateInterface):
         }
 
 
-class RouteTablePartialUpdate(LongPollNamespacePartialUpdateInterface):
-    ...
+@dataclass
+class LongPollNamespaceDiffConfig:
+    # The number of diffs to store for this namespace.
+    num_diffs_stored: int
 
-
-# The number of diffs to store for each LongPollNamespace option. Default is 0.
-LongPollNamespaceDiffConfigs = {
-    LongPollNamespace.RUNNING_REPLICAS: 5,
-    LongPollNamespace.ROUTE_TABLE: 0,
-}
+    # The interface to use when calculating diffs.
+    # Can be None only if num_diffs_stored is 0.
+    partial_update_methods: Optional[LongPollNamespacePartialUpdateInterface]
 
 
 @dataclass
