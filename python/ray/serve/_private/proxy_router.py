@@ -11,6 +11,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING,
 )
 from ray.serve.handle import RayServeHandle
 
@@ -65,6 +66,7 @@ class LongestPrefixRouter(ProxyRouter):
                         and not info.app_is_cross_language
                     ),
                     use_new_handle_api=True,
+                    _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING,
                 )
                 handle._set_request_protocol(self._protocol)
                 self.handles[endpoint] = handle
@@ -86,12 +88,12 @@ class LongestPrefixRouter(ProxyRouter):
 
     def match_route(
         self, target_route: str
-    ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
+    ) -> Optional[Tuple[str, RayServeHandle, bool]]:
         """Return the longest prefix match among existing routes for the route.
         Args:
             target_route: route to match against.
         Returns:
-            (route, handle, app_name, is_cross_language) if found, else None.
+            (route, handle, is_cross_language) if found, else None.
         """
 
         for route in self.sorted_routes:
@@ -115,7 +117,6 @@ class LongestPrefixRouter(ProxyRouter):
                     return (
                         route,
                         self.handles[endpoint],
-                        endpoint.app,
                         self.app_to_is_cross_language[endpoint.app],
                     )
 
@@ -152,6 +153,7 @@ class EndpointRouter(ProxyRouter):
                         and not info.app_is_cross_language
                     ),
                     use_new_handle_api=True,
+                    _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING,
                 )
                 handle._set_request_protocol(self._protocol)
                 self.handles[endpoint] = handle
@@ -167,7 +169,7 @@ class EndpointRouter(ProxyRouter):
 
     def get_handle_for_endpoint(
         self, target_app_name: str
-    ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
+    ) -> Optional[Tuple[str, RayServeHandle, bool]]:
         """Return the handle that matches with endpoint.
 
         Args:
@@ -184,7 +186,6 @@ class EndpointRouter(ProxyRouter):
                 return (
                     endpoint_info.route,
                     handle,
-                    endpoint_tag.app,
                     endpoint_info.app_is_cross_language,
                 )
 

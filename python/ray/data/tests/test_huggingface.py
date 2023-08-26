@@ -41,6 +41,18 @@ def test_huggingface(ray_start_regular_shared):
     assert ray_dataset_split_test.count() == hf_dataset_split["test"].num_rows
 
 
+@pytest.mark.skipif(
+    datasets.Version(datasets.__version__) < datasets.Version("2.8.0"),
+    reason="IterableDataset.iter() added in 2.8.0",
+)
+def test_from_huggingface_streaming(ray_start_regular_shared):
+    hfds = datasets.load_dataset("tweet_eval", "emotion", streaming=True, split="train")
+
+    assert isinstance(hfds, datasets.IterableDataset)
+    ds = ray.data.from_huggingface(hfds)
+    assert ds.count() == 3257
+
+
 if __name__ == "__main__":
     import sys
 

@@ -17,27 +17,23 @@ from ray._private.test_utils import wait_for_condition
 
 from ray import serve
 from ray.serve.scripts import convert_args_to_dict, remove_ansi_escape_sequences
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     MULTI_APP_MIGRATION_MESSAGE,
     SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
 
 
-def assert_deployments_live(names: List[str]):
+def assert_deployments_live(ids: List[DeploymentID]):
     """Checks if all deployments named in names have at least 1 living replica."""
 
     running_actor_names = [actor["name"] for actor in list_actors()]
 
-    all_deployments_live, nonliving_deployment = True, ""
-    for deployment_name in names:
-        for actor_name in running_actor_names:
-            if deployment_name in actor_name:
-                break
-        else:
-            all_deployments_live, nonliving_deployment = False, deployment_name
-    assert all_deployments_live, f'"{nonliving_deployment}" deployment is not live.'
+    for deployment_id in ids:
+        prefix = f"{deployment_id.app}#{deployment_id.name}"
+        msg = f"Deployment {deployment_id} is not live"
+        assert any(prefix in actor_name for actor_name in running_actor_names), msg
 
 
 def test_convert_args_to_dict():
@@ -97,14 +93,14 @@ def test_deploy_basic(ray_start_stop):
         )
         print("Deployments are reachable over HTTP.")
 
-        deployment_names = [
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DAGDriver",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}create_order",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Router",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Multiplier",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Adder",
+        deployments = [
+            DeploymentID("DAGDriver", SERVE_DEFAULT_APP_NAME),
+            DeploymentID("create_order", SERVE_DEFAULT_APP_NAME),
+            DeploymentID("Router", SERVE_DEFAULT_APP_NAME),
+            DeploymentID("Multiplier", SERVE_DEFAULT_APP_NAME),
+            DeploymentID("Adder", SERVE_DEFAULT_APP_NAME),
         ]
-        assert_deployments_live(deployment_names)
+        assert_deployments_live(deployments)
         print("All deployments are live.\n")
 
         print("Deploying arithmetic config.")
@@ -126,13 +122,13 @@ def test_deploy_basic(ray_start_stop):
         )
         print("Deployments are reachable over HTTP.")
 
-        deployment_names = [
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DAGDriver",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Router",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Add",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Subtract",
+        deployments = [
+            DeploymentID("DAGDriver", SERVE_DEFAULT_APP_NAME),
+            DeploymentID("Router", SERVE_DEFAULT_APP_NAME),
+            DeploymentID("Add", SERVE_DEFAULT_APP_NAME),
+            DeploymentID("Subtract", SERVE_DEFAULT_APP_NAME),
         ]
-        assert_deployments_live(deployment_names)
+        assert_deployments_live(deployments)
         print("All deployments are live.\n")
 
     ray.shutdown()
@@ -232,12 +228,12 @@ def test_deploy_multi_app_basic(ray_start_stop):
         print('Application "app2" is reachable over HTTP.')
 
         deployment_names = [
-            "app1_Router",
-            "app1_Multiplier",
-            "app1_Adder",
-            "app2_Router",
-            "app2_Multiplier",
-            "app2_Adder",
+            DeploymentID("Router", "app1"),
+            DeploymentID("Multiplier", "app1"),
+            DeploymentID("Adder", "app1"),
+            DeploymentID("Router", "app2"),
+            DeploymentID("Multiplier", "app2"),
+            DeploymentID("Adder", "app2"),
         ]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
@@ -267,11 +263,11 @@ def test_deploy_multi_app_basic(ray_start_stop):
         print('Application "app2" is reachable over HTTP.')
 
         deployment_names = [
-            "app1_BasicDriver",
-            "app1_f",
-            "app2_Router",
-            "app2_Multiplier",
-            "app2_Adder",
+            DeploymentID("BasicDriver", "app1"),
+            DeploymentID("f", "app1"),
+            DeploymentID("Router", "app2"),
+            DeploymentID("Multiplier", "app2"),
+            DeploymentID("Adder", "app2"),
         ]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
@@ -314,7 +310,7 @@ def test_deploy_duplicate_routes(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_bad_config1(ray_start_stop):
+def test_deploy_bad_v2_config(ray_start_stop):
     """Deploy a bad config with field applications, should try to parse as v2 config."""
 
     config_file = os.path.join(
@@ -325,12 +321,16 @@ def test_deploy_bad_config1(ray_start_stop):
         subprocess.check_output(
             ["serve", "deploy", config_file], stderr=subprocess.STDOUT
         )
-    assert "ValidationError" in e.value.output.decode("utf-8")
-    assert "ServeDeploySchema" in e.value.output.decode("utf-8")
+
+    output = e.value.output.decode("utf-8")
+
+    assert "ValidationError" in output, output
+    assert "ServeDeploySchema" in output, output
+    assert "Please ensure each application's route_prefix is unique" in output
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_bad_config2(ray_start_stop):
+def test_deploy_bad_v1_config(ray_start_stop):
     """
     Deploy a bad config without field applications, should try to parse as v1 config.
     """
@@ -343,8 +343,12 @@ def test_deploy_bad_config2(ray_start_stop):
         subprocess.check_output(
             ["serve", "deploy", config_file], stderr=subprocess.STDOUT
         )
-    assert "ValidationError" in e.value.output.decode("utf-8")
-    assert "ServeApplicationSchema" in e.value.output.decode("utf-8")
+
+    output = e.value.output.decode("utf-8")
+
+    assert "none is not an allowed value" in output
+    assert "ValidationError" in output, output
+    assert "ServeApplicationSchema" in output, output
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -461,11 +465,10 @@ def test_cli_without_config_deploy(ray_start_stop):
             SERVE_DEFAULT_APP_NAME
         ]
 
-        return (
-            "No config has been deployed" in info_response.decode("utf-8")
-            and fetched_status["status"] == "RUNNING"
-            and fetched_status["deployments"]["default_fn"]["status"] == "HEALTHY"
-        )
+        assert "No config has been deployed" in info_response.decode("utf-8")
+        assert fetched_status["status"] == "RUNNING"
+        assert fetched_status["deployments"]["fn"]["status"] == "HEALTHY"
+        return True
 
     wait_for_condition(check_cli)
     serve.shutdown()
@@ -562,11 +565,11 @@ def test_status_basic(ray_start_stop):
     default_app = serve_status["applications"][SERVE_DEFAULT_APP_NAME]
 
     expected_deployments = {
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DAGDriver",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Multiplier",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Adder",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Router",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}create_order",
+        "DAGDriver",
+        "Multiplier",
+        "Adder",
+        "Router",
+        "create_order",
     }
     for name, status in default_app["deployments"].items():
         expected_deployments.remove(name)
@@ -680,7 +683,7 @@ def test_status_constructor_error(ray_start_stop):
         )
         status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOY_FAILED"
-        assert "ZeroDivisionError" in status["deployments"]["default_A"]["message"]
+        assert "ZeroDivisionError" in status["deployments"]["A"]["message"]
         return True
 
     wait_for_condition(check_for_failed_deployment)
@@ -704,13 +707,34 @@ def test_status_package_unavailable_in_controller(ray_start_stop):
         )
         status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOY_FAILED"
-        assert (
-            "some_wrong_url"
-            in status["deployments"]["default_TestDeployment"]["message"]
-        )
+        assert "some_wrong_url" in status["deployments"]["TestDeployment"]["message"]
         return True
 
     wait_for_condition(check_for_failed_deployment, timeout=15)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_max_replicas_per_node(ray_start_stop):
+    """Test that max_replicas_per_node can be set via config file."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "max_replicas_per_node.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_application_status():
+        cli_output = subprocess.check_output(
+            ["serve", "status", "-a", "http://localhost:52365/"]
+        )
+        status = yaml.safe_load(cli_output)["applications"]
+        assert (
+            status["valid"]["status"] == "RUNNING"
+            and status["invalid"]["status"] == "DEPLOY_FAILED"
+        )
+        return True
+
+    wait_for_condition(check_application_status, timeout=15)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
