@@ -557,7 +557,7 @@ py_test(
     size = "medium",
     srcs = ["examples/cifar10_pytorch.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "pytorch", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example", "pytorch", "new_storage"],
     args = ["--smoke-test"]
 )
 
@@ -638,7 +638,7 @@ py_test(
  size = "medium",
  srcs = ["examples/mlflow_example.py"],
  deps = [":tune_lib"],
- tags = ["team:ml", "exclusive", "example"]
+ tags = ["team:ml", "exclusive", "example", "new_storage"]
 )
 
 py_test(
@@ -709,7 +709,7 @@ py_test(
     size = "small",
     srcs = ["examples/optuna_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "new_storage"],
     args = ["--smoke-test"]
 )
 
@@ -781,7 +781,7 @@ py_test(
     size = "small",
     srcs = ["examples/pbt_function.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "new_storage"],
     args = ["--smoke-test"]
 )
 
@@ -880,7 +880,7 @@ py_test(
     size = "medium",
     srcs = ["examples/tune_mnist_keras.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example", "new_storage"],
     args = ["--smoke-test"]
 )
 
@@ -889,7 +889,7 @@ py_test(
     size = "small",
     srcs = ["examples/xgboost_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"]
+    tags = ["team:ml", "exclusive", "example", "new_storage"]
 )
 
 py_test(
@@ -898,7 +898,7 @@ py_test(
     main = "examples/xgboost_example.py",
     srcs = ["examples/xgboost_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example", "new_storage"],
     args = ["--use-cv"]
 )
 
