@@ -11,7 +11,7 @@ Two examples show how to use ingress to access your Ray cluster:
 (kuberay-aws-alb)=
 ## AWS Application Load Balancer (ALB) Ingress support on AWS EKS
 
-### Prerequisite
+### Prerequisites
 * Create an EKS cluster. See [Getting started with Amazon EKS – AWS Management Console and AWS CLI](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html#eks-configure-kubectl).
 
 * Set up the [AWS Load Balancer controller](https://github.com/kubernetes-sigs/aws-load-balancer-controller), see [installation instructions](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/deploy/installation/). Note that the repository maintains a webpage for each release. Confirm that you are using the latest installation instructions.
@@ -77,12 +77,13 @@ kubectl delete ingress ray-cluster-ingress
 
 ## GKE Ingress support
 
-### Prerequisite
+### Prerequisites
 
 * Create a GKE cluster and ensure that you have the kubectl tool installed and authenticated to communicate with your GKE cluster.  See [this tutorial](kuberay-gke-gpu-cluster-setup) for an example of how to create a GKE cluster with GPUs.  (GPUs are not necessary for this section.)
 
 * It may be helpful to understand the concepts at <https://cloud.google.com/kubernetes-engine/docs/concepts/ingress>.
 
+### Instructions
 Save the following file as `ray-cluster-gclb-ingress.yaml`:
 
 ```yaml
