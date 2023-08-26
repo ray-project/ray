@@ -97,7 +97,7 @@ class TestCheckpointUtils(unittest.TestCase):
         pickle_state = algo1.__getstate__()
         # Create standard (pickle-based) checkpoint.
         with tempfile.TemporaryDirectory() as pickle_cp_dir:
-            pickle_cp_dir = algo1.save(checkpoint_dir=pickle_cp_dir)
+            pickle_cp_dir = algo1.save(checkpoint_dir=pickle_cp_dir).checkpoint.path
             pickle_cp_info = get_checkpoint_info(pickle_cp_dir)
             # Now convert pickle checkpoint to msgpack using the provided
             # utility function.
@@ -165,7 +165,7 @@ class TestCheckpointUtils(unittest.TestCase):
         pickle_state = algo1.__getstate__()
         # Create standard (pickle-based) checkpoint.
         with tempfile.TemporaryDirectory() as pickle_cp_dir:
-            pickle_cp_dir = algo1.save(checkpoint_dir=pickle_cp_dir)
+            pickle_cp_dir = algo1.save(checkpoint_dir=pickle_cp_dir).checkpoint.path
             pickle_cp_info = get_checkpoint_info(pickle_cp_dir)
             # Now convert pickle checkpoint to msgpack using the provided
             # utility function.

@@ -237,7 +237,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
             "python {}/evaluate.py --run={} "
             "--steps=400 "
             '--out="{}/rollouts_n_steps.pkl" "{}"'.format(
-                rllib_dir, algo, tmp_dir, best_checkpoint._local_path
+                rllib_dir, algo, tmp_dir, best_checkpoint.path
             )
         ).read()[:-1]
         if not os.path.exists(tmp_dir + "/rollouts_n_steps.pkl"):

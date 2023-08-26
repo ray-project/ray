@@ -121,7 +121,6 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
-from ray.train._internal.session import _TrainingResult
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment.trial import ExportFormat
 from ray.tune.logger import Logger, UnifiedLogger
@@ -263,7 +262,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
     @staticmethod
     def from_checkpoint(
-        checkpoint: Union[str, Checkpoint, NewCheckpoint, _TrainingResult],
+        checkpoint: Union[str, Checkpoint, NewCheckpoint],
         policy_ids: Optional[Container[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -295,9 +294,6 @@ class Algorithm(Trainable, AlgorithmBase):
         Returns:
             The instantiated Algorithm.
         """
-        if isinstance(checkpoint, _TrainingResult):
-            checkpoint = checkpoint.checkpoint
-
         checkpoint_info = get_checkpoint_info(checkpoint)
 
         # Not possible for (v0.1) (algo class and config information missing

@@ -10,7 +10,8 @@ my_ppo = my_ppo_config.build()
 # .. train one iteration ..
 my_ppo.train()
 # .. and call `save()` to create a checkpoint.
-path_to_checkpoint = my_ppo.save().checkpoint.path
+save_result = my_ppo.save()
+path_to_checkpoint = save_result.checkpoint.path
 print(
     "An Algorithm checkpoint has been created inside directory: "
     f"'{path_to_checkpoint}'."
@@ -43,7 +44,7 @@ my_new_ppo.stop()
 my_new_ppo = my_ppo_config.build()
 
 # Restore the old (checkpointed) state.
-my_new_ppo.restore(path_to_checkpoint)
+my_new_ppo.restore(save_result)
 
 # Continue training.
 my_new_ppo.train()
@@ -86,7 +87,7 @@ my_ma_config.environment(
 
 my_ma_algo = my_ma_config.build()
 
-ma_checkpoint_dir = my_ma_algo.save()
+ma_checkpoint_dir = my_ma_algo.save().checkpoint.path
 
 print(
     "An Algorithm checkpoint has been created inside directory: "
@@ -185,7 +186,7 @@ algo_w_5_policies = (
 # .. train one iteration ..
 algo_w_5_policies.train()
 # .. and call `save()` to create a checkpoint.
-path_to_checkpoint = algo_w_5_policies.save()
+path_to_checkpoint = algo_w_5_policies.save().checkpoint.path
 print(
     "An Algorithm checkpoint has been created inside directory: "
     f"'{path_to_checkpoint}'. It should contain 5 policies in the 'policies/' sub dir."
@@ -284,7 +285,7 @@ checkpoint_dir = ppo_policy.export_checkpoint("tmp/ppo_policy")
 # 3) .. via the Algorithm (Policy) checkpoint:
 
 # __export-models-3-begin__
-checkpoint_dir = ppo.save()
+checkpoint_dir = ppo.save().checkpoint.path
 # .. check `checkpoint_dir` for the Algorithm checkpoint files.
 # For keras you should be able to recover the model via:
 # keras_model = tf.saved_model.load(checkpoint_dir + "/policies/default_policy/model/")
