@@ -211,7 +211,6 @@
       --test_env=CONDA_SHLVL
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/tests/...
 
 - label: ":book: Doctest (CPU)"
