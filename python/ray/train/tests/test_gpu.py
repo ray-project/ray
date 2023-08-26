@@ -1,6 +1,8 @@
 import json
 import os
+from pathlib import Path
 import time
+from typing import Union, List, Dict
 
 from unittest.mock import patch
 import pytest
@@ -37,6 +39,22 @@ class NonTensorDataset(LinearDataset):
         return {"x": self.x[index, None], "y": 2}
 
 
+def write_rank_data(tmp_path: Path, data: Union[List, Dict]):
+    rank = train.get_context().get_world_rank()
+    with open(tmp_path / f"{rank}.json", "w") as f:
+        json.dump(data, f)
+
+
+def get_data_from_all_ranks(tmp_path: Path) -> Dict[int, Union[List, Dict]]:
+    rank_data = {}
+    for rank_file in tmp_path.glob("*.json"):
+        rank = int(rank_file.stem)
+        with open(rank_file, "r") as f:
+            data = json.load(f)
+        rank_data[rank] = data
+    return rank_data
+
+
 @pytest.mark.parametrize("cuda_visible_devices", ["", "1,2"])
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
 def test_torch_get_device(
@@ -59,8 +77,7 @@ def test_torch_get_device(
             if num_gpus_per_worker > 1
             else [train.torch.get_device().index]
         )
-        rank = train.get_context().get_world_rank()
-        (tmp_path / f"{rank}.txt").write_text(json.dumps(devices))
+        write_rank_data(tmp_path, devices)
 
     trainer = TorchTrainer(
         train_fn,
@@ -71,9 +88,11 @@ def test_torch_get_device(
         ),
     )
     trainer.fit()
+
+    rank_data = get_data_from_all_ranks(tmp_path)
     devices = []
-    for file in tmp_path.glob("*.txt"):
-        devices += json.loads(file.read_text())
+    for rank_devices in rank_data.values():
+        devices += rank_devices
 
     if num_gpus_per_worker == 0.5:
         assert sorted(devices) == [0, 0, 1, 1]
