@@ -3,6 +3,7 @@ import json
 import logging
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Set
+import warnings
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
@@ -710,11 +711,38 @@ class HTTPOptions(pydantic.BaseModel):
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
+
+        if v == DeploymentMode.FixedNumber:
+            warnings.warn(
+                "`DeploymentMode.FixedNumber` is deprecated and will be removed in a "
+                "future version."
+            )
+
+        return v
+
+    @validator("middlewares", always=True)
+    def warn_for_middlewares(cls, v, values):
+        if v:
+            warnings.warn(
+                "Passing `middlewares` to HTTPOptions is deprecated and will be "
+                "removed in a future version. Consider using the FastAPI integration "
+                "to configure middlewares on your deployments: "
+                "https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments"  # noqa 501
+            )
+        return v
+
+    @validator("num_cpus", always=True)
+    def warn_for_num_cpus(cls, v, values):
+        if v:
+            warnings.warn(
+                "Passing `num_cpus` to HTTPOptions is deprecated and will be "
+                "removed in a future version."
+            )
         return v
 
     @validator("fixed_number_replicas", always=True)
     def fixed_number_replicas_should_exist(cls, v, values):
-        if values["location"] == DeploymentMode.FixedNumber and v is None:
+        if values.get("location") == DeploymentMode.FixedNumber and v is None:
             raise ValueError(
                 "When location='FixedNumber', you must specify "
                 "the `fixed_number_replicas` parameter."
