@@ -21,6 +21,7 @@ from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.train._internal.session import shutdown_session
 from ray.train._internal.storage import StorageContext
+from ray.train._internal.syncer import Syncer
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune import (
     register_env,
@@ -62,7 +63,6 @@ from ray.tune.search import BasicVariantGenerator, grid_search, ConcurrencyLimit
 from ray.tune.search._mock import _MockSuggestionAlgorithm
 from ray.tune.search.ax import AxSearch
 from ray.tune.search.hyperopt import HyperOptSearch
-from ray.tune.syncer import Syncer
 from ray.tune.experiment import Trial
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.utils import flatten_dict
@@ -1060,7 +1060,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 name="test_durable_sync",
                 run=trainable_cls,
                 storage_path=upload_dir,
-                sync_config=tune.SyncConfig(syncer=sync_to_cloud),
+                sync_config=train.SyncConfig(syncer=sync_to_cloud),
             )
 
             searchers = BasicVariantGenerator()
