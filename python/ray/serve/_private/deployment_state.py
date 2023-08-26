@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import json
 import logging
 import math
@@ -8,6 +7,7 @@ import time
 import traceback
 from collections import defaultdict, OrderedDict
 from copy import copy
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
