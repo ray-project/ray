@@ -51,6 +51,11 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
         return udf_return_col
 
     if isinstance(udf_return_col, list):
+        if len(udf_return_col) == 1 and isinstance(udf_return_col[0], np.ndarray):
+            # Optimization to avoid conversion overhead from list to np.array.
+            udf_return_col = np.expand_dims(udf_return_col[0], axis=0)
+            return udf_return_col
+
         # Try to convert list values into an numpy array via
         # np.array(), so users don't need to manually cast.
         # NOTE: we don't cast generic iterables, since types like
