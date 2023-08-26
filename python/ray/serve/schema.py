@@ -249,6 +249,16 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         ),
     )
 
+    max_replicas_per_node: int = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "[EXPERIMENTAL] The max number of deployment replicas can "
+            "run on a single node. Valid values are None (no limitation) "
+            "or an integer in the range of [1, 100]. "
+            "Defaults to no limitation."
+        ),
+    )
+
     is_driver_deployment: bool = Field(
         default=DEFAULT.VALUE,
         description="Indicate Whether the deployment is driver deployment "
