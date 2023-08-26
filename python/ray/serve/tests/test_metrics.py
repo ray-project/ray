@@ -944,10 +944,9 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     )
     print("ray_serve_deployment_queued_queries updated successfully.")
 
-    # TODO (shrekris-anyscale): This should be 0 once async task cancellation
-    # is implemented.
+    # Task should get cancelled.
     wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 0, timeout=15
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
 
