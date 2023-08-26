@@ -10,7 +10,7 @@ my_ppo = my_ppo_config.build()
 # .. train one iteration ..
 my_ppo.train()
 # .. and call `save()` to create a checkpoint.
-path_to_checkpoint = my_ppo.save()
+path_to_checkpoint = my_ppo.save().checkpoint.path
 print(
     "An Algorithm checkpoint has been created inside directory: "
     f"'{path_to_checkpoint}'."

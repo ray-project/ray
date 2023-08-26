@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 import sys
 import unittest
+from unittest import mock
 
 import ray
 from ray import air, tune
@@ -109,8 +110,10 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
 
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
         os.system(
-            "python {}/train.py --local-dir={} --run={} "
-            "--checkpoint-freq=1 --checkpoint-at-end ".format(rllib_dir, tmp_dir, algo)
+            "TEST_TMPDIR='{}' python {}/train.py --local-dir={} --run={} "
+            "--checkpoint-freq=1 --checkpoint-at-end ".format(
+                tmp_dir, rllib_dir, tmp_dir, algo
+            )
             + '--config="{\\"num_gpus\\": 0, \\"num_workers\\": 1'
             + eval_
             + fw_
@@ -207,19 +210,19 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
 
         stop = {"episode_reward_mean": 100.0}
 
-        results = tune.Tuner(
-            algo,
-            param_space=config,
-            run_config=air.RunConfig(
-                stop=stop,
-                verbose=1,
-                checkpoint_config=air.CheckpointConfig(
-                    checkpoint_frequency=1, checkpoint_at_end=True
+        with mock.patch.dict({"TEST_TMPDIR": tmp_dir}):
+            results = tune.Tuner(
+                algo,
+                param_space=config,
+                run_config=air.RunConfig(
+                    stop=stop,
+                    verbose=1,
+                    checkpoint_config=air.CheckpointConfig(
+                        checkpoint_frequency=1, checkpoint_at_end=True
+                    ),
+                    failure_config=air.FailureConfig(fail_fast="raise"),
                 ),
-                local_dir=tmp_dir,
-                failure_config=air.FailureConfig(fail_fast="raise"),
-            ),
-        ).fit()
+            ).fit()
 
         # Find last checkpoint and use that for the rollout.
         best_checkpoint = results.get_best_result(
