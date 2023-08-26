@@ -450,11 +450,11 @@ class StorageContext:
     ):
         custom_fs_provided = storage_filesystem is not None
 
-        default_results_dir = _get_defaults_results_dir()
+        self.storage_local_path = _get_defaults_results_dir()
         # If `storage_path=None`, then set it to the local path.
         # Invariant: (`storage_filesystem`, `storage_path`) is the location where
         # *all* results can be accessed.
-        self.storage_path = storage_path or default_results_dir
+        self.storage_path = storage_path or self.storage_local_path
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
@@ -465,13 +465,6 @@ class StorageContext:
         self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
             self.storage_path, storage_filesystem
         )
-
-        if not self.storage_filesystem or isinstance(
-            self.storage_filesystem, pyarrow.fs.LocalFileSystem
-        ):
-            self.storage_local_path = self.storage_path
-        else:
-            self.storage_local_path = default_results_dir
 
         # Syncing is always needed if a custom `storage_filesystem` is provided.
         # Otherwise, syncing is only needed if storage_local_path
