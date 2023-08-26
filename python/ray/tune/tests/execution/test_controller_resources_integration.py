@@ -1,7 +1,6 @@
 import os
 import time
 from collections import Counter
-from typing import Optional
 
 import pytest
 import sys
