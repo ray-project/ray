@@ -16,7 +16,7 @@ if this_dir in sys.path:
         f"Removing {this_dir} from sys.path to avoid "
         "conflict errors with `types.py` in this directory."
     )
-    cur = sys.path.remove(this_dir)
+    sys.path.remove(this_dir)
     sys.path.append(this_dir)
 
 import subprocess  # nopep8 - these need to be imported after the above sys.path workaround
