@@ -93,6 +93,8 @@ class TestCheckpointUtils(unittest.TestCase):
         config = SimpleQConfig().environment("CartPole-v1")
         # Build algorithm object.
         algo1 = config.build()
+        # Fake one result for the checkpoint saving to succeed
+        algo1._last_result = {}
         # Get its state.
         pickle_state = algo1.__getstate__()
         # Create standard (pickle-based) checkpoint.
@@ -161,6 +163,8 @@ class TestCheckpointUtils(unittest.TestCase):
         )
         # Build algorithm object.
         algo1 = config.build()
+        # Fake one result
+        algo1._last_result = {}
         # Get its state.
         pickle_state = algo1.__getstate__()
         # Create standard (pickle-based) checkpoint.

@@ -39,8 +39,8 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
 
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
         os.system(
-            "python {}/train.py --local-dir={} --run={} "
-            "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir, algo)
+            "TEST_TMPDIR='{}' python {}/train.py --local-dir={} --run={} "
+            "--checkpoint-freq=1 ".format(tmp_dir, rllib_dir, tmp_dir, algo)
             + "--config='{"
             + '"num_workers": 1, "num_gpus": 0{}{}'.format(fw_, extra_config)
             + ', "min_sample_timesteps_per_iteration": 5,'
@@ -50,7 +50,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
         )
 
         checkpoint_path = os.popen(
-            "ls {}/default/*/checkpoint_000001/algorithm_state.pkl".format(tmp_dir)
+            "ls {}/default/*/checkpoint_000000/algorithm_state.pkl".format(tmp_dir)
         ).read()[:-1]
         if not os.path.exists(checkpoint_path):
             sys.exit(1)
@@ -60,7 +60,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
         os.popen(
             'python {}/evaluate.py --run={} "{}" --steps=10 '
             '--out="{}/rollouts_10steps.pkl"'.format(
-                rllib_dir, algo, checkpoint_path, tmp_dir
+                rllib_dir, algo, str(Path(checkpoint_path).parent), tmp_dir
             )
         ).read()
         if not os.path.exists(tmp_dir + "/rollouts_10steps.pkl"):
