@@ -39,13 +39,13 @@ class NonTensorDataset(LinearDataset):
         return {"x": self.x[index, None], "y": 2}
 
 
-def write_rank_data(tmp_path: Path, data: Union[List, Dict]):
+def write_rank_data(tmp_path: Path, data: Union[int, List, Dict]):
     rank = train.get_context().get_world_rank()
     with open(tmp_path / f"{rank}.json", "w") as f:
         json.dump(data, f)
 
 
-def get_data_from_all_ranks(tmp_path: Path) -> Dict[int, Union[List, Dict]]:
+def get_data_from_all_ranks(tmp_path: Path) -> Dict[int, Union[int, List, Dict]]:
     rank_data = {}
     for rank_file in tmp_path.glob("*.json"):
         rank = int(rank_file.stem)
@@ -75,7 +75,7 @@ def test_torch_get_device(
         devices = (
             sorted([device.index for device in train.torch.get_device()])
             if num_gpus_per_worker > 1
-            else [train.torch.get_device().index]
+            else train.torch.get_device().index
         )
         write_rank_data(tmp_path, devices)
 
@@ -90,9 +90,7 @@ def test_torch_get_device(
     trainer.fit()
 
     rank_data = get_data_from_all_ranks(tmp_path)
-    devices = []
-    for rank_devices in rank_data.values():
-        devices += rank_devices
+    devices = list(rank_data.values())
 
     if num_gpus_per_worker == 0.5:
         assert sorted(devices) == [0, 0, 1, 1]
@@ -111,16 +109,12 @@ def test_torch_get_device(
 def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
-        if num_gpus_per_worker > 1:
-            train.report(
-                dict(
-                    devices=sorted(
-                        [device.index for device in train.torch.get_device()]
-                    )
-                )
-            )
-        else:
-            train.report(dict(devices=train.torch.get_device().index))
+        devices = (
+            sorted([device.index for device in train.torch.get_device()])
+            if num_gpus_per_worker > 1
+            else train.torch.get_device().index
+        )
+        write_rank_data(tmp_path, devices)
 
     trainer = TorchTrainer(
         train_fn,
@@ -133,8 +127,10 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
             resources_per_worker={"GPU": num_gpus_per_worker},
         ),
     )
-    results = trainer.fit()
-    devices = [result["devices"] for result in results.metrics["results"]]
+    trainer.fit()
+
+    rank_data = get_data_from_all_ranks(tmp_path)
+    devices = list(rank_data.values())
 
     # cluster setups: 2 nodes, 2 gpus per node
     # `CUDA_VISIBLE_DEVICES` is set to "0,1" on node 1 and node 2
