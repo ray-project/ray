@@ -59,8 +59,6 @@ def _run_tests_in_docker(test_targets: List[str], team: str) -> subprocess.Popen
         )
     commands.append(
         "bazel test --config=ci "
-        # TODO(matthewdeng): Remove this env var as part of #38570.
-        "--test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0 "
         "$(./ci/run/bazel_export_options) "
         f"{' '.join(test_targets)}",
     )
