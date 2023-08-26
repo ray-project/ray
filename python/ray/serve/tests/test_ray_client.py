@@ -64,7 +64,7 @@ ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 
-serve.start(detached=True)
+serve.start()
 """.format(
         ray_client_instance
     )
@@ -134,8 +134,6 @@ A.deploy()
 
 
 def test_quickstart_class(serve_with_client):
-    serve.start()
-
     @serve.deployment
     def hello(request):
         name = request.query_params["name"]
