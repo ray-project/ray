@@ -555,7 +555,7 @@ class TestHTTPProxy:
         mock_receive_http_body.return_value = http_body_bytes
 
         async def receive_message():
-            return {"type": "http.disconnect"}
+            await asyncio.sleep(1000)
 
         handle = FakeActorHandler("fake-deployment-handle")
         proxy_request = ASGIProxyRequest(
@@ -605,6 +605,7 @@ class TestHTTPProxy:
             await http_proxy._consume_and_send_asgi_message_generator(
                 obj_ref_generator=obj_ref_generator,
                 send=send,
+                consume_and_send_asgi_message_generator=AsyncMock(),
             )
         )
 

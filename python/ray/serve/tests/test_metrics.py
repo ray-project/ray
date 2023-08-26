@@ -268,7 +268,7 @@ def test_http_metrics_fields(serve_start_shutdown):
     )
     assert len(num_deployment_errors) == 1
     assert num_deployment_errors[0]["deployment"] == "f"
-    assert num_deployment_errors[0]["error_code"] == "500"
+    assert num_deployment_errors[0]["error_code"] == "disconnection"
     assert num_deployment_errors[0]["method"] == "GET"
     assert num_deployment_errors[0]["application"] == "app"
     print("serve_num_deployment_http_error_requests working as expected.")
