@@ -16,10 +16,7 @@ import ray.cloudpickle as ray_pickle
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
-from ray.air.checkpoint import (
-    Checkpoint,
-    _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
-)
+from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
 from ray.air.constants import (
     TIMESTAMP,
     TIME_THIS_ITER_S,
@@ -31,7 +28,7 @@ from ray.train._internal.storage import (
     StorageContext,
     _exists_at_fs_path,
 )
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train import Checkpoint
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -531,7 +528,7 @@ class Trainable:
                             f"Got {checkpoint_dict_or_path} != {checkpoint_dir}"
                         )
 
-                local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
+                local_checkpoint = Checkpoint.from_directory(checkpoint_dir)
 
                 if self._storage:
                     persisted_checkpoint = self._storage.persist_current_checkpoint(

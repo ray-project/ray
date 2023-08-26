@@ -6,8 +6,8 @@ try:
 except ImportError:
     from distutils.version import LooseVersion as Version
 
-from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
+from ray.train import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.util.annotations import PublicAPI
 

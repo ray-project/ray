@@ -7,9 +7,9 @@ import re
 from typing import Any, Dict, Union
 
 import ray
-from ray.air.checkpoint import Checkpoint
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.rllib.utils.serialization import NOT_SERIALIZABLE, serialize_type
+from ray.train import Checkpoint
+from ray.train._internal.storage import _use_storage_context
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
@@ -38,9 +38,7 @@ CHECKPOINT_VERSION_LEARNER = version.Version("1.2")
 
 
 @PublicAPI(stability="alpha")
-def get_checkpoint_info(
-    checkpoint: Union[str, Checkpoint, NewCheckpoint]
-) -> Dict[str, Any]:
+def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
     """Returns a dict with information about a Algorithm/Policy checkpoint.
 
     If the given checkpoint is a >=v1.0 checkpoint directory, try reading all
@@ -73,12 +71,12 @@ def get_checkpoint_info(
     }
 
     # `checkpoint` is a Checkpoint instance: Translate to directory and continue.
-    if isinstance(checkpoint, Checkpoint):
+    if _use_storage_context:
+        checkpoint: str = checkpoint.to_directory()
+    else:
         tmp_dir = tempfile.mkdtemp()
         checkpoint.to_directory(tmp_dir)
         checkpoint = tmp_dir
-    elif isinstance(checkpoint, NewCheckpoint):
-        checkpoint: str = checkpoint.to_directory()
 
     # Checkpoint is dir.
     if os.path.isdir(checkpoint):
@@ -186,7 +184,7 @@ def get_checkpoint_info(
 
 @PublicAPI(stability="beta")
 def convert_to_msgpack_checkpoint(
-    checkpoint: Union[str, Checkpoint, NewCheckpoint],
+    checkpoint: Union[str, Checkpoint],
     msgpack_checkpoint_dir: str,
 ) -> str:
     """Converts an Algorithm checkpoint (pickle based) to a msgpack based one.

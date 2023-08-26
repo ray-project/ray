@@ -22,10 +22,8 @@ from ray.air._internal.remote_storage import (
 from ray.air._internal import usage as air_usage
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
-from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal import session
 from ray.train._internal.storage import (
     _exists_at_fs_path,
@@ -36,6 +34,14 @@ from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray._private.dict import merge_dicts
+
+
+from ray.train._internal.storage import _use_storage_context
+
+if _use_storage_context():
+    from ray.train._checkpoint import Checkpoint
+else:
+    from ray.air import Checkpoint
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -491,11 +497,8 @@ class BaseTrainer(abc.ABC):
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
-        expected_checkpoint_type = (
-            NewCheckpoint if _use_storage_context() else ray.air.Checkpoint
-        )
         if self.starting_checkpoint is not None and not isinstance(
-            self.starting_checkpoint, expected_checkpoint_type
+            self.starting_checkpoint, Checkpoint
         ):
             raise ValueError(
                 f"`resume_from_checkpoint` should be an instance of "

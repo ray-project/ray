@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig
 from ray.air import session
 from ray.air._internal.uri_utils import URI
@@ -25,7 +24,7 @@ from ray.train._internal.session import (
     TrainingResultType,
     get_session,
 )
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train._checkpoint import Checkpoint
 
 # Ray Train should be usable even if Tune is not installed.
 from ray.train._internal.utils import ActorWrapper
@@ -201,7 +200,7 @@ class TrainingIterator:
         checkpoints = [
             checkpoint_result.data for checkpoint_result in checkpoint_results
         ]
-        assert all(isinstance(checkpoint, NewCheckpoint) for checkpoint in checkpoints)
+        assert all(isinstance(checkpoint, Checkpoint) for checkpoint in checkpoints)
 
         # We need to track one of the checkpoints for book-keeping.
         # Let's use the rank 0 checkpoint.

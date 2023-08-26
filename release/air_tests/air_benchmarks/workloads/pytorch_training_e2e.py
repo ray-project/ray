@@ -13,10 +13,8 @@ import torch.nn as nn
 import torch.optim as optim
 
 import ray
-from ray.air import Checkpoint
 from ray import train
-from ray.train import RunConfig, ScalingConfig
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train._internal.storage import _use_storage_context
 from ray.train.torch import TorchTrainer
 
@@ -66,12 +64,11 @@ def train_loop_per_worker(config):
                 print(f"[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}")
                 running_loss = 0.0
 
-        checkpoint_cls = NewCheckpoint if _use_storage_context() else Checkpoint
         with tempfile.TemporaryDirectory() as tmpdir:
             torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
             train.report(
                 dict(running_loss=running_loss),
-                checkpoint=checkpoint_cls.from_directory(tmpdir),
+                checkpoint=Checkpoint.from_directory(tmpdir),
             )
 
 
