@@ -1086,7 +1086,8 @@ class Router:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
 
         logger.info(
-            f"Router of type {self._replica_scheduler.__class__} for deployment `{deployment_id}` is under initialization.",
+            f"Router of type {self._replica_scheduler.__class__} for deployment "
+            f"'{deployment_id}' is under initialization.",
             extra={"log_to_stderr": False},
         )
 
@@ -1149,7 +1150,8 @@ class Router:
             self.autoscaling_enabled = False
 
         logger.info(
-            f"Router of type {self._replica_scheduler.__class__} for deployment `{deployment_id}` has been successfully initiated.",
+            f"Router of type {self._replica_scheduler.__class__} for deployment "
+            f"'{deployment_id}' has been successfully initiated.",
             extra={"log_to_stderr": False},
         )
 
