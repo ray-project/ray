@@ -1084,8 +1084,9 @@ class Router:
             )
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
+
         logger.info(
-            f"Using router {self._replica_scheduler.__class__}.",
+            f"Router of type {self._replica_scheduler.__class__} for deployment `{deployment_id}` is under initialization.",
             extra={"log_to_stderr": False},
         )
 
@@ -1146,6 +1147,11 @@ class Router:
             self.metrics_pusher.start()
         else:
             self.autoscaling_enabled = False
+
+        logger.info(
+            f"Router of type {self._replica_scheduler.__class__} for deployment `{deployment_id}` has been successfully initiated.",
+            extra={"log_to_stderr": False},
+        )
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
         return {self.deployment_id: self.num_queued_queries}
