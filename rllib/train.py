@@ -430,8 +430,8 @@ def run_rllib_experiments(
 
     checkpoints = []
     for trial in trials:
-        if trial.checkpoint.dir_or_data:
-            checkpoints.append(trial.checkpoint.dir_or_data)
+        if trial.checkpoint.path:
+            checkpoints.append(trial.checkpoint.path)
 
     if checkpoints:
         from rich import print
