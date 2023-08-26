@@ -28,7 +28,6 @@ except (ImportError, ModuleNotFoundError) as e:
 
 
 from ray.air._internal.filelock import TempFileLock
-from ray.air._internal.uri_utils import is_uri
 from ray.train._internal.syncer import Syncer, SyncConfig, _BackgroundSyncer
 from ray.train.constants import _get_defaults_results_dir
 
