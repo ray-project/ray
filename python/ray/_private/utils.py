@@ -1331,7 +1331,7 @@ def get_wheel_filename(
         sys_platform: The platform as returned by sys.platform. Examples:
             "darwin", "linux", "win32"
         ray_version: The Ray version as returned by ray.__version__ or
-            `ray --version`.  Examples: "3.0.0.dev0"
+            `ray --version`.  Examples: "2.7.0"
         py_version: The Python version as returned by sys.version_info. A
             tuple of (major, minor). Examples: (3, 8)
         architecture: Architecture, e.g. ``x86_64`` or ``aarch64``. If None, will
@@ -1339,7 +1339,7 @@ def get_wheel_filename(
 
     Returns:
         The wheel file name.  Examples:
-            ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+            ray-2.7.0-cp38-cp38-manylinux2014_x86_64.whl
     """
     assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 

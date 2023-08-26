@@ -25,7 +25,7 @@ class TestScenario(enum.Enum):
 
 if os.environ.get("RAY_IMAGE") is not None:
     ray_image = os.environ.get("RAY_IMAGE")
-elif ray.__version__ != "3.0.0.dev0":
+elif ray.__version__ != "2.7.0":
     ray_image = f"rayproject/ray:{ray.__version__}"
 elif ray.__commit__ == "{{RAY_COMMIT_SHA}}":
     ray_image = "rayproject/ray:nightly"
