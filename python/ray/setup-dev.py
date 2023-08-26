@@ -10,17 +10,20 @@ import sys
 # types.py can conflict with stdlib's types.py in some python versions,
 # see https://github.com/python/cpython/issues/101210.
 # To avoid import errors, we move the current working dir to the end of sys.path.
-this_dir = os.path.dirname(__file__)
+this_dir = os.path.abspath(os.path.dirname(__file__))
 if this_dir in sys.path:
+    print(
+        f"Removing {this_dir} from sys.path to avoid "
+        "conflict errors with `types.py` in this directory."
+    )
     cur = sys.path.remove(this_dir)
     sys.path.append(this_dir)
 
-import argparse
-import click
-import shutil
-import subprocess
-
-import ray
+import subprocess  # nopep8 - these need to be imported after the above sys.path workaround
+import shutil  # nopep8
+import click  # nopep8
+import argparse  # nopep8
+import ray  # nopep8
 
 
 def do_link(package, force=False, skip_list=None, local_path=None):
