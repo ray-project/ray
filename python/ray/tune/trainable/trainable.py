@@ -477,7 +477,7 @@ class Trainable:
         if _use_storage_context():
             # NOTE: There's no need to supply the checkpoint directory inside
             # the local trial dir, since it'll get persisted to the right location.
-            checkpoint_dir = tempfile.mkdtemp()
+            checkpoint_dir = checkpoint_dir or tempfile.mkdtemp()
             return checkpoint_dir
 
         # Create checkpoint_xxxxx directory and drop checkpoint marker
