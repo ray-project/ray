@@ -306,6 +306,7 @@ def deployment(
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
     placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
     placement_group_strategy: Optional[str] = DEFAULT.VALUE,
+    max_replicas_per_node: Default[int] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_concurrent_queries: Default[int] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
@@ -370,6 +371,10 @@ def deployment(
             shut down before being forcefully killed. Defaults to 20s.
         is_driver_deployment: [EXPERIMENTAL] when set, exactly one replica of this
             deployment runs on every node (like a daemon set).
+        max_replicas_per_node: [EXPERIMENTAL] The max number of deployment replicas can
+            run on a single node. Valid values are None (no limitation)
+            or an integer in the range of [1, 100].
+            Defaults to no limitation.
 
     Returns:
         `Deployment`
@@ -443,6 +448,11 @@ def deployment(
             placement_group_strategy=(
                 placement_group_strategy
                 if placement_group_strategy is not DEFAULT.VALUE
+                else None
+            ),
+            max_replicas_per_node=(
+                max_replicas_per_node
+                if max_replicas_per_node is not DEFAULT.VALUE
                 else None
             ),
         )
