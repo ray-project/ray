@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-from dataclasses import asdict
 import os
 import pathlib
 import sys
 import time
+from dataclasses import asdict
 from typing import Dict, List, Optional, Tuple
 
 import click
@@ -161,7 +161,14 @@ def cli():
     default=DeploymentMode.HeadOnly,
     required=False,
     type=click.Choice(list(DeploymentMode)),
-    help="Location of the HTTP proxies. Defaults to HeadOnly.",
+    help="DEPRECATED: Use `--proxy-location` instead.",
+)
+@click.option(
+    "--proxy-location",
+    default=DeploymentMode.EveryNode,
+    required=False,
+    type=click.Choice(list(DeploymentMode)),
+    help="Location of the proxies. Defaults to EveryNode.",
 )
 @click.option(
     "--grpc-port",
@@ -179,18 +186,32 @@ def cli():
     "Defaults to empty list and no gRPC server will be started.",
 )
 def start(
-    address, http_host, http_port, http_location, grpc_port, grpc_servicer_functions
+    address,
+    http_host,
+    http_port,
+    http_location,
+    proxy_location,
+    grpc_port,
+    grpc_servicer_functions,
 ):
+    if http_location != DeploymentMode.HeadOnly:
+        cli_logger.warning(
+            "The `--http-location` flag to `serve start` is deprecated, "
+            "use `--proxy-location` instead."
+        )
+
+        proxy_location = http_location
+
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
     )
     serve.start(
         detached=True,
+        proxy_location=proxy_location,
         http_options=dict(
             host=http_host,
             port=http_port,
-            location=http_location,
         ),
         grpc_options=gRPCOptions(
             port=grpc_port,
@@ -371,6 +392,13 @@ def run(
     gradio: bool,
     reload: bool,
 ):
+    if host is not None or port is not None:
+        cli_logger.warning(
+            "Specifying `--host` and `--port` to `serve run` is deprecated and will be "
+            "removed in a future version. To specify custom HTTP options, use the "
+            "`serve start` command."
+        )
+
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(

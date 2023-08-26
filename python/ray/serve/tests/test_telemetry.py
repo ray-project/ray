@@ -351,7 +351,8 @@ def test_lightweight_config_options(
     }
 
     # Deploy first config
-    client = serve.start(detached=True)
+    serve.start()
+    client = get_global_client()
     client.deploy_apps(ServeDeploySchema(**config))
     wait_for_condition(
         lambda: serve.status().applications["receiver_app"].status

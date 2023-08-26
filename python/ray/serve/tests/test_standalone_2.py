@@ -221,7 +221,6 @@ def test_controller_deserialization_deployment_def(
             app.deployments[name].set_options(ray_actor_options={"num_cpus": 0.1})
 
         # Run the graph locally on the cluster
-        serve.start(detached=True)
         serve.run(graph)
 
     # Start Serve controller in a directory without access to the graph code
@@ -232,7 +231,7 @@ def test_controller_deserialization_deployment_def(
             "working_dir": os.path.join(os.path.dirname(__file__), "storage_tests")
         },
     )
-    serve.start(detached=True)
+    serve.start()
     serve.context._global_client = None
     ray.shutdown()
 
@@ -251,9 +250,8 @@ def test_controller_deserialization_deployment_def(
 
 def test_controller_deserialization_args_and_kwargs(shutdown_ray_and_serve):
     """Ensures init_args and init_kwargs stay serialized in controller."""
-
-    ray.init()
-    client = serve.start()
+    serve.start()
+    client = get_global_client()
 
     class PidBasedString(str):
         pass
@@ -293,7 +291,8 @@ def test_controller_recover_and_delete(shutdown_ray_and_serve):
     """Ensure that in-progress deletion can finish even after controller dies."""
 
     ray_context = ray.init()
-    client = serve.start()
+    serve.start()
+    client = get_global_client()
 
     num_replicas = 10
 

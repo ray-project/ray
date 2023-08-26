@@ -7,14 +7,14 @@ import requests
 import pytest
 
 import ray
+from ray.cluster_utils import Cluster
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 from ray import serve
-from ray.cluster_utils import Cluster
 from ray.serve.context import get_global_client
 from ray.serve.handle import RayServeHandle
-from ray.serve._private.constants import SERVE_NAMESPACE, RAY_SERVE_ENABLE_NEW_ROUTING
 from ray.serve._private.common import DeploymentID, ReplicaState
+from ray.serve._private.constants import SERVE_NAMESPACE, RAY_SERVE_ENABLE_NEW_ROUTING
 from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.utils import get_head_node_id
 
@@ -59,7 +59,7 @@ def test_scale_up(ray_cluster):
         time.sleep(0.1)
         return os.getpid()
 
-    serve.start(detached=True)
+    serve.start()
     client = serve.context._connect()
 
     D.deploy()
@@ -100,7 +100,7 @@ def test_node_failure(ray_cluster):
     # guarantee that the controller is placed on the head node (we should be
     # able to tolerate being placed on workers, but there's currently a bug).
     # We should add an explicit test for that in the future when it's fixed.
-    serve.start(detached=True)
+    serve.start()
 
     worker_node = cluster.add_node(num_cpus=2)
 
@@ -139,7 +139,8 @@ def test_replica_startup_status_transitions(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
     cluster.connect(namespace=SERVE_NAMESPACE)
-    serve_instance = serve.start()
+    serve.start()
+    client = get_global_client()
 
     signal = SignalActor.remote()
 
@@ -151,7 +152,7 @@ def test_replica_startup_status_transitions(ray_cluster):
     E.deploy(_blocking=False)
 
     def get_replicas(replica_state):
-        controller = serve_instance._controller
+        controller = client._controller
         replicas = ray.get(
             controller._dump_replica_states_for_testing.remote(DeploymentID(E.name, ""))
         )
@@ -226,7 +227,7 @@ def test_replica_spread(ray_cluster):
     # able to tolerate being placed on workers, but there's currently a bug).
     # We should add an explicit test for that in the future when it's fixed.
     cluster.connect(namespace=SERVE_NAMESPACE)
-    serve.start(detached=True)
+    serve.start()
 
     worker_node = cluster.add_node(num_cpus=2)
 

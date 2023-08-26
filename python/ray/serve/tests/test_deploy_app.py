@@ -11,14 +11,21 @@ import requests
 import ray
 import ray.actor
 import ray._private.state
+from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors, list_tasks
-
-from ray import serve
 from ray._private.test_utils import (
     wait_for_condition,
     SignalActor,
 )
+
+from ray import serve
+from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
+from ray.serve.schema import (
+    ServeApplicationSchema,
+    ServeDeploySchema,
+    ServeInstanceDetails,
+)
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
     DeploymentID,
@@ -26,12 +33,6 @@ from ray.serve._private.common import (
     DeploymentStatus,
 )
 from ray.serve._private.constants import SERVE_NAMESPACE, SERVE_DEFAULT_APP_NAME
-from ray.serve.schema import (
-    ServeApplicationSchema,
-    ServeDeploySchema,
-    ServeInstanceDetails,
-)
-from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
 @pytest.fixture
@@ -79,7 +80,8 @@ def client(start_and_shutdown_ray_cli_module, shutdown_ray_and_serve):
         timeout=15,
     )
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
-    yield serve.start(detached=True)
+    serve.start()
+    yield get_global_client()
 
 
 def check_running(_client: ServeControllerClient):
@@ -754,7 +756,8 @@ def test_controller_recover_and_deploy(client: ServeControllerClient):
     )
 
     serve.shutdown()
-    client = serve.start(detached=True)
+    serve.start()
+    client = get_global_client()
 
     # Ensure config checkpoint has been deleted
     assert SERVE_DEFAULT_APP_NAME not in serve.status().applications
