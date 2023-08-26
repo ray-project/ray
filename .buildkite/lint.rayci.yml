@@ -64,6 +64,6 @@ steps:
   - label: ":lint-roller: lint: api annotations"
     instance_type: medium
     commands:
-      - pip install -e python/[all]
+      - RAY_DISABLE_EXTRA_CPP=1 pip install -e python/[all]
       - ./ci/lint/check_api_annotations.py
     depends_on: forge
