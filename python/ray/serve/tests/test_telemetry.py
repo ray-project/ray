@@ -24,6 +24,7 @@ from ray.serve._private.constants import (
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.tests.utils import (
+    receiver_app,
     check_ray_started,
     start_telemetry_app,
     TelemetryStorage,
