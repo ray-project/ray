@@ -1,25 +1,23 @@
 # Runs some request ping to compare HTTP and gRPC performances in TPS and latency.
 
-import aiohttp
 import asyncio
-from grpc import aio, StatusCode
-import logging
-from pprint import pprint
-import time
-from typing import Callable, Dict
 import json
+import logging
+import time
+from pprint import pprint
+from random import random
+from typing import Callable, Dict
 
+import aiohttp
 import numpy as np
+import ray
+from grpc import aio
+from ray import serve
+from ray.serve.config import gRPCOptions
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.handle import RayServeHandle
 from starlette.requests import Request
 
-import ray
-from ray import serve
-from ray.serve.handle import RayServeHandle
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.config import gRPCOptions
-from random import random
-
-NUM_CLIENTS = 8
 CALLS_PER_BATCH = 100
 DELTA = 10**-7
 
