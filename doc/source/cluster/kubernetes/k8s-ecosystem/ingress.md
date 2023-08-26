@@ -5,6 +5,7 @@
 Two examples show how to use ingress to access your Ray cluster:
 
   * [AWS Application Load Balancer (ALB) Ingress support on AWS EKS](kuberay-aws-alb)
+  * [GKE Ingress support](kuberay-gke-ingress)
   * [Manually setting up NGINX Ingress on Kind](kuberay-nginx)
 
 (kuberay-aws-alb)=
@@ -69,6 +70,70 @@ kubectl describe ingress ray-cluster-ingress
 
 # Step 8: Delete the ingress, and AWS Load Balancer controller will remove ALB.
 #        Check ALB on AWS to make sure it is removed.
+kubectl delete ingress ray-cluster-ingress
+```
+
+(kuberay-gke-ingress)=
+
+## GKE Ingress support
+
+Prerequisite
+Create a GKE cluster. See Creating a GKE cluster.
+
+Enable the Kubernetes Engine API for your Google Cloud project.
+
+Ensure that you have the kubectl tool installed and authenticated to communicate with your GKE cluster.
+
+Save the following file as `ray-cluster-gclb-ingress.yaml`:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ray-cluster-ingress
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: raycluster-mini-head-svc # Update this line with your head service in Step 3 below.
+                port:
+                  number: 8265
+```
+
+Now run the following commands:
+
+```bash
+# Step 1: Install KubeRay operator and CRD
+helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
+
+# Step 2: Install a RayCluster
+helm install raycluster kuberay/ray-cluster --version 0.6.0
+
+# Step 3: Edit the ray-operator/config/samples/ray-cluster-gclb-ingress.yaml to 
+
+# Step 4: Apply the Ingress configuration
+kubectl apply -f ray-operator/config/samples/ray-cluster-gclb-ingress.yaml
+
+# Step 5: Check ingress created by Step 4.
+kubectl describe ingress ray-cluster-ingress
+
+# Step 6: After a few minutes, GKE will allocate an external IP for the ingress. Check it using:
+kubectl get ingress ray-cluster-ingress
+
+# Example output:
+# NAME                  CLASS    HOSTS   ADDRESS         PORTS   AGE
+# ray-cluster-ingress   <none>   *       34.160.82.156   80      54m
+
+# Step 7: Check Ray Dashboard by visiting the allocated external IP in your browser. (In this example, it is 34.160.82.156)
+
+# Step 8: Delete the ingress.
 kubectl delete ingress ray-cluster-ingress
 ```
 
