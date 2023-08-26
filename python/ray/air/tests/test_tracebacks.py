@@ -52,7 +52,7 @@ def test_traceback_tuner(ray_start_2_cpus):
         raise RuntimeError("Error")
 
     tuner = Tuner(failing)
-    results = tuner.fit()
+    tuner.fit()
 
 
 def test_traceback_trainer(ray_start_2_cpus):
@@ -60,7 +60,7 @@ def test_traceback_trainer(ray_start_2_cpus):
         raise RuntimeError("Error")
 
     trainer = DataParallelTrainer(failing, scaling_config=ScalingConfig(num_workers=1))
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(RuntimeError):
         trainer.fit()
 
 

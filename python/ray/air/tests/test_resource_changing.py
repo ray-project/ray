@@ -1,3 +1,4 @@
+import os
 from ray import train
 from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
 from ray.air.constants import TRAIN_DATASET_KEY
