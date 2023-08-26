@@ -1809,12 +1809,14 @@ class TuneController:
             # This prevents changing the trial's state or kicking off
             # another training step prematurely.
 
-            # If a decision is already cached, don't override it.
-            # This only happens when pausing the trial, since we cache a PAUSE
+            # If a decision is already cached, don't override it for CONTINUE/NOOP
+            # decisions. Only escalate the cached decision to a STOP/PAUSE if requested.
+            # This is only very relevant for pausing trials, since we cache a PAUSE
             # decision to happen after a save finishes.
             # We need to make sure that we don't override it in the
             # time between the save operation starting and finishing.
-            self._cached_trial_decisions.setdefault(trial.trial_id, decision)
+            if decision in [TrialScheduler.STOP, TrialScheduler.PAUSE]:
+                self._cached_trial_decisions[trial.trial_id] = decision
             return None
         else:
             self._queue_decision(trial, decision)
