@@ -27,6 +27,7 @@ except (ImportError, ModuleNotFoundError) as e:
     ) from e
 
 
+from ray._private.storage import _get_storage_uri
 from ray.air._internal.filelock import TempFileLock
 from ray.air._internal.uri_utils import is_uri
 from ray.train._internal.syncer import Syncer, SyncConfig, _BackgroundSyncer
@@ -451,10 +452,19 @@ class StorageContext:
         custom_fs_provided = storage_filesystem is not None
 
         self.storage_local_path = _get_defaults_results_dir()
+
+        # If no remote path is set, try to get Ray Storage URI
+        ray_storage_uri: Optional[str] = _get_storage_uri()
+        if ray_storage_uri and storage_path is None:
+            logger.info(
+                "Using configured Ray Storage URI as the `storage_path`: "
+                f"{ray_storage_uri}"
+            )
+
         # If `storage_path=None`, then set it to the local path.
         # Invariant: (`storage_filesystem`, `storage_path`) is the location where
         # *all* results can be accessed.
-        self.storage_path = storage_path or self.storage_local_path
+        self.storage_path = storage_path or ray_storage_uri or self.storage_local_path
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
