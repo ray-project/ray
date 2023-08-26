@@ -296,27 +296,10 @@ def get_fs_and_path(
             this will be auto-resolved by pyarrow. If provided, the storage_path
             is assumed to be prefix-stripped already, and must be a valid path
             on the filesystem.
-
-    Raises:
-        ValueError: if the storage path is a URI and a custom filesystem is given.
     """
     storage_path = str(storage_path)
 
     if storage_filesystem:
-        if is_uri(storage_path):
-            raise ValueError(
-                "If you specify a custom `storage_filesystem`, the corresponding "
-                "`storage_path` must be a *path* on that filesystem, not a URI.\n"
-                "For example: "
-                "(storage_filesystem=CustomS3FileSystem(), "
-                "storage_path='s3://bucket/path') should be changed to "
-                "(storage_filesystem=CustomS3FileSystem(), "
-                "storage_path='bucket/path')\n"
-                "This is what you provided: "
-                f"(storage_filesystem={storage_filesystem}, "
-                f"storage_path={storage_path})\n"
-                "Note that this may depend on the custom filesystem you use."
-            )
         return storage_filesystem, storage_path
 
     return pyarrow.fs.FileSystem.from_uri(storage_path)
