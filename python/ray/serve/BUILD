@@ -726,7 +726,7 @@ py_test(
 
 py_test(
     name = "test_http_headers",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
