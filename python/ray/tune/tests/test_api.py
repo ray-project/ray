@@ -14,11 +14,12 @@ import gymnasium as gym
 import numpy as np
 import pytest
 import ray
-from ray import tune
+from ray import train, tune
 from ray.train import CheckpointConfig, ScalingConfig
 from ray.air._internal.remote_storage import _ensure_directory
 from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
 from ray.rllib import _register_all
+from ray.train._internal.syncer import Syncer
 from ray.tune import (
     register_env,
     register_trainable,
@@ -60,7 +61,6 @@ from ray.tune.search import BasicVariantGenerator, grid_search, ConcurrencyLimit
 from ray.tune.search._mock import _MockSuggestionAlgorithm
 from ray.tune.search.ax import AxSearch
 from ray.tune.search.hyperopt import HyperOptSearch
-from ray.tune.syncer import Syncer
 from ray.tune.experiment import Trial
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.utils import flatten_dict
@@ -1066,7 +1066,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 name="test_durable_sync",
                 run=trainable_cls,
                 storage_path=upload_dir,
-                sync_config=tune.SyncConfig(syncer=sync_to_cloud),
+                sync_config=train.SyncConfig(syncer=sync_to_cloud),
             )
 
             searchers = BasicVariantGenerator()
