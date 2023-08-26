@@ -106,7 +106,10 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
         assert next(model.parameters()).is_cuda
 
         with TemporaryDirectory() as tmpdir:
-            torch.save(model.state_dict(), os.path.join(tmpdir, "checkpoint.pt"))
+            state_dict = {
+                k.replace("module.", ""): v for k, v in model.state_dict().items()
+            }
+            torch.save(state_dict, os.path.join(tmpdir, "checkpoint.pt"))
             train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     trainer = TorchTrainer(

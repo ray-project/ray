@@ -73,7 +73,6 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
     )
     results = trainer.fit()
     assert results.checkpoint
-    assert results.checkpoint.get_model()
 
 
 if __name__ == "__main__":
