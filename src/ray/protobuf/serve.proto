@@ -160,6 +160,7 @@ message DeploymentVersion {
   string ray_actor_options = 3;
   string placement_group_bundles = 4;
   string placement_group_strategy = 5;
+  int32 max_replicas_per_node = 6;
 }
 
 message ReplicaConfig {
@@ -170,6 +171,7 @@ message ReplicaConfig {
   string ray_actor_options = 5;
   string placement_group_bundles = 6;
   string placement_group_strategy = 7;
+  int32 max_replicas_per_node = 8;
 }
 
 message DeploymentInfo {

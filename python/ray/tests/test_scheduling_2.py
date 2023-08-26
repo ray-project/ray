@@ -824,7 +824,7 @@ def test_implicit_resource(ray_start_regular):
     assert actors[0]["state"] == "PENDING_CREATION"
 
 
-def test_implicit_resource_autoscaling():
+def test_implicit_resource_autoscaling(shutdown_only):
     from ray.cluster_utils import AutoscalingCluster
 
     cluster = AutoscalingCluster(
