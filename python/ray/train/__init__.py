@@ -14,6 +14,7 @@ except ImportError as exc:
 from ray._private.usage import usage_lib
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import get_checkpoint, get_dataset_shard, report
+from ray.train._internal.syncer import SyncConfig
 from ray.train.backend import BackendConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.context import get_context
@@ -44,6 +45,7 @@ __all__ = [
     "Result",
     "RunConfig",
     "ScalingConfig",
+    "SyncConfig",
     "TrainingIterator",
     "TRAIN_DATASET_KEY",
 ]

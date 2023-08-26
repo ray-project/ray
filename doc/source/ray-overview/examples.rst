@@ -228,6 +228,13 @@ Ray Examples
         Serving a Distilbert Model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item serving inference aws-neuron-core
+        :link: /serve/tutorials/aws-neuron-core-inference
+        :link-type: doc
+
+        Serving a Bert Model on AWS NeuronCore
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item cv serving
         :link: /serve/tutorials/object-detection
         :link-type: doc
