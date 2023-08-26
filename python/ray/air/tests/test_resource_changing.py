@@ -9,6 +9,9 @@ from sklearn.datasets import load_breast_cancer
 import pandas as pd
 import pytest
 import ray
+import json
+from tempfile import TemporaryDirectory
+
 from ray import tune
 from ray.tune.schedulers.resource_changing_scheduler import (
     DistributeResources,
@@ -33,12 +36,19 @@ def train_fn(config):
     if checkpoint:
         # assume that we have run the train.report() example
         # and successfully save some model weights
-        checkpoint_dict = checkpoint.to_dict()
+        with checkpoint.as_directory() as tmpdir:
+            with open(os.path.join(tmpdir, "checkponit.json"), "r") as fin:
+                checkpoint_dict = json.load(fin)
+
         start_epoch = checkpoint_dict.get("epoch", -1) + 1
 
     # wrap the model in DDP
     for epoch in range(start_epoch, config["num_epochs"]):
-        checkpoint = Checkpoint.from_dict(dict(epoch=epoch))
+        with TemporaryDirectory() as tmpdir:
+            with open(os.path.join(tmpdir, "checkponit.json"), "w") as fout:
+                json.dump(dict(epoch=epoch), fout)
+            train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
+
         train.report(
             {
                 "metric": config["metric"] * epoch,

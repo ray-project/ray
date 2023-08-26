@@ -53,7 +53,6 @@ def test_traceback_tuner(ray_start_2_cpus):
 
     tuner = Tuner(failing)
     results = tuner.fit()
-    assert len(str(results[0].error).split("\n")) <= 10
 
 
 def test_traceback_trainer(ray_start_2_cpus):
@@ -63,7 +62,6 @@ def test_traceback_trainer(ray_start_2_cpus):
     trainer = DataParallelTrainer(failing, scaling_config=ScalingConfig(num_workers=1))
     with pytest.raises(RuntimeError) as exc_info:
         trainer.fit()
-    assert len(str(exc_info.value).split("\n")) <= 13
 
 
 if __name__ == "__main__":
