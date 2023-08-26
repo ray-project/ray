@@ -77,12 +77,11 @@ kubectl delete ingress ray-cluster-ingress
 
 ## GKE Ingress support
 
-Prerequisite
-Create a GKE cluster. See Creating a GKE cluster.
+### Prerequisite
 
-Enable the Kubernetes Engine API for your Google Cloud project.
+* Create a GKE cluster and ensure that you have the kubectl tool installed and authenticated to communicate with your GKE cluster.  See [this tutorial](kuberay-gke-gpu-cluster-setup) for an example of how to create a GKE cluster with GPUs.  (GPUs are not necessary for this section.)
 
-Ensure that you have the kubectl tool installed and authenticated to communicate with your GKE cluster.
+* It may be helpful to understand the concepts at <https://cloud.google.com/kubernetes-engine/docs/concepts/ingress>.
 
 Save the following file as `ray-cluster-gclb-ingress.yaml`:
 
