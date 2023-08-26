@@ -1,6 +1,7 @@
 import os
 import time
 from collections import Counter
+from typing import Optional
 
 import pytest
 import sys
@@ -171,8 +172,7 @@ def test_resources_changing(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
                 trial.set_status(Trial.PAUSED)
                 trial.update_resources(dict(cpu=4, gpu=0))
                 trial.set_status(orig_status)
-
-                tune_controller.pause_trial(trial)
+                return TrialScheduler.PAUSE
             return TrialScheduler.NOOP
 
     scheduler = ChangingScheduler()
