@@ -4,7 +4,7 @@ from ray import serve
 
 import os
 import tempfile
-import numpy as np
+from contextlib import contextmanager
 from starlette.requests import Request
 from typing import Dict
 
@@ -73,3 +73,35 @@ class TFMnistModel:
 # __doc_deploy_begin__
 mnist_model = TFMnistModel.bind(TRAINED_MODEL_PATH)
 # __doc_deploy_end__
+
+
+@contextmanager
+def serve_session(deployment):
+    handle = serve.run(deployment)
+    try:
+        yield handle
+    finally:
+        serve.shutdown()
+
+
+if __name__ == "__main__":
+    import ray
+
+    ray.init(
+        runtime_env={
+            "pip": [
+                "tensorflow==2.13.0",
+            ]
+        }
+    )
+
+    with serve_session(mnist_model):
+        # __example_client_start__
+        import requests
+        import numpy as np
+
+        resp = requests.get(
+            "http://localhost:8000/", json={"array": np.random.randn(28 * 28).tolist()}
+        )
+        print(resp.json())
+        # __example_client_end__

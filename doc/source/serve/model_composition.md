@@ -34,8 +34,9 @@ In line 40, the `LanguageClassifier` deployment takes in the `spanish_responder`
 
 For example, the `LanguageClassifier`'s `__call__` method uses the HTTP request's values to decide whether to respond in Spanish or French. It then forwards the request's name to the `spanish_responder` or the `french_responder` on lines 17 and 19 using the `ServeHandles`. The calls are formatted as:
 
-```python
-await self.spanish_responder.say_hello.remote(name)
+```{literalinclude} doc_code/model_composition/class_nodes.py
+:lines: 57
+:language: python
 ```
 
 This call has a few parts:

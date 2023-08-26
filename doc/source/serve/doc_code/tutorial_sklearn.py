@@ -7,6 +7,7 @@ import json
 import numpy as np
 import os
 import tempfile
+from contextlib import contextmanager
 from starlette.requests import Request
 from typing import Dict
 
@@ -78,3 +79,32 @@ class BoostingModel:
 # __doc_deploy_begin__
 boosting_model = BoostingModel.bind(MODEL_PATH, LABEL_PATH)
 # __doc_deploy_end__
+
+
+@contextmanager
+def serve_session(deployment):
+    handle = serve.run(deployment)
+    try:
+        yield handle
+    finally:
+        serve.shutdown()
+
+
+if __name__ == "__main__":
+    import ray
+
+    ray.init()
+
+    with serve_session(boosting_model):
+        # __example_client_start__
+        import requests
+
+        sample_request_input = {
+            "sepal length": 1.2,
+            "sepal width": 1.0,
+            "petal length": 1.1,
+            "petal width": 0.9,
+        }
+        response = requests.get("http://localhost:8000/", json=sample_request_input)
+        print(response.text)
+        # __example_client_end__

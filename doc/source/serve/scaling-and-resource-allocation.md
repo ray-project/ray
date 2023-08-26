@@ -98,7 +98,14 @@ To learn about options to pass in, take a look at the [Resources with Actors gui
 For example, to create a deployment where each replica uses a single GPU, you can do the
 following:
 
-```python
+```{testcode}
+import torch
+from ray import serve
+
+
+def do_something_with_my_gpu():
+    return torch.cuda.device_count()
+
 @serve.deployment(ray_actor_options={"num_gpus": 1})
 def func(*args):
     return do_something_with_my_gpu()
@@ -113,7 +120,14 @@ Suppose you have two models and each doesn't fully saturate a GPU.  You might wa
 To do this, the resources specified in `ray_actor_options` can be *fractional*.
 For example, if you have two models and each doesn't fully saturate a GPU, you might want to have them share a GPU by allocating 0.5 GPUs each.
 
-```python
+```{testcode}
+import torch
+from ray import serve
+
+
+def do_something_with_my_gpu():
+    return torch.cuda.device_count()
+
 @serve.deployment(ray_actor_options={"num_gpus": 0.5})
 def func_1(*args):
     return do_something_with_my_gpu()
@@ -130,7 +144,13 @@ In this example, each replica of each deployment will be allocated 0.5 GPUs.  Th
 You can also specify {ref}`custom resources <cluster-resources>` in `ray_actor_options`, for example to ensure that a deployment is scheduled on a specific node.
 For example, if you have a deployment that requires 2 units of the `"custom_resource"` resource, you can specify it like this:
 
-```python
+```{testcode}
+from ray import serve
+
+
+def do_something_with_my_custom_resource():
+    return "this node has 3 cats"
+
 @serve.deployment(ray_actor_options={"resources": {"custom_resource": 2}})
 def func(*args):
     return do_something_with_my_custom_resource()

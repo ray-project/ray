@@ -77,7 +77,6 @@ def serve_session(deployment):
 if __name__ == "__main__":
     import ray
     import os
-    import requests
 
     ray.init(
         runtime_env={
@@ -91,6 +90,8 @@ if __name__ == "__main__":
 
     with serve_session(entrypoint) as handle:
         ray.get(handle.generate.remote("hi"))
+        # __example_client_start__
+        import requests
 
         prompt = "a cute cat is dancing on the grass."
         prompt_query = "%20".join(prompt.split(" "))
@@ -98,6 +99,7 @@ if __name__ == "__main__":
 
         with open("output.png", "wb") as f:
             f.write(resp.content)
+        # __example_client_end__
 
         assert os.path.exists("output.png")
         os.remove("output.png")

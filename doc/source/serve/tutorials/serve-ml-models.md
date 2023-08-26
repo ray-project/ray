@@ -96,14 +96,9 @@ $ serve run --runtime-env tf_env.yaml tutorial_tensorflow:mnist_model
 
 Let's query it! While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
 
-```python
-import requests
-import numpy as np
-
-resp = requests.get(
-    "http://localhost:8000/", json={"array": np.random.randn(28 * 28).tolist()}
-)
-print(resp.json())
+```{literalinclude} ../doc_code/tutorial_tensorflow.py
+:start-after: __example_client_start__
+:end-before: __example_client_end__
 ```
 
 You should get an output like the following (the exact prediction may vary):
@@ -166,16 +161,9 @@ $ serve run tutorial_pytorch:image_model
 
 Let's query it! While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
 
-```python
-import requests
-
-ray_logo_bytes = requests.get(
-    "https://raw.githubusercontent.com/ray-project/"
-    "ray/master/doc/source/images/ray_header_logo.png"
-).content
-
-resp = requests.post("http://localhost:8000/", data=ray_logo_bytes)
-print(resp.json())
+```{literalinclude} ../doc_code/tutorial_pytorch.py
+:start-after: __example_client_start__
+:end-before: __example_client_end__
 ```
 
 You should get an output like the following (the exact number may vary):
@@ -265,21 +253,13 @@ $ serve run tutorial_sklearn:boosting_model
 
 Let's query it! While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
 
-```python
-import requests
-
-sample_request_input = {
-    "sepal length": 1.2,
-    "sepal width": 1.0,
-    "petal length": 1.1,
-    "petal width": 0.9,
-}
-response = requests.get("http://localhost:8000/", json=sample_request_input)
-print(response.text)
+```{literalinclude} ../doc_code/tutorial_sklearn.py
+:start-after: __example_client_start__
+:end-before: __example_client_end__
 ```
 
 You should get an output like the following (the exact prediction may vary):
-```python
+```{testcode}
 {"result": "versicolor"}
 ```
 

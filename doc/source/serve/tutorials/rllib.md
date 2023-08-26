@@ -33,6 +33,7 @@ Let's get started by defining a `PPO` instance, training it for one iteration an
 ```{code-cell} python3
 :tags: [remove-output]
 
+foo()
 import ray
 import ray.rllib.algorithms.ppo as ppo
 from ray import serve

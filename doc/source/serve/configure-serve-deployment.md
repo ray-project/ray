@@ -78,13 +78,16 @@ For example, if a deployment's `num_replicas` is specified in the config file an
 Keep in mind that this override order is applied separately to each individual parameter.
 For example, if a user has a deployment `ExampleDeployment` with the following decorator:
 
-```python
+```{testcode}
+from ray import serve
+
+
 @serve.deployment(
     num_replicas=2,
     max_concurrent_queries=15,
 )
 class ExampleDeployment:
-    ...
+    pass
 ```
 
 and the following config file:
@@ -116,7 +119,11 @@ You can use the `user_config` field to supply structured configuration for your 
 
 To enable the `user_config` feature, you need to implement a `reconfigure` method that takes a JSON-serializable object (e.g., a Dictionary, List or String) as its only argument:
 
-```python
+```{testcode}
+from ray import serve
+from typing import Any, Dict
+
+
 @serve.deployment
 class Model:
     def reconfigure(self, config: Dict[str, Any]):
@@ -134,6 +141,3 @@ deployments:
       user_config:
         threshold: 1.5
 ```
-
-
-
