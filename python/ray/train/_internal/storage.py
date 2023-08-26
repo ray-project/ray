@@ -122,7 +122,6 @@ def _pyarrow_fs_copy_files(
 
 
 def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
-    assert not is_uri(fs_path), fs_path
 
     is_dir = _is_directory(fs, fs_path)
 
@@ -167,7 +166,6 @@ def _download_from_fs_path(
     Raises:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
-    assert not is_uri(fs_path), fs_path
 
     _local_path = Path(local_path).resolve()
     exists_before = _local_path.exists()
@@ -209,7 +207,6 @@ def _upload_to_fs_path(
             `local_path`.
             Ex: ["*.png"] to exclude all .png images.
     """
-    assert not is_uri(fs_path), fs_path
 
     if not exclude:
         # TODO(justinvyu): uploading a single file doesn't work
@@ -241,7 +238,6 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
 
     If the path doesn't exist, returns an empty list.
     """
-    assert not is_uri(fs_path), fs_path
 
     selector = pyarrow.fs.FileSelector(fs_path, allow_not_found=True, recursive=False)
     return [
@@ -252,7 +248,6 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
 
 def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     """Returns True if (fs, fs_path) exists."""
-    assert not is_uri(fs_path), fs_path
 
     valid = fs.get_file_info(fs_path)
     return valid.type != pyarrow.fs.FileType.NotFound
@@ -264,7 +259,6 @@ def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     Raises:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
-    assert not is_uri(fs_path), fs_path
 
     file_info = fs.get_file_info(fs_path)
     if file_info.type == pyarrow.fs.FileType.NotFound:
