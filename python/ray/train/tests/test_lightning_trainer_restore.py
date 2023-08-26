@@ -114,8 +114,12 @@ def test_native_trainer_restore(ray_start_4_cpus_2_gpus):
 
 
 @pytest.mark.parametrize("resume_from_ckpt_path", [True, False])
-def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path):
+def test_air_trainer_restore(
+    ray_start_6_cpus, monkeypatch, tmpdir, resume_from_ckpt_path
+):
     """Test restore for LightningTrainer from a failed/interrupted trail."""
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir))
+
     exp_name = "air_trainer_restore_test"
 
     datamodule = DummyDataModule(8, 256)
@@ -153,7 +157,6 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path):
         lightning_config=lightning_config.build(),
         scaling_config=scaling_config,
         run_config=RunConfig(
-            local_dir=str(tmpdir),
             name=exp_name,
             checkpoint_config=CheckpointConfig(num_to_keep=1),
             callbacks=[FailureInjectionCallback(num_iters=error_epoch)],
