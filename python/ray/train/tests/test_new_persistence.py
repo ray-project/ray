@@ -44,6 +44,17 @@ def enable_new_persistence_mode():
         mp.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "0")
 
 
+@pytest.fixture(autouse=True)
+def disable_driver_artifact_sync():
+    # NOTE: Hack to make sure that the driver doesn't sync the artifacts.
+    from ray.tune import execution
+
+    execution.experiment_state._DRIVER_SYNC_EXCLUDE_PATTERNS = [
+        "*/checkpoint_*",
+        "*/artifact-*.txt",
+    ]
+
+
 @pytest.fixture(autouse=True, scope="module")
 def ray_start_4_cpus(enable_new_persistence_mode):
     # Make sure to set the env var before calling ray.init()
@@ -164,6 +175,16 @@ def train_fn(config):
 
         metrics = {"iter": i, _SCORE_KEY: i}
 
+        # Save an artifact in the local trial dir.
+        rank = train.get_context().get_world_rank()
+        artifact_file_name = (
+            f"artifact-rank={rank}-iter={i}.txt"
+            if in_trainer
+            else f"artifact-iter={i}.txt"
+        )
+        with open(artifact_file_name, "w") as f:
+            f.write(f"{i}")
+
         if in_trainer and train.get_context().get_world_rank() in config.get(
             "no_checkpoint_ranks", []
         ):
@@ -173,17 +194,10 @@ def train_fn(config):
                 with open(os.path.join(temp_dir, "checkpoint.pkl"), "wb") as f:
                     pickle.dump({"iter": i}, f)
 
-                # artifact_file_name = f"artifact-iter={i}.txt"
                 if in_trainer:
-                    rank = train.get_context().get_world_rank()
-                    # artifact_file_name = f"artifact-rank={rank}-iter={i}.txt"
-
                     checkpoint_file_name = _create_checkpoint_shard_filename(str(rank))
                     with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
                         pickle.dump({"iter": i}, f)
-
-                # with open(artifact_file_name, "w") as f:
-                #     f.write(f"{i}")
 
                 train.report(metrics, checkpoint=NewCheckpoint.from_directory(temp_dir))
                 # `train.report` should not have deleted this!
@@ -217,6 +231,12 @@ class ClassTrainable(tune.Trainable):
             if marker.exists():
                 marker.unlink()
                 raise RuntimeError(f"Failing on iter={self.iteration}")
+
+        # Save an artifact in the local trial dir.
+        artifact_file_name = f"artifact-iter={self.iteration}.txt"
+        with open(artifact_file_name, "w") as f:
+            f.write(f"{self.iteration}")
+
         return {
             "score": 1,
             "done": self.iteration >= self.config.get("num_iterations") - 1,
@@ -335,10 +355,14 @@ def _assert_storage_contents(
                     )
                 } == {i for i in range(NUM_WORKERS) if i not in no_checkpoint_ranks}
 
-        # NOTE: These next 2 are technically synced by the driver.
+        if test_trainer:
+            expected_num_artifacts = NUM_ITERATIONS * NUM_WORKERS
+        else:
+            expected_num_artifacts = NUM_ITERATIONS
+        assert len(list(trial_dir.glob("artifact-*"))) == expected_num_artifacts
+
+        # NOTE: This result file is synced by the driver.
         assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
-        # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
-        # assert len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS * NUM_WORKER
 
 
 @pytest.mark.parametrize("trainable", [train_fn, ClassTrainable])
@@ -408,6 +432,7 @@ def test_tuner(
                 verbose=0,
                 failure_config=train.FailureConfig(max_failures=1),
                 checkpoint_config=checkpoint_config,
+                sync_config=train.SyncConfig(sync_artifacts=True),
             ),
             # 2 samples (from the grid search). Run 1 at at time to test actor reuse
             tune_config=tune.TuneConfig(num_samples=1, max_concurrent_trials=1),
@@ -472,9 +497,8 @@ def test_tuner(
 def test_trainer(
     tmp_path, monkeypatch, storage_path_type, checkpoint_config: train.CheckpointConfig
 ):
-    """
-    TODO(justinvyu): Test for these once implemented:
-    - artifacts
+    """Same end-to-end test as `test_tuner`, but also includes a
+    `DataParallelTrainer(resume_from_checkpoint)` test at the end.
 
     {storage_path}/{exp_name}
     ├── experiment_state-2023-07-28_10-00-38.json       <- Initial exp state
@@ -504,7 +528,6 @@ def test_trainer(
     LOCAL_CACHE_DIR = tmp_path / "ray_results"
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
     exp_name = "trainer_new_persistence"
-
     no_checkpoint_ranks = [0]
 
     with _resolve_storage_type(storage_path_type, tmp_path) as (
@@ -530,6 +553,7 @@ def test_trainer(
                 verbose=0,
                 checkpoint_config=checkpoint_config,
                 failure_config=train.FailureConfig(max_failures=1),
+                sync_config=train.SyncConfig(sync_artifacts=True),
             ),
         )
         print("\nStarting initial run.\n")

@@ -26,6 +26,7 @@
       } > test_shard.txt
     - cat test_shard.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       $(cat test_shard.txt)
 
 
@@ -55,6 +56,7 @@
       } > test_shard.txt
     - cat test_shard.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       $(cat test_shard.txt)
 
 

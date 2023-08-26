@@ -1,3 +1,4 @@
+import os
 import pytest
 import subprocess
 import sys
@@ -64,42 +65,48 @@ def test_registry_conflict(ray_start_4_cpus, tmpdir, exit_same):
 
     ray_address = ray_start_4_cpus.address_info["address"]
 
-    run_1_env = {
-        "RAY_ADDRESS": ray_address,
-        "FIXED_VAL": str(1),
-        "VAL_1": str(2),
-        "VAL_2": str(3),
-        # Run 1 can start immediately
-        "HANG_RUN_MARKER": "",
-        # Allow second run to start once first trial of first run is started
-        "DELETE_TRIAL_MARKER": str(run_1_running),
-        # Hang in first trial until the second run finished
-        "HANG_TRIAL_MARKER": str(run_2_finished),
-        # Mark run 1 as completed
-        "DELETE_RUN_MARKER": str(run_1_finished),
-        # Do not wait at end
-        "HANG_END_MARKER": "",
-    }
+    run_1_env = os.environ.copy()
+    run_1_env.update(
+        {
+            "RAY_ADDRESS": ray_address,
+            "FIXED_VAL": str(1),
+            "VAL_1": str(2),
+            "VAL_2": str(3),
+            # Run 1 can start immediately
+            "HANG_RUN_MARKER": "",
+            # Allow second run to start once first trial of first run is started
+            "DELETE_TRIAL_MARKER": str(run_1_running),
+            # Hang in first trial until the second run finished
+            "HANG_TRIAL_MARKER": str(run_2_finished),
+            # Mark run 1 as completed
+            "DELETE_RUN_MARKER": str(run_1_finished),
+            # Do not wait at end
+            "HANG_END_MARKER": "",
+        }
+    )
 
-    run_2_env = {
-        "RAY_ADDRESS": ray_address,
-        "FIXED_VAL": str(4),
-        "VAL_1": str(5),
-        "VAL_2": str(6),
-        # Wait until first trial of first run is running
-        "HANG_RUN_MARKER": str(run_1_running),
-        # Don't delete during run
-        "DELETE_TRIAL_MARKER": "",
-        # No need to hang in trial
-        "HANG_TRIAL_MARKER": "",
-        # After full run finished, allow first run to continue
-        "DELETE_RUN_MARKER": str(run_2_finished),
-        # Wait until first run finished
-        # If we don't do this, we actually don't die because of parameter conflict
-        # but because of "The object's owner has exited" - so we test this
-        # separately
-        "HANG_END_MARKER": str(run_1_finished) if exit_same else "",
-    }
+    run_2_env = os.environ.copy()
+    run_2_env.update(
+        {
+            "RAY_ADDRESS": ray_address,
+            "FIXED_VAL": str(4),
+            "VAL_1": str(5),
+            "VAL_2": str(6),
+            # Wait until first trial of first run is running
+            "HANG_RUN_MARKER": str(run_1_running),
+            # Don't delete during run
+            "DELETE_TRIAL_MARKER": "",
+            # No need to hang in trial
+            "HANG_TRIAL_MARKER": "",
+            # After full run finished, allow first run to continue
+            "DELETE_RUN_MARKER": str(run_2_finished),
+            # Wait until first run finished
+            # If we don't do this, we actually don't die because of parameter conflict
+            # but because of "The object's owner has exited" - so we test this
+            # separately
+            "HANG_END_MARKER": str(run_1_finished) if exit_same else "",
+        }
+    )
 
     script_path = Path(__file__).parent / "_test_multi_tenancy_run.py"
 
