@@ -43,7 +43,6 @@
     - ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options) --test_tag_filters=gpu 
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/serve/...
 
 # Todo: enable once tests pass
