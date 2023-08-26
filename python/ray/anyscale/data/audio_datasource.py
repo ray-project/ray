@@ -1,8 +1,7 @@
 from typing import TYPE_CHECKING, Iterator
 
-from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block
-from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util import PublicAPI
 
@@ -32,16 +31,10 @@ class AudioDatasource(FileBasedDatasource):
         mono_audio = reader_args.get("mono_audio", False)
         reader = AudioReader(f, sample_rate=sample_rate, mono=mono_audio)
 
-        ctx = DataContext.get_current()
-        output_buffer = BlockOutputBuffer(
-            block_udf=None, target_max_block_size=ctx.target_max_block_size
-        )
-
         item = {"amplitude": reader[:].asnumpy()}
         if reader_args.get("include_paths", False):
             item["path"] = path
-        output_buffer.add(item)
 
-        output_buffer.finalize()
-        if output_buffer.has_next():
-            yield output_buffer.next()
+        builder = DelegatingBlockBuilder()
+        builder.add(item)
+        yield builder.build()
