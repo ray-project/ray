@@ -655,7 +655,7 @@ py_test(
     size = "small",
     srcs = ["examples/mnist_pytorch.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "pytorch"],
+    tags = ["team:ml", "exclusive", "example", "pytorch", "new_storage"],
     args = ["--smoke-test"]
 )
 
