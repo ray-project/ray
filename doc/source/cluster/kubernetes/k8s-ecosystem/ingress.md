@@ -116,10 +116,10 @@ helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
 # Step 2: Install a RayCluster
 helm install raycluster kuberay/ray-cluster --version 0.6.0
 
-# Step 3: Edit the ray-operator/config/samples/ray-cluster-gclb-ingress.yaml to 
+# Step 3: Edit ray-cluster-gclb-ingress.yaml to replace the service name with the name of the head service from the RayCluster. (Output of `kubectl get svc`)
 
 # Step 4: Apply the Ingress configuration
-kubectl apply -f ray-operator/config/samples/ray-cluster-gclb-ingress.yaml
+kubectl apply -f ray-cluster-gclb-ingress.yaml
 
 # Step 5: Check ingress created by Step 4.
 kubectl describe ingress ray-cluster-ingress
