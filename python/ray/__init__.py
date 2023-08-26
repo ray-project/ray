@@ -91,7 +91,7 @@ del _configure_system
 
 # Replaced with the current commit when building the wheels.
 __commit__ = "{{RAY_COMMIT_SHA}}"
-__version__ = "3.0.0.dev0"
+__version__ = "2.7.0"
 
 import ray._raylet  # noqa: E402
 

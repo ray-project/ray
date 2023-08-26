@@ -139,7 +139,7 @@ def get_ray_wheels_url_from_local_wheel(ray_wheels: str) -> Optional[str]:
 
     The uploaded object will have local user and current timestamp encoded
     in the upload key path, e.g.:
-    "ubuntu_2022_01_01_23:59:99/ray-3.0.0.dev0-cp37-cp37m-manylinux_x86_64.whl"
+    "ubuntu_2022_01_01_23:59:99/ray-2.7.0-cp37-cp37m-manylinux_x86_64.whl"
 
     Args:
         ray_wheels: File path with `file://` prefix.
@@ -442,7 +442,7 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
 
 def parse_commit_from_wheel_url(url: str) -> str:
     # url is expected to be in the format of
-    # https://s3-us-west-2.amazonaws.com/ray-wheels/master/0e0c15065507f01e8bfe78e49b0d0de063f81164/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl  # noqa
+    # https://s3-us-west-2.amazonaws.com/ray-wheels/master/0e0c15065507f01e8bfe78e49b0d0de063f81164/ray-2.7.0-cp37-cp37m-manylinux2014_x86_64.whl  # noqa
     regex = r"/([0-9a-f]{40})/"
     match = re.search(regex, url)
     if match:
