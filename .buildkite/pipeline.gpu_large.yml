@@ -19,7 +19,6 @@
     - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=datasets_train,-doctest 
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       doc/...
 
 - label: ":tv: :brain: RLlib: Multi-GPU Tests"
