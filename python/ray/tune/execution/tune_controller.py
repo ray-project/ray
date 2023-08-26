@@ -1628,10 +1628,10 @@ class TuneController:
                 return
 
             if should_checkpoint:
+                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
                 future_result = self._schedule_trial_save(
                     trial=trial, storage=CheckpointStorage.PERSISTENT
                 )
-                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
                 trial.temporary_state.saving_to = future_result
             else:
                 self._schedule_trial_stop(trial)
@@ -1808,7 +1808,13 @@ class TuneController:
             # Cache decision to execute on after the save is processed.
             # This prevents changing the trial's state or kicking off
             # another training step prematurely.
-            self._cached_trial_decisions[trial.trial_id] = decision
+
+            # If a decision is already cached, don't override it.
+            # This only happens when pausing the trial, since we cache a PAUSE
+            # decision to happen after a save finishes.
+            # We need to make sure that we don't override it in the
+            # time between the save operation starting and finishing.
+            self._cached_trial_decisions.setdefault(trial.trial_id, decision)
             return None
         else:
             self._queue_decision(trial, decision)
