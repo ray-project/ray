@@ -155,9 +155,8 @@ def test_air_trainer_restore(
         lightning_config=lightning_config.build(),
         scaling_config=scaling_config,
         run_config=RunConfig(
-            local_dir=str(tmpdir),
             name=exp_name,
-            checkpoint_config=CheckpointConfig(num_to_keep=1),
+            checkpoint_config=CheckpointConfig(num_to_keep=2),
             callbacks=[FailureInjectionCallback(num_iters=error_epoch)],
         ),
     )
