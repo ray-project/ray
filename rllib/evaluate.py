@@ -255,7 +255,10 @@ def run(
 
     # Load state from checkpoint, if provided.
     if checkpoint:
-        checkpoint_dir = str(Path(checkpoint).parent)
+        if os.path.isdir(checkpoint):
+            checkpoint_dir = checkpoint
+        else:
+            checkpoint_dir = str(Path(checkpoint).parent)
         print(f"Restoring algorithm from {checkpoint_dir}")
         restore_result = _TrainingResult(
             checkpoint=Checkpoint.from_directory(checkpoint_dir), metrics={}
