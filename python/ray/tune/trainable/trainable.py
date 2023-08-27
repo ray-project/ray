@@ -197,25 +197,34 @@ class Trainable:
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
-        self.remote_checkpoint_dir = remote_checkpoint_dir
-        # If no sync_config is provided, but we save to a remote_checkpoint_dir,
-        # then provide a default syncer. `upload_dir` here is just a dummy directory
-        # that tells the SyncConfig to create a default syncer.
-        self.sync_config = sync_config or SyncConfig(
-            upload_dir=self.remote_checkpoint_dir, syncer="auto"
-        )
+        # TODO(justinvyu): [code_removal] These attrs can be removed.
+        if _use_storage_context():
+            self.remote_checkpoint_dir = None
+            self.sync_config = None
+            self._last_artifact_sync_iter = None
+        else:
+            self.remote_checkpoint_dir = remote_checkpoint_dir
+            # If no sync_config is provided, but we save to a remote_checkpoint_dir,
+            # then provide a default syncer. `upload_dir` here is just a dummy directory
+            # that tells the SyncConfig to create a default syncer.
+            self.sync_config = sync_config or SyncConfig(
+                upload_dir=self.remote_checkpoint_dir, syncer="auto"
+            )
 
-        # Resolves syncer="auto" to an actual syncer cloud storage is used
-        # If sync_config.syncer is a custom Syncer instance, this is a no-op.
-        self.sync_config.syncer = get_node_to_storage_syncer(
-            self.sync_config, self.remote_checkpoint_dir
-        )
+            # Resolves syncer="auto" to an actual syncer cloud storage is used
+            # If sync_config.syncer is a custom Syncer instance, this is a no-op.
+            self.sync_config.syncer = get_node_to_storage_syncer(
+                self.sync_config, self.remote_checkpoint_dir
+            )
+            self._last_artifact_sync_iter = None
 
+        # TODO(justinvyu): These env vars aren't used at the moment.
+        # Consider having these be settings in SyncConfig if we want to
+        # keep this feature.
         self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "2"))
         self.sync_sleep_time = float(
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
         )
-        self._last_artifact_sync_iter = None
 
     @property
     def uses_cloud_checkpointing(self):
