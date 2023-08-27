@@ -48,18 +48,17 @@ def train_fn(config):
         with TemporaryDirectory() as tmpdir:
             with open(os.path.join(tmpdir, "checkponit.json"), "w") as fout:
                 json.dump(dict(epoch=epoch), fout)
-            train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
-        train.report(
-            {
-                "metric": config["metric"] * epoch,
-                "epoch": epoch,
-                "num_cpus": train.get_context()
-                .get_trial_resources()
-                .required_resources["CPU"],
-            },
-            checkpoint=checkpoint,
-        )
+            train.report(
+                {
+                    "metric": config["metric"] * epoch,
+                    "epoch": epoch,
+                    "num_cpus": train.get_context()
+                    .get_trial_resources()
+                    .required_resources["CPU"],
+                },
+                checkpoint=Checkpoint.from_directory(tmpdir),
+            )
 
 
 class AssertingDataParallelTrainer(DataParallelTrainer):
@@ -103,7 +102,7 @@ def test_data_parallel_trainer(ray_start_8_cpus):
         },
         tune_config=TuneConfig(
             mode="max",
-            metric="metric",
+            metric="config/train_loop_config/metric",
             scheduler=ResourceChangingScheduler(
                 ASHAScheduler(),
                 resources_allocation_function=DistributeResources(
