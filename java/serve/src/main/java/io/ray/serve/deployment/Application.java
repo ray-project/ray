@@ -55,7 +55,6 @@ public class Application implements DAGNodeBase{
       .deployApplication(
         parameter_group,
         true);
-    System.out.println("111");
 //    Deployment deployment = deployments.get(0);
 //    deployment.deploy(true);
   }

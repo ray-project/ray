@@ -228,35 +228,36 @@ public class ServeControllerClient {
                 );
         }
 
-        HashMap<String, Object> deployment = deployment_args_list.get(0);
-        String name = (String) deployment.get("name");
-        DeploymentConfig deploymentConfig = (DeploymentConfig) deployment.get("config");
-        ReplicaConfig replicaConfig = (ReplicaConfig) deployment.get("replicaConfig");
-        String routePrefix = (String) deployment.get("routePrefix");
+        //TODO use contorller.deployApplication
+        for (int i = 0; i < deployment_args_list.size(); i++) {
+          HashMap<String, Object> deployment = deployment_args_list.get(i);
+          String name = (String) deployment.get("name");
+          DeploymentConfig deploymentConfig = (DeploymentConfig) deployment.get("config");
+          ReplicaConfig replicaConfig = (ReplicaConfig) deployment.get("replicaConfig");
+          String routePrefix = (String) deployment.get("routePrefix");
 
-        System.out.println(name);
+          System.out.println(name);
+          boolean updating =
+            (boolean)
+              ((PyActorHandle) controller)
+                .task(
+                  PyActorMethod.of("deploy"),
+                  name,
+                  deploymentConfig.toProtoBytes(),
+                  replicaConfig.toProtoBytes(),
+                  routePrefix,
+                  Ray.getRuntimeContext().getCurrentJobId().getBytes())
+                .remote()
+                .get();
 
-        boolean updating =
-          (boolean)
-            ((PyActorHandle) controller)
-              .task(
-                PyActorMethod.of("deploy"),
-                name,
-                deploymentConfig.toProtoBytes(),
-                replicaConfig.toProtoBytes(),
-                routePrefix,
-                Ray.getRuntimeContext().getCurrentJobId().getBytes())
-              .remote()
-              .get();
-
-        if (blocking) {
-          waitForDeploymentHealthy(name);
-        }
-        if (updating) {
+          if (blocking) {
+            waitForDeploymentHealthy(name);
+          }
+          if (updating) {
             String msg = LogUtil.format("Updating deployment '{}'", name);
             LOGGER.info("{}. ", msg);
+          }
         }
-
   }
   /**
    * Waits for the named deployment to enter "HEALTHY" status.

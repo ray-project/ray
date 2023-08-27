@@ -16,6 +16,9 @@ public class DeploymentDemo {
   public String call() {
     return msg;
   }
+  public String calc() {
+    return msg + "Hello";
+  }
 
   public static void main(String[] args) {
     Deployment deployment =
@@ -26,7 +29,7 @@ public class DeploymentDemo {
         .create();
     Application strategyApp = deployment.bind();
     RayServeHandle handle = Serve.run(strategyApp);
-    System.out.println(handle.remote().get());
+    System.out.println(handle.method("calc").remote().get());
     System.exit(0);
   }
 }
