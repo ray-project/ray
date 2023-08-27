@@ -1628,10 +1628,10 @@ class TuneController:
                 return
 
             if should_checkpoint:
+                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
                 future_result = self._schedule_trial_save(
                     trial=trial, storage=CheckpointStorage.PERSISTENT
                 )
-                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
                 trial.temporary_state.saving_to = future_result
             else:
                 self._schedule_trial_stop(trial)
