@@ -22,7 +22,6 @@
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - ./ci/ci.sh test_large --test_env=TEST_EXTERNAL_REDIS=1
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
 
 - label: ":redis: (External Redis) (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
