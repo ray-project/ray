@@ -8,7 +8,6 @@ import time
 
 import ray
 from ray import train
-from ray.exceptions import RayActorError
 from ray.air._internal.util import StartTraceback
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure

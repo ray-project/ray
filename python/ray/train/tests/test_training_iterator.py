@@ -1,5 +1,3 @@
-import functools
-import time
 from unittest.mock import patch
 import pytest
 from ray.train._internal.worker_group import WorkerGroup
@@ -14,12 +12,6 @@ from ray.train._internal.session import init_session, get_session
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.utils import construct_train_func
 from ray.train._internal.checkpoint import CheckpointManager
-from ray.train.examples.tf.tensorflow_mnist_example import (
-    train_func as tensorflow_mnist_train_func,
-)
-from ray.train.examples.pytorch.torch_linear_example import (
-    train_func as linear_train_func,
-)
 
 from ray.train.tests.util import mock_storage_context
 
