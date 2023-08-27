@@ -1,3 +1,5 @@
+import os
+from filelock import FileLock
 from typing import Dict
 
 import torch
@@ -16,21 +18,22 @@ def get_dataloaders(batch_size):
     # Transform to normalize the input images
     transform = transforms.Compose([ToTensor(), Normalize((0.5,), (0.5,))])
 
-    # Download training data from open datasets.
-    training_data = datasets.FashionMNIST(
-        root="~/data",
-        train=True,
-        download=True,
-        transform=transform,
-    )
+    with FileLock(os.path.expanduser("~/data.lock")):
+        # Download training data from open datasets.
+        training_data = datasets.FashionMNIST(
+            root="~/data",
+            train=True,
+            download=True,
+            transform=transform,
+        )
 
-    # Download test data from open datasets.
-    test_data = datasets.FashionMNIST(
-        root="~/data",
-        train=False,
-        download=True,
-        transform=transform,
-    )
+        # Download test data from open datasets.
+        test_data = datasets.FashionMNIST(
+            root="~/data",
+            train=False,
+            download=True,
+            transform=transform,
+        )
 
     # Create data loaders.
     train_dataloader = DataLoader(training_data, batch_size=batch_size)
