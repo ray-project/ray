@@ -38,7 +38,7 @@ def train_fn(config):
         # assume that we have run the train.report() example
         # and successfully save some model weights
         with checkpoint.as_directory() as tmpdir:
-            with open(os.path.join(tmpdir, "checkponit.json"), "r") as fin:
+            with open(os.path.join(tmpdir, "checkpoint.json"), "r") as fin:
                 checkpoint_dict = json.load(fin)
 
         start_epoch = checkpoint_dict.get("epoch", -1) + 1
@@ -46,7 +46,7 @@ def train_fn(config):
     # wrap the model in DDP
     for epoch in range(start_epoch, config["num_epochs"]):
         with TemporaryDirectory() as tmpdir:
-            with open(os.path.join(tmpdir, "checkponit.json"), "w") as fout:
+            with open(os.path.join(tmpdir, "checkpoint.json"), "w") as fout:
                 json.dump(dict(epoch=epoch), fout)
 
             train.report(
