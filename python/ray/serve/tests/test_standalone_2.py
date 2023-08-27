@@ -8,16 +8,15 @@ import pytest
 import requests
 
 import ray
-import ray.actor
 import ray._private.state
-from ray.util.state import list_actors
-
+import ray.actor
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.constants import SERVE_NAMESPACE, SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.context import get_global_client
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray.util.state import list_actors
 
 
 @pytest.fixture

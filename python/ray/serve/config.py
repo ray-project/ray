@@ -1,25 +1,26 @@
 import inspect
 import json
 import logging
-from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Set
 import warnings
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
 from pydantic import (
     BaseModel,
+    Field,
     NonNegativeFloat,
-    PositiveFloat,
     NonNegativeInt,
+    PositiveFloat,
     PositiveInt,
     validator,
-    Field,
 )
 
 from ray import cloudpickle
-from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
-
+from ray._private import ray_option_utils
+from ray._private.serialization import pickle_dumps
+from ray._private.utils import import_attr, resources_from_ray_options
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
@@ -30,20 +31,16 @@ from ray.serve._private.constants import (
     DEFAULT_HTTP_PORT,
     DEFAULT_MAX_CONCURRENT_QUERIES,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
-    SERVE_LOGGER_NAME,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
-from ray.serve.generated.serve_pb2 import (
-    DeploymentConfig as DeploymentConfigProto,
-    DeploymentLanguage,
-    AutoscalingConfig as AutoscalingConfigProto,
-    ReplicaConfig as ReplicaConfigProto,
-)
-from ray._private import ray_option_utils
-from ray._private.utils import import_attr, resources_from_ray_options
-from ray._private.serialization import pickle_dumps
+from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
+from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
+from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

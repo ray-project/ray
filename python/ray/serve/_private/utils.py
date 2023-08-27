@@ -6,23 +6,14 @@ import math
 import os
 import random
 import string
+import threading
 import time
 import traceback
 from enum import Enum
 from functools import wraps
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    Tuple,
-    TypeVar,
-    Union,
-    Optional,
-)
-import threading
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
+import __main__
 import fastapi.encoders
 import numpy as np
 import pydantic
@@ -31,19 +22,14 @@ import requests
 
 import ray
 import ray.util.serialization_addons
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._private.utils import import_attr
+from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
-from ray.serve._private.constants import (
-    HTTP_PROXY_TIMEOUT,
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
-from ray._raylet import MessagePackSerializer
-from ray._private.utils import import_attr
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-
-import __main__
 
 try:
     import pandas as pd

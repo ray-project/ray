@@ -2,23 +2,22 @@ import pytest
 from pydantic import ValidationError
 
 from ray import cloudpickle
-
+from ray.serve._private.constants import DEFAULT_GRPC_PORT
+from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
+    AutoscalingConfig,
     DeploymentConfig,
     DeploymentMode,
     HTTPOptions,
     ReplicaConfig,
     gRPCOptions,
 )
-from ray.serve.config import AutoscalingConfig
-from ray.serve._private.utils import DEFAULT
 from ray.serve.generated.serve_pb2_grpc import add_UserDefinedServiceServicer_to_server
-from ray.serve._private.constants import DEFAULT_GRPC_PORT
 from ray.serve.schema import (
-    ServeDeploySchema,
+    DeploymentSchema,
     HTTPOptionsSchema,
     ServeApplicationSchema,
-    DeploymentSchema,
+    ServeDeploySchema,
 )
 
 

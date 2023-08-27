@@ -1,11 +1,10 @@
 import ray
 from ray import cloudpickle
-from ray.util.annotations import PublicAPI
-
+from ray.dag import DAGNode  # noqa: F401
 from ray.dag.class_node import ClassNode  # noqa: F401
 from ray.dag.function_node import FunctionNode  # noqa: F401
 from ray.dag.input_node import InputNode  # noqa: F401
-from ray.dag import DAGNode  # noqa: F401
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")

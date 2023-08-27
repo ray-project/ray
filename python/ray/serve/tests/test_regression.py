@@ -3,15 +3,15 @@ import gc
 import sys
 
 import numpy as np
-import requests
 import pytest
+import requests
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 import ray
-from ray.exceptions import GetTimeoutError
 from ray import serve
 from ray._private.test_utils import SignalActor
+from ray.exceptions import GetTimeoutError
 from ray.serve.context import get_global_client
 from ray.serve.drivers import DAGDriver
 

@@ -1,15 +1,12 @@
 import logging
 from typing import Callable
 
+from ray import serve
+from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.util.annotations import PublicAPI
 
-from ray import serve
-from ray.serve._private.http_util import (
-    ASGIAppReplicaWrapper,
-)
-
 try:
-    from gradio import routes, Blocks
+    from gradio import Blocks, routes
 except ModuleNotFoundError:
     print("Gradio isn't installed. Run `pip install gradio` to install Gradio.")
     raise

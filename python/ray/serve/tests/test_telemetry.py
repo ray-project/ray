@@ -1,33 +1,33 @@
-import sys
-import yaml
-import pytest
-import requests
 import subprocess
+import sys
 import time
 from typing import Dict
+
+import pytest
+import requests
+import yaml
 from fastapi import FastAPI
 
 import ray
-from ray.dag.input_node import InputNode
-from ray._private.test_utils import wait_for_condition
-
 from ray import serve
-from ray.serve.context import get_global_client
-from ray.serve.drivers import DefaultgRPCDriver, DAGDriver
-from ray.serve.http_adapters import json_request
-from ray.serve.schema import ServeDeploySchema
+from ray._private.test_utils import wait_for_condition
+from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
+from ray.dag.input_node import InputNode
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
 )
-from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray.serve._private.usage import ServeUsageTag
+from ray.serve.context import get_global_client
+from ray.serve.drivers import DAGDriver, DefaultgRPCDriver
+from ray.serve.http_adapters import json_request
+from ray.serve.schema import ServeDeploySchema
 from ray.serve.tests.utils import (
+    TELEMETRY_ROUTE_PREFIX,
+    TelemetryStorage,
     check_ray_started,
     start_telemetry_app,
-    TelemetryStorage,
-    TELEMETRY_ROUTE_PREFIX,
 )
 
 

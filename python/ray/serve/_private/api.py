@@ -7,11 +7,10 @@ from typing import Any, Dict, Optional, Tuple, Union
 from pydantic.main import ModelMetaclass
 
 import ray
-from ray._private.usage import usage_lib
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray.serve.deployment import Application, Deployment
-from ray.serve.exceptions import RayServeException
-from ray.serve.config import gRPCOptions, HTTPOptions
+from ray._private.usage import usage_lib
+from ray.actor import ActorHandle
+from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     HTTP_PROXY_TIMEOUT,
@@ -19,19 +18,12 @@ from ray.serve._private.constants import (
     SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.client import ServeControllerClient
-
-from ray.serve._private.utils import (
-    format_actor_name,
-    get_random_letters,
-)
+from ray.serve._private.utils import format_actor_name, get_random_letters
+from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.context import _set_global_client, get_global_client
 from ray.serve.controller import ServeController
-from ray.serve.context import (
-    get_global_client,
-    _set_global_client,
-)
-from ray.actor import ActorHandle
-
+from ray.serve.deployment import Application, Deployment
+from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(__file__)
 

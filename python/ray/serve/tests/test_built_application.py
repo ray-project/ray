@@ -1,10 +1,11 @@
-import pytest
 import sys
 
+import pytest
+
 from ray import serve
-from ray.serve.built_application import BuiltApplication
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray._private.test_utils import wait_for_condition
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve.built_application import BuiltApplication
 
 
 class TestBuiltApplicationConstruction:

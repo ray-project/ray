@@ -8,30 +8,30 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
+    ApplicationStatus,
     DeploymentID,
     DeploymentInfo,
     DeploymentStatus,
-    StatusOverview,
-    ApplicationStatus,
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
+    StatusOverview,
 )
-from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve._private.constants import (
-    CLIENT_POLLING_INTERVAL_S,
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
+    CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     RAY_SERVE_ENABLE_NEW_HANDLE_API,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deploy_utils import get_deploy_args
+from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
+from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.handle import DeploymentHandle, RayServeHandle, RayServeSyncHandle
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 

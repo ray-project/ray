@@ -1,24 +1,21 @@
 import asyncio
-import pytest
-from typing import List
 import os
+from typing import List
+
+import pytest
 import requests
 
 import ray
 from ray import serve
-
-from ray._private.test_utils import (
-    wait_for_condition,
-    SignalActor,
-)
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-from ray.serve.context import get_internal_replica_context
-from ray.serve.handle import RayServeHandle
-from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
     SERVE_MULTIPLEXED_MODEL_ID,
 )
+from ray.serve.context import get_internal_replica_context
+from ray.serve.handle import RayServeHandle
+from ray.serve.multiplex import _ModelMultiplexWrapper
 
 
 @pytest.fixture()

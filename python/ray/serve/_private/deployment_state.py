@@ -5,7 +5,7 @@ import os
 import random
 import time
 import traceback
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict, defaultdict
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
@@ -15,27 +15,22 @@ import ray
 from ray import ObjectRef, cloudpickle
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
-from ray.util.placement_group import PlacementGroup
-
+from ray.serve import metrics
+from ray.serve._private import deployment_scheduler
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
+from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     Duration,
+    MultiplexedReplicaInfo,
     ReplicaName,
+    ReplicaState,
     ReplicaTag,
     RunningReplicaInfo,
-    ReplicaState,
-    MultiplexedReplicaInfo,
 )
-from ray.serve.schema import (
-    DeploymentDetails,
-    ReplicaDetails,
-    _deployment_info_to_schema,
-)
-from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
@@ -43,28 +38,32 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
+from ray.serve._private.deployment_scheduler import (
+    DeploymentDownscaleRequest,
+    DriverDeploymentSchedulingPolicy,
+    ReplicaSchedulingRequest,
+    SpreadDeploymentSchedulingPolicy,
+)
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     JavaActorHandleProxy,
+    check_obj_ref_ready_nowait,
     format_actor_name,
     get_random_letters,
-    msgpack_serialize,
     msgpack_deserialize,
-    check_obj_ref_ready_nowait,
+    msgpack_serialize,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
-from ray.serve._private import deployment_scheduler
-from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
-from ray.serve._private.deployment_scheduler import (
-    SpreadDeploymentSchedulingPolicy,
-    DriverDeploymentSchedulingPolicy,
-    ReplicaSchedulingRequest,
-    DeploymentDownscaleRequest,
+from ray.serve.config import DeploymentConfig
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
+from ray.serve.schema import (
+    DeploymentDetails,
+    ReplicaDetails,
+    _deployment_info_to_schema,
 )
-from ray.serve import metrics
+from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

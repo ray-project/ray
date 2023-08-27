@@ -1,15 +1,16 @@
-from abc import ABC, abstractmethod
-import grpc
 import logging
 import pickle
+from abc import ABC, abstractmethod
+from typing import Any, Generator, List, Optional, Tuple
 
 from starlette.types import Receive, Scope, Send
-from typing import Any, List, Generator, Optional, Tuple
+
+import grpc
 
 from ray.actor import ActorHandle
+from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import DEFAULT
-from ray.serve._private.common import gRPCRequest, StreamingHTTPRequest
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

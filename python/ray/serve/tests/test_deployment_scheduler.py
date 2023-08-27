@@ -4,19 +4,17 @@ import pytest
 
 import ray
 from ray._raylet import GcsClient
-from ray.tests.conftest import *  # noqa
 from ray.serve._private.common import DeploymentID
+from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_scheduler import (
+    DeploymentDownscaleRequest,
     DeploymentScheduler,
-    SpreadDeploymentSchedulingPolicy,
     DriverDeploymentSchedulingPolicy,
     ReplicaSchedulingRequest,
-    DeploymentDownscaleRequest,
+    SpreadDeploymentSchedulingPolicy,
 )
 from ray.serve._private.utils import get_head_node_id
-from ray.serve._private.default_impl import (
-    create_cluster_node_info_cache,
-)
+from ray.tests.conftest import *  # noqa
 
 
 @ray.remote(num_cpus=1)

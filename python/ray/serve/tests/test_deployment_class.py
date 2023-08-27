@@ -1,8 +1,9 @@
-import sys
-import pytest
-import random
 import itertools
+import random
+import sys
 from typing import Dict, List
+
+import pytest
 
 from ray import serve
 from ray.serve.config import DeploymentConfig

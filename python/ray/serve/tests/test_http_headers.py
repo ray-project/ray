@@ -1,8 +1,9 @@
+import uuid
+
 import pytest
 import requests
-from fastapi import FastAPI
 import starlette
-import uuid
+from fastapi import FastAPI
 
 import ray
 from ray import serve

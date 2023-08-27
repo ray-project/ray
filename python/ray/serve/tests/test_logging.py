@@ -1,20 +1,20 @@
-from contextlib import redirect_stderr
 import io
+import json
 import logging
-import time
+import re
 import sys
+import time
+from contextlib import redirect_stderr
 
+import pytest
 import requests
 import starlette
-import pytest
-import json
 
 import ray
 from ray import serve
-import re
-from ray.serve._private.logging_utils import ServeJSONFormatter
-from ray.serve._private.common import ServeComponentType
 from ray._private.test_utils import wait_for_condition
+from ray.serve._private.common import ServeComponentType
+from ray.serve._private.logging_utils import ServeJSONFormatter
 
 
 @pytest.fixture

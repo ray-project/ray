@@ -1,31 +1,27 @@
 import os
 import subprocess
 import sys
-from tempfile import NamedTemporaryFile
 from contextlib import contextmanager
+from tempfile import NamedTemporaryFile
 
 import pytest
 import requests
 
 import ray
-import ray.actor
 import ray._private.state
-
+import ray.actor
 from ray import serve
-from ray._private.test_utils import (
-    wait_for_condition,
-    SignalActor,
-)
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
+from ray.serve._private.common import HTTPProxyStatus
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import get_global_client
 from ray.serve.schema import ServeInstanceDetails
-from ray.serve._private.utils import get_head_node_id
-from ray.serve._private.common import HTTPProxyStatus
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 

@@ -1,20 +1,18 @@
 import os
 import sys
 
-import grpc
 import pytest
 import requests
 
-import ray
-from ray.tests.conftest import external_redis  # noqa: F401
-from ray._private.test_utils import wait_for_condition
+import grpc
 
+import ray
 from ray import serve
-from ray.serve.context import get_global_client
-from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
-)
+from ray._private.test_utils import wait_for_condition
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.storage.kv_store import KVStoreError, RayInternalKVStore
+from ray.serve.context import get_global_client
+from ray.tests.conftest import external_redis  # noqa: F401
 
 
 @pytest.fixture(scope="function")

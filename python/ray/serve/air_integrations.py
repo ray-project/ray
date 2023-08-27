@@ -1,27 +1,26 @@
-from collections import defaultdict
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
-from pydantic import BaseModel
-import numpy as np
 from abc import abstractmethod
+from collections import defaultdict
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
+
+import numpy as np
 import starlette
 from fastapi import Depends, FastAPI
+from pydantic import BaseModel
 
 import ray
 from ray import serve
 from ray._private.utils import import_attr
-from ray.serve._private.utils import require_packages
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.serve.drivers_utils import load_http_adapter, HTTPAdapterFn
-from ray.serve._private.utils import install_serve_encoders_to_fastapi
 from ray.serve._private.http_util import BufferedASGISender
-
+from ray.serve._private.utils import install_serve_encoders_to_fastapi, require_packages
+from ray.serve.drivers_utils import HTTPAdapterFn, load_http_adapter
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.train.predictor import Predictor
     from ray.air.checkpoint import Checkpoint
+    from ray.train.predictor import Predictor
 
 
 try:

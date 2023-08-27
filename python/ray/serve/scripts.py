@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 import os
 import pathlib
+import re
 import sys
 import time
+import traceback
 from dataclasses import asdict
 from typing import Dict, List, Optional, Tuple
 
 import click
-import yaml
-import traceback
-import re
 import watchfiles
+import yaml
 from pydantic import ValidationError
 
 import ray
@@ -19,18 +19,18 @@ from ray._private.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.serve.api import build as build_app
-from ray.serve.config import DeploymentMode, gRPCOptions
+from ray.serve._private import api as _private_api
+from ray.serve._private.common import ServeDeployMode
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
 )
-from ray.serve._private.common import ServeDeployMode
+from ray.serve.api import build as build_app
+from ray.serve.config import DeploymentMode, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
-from ray.serve._private import api as _private_api
 from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,

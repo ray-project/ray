@@ -4,13 +4,10 @@ from typing import AsyncGenerator, Generator
 import pytest
 
 import ray
-
 from ray import serve
 from ray.serve import Deployment
+from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
 from ray.serve.handle import RayServeHandle
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_NEW_ROUTING,
-)
 
 
 @serve.deployment

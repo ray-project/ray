@@ -1,25 +1,21 @@
 import asyncio
-from collections import OrderedDict
 import inspect
 import logging
 import time
+from collections import OrderedDict
 from typing import Any, Callable, List, Set
 
 from ray._private.async_compat import sync_to_async
+from ray.serve import metrics
+from ray.serve._private.common import DeploymentID, MultiplexedReplicaInfo
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
-    SERVE_LOGGER_NAME,
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
+    SERVE_LOGGER_NAME,
 )
-from ray.serve.context import (
-    get_global_client,
-    get_internal_replica_context,
-)
-from ray.serve._private.common import DeploymentID, MultiplexedReplicaInfo
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import MetricsPusher
-from ray.serve import metrics
-
+from ray.serve.context import get_global_client, get_internal_replica_context
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

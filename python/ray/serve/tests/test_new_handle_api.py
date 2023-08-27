@@ -6,18 +6,15 @@ from typing import Any
 import pytest
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
-
 from ray import serve
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
 from ray.serve.handle import (
     DeploymentHandle,
     DeploymentResponse,
     DeploymentResponseGenerator,
     RayServeHandle,
     RayServeSyncHandle,
-)
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_NEW_ROUTING,
 )
 
 

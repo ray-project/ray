@@ -1,10 +1,10 @@
 import asyncio
-import socket
-from dataclasses import dataclass
 import inspect
 import json
 import logging
 import pickle
+import socket
+from dataclasses import dataclass
 from typing import Any, List, Optional, Type
 
 import starlette
@@ -14,9 +14,8 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
-from ray.serve.exceptions import RayServeException
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-
+from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -295,7 +294,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     >>> # now app can be run properly
     """
     # Delayed import to prevent ciruclar imports in workers.
-    from fastapi import Depends, APIRouter
+    from fastapi import APIRouter, Depends
     from fastapi.routing import APIRoute, APIWebSocketRoute
 
     def get_current_servable_instance():

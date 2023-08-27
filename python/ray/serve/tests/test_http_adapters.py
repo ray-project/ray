@@ -2,18 +2,18 @@ import io
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 import pytest
 from PIL import Image
-import pandas as pd
 
+from ray.serve._private.utils import require_packages
 from ray.serve.http_adapters import (
     NdArray,
+    image_to_ndarray,
     json_to_multi_ndarray,
     json_to_ndarray,
-    image_to_ndarray,
     pandas_read_json,
 )
-from ray.serve._private.utils import require_packages
 
 
 @pytest.mark.asyncio

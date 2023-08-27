@@ -2,13 +2,12 @@ import asyncio
 import importlib
 import os
 import time
-from typing import Set, Optional, Tuple, Union
+from typing import Optional, Set, Tuple, Union
 
 import pytest
 
 import ray
 from ray._private.utils import get_or_create_event_loop
-
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.router import (
     PowerOfTwoChoicesReplicaScheduler,

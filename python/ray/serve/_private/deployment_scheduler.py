@@ -1,20 +1,17 @@
-import sys
 import copy
-from typing import Callable, Dict, Tuple, List, Optional, Union, Set
-from dataclasses import dataclass
+import sys
 from collections import defaultdict
+from dataclasses import dataclass
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
+from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.utils import get_head_node_id
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
-
-from ray.serve._private.common import DeploymentID
-from ray.serve._private.utils import (
-    get_head_node_id,
-)
-from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 
 
 class SpreadDeploymentSchedulingPolicy:

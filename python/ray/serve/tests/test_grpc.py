@@ -1,39 +1,41 @@
+import os
+import sys
+import time
+from unittest.mock import patch
+
 # coding: utf-8
 import pytest
-import sys
-import os
-from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
+
+import grpc
+
 import ray
-import time
 from ray import serve
+from ray._private.test_utils import (
+    run_string_as_driver,
+    setup_tls,
+    teardown_tls,
+    wait_for_condition,
+)
 from ray.cluster_utils import Cluster
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve.config import gRPCOptions
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
-from ray.serve.exceptions import RayServeException
-
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
 )
-
-from unittest.mock import patch
-from ray._private.test_utils import (
-    setup_tls,
-    teardown_tls,
-)
+from ray.serve.config import gRPCOptions
+from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
+from ray.serve.exceptions import RayServeException
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
-import grpc
 from ray.serve.tests.utils import (
-    ping_grpc_list_applications,
-    ping_grpc_healthz,
-    ping_grpc_call_method,
+    ping_fruit_stand,
     ping_grpc_another_method,
+    ping_grpc_call_method,
+    ping_grpc_healthz,
+    ping_grpc_list_applications,
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
-    ping_fruit_stand,
 )
 
 
@@ -656,6 +658,7 @@ def test_grpc_proxy_timeouts(ray_instance):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -8,27 +8,24 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-from ray.serve.config import gRPCOptions, HTTPOptions, DeploymentMode
+from ray.serve._private import http_proxy
+from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
+from ray.serve._private.common import HTTPProxyStatus, NodeId
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
-    PROXY_HEALTH_CHECK_TIMEOUT_S,
-    SERVE_LOGGER_NAME,
-    SERVE_PROXY_NAME,
-    SERVE_NAMESPACE,
+    PROXY_DRAIN_CHECK_PERIOD_S,
     PROXY_HEALTH_CHECK_PERIOD_S,
+    PROXY_HEALTH_CHECK_TIMEOUT_S,
     PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     PROXY_READY_CHECK_TIMEOUT_S,
-    PROXY_DRAIN_CHECK_PERIOD_S,
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
+    SERVE_PROXY_NAME,
 )
-from ray.serve._private import http_proxy
-from ray.serve._private.utils import (
-    format_actor_name,
-)
-from ray.serve._private.common import NodeId, HTTPProxyStatus
-from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
+from ray.serve._private.utils import format_actor_name
+from ray.serve.config import DeploymentMode, HTTPOptions, gRPCOptions
 from ray.serve.schema import HTTPProxyDetails
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

@@ -7,55 +7,45 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
-from ray.util import metrics
-from ray._private.utils import run_background_task
-from ray.actor import ActorHandle
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._private.utils import run_background_task
 from ray._raylet import GcsClient
+from ray.actor import ActorHandle
+from ray.serve._private.application_state import ApplicationStateManager
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentInfo,
     EndpointInfo,
     EndpointTag,
+    MultiplexedReplicaInfo,
     NodeId,
     RunningReplicaInfo,
-    StatusOverview,
     ServeDeployMode,
-    MultiplexedReplicaInfo,
+    StatusOverview,
 )
-from ray.serve.config import gRPCOptions, HTTPOptions
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
-    SERVE_LOGGER_NAME,
     CONTROLLER_MAX_CONCURRENCY,
-    SERVE_ROOT_URL_ENV_KEY,
-    SERVE_NAMESPACE,
-    RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
-    SERVE_DEFAULT_APP_NAME,
     MULTI_APP_MIGRATION_MESSAGE,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
+    RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
+    SERVE_ROOT_URL_ENV_KEY,
 )
+from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPProxyStateManager
 from ray.serve._private.logging_utils import (
+    configure_component_cpu_profiler,
     configure_component_logger,
     configure_component_memory_profiler,
-    configure_component_cpu_profiler,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost
-from ray.serve.exceptions import RayServeException
-from ray.serve.schema import (
-    ServeApplicationSchema,
-    ServeDeploySchema,
-    ApplicationDetails,
-    ServeInstanceDetails,
-    gRPCOptionsSchema,
-    HTTPOptionsSchema,
-    ServeActorDetails,
-)
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -64,10 +54,18 @@ from ray.serve._private.utils import (
     get_all_live_placement_group_names,
     get_head_node_id,
 )
-from ray.serve._private.application_state import ApplicationStateManager
-from ray.serve._private.default_impl import (
-    create_cluster_node_info_cache,
+from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.exceptions import RayServeException
+from ray.serve.schema import (
+    ApplicationDetails,
+    HTTPOptionsSchema,
+    ServeActorDetails,
+    ServeApplicationSchema,
+    ServeDeploySchema,
+    ServeInstanceDetails,
+    gRPCOptionsSchema,
 )
+from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -276,10 +274,8 @@ class ServeController:
 
     def get_all_endpoints_java(self) -> bytes:
         """Returns a dictionary of deployment name to config."""
-        from ray.serve.generated.serve_pb2 import (
-            EndpointSet,
-            EndpointInfo as EndpointInfoProto,
-        )
+        from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
+        from ray.serve.generated.serve_pb2 import EndpointSet
 
         endpoints = self.get_all_endpoints()
         # NOTE(zcin): Java only supports 1.x deployments, so only return

@@ -1,42 +1,42 @@
+import json
 import os
 import re
-import sys
-import yaml
-import time
-import json
 import signal
+import subprocess
+import sys
+import time
+from tempfile import NamedTemporaryFile
+from typing import Pattern
+
 import pytest
 import requests
-import subprocess
-from typing import Pattern
+import yaml
 from pydantic import BaseModel
-from tempfile import NamedTemporaryFile
 
+import grpc
 
 import ray
-from ray.util.state import list_actors
-from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
-from ray._private.test_utils import wait_for_condition
-
 from ray import serve
-from ray.serve.tests.conftest import check_ray_stop
-from ray.serve.deployment_graph import RayServeDAGHandle
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
 )
+from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-import grpc
+from ray.serve.tests.conftest import check_ray_stop
 from ray.serve.tests.utils import (
-    ping_grpc_list_applications,
-    ping_grpc_healthz,
-    ping_grpc_call_method,
+    ping_fruit_stand,
     ping_grpc_another_method,
+    ping_grpc_call_method,
+    ping_grpc_healthz,
+    ping_grpc_list_applications,
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
-    ping_fruit_stand,
 )
+from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
+from ray.util.state import list_actors
 
 CONNECTION_ERROR_MSG = "connection error"
 

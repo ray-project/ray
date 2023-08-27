@@ -1,7 +1,8 @@
-from ray.util import metrics
-from typing import Tuple, Optional, Dict, List, Union
-from ray.serve import context
+from typing import Dict, List, Optional, Tuple, Union
+
 import ray
+from ray.serve import context
+from ray.util import metrics
 
 DEPLOYMENT_TAG = "deployment"
 REPLICA_TAG = "replica"

@@ -1,17 +1,17 @@
 import sys
-from pydantic import BaseModel
 
 import pytest
 import requests
 import starlette.requests
+from pydantic import BaseModel
 from starlette.testclient import TestClient
 
-from ray.serve.drivers import DAGDriver
-from ray.serve.air_integrations import SimpleSchemaIngress
-from ray.serve.drivers_utils import load_http_adapter
-from ray.serve.dag import InputNode
-from ray import serve
 import ray
+from ray import serve
+from ray.serve.air_integrations import SimpleSchemaIngress
+from ray.serve.dag import InputNode
+from ray.serve.drivers import DAGDriver
+from ray.serve.drivers_utils import load_http_adapter
 
 
 def my_resolver(a: int):

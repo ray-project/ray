@@ -1,40 +1,19 @@
-from copy import deepcopy
 import inspect
 import logging
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    Union,
-)
+from copy import deepcopy
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ray.dag.dag_node import DAGNodeBase
 from ray.dag.class_node import ClassNode
+from ray.dag.dag_node import DAGNodeBase
 from ray.dag.function_node import FunctionNode
-from ray.util.annotations import Deprecated, PublicAPI
-
-from ray.serve.config import (
-    AutoscalingConfig,
-    DeploymentConfig,
-    ReplicaConfig,
-)
+from ray.serve._private.constants import MIGRATION_MESSAGE, SERVE_LOGGER_NAME
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warning
+from ray.serve.config import AutoscalingConfig, DeploymentConfig, ReplicaConfig
 from ray.serve.context import get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import (
-    RayActorOptionsSchema,
-    DeploymentSchema,
-)
-from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
-from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import (
-    DEFAULT,
-    Default,
-    guarded_deprecation_warning,
-)
-
+from ray.serve.schema import DeploymentSchema, RayActorOptionsSchema
+from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

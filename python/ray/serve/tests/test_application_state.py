@@ -1,28 +1,28 @@
-import pytest
 import sys
 from typing import Dict, List, Tuple
-from unittest.mock import patch, PropertyMock, Mock
+from unittest.mock import Mock, PropertyMock, patch
+
+import pytest
 
 from ray.exceptions import RayTaskError
-
-from ray.serve.exceptions import RayServeException
 from ray.serve._private.application_state import (
     ApplicationState,
     ApplicationStateManager,
     override_deployment_info,
 )
 from ray.serve._private.common import (
-    DeploymentID,
     ApplicationStatus,
     DeploymentConfig,
+    DeploymentID,
+    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     ReplicaConfig,
-    DeploymentInfo,
 )
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.utils import get_random_letters
-from ray.serve.schema import ServeApplicationSchema, DeploymentSchema
+from ray.serve.exceptions import RayServeException
+from ray.serve.schema import DeploymentSchema, ServeApplicationSchema
 from ray.serve.tests.utils import MockKVStore
 
 

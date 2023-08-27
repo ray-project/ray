@@ -1,29 +1,30 @@
-import grpc
 import os
 from functools import partial
 from multiprocessing import Pool
-from typing import List, Dict, DefaultDict
+from typing import DefaultDict, Dict, List
 
-import requests
 import pytest
+import requests
+from fastapi import FastAPI
+
+import grpc
 
 import ray
+import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.utils import block_until_http_ready
-import ray.util.state as state_api
-from fastapi import FastAPI
-from ray.serve.metrics import Counter, Histogram, Gauge
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
+from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import gRPCOptions
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
-from ray.serve.tests.utils import (
-    ping_grpc_list_applications,
-    ping_grpc_call_method,
-    ping_fruit_stand,
-)
+from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
+from ray.serve.tests.utils import (
+    ping_fruit_stand,
+    ping_grpc_call_method,
+    ping_grpc_list_applications,
+)
 
 
 @pytest.fixture

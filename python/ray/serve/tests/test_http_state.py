@@ -1,30 +1,27 @@
-import json
-from unittest.mock import patch
 import asyncio
-
-import pytest
+import json
 import time
 from typing import Any, List, Tuple
+from unittest.mock import patch
+
+import pytest
 
 import ray
-from ray._raylet import GcsClient
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve.config import DeploymentMode, HTTPOptions
+from ray._raylet import GcsClient
+from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import HTTPProxyStatus
-from ray.serve._private.http_state import HTTPProxyStateManager, HTTPProxyState
-from ray.serve._private.http_proxy import HTTPProxyActor
 from ray.serve._private.constants import (
+    PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
-    PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
 )
-from ray.serve.controller import ServeController
+from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.http_proxy import HTTPProxyActor
+from ray.serve._private.http_state import HTTPProxyState, HTTPProxyStateManager
 from ray.serve._private.utils import get_head_node_id
-from ray.serve._private.default_impl import (
-    create_cluster_node_info_cache,
-)
-from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
-
+from ray.serve.config import DeploymentMode, HTTPOptions
+from ray.serve.controller import ServeController
 
 HEAD_NODE_ID = "node_id-index-head"
 

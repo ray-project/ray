@@ -1,8 +1,9 @@
 import sys
 from typing import Any, Tuple
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
 
 import pytest
+
 from ray.serve._private.endpoint_state import EndpointState
 
 

@@ -1,5 +1,6 @@
-import pytest
 import sys
+
+import pytest
 
 from ray._private.test_utils import run_string_as_driver
 

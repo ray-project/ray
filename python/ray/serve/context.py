@@ -3,6 +3,7 @@ This file stores global state for a Serve application. Deployment replicas
 can use this state to access metadata or the Serve controller.
 """
 
+import contextvars
 import logging
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -13,8 +14,7 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaTag
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
-from ray.util.annotations import PublicAPI, DeveloperAPI
-import contextvars
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__file__)
 

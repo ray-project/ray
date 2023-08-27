@@ -3,26 +3,25 @@ import os
 import sys
 from typing import Dict, Optional
 
-from fastapi import FastAPI
-import requests
-from pydantic import BaseModel, ValidationError
 import pytest
+import requests
 import starlette.responses
+from fastapi import FastAPI
+from pydantic import BaseModel, ValidationError
 from starlette.requests import Request
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
-
 from ray import serve
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.api import call_app_builder_with_args_if_necessary
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.built_application import BuiltApplication
 from ray.serve.deployment import Application
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle, RayServeHandle
-from ray.serve._private.api import call_app_builder_with_args_if_necessary
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.common import DeploymentID
 
 
 @serve.deployment()
@@ -946,8 +945,8 @@ def test_status_package_unavailable_in_controller(serve_instance):
     @serve.deployment
     class MyDeployment:
         def __init__(self):
-            from sqlalchemy import create_engine
             import pymysql
+            from sqlalchemy import create_engine
 
             pymysql.install_as_MySQLdb()
 

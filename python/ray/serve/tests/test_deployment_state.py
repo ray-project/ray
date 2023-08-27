@@ -1,35 +1,20 @@
 import sys
-from typing import Any, Dict, List, Optional, Tuple
-from unittest.mock import patch, Mock
 from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple
+from unittest.mock import Mock, patch
 
 import pytest
 
 import ray
 from ray.serve._private.common import (
-    DeploymentID,
     DeploymentConfig,
+    DeploymentID,
     DeploymentInfo,
     DeploymentStatus,
     ReplicaConfig,
-    ReplicaTag,
     ReplicaName,
     ReplicaState,
-)
-from ray.serve._private.deployment_scheduler import (
-    ReplicaSchedulingRequest,
-)
-from ray.serve.tests.utils import MockTimer, MockKVStore
-from ray.serve._private.deployment_state import (
-    ActorReplicaWrapper,
-    DeploymentState,
-    DriverDeploymentState,
-    DeploymentStateManager,
-    DeploymentVersion,
-    DeploymentReplica,
-    ReplicaStartupStatus,
-    ReplicaStateContainer,
-    VersionedReplica,
+    ReplicaTag,
 )
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
@@ -38,8 +23,21 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_CONCURRENT_QUERIES,
 )
+from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest
+from ray.serve._private.deployment_state import (
+    ActorReplicaWrapper,
+    DeploymentReplica,
+    DeploymentState,
+    DeploymentStateManager,
+    DeploymentVersion,
+    DriverDeploymentState,
+    ReplicaStartupStatus,
+    ReplicaStateContainer,
+    VersionedReplica,
+)
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import get_random_letters
+from ray.serve.tests.utils import MockKVStore, MockTimer
 
 
 class FakeRemoteFunction:

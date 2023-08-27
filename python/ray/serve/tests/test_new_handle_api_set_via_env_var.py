@@ -3,11 +3,8 @@ import sys
 import pytest
 
 from ray import serve
-from ray.serve.handle import (
-    DeploymentHandle,
-    DeploymentResponse,
-)
 from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_HANDLE_API
+from ray.serve.handle import DeploymentHandle, DeploymentResponse
 
 
 def test_basic(serve_instance):

@@ -1,34 +1,34 @@
-import json
 import copy
+import json
 import logging
 import os
 from typing import Optional, Tuple
-
-try:
-    import cProfile
-except ImportError:
-    pass
 
 import ray
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
     DEBUG_LOG_ENV_VAR,
-    SERVE_LOGGER_NAME,
+    RAY_SERVE_ENABLE_CPU_PROFILING,
     RAY_SERVE_ENABLE_JSON_LOGGING,
-    SERVE_LOG_RECORD_FORMAT,
-    SERVE_LOG_REQUEST_ID,
-    SERVE_LOG_ROUTE,
+    RAY_SERVE_ENABLE_MEMORY_PROFILING,
     SERVE_LOG_APPLICATION,
-    SERVE_LOG_MESSAGE,
-    SERVE_LOG_DEPLOYMENT,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
-    SERVE_LOG_TIME,
+    SERVE_LOG_DEPLOYMENT,
     SERVE_LOG_LEVEL_NAME,
+    SERVE_LOG_MESSAGE,
+    SERVE_LOG_RECORD_FORMAT,
     SERVE_LOG_REPLICA,
-    RAY_SERVE_ENABLE_MEMORY_PROFILING,
-    RAY_SERVE_ENABLE_CPU_PROFILING,
+    SERVE_LOG_REQUEST_ID,
+    SERVE_LOG_ROUTE,
+    SERVE_LOG_TIME,
+    SERVE_LOGGER_NAME,
 )
+
+try:
+    import cProfile
+except ImportError:
+    pass
 
 
 LOG_FILE_FMT = "{component_name}_{component_id}{suffix}"

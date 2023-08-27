@@ -1,15 +1,14 @@
 import time
+
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
-
 from ray import serve
-from ray.serve._private.common import DeploymentInfo
-from ray.serve.generated.serve_pb2 import DeploymentRoute
+from ray._private.test_utils import wait_for_condition
+from ray.serve._private.common import ApplicationStatus, DeploymentInfo
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.schema import ServeDeploySchema
-from ray.serve._private.common import ApplicationStatus
 
 
 def test_redeploy_start_time(serve_instance):

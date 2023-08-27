@@ -2,16 +2,18 @@ import pickle
 from typing import Generator
 from unittest.mock import MagicMock
 
-import grpc
 import pytest
+
+import grpc
+
+from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
-    gRPCProxyRequest,
     ProxyRequest,
     ProxyResponse,
+    gRPCProxyRequest,
 )
 from ray.serve.generated import serve_pb2
-from ray.serve._private.common import gRPCRequest, StreamingHTTPRequest
 
 
 class TestASGIProxyRequest:

@@ -1,27 +1,24 @@
-from copy import deepcopy
-from dataclasses import dataclass
-from enum import Enum
 import logging
 import time
 import traceback
-from typing import Dict, List, Optional, Callable, Tuple
+from copy import deepcopy
+from dataclasses import dataclass
+from enum import Enum
+from typing import Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray import cloudpickle
-from ray.exceptions import RuntimeEnvSetupError
 from ray._private.utils import import_attr
-from ray.serve.config import DeploymentConfig
-from ray.serve.exceptions import RayServeException
-
+from ray.exceptions import RuntimeEnvSetupError
 from ray.serve._private.common import (
+    ApplicationStatus,
+    ApplicationStatusInfo,
     DeploymentID,
+    DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
-    ApplicationStatusInfo,
-    ApplicationStatus,
     EndpointInfo,
     EndpointTag,
-    DeploymentInfo,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.deploy_utils import (
@@ -33,10 +30,12 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
+    DEFAULT,
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
-    DEFAULT,
 )
+from ray.serve.config import DeploymentConfig
+from ray.serve.exceptions import RayServeException
 from ray.serve.schema import DeploymentDetails, ServeApplicationSchema
 from ray.types import ObjectRef
 
@@ -901,8 +900,8 @@ def build_serve_application(
         Error message: a string if an error was raised, otherwise None.
     """
     try:
-        from ray.serve.api import build
         from ray.serve._private.api import call_app_builder_with_args_if_necessary
+        from ray.serve.api import build
         from ray.serve.built_application import _get_deploy_args_from_built_app
 
         # Import and build the application.

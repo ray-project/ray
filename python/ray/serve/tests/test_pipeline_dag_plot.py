@@ -1,18 +1,17 @@
 import os
-import pytest
 import sys
 import tempfile
+
+import pytest
+import starlette.requests
 
 import ray
 from ray import serve
 from ray.dag import DAGNode
 from ray.dag.utils import _DAGNodeNameGenerator
-from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.deployment_graph import InputNode
-from ray.serve.drivers import DAGDriver
-import starlette.requests
-
 from ray.serve._private.deployment_graph_build import transform_ray_dag_to_serve_dag
+from ray.serve.deployment_graph import InputNode, RayServeDAGHandle
+from ray.serve.drivers import DAGDriver
 
 NESTED_HANDLE_KEY = "nested_handle"
 

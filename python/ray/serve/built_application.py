@@ -1,11 +1,7 @@
-from typing import (
-    Dict,
-    Optional,
-    List,
-)
+from typing import Dict, List, Optional
 
-from ray.serve.deployment import Deployment
 from ray.serve._private.deploy_utils import get_deploy_args
+from ray.serve.deployment import Deployment
 from ray.util.annotations import PublicAPI
 
 

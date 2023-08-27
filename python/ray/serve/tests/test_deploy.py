@@ -1,17 +1,17 @@
-from collections import defaultdict
 import os
 import sys
 import time
+from collections import defaultdict
 
-from pydantic.error_wrappers import ValidationError
 import pytest
 import requests
+from pydantic.error_wrappers import ValidationError
 
 import ray
-from ray._private.test_utils import SignalActor
 from ray import serve
-from ray.serve.exceptions import RayServeException
+from ray._private.test_utils import SignalActor
 from ray.serve._private.utils import get_random_letters
+from ray.serve.exceptions import RayServeException
 
 
 @pytest.mark.parametrize("use_handle", [True, False])

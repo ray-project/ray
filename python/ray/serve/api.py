@@ -10,37 +10,17 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.util.annotations import Deprecated, PublicAPI, DeveloperAPI
-
-from ray.serve.built_application import BuiltApplication
-from ray.serve.config import (
-    gRPCOptions,
-    AutoscalingConfig,
-    DeploymentConfig,
-    DeploymentMode,
-    ReplicaConfig,
-    HTTPOptions,
-)
+from ray.serve._private import api as _private_api
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    SERVE_DEFAULT_APP_NAME,
     MIGRATION_MESSAGE,
+    SERVE_DEFAULT_APP_NAME,
 )
-from ray.serve.context import (
-    ReplicaContext,
-    get_global_client,
-    get_internal_replica_context,
-    _set_global_client,
-)
-from ray.serve.deployment import Application, Deployment
-from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
-from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
@@ -50,16 +30,33 @@ from ray.serve._private.utils import (
     DEFAULT,
     Default,
     ensure_serialization_context,
+    extract_self_if_method_call,
+    get_random_letters,
+    guarded_deprecation_warning,
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
-    guarded_deprecation_warning,
-    get_random_letters,
-    extract_self_if_method_call,
 )
+from ray.serve.built_application import BuiltApplication
+from ray.serve.config import (
+    AutoscalingConfig,
+    DeploymentConfig,
+    DeploymentMode,
+    HTTPOptions,
+    ReplicaConfig,
+    gRPCOptions,
+)
+from ray.serve.context import (
+    ReplicaContext,
+    _set_global_client,
+    get_global_client,
+    get_internal_replica_context,
+)
+from ray.serve.deployment import Application, Deployment
+from ray.serve.exceptions import RayServeException
+from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
+from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import ServeInstanceDetails, ServeStatus
-
-from ray.serve._private import api as _private_api
-
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__file__)
 

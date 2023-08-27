@@ -1,17 +1,17 @@
 import importlib
 import logging
 import os
+import sys
+
 import pytest
 import requests
 import starlette
 from starlette.middleware import Middleware
-import sys
-
 
 import ray
-from ray.exceptions import RayActorError
 from ray import serve
 from ray._private.test_utils import wait_for_condition
+from ray.exceptions import RayActorError
 from ray.serve._private.common import HTTPProxyStatus
 from ray.serve._private.utils import call_function_from_import_path
 from ray.serve.context import get_global_client

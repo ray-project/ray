@@ -1,34 +1,31 @@
+import json
 import sys
 import time
-import json
+from typing import Dict, List
+
 import pytest
 import requests
 from pydantic import ValidationError
-from typing import List, Dict
 
 import ray
-from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
-
 from ray import serve
+from ray.serve._private.common import (
+    ApplicationStatusInfo,
+    DeploymentStatusInfo,
+    StatusOverview,
+)
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import get_global_client
-from ray.serve.deployment import (
-    deployment_to_schema,
-    schema_to_deployment,
-)
+from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
-    RayActorOptionsSchema,
     DeploymentSchema,
+    RayActorOptionsSchema,
     ServeApplicationSchema,
-    ServeStatusSchema,
     ServeDeploySchema,
+    ServeStatusSchema,
     serve_status_to_schema,
 )
-from ray.serve._private.common import (
-    StatusOverview,
-    DeploymentStatusInfo,
-    ApplicationStatusInfo,
-)
+from ray.util.accelerators.accelerators import NVIDIA_TESLA_P4, NVIDIA_TESLA_V100
 
 
 def get_valid_runtime_envs() -> List[Dict]:

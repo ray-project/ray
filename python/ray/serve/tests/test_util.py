@@ -3,8 +3,8 @@ import os
 import subprocess
 import sys
 import tempfile
-from copy import deepcopy
 import time
+from copy import deepcopy
 from unittest.mock import patch
 
 import numpy as np
@@ -13,22 +13,22 @@ from fastapi.encoders import jsonable_encoder
 
 import ray
 from ray import serve
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray.serve._private.utils import (
+    MetricsPusher,
     calculate_remaining_timeout,
+    dict_keys_snake_to_camel_case,
+    get_all_live_placement_group_names,
     get_deployment_import_path,
+    get_head_node_id,
     merge_dict,
-    msgpack_serialize,
     msgpack_deserialize,
+    msgpack_serialize,
     override_runtime_envs_except_env_vars,
     serve_encoders,
     snake_to_camel_case,
-    dict_keys_snake_to_camel_case,
-    get_all_live_placement_group_names,
-    get_head_node_id,
-    MetricsPusher,
 )
 from ray.serve.tests.utils import MockTimer
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 
 def test_serialize():

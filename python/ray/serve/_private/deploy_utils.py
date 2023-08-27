@@ -1,16 +1,15 @@
-from typing import Any, Dict, Optional, Union
 import hashlib
 import json
 import logging
 import time
-
-from ray.serve.config import ReplicaConfig, DeploymentConfig
-from ray.serve.schema import ServeApplicationSchema
-from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.common import DeploymentInfo, DeploymentID
+from typing import Any, Dict, Optional, Union
 
 import ray
 import ray.util.serialization_addons
+from ray.serve._private.common import DeploymentID, DeploymentInfo
+from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve.config import DeploymentConfig, ReplicaConfig
+from ray.serve.schema import ServeApplicationSchema
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

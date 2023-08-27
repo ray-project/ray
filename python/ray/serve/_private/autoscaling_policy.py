@@ -1,10 +1,10 @@
-from abc import ABCMeta, abstractmethod
+import logging
 import math
+from abc import ABCMeta, abstractmethod
 from typing import List
 
-from ray.serve.config import AutoscalingConfig
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
-import logging
+from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

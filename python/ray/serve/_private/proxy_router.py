@@ -1,5 +1,5 @@
-from abc import ABC, abstractmethod
 import logging
+from abc import ABC, abstractmethod
 from typing import Callable, Dict, List, Optional, Tuple
 
 from ray.serve._private.common import (
@@ -9,9 +9,9 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
-    SERVE_LOGGER_NAME,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve.handle import RayServeHandle
 

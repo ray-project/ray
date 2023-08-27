@@ -1,21 +1,20 @@
-import pytest
 import os
 import sys
 from typing import TypeVar, Union
 
 import numpy as np
+import pytest
 import requests
 import starlette.requests
 
 import ray
 from ray import serve
+from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve.api import build as build_app
 from ray.serve.built_application import BuiltApplication
 from ray.serve.deployment import Application
 from ray.serve.deployment_graph import InputNode, RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
-from ray.serve._private.deployment_graph_build import build as pipeline_build
-
 
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"

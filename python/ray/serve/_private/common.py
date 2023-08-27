@@ -1,21 +1,25 @@
-from enum import Enum
-from dataclasses import dataclass, field, asdict
 import json
-from typing import Any, List, Dict, Optional, NamedTuple
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from typing import Any, Dict, List, NamedTuple, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.config import DeploymentConfig, ReplicaConfig
-from ray.serve.generated.serve_pb2 import (
-    DeploymentInfo as DeploymentInfoProto,
-    DeploymentStatusInfo as DeploymentStatusInfoProto,
-    DeploymentStatus as DeploymentStatusProto,
-    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
-    ApplicationStatus as ApplicationStatusProto,
-    ApplicationStatusInfo as ApplicationStatusInfoProto,
-    StatusOverview as StatusOverviewProto,
-)
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
+from ray.serve.config import DeploymentConfig, ReplicaConfig
+from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
+from ray.serve.generated.serve_pb2 import (
+    ApplicationStatusInfo as ApplicationStatusInfoProto,
+)
+from ray.serve.generated.serve_pb2 import DeploymentInfo as DeploymentInfoProto
+from ray.serve.generated.serve_pb2 import DeploymentStatus as DeploymentStatusProto
+from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusInfo as DeploymentStatusInfoProto,
+)
+from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
+)
+from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 
 
 class DeploymentID(NamedTuple):

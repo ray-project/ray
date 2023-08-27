@@ -1,23 +1,22 @@
 import asyncio
 import os
 import sys
-from typing import Generator, Set
 import time
+from typing import Generator, Set
 
 import pytest
 import requests
+from starlette.requests import Request
+from starlette.responses import StreamingResponse
 
 import ray
-from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.util.state import list_tasks
-from ray._private.test_utils import SignalActor, wait_for_condition
-
 from ray import serve
-from ray.serve.schema import ServeInstanceDetails
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
-from starlette.responses import StreamingResponse
-from starlette.requests import Request
+from ray.serve.schema import ServeInstanceDetails
+from ray.util.state import list_tasks
 
 
 @ray.remote

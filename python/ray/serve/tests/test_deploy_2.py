@@ -1,19 +1,19 @@
-from concurrent.futures.thread import ThreadPoolExecutor
 import functools
 import os
 import sys
 import time
+from concurrent.futures.thread import ThreadPoolExecutor
 from typing import Dict
 
 import pytest
 import requests
+from pydantic import ValidationError
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
-from pydantic import ValidationError
-from ray.serve.drivers import DAGDriver
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import ApplicationStatus
+from ray.serve.drivers import DAGDriver
 
 
 class TestGetDeployment:

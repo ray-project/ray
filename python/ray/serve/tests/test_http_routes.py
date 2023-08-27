@@ -2,12 +2,12 @@ import time
 
 import pytest
 import requests
-from ray.serve.drivers import DAGDriver
 from fastapi import FastAPI, Request
 from starlette.responses import RedirectResponse
 
 import ray
 from ray import serve
+from ray.serve.drivers import DAGDriver
 
 
 def test_path_validation(serve_instance):

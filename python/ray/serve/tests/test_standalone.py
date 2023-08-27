@@ -21,32 +21,28 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
+from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
 )
-from ray._raylet import GcsClient
+from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.http_util import set_socket_reuse_port
+from ray.serve._private.utils import block_until_http_ready, format_actor_name
+from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
-from ray.serve._private.http_util import set_socket_reuse_port
-from ray.serve._private.utils import (
-    block_until_http_ready,
-    format_actor_name,
-)
-from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve.schema import ServeApplicationSchema
-
-from ray.util.state import list_actors
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
 from ray.tests.conftest import maybe_external_redis  # noqa: F401
 from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
+from ray.util.state import list_actors
 
 
 @pytest.fixture

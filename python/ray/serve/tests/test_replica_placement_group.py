@@ -3,18 +3,12 @@ import sys
 import pytest
 
 import ray
-from ray.util.placement_group import (
-    get_current_placement_group,
-    PlacementGroup,
-)
-from ray.util.scheduling_strategies import (
-    PlacementGroupSchedulingStrategy,
-)
-from ray._private.test_utils import wait_for_condition
-
 from ray import serve
-from ray.serve.context import get_global_client
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.utils import get_all_live_placement_group_names
+from ray.serve.context import get_global_client
+from ray.util.placement_group import PlacementGroup, get_current_placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def _get_pg_strategy(pg: PlacementGroup) -> str:

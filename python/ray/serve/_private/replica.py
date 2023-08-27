@@ -1,74 +1,72 @@
-import aiorwlock
 import asyncio
-from contextlib import asynccontextmanager
-from importlib import import_module
 import inspect
 import logging
 import os
 import pickle
 import time
-from typing import Any, AsyncGenerator, Callable, Optional, Tuple, Dict
 import traceback
+from contextlib import asynccontextmanager
+from importlib import import_module
+from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple
 
+import aiorwlock
 import starlette.responses
 from starlette.requests import Request
 from starlette.types import Message, Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
-from ray.actor import ActorClass, ActorHandle
-from ray.remote_function import RemoteFunction
 from ray._private.async_compat import sync_to_async
 from ray._private.utils import get_or_create_event_loop
-
+from ray.actor import ActorClass, ActorHandle
+from ray.remote_function import RemoteFunction
 from ray.serve import metrics
+from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
-    DeploymentID,
     CONTROL_PLANE_CONCURRENCY_GROUP,
+    DeploymentID,
     ReplicaTag,
     ServeComponentType,
     StreamingHTTPRequest,
     gRPCRequest,
 )
-from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
-    HEALTH_CHECK_METHOD,
-    RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
-    SERVE_LOGGER_NAME,
-    SERVE_NAMESPACE,
+    HEALTH_CHECK_METHOD,
     RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+    RECONFIGURE_METHOD,
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
 )
-from ray.serve.deployment import Deployment
-from ray.serve.exceptions import RayServeException
 from ray.serve._private.http_util import (
-    make_buffered_asgi_receive,
     ASGIAppReplicaWrapper,
-    ASGIReceiveProxy,
     ASGIMessageQueue,
+    ASGIReceiveProxy,
     BufferedASGISender,
     HTTPRequestWrapper,
     RawASGIResponse,
     Response,
+    make_buffered_asgi_receive,
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
-    configure_component_logger,
     configure_component_cpu_profiler,
+    configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
 from ray.serve._private.router import RequestMetadata
 from ray.serve._private.utils import (
+    MetricsPusher,
+    merge_dict,
     parse_import_path,
     wrap_to_ray_error,
-    merge_dict,
-    MetricsPusher,
 )
 from ray.serve._private.version import DeploymentVersion
-from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
-
+from ray.serve.config import DeploymentConfig
+from ray.serve.deployment import Deployment
+from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
