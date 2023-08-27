@@ -28,9 +28,8 @@ except (ImportError, ModuleNotFoundError) as e:
 
 
 from ray.air._internal.filelock import TempFileLock
-from ray.air._internal.uri_utils import is_uri
-from ray.tune.syncer import Syncer, SyncConfig, _BackgroundSyncer
-from ray.tune.result import _get_defaults_results_dir
+from ray.train._internal.syncer import Syncer, SyncConfig, _BackgroundSyncer
+from ray.train.constants import _get_defaults_results_dir
 
 if TYPE_CHECKING:
     from ray.train._checkpoint import Checkpoint
@@ -43,7 +42,7 @@ def _use_storage_context() -> bool:
     # Whether to enable the new simple persistence mode.
     from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 
-    return bool(int(os.environ.get(RAY_AIR_NEW_PERSISTENCE_MODE, "0")))
+    return bool(int(os.environ.get(RAY_AIR_NEW_PERSISTENCE_MODE, "1")))
 
 
 class _ExcludingLocalFilesystem(LocalFileSystem):
@@ -122,7 +121,6 @@ def _pyarrow_fs_copy_files(
 
 
 def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
-    assert not is_uri(fs_path), fs_path
 
     is_dir = _is_directory(fs, fs_path)
 
@@ -167,7 +165,6 @@ def _download_from_fs_path(
     Raises:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
-    assert not is_uri(fs_path), fs_path
 
     _local_path = Path(local_path).resolve()
     exists_before = _local_path.exists()
@@ -209,7 +206,6 @@ def _upload_to_fs_path(
             `local_path`.
             Ex: ["*.png"] to exclude all .png images.
     """
-    assert not is_uri(fs_path), fs_path
 
     if not exclude:
         # TODO(justinvyu): uploading a single file doesn't work
@@ -241,7 +237,6 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
 
     If the path doesn't exist, returns an empty list.
     """
-    assert not is_uri(fs_path), fs_path
 
     selector = pyarrow.fs.FileSelector(fs_path, allow_not_found=True, recursive=False)
     return [
@@ -252,7 +247,6 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
 
 def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     """Returns True if (fs, fs_path) exists."""
-    assert not is_uri(fs_path), fs_path
 
     valid = fs.get_file_info(fs_path)
     return valid.type != pyarrow.fs.FileType.NotFound
@@ -264,7 +258,6 @@ def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     Raises:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
-    assert not is_uri(fs_path), fs_path
 
     file_info = fs.get_file_info(fs_path)
     if file_info.type == pyarrow.fs.FileType.NotFound:
@@ -302,27 +295,10 @@ def get_fs_and_path(
             this will be auto-resolved by pyarrow. If provided, the storage_path
             is assumed to be prefix-stripped already, and must be a valid path
             on the filesystem.
-
-    Raises:
-        ValueError: if the storage path is a URI and a custom filesystem is given.
     """
     storage_path = str(storage_path)
 
     if storage_filesystem:
-        if is_uri(storage_path):
-            raise ValueError(
-                "If you specify a custom `storage_filesystem`, the corresponding "
-                "`storage_path` must be a *path* on that filesystem, not a URI.\n"
-                "For example: "
-                "(storage_filesystem=CustomS3FileSystem(), "
-                "storage_path='s3://bucket/path') should be changed to "
-                "(storage_filesystem=CustomS3FileSystem(), "
-                "storage_path='bucket/path')\n"
-                "This is what you provided: "
-                f"(storage_filesystem={storage_filesystem}, "
-                f"storage_path={storage_path})\n"
-                "Note that this may depend on the custom filesystem you use."
-            )
         return storage_filesystem, storage_path
 
     return pyarrow.fs.FileSystem.from_uri(storage_path)
@@ -390,7 +366,6 @@ class StorageContext:
         >>> os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/ray_results"
         >>> storage = StorageContext(
         ...     storage_path="mock://netloc/bucket/path?param=1",
-        ...     sync_config=SyncConfig(),
         ...     experiment_dir_name="exp_name",
         ... )
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
@@ -415,7 +390,6 @@ class StorageContext:
         >>> os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/ray_results"
         >>> storage = StorageContext(
         ...     storage_path=None,
-        ...     sync_config=SyncConfig(),
         ...     experiment_dir_name="exp_name",
         ... )
         >>> storage.storage_path  # Auto-resolved
@@ -575,7 +549,8 @@ class StorageContext:
         """Persists all artifacts within `trial_local_dir` to storage.
 
         This method possibly launches a background task to sync the trial dir,
-        depending on the `sync_period` + `sync_on_checkpoint` settings of `SyncConfig`.
+        depending on the `sync_period` + `sync_artifacts_on_checkpoint`
+        settings of `SyncConfig`.
 
         `(local_fs, trial_local_path) -> (storage_filesystem, trial_fs_path)`
 
