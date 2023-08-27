@@ -696,6 +696,53 @@ def test_reporter_worker_cpu_percent():
             agent_mock.kill()
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
+def test_get_task_traceback_running_task(shutdown_only):
+    """
+    Verify that we throw an error for a non-running task.
+
+    """
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
+
+    @ray.remote
+    def f():
+        pass
+
+    @ray.remote
+    def long_running_task():
+        print("Long-running task began.")
+        time.sleep(1000)
+        print("Long-running task completed.")
+
+    ray.get([f.remote() for _ in range(5)])
+
+    task = long_running_task.remote()
+
+    params = {
+        "task_id": task.task_id().hex(),
+        "attempt_number": 0,
+        "node_id": ray.get_runtime_context().node_id.hex(),
+    }
+
+    def verify():
+        resp = requests.get(f"{webui_url}/task/traceback", params=params)
+        print(f"resp.text {type(resp.text)}: {resp.text}")
+
+        assert "Process" in resp.text
+        return True
+
+    wait_for_condition(verify, timeout=20)
+
+
 TASK = {
     "task_id": "32d950ec0ccf9d2affffffffffffffffffffffff01000000",
     "attempt_number": 0,
@@ -703,6 +750,15 @@ TASK = {
 }
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
 def test_get_task_traceback_non_running_task(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
@@ -738,6 +794,15 @@ def test_get_task_traceback_non_running_task(shutdown_only):
     wait_for_condition(verify, timeout=10)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
 def test_get_cpu_profile_non_running_task(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
