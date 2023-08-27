@@ -48,20 +48,26 @@ def test_short_traceback(levels):
 
 
 def test_traceback_tuner(ray_start_2_cpus):
+    """Ensure that the Tuner's stack trace is not too long."""
+
     def failing(config):
         raise RuntimeError("Error")
 
     tuner = Tuner(failing)
-    tuner.fit()
+    results = tuner.fit()
+    assert len(str(results[0].error).split("\n")) <= 12
 
 
 def test_traceback_trainer(ray_start_2_cpus):
+    """Ensure that the Trainer's stack trace is not too long."""
+
     def failing(config):
         raise RuntimeError("Error")
 
     trainer = DataParallelTrainer(failing, scaling_config=ScalingConfig(num_workers=1))
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError) as exc_info:
         trainer.fit()
+    assert len(str(exc_info.value).split("\n")) <= 13
 
 
 if __name__ == "__main__":
