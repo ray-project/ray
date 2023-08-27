@@ -510,7 +510,6 @@ class DataParallelTrainer(BaseTrainer):
             num_cpus_per_worker=scaling_config.num_cpus_per_worker,
             num_gpus_per_worker=scaling_config.num_gpus_per_worker,
             additional_resources_per_worker=additional_resources_per_worker,
-            max_retries=0,
             checkpoint_config=self.run_config.checkpoint_config,
         )
 

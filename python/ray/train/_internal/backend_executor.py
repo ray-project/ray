@@ -18,7 +18,6 @@ from ray.train._internal.session import (
     shutdown_session,
 )
 from ray.train._internal.storage import _use_storage_context, StorageContext
-from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
 from ray.train.constants import (
@@ -39,16 +38,12 @@ class TrainBackendError(Exception):
     """Errors with BackendExecutor that should not be exposed to user."""
 
 
-class TrainingWorkerError(Exception):
-    """Raised if a worker fails during training."""
-
-
 class BackendExecutor:
     """Main execution class for training backends.
 
     This class holds a worker group and is responsible for executing the
     training function on the workers, and collecting intermediate results
-    from ``session.report()``.
+    from ``train.report()``.
 
     Args:
         backend_config: The configurations for this
@@ -60,8 +55,6 @@ class BackendExecutor:
             Dictionary specifying the extra resources that will be
             requested for each worker in addition to ``num_cpus_per_worker``
             and ``num_gpus_per_worker``.
-        max_retries: Number of retries when Ray actors fail.
-            Defaults to 3. Set to -1 for unlimited retries.
     """
 
     def __init__(
@@ -73,7 +66,6 @@ class BackendExecutor:
         num_cpus_per_worker: float = 1,
         num_gpus_per_worker: float = 0,
         additional_resources_per_worker: Optional[Dict[str, float]] = None,
-        max_retries: int = 3,
         checkpoint_config: Optional[CheckpointConfig] = None,
     ):
         self._backend_config = backend_config
@@ -82,11 +74,6 @@ class BackendExecutor:
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
         self._additional_resources_per_worker = additional_resources_per_worker
-        self._max_failures = max_retries
-        if self._max_failures < 0:
-            self._max_failures = float("inf")
-        self._num_failures = 0
-        self._last_failure = None
         self._initialization_hook = None
         self._placement_group = None
 
@@ -122,12 +109,6 @@ class BackendExecutor:
             actor_cls_kwargs=train_cls_kwargs,
             placement_group=placement_group,
         )
-        # Hack to avoid OOMs.
-        # This is just a temporary solution for Train loading entire checkpoints
-        # into memory by ensuring that the rank 0 worker is on the same node as
-        # trainable, thus allowing for lazy checkpoint transfer to be used.
-        # See https://github.com/ray-project/ray/issues/33073
-        # for more context.
         # TODO remove passing in trial_driver_ip.
 
         trial_driver_ip = self._trial_info.driver_ip if self._trial_info else None
@@ -154,14 +135,9 @@ class BackendExecutor:
             if self._num_gpus_per_worker > 0 and share_cuda_visible_devices_enabled:
                 self._share_cuda_visible_devices()
             self._backend.on_start(self.worker_group, self._backend_config)
-        except RayActorError as exc:
-            logger.exception(str(exc))
-            logger.warning(
-                "Failure occurred during startup. Restarting all workers and "
-                "attempting to startup again."
-            )
-            self._increment_failures()
-            self._restart()
+        except Exception as e:
+            self.shutdown(graceful_termination=False)
+            raise e
 
     def _create_placement_group(self):
         """Creates a placement group if it does not exist.
@@ -364,10 +340,12 @@ class BackendExecutor:
                 training function via ``session.get_checkpoint()``. If this
                 is ``None`` then no checkpoint will be loaded.
         """
+        # TODO(justinvyu): [code_removal]
+        use_lazy_checkpointing = not env_integer(DISABLE_LAZY_CHECKPOINTING_ENV, 0)
+
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0
         )
-        use_lazy_checkpointing = not env_integer(DISABLE_LAZY_CHECKPOINTING_ENV, 0)
 
         # First initialize the session.
         def initialize_session(
@@ -525,6 +503,7 @@ class BackendExecutor:
 
         return results
 
+    # TODO(justinvyu): [code_removal]
     def _set_legacy_checkpoint_uri(self, uri: str):
         """Tell remote sessions where to upload the chekcpoint."""
 
@@ -577,14 +556,15 @@ class BackendExecutor:
         results = self.get_with_failure_handling(futures)
         return results
 
-    def get_with_failure_handling(self, remote_values):
+    def get_with_failure_handling(
+        self, remote_values: List[ray.ObjectRef]
+    ) -> List[Any]:
         """Gets the remote values while handling for worker failures.
 
         This method should be called instead of ``ray.get()`` directly in
         order to handle worker failures.
 
-        If a worker failure is identified, backend specific failure handling
-        is executed and a ``TrainingWorkerError`` is raised.
+        A worker failure will immediately be raised here.
 
         Args:
             remote_values: List of object refs representing functions
@@ -593,18 +573,20 @@ class BackendExecutor:
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        success, exception = check_for_failure(remote_values)
-        if success:
-            return ray.get(remote_values)
-        else:
-            self._last_failure = exception
-            self._increment_failures()
-            logger.warning(
-                "Failure identified during training. Restarting all workers and "
-                "continuing training from latest checkpoint."
-            )
-            self._restart()
-            raise TrainingWorkerError
+        unfinished = remote_values
+        while len(unfinished) > 0:
+            finished, unfinished = ray.wait(unfinished)
+            # If a failure occurs the ObjectRef will be marked as finished.
+            # Calling ray.get will expose the failure as a RayTaskError.
+            for object_ref in finished:
+                try:
+                    ray.get(object_ref)
+                except Exception as e:
+                    self.shutdown(graceful_termination=False)
+                    raise e
+
+        # At this point, all workers have finished the task successfully.
+        return ray.get(remote_values)
 
     def shutdown(self, graceful_termination: bool = True):
         """Shuts down the workers in the worker group.
@@ -638,35 +620,8 @@ class BackendExecutor:
     def is_started(self):
         return not isinstance(self.worker_group, InactiveWorkerGroup)
 
-    def _restart(self):
-        self.worker_group.shutdown()
-        if self._initialization_hook is not None:
-            initialization_hook = self._initialization_hook
-        else:
-            initialization_hook = None
-        if self._placement_group:
-            remove_placement_group(self._placement_group)
-            self._placement_group = None
-        self.start(initialization_hook=initialization_hook)
-
-    def _increment_failures(self):
-        self._num_failures += 1
-        if self._num_failures >= self._max_failures:
-            failure = self._last_failure
-            self._last_failure = None
-            if self._max_failures > 0:
-                exc = RuntimeError(
-                    "Training has failed after " f"{self._num_failures} " "attempts."
-                )
-                raise exc.with_traceback(None) from failure
-            else:
-                raise failure
-
     def get_worker_group(self):
         return self.worker_group
-
-    def _get_num_failures(self):
-        return self._num_failures
 
 
 class InactiveWorkerGroupError(Exception):

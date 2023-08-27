@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import (
     Tuple,
     Dict,
-    List,
     Any,
     Union,
     Callable,
@@ -19,48 +18,11 @@ from typing import (
 import ray
 from ray.air._internal.util import find_free_port, StartTraceback
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError
-from ray.types import ObjectRef
 
 
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
-
-
-def check_for_failure(
-    remote_values: List[ObjectRef],
-) -> Tuple[bool, Optional[Exception]]:
-    """Check for actor failure when retrieving the remote values.
-
-    Args:
-        remote_values: List of object references from Ray actor methods.
-
-    Returns:
-        A tuple of (bool, Exception). The bool is
-        True if evaluating all object references is successful, False otherwise.
-    """
-    unfinished = remote_values.copy()
-
-    while len(unfinished) > 0:
-        finished, unfinished = ray.wait(unfinished)
-
-        # If a failure occurs the ObjectRef will be marked as finished.
-        # Calling ray.get will expose the failure as a RayActorError.
-        for object_ref in finished:
-            # Everything in finished has either failed or completed
-            # successfully.
-            try:
-                ray.get(object_ref)
-            except RayActorError as exc:
-                failed_actor_rank = remote_values.index(object_ref)
-                logger.info(f"Worker {failed_actor_rank} has failed.")
-                return False, exc
-            except Exception as exc:
-                # Other (e.g. training) errors should be directly raised
-                raise StartTraceback from exc
-
-    return True, None
 
 
 def get_address_and_port() -> Tuple[str, int]:

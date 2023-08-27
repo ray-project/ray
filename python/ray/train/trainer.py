@@ -13,7 +13,6 @@ from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
     TrainBackendError,
-    TrainingWorkerError,
 )
 from ray.train._internal.checkpoint import (
     CheckpointManager,
@@ -141,25 +140,6 @@ class TrainingIterator:
     def _run_with_error_handling(self, func: Callable):
         try:
             return func()
-        except TrainingWorkerError:
-            # Workers have already been restarted.
-            logger.info(
-                "Workers have been successfully restarted. Resuming "
-                "training from latest checkpoint."
-            )
-            logger.debug(
-                f"Latest checkpoint: {self._checkpoint_manager.latest_checkpoint}"
-            )
-            self._start_training(
-                self._train_func,
-                self._run_dir,
-                self._datasets,
-                self._metadata,
-                self._data_config,
-                self._checkpoint_manager.latest_checkpoint,
-                self._checkpoint_manager.latest_checkpoint_id,
-            )
-            return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:
             raise RuntimeError(
                 "This Trainer is not active. It is either shutdown "
