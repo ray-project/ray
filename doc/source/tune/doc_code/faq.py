@@ -123,7 +123,7 @@ if not MOCK:
     metric = None
 
     # __modin_start__
-    def train_fn(config, checkpoint_dir=None):
+    def train_fn(config):
         # some Modin operations here
         # import modin.pandas as pd
         train.report({"metric": metric})
@@ -148,7 +148,7 @@ from ray import tune
 import numpy as np
 
 
-def train_func(config, checkpoint_dir=None, num_epochs=5, data=None):
+def train_func(config, num_epochs=5, data=None):
     for i in range(num_epochs):
         for sample in data:
             # ... train on sample
@@ -337,6 +337,11 @@ if not MOCK:
 
 
 # __iter_experimentation_initial_start__
+import os
+import tempfile
+
+import torch
+
 from ray import train, tune
 from ray.train import Checkpoint
 import random
@@ -346,10 +351,14 @@ def trainable(config):
     for epoch in range(1, config["num_epochs"]):
         # Do some training...
 
-        train.report(
-            {"score": random.random()},
-            checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
-        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            torch.save(
+                {"model_state_dict": {"x": 1}}, os.path.join(tempdir, "model.pt")
+            )
+            train.report(
+                {"score": random.random()},
+                checkpoint=Checkpoint.from_directory(tempdir),
+            )
 
 
 tuner = tune.Tuner(
@@ -370,18 +379,19 @@ import ray
 
 def trainable(config):
     # Add logic to handle the initial checkpoint.
-    checkpoint_ref = config["start_from_checkpoint"]
-    checkpoint: Checkpoint = ray.get(checkpoint_ref)
-    model_state_dict = checkpoint.to_dict()["model_state_dict"]
+    checkpoint: Checkpoint = config["start_from_checkpoint"]
+    with checkpoint.as_directory() as checkpoint_dir:
+        model_state_dict = torch.load(os.path.join(checkpoint_dir, "model.pt"))
+
     # Initialize a model from the checkpoint...
+    # model = ...
+    # model.load_state_dict(model_state_dict)
 
     for epoch in range(1, config["num_epochs"]):
-        # Do some training...
+        # Do some more training...
+        ...
 
-        train.report(
-            {"score": random.random()},
-            checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
-        )
+        train.report({"score": random.random()})
 
 
 new_tuner = tune.Tuner(
@@ -389,10 +399,7 @@ new_tuner = tune.Tuner(
     param_space={
         "num_epochs": 10,
         "hyperparam": tune.grid_search([4, 5, 6]),
-        # Put the best checkpoint from above into the object store.
-        # This way, all trials will be able to access the checkpoint,
-        # regardless of which node they are on.
-        "start_from_checkpoint": ray.put(best_checkpoint),
+        "start_from_checkpoint": best_checkpoint,
     },
     tune_config=tune.TuneConfig(metric="score", mode="max"),
 )

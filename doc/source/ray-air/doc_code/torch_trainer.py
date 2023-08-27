@@ -1,3 +1,6 @@
+import os
+import tempfile
+
 import torch
 import torch.nn as nn
 
@@ -48,12 +51,15 @@ def train_loop_per_worker():
             optimizer.step()
             print(f"epoch: {epoch}, loss: {loss.item()}")
 
-        train.report(
-            {},
-            checkpoint=Checkpoint.from_dict(
-                dict(epoch=epoch, model=model.state_dict())
-            ),
-        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            torch.save(
+                {"epoch": epoch, "model": model.module.state_dict()},
+                os.path.join(tempdir, "checkpoint.pt"),
+            )
+            train.report(
+                {"loss": loss.item()},
+                checkpoint=Checkpoint.from_directory(tempdir),
+            )
 
 
 train_dataset = ray.data.from_items([{"x": x, "y": 2 * x + 1} for x in range(200)])
