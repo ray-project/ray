@@ -102,7 +102,7 @@ def test_data_parallel_trainer(ray_start_8_cpus):
         },
         tune_config=TuneConfig(
             mode="max",
-            metric="config/train_loop_config/metric",
+            metric="metric",
             scheduler=ResourceChangingScheduler(
                 ASHAScheduler(),
                 resources_allocation_function=DistributeResources(
