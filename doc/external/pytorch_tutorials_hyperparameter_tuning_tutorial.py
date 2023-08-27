@@ -50,7 +50,6 @@ import torch.optim as optim
 from torch.utils.data import random_split
 import torchvision
 import torchvision.transforms as transforms
-import ray
 from ray import train, tune
 from ray.train import Checkpoint
 from ray.tune.schedulers import ASHAScheduler
@@ -127,7 +126,7 @@ class Net(nn.Module):
 #
 #     net = Net(config["l1"], config["l2"])
 #
-#     checkpoint = ray.train.get_checkpoint()
+#     checkpoint = train.get_checkpoint()
 #
 #     if checkpoint:
 #         checkpoint_dir = checkpoint.to_directory()
@@ -195,7 +194,7 @@ class Net(nn.Module):
 #     with TemporaryDirectory() as tmpdir:
 #         torch.save(checkpoint_data, os.path.join(tmpdir, "checkpoint.pt"))
     
-#         ray.train.report(
+#         train.report(
 #             {"loss": val_loss / val_steps, "accuracy": correct / total},
 #             checkpoint=Checkpoint.from_directory(tmpdir),
 #         )
@@ -311,7 +310,7 @@ def train_cifar(config, data_dir=None):
         }
         with TemporaryDirectory() as tmpdir:
             torch.save(checkpoint_data, os.path.join(tmpdir, "checkpoint.pt"))
-            ray.train.report(
+            train.report(
                 {"loss": val_loss / val_steps, "accuracy": correct / total},
                 checkpoint=Checkpoint.from_directory(tmpdir),
             )
