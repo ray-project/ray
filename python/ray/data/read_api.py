@@ -82,12 +82,6 @@ from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.util.spark.utils import (
-    _convert_dbfs_path_to_local_path,
-    get_or_create_spark_session_with_delta_extension,
-    get_spark_session,
-    is_in_databricks_runtime,
-)
 
 if TYPE_CHECKING:
     import dask
@@ -707,8 +701,8 @@ def read_parquet(
 @PublicAPI
 def read_delta(
     uri: str,
-    delta_package: str = None,
     *,
+    delta_package: Optional[str] = None,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
@@ -734,6 +728,7 @@ def read_delta(
             from pyspark.sql import SparkSession
 
             spark = (SparkSession.builder
+            # Update this package coordinate according to your spark version
             .config("spark.jars.packages", "io.delta:delta-core_2.12:2.2.0")
             .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
             .config("spark.sql.catalog.spark_catalog",
@@ -754,7 +749,8 @@ def read_delta(
 
     Args:
         uri: A single file path or directory. On databricks, only dbfs path is
-            supported.
+            supported. On other platforms, it should be paths that the filesystem
+            specified supports.
         delta_package: The coordinate of io.delta:delta-core jar package that will
             be installed in spark session.
         filesystem: The PyArrow filesystem
@@ -794,10 +790,17 @@ def read_delta(
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
     """
+    from ray.util.spark.utils import (
+        convert_dbfs_path_to_local_path,
+        get_or_create_spark_session_with_delta_extension,
+        get_spark_session,
+        is_in_databricks_runtime,
+    )
+
     if is_in_databricks_runtime():
         spark = get_spark_session()
         paths = spark.read.load(uri, format="delta").inputFiles()
-        paths = [_convert_dbfs_path_to_local_path(path) for path in paths]
+        paths = [convert_dbfs_path_to_local_path(path) for path in paths]
     else:
         spark = get_or_create_spark_session_with_delta_extension(delta_package)
         paths = spark.read.load(uri, format="delta").inputFiles()

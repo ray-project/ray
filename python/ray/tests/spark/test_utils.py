@@ -7,7 +7,7 @@ import pytest
 from ray.util.spark.utils import (
     get_spark_task_assigned_physical_gpus,
     _calc_mem_per_ray_worker_node,
-    _convert_dbfs_path_to_local_path,
+    convert_dbfs_path_to_local_path,
     _get_avail_mem_per_ray_worker_node,
 )
 from ray.util.spark.cluster_init import (
@@ -137,9 +137,9 @@ def test_verify_node_options():
         )
 
 
-def test_convert_dbfs_path_to_local_path():
-    assert _convert_dbfs_path_to_local_path("dbfs:/xx/yy/zz") == "/dbfs/xx/yy/zz"
-    assert _convert_dbfs_path_to_local_path("dbfs:///xx/yy/zz") == "/dbfs/xx/yy/zz"
+def testconvert_dbfs_path_to_local_path():
+    assert convert_dbfs_path_to_local_path("dbfs:/xx/yy/zz") == "/dbfs/xx/yy/zz"
+    assert convert_dbfs_path_to_local_path("dbfs:///xx/yy/zz") == "/dbfs/xx/yy/zz"
 
 
 def test_append_default_spilling_dir_config():
