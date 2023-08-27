@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 # flake8: noqa
-import os
-os.environ["RAY_AIR_NEW_PERSISTENCE_MODE"] = "1"
-
 """
 Hyperparameter tuning with Ray Tune
 ===================================
@@ -55,7 +52,7 @@ import torchvision
 import torchvision.transforms as transforms
 import ray
 from ray import train, tune
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.tune.schedulers import ASHAScheduler
 
 ######################################################################
