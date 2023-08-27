@@ -273,7 +273,7 @@ class GBDTTrainer(BaseTrainer):
             tune.report(**result_dict)
         else:
             with tempfile.TemporaryDirectory() as checkpoint_dir:
-                self._save_model(model, path=os.path.join(checkpoint_dir, MODEL_KEY))
+                self._save_model(model, path=checkpoint_dir)
                 checkpoint = Checkpoint.from_directory(checkpoint_dir)
                 train.report(result_dict, checkpoint=checkpoint)
 
