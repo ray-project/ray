@@ -100,8 +100,7 @@ def run_xgboost_training(data_path: str, num_workers: int, cpus_per_worker: int)
         ),
     )
     result = trainer.fit()
-
-    xgboost_model = trainer.get_model(result.checkpoint)
+    xgboost_model = XGBoostTrainer.get_model(result.checkpoint)
     xgboost_model.save_model(_XGB_MODEL_PATH)
     ray.shutdown()
 
@@ -114,7 +113,7 @@ def run_xgboost_prediction(model_path: str, data_path: str):
     ds = ds.drop_columns(["labels"])
 
     class XGBoostPredictor:
-        def __init__(self, model):
+        def __init__(self, model: xgb.Booster):
             self.model = model
 
         def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:

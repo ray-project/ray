@@ -35,7 +35,7 @@
 - label: ":steam_locomotive: Train tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   instance_size: large
-  parallelism: 3
+  parallelism: 4
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     # Todo (krfricke): Move mosaicml to train-test-requirements.txt
@@ -44,8 +44,7 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest,-new_storage
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
+      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest
       python/ray/train/...
 
 
@@ -357,22 +356,6 @@
 
 ##### STORAGE REFACTOR
 
-- label: ":steam_locomotive: :floppy_disk: New persistence mode: Train tests and examples"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
-  instance_size: large
-  parallelism: 3
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    # Todo (krfricke): Move mosaicml to train-test-requirements.txt
-    - pip install "mosaicml==0.12.1"
-    - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh
-      --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest,-no_new_storage
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
-      python/ray/train/...
-
 # TODO(krfricke): Add new test for this suite
 # - label: ":steam_locomotive: :octopus: :floppy_disk: New persistence mode: Train + Tune tests and examples"
 #   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
@@ -567,7 +550,6 @@
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-external,-timeseries_libs,-gpu,-post_wheel_build,-doctest 
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       doc/...
 
 - label: ":book: Doc examples for external code "
