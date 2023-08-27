@@ -86,6 +86,7 @@ my_ma_config.environment(
 )
 
 my_ma_algo = my_ma_config.build()
+my_ma_algo.train()
 
 ma_checkpoint_dir = my_ma_algo.save().checkpoint.path
 

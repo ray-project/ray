@@ -60,7 +60,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
         os.popen(
             'python {}/evaluate.py --run={} "{}" --steps=10 '
             '--out="{}/rollouts_10steps.pkl"'.format(
-                rllib_dir, algo, str(Path(checkpoint_path).parent), tmp_dir
+                rllib_dir, algo, checkpoint_path, tmp_dir
             )
         ).read()
         if not os.path.exists(tmp_dir + "/rollouts_10steps.pkl"):
