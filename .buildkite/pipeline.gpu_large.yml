@@ -97,5 +97,4 @@
     - pip install lightning==2.0.4 pytorch-lightning==2.0.4  # todo move to requirements-test.txt
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=ptl_v2 
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/train/...
