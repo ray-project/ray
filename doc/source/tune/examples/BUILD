@@ -17,9 +17,9 @@ py_test_run_all_notebooks(
     size = "medium",
     include = ["*.ipynb"],
     exclude = [
+        # TODO(krfricke): Enable this test for new persistence path.
         "bohb_example.ipynb",
         "pbt_ppo_example.ipynb",
-        "pbt_guide.ipynb",
         "tune-xgboost.ipynb",
         "pbt_transformers.ipynb",  # Transformers uses legacy Tune APIs.
         # TODO(justinvyu): tune_sklearn uses removed experiment analysis method
@@ -30,17 +30,6 @@ py_test_run_all_notebooks(
     ],
     data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],
-)
-
-py_test_run_all_notebooks(
-    size = "medium",
-    include = [
-        "bohb_example.ipynb",
-        "pbt_guide.ipynb"
-    ],
-    exclude = [],
-    data = ["//doc/source/tune/examples:tune_examples"],
-    tags = ["exclusive", "team:ml", "new_storage"],
 )
 
 # GPU tests
