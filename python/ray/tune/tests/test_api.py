@@ -1663,7 +1663,7 @@ class ApiTestFast(unittest.TestCase):
     def setUpClass(cls):
         if ray.is_initialized():
             ray.shutdown()
-        ray.init(num_cpus=4, num_gpus=0, local_mode=True, include_dashboard=False)
+        ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
 
     @classmethod
     def tearDownClass(cls):
