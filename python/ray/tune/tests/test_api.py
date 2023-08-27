@@ -21,7 +21,6 @@ from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.train._internal.session import shutdown_session
 from ray.train._internal.storage import StorageContext
-from ray.train._internal.syncer import Syncer
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune import (
     register_env,
@@ -1030,56 +1029,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
                     )
 
         self._testDurableTrainable(wrap_function(test_train), function=True)
-
-    def testDurableTrainableSyncFunction(self):
-        """Check custom sync functions in durable trainables"""
-
-        class CustomSyncer(Syncer):
-            def sync_up(
-                self, local_dir: str, remote_dir: str, exclude: list = None
-            ) -> bool:
-                pass  # sync up
-
-            def sync_down(
-                self, remote_dir: str, local_dir: str, exclude: list = None
-            ) -> bool:
-                pass  # sync down
-
-            def delete(self, remote_dir: str) -> bool:
-                pass  # delete
-
-        class TestDurable(Trainable):
-            def has_syncer(self):
-                return isinstance(self.sync_config.syncer, Syncer)
-
-        upload_dir = "file://" + tempfile.mkdtemp()
-
-        def _create_remote_actor(trainable_cls, sync_to_cloud):
-            """Create a remote trainable actor from an experiment"""
-            exp = Experiment(
-                name="test_durable_sync",
-                run=trainable_cls,
-                storage_path=upload_dir,
-                sync_config=train.SyncConfig(syncer=sync_to_cloud),
-            )
-
-            searchers = BasicVariantGenerator()
-            searchers.add_configurations([exp])
-            trial = searchers.next_trial()
-            cls = trial.get_trainable_cls()
-            actor = ray.remote(cls).remote(
-                remote_checkpoint_dir=upload_dir,
-                sync_config=trial.legacy_sync_config,
-            )
-            return actor
-
-        # This actor should create a default syncer, so check should pass
-        actor1 = _create_remote_actor(TestDurable, "auto")
-        self.assertTrue(ray.get(actor1.has_syncer.remote()))
-
-        # This actor should create a custom syncer, so check should pass
-        actor2 = _create_remote_actor(TestDurable, CustomSyncer())
-        self.assertTrue(ray.get(actor2.has_syncer.remote()))
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
