@@ -8,8 +8,8 @@ import ray
 from ray import tune
 from ray.train.constants import TRAIN_DATASET_KEY
 
-from ray.train.lightgbm import LegacyLightGBMCheckpoint, LightGBMTrainer
-from ray.train import Checkpoint, ScalingConfig
+from ray.train.lightgbm import LightGBMTrainer
+from ray.train import ScalingConfig
 
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
@@ -83,16 +83,8 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    checkpoint = result.checkpoint
-    checkpoint = LegacyLightGBMCheckpoint.from_checkpoint(result.checkpoint)
-    model = checkpoint.get_model()
+    model = LightGBMTrainer.get_model(result.checkpoint)
     assert get_num_trees(model) == 5
-
-    # Move checkpoint to a different directory.
-    checkpoint_dict = result.checkpoint.to_dict()
-    checkpoint = Checkpoint.from_dict(checkpoint_dict)
-    checkpoint_path = checkpoint.to_directory(tmpdir)
-    resume_from = Checkpoint.from_directory(checkpoint_path)
 
     trainer = LightGBMTrainer(
         scaling_config=scale_config,
@@ -100,7 +92,7 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
         params=params,
         num_boost_round=10,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
-        resume_from_checkpoint=resume_from,
+        resume_from_checkpoint=result.checkpoint,
     )
     result = trainer.fit()
     checkpoint = result.checkpoint
@@ -139,14 +131,11 @@ def test_checkpoint_freq(ray_start_6_cpus, freq_end_expected):
 
     # Assert number of checkpoints
     assert len(result.best_checkpoints) == expected, str(
-        [
-            (metrics["training_iteration"], _cp._local_path)
-            for _cp, metrics in result.best_checkpoints
-        ]
+        [(metrics["training_iteration"], cp) for cp, metrics in result.best_checkpoints]
     )
 
     # Assert checkpoint numbers are increasing
-    cp_paths = [cp._local_path for cp, _ in result.best_checkpoints]
+    cp_paths = [cp.path for cp, _ in result.best_checkpoints]
     assert cp_paths == sorted(cp_paths), str(cp_paths)
 
 

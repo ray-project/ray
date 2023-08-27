@@ -3,6 +3,7 @@ import os
 import warnings
 from collections import defaultdict
 from time import time
+import tempfile
 from traceback import format_exc
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Optional, Union, Tuple
 
@@ -17,12 +18,10 @@ from sklearn.model_selection import BaseCrossValidator, cross_validate
 from sklearn.model_selection._validation import _check_multimetric_scoring, _score
 
 import ray.cloudpickle as cpickle
-from ray import tune
-from ray.air._internal.checkpointing import (
-    save_preprocessor_to_dir,
-)
-from ray.air.config import RunConfig, ScalingConfig
-from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
+from ray import train
+from ray.train import Checkpoint, RunConfig, ScalingConfig
+from ray.train.constants import TRAIN_DATASET_KEY
+from ray.train.sklearn import SklearnCheckpoint
 from ray.train.sklearn._sklearn_utils import _has_cpu_params, _set_cpu_params
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util import PublicAPI
@@ -372,16 +371,15 @@ class SklearnTrainer(BaseTrainer):
             parallelize_cv = True
         return parallelize_cv
 
-    def _save_checkpoint(self) -> None:
-        with tune.checkpoint_dir(step=1) as checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, MODEL_KEY), "wb") as f:
-                cpickle.dump(self.estimator, f)
-
-            if self.preprocessor:
-                save_preprocessor_to_dir(self.preprocessor, checkpoint_dir)
-
-    def _report(self, results: dict) -> None:
-        tune.report(**results)
+    @staticmethod
+    def get_model(checkpoint: Checkpoint) -> BaseEstimator:
+        """Retrieve the sklearn estimator stored in this checkpoint."""
+        with checkpoint.as_directory() as checkpoint_path:
+            estimator_path = os.path.join(
+                checkpoint_path, SklearnCheckpoint.MODEL_FILENAME
+            )
+            with open(estimator_path, "rb") as f:
+                return cpickle.load(f)
 
     def training_loop(self) -> None:
         register_ray()
@@ -420,8 +418,6 @@ class SklearnTrainer(BaseTrainer):
             self.estimator.fit(X_train, y_train, **self.fit_params)
             fit_time = time() - start_time
 
-            self._save_checkpoint()
-
             if self.label_column:
                 validation_set_scores = self._score_on_validation_sets(
                     self.estimator, datasets
@@ -447,4 +443,12 @@ class SklearnTrainer(BaseTrainer):
             "fit_time": fit_time,
             "done": True,
         }
-        self._report(results)
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            checkpoint_file = os.path.join(
+                temp_checkpoint_dir, SklearnCheckpoint.MODEL_FILENAME
+            )
+            with open(checkpoint_file, "wb") as f:
+                cpickle.dump(self.estimator, f)
+            train.report(
+                results, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir)
+            )
