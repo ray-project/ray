@@ -208,23 +208,22 @@ async def trial(
     async def client_do_queries():
         ray.get([a.do_queries.remote(CALLS_PER_BATCH, data) for a in clients])
 
-    metrics_name = f"{len(clients)} clients {data_size} data size"
-    tps_mean, tps_sdt = await get_query_tps(
-        metrics_name,
-        client_do_queries,
-    )
-    latency_ms_mean, latency_ms_std = await get_query_latencies(
-        metrics_name,
-        client_time_queries,
-    )
-
     trial_key_base = (
-        f"{'gRPC' if test_grpc else 'HTTP'}/"
+        f"proxy:{'gRPC' if test_grpc else 'HTTP'}/"
         f"num_client:{num_clients}/"
         f"replica:{num_replicas}/"
         f"concurrent_queries:{max_concurrent_queries}/"
         f"data_size:{data_size}"
     )
+    tps_mean, tps_sdt = await get_query_tps(
+        trial_key_base,
+        client_do_queries,
+    )
+    latency_ms_mean, latency_ms_std = await get_query_latencies(
+        trial_key_base,
+        client_time_queries,
+    )
+
     results[trial_key_base] = {
         "tps_mean": tps_mean,
         "tps_sdt": tps_sdt,
@@ -255,6 +254,20 @@ async def main():
 
     print("Results from all conditions:")
     pprint(results)
+
+    for key, stats in results.items():
+        key_split = key.split("/")
+        proxy = key_split[0]
+        num_client = key_split[1].split(":")[1]
+        replica = key_split[2].split(":")[1]
+        concurrent_queries = key_split[3].split(":")[1]
+        data_size = key_split[4].split(":")[1]
+        print(
+            f"{proxy}\t{num_client}\t{replica}\t{concurrent_queries}\t{data_size}"
+            f"\t{stats['latency_ms_mean']}\t{stats['latency_ms_std']}"
+            f"\t{stats['tps_mean']}\t{stats['tps_sdt']}"
+        )
+
     return results
 
 
