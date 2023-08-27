@@ -122,8 +122,6 @@ class SyncConfig:
                 self.upload_dir = None
             if self.syncer == _DEPRECATED_VALUE:
                 self.syncer = "auto"
-            if self.sync_artifacts == _DEPRECATED_VALUE:
-                self.sync_artifacts = True
             if self.sync_on_checkpoint == _DEPRECATED_VALUE:
                 self.sync_on_checkpoint = True
 
