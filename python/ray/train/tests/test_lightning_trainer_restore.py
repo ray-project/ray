@@ -157,7 +157,7 @@ def test_air_trainer_restore(
 
     scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=False)
 
-    fail_marker_path = tmpdir / "fail_marker"
+    fail_marker_path = Path(tmpdir) / "fail_marker"
 
     trainer = LightningTrainer(
         lightning_config=lightning_config.build(),
