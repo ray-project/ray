@@ -2,14 +2,12 @@ import logging
 import json
 import os
 from packaging import version
-import tempfile
 import re
 from typing import Any, Dict, Union
 
 import ray
 from ray.rllib.utils.serialization import NOT_SERIALIZABLE, serialize_type
 from ray.train import Checkpoint
-from ray.train._internal.storage import _use_storage_context
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
@@ -71,12 +69,8 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
     }
 
     # `checkpoint` is a Checkpoint instance: Translate to directory and continue.
-    if _use_storage_context:
+    if isinstance(checkpoint, Checkpoint):
         checkpoint: str = checkpoint.to_directory()
-    else:
-        tmp_dir = tempfile.mkdtemp()
-        checkpoint.to_directory(tmp_dir)
-        checkpoint = tmp_dir
 
     # Checkpoint is dir.
     if os.path.isdir(checkpoint):

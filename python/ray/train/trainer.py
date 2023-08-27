@@ -24,7 +24,7 @@ from ray.train._internal.session import (
     TrainingResultType,
     get_session,
 )
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 
 # Ray Train should be usable even if Tune is not installed.
 from ray.train._internal.utils import ActorWrapper

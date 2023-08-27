@@ -30,18 +30,13 @@ from ray.train._internal.storage import (
     _use_storage_context,
     get_fs_and_path,
 )
+
+from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray._private.dict import merge_dicts
 
-
-from ray.train._internal.storage import _use_storage_context
-
-if _use_storage_context():
-    from ray.train._checkpoint import Checkpoint
-else:
-    from ray.air import Checkpoint
 
 if TYPE_CHECKING:
     from ray.data import Dataset
