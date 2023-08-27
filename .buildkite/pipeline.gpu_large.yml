@@ -48,7 +48,6 @@
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu 
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/air/... python/ray/train/...
 
 - label: ":tv: :book: Doc GPU tests and examples"
@@ -95,5 +94,4 @@
     - pip install lightning==2.0.4 pytorch-lightning==2.0.4  # todo move to requirements-test.txt
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=ptl_v2 
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/train/...
