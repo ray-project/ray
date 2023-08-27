@@ -466,7 +466,7 @@ def train_func(config):
 
         # Checkpoint model.
         with TemporaryDirectory() as tmpdir:
-            torch.save(net.state_dict(), os.path.join(tmpdir, "checkpoint.pt"))
+            torch.save(net.module.state_dict(), os.path.join(tmpdir, "checkpoint.pt"))
 
             # Record and log stats.
             print(f"train report on {train.get_context().get_world_rank()}")
