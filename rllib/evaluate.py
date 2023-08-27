@@ -258,7 +258,7 @@ def run(
         checkpoint_dir = str(Path(checkpoint).parent)
         print(f"Restoring algorithm from {checkpoint_dir}")
         restore_result = _TrainingResult(
-            checkpoint=Checkpoint.from_directory(), metrics={}
+            checkpoint=Checkpoint.from_directory(checkpoint_dir), metrics={}
         )
         algorithm.restore(restore_result)
 
