@@ -66,7 +66,6 @@
     # is resolved.
     - pip install -U transformers
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,-timeseries_libs,-post_wheel_build,-doctest 
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       doc/...
 
 - label: ":book: Doctest (GPU)"
