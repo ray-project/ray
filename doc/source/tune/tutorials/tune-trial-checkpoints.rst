@@ -27,21 +27,10 @@ To create a checkpoint, one can either use :meth:`~ray.train.Checkpoint.from_dic
     checkpoint is synced to driver node or the cloud. We are planning to work on it to address the
     issue.
 
-.. tab-set::
-
-    .. tab-item:: Checkpoint a dictionary
-
-        .. literalinclude:: /tune/doc_code/trial_checkpoint.py
-            :language: python
-            :start-after: __function_api_checkpointing_start__
-            :end-before: __function_api_checkpointing_end__
-
-    .. tab-item:: Checkpoint a directory
-
-        .. literalinclude:: /tune/doc_code/trial_checkpoint.py
-            :language: python
-            :start-after: __function_api_checkpointing_from_dir_start__
-            :end-before: __function_api_checkpointing_from_dir_end__
+.. literalinclude:: /tune/doc_code/trial_checkpoint.py
+    :language: python
+    :start-after: __function_api_checkpointing_from_dir_start__
+    :end-before: __function_api_checkpointing_from_dir_end__
 
 In the above code snippet:
 
@@ -63,8 +52,6 @@ In the above code snippet:
 
 
 See :class:`here for more information on creating checkpoints <ray.train.Checkpoint>`.
-If using framework-specific trainers from Ray AIR, see :ref:`here <air-trainer-ref>` for
-references to framework-specific checkpoints such as `TensorflowCheckpoint`.
 
 
 .. _tune-class-trainable-checkpointing:

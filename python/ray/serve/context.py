@@ -95,9 +95,6 @@ def _set_internal_replica_context(
 def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClient:
     """Connect to an existing Serve application on this Ray cluster.
 
-    If calling from the driver program, the Serve app on this Ray cluster
-    must first have been initialized using `serve.start(detached=True)`.
-
     If called from within a replica, this will connect to the same Serve
     app that the replica is running in.
 
@@ -129,10 +126,7 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
     except ValueError:
         if raise_if_no_controller_running:
             raise RayServeException(
-                "There is no Serve "
-                "instance running on this Ray cluster. Please "
-                "call `serve.start(detached=True) to start "
-                "one."
+                "There is no Serve instance running on this Ray cluster."
             )
         return
 

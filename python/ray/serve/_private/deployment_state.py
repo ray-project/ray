@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import json
 import logging
 import math
@@ -8,6 +7,7 @@ import time
 import traceback
 from collections import defaultdict, OrderedDict
 from copy import copy
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -114,6 +114,7 @@ class DeploymentTargetState:
             ray_actor_options=info.replica_config.ray_actor_options,
             placement_group_bundles=info.replica_config.placement_group_bundles,
             placement_group_strategy=info.replica_config.placement_group_strategy,
+            max_replicas_per_node=info.replica_config.max_replicas_per_node,
         )
 
         return cls(info, num_replicas, version, deleting)
@@ -430,6 +431,9 @@ class ActorReplicaWrapper:
             ),
             placement_group_strategy=(
                 deployment_info.replica_config.placement_group_strategy
+            ),
+            max_replicas_per_node=(
+                deployment_info.replica_config.max_replicas_per_node
             ),
             on_scheduled=self.on_scheduled,
         )
