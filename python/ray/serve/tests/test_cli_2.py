@@ -28,7 +28,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 import grpc
-from ray.serve.tests.test_grpc import (
+from ray.serve.tests.utils import (
     ping_grpc_list_applications,
     ping_grpc_healthz,
     ping_grpc_call_method,
@@ -641,7 +641,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     assert success_message_fragment in deploy_response
 
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
-    serve.start(detached=True)
+    serve.start()
     wait_for_condition(
         lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
         timeout=15,
@@ -662,7 +662,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     assert success_message_fragment in deploy_response
 
     # Restore testing controller
-    serve.start(detached=True)
+    serve.start()
     wait_for_condition(
         lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
         timeout=15,
@@ -924,7 +924,9 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
     channel = grpc.insecure_channel("localhost:9000")
 
     # Ensures ListApplications method succeeding.
-    ping_grpc_list_applications(channel, app_names)
+    wait_for_condition(
+        ping_grpc_list_applications, channel=channel, app_names=app_names
+    )
 
     # Ensures Healthz method succeeding.
     ping_grpc_healthz(channel)
@@ -964,7 +966,9 @@ def test_grpc_proxy_model_composition(ray_start_stop):
     channel = grpc.insecure_channel("localhost:9000")
 
     # Ensures ListApplications method succeeding.
-    ping_grpc_list_applications(channel, app_names)
+    wait_for_condition(
+        ping_grpc_list_applications, channel=channel, app_names=app_names
+    )
 
     # Ensures Healthz method succeeding.
     ping_grpc_healthz(channel)

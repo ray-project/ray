@@ -3,6 +3,7 @@ import json
 import logging
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Set
+import warnings
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
@@ -30,6 +31,7 @@ from ray.serve._private.constants import (
     DEFAULT_MAX_CONCURRENT_QUERIES,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
+    MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.generated.serve_pb2 import (
@@ -70,6 +72,8 @@ class AutoscalingConfig(BaseModel):
 
     # Multiplicative "gain" factor to limit scaling decisions
     smoothing_factor: PositiveFloat = 1.0
+    upscale_smoothing_factor: Optional[PositiveFloat] = None
+    downscale_smoothing_factor: Optional[PositiveFloat] = None
 
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
@@ -101,6 +105,12 @@ class AutoscalingConfig(BaseModel):
                 )
 
         return max_replicas
+
+    def get_upscale_smoothing_factor(self) -> PositiveFloat:
+        return self.upscale_smoothing_factor or self.smoothing_factor
+
+    def get_downscale_smoothing_factor(self) -> PositiveFloat:
+        return self.downscale_smoothing_factor or self.smoothing_factor
 
     # TODO(architkulkarni): implement below
     # The num_ongoing_requests_per_replica error ratio (desired / current)
@@ -272,6 +282,10 @@ class DeploymentConfig(BaseModel):
             else:
                 data["user_config"] = None
         if "autoscaling_config" in data:
+            if not data["autoscaling_config"].get("upscale_smoothing_factor"):
+                data["autoscaling_config"]["upscale_smoothing_factor"] = None
+            if not data["autoscaling_config"].get("downscale_smoothing_factor"):
+                data["autoscaling_config"]["downscale_smoothing_factor"] = None
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
@@ -354,6 +368,7 @@ class ReplicaConfig:
         ray_actor_options: Dict,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        max_replicas_per_node: Optional[int] = None,
         needs_pickle: bool = True,
     ):
         """Construct a ReplicaConfig with serialized properties.
@@ -381,6 +396,9 @@ class ReplicaConfig:
         self.placement_group_strategy = placement_group_strategy
         self._validate_placement_group_options()
 
+        self.max_replicas_per_node = max_replicas_per_node
+        self._validate_max_replicas_per_node()
+
         # Create resource_dict. This contains info about the replica's resource
         # needs. It does NOT set the replica's resource usage. That's done by
         # the ray_actor_options.
@@ -401,6 +419,13 @@ class ReplicaConfig:
         self.placement_group_strategy = placement_group_strategy
         self._validate_placement_group_options()
 
+    def update_max_replicas_per_node(
+        self,
+        max_replicas_per_node: Optional[int],
+    ):
+        self.max_replicas_per_node = max_replicas_per_node
+        self._validate_max_replicas_per_node()
+
     @classmethod
     def create(
         cls,
@@ -410,6 +435,7 @@ class ReplicaConfig:
         ray_actor_options: Optional[Dict] = None,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        max_replicas_per_node: Optional[int] = None,
         deployment_def_name: Optional[str] = None,
     ):
         """Create a ReplicaConfig from deserialized parameters."""
@@ -459,6 +485,7 @@ class ReplicaConfig:
             ray_actor_options,
             placement_group_bundles,
             placement_group_strategy,
+            max_replicas_per_node,
         )
 
         config._deployment_def = deployment_def
@@ -498,6 +525,25 @@ class ReplicaConfig:
         # Set Serve replica defaults
         if self.ray_actor_options.get("num_cpus") is None:
             self.ray_actor_options["num_cpus"] = 1
+
+    def _validate_max_replicas_per_node(self) -> None:
+        if self.max_replicas_per_node is None:
+            return
+        if not isinstance(self.max_replicas_per_node, int):
+            raise TypeError(
+                f"Get invalid type '{type(self.max_replicas_per_node)}' for "
+                "max_replicas_per_node. Expected None or an integer "
+                f"in the range of [1, {MAX_REPLICAS_PER_NODE_MAX_VALUE}]."
+            )
+        if (
+            self.max_replicas_per_node < 1
+            or self.max_replicas_per_node > MAX_REPLICAS_PER_NODE_MAX_VALUE
+        ):
+            raise ValueError(
+                f"Invalid max_replicas_per_node {self.max_replicas_per_node}. "
+                "Valid values are None or an integer "
+                f"in the range of [1, {MAX_REPLICAS_PER_NODE_MAX_VALUE}]."
+            )
 
     def _validate_placement_group_options(self) -> None:
         if (
@@ -645,6 +691,7 @@ class ReplicaConfig:
             proto.placement_group_strategy
             if proto.placement_group_strategy != ""
             else None,
+            proto.max_replicas_per_node if proto.max_replicas_per_node else None,
             needs_pickle,
         )
 
@@ -664,6 +711,9 @@ class ReplicaConfig:
             if self.placement_group_bundles is not None
             else "",
             placement_group_strategy=self.placement_group_strategy,
+            max_replicas_per_node=self.max_replicas_per_node
+            if self.max_replicas_per_node is not None
+            else 0,
         )
 
     def to_proto_bytes(self):
@@ -698,11 +748,38 @@ class HTTPOptions(pydantic.BaseModel):
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
+
+        if v == DeploymentMode.FixedNumber:
+            warnings.warn(
+                "`DeploymentMode.FixedNumber` is deprecated and will be removed in a "
+                "future version."
+            )
+
+        return v
+
+    @validator("middlewares", always=True)
+    def warn_for_middlewares(cls, v, values):
+        if v:
+            warnings.warn(
+                "Passing `middlewares` to HTTPOptions is deprecated and will be "
+                "removed in a future version. Consider using the FastAPI integration "
+                "to configure middlewares on your deployments: "
+                "https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments"  # noqa 501
+            )
+        return v
+
+    @validator("num_cpus", always=True)
+    def warn_for_num_cpus(cls, v, values):
+        if v:
+            warnings.warn(
+                "Passing `num_cpus` to HTTPOptions is deprecated and will be "
+                "removed in a future version."
+            )
         return v
 
     @validator("fixed_number_replicas", always=True)
     def fixed_number_replicas_should_exist(cls, v, values):
-        if values["location"] == DeploymentMode.FixedNumber and v is None:
+        if values.get("location") == DeploymentMode.FixedNumber and v is None:
             raise ValueError(
                 "When location='FixedNumber', you must specify "
                 "the `fixed_number_replicas` parameter."
