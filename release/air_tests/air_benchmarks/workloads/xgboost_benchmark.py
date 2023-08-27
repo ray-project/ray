@@ -164,6 +164,12 @@ def main(args):
                 f"Training on XGBoost is taking {training_time} seconds, "
                 f"which is longer than expected ({_TRAINING_TIME_THRESHOLD} seconds)."
             )
+        
+        if prediction_time > _PREDICTION_TIME_THRESHOLD:
+            raise RuntimeError(
+                f"Batch prediction on XGBoost is taking {prediction_time} seconds, "
+                f"which is longer than expected ({_PREDICTION_TIME_THRESHOLD} seconds)."
+            )
 
 
 if __name__ == "__main__":
