@@ -93,11 +93,12 @@ __all__ = [
     "get_trial_resources",
     "is_session_enabled",
     "checkpoint_dir",
-    "SyncConfig",
     "ResultGrid",
     "create_searcher",
     "create_scheduler",
     "PlacementGroupFactory",
     "Tuner",
     "TuneConfig",
+    # TODO(justinvyu): [Deprecated]
+    "SyncConfig",
 ]

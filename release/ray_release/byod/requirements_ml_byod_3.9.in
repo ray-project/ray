@@ -13,6 +13,7 @@ ipywidgets
 lm_eval
 matplotlib
 numpy
+openai-whisper
 protobuf
 pytorch-lightning
 sentencepiece
@@ -25,4 +26,3 @@ torchtext
 torchvision
 transformers>=4.31.0
 wandb
-whisper
