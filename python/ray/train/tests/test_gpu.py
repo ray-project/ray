@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 import ray
 import ray.data
 from ray.exceptions import RayTaskError
-from ray import train, tune
+from ray import train
 
 from ray.train import ScalingConfig
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
