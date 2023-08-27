@@ -7,6 +7,7 @@ import ray
 from ray.data import Dataset
 from ray._private.ray_constants import env_integer
 from ray.air.config import CheckpointConfig
+from ray.air._internal.util import StartTraceback
 from ray.exceptions import RayActorError
 from ray.train import DataConfig
 from ray.air.checkpoint import Checkpoint
@@ -582,8 +583,7 @@ class BackendExecutor:
                 try:
                     ray.get(object_ref)
                 except Exception as e:
-                    self.shutdown(graceful_termination=False)
-                    raise e
+                    raise StartTraceback from e
 
         # At this point, all workers have finished the task successfully.
         return ray.get(remote_values)

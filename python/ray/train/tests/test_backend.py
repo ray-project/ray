@@ -8,6 +8,7 @@ import time
 
 import ray
 from ray import train
+from ray.exceptions import RayActorError
 from ray.air._internal.util import StartTraceback
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
@@ -16,7 +17,7 @@ from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
     TrainBackendError,
-    TrainingWorkerError,
+    # TrainingWorkerError,
 )
 from ray.train import DataConfig
 from ray.train._internal.worker_group import WorkerGroup, WorkerMetadata
@@ -244,7 +245,7 @@ def test_worker_failure(ray_start_2_cpus):
 
     new_execute_func = gen_execute_special(train_fail)
     with patch.object(WorkerGroup, "execute_async", new_execute_func):
-        with pytest.raises(TrainingWorkerError):
+        with pytest.raises(StartTraceback):
             _start_training(e, lambda: 1)
             e.finish_training()
 

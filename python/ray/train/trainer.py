@@ -264,17 +264,12 @@ class TrainingIterator:
             A list of return values from calling ``train_func`` on each worker.
                 Each item corresponds to the return value from a single worker.
         """
-
-        self._backend_executor.pause_reporting()
-        # Finish up processing checkpoints. Reporting has been disabled.
-        # Results will not be processed.
-        self._finish_checkpointing()
         return self._backend_executor.finish_training()
 
     def is_finished(self) -> bool:
         return self._finished_training
 
-    # TODO(justinvyu): Remove legacy path.
+    # TODO(justinvyu): [code_removal] Remove legacy path.
     def __get_cloud_checkpoint_dir(self):
         if not self._storage_path:
             # Can't run cloud upload if storage path is not set.
