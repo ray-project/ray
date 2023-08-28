@@ -10,7 +10,6 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.serve._private import api as _private_api
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -57,6 +56,8 @@ from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import ServeInstanceDetails, ServeStatus
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+
+from ray.serve._private import api as _private_api  # isort:skip
 
 logger = logging.getLogger(__file__)
 

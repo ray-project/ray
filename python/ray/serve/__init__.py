@@ -1,7 +1,6 @@
 import ray._private.worker
 
 try:
-    from ray.serve.air_integrations import PredictorDeployment
     from ray.serve.api import (
         Application,
         BuiltApplication,
@@ -24,6 +23,8 @@ try:
     )
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions
+
+    from ray.serve.air_integrations import PredictorDeployment  # isort:skip
 except ModuleNotFoundError as e:
     e.msg += (
         '. You can run `pip install "ray[serve]"` to install all Ray Serve'
