@@ -692,22 +692,19 @@ async def test_prefer_replica_in_same_az(pow_2_scheduler, fake_query):
     r1 = FakeReplicaWrapper(
         "r1", node_id=SCHEDULER_NODE_ID, availability_zone=SCHEDULER_AZ
     )
-    r1.set_queue_state_response(0, accepted=True)
     r2 = FakeReplicaWrapper(
         "r2",
         node_id="some_other_node_in_the_stratosphere",
         availability_zone=SCHEDULER_AZ,
     )
-    r2.set_queue_state_response(0, accepted=True)
     r3 = FakeReplicaWrapper(
         "r3",
         node_id="some_other_node_in_the_stratosphere",
         availability_zone="some_other_az_in_the_solar_system",
     )
+    r1.set_queue_state_response(0, accepted=True)
+    r2.set_queue_state_response(0, accepted=True)
     r3.set_queue_state_response(0, accepted=True)
-    print("r1:", r1.node_id, r1.availability_zone)
-    print("r2:", r2.node_id, r2.availability_zone)
-    print("r3:", r3.node_id, r3.availability_zone)
     s.update_replicas([r1, r2, r3])
 
     async def choose_replicas():
@@ -733,6 +730,42 @@ async def test_prefer_replica_in_same_az(pow_2_scheduler, fake_query):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "pow_2_scheduler",
+    [{"prefer_local_az": False, "az": SCHEDULER_AZ}],
+    indirect=True,
+)
+async def test_prefer_az_off(pow_2_scheduler, fake_query):
+    """
+    When prefer routing to same AZ is OFF, verify that requests are
+    spread to replicas across AZs
+    """
+
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+
+    r1 = FakeReplicaWrapper("r1", availability_zone=SCHEDULER_AZ)
+    r2 = FakeReplicaWrapper("r2", availability_zone=SCHEDULER_AZ)
+    r3 = FakeReplicaWrapper("r3", availability_zone="western-hemisphere")
+    r1.set_queue_state_response(0, accepted=True)
+    r2.set_queue_state_response(0, accepted=True)
+    r3.set_queue_state_response(0, accepted=True)
+    s.update_replicas([r1, r2, r3])
+
+    async def choose_replicas():
+        tasks = []
+        for _ in range(10):
+            tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+        return await asyncio.gather(*tasks)
+
+    # Requests should be spread across all nodes
+    assert set(await choose_replicas()) == {r1, r2, r3}
+
+    r1.set_queue_state_response(0, accepted=False)
+    assert set(await choose_replicas()) == {r2, r3}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
     [{"prefer_local_node": False, "prefer_local_az": True, "az": SCHEDULER_AZ}],
     indirect=True,
 )
@@ -752,16 +785,11 @@ async def test_prefer_replica_in_same_az_without_prefer_node(
     r1 = FakeReplicaWrapper(
         "r1", node_id=SCHEDULER_NODE_ID, availability_zone=SCHEDULER_AZ
     )
-    r1.set_queue_state_response(0, accepted=True)
     r2 = FakeReplicaWrapper("r2", node_id="node-alpha", availability_zone=SCHEDULER_AZ)
+    r3 = FakeReplicaWrapper("r3", node_id="node-beta", availability_zone="some_zone")
+    r1.set_queue_state_response(0, accepted=True)
     r2.set_queue_state_response(0, accepted=True)
-    r3 = FakeReplicaWrapper(
-        "r3", node_id="node-beta", availability_zone="some_other_az_in_the_solar_system"
-    )
     r3.set_queue_state_response(0, accepted=True)
-    print("r1:", r1.node_id, r1.availability_zone)
-    print("r2:", r2.node_id, r2.availability_zone)
-    print("r3:", r3.node_id, r3.availability_zone)
     s.update_replicas([r1, r2, r3])
 
     async def choose_replicas():
@@ -790,45 +818,6 @@ async def test_prefer_replica_in_same_az_without_prefer_node(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "pow_2_scheduler",
-    [{"prefer_local_az": False, "az": SCHEDULER_AZ}],
-    indirect=True,
-)
-async def test_prefer_az_off(pow_2_scheduler, fake_query):
-    """
-    When prefer routing to same AZ is OFF, verify that requests are
-    spread to replicas across AZs
-    """
-
-    s = pow_2_scheduler
-    loop = get_or_create_event_loop()
-
-    r1 = FakeReplicaWrapper("r1", availability_zone=SCHEDULER_AZ)
-    r1.set_queue_state_response(0, accepted=True)
-    r2 = FakeReplicaWrapper("r2", availability_zone=SCHEDULER_AZ)
-    r2.set_queue_state_response(0, accepted=True)
-    r3 = FakeReplicaWrapper("r3", availability_zone="western-hemisphere")
-    r3.set_queue_state_response(0, accepted=True)
-    s.update_replicas([r1, r2, r3])
-
-    async def choose_replicas():
-        tasks = []
-        for _ in range(10):
-            tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
-        return await asyncio.gather(*tasks)
-
-    # Requests should be spread across all nodes
-    assert set(await choose_replicas()) == {r1, r2, r3}
-
-    r1.set_queue_state_response(0, accepted=False)
-    assert set(await choose_replicas()) == {r2, r3}
-
-    r3.set_queue_state_response(0, accepted=False)
-    assert all(replica == r2 for replica in await choose_replicas())
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "pow_2_scheduler",
     [{"prefer_local_node": True, "prefer_local_az": False, "az": SCHEDULER_AZ}],
     indirect=True,
 )
@@ -844,13 +833,11 @@ async def test_prefer_replica_on_same_node_without_prefer_az(
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
 
-    r1 = FakeReplicaWrapper(
-        "r1", node_id=SCHEDULER_NODE_ID, availability_zone=SCHEDULER_AZ
-    )
-    r1.set_queue_state_response(0, accepted=True)
+    r1 = FakeReplicaWrapper("r1", node_id=SCHEDULER_NODE_ID, availability_zone=SCHEDULER_AZ) # noqa
     r2 = FakeReplicaWrapper("r2", node_id="node-alpha", availability_zone=SCHEDULER_AZ)
-    r2.set_queue_state_response(0, accepted=True)
     r3 = FakeReplicaWrapper("r3", node_id="node-beta", availability_zone="west")
+    r1.set_queue_state_response(0, accepted=True)
+    r2.set_queue_state_response(0, accepted=True)
     r3.set_queue_state_response(0, accepted=True)
     s.update_replicas([r1, r2, r3])
 
@@ -870,17 +857,17 @@ async def test_prefer_replica_on_same_node_without_prefer_az(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
+)
 class TestModelMultiplexing:
-    @pytest.mark.parametrize(
-        "pow_2_scheduler",
-        [
-            {"prefer_local_node": True, "prefer_local_az": True},
-            {"prefer_local_node": True, "prefer_local_az": False},
-            {"prefer_local_node": False, "prefer_local_az": True},
-            {"prefer_local_node": False, "prefer_local_az": False},
-        ],
-        indirect=True,
-    )
     async def test_replicas_with_model_id_always_chosen(self, pow_2_scheduler):
         """
         Verify that if accepted, only replicas with a given model ID will be chosen.
@@ -902,16 +889,6 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_query(query))
             assert (await task) in {r1, r2}
 
-    @pytest.mark.parametrize(
-        "pow_2_scheduler",
-        [
-            {"prefer_local_node": True, "prefer_local_az": True},
-            {"prefer_local_node": True, "prefer_local_az": False},
-            {"prefer_local_node": False, "prefer_local_az": True},
-            {"prefer_local_node": False, "prefer_local_az": False},
-        ],
-        indirect=True,
-    )
     async def test_choose_least_number_of_models_replicas(self, pow_2_scheduler):
         """
         If no replica has the model_id, choose the least number of models replicas.
@@ -928,16 +905,6 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_query(query))
             assert (await task) == r2
 
-    @pytest.mark.parametrize(
-        "pow_2_scheduler",
-        [
-            {"prefer_local_node": True, "prefer_local_az": True},
-            {"prefer_local_node": True, "prefer_local_az": False},
-            {"prefer_local_node": False, "prefer_local_az": True},
-            {"prefer_local_node": False, "prefer_local_az": False},
-        ],
-        indirect=True,
-    )
     async def test_no_replica_has_model_id(self, pow_2_scheduler):
         """
         If no replica has the model_id, we should fall back to normal procedure.
@@ -954,16 +921,6 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_query(query))
             assert (await task) == r1
 
-    @pytest.mark.parametrize(
-        "pow_2_scheduler",
-        [
-            {"prefer_local_node": True, "prefer_local_az": True},
-            {"prefer_local_node": True, "prefer_local_az": False},
-            {"prefer_local_node": False, "prefer_local_az": True},
-            {"prefer_local_node": False, "prefer_local_az": False},
-        ],
-        indirect=True,
-    )
     async def test_fall_back_to_replica_without_model_id(self, pow_2_scheduler):
         """
         Verify that we'll fall back to a replica that doesn't have the model ID if
@@ -985,16 +942,6 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_query(query))
             assert (await task) == r3
 
-    @pytest.mark.parametrize(
-        "pow_2_scheduler",
-        [
-            {"prefer_local_node": True, "prefer_local_az": True},
-            {"prefer_local_node": True, "prefer_local_az": False},
-            {"prefer_local_node": False, "prefer_local_az": True},
-            {"prefer_local_node": False, "prefer_local_az": False},
-        ],
-        indirect=True,
-    )
     async def test_multiple_queries_with_different_model_ids(self, pow_2_scheduler):
         """
         Verify that multiple queries with different model_ids will be mapped to the
@@ -1035,16 +982,6 @@ class TestModelMultiplexing:
                 ]
             )
 
-    @pytest.mark.parametrize(
-        "pow_2_scheduler",
-        [
-            {"prefer_local_node": True, "prefer_local_az": True},
-            {"prefer_local_node": True, "prefer_local_az": False},
-            {"prefer_local_node": False, "prefer_local_az": True},
-            {"prefer_local_node": False, "prefer_local_az": False},
-        ],
-        indirect=True,
-    )
     async def test_no_replicas_available_then_choose_one_with_id(self, pow_2_scheduler):
         """
         Verify that if new replicas are added while the scheduling task is in backoff,
@@ -1077,16 +1014,6 @@ class TestModelMultiplexing:
         assert all(replica == r3 for replica in await asyncio.gather(*tasks))
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "pow_2_scheduler",
-        [
-            {"prefer_local_node": True, "prefer_local_az": True},
-            {"prefer_local_node": True, "prefer_local_az": False},
-            {"prefer_local_node": False, "prefer_local_az": True},
-            {"prefer_local_node": False, "prefer_local_az": False},
-        ],
-        indirect=True,
-    )
     async def test_tasks_scheduled_fifo_among_model_ids(
         self, pow_2_scheduler, fake_query
     ):
