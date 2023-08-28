@@ -12,6 +12,9 @@ from ray.data._internal.logical.rules._user_provided_optimizer_rules import (
 )
 from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
 from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
+from ray.data._internal.logical.rules.zero_copy_map_fusion import (
+    EliminateBuildOutputBlocks,
+)
 from ray.data._internal.planner.planner import Planner
 
 DEFAULT_LOGICAL_RULES = [
@@ -20,6 +23,7 @@ DEFAULT_LOGICAL_RULES = [
 
 DEFAULT_PHYSICAL_RULES = [
     OperatorFusionRule,
+    EliminateBuildOutputBlocks,
 ]
 
 
