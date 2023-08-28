@@ -131,6 +131,11 @@ class SparkJobServer(ThreadingHTTPServer):
         self.spark = spark
         self.task_status_dict = set()
 
+    def shutdown(self) -> None:
+        super().shutdown()
+        for spark_job_group_id in self.task_status_dict:
+            self.server.spark.sparkContext.cancelJobGroup(spark_job_group_id)
+
 
 def _start_spark_job_server(host, port, spark):
     server = SparkJobServer((host, port), spark)
