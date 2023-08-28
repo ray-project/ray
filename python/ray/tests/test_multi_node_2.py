@@ -82,7 +82,7 @@ def test_system_config(ray_start_cluster_head):
 
 
 def setup_monitor(address):
-    monitor = Monitor(address, None)
+    monitor = Monitor(address, "", None)
     return monitor
 
 
