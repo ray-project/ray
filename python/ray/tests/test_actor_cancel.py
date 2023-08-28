@@ -82,7 +82,7 @@ def test_async_actor_cancel(shutdown_only):
         print(i)
         v = VerifyActor.remote()
         ref = a.f.remote(v)
-        wait_for_condition(lambda: ray.get(v.is_running.remote()))
+        wait_for_condition(lambda v=v: ray.get(v.is_running.remote()))
         ray.cancel(ref)
 
         with pytest.raises(ray.exceptions.RayTaskError, match="was cancelled"):
@@ -90,7 +90,7 @@ def test_async_actor_cancel(shutdown_only):
 
         # Verify asyncio.CancelledError is raised from the actor task.
         assert ray.get(v.is_running.remote())
-        wait_for_condition(lambda: ray.get(v.is_called.remote()), timeout=20)
+        wait_for_condition(lambda v=v: ray.get(v.is_called.remote()), timeout=20)
         ray.kill(v)
 
 
