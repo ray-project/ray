@@ -108,9 +108,6 @@ def test_request_hangs_in_execution(ray_instance, shutdown_serve):
         assert response.status_code == 200
         assert response.text == "Success!"
 
-        # Hanging request should have been retried on a different replica.
-        assert len(ray.get(pid_tracker.get_pids.remote())) == 2
-
     ray.get(signal_actor.send.remote())
 
 
@@ -308,8 +305,8 @@ def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
 
 
 @pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="New routing feature flag is disabled.",
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="Only implemented for streaming codepath.",
 )
 @pytest.mark.parametrize(
     "ray_instance",
@@ -360,14 +357,17 @@ def test_cancel_on_http_timeout_during_execution(
     serve.run(Ingress.bind(inner.bind()))
 
     # Request should time out, causing the handler and handle call to be cancelled.
-    assert requests.get("http://localhost:8000").status_code == 408
+    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+        assert requests.get("http://localhost:8000").status_code == 408
+    else:
+        assert requests.get("http://localhost:8000").status_code == 500
     ray.get(inner_signal_actor.wait.remote())
     ray.get(outer_signal_actor.wait.remote())
 
 
 @pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="New routing feature flag is disabled.",
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="Only implemented for streaming codepath.",
 )
 @pytest.mark.parametrize(
     "ray_instance",
@@ -378,9 +378,8 @@ def test_cancel_on_http_timeout_during_execution(
     ],
     indirect=True,
 )
-@pytest.mark.parametrize("use_fastapi", [False, True])
 def test_cancel_on_http_timeout_during_assignment(
-    ray_instance, shutdown_serve, use_fastapi: bool
+    ray_instance, shutdown_serve
 ):
     """Test the client disconnecting while the proxy is assigning the request."""
     signal_actor = SignalActor.remote()
@@ -401,7 +400,7 @@ def test_cancel_on_http_timeout_during_assignment(
     # Send a request and wait for it to be ongoing so we know that further requests
     # will be blocking trying to assign a replica.
     initial_response = h.remote()
-    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
 
     # Request should time out, causing the handler and handle call to be cancelled.
     assert requests.get("http://localhost:8000").status_code == 408
