@@ -16,8 +16,6 @@ Please follow [this tutorial]((kuberay-gke-gpu-cluster-setup) to create a Kubern
 
 ## Step 1: Install the KubeRay Operator
 
-Once `kubectl` is configured to connect to your cluster, you can install the KubeRay operator.
-
 Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
 
 It should be scheduled on the CPU pod.
