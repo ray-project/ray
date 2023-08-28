@@ -23,7 +23,7 @@ from ray.serve._private.common import (
     ServeDeployMode,
     MultiplexedReplicaInfo,
 )
-from ray.serve.config import HTTPOptions
+from ray.serve.config import gRPCOptions, HTTPOptions
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_LOGGER_NAME,
@@ -52,6 +52,7 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ApplicationDetails,
     ServeInstanceDetails,
+    gRPCOptionsSchema,
     HTTPOptionsSchema,
     ServeActorDetails,
 )
@@ -110,6 +111,7 @@ class ServeController:
         http_config: HTTPOptions,
         detached: bool = False,
         _disable_http_proxy: bool = False,
+        grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
         assert (
@@ -156,6 +158,7 @@ class ServeController:
                 http_config,
                 self._controller_node_id,
                 self.cluster_node_info_cache,
+                grpc_options,
             )
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
@@ -479,11 +482,17 @@ class ServeController:
 
         return self.deployment_state_manager.get_running_replica_infos()
 
-    def get_http_config(self):
+    def get_http_config(self) -> HTTPOptions:
         """Return the HTTP proxy configuration."""
         if self.http_proxy_state_manager is None:
-            return None
+            return HTTPOptions()
         return self.http_proxy_state_manager.get_config()
+
+    def get_grpc_config(self) -> gRPCOptions:
+        """Return the gRPC proxy configuration."""
+        if self.http_proxy_state_manager is None:
+            return gRPCOptions()
+        return self.http_proxy_state_manager.get_grpc_config()
 
     def get_root_url(self):
         """Return the root url for the serve instance."""
@@ -856,6 +865,7 @@ class ServeController:
         """
 
         http_config = self.get_http_config()
+        grpc_config = self.get_grpc_config()
         applications = {}
 
         for (
@@ -882,14 +892,13 @@ class ServeController:
         # except for the route_prefix in the deployment_config of each deployment, since
         # route_prefix is set instead in each application.
         # Eventually we want to remove route_prefix from DeploymentSchema.
+        http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
+        grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
         return ServeInstanceDetails(
             controller_info=self._actor_details,
             proxy_location=http_config.location,
-            http_options=HTTPOptionsSchema(
-                host=http_config.host,
-                port=http_config.port,
-                request_timeout_s=http_config.request_timeout_s,
-            ),
+            http_options=http_options,
+            grpc_options=grpc_options,
             http_proxies=self.http_proxy_state_manager.get_http_proxy_details()
             if self.http_proxy_state_manager
             else None,

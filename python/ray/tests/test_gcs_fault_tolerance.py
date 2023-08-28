@@ -12,6 +12,7 @@ import ray._private.gcs_utils as gcs_utils
 from ray._private import ray_constants
 from ray._private.test_utils import (
     convert_actor_state,
+    enable_external_redis,
     generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
@@ -827,6 +828,45 @@ print("DONE")
     # GCS should exit in this case
     print(">>> Waiting gcs server to exit", gcs_server_pid)
     wait_for_pid_to_exit(gcs_server_pid, 10000)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [
+        generate_system_config_map(
+            enable_cluster_auth=True,
+        )
+    ],
+    indirect=True,
+)
+def test_cluster_id(ray_start_regular):
+    # Kill GCS and check that raylets kill themselves when not backed by Redis,
+    # and stay alive when backed by Redis.
+    # Raylets should kill themselves due to cluster ID mismatch in the
+    # non-persisted case.
+    raylet_proc = ray._private.worker._global_node.all_processes[
+        ray_constants.PROCESS_TYPE_RAYLET
+    ][0].process
+
+    def check_raylet_healthy():
+        return raylet_proc.poll() is None
+
+    wait_for_condition(lambda: check_raylet_healthy())
+    for i in range(10):
+        assert check_raylet_healthy()
+        sleep(1)
+
+    ray._private.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
+
+    if not enable_external_redis():
+        # Waiting for raylet to become unhealthy
+        wait_for_condition(lambda: not check_raylet_healthy())
+    else:
+        # Waiting for raylet to stay healthy
+        for i in range(10):
+            assert check_raylet_healthy()
+            sleep(1)
 
 
 @pytest.mark.parametrize(

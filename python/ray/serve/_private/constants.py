@@ -217,6 +217,12 @@ RAY_SERVE_ENABLE_NEW_HANDLE_API = (
     os.environ.get("RAY_SERVE_ENABLE_NEW_HANDLE_API", "0") == "1"
 )
 
+# Feature flag to turn on locality routing for HTTP proxies.
+# This is currently ON BY DEFAULT.
+RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING = (
+    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING", "0") == "1"
+)
+
 # Serve HTTP proxy callback import path.
 RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH = os.environ.get(
     "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH", None
@@ -249,3 +255,10 @@ RAY_SERVE_ENABLE_MEMORY_PROFILING = (
 RAY_SERVE_ENABLE_CPU_PROFILING = (
     os.environ.get("RAY_SERVE_ENABLE_CPU_PROFILING", "0") == "1"
 )
+
+# Max value allowed for max_replicas_per_node option.
+# TODO(jjyao) the <= 100 limitation is an artificial one
+# and is due to the fact that Ray core only supports resource
+# precision up to 0.0001.
+# This limitation should be lifted in the long term.
+MAX_REPLICAS_PER_NODE_MAX_VALUE = 100

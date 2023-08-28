@@ -80,6 +80,36 @@ class TrainingResult:
     metadata: Optional[Dict] = None
 
 
+class _FutureTrainingResult:
+    """A future that will be resolved to a `_TrainingResult`.
+
+    This is needed for specific schedulers such as PBT that schedule saves.
+
+    This wrapper should be removed after refactoring PBT to not schedule saves anymore.
+    """
+
+    def __init__(self, future: ray.ObjectRef):
+        self.future = future
+
+    def resolve(self, block: bool = True) -> Optional["_TrainingResult"]:
+        """Resolve into ``_TrainingResult``.
+
+        This will return None for function trainables if no checkpoint has been
+        saved before.
+        """
+        if block:
+            timeout = None
+        else:
+            timeout = 1e-9
+        try:
+            return ray.get(self.future, timeout=timeout)
+        except TimeoutError:
+            # Not ready, yet
+            pass
+        except Exception as exc:
+            logger.error(f"Error resolving result: {exc}")
+
+
 class _TrainingResult:
     """A (checkpoint, metrics) result reported by the user."""
 
@@ -256,6 +286,10 @@ class _TrainSession:
 
         # Release the lock so that training thread can process this event.
         self.continue_lock.release()
+
+        # Force a final (blocking) sync of artifacts in the trial path to storage.
+        if _use_storage_context():
+            self.storage.persist_artifacts(force=True)
 
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
@@ -550,6 +584,7 @@ class _TrainSession:
 
         persisted_checkpoint = None
         if checkpoint:
+            # TODO(justinvyu): [code_removal]
             if not isinstance(checkpoint, NewCheckpoint):
                 raise ValueError(
                     "You must pass a `ray.train.Checkpoint` "
@@ -558,6 +593,13 @@ class _TrainSession:
 
             # Persist the reported checkpoint files to storage.
             persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
+
+        # Persist trial artifacts to storage.
+        force_artifact_sync = (
+            persisted_checkpoint
+            and self.storage.sync_config.sync_artifacts_on_checkpoint
+        )
+        self.storage.persist_artifacts(force=force_artifact_sync)
 
         metrics = self._auto_fill_metrics(metrics)
 
@@ -571,10 +613,7 @@ class _TrainSession:
                     user_metadata[k] = v
             persisted_checkpoint.set_metadata(user_metadata)
 
-        result = _TrainingResult(
-            checkpoint=persisted_checkpoint,
-            metrics=metrics,
-        )
+        result = _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
 
         self._report_training_result(result)
 

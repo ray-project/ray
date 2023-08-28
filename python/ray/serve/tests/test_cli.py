@@ -310,7 +310,7 @@ def test_deploy_duplicate_routes(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_bad_config1(ray_start_stop):
+def test_deploy_bad_v2_config(ray_start_stop):
     """Deploy a bad config with field applications, should try to parse as v2 config."""
 
     config_file = os.path.join(
@@ -321,12 +321,16 @@ def test_deploy_bad_config1(ray_start_stop):
         subprocess.check_output(
             ["serve", "deploy", config_file], stderr=subprocess.STDOUT
         )
-    assert "ValidationError" in e.value.output.decode("utf-8")
-    assert "ServeDeploySchema" in e.value.output.decode("utf-8")
+
+    output = e.value.output.decode("utf-8")
+
+    assert "ValidationError" in output, output
+    assert "ServeDeploySchema" in output, output
+    assert "Please ensure each application's route_prefix is unique" in output
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_bad_config2(ray_start_stop):
+def test_deploy_bad_v1_config(ray_start_stop):
     """
     Deploy a bad config without field applications, should try to parse as v1 config.
     """
@@ -339,8 +343,12 @@ def test_deploy_bad_config2(ray_start_stop):
         subprocess.check_output(
             ["serve", "deploy", config_file], stderr=subprocess.STDOUT
         )
-    assert "ValidationError" in e.value.output.decode("utf-8")
-    assert "ServeApplicationSchema" in e.value.output.decode("utf-8")
+
+    output = e.value.output.decode("utf-8")
+
+    assert "none is not an allowed value" in output
+    assert "ValidationError" in output, output
+    assert "ServeApplicationSchema" in output, output
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -703,6 +711,30 @@ def test_status_package_unavailable_in_controller(ray_start_stop):
         return True
 
     wait_for_condition(check_for_failed_deployment, timeout=15)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_max_replicas_per_node(ray_start_stop):
+    """Test that max_replicas_per_node can be set via config file."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "max_replicas_per_node.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_application_status():
+        cli_output = subprocess.check_output(
+            ["serve", "status", "-a", "http://localhost:52365/"]
+        )
+        status = yaml.safe_load(cli_output)["applications"]
+        assert (
+            status["valid"]["status"] == "RUNNING"
+            and status["invalid"]["status"] == "DEPLOY_FAILED"
+        )
+        return True
+
+    wait_for_condition(check_application_status, timeout=15)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

@@ -30,6 +30,7 @@ def test_handle_options():
     assert only_set_method.method_name == "hi"
     assert only_set_method.multiplexed_model_id == ""
     assert only_set_method.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
@@ -42,6 +43,7 @@ def test_handle_options():
     assert only_set_model_id.method_name == "__call__"
     assert only_set_model_id.multiplexed_model_id == "hi"
     assert only_set_model_id.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
@@ -54,6 +56,7 @@ def test_handle_options():
     assert only_set_stream.method_name == "__call__"
     assert only_set_stream.multiplexed_model_id == ""
     assert only_set_stream.stream is True
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
@@ -78,18 +81,23 @@ async def test_async_handle_serializable(serve_instance):
     f.deploy()
 
     @ray.remote
-    class TaskActor:
-        async def task(self, handle):
+    class DelegateActor:
+        async def call_handle(self, handle):
             ref = await handle.remote()
-            output = await ref
-            return output
+            return await ref
 
-    # Test pickling via ray.remote()
-    handle = f.get_handle(sync=False)
+    @serve.deployment
+    class Ingress:
+        def __init__(self, handle):
+            self._handle = handle
 
-    task_actor = TaskActor.remote()
-    result = await task_actor.task.remote(handle)
-    assert result == "hello"
+        async def __call__(self):
+            # Test pickling handle via `actor.method.remote()`.
+            a = DelegateActor.remote()
+            return await a.call_handle.remote(self._handle)
+
+    app_handle = serve.run(Ingress.bind(f.bind()))
+    assert ray.get(app_handle.remote()) == "hello"
 
 
 def test_sync_handle_serializable(serve_instance):
