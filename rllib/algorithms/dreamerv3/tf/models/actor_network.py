@@ -108,8 +108,6 @@ class ActorNetwork(tf.keras.Model):
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
-            return_distr_params: Whether to return (as a second tuple item) the action
-                distribution parameter tensor created by the policy.
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3
