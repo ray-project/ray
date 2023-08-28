@@ -58,11 +58,11 @@ Advanced
 
   * - Framework
     - Example
-  * - Accelerate, Deepspeed
+  * - Accelerate, DeepSpeed
     - `Fine-tuning Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
-  * - Transformers, Deepspeed
+  * - Transformers, DeepSpeed
     - :ref:`Fine-tuning GPT-J-6B with Ray Train and DeepSpeed <gptj_deepspeed_finetune>`
-  * - Lightning, Deepspeed
+  * - Lightning, DeepSpeed
     - :ref:`Fine-tuning vicuna-13b with PyTorch Lightning and DeepSpeed <vicuna_lightning_deepspeed_finetuning>`
   * - Lightning
     - :ref:`Fine-tuning dolly-v2-7b with PyTorch Lightning and FSDP <dolly_lightning_fsdp_finetuning>`
