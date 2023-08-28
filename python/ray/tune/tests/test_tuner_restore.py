@@ -562,8 +562,8 @@ def test_tuner_restore_latest_available_checkpoint(
     del tuner
     fail_marker.remove(ignore_errors=True)
 
-    shutil.rmtree(os.path.join(result._local_path, "checkpoint_000003"))
-    shutil.rmtree(os.path.join(result._local_path, "checkpoint_000002"))
+    shutil.rmtree(os.path.join(result.log_dir, "checkpoint_000003"))
+    shutil.rmtree(os.path.join(result.log_dir, "checkpoint_000002"))
 
     if storage_path:
         delete_at_uri(storage_path + "/checkpoint_000003")
@@ -852,7 +852,7 @@ def test_tuner_restore_from_moved_experiment_path(
     assert len(results[0].best_checkpoints) == num_to_keep
     checkpoint_dirs = [
         path
-        for path in os.listdir(results[0]._local_path)
+        for path in os.listdir(results[0].log_dir)
         if path.startswith("checkpoint_")
     ]
     assert sorted(checkpoint_dirs) == ["checkpoint_000001", "checkpoint_000002"]
@@ -922,7 +922,7 @@ def test_tuner_restore_from_moved_cloud_uri(
     num_trial_checkpoints = len(
         [
             path
-            for path in os.listdir(results[0]._local_path)
+            for path in os.listdir(results[0].log_dir)
             if path.startswith("checkpoint_")
         ]
     )
