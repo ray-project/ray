@@ -101,7 +101,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: raycluster-mini-head-svc # Update this line with your head service in Step 3 below.
+                name: raycluster-kuberay-head-svc # Update this line with your head service in Step 3 below.
                 port:
                   number: 8265
 ```
