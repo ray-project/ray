@@ -195,6 +195,7 @@ ray_files += [
     "ray/autoscaler/aws/cloudwatch/prometheus.yml",
     "ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh",
     "ray/autoscaler/azure/defaults.yaml",
+    "ray/autoscaler/spark/defaults.yaml",
     "ray/autoscaler/_private/_azure/azure-vm-template.json",
     "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
