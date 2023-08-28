@@ -23,7 +23,7 @@ from ray.rllib.utils.annotations import (
     override,
     ExperimentalAPI,
 )
-from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.util import log_once
 
 
@@ -207,7 +207,6 @@ class RecurrentModel(abc.ABC):
         return outputs, next_state
 
 
-@Deprecated(error=False)
 class Model(RecurrentModel):
     """A RecurrentModel made non-recurrent by ignoring
     the input/output states.
