@@ -1539,6 +1539,14 @@ class TuneController:
 
         logger.debug(f"Requesting to STOP actor for trial {trial}")
 
+        if self._cached_trial_decisions.get(trial.trial_id):
+            logger.debug(
+                f"Trial {trial} is currently saving/pausing. Scheduling STOP after "
+                f"save resolved."
+            )
+            self._cached_trial_decisions[trial.trial_id] = TrialScheduler.STOP
+            return
+
         trial.temporary_state.saving_to = None
         trial.temporary_state.restoring_from = None
 
