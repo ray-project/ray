@@ -7,8 +7,8 @@ from ray.data._internal.logical.interfaces import (
     Rule,
 )
 from ray.data._internal.logical.rules._user_provided_optimizer_rules import (
-    USER_PROVIDED_LOGICAL_RULES,
-    USER_PROVIDED_PHYSICAL_RULES,
+    add_user_provided_logical_rules,
+    add_user_provided_physical_rules,
 )
 from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
 from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
@@ -28,7 +28,7 @@ class LogicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List[Rule]:
-        rules = DEFAULT_LOGICAL_RULES + USER_PROVIDED_LOGICAL_RULES
+        rules = add_user_provided_logical_rules(DEFAULT_LOGICAL_RULES)
         return [rule_cls() for rule_cls in rules]
 
 
@@ -37,7 +37,7 @@ class PhysicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List["Rule"]:
-        rules = DEFAULT_PHYSICAL_RULES + USER_PROVIDED_PHYSICAL_RULES
+        rules = add_user_provided_physical_rules(DEFAULT_PHYSICAL_RULES)
         return [rule_cls() for rule_cls in rules]
 
 
