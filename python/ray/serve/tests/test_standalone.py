@@ -29,7 +29,6 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
 )
-from ray._raylet import GcsClient
 from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
@@ -91,8 +90,7 @@ def lower_slow_startup_threshold_and_reset():
 def test_shutdown(ray_shutdown):
     ray.init(num_cpus=16)
     serve.start(http_options=dict(port=8003))
-    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
+    cluster_node_info_cache = create_cluster_node_info_cache()
     cluster_node_info_cache.update()
 
     @serve.deployment
@@ -373,8 +371,7 @@ def test_multiple_routers(ray_cluster):
 
     serve.run(A.bind())
 
-    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
+    cluster_node_info_cache = create_cluster_node_info_cache()
     cluster_node_info_cache.update()
 
     def get_proxy_names():

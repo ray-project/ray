@@ -7,7 +7,6 @@ import time
 from typing import Any, List, Tuple
 
 import ray
-from ray._raylet import GcsClient
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve._private.common import HTTPProxyStatus
@@ -217,9 +216,7 @@ def test_http_state_update_restarts_unhealthy_proxies(ray_shutdown):
     manager, cluster_node_info_cache = _make_http_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.HeadOnly),
         head_node_id,
-        create_cluster_node_info_cache(
-            GcsClient(address=ray.get_runtime_context().gcs_address)
-        ),
+        create_cluster_node_info_cache(),
     )
     cluster_node_info_cache.update()
     manager._proxy_states[head_node_id] = _create_http_proxy_state(

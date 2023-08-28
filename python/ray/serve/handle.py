@@ -6,14 +6,14 @@ from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tupl
 
 import ray
 from ray._private.utils import get_or_create_event_loop
-from ray._raylet import StreamingObjectRefGenerator, GcsClient
+from ray._raylet import StreamingObjectRefGenerator
 
 from ray import serve
 from ray.serve._private.common import DeploymentID, RequestProtocol
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
 )
-from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.default_impl import ClusterNodeInfoCacheImpl
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     get_random_letters,
@@ -153,16 +153,12 @@ class _DeploymentHandleBase:
                 event_loop = get_or_create_event_loop()
 
             node_id = ray.get_runtime_context().get_node_id()
-            cluster_node_info_cache = create_cluster_node_info_cache(
-                GcsClient(address=ray.get_runtime_context().gcs_address)
-            )
-            availability_zone = cluster_node_info_cache.get_node_az(node_id)
 
             self._router = Router(
                 serve.context.get_global_client()._controller,
                 self.deployment_id,
                 node_id,
-                availability_zone,
+                ClusterNodeInfoCacheImpl.get_node_az_static(node_id),
                 event_loop=event_loop,
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
                 _prefer_local_node_routing=self.handle_options._prefer_local_routing,
