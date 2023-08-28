@@ -124,7 +124,7 @@ kubectl apply -f ray-cluster-gclb-ingress.yaml
 # Step 5: Check ingress created by Step 4.
 kubectl describe ingress ray-cluster-ingress
 
-# Step 6: After a few minutes, GKE will allocate an external IP for the ingress. Check it using:
+# Step 6: After a few minutes, GKE allocates an external IP for the ingress. Check it using:
 kubectl get ingress ray-cluster-ingress
 
 # Example output:
