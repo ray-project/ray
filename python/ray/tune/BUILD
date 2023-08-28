@@ -660,15 +660,6 @@ py_test(
 )
 
 py_test(
-    name = "mnist_pytorch_lightning",
-    size = "medium",
-    srcs = ["examples/mnist_pytorch_lightning.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "pytorch", "no_new_storage"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "mnist_ptl_mini",
     size = "medium",
     srcs = ["examples/mnist_ptl_mini.py"],
