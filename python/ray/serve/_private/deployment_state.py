@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import json
 import logging
 import math
@@ -8,6 +7,7 @@ import time
 import traceback
 from collections import defaultdict, OrderedDict
 from copy import copy
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -56,14 +56,15 @@ from ray.serve._private.utils import (
     check_obj_ref_ready_nowait,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
-from ray.serve._private import deployment_scheduler
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.deployment_scheduler import (
     SpreadDeploymentSchedulingPolicy,
     DriverDeploymentSchedulingPolicy,
     ReplicaSchedulingRequest,
     DeploymentDownscaleRequest,
+    DeploymentScheduler,
 )
+from ray.serve._private import default_impl
 from ray.serve import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -114,6 +115,7 @@ class DeploymentTargetState:
             ray_actor_options=info.replica_config.ray_actor_options,
             placement_group_bundles=info.replica_config.placement_group_bundles,
             placement_group_strategy=info.replica_config.placement_group_strategy,
+            max_replicas_per_node=info.replica_config.max_replicas_per_node,
         )
 
         return cls(info, num_replicas, version, deleting)
@@ -430,6 +432,9 @@ class ActorReplicaWrapper:
             ),
             placement_group_strategy=(
                 deployment_info.replica_config.placement_group_strategy
+            ),
+            max_replicas_per_node=(
+                deployment_info.replica_config.max_replicas_per_node
             ),
             on_scheduled=self.on_scheduled,
         )
@@ -843,6 +848,7 @@ class DeploymentReplica(VersionedReplica):
         return RunningReplicaInfo(
             deployment_name=self.deployment_name,
             replica_tag=self._replica_tag,
+            node_id=self.actor_node_id,
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
             is_cross_language=self._actor.is_cross_language,
@@ -1153,7 +1159,7 @@ class DeploymentState:
         controller_name: str,
         detached: bool,
         long_poll_host: LongPollHost,
-        deployment_scheduler: deployment_scheduler.DeploymentScheduler,
+        deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         _save_checkpoint_func: Callable,
     ):
@@ -1888,7 +1894,7 @@ class DeploymentState:
         self.health_check_gauge.set(
             0,
             tags={
-                "deployment": str(self._id),
+                "deployment": self.deployment_name,
                 "replica": replica.replica_tag,
                 "application": self.app_name,
             },
@@ -1907,7 +1913,7 @@ class DeploymentState:
                 self.health_check_gauge.set(
                     1,
                     tags={
-                        "deployment": str(self._id),
+                        "deployment": self.deployment_name,
                         "replica": replica.replica_tag,
                         "application": self.app_name,
                     },
@@ -1922,7 +1928,7 @@ class DeploymentState:
                 self.health_check_gauge.set(
                     0,
                     tags={
-                        "deployment": str(self._id),
+                        "deployment": self.deployment_name,
                         "replica": replica.replica_tag,
                         "application": self.app_name,
                     },
@@ -2123,7 +2129,7 @@ class DriverDeploymentState(DeploymentState):
         controller_name: str,
         detached: bool,
         long_poll_host: LongPollHost,
-        deployment_scheduler: deployment_scheduler.DeploymentScheduler,
+        deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         _save_checkpoint_func: Callable,
     ):
@@ -2271,7 +2277,7 @@ class DeploymentStateManager:
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._cluster_node_info_cache = cluster_node_info_cache
-        self._deployment_scheduler = deployment_scheduler.DeploymentScheduler(
+        self._deployment_scheduler = default_impl.create_deployment_scheduler(
             cluster_node_info_cache
         )
 

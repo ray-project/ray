@@ -7,11 +7,14 @@ from pydantic import ValidationError
 from typing import List, Dict
 
 import ray
+from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
+
 from ray import serve
-from ray.serve._private.common import (
-    StatusOverview,
-    DeploymentStatusInfo,
-    ApplicationStatusInfo,
+from ray.serve.config import AutoscalingConfig
+from ray.serve.context import get_global_client
+from ray.serve.deployment import (
+    deployment_to_schema,
+    schema_to_deployment,
 )
 from ray.serve.schema import (
     RayActorOptionsSchema,
@@ -21,11 +24,10 @@ from ray.serve.schema import (
     ServeDeploySchema,
     serve_status_to_schema,
 )
-from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
-from ray.serve.config import AutoscalingConfig
-from ray.serve.deployment import (
-    deployment_to_schema,
-    schema_to_deployment,
+from ray.serve._private.common import (
+    StatusOverview,
+    DeploymentStatusInfo,
+    ApplicationStatusInfo,
 )
 
 
@@ -187,10 +189,9 @@ class TestRayActorOptionsSchema:
         # Schema should be createable with valid fields
         RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
-        # Schema should raise error when a nonspecified field is included
-        ray_actor_options_schema["fake_field"] = None
-        with pytest.raises(ValidationError):
-            RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        # Schema should NOT raise error when extra field is included
+        ray_actor_options_schema["extra_field"] = None
+        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
     def test_dict_defaults_ray_actor_options(self):
         # Dictionary fields should have empty dictionaries as defaults, not None
@@ -339,10 +340,9 @@ class TestDeploymentSchema:
         # Schema should be createable with valid fields
         DeploymentSchema.parse_obj(deployment_schema)
 
-        # Schema should raise error when a nonspecified field is included
-        deployment_schema["fake_field"] = None
-        with pytest.raises(ValidationError):
-            DeploymentSchema.parse_obj(deployment_schema)
+        # Schema should NOT raise error when extra field is included
+        deployment_schema["extra_field"] = None
+        DeploymentSchema.parse_obj(deployment_schema)
 
     @pytest.mark.parametrize(
         "option",
@@ -430,10 +430,9 @@ class TestServeApplicationSchema:
         # Schema should be createable with valid fields
         ServeApplicationSchema.parse_obj(serve_application_schema)
 
-        # Schema should raise error when a nonspecified field is included
-        serve_application_schema["fake_field"] = None
-        with pytest.raises(ValidationError):
-            ServeApplicationSchema.parse_obj(serve_application_schema)
+        # Schema should NOT raise error when extra field is included
+        serve_application_schema["extra_field"] = None
+        ServeApplicationSchema.parse_obj(serve_application_schema)
 
     @pytest.mark.parametrize("env", get_valid_runtime_envs())
     def test_serve_application_valid_runtime_env(self, env):
@@ -816,7 +815,8 @@ def test_status_schema_helpers():
     def f2():
         pass
 
-    client = serve.start()
+    serve.start()
+    client = get_global_client()
     serve.run(f1.bind(), name="app1")
     serve.run(f2.bind(), name="app2")
 

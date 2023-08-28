@@ -58,7 +58,7 @@ def _route_prefix_format(cls, v):
 
 
 @PublicAPI(stability="beta")
-class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
+class RayActorOptionsSchema(BaseModel):
     """Options with which to start a replica actor."""
 
     runtime_env: dict = Field(
@@ -138,9 +138,7 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="beta")
-class DeploymentSchema(
-    BaseModel, extra=Extra.forbid, allow_population_by_field_name=True
-):
+class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     """
     Specifies options for one deployment within a Serve application. For each deployment
     this can optionally be included in `ServeApplicationSchema` to override deployment
@@ -251,6 +249,16 @@ class DeploymentSchema(
         ),
     )
 
+    max_replicas_per_node: int = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "[EXPERIMENTAL] The max number of deployment replicas can "
+            "run on a single node. Valid values are None (no limitation) "
+            "or an integer in the range of [1, 100]. "
+            "Defaults to no limitation."
+        ),
+    )
+
     is_driver_deployment: bool = Field(
         default=DEFAULT.VALUE,
         description="Indicate Whether the deployment is driver deployment "
@@ -315,7 +323,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
 
 
 @PublicAPI(stability="beta")
-class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
+class ServeApplicationSchema(BaseModel):
     """
     Describes one Serve application, and currently can also be used as a standalone
     config to deploy a single application to a Ray cluster.
@@ -532,7 +540,12 @@ class gRPCOptionsSchema(BaseModel):
 
 @PublicAPI(stability="alpha")
 class HTTPOptionsSchema(BaseModel):
-    """Options to start the HTTP Proxy with."""
+    """Options to start the HTTP Proxy with.
+
+    NOTE: This config allows extra parameters to make it forward-compatible (ie
+          older versions of Serve are able to accept configs from a newer versions,
+          simply ignoring new parameters)
+    """
 
     host: str = Field(
         default="0.0.0.0",
@@ -571,13 +584,17 @@ class HTTPOptionsSchema(BaseModel):
 
 
 @PublicAPI(stability="alpha")
-class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+class ServeDeploySchema(BaseModel):
     """
     Multi-application config for deploying a list of Serve applications to the Ray
     cluster.
 
     This is the request JSON schema for the v2 REST API
     `PUT "/api/serve/applications/"`.
+
+    NOTE: This config allows extra parameters to make it forward-compatible (ie
+          older versions of Serve are able to accept configs from a newer versions,
+          simply ignoring new parameters)
     """
 
     proxy_location: DeploymentMode = Field(
@@ -856,6 +873,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
+    grpc_options: Optional[gRPCOptionsSchema] = Field(description="gRPC Proxy options.")
     http_proxies: Dict[str, HTTPProxyDetails] = Field(
         description=(
             "Mapping from node_id to details about the HTTP Proxy running on that node."

@@ -15,6 +15,11 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.utils.mock import TrialStatusSnapshot, TrialStatusSnapshotTaker
 
+from ray.train.tests.util import mock_storage_context
+
+
+STORAGE = mock_storage_context()
+
 
 @pytest.fixture(scope="function")
 def ray_start_4_cpus_2_gpus_extra():
@@ -56,10 +61,12 @@ def test_resource_parallelism_single(
     runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         callbacks=[TrialStatusSnapshotTaker(snapshot)],
+        storage=STORAGE,
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 1},
         "placement_group_factory": PlacementGroupFactory(bundles),
+        "storage": STORAGE,
     }
     trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
     for t in trials:
@@ -87,6 +94,7 @@ def test_fractional_gpus(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         callbacks=[TrialStatusSnapshotTaker(snapshot)],
+        storage=STORAGE,
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 1},
@@ -94,6 +102,7 @@ def test_fractional_gpus(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
         "config": {
             "sleep": 1,
         },
+        "storage": STORAGE,
     }
     trials = [Trial("__fake", **kwargs) for i in range(4)]
     for t in trials:
@@ -121,10 +130,12 @@ def test_multi_step(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         callbacks=[TrialStatusSnapshotTaker(snapshot)],
+        storage=STORAGE,
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 5},
         "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+        "storage": STORAGE,
     }
     trials = [Trial("__fake", **kwargs) for i in range(2)]
     for t in trials:
@@ -152,27 +163,27 @@ def test_resources_changing(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
     """
 
     class ChangingScheduler(FIFOScheduler):
-        def __init__(self):
-            self._has_received_one_trial_result = False
-
-        # For figuring out how many runner.step there are.
-        def has_received_one_trial_result(self):
-            return self._has_received_one_trial_result
-
         def on_trial_result(self, tune_controller, trial, result):
             if result["training_iteration"] == 1:
-                self._has_received_one_trial_result = True
-                tune_controller.pause_trial(trial)
+                # NOTE: This is a hack to get around the new pausing logic,
+                # which doesn't set the trial status to PAUSED immediately.
+                orig_status = trial.status
+                trial.set_status(Trial.PAUSED)
                 trial.update_resources(dict(cpu=4, gpu=0))
+                trial.set_status(orig_status)
+                return TrialScheduler.PAUSE
             return TrialScheduler.NOOP
 
     scheduler = ChangingScheduler()
     runner = TuneController(
-        resource_manager_factory=lambda: resource_manager_cls(), scheduler=scheduler
+        resource_manager_factory=lambda: resource_manager_cls(),
+        scheduler=scheduler,
+        storage=STORAGE,
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 2},
         "placement_group_factory": PlacementGroupFactory([{"CPU": 2, "GPU": 0}]),
+        "storage": STORAGE,
     }
     trials = [Trial("__fake", **kwargs)]
     for t in trials:
@@ -187,7 +198,7 @@ def test_resources_changing(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
     with pytest.raises(ValueError):
         trials[0].update_resources(dict(cpu=4, gpu=0))
 
-    while not scheduler.has_received_one_trial_result():
+    while trials[0].status == Trial.RUNNING:
         runner.step()
 
     assert trials[0].status == Trial.PAUSED
@@ -233,7 +244,9 @@ def test_queue_filling(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     )
 
     runner = TuneController(
-        resource_manager_factory=lambda: resource_manager_cls(), search_alg=search_alg
+        resource_manager_factory=lambda: resource_manager_cls(),
+        search_alg=search_alg,
+        storage=STORAGE,
     )
 
     while len(runner.get_trials()) < 3:
