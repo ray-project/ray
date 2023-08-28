@@ -22,7 +22,7 @@ def convert_dbfs_path_to_local_path(dbfs_path):
     """
     parsed_path = urlparse(dbfs_path)
     assert parsed_path.scheme.lower() == "dbfs", "dbfs path is required."
-    return "/dbfs" + parsed_path.path
+    return "file:///dbfs" + parsed_path.path
 
 
 def gen_cmd_exec_failure_msg(cmd, return_code, tail_output_deque):
