@@ -7,6 +7,11 @@ Ray Train Overview
 
 .. image:: ./images/train-concepts.svg
 
+Ray Train abstracts away the complexities distributed computing for developers.
+Model training on a single node or multiple nodes, uses the same training code.
+Changing processes and resource allocation with a single line of code.
+Ray Train is the simplest way to train, whether you have large models or large datasets.
+
 Ray Train has four key concepts:
 
 #. :ref:`Training function <train-overview-training-function>`: User-defined Python training loop.
@@ -30,16 +35,17 @@ Ray Train documentation uses the following conventions:
 
 .. code-block:: python
 
-    def train_func();
-    
-    # load model
-    ...
-    # load dataset
-    ...
-    # train model
-    ...
-    # report metrics and checkpoints
-    ...
+    def train_func():
+        """User-defined training function that runs on each distributed worker process."""
+        
+        # Load model
+        ...
+        # Load dataset
+        ...
+        # Train model
+        ...
+        # Report metrics and checkpoints
+        ...
 
 .. _train-overview-worker:
 
@@ -58,22 +64,24 @@ Scaling configuration
 ---------------------
 
 Ray Train scales training based on high level scaling parameters. 
-Specify the number of Worker processes to distribute the training to, using the :py:class:`~ray.train.ScalingConfig` class.
+Specify the number of worker processes to distribute the training to, using the :py:class:`~ray.train.ScalingConfig` class.
 Two basic parameters scale the training compute resources:
 
-* `num_workers`: The number of Workers to launch for a single distributed training job.
+* `num_workers`: The number of workers to launch for a single distributed training job.
 * `use_gpu`: The flag that configures Ray Train to use GPUs or not. 
 
 .. code-block:: python
 
-    # Single CPU: num_workers=1, use_gpu=false
-    ScalingConfig(num_workers=1, use_gpu=False)
+    from ray.train import ScalingConfig
 
-    # Single GPU: num_workers=1, use_gpu=true
-    ScalingConfig(num_workers=1, use_gpu=True)
+    # Single CPU
+    scaling_config = ScalingConfig(num_workers=1, use_gpu=False)
 
-    # Three GPUs: num_workers=3, use_gpu=true
-    ScalingConfig(num_workers=3, use_gpu=True)
+    # Single GPU
+    scaling_config = ScalingConfig(num_workers=1, use_gpu=True)
+
+    # Multiple GPUs
+    scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
 
 .. _train-overview-trainers:
 
@@ -86,4 +94,7 @@ The Trainer creates multiple workers and runs your training function.
 
 .. code-block:: python
 
+    from ray.train.torch import TorchTrainer
+    
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
+    trainer.fit()

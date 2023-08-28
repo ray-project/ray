@@ -7,13 +7,7 @@ Ray Train: Scalable Model Training
 
 Ray Train is a scalable model training library for distributed training and fine-tuning.
 
-Ray Train is the simplest way to train large models with large datasets:
-
-* Model training on a single node or multiple nodes, uses the same training code.
-* Ray Train abstracts away the complexities distributed computing for developers.
-* Changing processes and resource allocation with a single line of code.
-
-Ray Train provides Pythonic wrapper classes for many frameworks:
+Ray Train provides support for many frameworks:
 
 * PyTorch trainers: PyTorch, PyTorch Lightning, HuggingFace Transformers, HuggingFace Accelerate
 * Other deep learning libraries: TensorFlow and Keras
@@ -43,7 +37,7 @@ Learn more
         **Overview**
         ^^^
 
-        Understand the key concepts for distributed training.
+        Understand the key concepts for distributed training with Ray Train.
 
         +++
         .. button-ref:: train-overview
