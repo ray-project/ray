@@ -418,7 +418,7 @@ class StorageContext:
 
     def __init__(
         self,
-        storage_path: Optional[str],
+        storage_path: Optional[Union[str, os.PathLike]],
         experiment_dir_name: str,
         sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
@@ -566,7 +566,7 @@ class StorageContext:
 
         Args:
             force: If True, wait for a previous sync to finish, launch a new one,
-                and wait for that one to finish. By the end of a `force=True call`, the
+                and wait for that one to finish. By the end of a `force=True` call, the
                 latest version of the trial artifacts will be persisted.
         """
         if not self.sync_config.sync_artifacts:

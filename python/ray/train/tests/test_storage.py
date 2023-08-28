@@ -41,6 +41,7 @@ def test_custom_fs_validation(tmp_path):
 
 
 def test_storage_path_inputs():
+    """Tests storage path input edge cases."""
     exp_name = "test_storage_path"
 
     # Relative paths don't work
@@ -58,13 +59,16 @@ def test_storage_path_inputs():
     # Paths with lots of extra . .. and /
     path = os.path.expanduser("~/ray_results")
     path = os.path.join(path, ".", "..", "ray_results", ".")
-    path.replace(os.path.sep, os.path.sep * 2)
+    path = path.replace(os.path.sep, os.path.sep * 2)
     storage = StorageContext(storage_path=path, experiment_dir_name=exp_name)
 
     storage.storage_filesystem.create_dir(
         os.path.join(storage.storage_fs_path, "test_dir")
     )
     assert Path("~/ray_results/test_dir").expanduser().exists()
+
+    # Path objects work
+    StorageContext(storage_path=Path(path), experiment_dir_name=exp_name)
 
 
 if __name__ == "__main__":
