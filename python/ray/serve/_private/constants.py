@@ -225,9 +225,9 @@ RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = (
     os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "0") == "1"
 )
 
-# Feature flag to turn on AZ locality routing for proxies. Off by default.
+# Feature flag to turn on AZ locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING = (
-    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING", "0") == "1"
+    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING", "1") == "1"
 )
 
 RAY_SERVE_UNKNOWN_AVAILABILITY_ZONE = "UNKNOWN"

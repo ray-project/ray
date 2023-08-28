@@ -153,7 +153,6 @@ class _DeploymentHandleBase:
                 event_loop = get_or_create_event_loop()
 
             node_id = ray.get_runtime_context().get_node_id()
-
             self._router = Router(
                 serve.context.get_global_client()._controller,
                 self.deployment_id,
