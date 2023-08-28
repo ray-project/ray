@@ -15,7 +15,6 @@ from ray.train._internal.storage import (
 from ray.train.tests.test_new_persistence import _resolve_storage_type
 
 
-# @pytest.fixture(params=["nfs"])
 @pytest.fixture(params=[None, "nfs", "cloud", "custom_fs"])
 def storage(request, tmp_path) -> StorageContext:
     storage_type = request.param
@@ -35,9 +34,10 @@ def storage(request, tmp_path) -> StorageContext:
 
 
 @pytest.fixture(autouse=True)
-def set_local_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
-    yield
+def local_path(tmp_path, monkeypatch):
+    local_dir = str(tmp_path / "ray_results")
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", local_dir)
+    yield local_dir
 
 
 def test_custom_fs_validation(tmp_path):
@@ -102,6 +102,12 @@ def test_storage_path_inputs():
 
     # Path objects work
     StorageContext(storage_path=Path(path), experiment_dir_name=exp_name)
+
+
+def test_no_syncing_needed(local_path):
+    """Tests that we don't create a syncer if no syncing is needed."""
+    storage = StorageContext(storage_path=local_path, experiment_dir_name="test_dir")
+    assert storage.syncer is None
 
 
 def test_storage_validation_marker(storage: StorageContext):
