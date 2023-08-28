@@ -74,18 +74,15 @@ def test_cancel_on_http_client_disconnect_during_execution(
         requests.get("http://localhost:8000", timeout=0.5)
 
     # Both the HTTP handler and the inner deployment handle call should be cancelled.
-    ray.get(inner_signal_actor.wait.remote())
-    ray.get(outer_signal_actor.wait.remote())
+    ray.get(inner_signal_actor.wait.remote(), timeout=10)
+    ray.get(outer_signal_actor.wait.remote(), timeout=10)
 
 
 @pytest.mark.skipif(
     not RAY_SERVE_ENABLE_NEW_ROUTING,
     reason="New routing feature flag is disabled.",
 )
-@pytest.mark.parametrize("use_fastapi", [False, True])
-def test_cancel_on_http_client_disconnect_during_assignment(
-    serve_instance, use_fastapi: bool
-):
+def test_cancel_on_http_client_disconnect_during_assignment(serve_instance):
     """Test the client disconnecting while the proxy is assigning the request."""
     signal_actor = SignalActor.remote()
 
@@ -138,11 +135,11 @@ def test_cancel_sync_handle_call_during_execution(serve_instance):
 
     # Send a request and wait for it to start executing.
     r = h.remote()
-    ray.get(running_signal_actor.wait.remote())
+    ray.get(running_signal_actor.wait.remote(), timeout=10)
 
     # Cancel it and verify that it is cancelled via signal.
     r.cancel()
-    ray.get(cancelled_signal_actor.wait.remote())
+    ray.get(cancelled_signal_actor.wait.remote(), timeout=10)
 
     with pytest.raises(ray.exceptions.TaskCancelledError):
         r.result()
@@ -302,7 +299,7 @@ def test_cancel_generator_sync(serve_instance):
     with pytest.raises(ray.exceptions.TaskCancelledError):
         next(g)
 
-    ray.get(signal_actor.wait.remote())
+    ray.get(signal_actor.wait.remote(), timeout=10)
 
 
 @pytest.mark.skipif(
@@ -377,7 +374,10 @@ def test_only_relevant_task_is_cancelled(serve_instance):
     reason="New routing feature flag is disabled.",
 )
 def test_out_of_band_task_is_not_cancelled(serve_instance):
-    """Test cancelling a request doesn't tasks submitted outside a request context."""
+    """
+    Test cancelling a request doesn't cancel tasks submitted
+    outside the request's context.
+    """
     signal_actor = SignalActor.remote()
 
     @serve.deployment
