@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+import pytest
 import tempfile
 import unittest
 import subprocess
@@ -57,7 +58,6 @@ RAY_CLUSTER_NAMESPACE = "default"
 
 # Test runs longer than the default timeout.
 pytestmark = pytest.mark.timeout(300)
-
 
 
 class KubeRayAutoscalingTest(unittest.TestCase):
