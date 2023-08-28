@@ -67,3 +67,8 @@ steps:
       - RAY_DISABLE_EXTRA_CPP=1 pip install -e python/[all]
       - ./ci/lint/check_api_annotations.py
     depends_on: forge
+
+  - label: ":lint-roller: lint: documentation style"
+    commands:
+      - ./ci/lint/check-documentation-style.sh
+    depends_on: forge

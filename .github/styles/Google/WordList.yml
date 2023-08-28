@@ -1,7 +1,7 @@
 extends: substitution
 message: "Use '%s' instead of '%s'."
 link: "https://developers.google.com/style/word-list"
-level: warning
+level: error
 ignorecase: false
 action:
   name: replace
