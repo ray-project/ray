@@ -1545,7 +1545,6 @@ class TuneController:
                 f"save resolved."
             )
             self._cached_trial_decisions[trial.trial_id] = TrialScheduler.STOP
-            return
 
         trial.temporary_state.saving_to = None
         trial.temporary_state.restoring_from = None
