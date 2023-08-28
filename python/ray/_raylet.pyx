@@ -2379,7 +2379,7 @@ def _auto_reconnect(f):
 
 def timeout_to_int_ms(timeout: Optional[float]):
     if timeout is None:
-        return 0 # defaults to gcs_server_request_timeout_seconds in PythonGcsClient.
+        return 0  # defaults to gcs_server_request_timeout_seconds in PythonGcsClient.
     timeout_int = round(1000 * timeout)
     if timeout_int == 0:
         raise ValueError("timeout must be non-0 or None for default value.")

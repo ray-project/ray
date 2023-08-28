@@ -31,6 +31,7 @@ def get_all_ray_worker_processes():
 @pytest.fixture
 def short_gcs_publish_timeout(monkeypatch):
     monkeypatch.setenv("RAY_MAX_GCS_PUBLISH_RETRIES", "3")
+    monkeypatch.setenv("RAY_gcs_server_request_timeout_seconds", "1")
     yield
 
 
