@@ -98,9 +98,11 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             os.path.join(absolute_local_dir, exp_name)
         )
 
-        checkpoint_path = os.path.join(
-            local_dir, exp_name, trial_name, "checkpoint_000001/checkpoint.pkl"
+        checkpoint_dir = os.path.join(
+            local_dir, exp_name, trial_name, "checkpoint_000001"
         )  # Relative checkpoint path
+
+        checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pkl")
 
         # The file tune would find. The absolute checkpoint path.
         tune_find_file = os.path.abspath(os.path.expanduser(checkpoint_path))
@@ -112,7 +114,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             self.MockTrainable,
             name=exp_name,
             stop={"training_iteration": 2},  # train one more iteration.
-            restore=checkpoint_path,  # Restore the checkpoint
+            restore=checkpoint_dir,  # Restore the checkpoint
             config={"env": "CartPole-v0", "log_level": "DEBUG"},
         ).trials
         self.assertIsNone(trial.error_file)
