@@ -275,6 +275,42 @@ def convert_to_msgpack_checkpoint(
     return msgpack_checkpoint_dir
 
 
+@PublicAPI(stability="beta")
+def convert_to_msgpack_policy_checkpoint(
+    policy_checkpoint: Union[str, Checkpoint, NewCheckpoint],
+    msgpack_checkpoint_dir: str,
+) -> str:
+    """Converts a Policy checkpoint (pickle based) to a msgpack based one.
+
+    Msgpack has the advantage of being python version independent.
+
+    Args:
+        policy_checkpoint: The directory, in which to find the Policy checkpoint (pickle
+            based).
+        msgpack_checkpoint_dir: The directory, in which to create the new msgpack
+            based checkpoint.
+
+    Returns:
+        The directory in which the msgpack checkpoint has been created. Note that
+        this is the same as `msgpack_checkpoint_dir`.
+    """
+    from ray.rllib.policy.policy import Policy
+
+    policy = Policy.from_checkpoint(policy_checkpoint)
+
+    os.makedirs(msgpack_checkpoint_dir, exist_ok=True)
+    policy.export_checkpoint(
+        msgpack_checkpoint_dir,
+        policy_state=policy.get_state(),
+        checkpoint_format="msgpack",
+    )
+
+    # Release all resources used by the Policy.
+    del policy
+
+    return msgpack_checkpoint_dir
+
+
 @PublicAPI
 def try_import_msgpack(error: bool = False):
     """Tries importing msgpack and msgpack_numpy and returns the patched msgpack module.
