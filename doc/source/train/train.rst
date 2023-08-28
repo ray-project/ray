@@ -9,9 +9,9 @@ Ray Train is a scalable model training library for distributed training and fine
 
 Ray Train provides support for many frameworks:
 
-* PyTorch trainers: PyTorch, PyTorch Lightning, HuggingFace Transformers, HuggingFace Accelerate
-* Other deep learning libraries: TensorFlow and Keras
-* Tree-based trainers: XGBoost, LightGBM
+* PyTorch-based frameworks: PyTorch, PyTorch Lightning, Hugging Face Transformers, Hugging Face Accelerate, DeepSpeed
+* Other deep learning frameworks: TensorFlow, Keras, Horovod
+* Tree-based frameworks: XGBoost, LightGBM
 
 Install Ray Train
 -----------------
