@@ -13,6 +13,7 @@ from ray.tune.schedulers.resource_changing_scheduler import (
 )
 
 from ray.tune.tests.execution.utils import create_execution_test_objects
+from ray.train.tests.util import mock_storage_context
 
 
 class MockTuneController(TuneController):
@@ -22,19 +23,13 @@ class MockTuneController(TuneController):
 
 class TestUniformResourceAllocation(unittest.TestCase):
     def setUp(self):
-        from ray.train._internal.storage import StorageContext
-
         self.tmpdir = tempfile.mkdtemp()
         self.tune_controller, *_ = create_execution_test_objects(
             self.tmpdir,
             resources={"CPU": 8, "GPU": 8},
             reuse_actors=False,
             tune_controller_cls=MockTuneController,
-            storage=StorageContext(
-                storage_path=self.tmpdir,
-                experiment_dir_name="exp",
-                trial_dir_name="trial",
-            ),
+            storage=mock_storage_context(),
         )
 
     def tearDown(self) -> None:
