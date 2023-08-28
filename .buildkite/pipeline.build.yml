@@ -227,7 +227,6 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=doctest,-gpu
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
       python/ray/... doc/...
 
 - label: ":python: Ray on Spark Test"
@@ -479,6 +478,7 @@
       --test_env=DOCKER_TLS_VERIFY=1
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
 
 - label: ":hadoop: Ray AIR HDFS tests"
   conditions: ["RAY_CI_ML_AFFECTED"]

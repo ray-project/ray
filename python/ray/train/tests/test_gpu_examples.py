@@ -1,5 +1,7 @@
+import os
 import pytest
 import torch
+from tempfile import TemporaryDirectory
 
 from ray import train
 from ray.train import Checkpoint, ScalingConfig
@@ -74,8 +76,9 @@ def test_horovod_torch_mnist_gpu_checkpoint(ray_start_4_cpus_2_gpus):
         net = torch.nn.Linear(in_features=8, out_features=16)
         net.to("cuda")
 
-        checkpoint = Checkpoint.from_dict({"model": net.state_dict()})
-        train.report({"metric": 1}, checkpoint=checkpoint)
+        with TemporaryDirectory() as tmpdir:
+            torch.save(net.state_dict(), os.path.join(tmpdir, "checkpoint.pt"))
+            train.report({"metric": 1}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     num_workers = 2
     trainer = HorovodTrainer(
