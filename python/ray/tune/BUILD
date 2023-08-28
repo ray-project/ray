@@ -59,7 +59,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_api.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "rllib", "new_storage"],
+    tags = ["team:ml", "exclusive", "rllib"],
 )
 
 py_test(
@@ -366,7 +366,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tune_restore.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "rllib", "new_storage"],
+    tags = ["team:ml", "exclusive", "rllib"],
 )
 
 py_test(

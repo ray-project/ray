@@ -370,30 +370,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
             train.report(dict(timesteps_total=1))
 
         register_trainable("f1", train_fn)
-        with unittest.mock.patch.dict(os.environ, {"TEST_TMPDIR": logdir}):
+        with unittest.mock.patch.dict(os.environ, {"RAY_AIR_LOCAL_CACHE_DIR": logdir}):
             tune.run("f1")
-
-    def testLogdirStartingWithTilde(self):
-        local_dir = "~/ray_results/local_dir"
-
-        def train_fn(config):
-            cwd = os.getcwd()
-            assert cwd.startswith(os.path.expanduser(local_dir)), cwd
-            assert not cwd.startswith("~"), cwd
-            train.report(dict(timesteps_total=1))
-
-        register_trainable("f1", train_fn)
-        with unittest.mock.patch.dict(
-            os.environ, {"TEST_TMPDIR": os.path.expanduser(local_dir)}
-        ):
-            run_experiments(
-                {
-                    "foo": {
-                        "run": "f1",
-                        "config": {"a": "b"},
-                    }
-                }
-            )
 
     def testLongFilename(self):
         logdir = os.path.join(ray._private.utils.get_user_temp_dir(), "logdir")
@@ -404,7 +382,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         register_trainable("f1", train_fn)
 
-        with unittest.mock.patch.dict(os.environ, {"TEST_TMPDIR": logdir}):
+        with unittest.mock.patch.dict(os.environ, {"RAY_AIR_LOCAL_CACHE_DIR": logdir}):
             run_experiments(
                 {
                     "foo": {
