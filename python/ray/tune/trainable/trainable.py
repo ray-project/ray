@@ -928,6 +928,8 @@ class Trainable:
 
         """
         if _use_storage_context():
+            if isinstance(checkpoint_path, str):
+                checkpoint_path = NewCheckpoint.from_directory(checkpoint_path)
             if isinstance(checkpoint_path, NewCheckpoint):
                 checkpoint_result = _TrainingResult(
                     checkpoint=checkpoint_path, metrics={}
