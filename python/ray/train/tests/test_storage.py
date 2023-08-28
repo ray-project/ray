@@ -15,8 +15,8 @@ from ray.train._internal.storage import (
 from ray.train.tests.test_new_persistence import _resolve_storage_type
 
 
-# @pytest.fixture(params=[None, "nfs", "cloud", "custom_fs"])
-@pytest.fixture(params=["nfs"])
+# @pytest.fixture(params=["nfs"])
+@pytest.fixture(params=[None, "nfs", "cloud", "custom_fs"])
 def storage(request, tmp_path) -> StorageContext:
     storage_type = request.param
     with _resolve_storage_type(storage_type, tmp_path) as (
@@ -28,7 +28,9 @@ def storage(request, tmp_path) -> StorageContext:
             experiment_dir_name="exp_name",
             storage_filesystem=storage_filesystem,
             trial_dir_name="trial_name",
-            sync_config=SyncConfig(sync_artifacts=True),
+            sync_config=SyncConfig(
+                sync_artifacts=True, sync_artifacts_on_checkpoint=True, sync_period=1000
+            ),
         )
 
 
@@ -157,40 +159,47 @@ def test_persist_current_checkpoint(storage: StorageContext, tmp_path):
 
 
 def test_persist_artifacts(storage: StorageContext):
-    # Create the trial directory with some artifacts
+    """Tests typical `StorageContext.persist_artifacts(force=True/False)` usage."""
     trial_local_path = Path(storage.trial_local_path)
     trial_local_path.mkdir(parents=True)
-
     trial_local_path.joinpath("1.txt").touch()
-    trial_local_path.joinpath("2.txt").touch()
-    trial_local_path.joinpath("3.txt").touch()
 
-    # Uploading should work now
     storage.persist_artifacts()
+
+    if not storage.syncer:
+        # No syncing is needed -- pass early if storage_path == storage_local_path
+        assert _list_at_fs_path(storage.storage_filesystem, storage.trial_fs_path) == [
+            "1.txt"
+        ]
+        return
+
     storage.syncer.wait()
 
     assert sorted(
         _list_at_fs_path(storage.storage_filesystem, storage.trial_fs_path)
-    ) == [
-        "1.txt",
-        "2.txt",
-        "3.txt",
-    ]
+    ) == ["1.txt"]
 
-    trial_local_path.joinpath("4.txt").touch()
-    storage.persist_artifacts(force=True)
+    trial_local_path.joinpath("2.txt").touch()
 
+    # A new sync should not be triggered because sync_period is 1000 seconds
+    storage.persist_artifacts()
+    storage.syncer.wait()
+
+    # -> No change in the persisted files
     assert sorted(
         _list_at_fs_path(storage.storage_filesystem, storage.trial_fs_path)
-    ) == [
-        "1.txt",
-        "2.txt",
-        "3.txt",
-        "4.txt",
-    ]
+    ) == ["1.txt"]
+
+    # This is what happens on `train.report` when a checkpoint is reported
+    # and `sync_artifacts_on_checkpoint=True`
+    storage.persist_artifacts(force=storage.sync_config.sync_artifacts_on_checkpoint)
+    assert sorted(
+        _list_at_fs_path(storage.storage_filesystem, storage.trial_fs_path)
+    ) == ["1.txt", "2.txt"]
 
 
 def test_persist_artifacts_failures(storage: StorageContext):
+    """Tests `StorageContext.persist_artifacts` edge cases (empty directory)."""
     if not storage.syncer:
         # Should be a no-op if storage_path == storage_local_path (no syncing needed)
         storage.persist_artifacts()
