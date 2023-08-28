@@ -8,6 +8,7 @@ import pytest
 
 import ray
 from ray.cluster_utils import Cluster
+from ray.exceptions import RayActorError
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 from ray import serve
@@ -38,7 +39,13 @@ def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
             refs = [handle.remote()._to_object_ref_sync() for _ in range(10)]
 
         done, pending = ray.wait(refs)
-        pids = pids.union(set(ray.get(done)))
+        for ref in done:
+            try:
+                pids.add(ray.get(ref))
+            except RayActorError:
+                # Handle sent request to dead actor before running replicas were updated
+                # This can happen because health check period = 1s
+                pass
         refs = list(pending)
         if time.time() - start >= timeout:
             raise TimeoutError("Timed out waiting for pids.")
