@@ -132,13 +132,11 @@ class HttpServerDashboardHead:
     @aiohttp.web.middleware
     async def path_clean_middleware(self, request, handler):
         if request.path.startswith("/static") or request.path.startswith("/logs"):
-            # strip the "/" from the request path to allow for proper joining
-            path = os.path.abspath(os.path.join("/canary/", request.path[1:]))
-            print("Destined for path: ", path)
+            parent = "/logs" if request.path.startswith("/logs") else "/static"
 
-            # if the destination is not relative to our canary directory, then the user is attempting
+            # If the destination is not relative to the expected directoy, then the user is attempting
             # path traversal, so deny the request
-            if not pathlib.Path(path).is_relative_to("/canary"):
+            if not pathlib.Path(os.path.abspath(request.path)).is_relative_to(parent):
                 raise aiohttp.web.HTTPForbidden()
         return await handler(request)
 
