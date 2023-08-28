@@ -4,7 +4,31 @@ from pathlib import Path
 import pytest
 import pyarrow.fs
 
-from ray.train._internal.storage import StorageContext
+from ray.train import Checkpoint
+from ray.train._internal.storage import StorageContext, _list_at_fs_path
+
+from ray.train.tests.test_new_persistence import _resolve_storage_type
+
+
+@pytest.fixture(params=[None, "nfs", "cloud", "custom_fs"])
+def storage(request, tmp_path) -> StorageContext:
+    storage_type = request.param
+    with _resolve_storage_type(storage_type, tmp_path) as (
+        storage_path,
+        storage_filesystem,
+    ):
+        yield StorageContext(
+            storage_path=storage_path,
+            experiment_dir_name="exp_name",
+            storage_filesystem=storage_filesystem,
+            trial_dir_name="trial_name",
+        )
+
+
+@pytest.fixture(autouse=True)
+def set_local_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
+    yield
 
 
 def test_custom_fs_validation(tmp_path):
@@ -69,6 +93,48 @@ def test_storage_path_inputs():
 
     # Path objects work
     StorageContext(storage_path=Path(path), experiment_dir_name=exp_name)
+
+
+def test_storage_validation_marker(storage: StorageContext):
+    pass
+
+
+def test_persist_current_checkpoint(storage: StorageContext, tmp_path):
+    # Uploading a non-existent checkpoint directory should fail
+    with pytest.raises(FileNotFoundError):
+        storage.persist_current_checkpoint(
+            Checkpoint.from_directory("/tmp/nonexistent/checkpoint")
+        )
+
+    # Uploading an empty checkpoint directory
+    (tmp_path / "empty").mkdir()
+    storage.persist_current_checkpoint(Checkpoint.from_directory(tmp_path / "empty"))
+    assert (
+        _list_at_fs_path(storage.storage_filesystem, storage.checkpoint_fs_path) == []
+    )
+
+    # Normal use case: Uploading an checkpoint directory with files
+    (tmp_path / "regular").mkdir()
+    (tmp_path / "regular" / "1.txt").touch()
+    storage.persist_current_checkpoint(Checkpoint.from_directory(tmp_path / "regular"))
+    assert _list_at_fs_path(storage.storage_filesystem, storage.checkpoint_fs_path) == [
+        "1.txt"
+    ]
+
+    storage.current_checkpoint_index += 1
+
+    # Persisting a checkpoint that is already at the correct path (for local fs case)
+    if isinstance(storage.storage_filesystem, pyarrow.fs.LocalFileSystem):
+        final_checkpoint_dir = Path(storage.checkpoint_fs_path)
+        final_checkpoint_dir.mkdir(parents=True)
+        (final_checkpoint_dir / "2.txt").touch()
+        storage.persist_current_checkpoint(
+            Checkpoint.from_directory(final_checkpoint_dir)
+        )
+
+
+def test_persist_artifacts(storage: StorageContext):
+    pass
 
 
 if __name__ == "__main__":
