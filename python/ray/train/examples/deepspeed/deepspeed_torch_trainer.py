@@ -6,7 +6,6 @@ https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 Fine-tune a BERT model with DeepSpeed ZeRO-3 and Ray Train and Ray Data
 """
 
-import os
 import deepspeed
 import torch
 
@@ -23,14 +22,8 @@ from transformers import (
 import ray
 import ray.train
 
-# TODO(ml-team): Change this to ray.train.Checkpoint
-from ray.train._checkpoint import Checkpoint
-from ray.train import DataConfig, ScalingConfig
+from ray.train import DataConfig, ScalingConfig, Checkpoint
 from ray.train.torch import TorchTrainer
-
-# TODO(ml-team): Remove this:
-os.environ["RAY_AIR_NEW_PERSISTENCE_MODE"] = "1"
-ray.init(runtime_env={"env_vars": {"RAY_AIR_NEW_PERSISTENCE_MODE": "1"}})
 
 
 def train_func(config):
@@ -122,17 +115,16 @@ def train_func(config):
         # Report checkpoint and metrics to Ray Train
         # ==============================================================
         with TemporaryDirectory() as tmpdir:
+            # Each worker saves its own checkpoint shard
             model.save_checkpoint(tmpdir)
 
             # Ensure all workers finished saving their checkpoint shard
             torch.distributed.barrier()
 
-            # Report all shards on a node from local rank 0
-            if model.local_rank == 0:
-                checkpoint = Checkpoint.from_directory(tmpdir)
-            else:
-                checkpoint = None
-            ray.train.report(metrics=eval_metric, checkpoint=checkpoint)
+            # Report checkpoint shards from each worker in parallel
+            ray.train.report(
+                metrics=eval_metric, checkpoint=Checkpoint.from_directory(tmpdir)
+            )
         # ==============================================================
 
 
