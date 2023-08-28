@@ -217,8 +217,12 @@ class Cluster:
                 ray_params.update_if_absent(gcs_address=self.gcs_address)
                 # We only need one log monitor per physical node.
                 ray_params.update_if_absent(include_log_monitor=False)
-                # Let grpc pick a port.
+                # Each worker node should have it's own set of ports.
                 ray_params.update_if_absent(node_manager_port=0)
+                ray_params.update_if_absent(dashboard_agent_listen_port=None)
+                ray_params.update_if_absent(metrics_agent_port=None)
+                ray_params.update_if_absent(metrics_export_port=None)
+                ray_params.update_if_absent(runtime_env_agent_port=None)
 
                 node = ray._private.node.Node(
                     ray_params,
