@@ -1206,7 +1206,6 @@ provider:
         if os.environ.get("RAY_MINIMAL") != "1":
             expected_payload["tune_scheduler"] = "FIFOScheduler"
             expected_payload["tune_searcher"] = "BasicVariantGenerator"
-            expected_payload["air_storage_configuration"] = "driver"
             expected_payload["air_entrypoint"] = "Tuner.fit"
         assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
