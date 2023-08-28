@@ -56,14 +56,15 @@ from ray.serve._private.utils import (
     check_obj_ref_ready_nowait,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
-from ray.serve._private import deployment_scheduler
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.deployment_scheduler import (
     SpreadDeploymentSchedulingPolicy,
     DriverDeploymentSchedulingPolicy,
     ReplicaSchedulingRequest,
     DeploymentDownscaleRequest,
+    DeploymentScheduler,
 )
+from ray.serve._private import default_impl
 from ray.serve import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -1158,7 +1159,7 @@ class DeploymentState:
         controller_name: str,
         detached: bool,
         long_poll_host: LongPollHost,
-        deployment_scheduler: deployment_scheduler.DeploymentScheduler,
+        deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         _save_checkpoint_func: Callable,
     ):
@@ -2128,7 +2129,7 @@ class DriverDeploymentState(DeploymentState):
         controller_name: str,
         detached: bool,
         long_poll_host: LongPollHost,
-        deployment_scheduler: deployment_scheduler.DeploymentScheduler,
+        deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         _save_checkpoint_func: Callable,
     ):
@@ -2276,7 +2277,7 @@ class DeploymentStateManager:
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._cluster_node_info_cache = cluster_node_info_cache
-        self._deployment_scheduler = deployment_scheduler.DeploymentScheduler(
+        self._deployment_scheduler = default_impl.create_deployment_scheduler(
             cluster_node_info_cache
         )
 
