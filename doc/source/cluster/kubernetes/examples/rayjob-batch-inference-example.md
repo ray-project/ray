@@ -12,50 +12,7 @@ You must have a Kubernetes cluster running and `kubectl` configured to use it, a
 
 ## Step 0: Create a Kubernetes cluster on GKE (Optional)
 
-If you already have a Kubernetes cluster with GPUs, you can skip this step.
-
-Run this command and all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, you will need to install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
-
-```bash
-
-gcloud container clusters create batch-gpu-cluster \
-    --num-nodes=1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
-    --zone=us-west1-b --machine-type e2-standard-8
-
-```
-
-This command creates a Kubernetes cluster named `batch-gpu-cluster` with 1 node in the `us-west1-b` zone. In this example, we use the `e2-standard-8` machine type, which has 8 vCPUs and 32 GB RAM. 
-
-You can also create a cluster from the [Google Cloud Console](https://console.cloud.google.com/kubernetes/list).
-
-Run the following command to create a GPU node pool for the Ray cluster.
-(You can also create it from the Google Cloud Console; see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/node-taints#create_a_node_pool_with_node_taints) for more details.)
-
-```bash
-
-gcloud container node-pools create gpu-node-pool \
-  --accelerator type=nvidia-tesla-t4,count=4,gpu-driver-version=default \
-  --zone us-west1-b \
-  --cluster batch-gpu-cluster \
-  --num-nodes 1 \
-  --min-nodes 0 \
-  --max-nodes 1 \
-  --enable-autoscaling \
-  --machine-type n1-standard-64
-
-  ```
-
-The `--accelerator` flag specifies the type and number of GPUs for each node in the node pool. In this example, we use the [NVIDIA L4](https://cloud.google.com/compute/docs/gpus#l4-gpus) GPU.  The machine type is `n1-standard-64`, which has [64 vCPUs and 240 GB RAM](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machine_types).  The `--min-nodes 0` and `--max-nodes 1` flags enable autoscaling for the node pool.  The `--num-nodes 1` flag specifies the initial number of nodes in the node pool.
-
-GKE will automatically prevent CPU-only pods such as the Kuberay operator from being scheduled on this GPU node pool. This is because GPUs are expensive, so we want to use this node pool for Ray GPU nodes only. To set this behavior up manually, you can use taints and tolerations; see the [Kubernetes documentation](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/).
-
-Finally, run the following command to download credentials and configure the Kubernetes CLI to use them.
-
-```sh
-gcloud container clusters get-credentials batch-gpu-cluster --zone us-west1-b
-```
-
-For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
+Please follow [this tutorial]((kuberay-gke-gpu-cluster-setup) to create a Kubernetes cluster on GKE with four Nvidia T4 GPUs.  If you already have a Kubernetes cluster with GPUs, you can skip this step.
 
 ## Step 1: Install the KubeRay Operator
 
