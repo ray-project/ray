@@ -49,14 +49,25 @@ def _format_failed_pyspy_command(cmd, stdout, stderr) -> str:
 # If we can sudo, always try that. Otherwise, py-spy will only work if the user has
 # root privileges or has configured setuid on the py-spy script.
 async def _can_passwordless_sudo() -> bool:
-    process = await asyncio.create_subprocess_shell(
-        "sudo -n true",
+    process = await asyncio.create_subprocess_exec(
+        "sudo", "-n", "true",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        shell=True,
     )
     _, _ = await process.communicate()
     return process.returncode == 0
+
+
+async def _get_pyspy_path() -> str:
+    process = await asyncio.create_subprocess_exec(
+        "which", "py-spy",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    stdout, _ = await process.communicate()
+    if process.returncode != 0:
+        return ""
+    return stdout.decode().strip()
 
 
 class CpuProfilingManager:
@@ -65,17 +76,19 @@ class CpuProfilingManager:
         self.profile_dir_path.mkdir(exist_ok=True)
 
     async def trace_dump(self, pid: int, native: bool = False) -> (bool, str):
-        cmd = f"py-spy dump -p {pid}"
+        cmd = ["py-spy", "dump", "-p" , str(pid)]
         # We
         if sys.platform == "linux" and native:
-            cmd += " --native"
+            cmd.append("--native")
         if await _can_passwordless_sudo():
-            cmd = "sudo -n " + cmd.replace("py-spy", "$(which py-spy)")
-        process = await asyncio.create_subprocess_shell(
-            cmd,
+            pyspy_path = await _get_pyspy_path()
+            if pyspy_path != "":
+                cmd[0] = pyspy_path
+                cmd = ["sudo", "-n"] + cmd
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            shell=True,
         )
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
@@ -86,6 +99,10 @@ class CpuProfilingManager:
     async def cpu_profile(
         self, pid: int, format="flamegraph", duration: float = 5, native: bool = False
     ) -> (bool, str):
+        if format not in ("flamegraph", "raw", "speedscope"):
+            return False, f"Invalid format {format}, " + \
+                "must be [flamegraph, raw, speedscope]"
+
         if format == "flamegraph":
             extension = "svg"
         else:
@@ -93,19 +110,21 @@ class CpuProfilingManager:
         profile_file_path = (
             self.profile_dir_path / f"{format}_{pid}_cpu_profiling.{extension}"
         )
-        cmd = (
-            f"py-spy record "
-            f"-o {profile_file_path} -p {pid} -d {duration} -f {format}"
-        )
+        cmd = [
+            "py-spy", "record",
+            "-o", profile_file_path,  "-p", str(pid),  "-d", str(duration), "-f", format
+        ]
         if sys.platform == "linux" and native:
-            cmd += " --native"
+            cmd.append("--native")
         if await _can_passwordless_sudo():
-            cmd = "sudo -n " + cmd.replace("py-spy", "$(which py-spy)")
-        process = await asyncio.create_subprocess_shell(
-            cmd,
+            pyspy_path = await _get_pyspy_path()
+            if pyspy_path != "":
+                cmd[0] = pyspy_path
+                cmd = ["sudo", "-n"] + cmd
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            shell=True,
         )
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
