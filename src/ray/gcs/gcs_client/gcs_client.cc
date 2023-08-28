@@ -85,7 +85,7 @@ Status WaitForChannelReady(grpc::Channel &channel) {
   if (channel.WaitForConnected(deadline)) {
     return Status::OK();
   }
-  return Status::Disconnected("GCS is not connected");
+  return Status::GrpcUnavailable("GCS is not connected");
 }
 
 }  // namespace
