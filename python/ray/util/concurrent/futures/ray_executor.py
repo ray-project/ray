@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 
 class RoundRobinActorPool:
+
     def __init__(self, seq: List["ActorHandle"]) -> None:
         if seq == [] or seq is None:
             raise ValueError("Pool must contain at least one Actor")

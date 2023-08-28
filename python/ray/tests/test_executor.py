@@ -1,9 +1,10 @@
 import os
 import sys
 import pytest
-from ray.util.concurrent.futures.ray_executor import RayExecutor
+from ray.util.concurrent.futures.ray_executor import RayExecutor, RoundRobinActorPool
 import time
 import ray
+from ray.util.state import list_actors
 from concurrent.futures import (
     ThreadPoolExecutor,
     ProcessPoolExecutor,
@@ -11,7 +12,6 @@ from concurrent.futures import (
 )
 
 from ray._private.worker import RayContext
-import unittest
 
 # ProcessPoolExecutor uses pickle which can only serialize top-level functions
 def f_process1(x):
@@ -38,6 +38,70 @@ class TestShared:
             assert ex._context is not None
             assert type(ex._context) == RayContext
             assert ex._context.address_info["address"] == call_ray_start
+
+    def test_round_robin_actor_pool_must_have_actor(self):
+        with pytest.raises(ValueError):
+            RoundRobinActorPool([])
+
+    def test_round_robin_actor_pool_cycles_through_actors(self, call_ray_start):
+        @ray.remote
+        class ExecutorActor:
+            def __init__(self) -> None:
+                pass
+
+            def actor_function(self, fn):
+                return fn()
+        actors = [ExecutorActor.options().remote() for _ in range(2)]
+        pool = RoundRobinActorPool(actors)
+        assert len(pool.pool) == 2
+        assert pool.index == 0
+        _ = pool.next()
+        assert len(pool.pool) == 2
+        assert pool.index == 1
+        _ = pool.next()
+        assert len(pool.pool) == 2
+        assert pool.index == 0
+
+    def test_round_robin_actor_pool_kills_actors(self, call_ray_start):
+        @ray.remote
+        class ExecutorActor:
+            def __init__(self) -> None:
+                pass
+
+            def actor_function(self, fn):
+                return fn()
+        actors = [ExecutorActor.options().remote() for _ in range(2)]
+        pool = RoundRobinActorPool(actors)
+        assert len(pool.pool) == 2
+        assert pool.index == 0
+        actors = pool.pool
+
+        def wait_actor_state(actors, state, timeout = 20):
+            actor_ids = [i._ray_actor_id.hex() for i in actors]
+            while timeout > 0:
+                states = [actor_state for actor_state in list_actors() if actor_state.actor_id in actor_ids]
+                if not all(i.state == state for i in states):
+                    time.sleep(1)
+                    timeout -= 1
+                else:
+                    break
+            if timeout == 0:
+                return False
+            else:
+                return True
+
+        # wait for actors to live
+        assert wait_actor_state(pool.pool, "ALIVE") == True
+        pool.kill()
+        # wait for actors to die
+        assert wait_actor_state(pool.pool, "DEAD") == True
+
+
+
+
+
+#----------------------------------------------------------------------------------------------------
+
 
 
 class TestIsolated:
@@ -368,6 +432,8 @@ class TestIsolated:
         assert hasattr(tpe_iter, "__next__")
         assert type(ray_result) == type(tpe_result)
         assert sorted(ray_result) == sorted(tpe_result)
+
+
 
 
 if __name__ == "__main__":
