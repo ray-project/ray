@@ -1178,9 +1178,9 @@ class Router:
                 kwargs=request_kwargs,
                 metadata=request_meta,
             )
-            await query.resolve_async_tasks()
             await query.resolve_deployment_handle_results_to_object_refs()
             await query.buffer_starlette_requests_and_warn()
+            await query.resolve_async_tasks()
 
             return await self._replica_scheduler.assign_replica(query)
         finally:
