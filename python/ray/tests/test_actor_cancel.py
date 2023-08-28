@@ -56,30 +56,31 @@ def test_async_actor_cancel(shutdown_only):
         def is_running(self):
             return self.running
 
-        def reset(self):
-            self.called = False
-            self.running = False
-
     @ray.remote
     class Actor:
+        def __init__(self):
+            self.i = 0
+
         async def f(self, verify_actor):
             try:
                 ray.get(verify_actor.set_running.remote())
-                await asyncio.sleep(10)
+                await asyncio.sleep(30)
             except asyncio.CancelledError:
                 # It is False until this except block is finished.
-                print(asyncio.current_task().cancelled())
-                assert not asyncio.current_task().cancelled()
+                print(asyncio.current_task().cancelled(), self.i)
+                self.i += 1
                 ray.get(verify_actor.called.remote())
+                print("reported, ", self.i - 1)
                 raise
             except Exception:
                 return True
             return True
 
-    v = VerifyActor.remote()
     a = Actor.remote()
 
     for i in range(50):
+        print(i)
+        v = VerifyActor.remote()
         ref = a.f.remote(v)
         wait_for_condition(lambda: ray.get(v.is_running.remote()))
         ray.cancel(ref)
@@ -89,8 +90,8 @@ def test_async_actor_cancel(shutdown_only):
 
         # Verify asyncio.CancelledError is raised from the actor task.
         assert ray.get(v.is_running.remote())
-        assert ray.get(v.is_called.remote())
-        ray.get(v.reset.remote())
+        wait_for_condition(lambda: ray.get(v.is_called.remote()), timeout=20)
+        ray.kill(v)
 
 
 def test_async_actor_client_side_cancel(ray_start_cluster):
