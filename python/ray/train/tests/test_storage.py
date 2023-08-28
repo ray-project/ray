@@ -4,8 +4,13 @@ from pathlib import Path
 import pytest
 import pyarrow.fs
 
+import ray.cloudpickle as ray_pickle
 from ray.train import Checkpoint
-from ray.train._internal.storage import StorageContext, _list_at_fs_path
+from ray.train._internal.storage import (
+    _VALIDATE_STORAGE_MARKER_FILENAME,
+    StorageContext,
+    _list_at_fs_path,
+)
 
 from ray.train.tests.test_new_persistence import _resolve_storage_type
 
@@ -96,7 +101,23 @@ def test_storage_path_inputs():
 
 
 def test_storage_validation_marker(storage: StorageContext):
-    pass
+    # A marker should have been created at initialization
+    storage._check_validation_file()
+
+    # Remove the marker to simulate being on a new node w/o access to the shared storage
+    storage.storage_filesystem.delete_file(
+        os.path.join(storage.experiment_fs_path, _VALIDATE_STORAGE_MARKER_FILENAME)
+    )
+
+    # Simulate passing the storage context around through the object store
+    # The constructor is NOT called again -- so the marker should not be checked here
+    # and we shouldn't raise an error
+    storage = ray_pickle.loads(ray_pickle.dumps(storage))
+
+    # We should raise an error when we try to checkpoint now.
+    with pytest.raises(RuntimeError) as excinfo:
+        storage.persist_current_checkpoint(Checkpoint.from_directory("/tmp/dummy"))
+    assert "Unable to set up cluster storage" in str(excinfo.value)
 
 
 def test_persist_current_checkpoint(storage: StorageContext, tmp_path):
