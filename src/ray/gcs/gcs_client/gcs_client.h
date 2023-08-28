@@ -277,6 +277,86 @@ class RAY_EXPORT PythonGcsClient {
   std::shared_ptr<grpc::Channel> channel_;
 };
 
+// This client is only supposed to be used from Cython / Python
+// DO NOT SUBMIT experiments
+// TODO: make a single thread for it
+class RAY_EXPORT PythonGcsClient2 {
+ public:
+  explicit PythonGcsClient2(const GcsClientOptions &options);
+
+  Status Connect(const ClusterID &cluster_id, int64_t timeout_ms, size_t num_retries);
+
+  Status CheckAlive(const std::vector<std::string> &raylet_addresses,
+                    int64_t timeout_ms,
+                    std::vector<bool> &result);
+
+  Status InternalKVGet(const std::string &ns,
+                       const std::string &key,
+                       int64_t timeout_ms,
+                       std::string &value);
+  Status InternalKVMultiGet(const std::string &ns,
+                            const std::vector<std::string> &keys,
+                            int64_t timeout_ms,
+                            std::unordered_map<std::string, std::string> &result);
+  Status InternalKVPut(const std::string &ns,
+                       const std::string &key,
+                       const std::string &value,
+                       bool overwrite,
+                       int64_t timeout_ms,
+                       int &added_num);
+  Status InternalKVDel(const std::string &ns,
+                       const std::string &key,
+                       bool del_by_prefix,
+                       int64_t timeout_ms,
+                       int &deleted_num);
+  Status InternalKVKeys(const std::string &ns,
+                        const std::string &prefix,
+                        int64_t timeout_ms,
+                        std::vector<std::string> &results);
+  Status InternalKVExists(const std::string &ns,
+                          const std::string &key,
+                          int64_t timeout_ms,
+                          bool &exists);
+
+  Status PinRuntimeEnvUri(const std::string &uri, int expiration_s, int64_t timeout_ms);
+  Status GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &result);
+  Status GetAllJobInfo(int64_t timeout_ms, std::vector<rpc::JobTableData> &result);
+  Status GetAllResourceUsage(int64_t timeout_ms, std::string &serialized_reply);
+  // For rpc::autoscaler::AutoscalerStateService
+  Status RequestClusterResourceConstraint(
+      int64_t timeout_ms,
+      const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const std::vector<int64_t> &count_array);
+  Status GetClusterStatus(int64_t timeout_ms, std::string &serialized_reply);
+  Status DrainNode(const std::string &node_id,
+                   int32_t reason,
+                   const std::string &reason_message,
+                   int64_t timeout_ms,
+                   bool &is_accepted);
+  Status DrainNodes(const std::vector<std::string> &node_ids,
+                    int64_t timeout_ms,
+                    std::vector<std::string> &drained_node_ids);
+
+  const ClusterID &GetClusterId() const { return cluster_id_; }
+
+ private:
+  void PrepareContext(grpc::ClientContext &context, int64_t timeout_ms) {
+    if (timeout_ms != -1) {
+      context.set_deadline(std::chrono::system_clock::now() +
+                           std::chrono::milliseconds(timeout_ms));
+    }
+    if (!cluster_id_.IsNil()) {
+      context.AddMetadata(kClusterIdKey, cluster_id_.Hex());
+    }
+  }
+
+  GcsClient gcs_client_;
+  // TODO: fix this
+  instrumented_io_context io_service_;
+  // TODO: fix this
+  ClusterID cluster_id_ = ClusterID::Nil();
+};
+
 std::unordered_map<std::string, double> PythonGetResourcesTotal(
     const rpc::GcsNodeInfo &node_info);
 

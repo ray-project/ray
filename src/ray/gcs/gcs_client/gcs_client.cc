@@ -576,6 +576,144 @@ Status PythonGcsClient::DrainNodes(const std::vector<std::string> &node_ids,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+PythonGcsClient2::PythonGcsClient2(const GcsClientOptions &options)
+    : gcs_client_(options) {}
+
+Status PythonGcsClient2::Connect(const ClusterID &cluster_id,
+                                 int64_t timeout_ms,
+                                 size_t num_retries) {
+  return gcs_client_.Connect(io_service_, cluster_id_);
+}
+
+Status PythonGcsClient2::CheckAlive(const std::vector<std::string> &raylet_addresses,
+                                    int64_t timeout_ms,
+                                    std::vector<bool> &result) {
+  // gcs_client_.Nodes().CheckAlive();
+  return ray::Status::NotImplemented("not impl'ed");
+}
+
+Status PythonGcsClient2::InternalKVGet(const std::string &ns,
+                                       const std::string &key,
+                                       int64_t timeout_ms,
+                                       std::string &value) {
+  // TODO: recognize the timeout.
+  (void)timeout_ms;
+  return gcs_client_.InternalKV().Get(ns, key, value);
+}
+
+Status PythonGcsClient2::InternalKVMultiGet(
+    const std::string &ns,
+    const std::vector<std::string> &keys,
+    int64_t timeout_ms,
+    std::unordered_map<std::string, std::string> &result) {
+  // return gcs_client_.InternalKV().
+  return ray::Status::NotImplemented("not impl'ed");
+}
+
+Status PythonGcsClient2::InternalKVPut(const std::string &ns,
+                                       const std::string &key,
+                                       const std::string &value,
+                                       bool overwrite,
+                                       int64_t timeout_ms,
+                                       int &added_num) {
+  // TODO: fix this added bool vs int
+  bool added = false;
+  auto status = gcs_client_.InternalKV().Put(ns, key, value, overwrite, added);
+  added_num = added ? 1 : 0;
+  return status;
+}
+
+Status PythonGcsClient2::InternalKVDel(const std::string &ns,
+                                       const std::string &key,
+                                       bool del_by_prefix,
+                                       int64_t timeout_ms,
+                                       int &deleted_num) {
+  // TODO: fix this deleted_num
+  auto status = gcs_client_.InternalKV().Del(ns, key, del_by_prefix);
+  deleted_num = 1;
+  return status;
+}
+
+Status PythonGcsClient2::InternalKVKeys(const std::string &ns,
+                                        const std::string &prefix,
+                                        int64_t timeout_ms,
+                                        std::vector<std::string> &results) {
+  // TODO: timeout
+  return gcs_client_.InternalKV().Keys(ns, prefix, results);
+}
+
+Status PythonGcsClient2::InternalKVExists(const std::string &ns,
+                                          const std::string &key,
+                                          int64_t timeout_ms,
+                                          bool &exists) {
+  // TODO: timeout
+  return gcs_client_.InternalKV().Exists(ns, key, exists);
+}
+
+Status PythonGcsClient2::PinRuntimeEnvUri(const std::string &uri,
+                                          int expiration_s,
+                                          int64_t timeout_ms) {
+  // TODO: there's no runtime env stub in gcs client yet.
+  // gcs_client_
+  return ray::Status::NotImplemented("not impl'ed");
+}
+
+Status PythonGcsClient2::GetAllNodeInfo(int64_t timeout_ms,
+                                        std::vector<rpc::GcsNodeInfo> &result) {
+  const absl::flat_hash_map<ray::NodeID, ray::rpc::GcsNodeInfo> &infos =
+      gcs_client_.Nodes().GetAll();
+  result.clear();
+  result.reserve(infos.size());
+  for (const auto &[k, v] : infos) {
+    result.push_back(v);
+  }
+  return ray::Status::OK();
+}
+
+Status PythonGcsClient2::GetAllJobInfo(int64_t timeout_ms,
+                                       std::vector<rpc::JobTableData> &result) {
+  // TODO: Jobs accessor has no sync interface.
+  // gcs_client_.Jobs().AsyncGetAll();
+  return ray::Status::NotImplemented("not impl'ed");
+}
+
+Status PythonGcsClient2::GetAllResourceUsage(int64_t timeout_ms,
+                                             std::string &serialized_reply) {
+  // TODO: NodeResources accessor has no sync interface.
+  // gcs_client_.NodeResources().AsyncGetAllResourceUsage();
+}
+
+Status PythonGcsClient2::RequestClusterResourceConstraint(
+    int64_t timeout_ms,
+    const std::vector<std::unordered_map<std::string, double>> &bundles,
+    const std::vector<int64_t> &count_array) {
+  // TODO: gcs client does not have an autoscaler stub.
+  return ray::Status::NotImplemented("not impl'ed");
+}
+
+Status PythonGcsClient2::GetClusterStatus(int64_t timeout_ms,
+                                          std::string &serialized_reply) {
+  // TODO: gcs client does not have an autoscaler stub.
+  return ray::Status::NotImplemented("not impl'ed");
+}
+
+Status PythonGcsClient2::DrainNode(const std::string &node_id,
+                                   int32_t reason,
+                                   const std::string &reason_message,
+                                   int64_t timeout_ms,
+                                   bool &is_accepted) {
+  // TODO: gcs client does not have an autoscaler stub.
+  return ray::Status::NotImplemented("not impl'ed");
+}
+
+Status PythonGcsClient2::DrainNodes(const std::vector<std::string> &node_ids,
+                                    int64_t timeout_ms,
+                                    std::vector<std::string> &drained_node_ids) {
+  // TODO: node info accessor has no sync for this one.
+  // gcs_client_.Nodes().AsyncDrainNode();
+  return ray::Status::NotImplemented("not impl'ed");
+}
+
 std::unordered_map<std::string, double> PythonGetResourcesTotal(
     const rpc::GcsNodeInfo &node_info) {
   return std::unordered_map<std::string, double>(node_info.resources_total().begin(),
