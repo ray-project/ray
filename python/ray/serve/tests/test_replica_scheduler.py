@@ -833,7 +833,9 @@ async def test_prefer_replica_on_same_node_without_prefer_az(
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
 
-    r1 = FakeReplicaWrapper("r1", node_id=SCHEDULER_NODE_ID, availability_zone=SCHEDULER_AZ) # noqa
+    r1 = FakeReplicaWrapper(
+        "r1", node_id=SCHEDULER_NODE_ID, availability_zone=SCHEDULER_AZ
+    )  # noqa
     r2 = FakeReplicaWrapper("r2", node_id="node-alpha", availability_zone=SCHEDULER_AZ)
     r3 = FakeReplicaWrapper("r3", node_id="node-beta", availability_zone="west")
     r1.set_queue_state_response(0, accepted=True)
