@@ -3,6 +3,7 @@ import copy
 from typing import Callable, Dict, Tuple, List, Optional, Union, Set
 from dataclasses import dataclass
 from collections import defaultdict
+from abc import ABC, abstractmethod
 
 import ray
 from ray.util.scheduling_strategies import (
@@ -63,12 +64,68 @@ class DeploymentDownscaleRequest:
     num_to_stop: int
 
 
-class DeploymentScheduler:
+class DeploymentScheduler(ABC):
     """A centralized scheduler for all Serve deployments.
 
     It makes a batch of scheduling decisions in each update cycle.
     """
 
+    @abstractmethod
+    def on_deployment_created(
+        self,
+        deployment_id: DeploymentID,
+        scheduling_policy: Union[
+            SpreadDeploymentSchedulingPolicy, DriverDeploymentSchedulingPolicy
+        ],
+    ) -> None:
+        """Called whenever a new deployment is created."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def on_deployment_deleted(self, deployment_id: DeploymentID) -> None:
+        """Called whenever a deployment is deleted."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def on_replica_stopping(
+        self, deployment_id: DeploymentID, replica_name: str
+    ) -> None:
+        """Called whenever a deployment replica is being stopped."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def on_replica_running(
+        self, deployment_id: DeploymentID, replica_name: str, node_id: str
+    ) -> None:
+        """Called whenever a deployment replica is running with a known node id."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def on_replica_recovering(
+        self, deployment_id: DeploymentID, replica_name: str
+    ) -> None:
+        """Called whenever a deployment replica is recovering."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def schedule(
+        self,
+        upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]],
+        downscales: Dict[DeploymentID, DeploymentDownscaleRequest],
+    ) -> Dict[DeploymentID, Set[str]]:
+        """Called for each update cycle to do batch scheduling.
+
+        Args:
+            upscales: a dict of deployment name to a list of replicas to schedule.
+            downscales: a dict of deployment name to a downscale request.
+
+        Returns:
+            The name of replicas to stop for each deployment.
+        """
+        raise NotImplementedError
+
+
+class DefaultDeploymentScheduler(DeploymentScheduler):
     def __init__(self, cluster_node_info_cache: ClusterNodeInfoCache):
         # {deployment_id: scheduling_policy}
         self._deployments = {}

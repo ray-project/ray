@@ -7,7 +7,7 @@ from ray._raylet import GcsClient
 from ray.tests.conftest import *  # noqa
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.deployment_scheduler import (
-    DeploymentScheduler,
+    DefaultDeploymentScheduler,
     SpreadDeploymentSchedulingPolicy,
     DriverDeploymentSchedulingPolicy,
     ReplicaSchedulingRequest,
@@ -51,7 +51,7 @@ def test_spread_deployment_scheduling_policy_upscale(
     )
     cluster_node_info_cache.update()
 
-    scheduler = DeploymentScheduler(cluster_node_info_cache)
+    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
     dep_id = DeploymentID("deployment1", "default")
     scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
     replica_actor_handles = []
@@ -139,7 +139,7 @@ def test_spread_deployment_scheduling_policy_downscale_multiple_deployments(
     )
     cluster_node_info_cache.update()
 
-    scheduler = DeploymentScheduler(cluster_node_info_cache)
+    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
     d1_id = DeploymentID("deployment1", "default")
     d2_id = DeploymentID("deployment2", "default")
     scheduler.on_deployment_created(d1_id, SpreadDeploymentSchedulingPolicy())
@@ -206,7 +206,7 @@ def test_spread_deployment_scheduling_policy_downscale_single_deployment(
     )
     cluster_node_info_cache.update()
 
-    scheduler = DeploymentScheduler(cluster_node_info_cache)
+    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
     dep_id = DeploymentID("deployment1", "my_app")
     scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
     scheduler.on_replica_running(dep_id, "replica1", "node1")
@@ -289,7 +289,7 @@ def test_spread_deployment_scheduling_policy_downscale_head_node(ray_start_clust
     )
     cluster_node_info_cache.update()
 
-    scheduler = DeploymentScheduler(cluster_node_info_cache)
+    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
     dep_id = DeploymentID("deployment1", "my_app")
     scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
     scheduler.on_replica_running(dep_id, "replica1", head_node_id)
@@ -342,7 +342,7 @@ def test_driver_deployment_scheduling_policy_upscale(ray_start_cluster):
     )
     cluster_node_info_cache.update()
 
-    scheduler = DeploymentScheduler(cluster_node_info_cache)
+    scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
     dep_id = DeploymentID("deployment1", "my_app")
     scheduler.on_deployment_created(dep_id, DriverDeploymentSchedulingPolicy())
 
