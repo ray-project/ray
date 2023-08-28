@@ -230,7 +230,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_warnings.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
@@ -358,7 +358,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tune_restore_warm_start.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
@@ -374,7 +374,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_tune_save_restore.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
@@ -382,7 +382,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_tune_server.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "new_storage"],
 )
 
 py_test(
