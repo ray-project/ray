@@ -51,7 +51,9 @@ def _format_failed_pyspy_command(cmd, stdout, stderr) -> str:
 # root privileges or has configured setuid on the py-spy script.
 async def _can_passwordless_sudo() -> bool:
     process = await asyncio.create_subprocess_exec(
-        "sudo", "-n", "true",
+        "sudo",
+        "-n",
+        "true",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -69,7 +71,7 @@ class CpuProfilingManager:
         if pyspy is None:
             return False, "py-spy is not installed"
 
-        cmd = [pyspy, "dump", "-p" , str(pid)]
+        cmd = [pyspy, "dump", "-p", str(pid)]
         # We
         if sys.platform == "linux" and native:
             cmd.append("--native")
@@ -94,8 +96,10 @@ class CpuProfilingManager:
             return False, "py-spy is not installed"
 
         if format not in ("flamegraph", "raw", "speedscope"):
-            return False, f"Invalid format {format}, " + \
-                "must be [flamegraph, raw, speedscope]"
+            return (
+                False,
+                f"Invalid format {format}, " + "must be [flamegraph, raw, speedscope]",
+            )
 
         if format == "flamegraph":
             extension = "svg"
@@ -105,8 +109,16 @@ class CpuProfilingManager:
             self.profile_dir_path / f"{format}_{pid}_cpu_profiling.{extension}"
         )
         cmd = [
-            pyspy, "record",
-            "-o", profile_file_path,  "-p", str(pid),  "-d", str(duration), "-f", format
+            pyspy,
+            "record",
+            "-o",
+            profile_file_path,
+            "-p",
+            str(pid),
+            "-d",
+            str(duration),
+            "-f",
+            format,
         ]
         if sys.platform == "linux" and native:
             cmd.append("--native")
