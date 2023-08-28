@@ -1,7 +1,6 @@
 import argparse
 from filelock import FileLock
 import os
-import tempfile
 
 import torch
 import torch.utils.data
@@ -31,8 +30,8 @@ def trainer_init_per_worker(config):
         [transforms.ToTensor(), transforms.Normalize(mean, std)]
     )
 
-    data_directory = tempfile.mkdtemp(prefix="cifar_data")
-    with FileLock(os.path.join(data_directory, "data.lock")):
+    data_directory = os.path.expanduser("~/data")
+    with FileLock(os.path.expanduser("~/data.lock")):
         train_dataset = torch.utils.data.Subset(
             datasets.CIFAR10(
                 data_directory, train=True, download=True, transform=cifar10_transforms
