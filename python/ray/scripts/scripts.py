@@ -583,6 +583,7 @@ def start(
     disable_usage_stats,
     labels,
 ):
+    start_time = datetime.now()
     """Start Ray processes manually on the local machine."""
 
     if gcs_server_port is not None:
@@ -937,6 +938,8 @@ def start(
 
     assert ray_params.gcs_address is not None
     ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
+
+    logger.info("Started Ray in: " + str(datetime.now() - start_time) + " seconds.")
 
     if block:
         cli_logger.newline()
