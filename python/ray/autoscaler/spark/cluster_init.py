@@ -42,7 +42,7 @@ class AutoscalingCluster:
             open(
                 os.path.join(
                     os.path.dirname(ray.__file__),
-                    "autoscaler/spark/base_config.yaml",
+                    "autoscaler/spark/defaults.yaml",
                 )
             )
         )
