@@ -222,7 +222,7 @@ def test_proxy_metrics(serve_start_shutdown):
         async def __init__(self):
             pass
 
-        async def __call__(self):
+        async def __call__(self, *args):
             # Trigger RayActorError
             os._exit(0)
 

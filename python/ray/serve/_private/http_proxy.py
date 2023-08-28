@@ -1150,7 +1150,9 @@ class HTTPProxy(GenericProxy):
         """
         status_code = ""
         start = time.time()
+        response_done = False
         is_first_message = True
+        expecting_trailers = False
         while True:
             try:
                 next_obj_ref_task = asyncio.ensure_future(
@@ -1162,8 +1164,17 @@ class HTTPProxy(GenericProxy):
                         )
                     )
                 )
+                tasks = [next_obj_ref_task]
+                # Once the response is completed, the client will immediately
+                # disconnect. This causes a race condition: if we get the disconnect
+                # message before the replica handler finishes, we'll falsely detect a
+                # client disconnect. To avoid this, stop listening for disconnects once
+                # the full response has been sent.
+                if not response_done:
+                    tasks.append(disconnected_task)
+
                 done, _ = await asyncio.wait(
-                    [disconnected_task, next_obj_ref_task],
+                    tasks,
                     return_when=asyncio.FIRST_COMPLETED,
                     # No timeout is set because it's already passed to `_next_async`.
                 )
@@ -1171,6 +1182,7 @@ class HTTPProxy(GenericProxy):
                     logger.info(
                         "Client disconnected during execution, cancelling request."
                     )
+                    next_obj_ref_task.cancel()
                     ray.cancel(obj_ref_generator)
                     status_code = DISCONNECT_ERROR_CODE
                     break
@@ -1180,14 +1192,30 @@ class HTTPProxy(GenericProxy):
                     raise RayServeTimeout(is_first_message=is_first_message)
 
                 asgi_messages: List[Message] = pickle.loads(await obj_ref)
+                # See the ASGI spec for message details:
+                # https://asgi.readthedocs.io/en/latest/specs/www.html.
                 for asgi_message in asgi_messages:
                     if asgi_message["type"] == "http.response.start":
                         # HTTP responses begin with exactly one
                         # "http.response.start" message containing the "status"
-                        # field Other response types (e.g., WebSockets) may not.
+                        # field. Other response types (e.g., WebSockets) may not.
                         status_code = str(asgi_message["status"])
+                        expecting_trailers = asgi_message.get("trailers", False)
+                    elif (
+                        asgi_message["type"] == "http.response.body"
+                        and not asgi_message.get("more_body", False)
+                        and not expecting_trailers
+                    ):
+                        # If the body is completed and we aren't expecting trailers, the
+                        # response is done.
+                        response_done = True
+                    elif asgi_message["type"] == "http.response.trailers":
+                        # If we are expecting trailers, the response is only done when
+                        # the trailers message has been sent.
+                        response_done = True
                     elif asgi_message["type"] == "websocket.disconnect":
                         status_code = str(asgi_message["code"])
+                        response_done = True
 
                     await send(asgi_message)
                     is_first_message = False
