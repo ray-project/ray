@@ -293,6 +293,10 @@ def test_async_callback(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("raise_in_callback", [False, True])
+@pytest.mark.skipif(
+    os.environ.get("RAY_CLIENT_MODE") == "1",
+    reason="Different ref counting in Ray client."
+)
 def test_on_completed_callback_refcount(ray_start_regular_shared, raise_in_callback):
     """Check that the _on_completed callback is ref counted properly."""
     signal = SignalActor.remote()
