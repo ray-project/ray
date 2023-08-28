@@ -123,7 +123,6 @@
       --build_tests_only
       --test_tag_filters=fake_gpus,-torch_only,-tf2_only,-no_tf_static_graph,-multi_gpu
       --test_arg=--framework=tf
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       rllib/...
 
 # TODO: (sven) tf2 (eager) multi-GPU
@@ -223,7 +222,6 @@
       --build_tests_only
       --test_tag_filters=-learning_tests,-memory_leak_tests,-examples,-tests_dir,-documentation,-multi_gpu,-no_cpu,-torch_2.x_only_benchmark
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       rllib/...
 
 - label: ":brain: RLlib: RLModule tests"
@@ -250,7 +248,6 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=examples,-multi_gpu,-gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       rllib/...
 
 - label: ":brain: RLlib: tests/ dir"
@@ -263,7 +260,6 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=tests_dir,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       rllib/...
 
 - label: ":brain: RLlib: Documentation code/examples"
@@ -275,7 +271,6 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=documentation --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       rllib/...
 
 - label: ":octopus: Tune tests and examples (small)"
