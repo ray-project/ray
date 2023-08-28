@@ -13,7 +13,6 @@ parts:
         title: "Use Cases"
         sections:
           - file: ray-air/getting-started
-          - file: ray-air/computer-vision
 
       - file: ray-overview/examples
         title: "Example Gallery"
@@ -94,14 +93,10 @@ parts:
                 title: "PyTorch Lightning Advanced Example"
               - file: train/examples/lightning/lightning_exp_tracking
                 title: "PyTorch Lightning with Experiment Tracking Tools"
-              - file: train/examples/transformers/transformers_example
-                title: "HF Transformers Example"
               - file: train/examples/tf/tensorflow_mnist_example
                 title: "TensorFlow MNIST Example"
               - file: train/examples/horovod/horovod_example
                 title: "Horovod Example"
-              - file: train/examples/mlflow_fashion_mnist_example
-                title: "MLflow Callback Example"
               - file: train/examples/tf/tune_tensorflow_mnist_example
                 title: "Tune & TensorFlow Example"
               - file: train/examples/pytorch/tune_cifar_torch_pbt_example
@@ -225,8 +220,8 @@ parts:
           - file: serve/model_composition
           - file: serve/deploy-many-models/index
             sections:
-            - file: serve/deploy-many-models/multi-app
-            - file: serve/deploy-many-models/model-multiplexing
+              - file: serve/deploy-many-models/multi-app
+              - file: serve/deploy-many-models/model-multiplexing
           - file: serve/configure-serve-deployment
           - file: serve/http-guide
           - file: serve/production-guide/index
@@ -319,43 +314,70 @@ parts:
           - file: cluster/kubernetes/index
             title: Deploying on Kubernetes
             sections:
-            - file: cluster/kubernetes/getting-started
-            - file: cluster/kubernetes/user-guides
-              sections:
-                - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
-                - file: cluster/kubernetes/user-guides/config.md
-                - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
-                - file: cluster/kubernetes/user-guides/logging.md
-                - file: cluster/kubernetes/user-guides/gpu.md
-                - file: cluster/kubernetes/user-guides/experimental.md
-                - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay.md
-            - file: cluster/kubernetes/examples
-              sections:
-                - file: cluster/kubernetes/examples/ml-example.md
-                - file: cluster/kubernetes/examples/gpu-training-example.md
-            - file: cluster/kubernetes/references
+              - file: cluster/kubernetes/getting-started
+                sections:
+                  - file: cluster/kubernetes/getting-started/raycluster-quick-start.md
+                  - file: cluster/kubernetes/getting-started/rayjob-quick-start.md
+                  - file: cluster/kubernetes/getting-started/rayservice-quick-start.md
+              - file: cluster/kubernetes/user-guides
+                sections:
+                  - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
+                    sections:
+                      - file: cluster/kubernetes/user-guides/aws-eks-gpu-cluster.md
+                      - file: cluster/kubernetes/user-guides/gcp-gke-gpu-cluster.md
+                  - file: cluster/kubernetes/user-guides/config.md
+                  - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
+                  - file: cluster/kubernetes/user-guides/logging.md
+                  - file: cluster/kubernetes/user-guides/gpu.md
+                  - file: cluster/kubernetes/user-guides/rayserve-dev-doc.md
+                  - file: cluster/kubernetes/user-guides/experimental.md
+                  - file: cluster/kubernetes/user-guides/pod-command.md
+                  - file: cluster/kubernetes/user-guides/pod-security.md
+                  - file: cluster/kubernetes/user-guides/tls.md
+                  - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay.md
+              - file: cluster/kubernetes/examples
+                sections:
+                  - file: cluster/kubernetes/examples/ml-example.md
+                  - file: cluster/kubernetes/examples/gpu-training-example.md
+                  - file: cluster/kubernetes/examples/stable-diffusion-rayservice.md
+                  - file: cluster/kubernetes/examples/mobilenet-rayservice.md
+                  - file: cluster/kubernetes/examples/text-summarizer-rayservice.md
+              - file: cluster/kubernetes/k8s-ecosystem
+                sections:
+                  - file: cluster/kubernetes/k8s-ecosystem/ingress.md
+                  - file: cluster/kubernetes/k8s-ecosystem/prometheus-grafana.md
+                  - file: cluster/kubernetes/k8s-ecosystem/pyspy.md
+                  - file: cluster/kubernetes/k8s-ecosystem/kubeflow.md
+              - file: cluster/kubernetes/benchmarks
+                sections:
+                  - file: cluster/kubernetes/benchmarks/memory-scalability-benchmark.md
+              - file: cluster/kubernetes/troubleshooting
+                sections:
+                  - file: cluster/kubernetes/troubleshooting/troubleshooting.md
+                  - file: cluster/kubernetes/troubleshooting/rayservice-troubleshooting.md
+              - file: cluster/kubernetes/references
           - file: cluster/vms/index
             title: Deploying on VMs
             sections:
-            - file: cluster/vms/getting-started
-            - file: cluster/vms/user-guides/index
-              title: User Guides
-              sections:
-              - file: cluster/vms/user-guides/launching-clusters/index
-              - file: cluster/vms/user-guides/large-cluster-best-practices
-              - file: cluster/vms/user-guides/configuring-autoscaling
-              - file: cluster/vms/user-guides/logging
-              - file: cluster/vms/user-guides/community/index
-                title: Community-supported Cluster Managers
+              - file: cluster/vms/getting-started
+              - file: cluster/vms/user-guides/index
+                title: User Guides
                 sections:
-                - file: cluster/vms/user-guides/community/yarn
-                - file: cluster/vms/user-guides/community/slurm
-                - file: cluster/vms/user-guides/community/lsf
-            - file: cluster/vms/examples/index
-              title: Examples
-              sections:
-              - file: cluster/vms/examples/ml-example
-            - file: cluster/vms/references/index
+                  - file: cluster/vms/user-guides/launching-clusters/index
+                  - file: cluster/vms/user-guides/large-cluster-best-practices
+                  - file: cluster/vms/user-guides/configuring-autoscaling
+                  - file: cluster/vms/user-guides/logging
+                  - file: cluster/vms/user-guides/community/index
+                    title: Community-supported Cluster Managers
+                    sections:
+                      - file: cluster/vms/user-guides/community/yarn
+                      - file: cluster/vms/user-guides/community/slurm
+                      - file: cluster/vms/user-guides/community/lsf
+              - file: cluster/vms/examples/index
+                title: Examples
+                sections:
+                  - file: cluster/vms/examples/ml-example
+              - file: cluster/vms/references/index
           - file: cluster/metrics
           - file: cluster/configure-manage-dashboard
           - file: cluster/running-applications/index

@@ -7,12 +7,14 @@ import shutil
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING
 
 try:
-    import fsspec
+    import fsspec  # noqa
     from fsspec.implementations.local import LocalFileSystem
 
-except ImportError:
-    fsspec = None
-    LocalFileSystem = object
+except (ImportError, ModuleNotFoundError) as e:
+    raise RuntimeError(
+        "fsspec is a required dependency of Ray Train and Ray Tune. "
+        "Please install with: `pip install fsspec`"
+    ) from e
 
 try:
     import pyarrow
@@ -25,10 +27,10 @@ except (ImportError, ModuleNotFoundError) as e:
     ) from e
 
 
+from ray._private.storage import _get_storage_uri
 from ray.air._internal.filelock import TempFileLock
-from ray.air._internal.uri_utils import URI, is_uri
-from ray.tune.syncer import Syncer, SyncConfig, _BackgroundSyncer
-from ray.tune.result import _get_defaults_results_dir
+from ray.train._internal.syncer import Syncer, SyncConfig, _BackgroundSyncer
+from ray.train.constants import _get_defaults_results_dir
 
 if TYPE_CHECKING:
     from ray.train._checkpoint import Checkpoint
@@ -41,35 +43,40 @@ def _use_storage_context() -> bool:
     # Whether to enable the new simple persistence mode.
     from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 
-    return bool(int(os.environ.get(RAY_AIR_NEW_PERSISTENCE_MODE, "0")))
+    return bool(int(os.environ.get(RAY_AIR_NEW_PERSISTENCE_MODE, "1")))
 
 
 class _ExcludingLocalFilesystem(LocalFileSystem):
     """LocalFileSystem wrapper to exclude files according to patterns.
 
     Args:
+        root_path: Root path to strip when matching with the exclude pattern.
+            Ex: root_path="/tmp/a/b/c", exclude=["*a*"], will exclude
+            /tmp/a/b/c/_a_.txt but not ALL of /tmp/a/*.
         exclude: List of patterns that are applied to files returned by
             ``self.find()``. If a file path matches this pattern, it will
             be excluded.
 
     """
 
-    def __init__(self, exclude: List[str], **kwargs):
+    def __init__(self, root_path: Path, exclude: List[str], **kwargs):
         super().__init__(**kwargs)
         self._exclude = exclude
+        self._root_path = root_path
 
     @property
     def fsid(self):
         return "_excluding_local"
 
-    def _should_exclude(self, name: str) -> bool:
-        """Return True if `name` matches any of the `self._exclude` patterns."""
-        alt = None
-        if os.path.isdir(name):
-            # If this is a directory, also test it with trailing slash
-            alt = os.path.join(name, "")
+    def _should_exclude(self, path: str) -> bool:
+        """Return True if `path` (relative to `root_path`) matches any of the
+        `self._exclude` patterns."""
+        path = Path(path)
+        relative_path = path.relative_to(self._root_path).as_posix()
+        alt = os.path.join(relative_path, "") if path.is_dir() else None
+
         for excl in self._exclude:
-            if fnmatch.fnmatch(name, excl):
+            if fnmatch.fnmatch(relative_path, excl):
                 return True
             if alt and fnmatch.fnmatch(alt, excl):
                 return True
@@ -77,28 +84,30 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
 
     def find(self, path, maxdepth=None, withdirs=False, detail=False, **kwargs):
         """Call parent find() and exclude from result."""
-        names = super().find(
+        paths = super().find(
             path, maxdepth=maxdepth, withdirs=withdirs, detail=detail, **kwargs
         )
         if detail:
             return {
-                name: out
-                for name, out in names.items()
-                if not self._should_exclude(name)
+                path: out
+                for path, out in paths.items()
+                if not self._should_exclude(path)
             }
         else:
-            return [name for name in names if not self._should_exclude(name)]
+            return [path for path in paths if not self._should_exclude(path)]
 
 
 def _pyarrow_fs_copy_files(
     source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
 ):
-    if isinstance(source_filesystem, pyarrow.fs.S3FileSystem) or isinstance(
-        destination_filesystem, pyarrow.fs.S3FileSystem
-    ):
-        # Workaround multi-threading issue with pyarrow
+    if isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
+        # Workaround multi-threading issue with pyarrow. Note that use_threads=True
+        # is safe for download, just not for uploads, see:
         # https://github.com/apache/arrow/issues/32372
         kwargs.setdefault("use_threads", False)
+
+    # Use a large chunk size to speed up large checkpoint transfers.
+    kwargs.setdefault("chunk_size", 64 * 1024 * 1024)
 
     return pyarrow.fs.copy_files(
         source,
@@ -113,10 +122,14 @@ def _pyarrow_fs_copy_files(
 
 
 def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
-    assert not is_uri(fs_path), fs_path
+
+    is_dir = _is_directory(fs, fs_path)
 
     try:
-        fs.delete_dir(fs_path)
+        if is_dir:
+            fs.delete_dir(fs_path)
+        else:
+            fs.delete_file(fs_path)
     except Exception:
         logger.exception(f"Caught exception when deleting path at ({fs}, {fs_path}):")
 
@@ -153,7 +166,6 @@ def _download_from_fs_path(
     Raises:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
-    assert not is_uri(fs_path), fs_path
 
     _local_path = Path(local_path).resolve()
     exists_before = _local_path.exists()
@@ -191,9 +203,10 @@ def _upload_to_fs_path(
         fs_path: The filesystem path where the dir/file will be uploaded to.
         exclude: A list of filename matches to exclude from upload. This includes
             all files under subdirectories as well.
+            This pattern will match with the relative paths of all files under
+            `local_path`.
             Ex: ["*.png"] to exclude all .png images.
     """
-    assert not is_uri(fs_path), fs_path
 
     if not exclude:
         # TODO(justinvyu): uploading a single file doesn't work
@@ -201,10 +214,6 @@ def _upload_to_fs_path(
         _create_directory(fs=fs, fs_path=fs_path)
         _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
         return
-
-    if not fsspec:
-        # TODO(justinvyu): Make fsspec a hard requirement of Tune/Train.
-        raise RuntimeError("fsspec is required to upload with exclude patterns.")
 
     _upload_to_uri_with_exclude_fsspec(
         local_path=local_path, fs=fs, fs_path=fs_path, exclude=exclude
@@ -214,7 +223,7 @@ def _upload_to_fs_path(
 def _upload_to_uri_with_exclude_fsspec(
     local_path: str, fs: "pyarrow.fs", fs_path: str, exclude: Optional[List[str]]
 ) -> None:
-    local_fs = _ExcludingLocalFilesystem(exclude=exclude)
+    local_fs = _ExcludingLocalFilesystem(root_path=local_path, exclude=exclude)
     handler = pyarrow.fs.FSSpecHandler(local_fs)
     source_fs = pyarrow.fs.PyFileSystem(handler)
 
@@ -229,7 +238,6 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
 
     If the path doesn't exist, returns an empty list.
     """
-    assert not is_uri(fs_path), fs_path
 
     selector = pyarrow.fs.FileSelector(fs_path, allow_not_found=True, recursive=False)
     return [
@@ -240,9 +248,8 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
 
 def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     """Returns True if (fs, fs_path) exists."""
-    assert not is_uri(fs_path), fs_path
 
-    valid = fs.get_file_info([fs_path])[0]
+    valid = fs.get_file_info(fs_path)
     return valid.type != pyarrow.fs.FileType.NotFound
 
 
@@ -252,8 +259,11 @@ def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     Raises:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
-    assert not is_uri(fs_path), fs_path
+
     file_info = fs.get_file_info(fs_path)
+    if file_info.type == pyarrow.fs.FileType.NotFound:
+        raise FileNotFoundError(f"Path not found: ({fs}, {fs_path})")
+
     return not file_info.is_file
 
 
@@ -286,27 +296,10 @@ def get_fs_and_path(
             this will be auto-resolved by pyarrow. If provided, the storage_path
             is assumed to be prefix-stripped already, and must be a valid path
             on the filesystem.
-
-    Raises:
-        ValueError: if the storage path is a URI and a custom filesystem is given.
     """
     storage_path = str(storage_path)
 
     if storage_filesystem:
-        if is_uri(storage_path):
-            raise ValueError(
-                "If you specify a custom `storage_filesystem`, the corresponding "
-                "`storage_path` must be a *path* on that filesystem, not a URI.\n"
-                "For example: "
-                "(storage_filesystem=CustomS3FileSystem(), "
-                "storage_path='s3://bucket/path') should be changed to "
-                "(storage_filesystem=CustomS3FileSystem(), "
-                "storage_path='bucket/path')\n"
-                "This is what you provided: "
-                f"(storage_filesystem={storage_filesystem}, "
-                f"storage_path={storage_path})\n"
-                "Note that this may depend on the custom filesystem you use."
-            )
         return storage_filesystem, storage_path
 
     return pyarrow.fs.FileSystem.from_uri(storage_path)
@@ -374,7 +367,6 @@ class StorageContext:
         >>> os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/ray_results"
         >>> storage = StorageContext(
         ...     storage_path="mock://netloc/bucket/path?param=1",
-        ...     sync_config=SyncConfig(),
         ...     experiment_dir_name="exp_name",
         ... )
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
@@ -391,10 +383,6 @@ class StorageContext:
         >>> storage.current_checkpoint_index = 1
         >>> storage.checkpoint_fs_path
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
-        >>> storage.storage_prefix
-        URI<mock://netloc?param=1>
-        >>> str(storage.storage_prefix / storage.experiment_fs_path)
-        'mock://netloc/bucket/path/exp_name?param=1'
 
     Example with storage_path=None:
 
@@ -403,7 +391,6 @@ class StorageContext:
         >>> os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/ray_results"
         >>> storage = StorageContext(
         ...     storage_path=None,
-        ...     sync_config=SyncConfig(),
         ...     experiment_dir_name="exp_name",
         ... )
         >>> storage.storage_path  # Auto-resolved
@@ -418,10 +405,6 @@ class StorageContext:
         True
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
         <pyarrow._fs.LocalFileSystem object...
-        >>> storage.storage_prefix
-        URI<.>
-        >>> str(storage.storage_prefix / storage.experiment_fs_path)
-        '/tmp/ray_results/exp_name'
 
     Internal Usage Examples:
     - To copy files to the trial directory on the storage filesystem:
@@ -445,10 +428,19 @@ class StorageContext:
         custom_fs_provided = storage_filesystem is not None
 
         self.storage_local_path = _get_defaults_results_dir()
+
+        # If no remote path is set, try to get Ray Storage URI
+        ray_storage_uri: Optional[str] = _get_storage_uri()
+        if ray_storage_uri and storage_path is None:
+            logger.info(
+                "Using configured Ray Storage URI as the `storage_path`: "
+                f"{ray_storage_uri}"
+            )
+
         # If `storage_path=None`, then set it to the local path.
         # Invariant: (`storage_filesystem`, `storage_path`) is the location where
         # *all* results can be accessed.
-        self.storage_path = storage_path or self.storage_local_path
+        self.storage_path = storage_path or ray_storage_uri or self.storage_local_path
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
@@ -458,18 +450,6 @@ class StorageContext:
 
         self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
             self.storage_path, storage_filesystem
-        )
-
-        # The storage prefix is part of the URI that is stripped away
-        # from the user-provided `storage_path` by pyarrow's `from_uri`.
-        # Ex: `storage_path="s3://bucket/path?param=1`
-        #  -> `storage_prefix=URI<s3://.?param=1>`
-        # See the doctests for more examples.
-        # This is used to construct URI's of the same format as `storage_path`.
-        # However, we don't track these URI's internally, because pyarrow only
-        # needs to interact with the prefix-stripped fs_path.
-        self.storage_prefix: URI = URI(self.storage_path).rstrip_subpath(
-            Path(self.storage_fs_path)
         )
 
         # Syncing is always needed if a custom `storage_filesystem` is provided.
@@ -544,7 +524,7 @@ class StorageContext:
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train._checkpoint import Checkpoint
 
-        logger.info(
+        logger.debug(
             "Copying checkpoint files to storage path:\n"
             "({source_fs}, {source}) -> ({dest_fs}, {destination})".format(
                 source=checkpoint.path,
@@ -574,6 +554,39 @@ class StorageContext:
         )
         logger.info(f"Checkpoint successfully created at: {persisted_checkpoint}")
         return persisted_checkpoint
+
+    def persist_artifacts(self, force: bool = False) -> None:
+        """Persists all artifacts within `trial_local_dir` to storage.
+
+        This method possibly launches a background task to sync the trial dir,
+        depending on the `sync_period` + `sync_artifacts_on_checkpoint`
+        settings of `SyncConfig`.
+
+        `(local_fs, trial_local_path) -> (storage_filesystem, trial_fs_path)`
+
+        Args:
+            force: If True, wait for a previous sync to finish, launch a new one,
+                and wait for that one to finish. By the end of a `force=True call`, the
+                latest version of the trial artifacts will be persisted.
+        """
+        if not self.sync_config.sync_artifacts:
+            return
+
+        # Skip if we don't need to sync (e.g., storage_path == storage_local_path, and
+        # all trial artifacts are already in the right place)
+        if not self.syncer:
+            return
+
+        if force:
+            self.syncer.wait()
+            self.syncer.sync_up(
+                local_dir=self.trial_local_path, remote_dir=self.trial_fs_path
+            )
+            self.syncer.wait()
+        else:
+            self.syncer.sync_up_if_needed(
+                local_dir=self.trial_local_path, remote_dir=self.trial_fs_path
+            )
 
     @property
     def experiment_fs_path(self) -> str:
@@ -626,10 +639,12 @@ class StorageContext:
         The user of this class is responsible for setting the `current_checkpoint_index`
         (e.g., incrementing when needed).
         """
-        checkpoint_dir_name = StorageContext._make_checkpoint_dir_name(
-            self.current_checkpoint_index
-        )
-        return os.path.join(self.trial_fs_path, checkpoint_dir_name)
+        return os.path.join(self.trial_fs_path, self.checkpoint_dir_name)
+
+    @property
+    def checkpoint_dir_name(self) -> str:
+        """The current checkpoint directory name, based on the checkpoint index."""
+        return StorageContext._make_checkpoint_dir_name(self.current_checkpoint_index)
 
     @staticmethod
     def get_experiment_dir_name(run_obj: Union[str, Callable, Type]) -> str:

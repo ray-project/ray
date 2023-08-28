@@ -23,10 +23,12 @@ from ray._private.utils import get_or_create_event_loop
 
 from ray.serve import metrics
 from ray.serve._private.common import (
+    DeploymentID,
     CONTROL_PLANE_CONCURRENCY_GROUP,
     ReplicaTag,
     ServeComponentType,
     StreamingHTTPRequest,
+    gRPCRequest,
 )
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -71,11 +73,7 @@ from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-def _format_replica_actor_name(deployment_name: str):
-    return f"ServeReplica:{deployment_name}"
-
-
-def create_replica_wrapper(name: str):
+def create_replica_wrapper(actor_class_name: str):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
@@ -242,7 +240,16 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[bytes, Any]:
 
             request_metadata = pickle.loads(pickled_request_metadata)
-            if request_metadata.is_http_request:
+            if request_metadata.is_grpc_request:
+                # Ensure the request args are a single gRPCRequest object.
+                assert len(request_args) == 1 and isinstance(
+                    request_args[0], gRPCRequest
+                )
+                result = await self.replica.call_user_method_grpc_unary(
+                    request_metadata=request_metadata, request=request_args[0]
+                )
+                return b"", result
+            elif request_metadata.is_http_request:
                 # The sole argument passed from `http_proxy.py` is the ASGI scope.
                 assert len(request_args) == 1
                 request: HTTPRequestWrapper = pickle.loads(request_args[0])
@@ -344,7 +351,15 @@ def create_replica_wrapper(name: str):
         ) -> AsyncGenerator[Any, None]:
             """Generator that is the entrypoint for all `stream=True` handle calls."""
             request_metadata = pickle.loads(pickled_request_metadata)
-            if request_metadata.is_http_request:
+            if request_metadata.is_grpc_request:
+                # Ensure the request args are a single gRPCRequest object.
+                assert len(request_args) == 1 and isinstance(
+                    request_args[0], gRPCRequest
+                )
+                generator = self.replica.call_user_method_with_grpc_unary_stream(
+                    request_metadata, request_args[0]
+                )
+            elif request_metadata.is_http_request:
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], StreamingHTTPRequest
                 )
@@ -473,7 +488,7 @@ def create_replica_wrapper(name: str):
     # Dynamically create a new class with custom name here so Ray picks it up
     # correctly in actor metadata table and observability stack.
     return type(
-        _format_replica_actor_name(name),
+        actor_class_name,
         (RayServeWrappedReplica,),
         dict(RayServeWrappedReplica.__dict__),
     )
@@ -493,7 +508,7 @@ class RayServeReplica:
         controller_handle: ActorHandle,
         app_name: str,
     ) -> None:
-        self.deployment_name = deployment_name
+        self.deployment_id = DeploymentID(deployment_name, app_name)
         self.replica_tag = replica_tag
         self.callable = _callable
         self.is_function = is_function
@@ -501,7 +516,6 @@ class RayServeReplica:
         self.deployment_config: DeploymentConfig = version.deployment_config
         self.rwlock = aiorwlock.RWLock()
         self.delete_lock = asyncio.Lock()
-        self.app_name = app_name
 
         user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
         if not callable(user_health_check):
@@ -589,7 +603,7 @@ class RayServeReplica:
         await self.user_health_check()
 
     def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
-        replica_actor_name = _format_replica_actor_name(self.deployment_name)
+        replica_actor_name = self.deployment_id.to_replica_actor_class_name()
         actor_stats = ray.runtime_context.get_runtime_context()._get_actor_call_stats()
         method_stats = actor_stats.get(f"{replica_actor_name}.handle_request")
         streaming_method_stats = actor_stats.get(
@@ -677,7 +691,7 @@ class RayServeReplica:
                 elif not hasattr(self.callable, RECONFIGURE_METHOD):
                     raise RayServeException(
                         "user_config specified but deployment "
-                        + self.deployment_name
+                        + self.deployment_id
                         + " missing "
                         + RECONFIGURE_METHOD
                         + " method"
@@ -701,7 +715,7 @@ class RayServeReplica:
             ray.serve.context.RequestContext(
                 request_metadata.route,
                 request_metadata.request_id,
-                self.app_name,
+                self.deployment_id.app,
                 request_metadata.multiplexed_model_id,
             )
         )
@@ -736,6 +750,59 @@ class RayServeReplica:
         else:
             self.error_counter.inc(tags={"route": request_metadata.route})
             raise user_exception from None
+
+    async def call_user_method_with_grpc_unary_stream(
+        self, request_metadata: RequestMetadata, request: gRPCRequest
+    ) -> AsyncGenerator[bytes, None]:
+        """Call a user method that is expected to be a generator.
+
+        Deserializes gRPC request into protobuf object and pass into replica's runner
+        method. Returns a generator of serialized protobuf bytes from the replica.
+        """
+        async with self.wrap_user_method_call(request_metadata):
+            user_method = self.get_runner_method(request_metadata)
+            user_request = pickle.loads(request.grpc_user_request)
+            result_generator = user_method(user_request)
+            if inspect.iscoroutine(result_generator):
+                result_generator = await result_generator
+
+            if inspect.isgenerator(result_generator):
+                for result in result_generator:
+                    yield result.SerializeToString()
+            elif inspect.isasyncgen(result_generator):
+                async for result in result_generator:
+                    yield result.SerializeToString()
+            else:
+                raise TypeError(
+                    "When using `stream=True`, the called method must be a generator "
+                    f"function, but '{user_method.__name__}' is not."
+                )
+
+    async def call_user_method_grpc_unary(
+        self, request_metadata: RequestMetadata, request: gRPCRequest
+    ) -> bytes:
+        """Call a user method that is *not* expected to be a generator.
+
+        Deserializes gRPC request into protobuf object and pass into replica's runner
+        method. Returns a serialized protobuf bytes from the replica.
+        """
+        async with self.wrap_user_method_call(request_metadata):
+            user_request = pickle.loads(request.grpc_user_request)
+
+            runner_method = self.get_runner_method(request_metadata)
+            if inspect.isgeneratorfunction(runner_method) or inspect.isasyncgenfunction(
+                runner_method
+            ):
+                raise TypeError(
+                    f"Method '{runner_method.__name__}' is a generator function. "
+                    "You must use `handle.options(stream=True)` to call "
+                    "generators on a deployment."
+                )
+
+            method_to_call = sync_to_async(runner_method)
+
+            result = await method_to_call(user_request)
+            return result.SerializeToString()
 
     async def call_user_method(
         self,

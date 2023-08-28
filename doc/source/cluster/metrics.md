@@ -20,7 +20,7 @@ Use Prometheus to scrape metrics from Ray Clusters. Ray doesn't start Prometheus
 :class: tip
 The instructions below describe one way of setting up Prometheus on your local machine. View [Prometheus documentation](https://prometheus.io/docs/introduction/overview/) for the best strategy to set up your Prometheus server.
 
-For KubeRay users, follow [these instructions](https://ray-project.github.io/kuberay/guidance/prometheus-grafana/) to set up Prometheus.
+For KubeRay users, follow [these instructions](kuberay-prometheus-grafana) to set up Prometheus.
 ```
 
 First, [download Prometheus](https://prometheus.io/download/). Make sure to download the correct binary for your operating system. (For example, Darwin for macOS X.)
@@ -196,7 +196,7 @@ Grafana is a tool that supports advanced visualizations of Prometheus metrics an
 :class: note
 The instructions below describe one way of starting a Grafana server on a macOS machine. Refer to the [Grafana documentation](https://grafana.com/docs/grafana/latest/setup-grafana/start-restart-grafana/#start-the-grafana-server) for how to start Grafana servers in different systems. 
 
-For KubeRay users, follow [these instructions](https://ray-project.github.io/kuberay/guidance/prometheus-grafana/) to set up Grafana.
+For KubeRay users, follow [these instructions](kuberay-prometheus-grafana) to set up Grafana.
 ```
 
 First, [download Grafana](https://grafana.com/grafana/download). Follow the instructions on the download page to download the right binary for your operating system.
@@ -239,14 +239,7 @@ To fix this issue, employ an automated shell script for seamlessly transferring 
 
 After your Grafana server is running, find the Ray-provided default Grafana dashboard JSON at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. [Import this dashboard](https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard) to your Grafana.
 
-If Grafana reports that datasource is not found, [add a datasource variable](https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable) and using [JSON model view](https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/modify-dashboard-settings/#view-dashboard-json-model), change all values of `datasource` key in the imported `default_grafana_dashboard.json` to the name of the variable. For example, if the variable name is `data_source`, all `"datasource"` mappings should be:
-
-```json
-"datasource": {
-  "type": "prometheus",
-  "uid": "$data_source"
-  }
-```
+If Grafana reports that the datasource is not found, [add a datasource variable](https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable). The datasource's name must be the same as value in the `RAY_PROMETHEUS_NAME` environment. By default, `RAY_PROMETHEUS_NAME` equals `Prometheus`.
 :::
 
 ::::

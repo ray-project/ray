@@ -24,6 +24,7 @@ import re
 import yaml
 
 import ray
+from ray import air
 from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib import _register_all
 from ray.rllib.common import SupportedFileType
@@ -98,6 +99,25 @@ parser.add_argument(
     default=None,
     help="The WandB run name to use.",
 )
+# parser.add_argument(
+#    "--wandb-from-checkpoint",
+#    type=str,
+#    default=None,
+#    help=(
+#        "The WandB checkpoint location (e.g. `[team name]/[project name]/checkpoint_"
+#        "[run name]:v[version]`) from which to resume an experiment."
+#    ),
+# )
+parser.add_argument(
+    "--checkpoint-freq",
+    type=int,
+    default=0,
+    help=(
+        "The frequency (in training iterations) with which to create checkpoints. "
+        "Note that if --wandb-key is provided, these checkpoints will automatically "
+        "be uploaded to WandB."
+    ),
+)
 
 # Obsoleted arg, use --dir instead.
 parser.add_argument("--yaml-dir", type=str, default="")
@@ -149,9 +169,14 @@ if __name__ == "__main__":
         ), "Error, can only run a single experiment per file!"
 
         exp = list(experiments.values())[0]
+        exp_name = list(experiments.keys())[0]
 
         # Set the number of samples to run.
         exp["num_samples"] = args.num_samples
+
+        # Make sure there is a config and a stopping criterium.
+        exp["config"] = exp.get("config", {})
+        exp["stop"] = exp.get("stop", {})
 
         # Override framework setting with the command line one, if provided.
         # Otherwise, will use framework setting in file (or default: torch).
@@ -159,7 +184,9 @@ if __name__ == "__main__":
             exp["config"]["framework"] = args.framework
         # Override env setting if given on command line.
         if args.env is not None:
-            exp["config"]["env"] = exp["env"] = args.env
+            exp["config"]["env"] = args.env
+        else:
+            exp["config"]["env"] = exp["env"]
 
         # Override the mean reward if specified. This is used by the ray ci
         # for overriding the episode reward mean for tf2 tests for off policy
@@ -168,6 +195,12 @@ if __name__ == "__main__":
             exp["stop"][
                 "sampler_results/episode_reward_mean"
             ] = args.override_mean_reward
+
+        # Checkpoint settings.
+        exp["checkpoint_config"] = air.CheckpointConfig(
+            checkpoint_frequency=args.checkpoint_freq,
+            checkpoint_at_end=args.checkpoint_freq > 0,
+        )
 
         # QMIX does not support tf yet -> skip.
         if exp["run"] == "QMIX" and args.framework != "torch":
@@ -195,7 +228,9 @@ if __name__ == "__main__":
         callbacks = None
         if args.wandb_key is not None:
             project = args.wandb_project or (
-                exp["run"].lower() + "-" + re.sub("\\W+", "-", exp["env"].lower())
+                exp["run"].lower()
+                + "-"
+                + re.sub("\\W+", "-", exp["config"]["env"].lower())
                 if config_is_python
                 else list(experiments.keys())[0]
             )
@@ -203,6 +238,7 @@ if __name__ == "__main__":
                 WandbLoggerCallback(
                     api_key=args.wandb_key,
                     project=project,
+                    upload_checkpoints=True,
                     **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
                 )
             ]

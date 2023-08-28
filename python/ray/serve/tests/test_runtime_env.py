@@ -82,12 +82,13 @@ assert ray.get(handle.remote()) == "world"
     driver2 = """
 import ray
 from ray import serve
+from ray.serve._private import api as _private_api
 
 job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
-Test = serve.get_deployment("app_Test")
+Test = _private_api.get_deployment("Test", "app")
 handle = serve.run(Test.bind(), name="app")
 assert ray.get(handle.remote()) == "world"
 Test.delete()
@@ -111,7 +112,7 @@ from ray import serve
 
 job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
-serve.start(detached=True)
+serve.start()
 
 @serve.deployment(version="1")
 class Test:
@@ -134,7 +135,7 @@ from ray import serve
 
 job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
-serve.start(detached=True)
+serve.start()
 
 Test = serve.get_deployment("Test")
 Test.options(num_replicas=2).deploy()
