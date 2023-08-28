@@ -89,6 +89,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                 # Note that if `spark_job_group_id` not in task_status_dict,
                 # the task has been terminated
                 self.server.task_status_dict[spark_job_group_id] = "running"
+                _logger.info(f"Spark task in {spark_job_group_id} has started.")
             return {}
 
         elif path_parts[0] == "query_task_status":
@@ -130,7 +131,7 @@ class SparkJobServer(ThreadingHTTPServer):
     def __init__(self, server_address, spark):
         super().__init__(server_address, SparkJobServerRequestHandler)
         self.spark = spark
-        self.task_status_dict = set()
+        self.task_status_dict = {}
 
     def shutdown(self) -> None:
         super().shutdown()
