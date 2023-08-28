@@ -2632,7 +2632,8 @@ class Algorithm(Trainable, AlgorithmBase):
         elif "counters" in state:
             self._counters = state["counters"]
 
-        self._iteration = state.get("training_iteration", 0)
+        if "training_iteration" in state:
+            self._iteration = state["training_iteration"]
 
     @staticmethod
     def _checkpoint_info_to_algorithm_state(
