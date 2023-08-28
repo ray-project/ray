@@ -672,6 +672,7 @@ def validate_save_restore(
             algorithms that pause training (i.e., PBT, HyperBand).
     """
     assert ray.is_initialized(), "Need Ray to be initialized."
+
     remote_cls = ray.remote(num_gpus=num_gpus)(trainable_cls)
     trainable_1 = remote_cls.remote(config=config)
     trainable_2 = remote_cls.remote(config=config)

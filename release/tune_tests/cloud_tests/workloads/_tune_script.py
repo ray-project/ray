@@ -113,7 +113,7 @@ def run_tune(
         num_samples=1,  # 4 trials from the grid search
         config=config,
         storage_path=storage_path,
-        sync_config=tune.SyncConfig(
+        sync_config=train.SyncConfig(
             syncer="auto" if not no_syncer else None,
             sync_on_checkpoint=True,
             sync_period=0.5,
