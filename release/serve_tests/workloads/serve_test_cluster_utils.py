@@ -57,7 +57,7 @@ def setup_anyscale_cluster():
         # to reduce spam.
         runtime_env={"env_vars": {"SERVE_ENABLE_SCALING_LOG": "0"}},
     )
-    serve.start(http_options={"location": DeploymentMode.EveryNode})
+    serve.start(proxy_location=DeploymentMode.EveryNode)
 
     # Print memory usage on the head node to help diagnose/debug memory leaks.
     monitor_memory_usage()
