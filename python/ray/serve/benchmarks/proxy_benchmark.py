@@ -257,7 +257,7 @@ async def main():
 
     for key, stats in results.items():
         key_split = key.split("/")
-        proxy = key_split[0]
+        proxy = key_split[0].split(":")[1]
         num_client = key_split[1].split(":")[1]
         replica = key_split[2].split(":")[1]
         concurrent_queries = key_split[3].split(":")[1]
