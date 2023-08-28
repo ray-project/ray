@@ -133,6 +133,7 @@ class Monitor:
     def __init__(
         self,
         address: str,
+        session_name: str,
         autoscaling_config: Union[str, Callable[[], Dict[str, Any]]],
         log_dir: str = None,
         prefix_cluster_info: bool = False,
@@ -155,7 +156,7 @@ class Monitor:
             self.gcs_client.internal_kv_put(
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
-        self._session_name = self.get_session_name(self.gcs_client)
+        self._session_name = session_name
         logger.info(f"session_name: {self._session_name}")
         worker.mode = 0
         head_node_ip = self.gcs_address.split(":")[0]
@@ -323,27 +324,6 @@ class Monitor:
             )
         if self.readonly_config:
             self.readonly_config["available_node_types"].update(mirror_node_types)
-
-    def get_session_name(self, gcs_client: GcsClient) -> Optional[str]:
-        """Obtain the session name from the GCS.
-
-        If the GCS doesn't respond, session name is considered None.
-        In this case, the metrics reported from the monitor won't have
-        the correct session name.
-        """
-        if not _internal_kv_initialized():
-            return None
-
-        session_name = gcs_client.internal_kv_get(
-            b"session_name",
-            ray_constants.KV_NAMESPACE_SESSION,
-            timeout=10,
-        )
-
-        if session_name:
-            session_name = session_name.decode()
-
-        return session_name
 
     def update_resource_requests(self):
         """Fetches resource requests from the internal KV and updates load."""
@@ -607,6 +587,9 @@ if __name__ == "__main__":
         "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
     )
     parser.add_argument(
+        "--session-name", required=False, type=str, help="The name of the session."
+    )
+    parser.add_argument(
         "--redis-address", required=False, type=str, help="This is deprecated"
     )
     parser.add_argument(
@@ -703,6 +686,7 @@ if __name__ == "__main__":
 
     monitor = Monitor(
         bootstrap_address,
+        args.session_name,
         autoscaling_config,
         log_dir=args.logs_dir,
         monitor_ip=args.monitor_ip,
