@@ -678,7 +678,11 @@ class NewExperimentAnalysis:
         assert not mode or metric
         rows = {}
         for path, df in self.trial_dataframes.items():
-            if mode == "max":
+            if df.empty:
+                continue
+            if metric not in df:
+                idx = -1
+            elif mode == "max":
                 idx = df[metric].idxmax()
             elif mode == "min":
                 idx = df[metric].idxmin()

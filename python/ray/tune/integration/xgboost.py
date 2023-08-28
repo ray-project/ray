@@ -11,6 +11,7 @@ from ray import train, tune
 from ray.train import Checkpoint
 from ray.tune.utils import flatten_dict
 from ray.util import log_once
+from ray.util.annotations import Deprecated
 from xgboost.core import Booster
 
 try:
@@ -181,6 +182,7 @@ class _TuneCheckpointCallback(TuneCallback):
         )
 
 
+@Deprecated
 class TuneReportCallback(TuneReportCheckpointCallback):
     def __init__(
         self,
@@ -189,7 +191,7 @@ class TuneReportCallback(TuneReportCheckpointCallback):
             Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
         ] = None,
     ):
-        if log_once("tune_report_deprecated"):
+        if log_once("tune_xgboost_report_deprecated"):
             warnings.warn(
                 "`ray.tune.integration.xgboost.TuneReportCallback` is deprecated. "
                 "Use `ray.tune.integration.xgboost.TuneCheckpointReportCallback` "

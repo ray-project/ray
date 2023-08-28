@@ -11,7 +11,6 @@
       --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/air/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air 
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/data/...
 
 - label: ":airplane: AIR/ML release smoke tests"
@@ -342,7 +341,6 @@
     - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu_only,rllib
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/tune/...
 
 - label: ":octopus: ML library integrations tests and examples."
