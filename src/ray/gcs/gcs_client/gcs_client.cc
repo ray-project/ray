@@ -78,6 +78,16 @@ void GcsSubscriberClient::PubsubCommandBatch(
       });
 }
 
+Status WaitForChannelReady(grpc::Channel &channel) {
+  auto deadline =
+      std::chrono::system_clock::now() +
+      std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
+  if (channel.WaitForConnected(deadline)) {
+    return Status::OK();
+  }
+  return Status::Disconnected("GCS is not connected");
+}
+
 }  // namespace
 
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
@@ -179,6 +189,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
     for (; tries > 0; tries--) {
       grpc::ClientContext context;
       PrepareContext(context, timeout_ms);
+      RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
       connect_status =
           GrpcStatusToRayStatus(node_info_stub_->GetClusterId(&context, request, &reply));
 
@@ -207,6 +218,7 @@ Status PythonGcsClient::CheckAlive(const std::vector<std::string> &raylet_addres
                                    std::vector<bool> &result) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   rpc::CheckAliveRequest request;
   for (const auto &address : raylet_addresses) {
@@ -233,6 +245,7 @@ Status PythonGcsClient::InternalKVGet(const std::string &ns,
                                       std::string &value) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   rpc::InternalKVGetRequest request;
   request.set_namespace_(ns);
@@ -260,6 +273,7 @@ Status PythonGcsClient::InternalKVMultiGet(
     std::unordered_map<std::string, std::string> &result) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   rpc::InternalKVMultiGetRequest request;
   request.set_namespace_(ns);
@@ -292,6 +306,7 @@ Status PythonGcsClient::InternalKVPut(const std::string &ns,
                                       int &added_num) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   rpc::InternalKVPutRequest request;
   request.set_namespace_(ns);
@@ -319,6 +334,7 @@ Status PythonGcsClient::InternalKVDel(const std::string &ns,
                                       int &deleted_num) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   rpc::InternalKVDelRequest request;
   request.set_namespace_(ns);
@@ -344,6 +360,7 @@ Status PythonGcsClient::InternalKVKeys(const std::string &ns,
                                        std::vector<std::string> &results) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   rpc::InternalKVKeysRequest request;
   request.set_namespace_(ns);
@@ -368,6 +385,7 @@ Status PythonGcsClient::InternalKVExists(const std::string &ns,
                                          bool &exists) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   rpc::InternalKVExistsRequest request;
   request.set_namespace_(ns);
@@ -391,6 +409,7 @@ Status PythonGcsClient::PinRuntimeEnvUri(const std::string &uri,
                                          int64_t timeout_ms) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   rpc::PinRuntimeEnvURIRequest request;
   request.set_uri(uri);
@@ -419,6 +438,7 @@ Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
                                        std::vector<rpc::GcsNodeInfo> &result) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   rpc::GetAllNodeInfoRequest request;
   rpc::GetAllNodeInfoReply reply;
@@ -439,6 +459,7 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
                                       std::vector<rpc::JobTableData> &result) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   rpc::GetAllJobInfoRequest request;
   rpc::GetAllJobInfoReply reply;
@@ -459,6 +480,7 @@ Status PythonGcsClient::GetAllResourceUsage(int64_t timeout_ms,
                                             std::string &serialized_reply) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   rpc::GetAllResourceUsageRequest request;
   rpc::GetAllResourceUsageReply reply;
@@ -481,6 +503,7 @@ Status PythonGcsClient::RequestClusterResourceConstraint(
     const std::vector<int64_t> &count_array) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   rpc::autoscaler::RequestClusterResourceConstraintRequest request;
   rpc::autoscaler::RequestClusterResourceConstraintReply reply;
@@ -512,6 +535,7 @@ Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
   rpc::autoscaler::GetClusterStatusReply reply;
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   grpc::Status status = autoscaler_stub_->GetClusterStatus(&context, request, &reply);
 
@@ -538,6 +562,7 @@ Status PythonGcsClient::DrainNode(const std::string &node_id,
 
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   grpc::Status status = autoscaler_stub_->DrainNode(&context, request, &reply);
 
@@ -553,6 +578,7 @@ Status PythonGcsClient::DrainNodes(const std::vector<std::string> &node_ids,
                                    std::vector<std::string> &drained_node_ids) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
+  RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_));
 
   rpc::DrainNodeRequest request;
   for (const std::string &node_id : node_ids) {
