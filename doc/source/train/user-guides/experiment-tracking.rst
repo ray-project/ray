@@ -12,16 +12,39 @@ This guide provides instructions on how to set up the code so that your favorite
 can work for distributed data parallel training with Ray Train. We will conclude the session with debugging
 tips.
 
-Ray Train lets you use native experiment tracking libraries by customizing your tracking 
-logic inside the ``train_loop_per_worker`` function. 
-You can customize when and where to log parameters, metrics, models, or media contents. 
-You can also use some native integrations that these tracking frameworks have with 
-specific training frameworks, for example ``mlflow.pytorch.autolog()``, 
-``lightning.pytorch.loggers.MLFlowLogger`` etc. 
-In this way, you can port your experiment tracking logic to Ray Train with minimal changes. 
+Before we begin, the following is roughly how you can use the native experiment tracking lirary calls 
+inside of Ray Train. 
+
+.. code-block:: python
+
+    from ray.train.torch import TorchTrainer
+    from ray.train import ScalingConfig
+
+    def train_func(config):
+        # Training code and native lexperiment tracking library calls go here.
+
+    scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
+    trainer = TorchTrainer(train_func, scaling_config=scaling_config)
+    result = trainer.fit()
+
+Ray Train lets you use native experiment tracking libraries by customizing the tracking 
+logic inside the ``train_func`` function. In this way, you can port your experiment tracking 
+logic to Ray Train with minimal changes. 
 
 Log distributed training experiments
 ====================================
+
+For some scenarios, every Worker generates an identical copy and saving a single copy is sufficient. 
+Ray Train lets you apply logic to only the rank 0 Worker with the following method:
+:meth:`context.get_world_rank() <ray.train.context.TrainContext.get_world_rank>`.
+
+There are roughly two kinds of experiment tracking modes: online and offline. For online mode, you log
+towards a tracking service that is running. Usually you need credentials to access the service.
+For offline mode, you log towards local file directory. Usually no credentials are needed.
+
+For online mode, it is important to make sure that all nodes and Worker processes have 
+access to credentials. For offline mode, major consideration is to ensure that there is a 
+shared file system where all nodes can write to.
 
 Step 1: Choose a tracking service to use
 ----------------------------------------
@@ -41,7 +64,7 @@ to access and write logs to.
 
 - offline mode: Start the run by setting tracking uri to a shared storage path: :code:`mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")`
 
-**TensorBoard:**
+**TensorBoard(offline):**
 
 - Set up ``SummaryWriter`` to write to a shared storage path: :code:`writer = SummaryWriter("some_shared_storage_path/runs")`
 
@@ -64,12 +87,25 @@ Ray Train provides a training context that provides access to training identifie
 * Training ID (:meth:`context.get_trial_id() <ray.train.context.TrainContext.get_trial_id>`) 
 * Training Name (:meth:`context.get_trial_name() <ray.train.context.TrainContext.get_trial_name>`)
 
+.. tip::
+    
+    When performing **fault-tolerant training** with auto-restoration, be sure 
+    to specify a unique ID for the Loggers, so that the new workers report to
+    the same run after restoration.
+
+    For example:
+    
+    - `WandbLogger(id=UNIQUE_ID)`
+    - `CometLogger(experiment_key=UNIQUE_ID)`
+    - `MLFlowLogger(run_id=UNIQUE_ID)`
+
 Step 4: Log
 -----------
 
-For some logs, every Worker generates an identical copy and saving a single copy is sufficient. 
-Ray Train can save logs from the rank 0 Worker only with the following method:
-:meth:`context.get_world_rank() <ray.train.context.TrainContext.get_world_rank>`.
+You can customize when and where to log parameters, metrics, models, or media contents. 
+You can also use some native integrations that these tracking frameworks have with 
+specific training frameworks, for example ``mlflow.pytorch.autolog()``, 
+``lightning.pytorch.loggers.MLFlowLogger`` etc. 
 
 Step 5: Finish the run
 ----------------------
@@ -84,7 +120,7 @@ Let's see how the above works with some code.
 
 The following session uses Wandb and MLflow but it is adaptable to other frameworks.
 
-Pytorch
+PyTorch
 -------
 
 Conceptual code snippets
@@ -216,7 +252,7 @@ Runnable code
     .. tab:: Log to Wandb (online)
 
         .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking//torch_exp_tracking_wandb.py
-            :emphasize-lines: 17, 18, 48, 49, 51, 52, 57
+            :emphasize-lines: 17, 18, 19, 48, 49, 51, 52, 57
             :language: python
             :start-after: __start__
 
@@ -270,18 +306,6 @@ just for demonstration purposes.
         .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_tensorboard.py
             :language: python
             :start-after: __lightning_experiment_tracking_tensorboard_start__
-        
-.. tip::
-    
-    When performing **fault-tolerant training** with auto-restoration, be sure 
-    to specify a unique ID for the Loggers, so that the new workers report to
-    the same run after restoration.
-
-    For example:
-    
-    - `WandbLogger(id=UNIQUE_ID)`
-    - `CometLogger(experiment_key=UNIQUE_ID)`
-    - `MLFlowLogger(run_id=UNIQUE_ID)`
 
 Common Errors
 =============
