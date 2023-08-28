@@ -277,12 +277,27 @@ class RayExecutor(Executor):
                 futures. Futures that are completed or running will not be
                 cancelled.
         """
+
         if self.shutdown_ray is not None:
             if self.shutdown_ray:
+                # if shutdown_ray is True we shut down the ray instance regardless
+                # of where it was initialised
                 self._shutdown_ray(wait, cancel_futures)
+            else:
+                # if shutdown_ray is False we do nothing and the instance
+                # remains running
+                pass
         else:
+            # if shutdown_ray is None we shut down the ray instance if it was
+            # initialised by the RayExecutor instance
             if self._initialised_ray:
                 self._shutdown_ray(wait, cancel_futures)
+            else:
+                # if the instance was not initialised within the current
+                # RayExecutor instance we do nothing and it remains running
+                pass
+
+        # we always delete futures
         del self.futures
         self.futures = []
 
