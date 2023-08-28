@@ -133,6 +133,9 @@ class RayClusterOnSpark:
             self.shutdown()
             raise
 
+        if self.autoscale:
+            return
+
         try:
             last_alive_worker_count = 0
             last_progress_move_time = time.time()
@@ -1134,8 +1137,7 @@ def setup_ray_cluster(
             autoscale=autoscale,
         )
 
-        if not autoscale:
-            cluster.wait_until_ready()  # NB: this line might raise error.
+        cluster.wait_until_ready()  # NB: this line might raise error.
 
         # If connect cluster successfully, set global _active_ray_cluster to be the
         # started cluster.
