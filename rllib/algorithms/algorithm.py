@@ -2575,6 +2575,7 @@ class Algorithm(Trainable, AlgorithmBase):
             state["train_exec_impl"] = self.train_exec_impl.shared_metrics.get().save()
         else:
             state["counters"] = self._counters
+        state["training_iteration"] = self.training_iteration
 
         return state
 
@@ -2630,6 +2631,8 @@ class Algorithm(Trainable, AlgorithmBase):
             self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
         elif "counters" in state:
             self._counters = state["counters"]
+
+        self._iteration = state.get("training_iteration", 0)
 
     @staticmethod
     def _checkpoint_info_to_algorithm_state(

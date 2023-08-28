@@ -149,7 +149,7 @@ class ActorNetwork(tf.keras.Model):
             distr_params = action_logits
             distr = self.get_action_dist_object(distr_params)
 
-            action = tf.cast(tf.stop_gradient(distr.sample()), tf.float32) + (
+            action = tf.stop_gradient(distr.sample()) + (
                 action_probs - tf.stop_gradient(action_probs)
             )
 
@@ -187,7 +187,10 @@ class ActorNetwork(tf.keras.Model):
         """
         if isinstance(self.action_space, gym.spaces.Discrete):
             # Create the distribution object using the unimix'd logits.
-            distr = tfp.distributions.OneHotCategorical(logits=action_dist_params_T_B)
+            distr = tfp.distributions.OneHotCategorical(
+                logits=action_dist_params_T_B,
+                dtype=tf.float32,
+            )
 
         elif isinstance(self.action_space, gym.spaces.Box):
             # Compute Normal distribution from action_logits and std_logits
