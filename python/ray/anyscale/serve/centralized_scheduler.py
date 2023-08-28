@@ -355,7 +355,6 @@ class CentralSchedulerActor(SyncCentralScheduler):
         router_id: str,
         health_ref: List[ray.ObjectRef],
     ) -> str:
-
         # health_ref is passed in to make sure if the CentralSchedulerActor is
         # restarted, the health ref can be recollected from routers.
         if router_id not in self.routers_health_ref:

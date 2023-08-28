@@ -32,6 +32,9 @@ PYTHON_NUMPYS=(
 )
 CYTHON_VERSION="0.29.32"
 
+# On runtime, we disable ray-cpp.
+export RAY_DISABLE_EXTRA_CPP=1
+
 for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
   PYTHON_VERSION_KEY="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f1)"
   if [[ "${BUILD_ONE_PYTHON_ONLY:-}" != "" && "${PYTHON_VERSION_KEY}" != "${BUILD_ONE_PYTHON_ONLY}" ]]; then

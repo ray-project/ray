@@ -14,16 +14,19 @@ else
     IMAGE_SUFFIX="-aarch64"
 fi
 
+
+RAY_VERSION="3.0.0.dev0"
+
 if [[ "${PYTHON_VERSION_CODE}" == "py37" ]]; then
-    WHEEL_FILE="ray-3.0.0.dev0-cp37-cp37m-manylinux2014_${HOSTTYPE}.whl"
+    WHEEL_FILE="ray-${RAY_VERSION}-cp37-cp37m-manylinux2014_${HOSTTYPE}.whl"
 elif [[ "${PYTHON_VERSION_CODE}" == "py38" ]]; then
-    WHEEL_FILE="ray-3.0.0.dev0-cp38-cp38-manylinux2014_${HOSTTYPE}.whl"
+    WHEEL_FILE="ray-${RAY_VERSION}-cp38-cp38-manylinux2014_${HOSTTYPE}.whl"
 elif [[ "${PYTHON_VERSION_CODE}" == "py39" ]]; then
-    WHEEL_FILE="ray-3.0.0.dev0-cp39-cp39-manylinux2014_${HOSTTYPE}.whl"
+    WHEEL_FILE="ray-${RAY_VERSION}-cp39-cp39-manylinux2014_${HOSTTYPE}.whl"
 elif [[ "${PYTHON_VERSION_CODE}" == "py310" ]]; then
-    WHEEL_FILE="ray-3.0.0.dev0-cp310-cp310-manylinux2014_${HOSTTYPE}.whl"
+    WHEEL_FILE="ray-${RAY_VERSION}-cp310-cp310-manylinux2014_${HOSTTYPE}.whl"
 elif [[ "${PYTHON_VERSION_CODE}" == "py311" ]]; then
-    WHEEL_FILE="ray-3.0.0.dev0-cp311-cp311-manylinux2014_${HOSTTYPE}.whl"
+    WHEEL_FILE="ray-${RAY_VERSION}-cp311-cp311-manylinux2014_${HOSTTYPE}.whl"
 else
     echo "Unknown python version code: ${PYTHON_VERSION_CODE}" >/dev/stderr
     exit 1
