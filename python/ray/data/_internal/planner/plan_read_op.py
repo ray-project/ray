@@ -105,7 +105,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
                         cleaned_metadata(read_task),
                     )
                 ],
-                owns_blocks=True,
+                owns_blocks=False,
             )
             for read_task in read_tasks
         ]
