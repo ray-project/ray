@@ -3,6 +3,7 @@ from pathlib import Path
 from importlib import import_module
 import os
 import sys
+from unittest.mock import MagicMock
 from jinja2.filters import FILTERS
 
 sys.path.insert(0, os.path.abspath("."))
@@ -12,6 +13,25 @@ from custom_directives import (
     LinkcheckSummarizer,
     build_gallery,
 )
+
+# Compiled ray modules need to be mocked out; readthedocs doesn't have support for
+# compiling these. See https://readthedocs-lst.readthedocs.io/en/latest/faq.html
+# for more information. Other external dependencies should not be added here.
+# Instead add them to autodoc_mock_imports below.
+MOCK_MODULES = [
+    "ray._raylet",
+    "ray.core.generated",
+    "ray.core.generated.common_pb2",
+    "ray.core.generated.runtime_env_common_pb2",
+    "ray.core.generated.gcs_pb2",
+    "ray.core.generated.logging_pb2",
+    "ray.core.generated.ray.protocol.Task",
+    "ray.serve.generated",
+    "ray.serve.generated.serve_pb2",
+    "ray.serve.generated.serve_pb2_grpc",
+]
+sys.modules.update((mod_name, MagicMock()) for mod_name in MOCK_MODULES)
+
 
 assert (
     "ray" not in sys.modules
