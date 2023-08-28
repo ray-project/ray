@@ -60,7 +60,7 @@ def test_custom_fs_validation(tmp_path):
     mock_fs, _ = pyarrow.fs.FileSystem.from_uri("mock://a")
     with pytest.raises(pyarrow.lib.ArrowInvalid) as excinfo:
         StorageContext(
-            storage_path=f"mock:///a",
+            storage_path="mock:///a",
             experiment_dir_name=exp_name,
             storage_filesystem=mock_fs,
         )
