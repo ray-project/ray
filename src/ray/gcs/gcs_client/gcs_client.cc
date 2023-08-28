@@ -82,9 +82,9 @@ void GcsSubscriberClient::PubsubCommandBatch(
 // The wait time takes a fraction of the total timeout of an RPC, so we limit out wait
 // time to min(rpc total timeout, configured connect timeout).
 Status WaitForChannelReady(grpc::Channel &channel, int64_t rpc_timeout_ms) {
-  auto timeout_duration =
-      std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s());
-  if (timeout_ms > 0) {
+  auto timeout_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::seconds(::RayConfig::instance().gcs_rpc_server_connect_timeout_s()));
+  if (rpc_timeout_ms > 0) {
     timeout_duration =
         std::min(timeout_duration, std::chrono::milliseconds(rpc_timeout_ms));
   }
