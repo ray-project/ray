@@ -20,7 +20,6 @@ from ray.serve.schema import ServeInstanceDetails
 from ray.serve.tests.test_cancellation import send_signal_on_cancellation
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_NEW_ROUTING,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
 )
 
@@ -378,9 +377,7 @@ def test_cancel_on_http_timeout_during_execution(
     ],
     indirect=True,
 )
-def test_cancel_on_http_timeout_during_assignment(
-    ray_instance, shutdown_serve
-):
+def test_cancel_on_http_timeout_during_assignment(ray_instance, shutdown_serve):
     """Test the client disconnecting while the proxy is assigning the request."""
     signal_actor = SignalActor.remote()
 
