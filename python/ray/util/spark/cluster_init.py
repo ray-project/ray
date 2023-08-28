@@ -483,6 +483,12 @@ def _setup_ray_cluster(
             max_port=10000,
             exclude_list=[ray_head_port, ray_dashboard_port],
         )
+        spark_job_server_port = get_random_unused_port(
+            ray_head_ip,
+            min_port=9000,
+            max_port=10000,
+            exclude_list=[ray_head_port, ray_dashboard_port, ray_dashboard_agent_port],
+        )
 
         dashboard_options = [
             "--dashboard-host=0.0.0.0",
@@ -521,7 +527,9 @@ def _setup_ray_cluster(
 
         # TODO: use random port.
         # TODO: make the serving thread daemon
-        spark_job_server = _start_spark_job_server("127.0.0.1", 8899, spark)
+        spark_job_server = _start_spark_job_server(
+            ray_head_ip, spark_job_server_port, spark
+        )
         autoscaler_cluster = AutoscalingCluster(
             head_resources={
                 "CPU": 0,
@@ -550,6 +558,7 @@ def _setup_ray_cluster(
                 "ray_temp_dir": ray_temp_dir,
                 "worker_node_options": worker_node_options,
                 "collect_log_to_path": collect_log_to_path,
+                "spark_job_server_port": spark_job_server_port,
             }
         )
         ray_head_proc, tail_output_deque = autoscaler_cluster.start(
@@ -653,6 +662,7 @@ def _setup_ray_cluster(
                     worker_node_options=worker_node_options,
                     collect_log_to_path=collect_log_to_path,
                     autoscale_mode=False,
+                    spark_job_server_port=spark_job_server_port,
                 )
             except Exception as e:
                 # NB:
@@ -1156,6 +1166,7 @@ def _start_ray_worker_nodes(
     worker_node_options,
     collect_log_to_path,
     autoscale_mode,
+    spark_job_server_port,
 ):
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -1249,13 +1260,14 @@ def _start_ray_worker_nodes(
         )
 
         try:
-            # Notify job server the task has been launched.
-            requests.post(
-                url=f"http://{ray_head_ip}:8899/notify_task_launched",
-                json={
-                    "spark_job_group_id": spark_job_group_id,
-                }
-            )
+            if autoscale_mode:
+                # Notify job server the task has been launched.
+                requests.post(
+                    url=f"http://{ray_head_ip}:{spark_job_server_port}/notify_task_launched",
+                    json={
+                        "spark_job_group_id": spark_job_group_id,
+                    }
+                )
 
             # Note:
             # When a pyspark job cancelled, the UDF python worker process are killed by

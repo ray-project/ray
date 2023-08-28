@@ -57,6 +57,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         worker_node_options=worker_node_options,
                         collect_log_to_path=collect_log_to_path,
                         autoscale_mode=True,
+                        spark_job_server_port=self.server.server_address[1],
                     )
                 except Exception:
                     if spark_job_group_id in self.server.task_status_dict:

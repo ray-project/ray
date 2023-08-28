@@ -56,7 +56,8 @@ class RayOnSparkNodeProvider(NodeProvider):
         self._next_node_id = 0
 
         self.ray_head_ip = self.provider_config["ray_head_ip"]
-        self.server_url = f"http://{self.ray_head_ip}:8899"
+        server_port = self.provider_config["spark_job_server_port"]
+        self.server_url = f"http://{self.ray_head_ip}:{server_port}"
         self.ray_head_port = self.provider_config["ray_head_port"]
         self.cluster_unique_id = self.provider_config["cluster_unique_id"]
 
