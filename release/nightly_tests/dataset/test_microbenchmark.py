@@ -129,16 +129,6 @@ def get_transform(to_torch_tensor):
     return transform
 
 
-def crop_and_flip_image_batch(image_batch):
-    transform = get_transform(False)
-    image_batch["image"] = transform(
-        # Make sure to use torch.tensor here to avoid a copy from numpy.
-        # Original dims are (batch_size, channels, height, width).
-        torch.tensor(np.transpose(image_batch["image"], axes=(0, 3, 1, 2)))
-    )
-    return image_batch
-
-
 def crop_and_flip_image(row):
     transform = get_transform(False)
     # Make sure to use torch.tensor here to avoid a copy from numpy.
