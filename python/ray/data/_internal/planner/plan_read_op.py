@@ -1,4 +1,3 @@
-import functools
 from typing import Iterable, List, Optional
 
 import ray
@@ -11,6 +10,8 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     BuildOutputBlocksMapTransformFn,
     MapTransformer,
+    MapTransformFn,
+    MapTransformFnDataType,
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data.block import Block, BlockAccessor
@@ -55,23 +56,34 @@ def _splitrange(n, k):
     return output
 
 
-def _do_additional_splits(
-    blocks: Iterable[Block], _: TaskContext, additional_output_splits: int
-) -> Iterable[Block]:
-    """Do additional splits to the output blocks of a ReadTask.
+class BuildOutputBlocksWithAdditionalSplit(MapTransformFn):
+    """Build output blocks and do additional splits."""
 
-    Args:
-      blocks: The input blocks.
-      additional_output_splits: The number of additional splits, must be greater than 1.
-    """
-    assert additional_output_splits > 1
-    for block in blocks:
-        block = BlockAccessor.for_block(block)
-        offset = 0
-        split_sizes = _splitrange(block.num_rows(), additional_output_splits)
-        for size in split_sizes:
-            yield block.slice(offset, offset + size, copy=True)
-            offset += size
+    def __init__(self, additional_split_factor: int):
+        """
+        Args:
+          additional_output_splits: The number of additional splits, must be
+          greater than 1.
+        """
+        assert additional_split_factor > 1
+        self._additional_split_factor = additional_split_factor
+        super().__init__(MapTransformFnDataType.Block, MapTransformFnDataType.Block)
+
+    def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        blocks = BuildOutputBlocksMapTransformFn.for_blocks()(blocks, ctx)
+        return self._do_additional_splits(blocks)
+
+    def _do_additional_splits(
+        self,
+        blocks: Iterable[Block],
+    ) -> Iterable[Block]:
+        for block in blocks:
+            block = BlockAccessor.for_block(block)
+            offset = 0
+            split_sizes = _splitrange(block.num_rows(), self._additional_split_factor)
+            for size in split_sizes:
+                yield block.slice(offset, offset + size, copy=True)
+                offset += size
 
 
 def plan_read_op(op: Read) -> PhysicalOperator:
@@ -107,22 +119,19 @@ def plan_read_op(op: Read) -> PhysicalOperator:
             yield from read_task()
 
     # Create a MapTransformer for a read operator
-    transform_fns = [
+    transform_fns: List[MapTransformFn] = [
         # First, execute the read tasks.
         BlockMapTransformFn(do_read),
-        # Then build the output blocks.
-        BuildOutputBlocksMapTransformFn.for_blocks(),
     ]
-
-    if op._additional_split_factor is not None:
-        # If addtional split is needed, do it in the last.
+    if op._additional_split_factor is None:
+        # Then build the output blocks.
+        transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
+    else:
+        # Build the output blocks and do additional splits.
+        # NOTE, we explictly do these two steps in one MapTransformFn to avoid
+        # `BuildOutputBlocksMapTransformFn` getting dropped by the optimizer.
         transform_fns.append(
-            BlockMapTransformFn(
-                functools.partial(
-                    _do_additional_splits,
-                    additional_output_splits=op._additional_split_factor,
-                )
-            ),
+            BuildOutputBlocksWithAdditionalSplit(op._additional_split_factor)
         )
 
     map_transformer = MapTransformer(transform_fns)
@@ -143,18 +152,13 @@ def apply_output_blocks_handling_to_read_task(
 
     This function is only used for compability with the legacy LazyBlockList code path.
     """
-    transform_fns: List[BlockMapTransformFn] = [
-        BuildOutputBlocksMapTransformFn.for_blocks()
-    ]
+    transform_fns: List[MapTransformFn] = []
 
-    if additional_split_factor is not None:
+    if additional_split_factor is None:
+        transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
+    else:
         transform_fns.append(
-            BlockMapTransformFn(
-                functools.partial(
-                    _do_additional_splits,
-                    additional_output_splits=additional_split_factor,
-                )
-            ),
+            BuildOutputBlocksWithAdditionalSplit(additional_split_factor)
         )
     map_transformer = MapTransformer(transform_fns)
 
