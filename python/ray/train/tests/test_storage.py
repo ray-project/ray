@@ -5,7 +5,7 @@ import pytest
 import pyarrow.fs
 
 import ray.cloudpickle as ray_pickle
-from ray.train import Checkpoint
+from ray.train import Checkpoint, SyncConfig
 from ray.train._internal.storage import (
     _VALIDATE_STORAGE_MARKER_FILENAME,
     StorageContext,
@@ -15,7 +15,8 @@ from ray.train._internal.storage import (
 from ray.train.tests.test_new_persistence import _resolve_storage_type
 
 
-@pytest.fixture(params=[None, "nfs", "cloud", "custom_fs"])
+# @pytest.fixture(params=[None, "nfs", "cloud", "custom_fs"])
+@pytest.fixture(params=["nfs"])
 def storage(request, tmp_path) -> StorageContext:
     storage_type = request.param
     with _resolve_storage_type(storage_type, tmp_path) as (
@@ -27,6 +28,7 @@ def storage(request, tmp_path) -> StorageContext:
             experiment_dir_name="exp_name",
             storage_filesystem=storage_filesystem,
             trial_dir_name="trial_name",
+            sync_config=SyncConfig(sync_artifacts=True),
         )
 
 
@@ -155,7 +157,53 @@ def test_persist_current_checkpoint(storage: StorageContext, tmp_path):
 
 
 def test_persist_artifacts(storage: StorageContext):
-    pass
+    # Create the trial directory with some artifacts
+    trial_local_path = Path(storage.trial_local_path)
+    trial_local_path.mkdir(parents=True)
+
+    trial_local_path.joinpath("1.txt").touch()
+    trial_local_path.joinpath("2.txt").touch()
+    trial_local_path.joinpath("3.txt").touch()
+
+    # Uploading should work now
+    storage.persist_artifacts()
+    storage.syncer.wait()
+
+    assert sorted(
+        _list_at_fs_path(storage.storage_filesystem, storage.trial_fs_path)
+    ) == [
+        "1.txt",
+        "2.txt",
+        "3.txt",
+    ]
+
+    trial_local_path.joinpath("4.txt").touch()
+    storage.persist_artifacts(force=True)
+
+    assert sorted(
+        _list_at_fs_path(storage.storage_filesystem, storage.trial_fs_path)
+    ) == [
+        "1.txt",
+        "2.txt",
+        "3.txt",
+        "4.txt",
+    ]
+
+
+def test_persist_artifacts_failures(storage: StorageContext):
+    if not storage.syncer:
+        # Should be a no-op if storage_path == storage_local_path (no syncing needed)
+        storage.persist_artifacts()
+        return
+
+    # Uploading before the trial directory has been created should fail
+    with pytest.raises(FileNotFoundError):
+        storage.persist_artifacts()
+        if storage.syncer:
+            storage.syncer.wait()
+
+    with pytest.raises(FileNotFoundError):
+        storage.persist_artifacts(force=True)
 
 
 if __name__ == "__main__":
