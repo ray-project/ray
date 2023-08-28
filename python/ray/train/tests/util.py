@@ -4,7 +4,7 @@ import tempfile
 from typing import Any, Dict, Type
 
 import ray.cloudpickle as ray_pickle
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.train._internal.storage import StorageContext
 
 

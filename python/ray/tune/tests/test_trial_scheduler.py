@@ -17,7 +17,7 @@ from ray import train, tune
 from ray.train import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import TRAINING_ITERATION
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
 from ray.train._internal.storage import StorageContext, _use_storage_context
 from ray.tune import Trainable, PlacementGroupFactory
