@@ -4,6 +4,7 @@ import ipaddress
 import logging
 from math import floor
 import os
+import pathlib
 import sys
 import time
 from ray._private.utils import get_or_create_event_loop
@@ -129,6 +130,19 @@ class HttpServerDashboardHead:
         return self.http_host, self.http_port
 
     @aiohttp.web.middleware
+    async def path_clean_middleware(self, request, handler):
+        if request.path.startswith("/static") or request.path.startswith("/logs"):
+            # strip the "/" from the request path to allow for proper joining
+            path = os.path.abspath(os.path.join("/canary/", request.path[1:]))
+            print("Destined for path: ", path)
+
+            # if the destination is not relative to our canary directory, then the user is attempting
+            # path traversal, so deny the request
+            if not pathlib.Path(path).is_relative_to("/canary"):
+                raise aiohttp.web.HTTPForbidden()
+        return await handler(request)
+
+    @aiohttp.web.middleware
     async def metrics_middleware(self, request, handler):
         start_time = time.monotonic()
 
@@ -166,7 +180,7 @@ class HttpServerDashboardHead:
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
         app = aiohttp.web.Application(
-            client_max_size=100 * 1024**2, middlewares=[self.metrics_middleware]
+            client_max_size=100 * 1024**2, middlewares=[self.metrics_middleware, self.path_clean_middleware]
         )
         app.add_routes(routes=routes.bound_routes())
 
