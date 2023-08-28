@@ -1,8 +1,7 @@
 from typing import Sequence
 
-from grpc.aio._server import Server
-
 import grpc
+from grpc.aio._server import Server
 
 
 class gRPCServer(Server):
