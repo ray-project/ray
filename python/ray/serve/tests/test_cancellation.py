@@ -144,8 +144,7 @@ def test_cancel_sync_handle_call_during_execution(serve_instance):
     r.cancel()
     ray.get(cancelled_signal_actor.wait.remote())
 
-    # TODO(edoakes): this should be a `TaskCancelledError`, not sure why it isn't.
-    with pytest.raises(ray.exceptions.RayTaskError):
+    with pytest.raises(ray.exceptions.TaskCancelledError):
         r.result()
 
 
@@ -218,9 +217,7 @@ def test_cancel_async_handle_call_during_execution(serve_instance):
             r.cancel()
             await cancelled_signal_actor.wait.remote()
 
-            # TODO(edoakes): this should be a `TaskCancelledError`, not sure why it
-            # isn't.
-            with pytest.raises(ray.exceptions.RayTaskError):
+            with pytest.raises(ray.exceptions.TaskCancelledError):
                 await r
 
     h = serve.run(Ingress.bind(Downstream.bind())).options(use_new_handle_api=True)
@@ -302,8 +299,7 @@ def test_cancel_generator_sync(serve_instance):
     # Cancel it and verify that it is cancelled via signal.
     g.cancel()
 
-    # TODO(edoakes): this should be a `TaskCancelledError`, not sure why it isn't.
-    with pytest.raises(ray.exceptions.RayTaskError):
+    with pytest.raises(ray.exceptions.TaskCancelledError):
         next(g)
 
     ray.get(signal_actor.wait.remote())
@@ -336,9 +332,7 @@ def test_cancel_generator_async(serve_instance):
             # Cancel it and verify that it is cancelled via signal.
             g.cancel()
 
-            # TODO(edoakes): this should be a `TaskCancelledError`, not sure why it
-            # isn't.
-            with pytest.raises(ray.exceptions.RayTaskError):
+            with pytest.raises(ray.exceptions.TaskCancelledError):
                 assert await g.__anext__() == "hi"
 
             await signal_actor.wait.remote()
@@ -370,8 +364,7 @@ def test_only_relevant_task_is_cancelled(serve_instance):
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 2)
 
     r1.cancel()
-    # TODO(edoakes): this should be a `TaskCancelledError`, not sure why it isn't.
-    with pytest.raises(ray.exceptions.RayTaskError):
+    with pytest.raises(ray.exceptions.TaskCancelledError):
         r1.result()
 
     # Now signal r2 to run to completion and check that it wasn't cancelled.
@@ -412,8 +405,7 @@ def test_out_of_band_task_is_not_cancelled(serve_instance):
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 2)
 
     r1.cancel()
-    # TODO(edoakes): this should be a `TaskCancelledError`, not sure why it isn't.
-    with pytest.raises(ray.exceptions.RayTaskError):
+    with pytest.raises(ray.exceptions.TaskCancelledError):
         r1.result()
 
     # Now signal out of band request to run to completion and check that it wasn't
