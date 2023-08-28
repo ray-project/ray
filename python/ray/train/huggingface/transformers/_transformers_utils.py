@@ -14,7 +14,6 @@ from ray.data.iterator import _IterableFromIterator
 from ray.data.dataset import MaterializedDataset
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.train import Checkpoint
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal.storage import _use_storage_context
 from ray.train.huggingface.transformers.transformers_checkpoint import (
     TransformersCheckpoint,
@@ -276,10 +275,7 @@ class RayTrainReportCallback(TrainerCallback):
             source_ckpt_path = transformers.trainer.get_last_checkpoint(args.output_dir)
             target_ckpt_path = os.path.join(tmpdir, "checkpoint")
             shutil.copytree(source_ckpt_path, target_ckpt_path)
-            if _use_storage_context():
-                checkpoint = NewCheckpoint.from_directory(tmpdir)
-            else:
-                checkpoint = Checkpoint.from_directory(tmpdir)
+            checkpoint = Checkpoint.from_directory(tmpdir)
 
             # Report latest metrics and checkpoint to Ray Train
             ray.train.report(metrics=metrics, checkpoint=checkpoint)
