@@ -202,13 +202,9 @@ class RayClusterOnSpark:
             self.disconnect()
             os.environ.pop("RAY_ADDRESS", None)
             if self.autoscale:
-                # TODO:
-                #  Cancel all backgroud spark jobs
                 self.spark_job_server.shutdown()
             if cancel_background_job:
                 if self.autoscale:
-                    # TODO:
-                    #  explicitly kill all active ray worker nodes
                     pass
                 else:
                     try:
@@ -525,8 +521,6 @@ def _setup_ray_cluster(
     if autoscale:
         from ray.autoscaler._private.spark.spark_job_server import _start_spark_job_server
 
-        # TODO: use random port.
-        # TODO: make the serving thread daemon
         spark_job_server = _start_spark_job_server(
             ray_head_ip, spark_job_server_port, spark
         )
@@ -1191,8 +1185,6 @@ def _start_ray_worker_nodes(
     #     triggers the sending of a SIGTERM to the child processes spawned by the
     #     `ray_start ...` process.
 
-    # TODO: for autoscaler mode, wrap this mapper function to swallow exception,
-    #  to prevent spark task retries on failure.
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import TaskContext
 

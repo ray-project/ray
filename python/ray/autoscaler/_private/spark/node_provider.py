@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import subprocess
+import threading
+
 import requests
 import sys
 import time
@@ -84,7 +86,7 @@ class RayOnSparkNodeProvider(NodeProvider):
         spark_job_group_id = self._gen_spark_job_group_id(node_id)
 
         response = requests.post(
-            url=self.server_url + "/create_node",
+            url=self.server_url + "/query_task_status",
             json={"spark_job_group_id": spark_job_group_id}
         )
         decoded_resp = response.content.decode("utf-8")
@@ -92,29 +94,14 @@ class RayOnSparkNodeProvider(NodeProvider):
         return json_res["status"]
 
     def is_running(self, node_id):
-        task_status = self._query_node_status(node_id)
-
         with self.lock:
-            if (
-                node_id in self._nodes and
-                self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS] == STATUS_SETTING_UP
-            ):
-                if task_status == "running":
-                    self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
-
             return (
                 node_id in self._nodes and
                 self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS] == STATUS_UP_TO_DATE
             )
 
     def is_terminated(self, node_id):
-        task_status = self._query_node_status(node_id)
-
         with self.lock:
-            if node_id in self._nodes:
-                if task_status == "terminated":
-                    self._nodes.pop(node_id)
-
             return node_id not in self._nodes
 
     def node_tags(self, node_id):
@@ -149,8 +136,8 @@ class RayOnSparkNodeProvider(NodeProvider):
             with self.lock:
                 resources = resources.copy()
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                next_id = self.get_next_node_id()
-                resources["NODE_ID_AS_RESOURCE"] = next_id
+                node_id = self.get_next_node_id()
+                resources["NODE_ID_AS_RESOURCE"] = node_id
 
                 """
                 ray_worker_node_cmd = [
@@ -193,10 +180,10 @@ class RayOnSparkNodeProvider(NodeProvider):
                 response = requests.post(
                     url=self.server_url + "/create_node",
                     json={
-                        "spark_job_group_id": self._gen_spark_job_group_id(next_id),
+                        "spark_job_group_id": self._gen_spark_job_group_id(node_id),
                         "spark_job_group_desc":
                             "This job group is for spark job which runs the Ray "
-                            f"cluster worker node {next_id} connecting to ray "
+                            f"cluster worker node {node_id} connecting to ray "
                             f"head node {self.ray_head_ip}:{self.ray_head_port}",
                         "using_stage_scheduling": conf["using_stage_scheduling"],
                         "ray_head_ip": self.ray_head_ip,
@@ -213,26 +200,46 @@ class RayOnSparkNodeProvider(NodeProvider):
                 if response.status_code != 200:
                     raise RuntimeError("Starting ray worker node failed.")
 
-                self._nodes[next_id] = {
+                self._nodes[node_id] = {
                     "tags": {
                         TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
                         TAG_RAY_USER_NODE_TYPE: node_type,
-                        TAG_RAY_NODE_NAME: next_id,
+                        TAG_RAY_NODE_NAME: node_id,
                         TAG_RAY_NODE_STATUS: STATUS_SETTING_UP,
                     },
                 }
 
+                def update_node_status():
+                    while True:
+                        time.sleep(5)
+                        status = self._query_node_status(node_id)
+                        if status == "running":
+                            with self.lock:
+                                self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
+                                logger.info(f"node {node_id} starts running.")
+                        elif status == "terminated":
+                            with self.lock:
+                                self._nodes.pop(node_id)
+                            break
+
+                threading.Thread(target=update_node_status).start()
+
     def terminate_node(self, node_id):
         with self.lock:
-            try:
-                self._nodes.pop(node_id)
-            except Exception as e:
-                raise e
+            logger.info(
+                f"Terminate spark job {self._gen_spark_job_group_id(node_id)}."
+            )
 
             requests.post(
                 url=self.server_url + "/terminate_node",
                 json={"spark_job_group_id": self._gen_spark_job_group_id(node_id)}
             )
+
+            try:
+                self._nodes.pop(node_id)
+            except Exception as e:
+                raise e
+
 
     @staticmethod
     def bootstrap_config(cluster_config):

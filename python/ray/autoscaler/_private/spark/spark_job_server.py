@@ -10,8 +10,8 @@ from ray.util.spark.cluster_init import _start_ray_worker_nodes
 import logging
 
 
-_logger = logging.getLogger("ray.util.spark")
-_logger.setLevel(logging.INFO)
+_logger = logging.getLogger("ray.autoscaler._private.spark.spark_job_server")
+_logger.setLevel(logging.WARN)
 
 
 class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
@@ -61,7 +61,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                     )
                 except Exception:
                     if spark_job_group_id in self.server.task_status_dict:
-                        self.server.task_status_dict.remove(spark_job_group_id)
+                        self.server.task_status_dict.pop(spark_job_group_id)
 
                     # TODO: Refine error handling.
                     _logger.warning(
@@ -81,7 +81,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
             assert len(path_parts) == 1, f"Illegal request path: {path}"
             self.server.spark.sparkContext.cancelJobGroup(spark_job_group_id)
             if spark_job_group_id in self.server.task_status_dict:
-                self.server.task_status_dict.remove(spark_job_group_id)
+                self.server.task_status_dict.pop(spark_job_group_id)
             return {}
 
         elif path_parts[0] == "notify_task_launched":
@@ -116,6 +116,10 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
         response_body_json = self.handle_POST(path, post_body_json)
         response_body = json.dumps(response_body_json)
         self.wfile.write(response_body.encode("utf-8"))
+
+    def log_request(self, code='-', size='-'):
+        # Make logs less verbose.
+        pass
 
 
 class SparkJobServer(ThreadingHTTPServer):
