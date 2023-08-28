@@ -18,11 +18,12 @@ def test_simple_replace():
 
 
 def test_replace_nested_in_obj():
-    class Outer:
-        def __init__(self, inner):
-            self._inner = inner
-
     scanner = _PyObjScanner(source_type=Source)
+
+    class Outer:
+        def __init__(self, inner: Source):
+            self._inner: Source = inner
+
     my_objs = [Outer(Source())]
 
     found = scanner.find_nodes(my_objs)

@@ -11,7 +11,6 @@ from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_utils import make_tf_callable
@@ -27,11 +26,10 @@ logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class LearningRateSchedule:
     """Mixin for TFPolicy that adds a learning rate schedule."""
 
-    @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self._lr_schedule = None
         # Disable any scheduling behavior related to learning if Learner API is active.
@@ -74,11 +72,10 @@ class LearningRateSchedule:
             return tf.keras.optimizers.Adam(self.cur_lr)
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class EntropyCoeffSchedule:
     """Mixin for TFPolicy that adds entropy coeff decay."""
 
-    @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self._entropy_coeff_schedule = None
         # Disable any scheduling behavior related to learning if Learner API is active.
@@ -133,7 +130,7 @@ class EntropyCoeffSchedule:
                 self.entropy_coeff.assign(new_val, read_value=False)
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class KLCoeffMixin:
     """Assigns the `update_kl()` and other KL-related methods to a TFPolicy.
 
@@ -208,7 +205,7 @@ class KLCoeffMixin:
         super().set_state(state)
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class TargetNetworkMixin:
     """Assign the `update_target` method to the policy.
 
@@ -284,7 +281,7 @@ class TargetNetworkMixin:
             self.update_target(self.config.get("tau", 1.0))
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TFPolicy.
 
@@ -300,7 +297,6 @@ class ValueNetworkMixin:
         # When doing GAE or vtrace, we need the value function estimate on the
         # observation.
         if config.get("use_gae") or config.get("vtrace"):
-
             # Input dict is provided to us automatically via the Model's
             # requirements. It's a single-timestep (last one in trajectory)
             # input_dict.
@@ -366,7 +362,7 @@ class ValueNetworkMixin:
         return self._cached_extra_action_fetches
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class GradStatsMixin:
     def __init__(self):
         pass
@@ -387,8 +383,6 @@ class GradStatsMixin:
         }
 
 
-# TODO: find a better place for this util, since it's not technically MixIns.
-@Deprecated(error=False)
 def compute_gradients(
     policy, optimizer: LocalOptimizer, loss: TensorType
 ) -> ModelGradients:
