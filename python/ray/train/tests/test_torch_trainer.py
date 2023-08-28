@@ -12,8 +12,7 @@ from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 from ray.train.torch import TorchPredictor, TorchTrainer
-from ray.train import RunConfig, ScalingConfig
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train.torch import TorchConfig, TorchCheckpoint
 from ray.train.trainer import TrainingFailedError
 import ray.train as train

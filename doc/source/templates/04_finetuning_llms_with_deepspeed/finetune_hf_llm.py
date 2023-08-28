@@ -33,7 +33,7 @@ import ray
 from ray import train
 import ray.util.scheduling_strategies
 from ray.train.torch import TorchTrainer
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 
 from utils import (
     get_checkpoint_and_refs_dir,

@@ -24,7 +24,6 @@ from ray.air._internal.remote_storage import (
 )
 from ray.air._internal.uri_utils import URI
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal.storage import (
     get_fs_and_path,
     _download_from_fs_path,
@@ -1023,7 +1022,7 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, use_air_trai
         ]
         sorted_checkpoint_dirs = sorted(checkpoint_dirs)
         checkpoints = [
-            NewCheckpoint.from_directory(os.path.join(experiment_dir, d))
+            Checkpoint.from_directory(os.path.join(experiment_dir, d))
             for d in sorted_checkpoint_dirs
         ]
         return sorted_checkpoint_dirs, checkpoints

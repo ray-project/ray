@@ -8,7 +8,7 @@ import time
 
 import ray
 from ray import train, tune
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 

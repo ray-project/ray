@@ -12,12 +12,12 @@ from torchvision.models import resnet18
 
 import ray
 from ray.train import (
+    Checkpoint,
     CheckpointConfig,
     FailureConfig,
     RunConfig,
     ScalingConfig,
 )
-from ray.train._checkpoint import Checkpoint
 import ray.train.torch
 from ray.train.horovod import HorovodTrainer
 from ray import train, tune
