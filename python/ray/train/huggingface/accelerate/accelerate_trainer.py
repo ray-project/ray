@@ -111,6 +111,8 @@ class AccelerateTrainer(TorchTrainer):
     Example:
         .. testcode::
 
+            import os
+            import tempfile
             import torch
             import torch.nn as nn
 
@@ -184,16 +186,20 @@ class AccelerateTrainer(TorchTrainer):
                         if epoch % 20 == 0:
                             print(f"epoch: {epoch}/{num_epochs}, loss: {loss:.3f}")
 
+                    # Create checkpoint.
+                    base_model=accelerator.unwrap_model(model)
+                    checkpoint_dir = tempfile.mkdtemp()
+                    torch.save(
+                        {"model_state_dict": base_model.state_dict()},
+                        os.path.join(checkpoint_dir, "model.pt"),
+                    )
+                    checkpoint = Checkpoint.from_directory(checkpoint_dir)
+
                     # Report and record metrics, checkpoint model at end of each
                     # epoch
                     train.report(
                         {"loss": loss.item(), "epoch": epoch},
-                        checkpoint=Checkpoint.from_dict(
-                            dict(
-                                epoch=epoch,
-                                model=accelerator.unwrap_model(model).state_dict(),
-                            )
-                        ),
+                        checkpoint=checkpoint
                     )
 
 
@@ -245,9 +251,7 @@ class AccelerateTrainer(TorchTrainer):
         run_config: Configuration for the execution of the training run.
         datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
-            dataset. If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be transformed
-            by the ``preprocessor`` if one is provided.
+            dataset.
         resume_from_checkpoint: A checkpoint to resume training from.
         metadata: Dict that should be made available via
             `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`

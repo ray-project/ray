@@ -4800,6 +4800,7 @@
       cluster:
         cluster_compute: tpl_64_gce.yaml
     - __suffix__: aws.py311
+      frequency: weekly 
       python: "3.11"
 
 
@@ -4854,6 +4855,9 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      frequency: weekly 
+      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -4933,6 +4937,11 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py311
+      frequency: manual 
+      python: "3.11"
+      smoke_test:
+        frequency: nightly-3x
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -5428,6 +5437,7 @@
 
   frequency: nightly-3x
   team: core
+  stable: false
   cluster:
     byod:
       type: gpu
@@ -5500,8 +5510,6 @@
 - name: scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
   working_dir: benchmarks
-
-  python: "3.7"
 
   frequency: nightly
   team: core
@@ -6338,8 +6346,6 @@
   group: data-tests
   working_dir: nightly_tests
 
-  python: "3.7"
-
   frequency: weekly
   team: data
   python: "3.8"
@@ -6676,8 +6682,6 @@
 - name: k8s_serve_ha_test
   group: k8s-test
   working_dir: k8s_tests
-
-  python: "3.7"
 
   stable: false
 

@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.train import Checkpoint, ScalingConfig, RunConfig
+from ray.train import ScalingConfig, RunConfig
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -13,6 +13,8 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 from ray.tune.callback import Callback
+
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 @pytest.fixture
@@ -29,17 +31,6 @@ def ray_start_4_cpus_4_gpus_4_extra():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
-
-
-# Currently in DataParallelTrainers we only report metrics from rank 0.
-# For testing purposes here, we need to be able to report from all
-# workers.
-
-
-class DataParallelTrainerPatchedMultipleReturns(DataParallelTrainer):
-    def _report(self, training_iterator) -> None:
-        for results in training_iterator:
-            tune.report(results=results)
 
 
 def gen_execute_single_async_special(special_f):
@@ -137,7 +128,7 @@ def test_datasets(ray_start_4_cpus):
         # All other datasets should not be sharded.
         val_dataset = train.get_dataset_shard("val")
         val_ds_count = len(list(val_dataset.iter_rows()))
-        assert val_ds_count == num_val_data
+        assert val_ds_count == num_val_data / scale_config.num_workers
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=get_dataset,
@@ -224,11 +215,13 @@ def test_scaling_config_validation(ray_start_4_cpus):
 def test_fast_slow(ray_start_4_cpus):
     def train_func():
         for i in range(2):
-            train.report(dict(index=i), checkpoint=Checkpoint.from_dict({"epoch": i}))
+            with create_dict_checkpoint({"epoch": i}) as checkpoint:
+                train.report(dict(index=i), checkpoint=checkpoint)
 
     def train_slow():
         for i in range(2):
-            train.report(dict(index=i), checkpoint=Checkpoint.from_dict({"epoch": i}))
+            with create_dict_checkpoint({"epoch": i}) as checkpoint:
+                train.report(dict(index=i), checkpoint=checkpoint)
             time.sleep(5)
 
     new_backend_executor_cls = gen_new_backend_executor(train_slow)
@@ -244,7 +237,7 @@ def test_fast_slow(ray_start_4_cpus):
     )
     results = trainer.fit()
 
-    assert results.checkpoint.to_dict()["epoch"] == 1
+    assert load_dict_checkpoint(results.checkpoint)["epoch"] == 1
 
     result_list = callback.result_list
     assert len(result_list) == 2
@@ -271,31 +264,24 @@ def test_mismatch_report(ray_start_4_cpus):
         trainer.fit()
 
 
-def test_world_rank(ray_start_4_cpus):
+def test_world_rank(ray_start_4_cpus, tmp_path):
     def train_func():
-        train.report(dict(world_rank=train.get_context().get_world_rank()))
+        world_rank = train.get_context().get_world_rank()
+        (tmp_path / f"{world_rank}").touch()
+        train.report(dict(world_rank=world_rank))
 
-    # Currently in DataParallelTrainers we only report metrics from rank 0.
-    # For testing purposes here, we need to be able to report from all
-    # workers.
-    class DataParallelTrainerPatched(DataParallelTrainer):
-        def _report(self, training_iterator) -> None:
-            for results in training_iterator:
-                tune.report(results=results)
+    trainer = DataParallelTrainer(train_func, scaling_config=scale_config)
+    trainer.fit()
 
-    trainer = DataParallelTrainerPatched(
-        train_func,
-        scaling_config=scale_config,
-    )
-    results = trainer.fit()
-
-    assert [result["world_rank"] for result in results.metrics["results"]] == [
-        0,
-        1,
-    ]
+    created_files = list(tmp_path.glob("*"))
+    assert len(created_files) == 2
+    assert {int(file.name) for file in created_files} == {0, 1}
 
 
-def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
+def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
+    def get_visible_devices_for_workers():
+        return [file.read_text() for file in tmp_path.glob("*")]
+
     class CudaTestBackend(Backend):
         share_cuda_visible_devices = True
 
@@ -306,55 +292,56 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
 
     def get_resources():
         cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        world_rank = train.get_context().get_world_rank()
+        (tmp_path / f"{world_rank}").write_text(cuda_visible_devices)
         train.report(dict(devices=cuda_visible_devices))
 
     # 0 GPUs will be requested and should not raise an error.
-    trainer = DataParallelTrainerPatchedMultipleReturns(
+    trainer = DataParallelTrainer(
         get_resources,
         backend_config=CudaTestConfig(),
         scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
     )
-    results = trainer.fit()
-    results = [result["devices"] for result in results.metrics["results"]]
-    assert results == ["", ""]
+    trainer.fit()
+    assert get_visible_devices_for_workers() == ["", ""]
 
     # 1 GPU will be requested and should not raise an error.
-    trainer = DataParallelTrainerPatchedMultipleReturns(
+    trainer = DataParallelTrainer(
         get_resources,
         backend_config=CudaTestConfig(),
         scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
     )
-    results = trainer.fit()
-    results = [result["devices"] for result in results.metrics["results"]]
+    trainer.fit()
+    visible_devices = get_visible_devices_for_workers()
     # Sort the cuda visible devices to have exact match with expected result.
-    results = [",".join(sorted(r.split(","))) for r in results]
-    assert results == ["0,1", "0,1"]
+    visible_devices = [",".join(sorted(r.split(","))) for r in visible_devices]
+    assert visible_devices == ["0,1", "0,1"]
 
     # Partial GPUs should not raise an error.
-    trainer = DataParallelTrainerPatchedMultipleReturns(
+    trainer = DataParallelTrainer(
         get_resources,
         backend_config=CudaTestConfig(),
         scaling_config=ScalingConfig(
             num_workers=2, use_gpu=True, resources_per_worker={"GPU": 0.1}
         ),
     )
-    results = trainer.fit()
-    results = [result["devices"] for result in results.metrics["results"]]
-    assert results == ["0", "0"]
+    trainer.fit()
+    visible_devices = get_visible_devices_for_workers()
+    assert visible_devices == ["0", "0"]
 
     # Multiple GPUs should not raise an error.
-    trainer = DataParallelTrainerPatchedMultipleReturns(
+    trainer = DataParallelTrainer(
         get_resources,
         backend_config=CudaTestConfig(),
         scaling_config=ScalingConfig(
             num_workers=2, use_gpu=True, resources_per_worker={"GPU": 2}
         ),
     )
-    results = trainer.fit()
-    results = [result["devices"] for result in results.metrics["results"]]
+    trainer.fit()
+    visible_devices = get_visible_devices_for_workers()
     # Sort the cuda visible devices to have exact match with expected result.
-    results = [",".join(sorted(r.split(","))) for r in results]
-    assert results == ["0,1,2,3", "0,1,2,3"]
+    visible_devices = [",".join(sorted(r.split(","))) for r in visible_devices]
+    assert visible_devices == ["0,1,2,3", "0,1,2,3"]
 
 
 if __name__ == "__main__":

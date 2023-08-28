@@ -14,7 +14,6 @@ import logging
 import os
 
 import ray
-from ray._private.services import get_node_ip_address
 from ray.air import Checkpoint, ResourceRequest
 from ray.air._internal.uri_utils import URI
 from ray.air.config import CheckpointConfig
@@ -22,6 +21,7 @@ from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedChec
 from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
+from ray.train._internal.session import _FutureTrainingResult
 from ray.train._internal.storage import StorageContext, _use_storage_context
 from ray.train.constants import CHECKPOINT_DIR_NAME
 from ray.exceptions import RayActorError, RayTaskError
@@ -59,7 +59,7 @@ from ray.tune.callback import Callback, CallbackList
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
-from ray.tune.syncer import _HeadNodeSyncDeprecationWarning, SyncConfig
+from ray.train._internal.syncer import SyncConfig
 from ray.tune.experiment import Trial
 from ray.tune.utils.log import _dedup_logs
 from ray.tune.utils.object_cache import _ObjectCache
@@ -421,7 +421,7 @@ class TuneController:
     @property
     def experiment_path(self) -> str:
         if _use_storage_context():
-            return str(self._storage.storage_prefix / self._storage.experiment_fs_path)
+            return self._storage.experiment_fs_path
 
         return self._legacy_remote_experiment_path or self._legacy_local_experiment_path
 
@@ -1458,7 +1458,7 @@ class TuneController:
         if decision is TrialScheduler.STOP or decision is TrialScheduler.PAUSE:
             self._queued_trial_decisions[trial.trial_id] = decision
 
-    def _execute_action(self, trial: Trial, decision: str):
+    def _execute_action(self, trial: Trial, decision: str, after_save: bool = False):
         """Executes action based on decision.
 
         Args:
@@ -1468,7 +1468,7 @@ class TuneController:
         if decision == TrialScheduler.CONTINUE:
             self._schedule_trial_train(trial)
         elif decision == TrialScheduler.PAUSE:
-            self.pause_trial(trial)
+            self.pause_trial(trial, should_checkpoint=not after_save)
         elif decision == TrialScheduler.STOP:
             self.stop_trial(trial)
         elif decision == TrialScheduler.NOOP:
@@ -1476,7 +1476,7 @@ class TuneController:
         else:
             raise ValueError("Invalid decision: {}".format(decision))
 
-    def _maybe_execute_queued_decision(self, trial):
+    def _maybe_execute_queued_decision(self, trial: Trial, after_save: bool = False):
         # `self._queued_trial_decisions` now contains a final decision
         # based on all results
         final_decision = self._queued_trial_decisions.pop(trial.trial_id, None)
@@ -1484,7 +1484,7 @@ class TuneController:
             logger.debug(
                 f"Executing final queued decision for {trial}: {final_decision}"
             )
-            self._execute_action(trial, final_decision)
+            self._execute_action(trial, final_decision, after_save=after_save)
 
     def _stop_experiment_if_needed(self):
         """Stops all trials."""
@@ -1519,19 +1519,18 @@ class TuneController:
             exception: Exception prior to invoking this method.
         """
         self._has_errored = True
-        if trial.status == Trial.RUNNING:
-            if trial.should_recover():
-                self._try_recover(trial, exc=exception)
-                self._callbacks.on_trial_recover(
-                    iteration=self._iteration, trials=self._trials, trial=trial
-                )
-            else:
-                self._scheduler_alg.on_trial_error(self, trial)
-                self._search_alg.on_trial_complete(trial.trial_id, error=True)
-                self._schedule_trial_stop(trial, exception=exception)
-                self._callbacks.on_trial_error(
-                    iteration=self._iteration, trials=self._trials, trial=trial
-                )
+        if trial.status == Trial.RUNNING and trial.should_recover():
+            self._try_recover(trial, exc=exception)
+            self._callbacks.on_trial_recover(
+                iteration=self._iteration, trials=self._trials, trial=trial
+            )
+        elif trial.status in {Trial.RUNNING, Trial.PENDING}:
+            self._scheduler_alg.on_trial_error(self, trial)
+            self._search_alg.on_trial_complete(trial.trial_id, error=True)
+            self._schedule_trial_stop(trial, exception=exception)
+            self._callbacks.on_trial_error(
+                iteration=self._iteration, trials=self._trials, trial=trial
+            )
 
     def _schedule_trial_stop(self, trial: Trial, exception: Optional[Exception] = None):
         if trial.status == Trial.ERROR:
@@ -1629,21 +1628,11 @@ class TuneController:
                 return
 
             if should_checkpoint:
-                # We need to wait for the save to finish before stopping the trial.
-                def stop_after_save_result(*args, **kwargs):
-                    self._on_saving_result(*args, **kwargs)
-                    self._schedule_trial_stop(trial)
-                    self._set_trial_status(trial, Trial.PAUSED)
-
-                # NOTE: Ensure that the trial is PAUSED while it's saving a checkpoint.
-                self._set_trial_status(trial, Trial.PAUSED)
-                self._schedule_trial_task(
-                    trial=trial,
-                    method_name="save",
-                    on_result=stop_after_save_result,
-                    on_error=self._trial_task_failure,
+                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
+                future_result = self._schedule_trial_save(
+                    trial=trial, storage=CheckpointStorage.PERSISTENT
                 )
-                trial.temporary_state.saving_to = True
+                trial.temporary_state.saving_to = future_result
             else:
                 self._schedule_trial_stop(trial)
                 self._set_trial_status(trial, Trial.PAUSED)
@@ -1651,7 +1640,11 @@ class TuneController:
             return
 
         if should_checkpoint:
-            self._schedule_trial_save(trial, storage=CheckpointStorage.MEMORY)
+            self._schedule_trial_save(
+                trial,
+                CheckpointStorage.MEMORY,
+            )
+
         self._schedule_trial_stop(trial)
         self._set_trial_status(trial, Trial.PAUSED)
 
@@ -1708,7 +1701,7 @@ class TuneController:
             result = [result]
         with warn_if_slow("process_trial_result"):
             self._process_trial_results(trial, result)
-        self._maybe_execute_queued_decision(trial)
+        self._maybe_execute_queued_decision(trial, after_save=False)
 
     def _process_trial_results(self, trial, results):
         logger.debug(f"Processing trial results for trial {trial}: {results}")
@@ -1890,7 +1883,7 @@ class TuneController:
         trial: Trial,
         storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> Optional[_TrackedCheckpoint]:
+    ) -> Optional[Union[_TrackedCheckpoint, _FutureTrainingResult]]:
         if trial not in self._trial_to_actor:
             logger.debug(
                 f"Trial SAVE requested for trial {trial} but trial is already "
@@ -1904,24 +1897,27 @@ class TuneController:
             assert (
                 storage == CheckpointStorage.PERSISTENT
             ), "Memory checkpoints are no longer supported in the new persistence mode."
-            self._schedule_trial_task(
+            future = self._schedule_trial_task(
                 trial=trial,
                 method_name="save",
                 on_result=self._on_saving_result,
                 on_error=self._trial_task_failure,
+                _return_future=True,
             )
             # TODO(justinvyu): `trial.saving_to` is needed in order to prevent
             # a done=True result from executing a STOP decision
             # (which clears all futures) before the save gets processed.
             # Keep this in for now while `train` and `save` are 2 separate steps.
-            trial.temporary_state.saving_to = True
             # TODO(justinvyu): Remove the return value?
-            return
+            trial.temporary_state.saving_to = _FutureTrainingResult(future)
+            return trial.temporary_state.saving_to
 
         if storage == CheckpointStorage.MEMORY:
+            # This is now technically a persistent checkpoint, but
+            # we don't resolve it. Instead, we register it directly.
             future = self._schedule_trial_task(
                 trial=trial,
-                method_name="save_to_object",
+                method_name="save",
                 on_result=None,
                 on_error=self._trial_task_failure,
                 _return_future=True,
@@ -1931,6 +1927,10 @@ class TuneController:
             )
             trial.on_checkpoint(checkpoint)
         else:
+            if trial.temporary_state.saving_to:
+                # If a save is already in progress, don't schedule another one.
+                return trial.temporary_state.saving_to
+
             future = self._schedule_trial_task(
                 trial=trial,
                 method_name="save",
@@ -1948,31 +1948,15 @@ class TuneController:
         return checkpoint
 
     def _on_saving_result(self, trial, checkpoint_value: Union[ray.ObjectRef, str]):
-        with warn_if_slow("process_trial_save") as _profile:
+        with warn_if_slow("process_trial_save"):
             self._process_trial_save(trial, checkpoint_value)
+
         with warn_if_slow("callbacks.on_trial_save"):
             self._callbacks.on_trial_save(
                 iteration=self._iteration, trials=self._trials, trial=trial
             )
-        if _profile.too_slow and trial.sync_on_checkpoint:
-            # TODO(ujvl): Suggest using cloud checkpointing once
-            #  API has converged.
 
-            msg = (
-                "Consider turning off forced head-worker trial "
-                "checkpoint syncs by setting sync_on_checkpoint=False"
-                ". Note that this may result in faulty trial "
-                "restoration if a failure occurs while the checkpoint "
-                "is being synced from the worker to the head node."
-            )
-
-            if trial.temporary_state.location.hostname and (
-                trial.temporary_state.location.hostname != get_node_ip_address()
-            ):
-                if log_once("tune_head_worker_checkpoint"):
-                    logger.warning(msg)
-
-        self._maybe_execute_queued_decision(trial)
+        self._maybe_execute_queued_decision(trial, after_save=True)
 
     def _process_trial_save(
         self, trial: Trial, checkpoint_value: Union[ray.ObjectRef, str]
@@ -1990,27 +1974,31 @@ class TuneController:
 
         try:
             if _use_storage_context() and isinstance(checkpoint_value, _TrainingResult):
-                try:
-                    self._callbacks.on_checkpoint(
-                        iteration=self._iteration,
-                        trials=self._trials,
-                        trial=trial,
-                        checkpoint=checkpoint_value.checkpoint,
-                    )
-                except Exception:
-                    logger.warning(
-                        "Error encountered during processing of callbacks. "
-                        "Ray Train/Tune recently changed the checkpoint interface "
-                        "that is passed to callbacks. If you implemented your own "
-                        "callback with an `on_checkpoint` handler, please review "
-                        "the checkpoint interface and adjust your code accordingly."
-                    )
-                    raise
+                if not checkpoint_value.checkpoint:
+                    logger.debug(f"Got empty checkpoint for trial {trial}")
+                else:
+                    try:
+                        self._callbacks.on_checkpoint(
+                            iteration=self._iteration,
+                            trials=self._trials,
+                            trial=trial,
+                            checkpoint=checkpoint_value.checkpoint,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Error encountered during processing of callbacks. "
+                            "Ray Train/Tune recently changed the checkpoint interface "
+                            "that is passed to callbacks. If you implemented your own "
+                            "callback with an `on_checkpoint` handler, please review "
+                            "the checkpoint interface and adjust your code "
+                            "accordingly."
+                        )
+                        raise
 
-                trial.on_checkpoint(checkpoint_value)
+                    trial.on_checkpoint(checkpoint_value)
 
-                self._checkpoint_manager.on_trial_checkpoint(trial)
-                self._mark_trial_to_checkpoint(trial)
+                    self._checkpoint_manager.on_trial_checkpoint(trial)
+                    self._mark_trial_to_checkpoint(trial)
             else:
                 trial.temporary_state.saving_to.dir_or_data = checkpoint_value
                 self._callbacks.on_checkpoint(
@@ -2023,12 +2011,7 @@ class TuneController:
                 self._checkpoint_manager.on_trial_checkpoint(trial)
                 if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
                     self._mark_trial_to_checkpoint(trial)
-        except Exception as e:
-            if (
-                isinstance(e, _HeadNodeSyncDeprecationWarning)
-                or self._fail_fast == self.RAISE
-            ):
-                raise e
+        except Exception:
             logger.exception(
                 "Trial %s: Error handling checkpoint %s", trial, checkpoint_value
             )
@@ -2049,8 +2032,7 @@ class TuneController:
     # RESTORE
     def _schedule_trial_restore(self, trial: Trial) -> bool:
         if _use_storage_context():
-            cpm = trial.run_metadata.checkpoint_manager
-            checkpoint_result = cpm.latest_checkpoint_result
+            checkpoint_result = trial.latest_checkpoint_result
 
             if not checkpoint_result:
                 logger.debug(f"Not restoring trial {trial}: No checkpoint found.")
@@ -2080,7 +2062,7 @@ class TuneController:
         kwargs = {}
 
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
-            method_name = "restore_from_object"
+            method_name = "restore"
             args = (checkpoint.dir_or_data,)
         elif (
             trial.uses_cloud_checkpointing
@@ -2099,9 +2081,9 @@ class TuneController:
             }
         elif trial.sync_on_checkpoint:
             checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint.dir_or_data)
-            obj = Checkpoint.from_directory(checkpoint_path).to_bytes()
+            obj = Checkpoint.from_directory(checkpoint_path)
 
-            method_name = "restore_from_object"
+            method_name = "restore"
             args = (obj,)
         else:
             raise _AbortTrialExecution(
@@ -2281,7 +2263,7 @@ class TuneController:
         # NOTE: The cached trial decision is not needed since we will overrule this
         # decision with PAUSE.
         self._cached_trial_decisions.pop(trial.trial_id, None)
-        self._schedule_trial_pause(trial)
+        self._schedule_trial_pause(trial, should_checkpoint=should_checkpoint)
 
     def cleanup(self):
         """Cleanup trials and callbacks."""
