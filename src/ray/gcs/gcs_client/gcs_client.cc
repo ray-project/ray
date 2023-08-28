@@ -78,6 +78,28 @@ void GcsSubscriberClient::PubsubCommandBatch(
       });
 }
 
+// A singleton thread with a instrumented_io_context.
+class AsioContextThread {
+ public:
+  static AsioContextThread &Instance() {
+    static AsioContextThread thread;
+    return thread;
+  }
+  instrumented_io_context &io_context() { return io_context_; }
+
+ private:
+  explicit AsioContextThread()
+      : io_context_(), thread_([this]() {
+          /// The asio work to keep io_context_ alive.
+          boost::asio::io_service::work io_service_work_(io_context_);
+          io_context_.run();
+        }) {
+    thread_.detach();
+  };
+  instrumented_io_context io_context_;
+  std::thread thread_;
+};
+
 }  // namespace
 
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
@@ -582,14 +604,14 @@ PythonGcsClient2::PythonGcsClient2(const GcsClientOptions &options)
 Status PythonGcsClient2::Connect(const ClusterID &cluster_id,
                                  int64_t timeout_ms,
                                  size_t num_retries) {
-  return gcs_client_.Connect(io_service_, cluster_id_);
+  cluster_id_ = cluster_id;
+  return gcs_client_.Connect(AsioContextThread::Instance().io_context(), cluster_id);
 }
 
 Status PythonGcsClient2::CheckAlive(const std::vector<std::string> &raylet_addresses,
                                     int64_t timeout_ms,
                                     std::vector<bool> &result) {
-  // gcs_client_.Nodes().CheckAlive();
-  return ray::Status::NotImplemented("not impl'ed");
+  return gcs_client_.Nodes().CheckAlive(raylet_addresses, result, timeout_ms);
 }
 
 Status PythonGcsClient2::InternalKVGet(const std::string &ns,
@@ -616,11 +638,7 @@ Status PythonGcsClient2::InternalKVPut(const std::string &ns,
                                        bool overwrite,
                                        int64_t timeout_ms,
                                        int &added_num) {
-  // TODO: fix this added bool vs int
-  bool added = false;
-  auto status = gcs_client_.InternalKV().Put(ns, key, value, overwrite, added);
-  added_num = added ? 1 : 0;
-  return status;
+  return gcs_client_.InternalKV().Put(ns, key, value, overwrite, added_num);
 }
 
 Status PythonGcsClient2::InternalKVDel(const std::string &ns,
@@ -628,10 +646,7 @@ Status PythonGcsClient2::InternalKVDel(const std::string &ns,
                                        bool del_by_prefix,
                                        int64_t timeout_ms,
                                        int &deleted_num) {
-  // TODO: fix this deleted_num
-  auto status = gcs_client_.InternalKV().Del(ns, key, del_by_prefix);
-  deleted_num = 1;
-  return status;
+  return gcs_client_.InternalKV().Del(ns, key, del_by_prefix, deleted_num);
 }
 
 Status PythonGcsClient2::InternalKVKeys(const std::string &ns,
@@ -672,15 +687,15 @@ Status PythonGcsClient2::GetAllNodeInfo(int64_t timeout_ms,
 
 Status PythonGcsClient2::GetAllJobInfo(int64_t timeout_ms,
                                        std::vector<rpc::JobTableData> &result) {
-  // TODO: Jobs accessor has no sync interface.
-  // gcs_client_.Jobs().AsyncGetAll();
-  return ray::Status::NotImplemented("not impl'ed");
+  return gcs_client_.Jobs().GetAll(result);
 }
 
 Status PythonGcsClient2::GetAllResourceUsage(int64_t timeout_ms,
                                              std::string &serialized_reply) {
-  // TODO: NodeResources accessor has no sync interface.
-  // gcs_client_.NodeResources().AsyncGetAllResourceUsage();
+  rpc::ResourceUsageBatchData batch_data;
+  RAY_RETURN_NOT_OK(gcs_client_.NodeResources().GetAllResourceUsage(batch_data));
+  serialized_reply = batch_data.SerializeAsString();
+  return Status::OK();
 }
 
 Status PythonGcsClient2::RequestClusterResourceConstraint(
@@ -709,9 +724,24 @@ Status PythonGcsClient2::DrainNode(const std::string &node_id,
 Status PythonGcsClient2::DrainNodes(const std::vector<std::string> &node_ids,
                                     int64_t timeout_ms,
                                     std::vector<std::string> &drained_node_ids) {
-  // TODO: node info accessor has no sync for this one.
-  // gcs_client_.Nodes().AsyncDrainNode();
-  return ray::Status::NotImplemented("not impl'ed");
+  std::vector<NodeID> node_ids_typed;
+  node_ids_typed.reserve(node_ids.size());
+  std::transform(node_ids.begin(),
+                 node_ids.end(),
+                 std::back_inserter(node_ids_typed),
+                 NodeID::FromBinary);
+  std::vector<NodeID> drained_node_ids_typed;
+
+  RAY_RETURN_NOT_OK(
+      gcs_client_.Nodes().DrainNodes(node_ids_typed, drained_node_ids_typed));
+
+  drained_node_ids.clear();
+  drained_node_ids.reserve(drained_node_ids_typed.size());
+  std::transform(drained_node_ids_typed.begin(),
+                 drained_node_ids_typed.end(),
+                 std::back_inserter(drained_node_ids),
+                 [](const NodeID &node_id) { return node_id.Binary(); });
+  return Status::OK();
 }
 
 std::unordered_map<std::string, double> PythonGetResourcesTotal(

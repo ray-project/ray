@@ -278,6 +278,8 @@ class RAY_EXPORT PythonGcsClient {
 };
 
 // This client is only supposed to be used from Cython / Python
+// All instances's all RPCs happen on a same thread dedicated for PythonGcsClient
+// async calls.
 // DO NOT SUBMIT experiments
 // TODO: make a single thread for it
 class RAY_EXPORT PythonGcsClient2 {
@@ -345,15 +347,13 @@ class RAY_EXPORT PythonGcsClient2 {
       context.set_deadline(std::chrono::system_clock::now() +
                            std::chrono::milliseconds(timeout_ms));
     }
-    if (!cluster_id_.IsNil()) {
-      context.AddMetadata(kClusterIdKey, cluster_id_.Hex());
+    const auto cluster_id = GetClusterId();
+    if (!cluster_id.IsNil()) {
+      context.AddMetadata(kClusterIdKey, cluster_id.Hex());
     }
   }
 
   GcsClient gcs_client_;
-  // TODO: fix this
-  instrumented_io_context io_service_;
-  // TODO: fix this
   ClusterID cluster_id_ = ClusterID::Nil();
 };
 

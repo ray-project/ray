@@ -133,6 +133,17 @@ Status JobInfoAccessor::AsyncGetNextJobID(const ItemCallback<JobID> &callback) {
   return Status::OK();
 }
 
+Status JobInfoAccessor::GetAll(std::vector<rpc::JobTableData> &job_infos) {
+  std::promise<Status> ret_promise;
+  RAY_CHECK_OK(AsyncGetAll(
+      [&ret_promise, &job_infos](const Status &status,
+                                 const std::vector<rpc::JobTableData> &job_infos_out) {
+        job_infos = job_infos_out;
+        ret_promise.set_value(status);
+      }));
+  return ret_promise.get_future().get();
+}
+
 ActorInfoAccessor::ActorInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
@@ -470,8 +481,28 @@ Status NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
   return Status::OK();
 }
 
+Status NodeInfoAccessor::AsyncCheckAlive(const std::vector<std::string> &raylet_addresses,
+                                         const MultiItemCallback<bool> &callback,
+                                         int64_t timeout_ms) {
+  rpc::CheckAliveRequest request;
+  for (const auto &addr : raylet_addresses) {
+    request.add_raylet_address(addr);
+  }
+  RAY_CHECK(callback != nullptr);
+  client_impl_->GetGcsRpcClient().CheckAlive(
+      request,
+      [&callback, &raylet_addresses](auto status, const auto &reply) {
+        RAY_CHECK(reply.raylet_alive_size() == raylet_addresses.size());
+        callback(
+            status,
+            std::vector<bool>(reply.raylet_alive().begin(), reply.raylet_alive().end()));
+      },
+      timeout_ms);
+  return Status::OK();
+}
+
 Status NodeInfoAccessor::AsyncCheckSelfAlive(
-    const std::function<void(Status, bool)> &callback, int64_t timeout_ms = -1) {
+    const std::function<void(Status, bool)> &callback, int64_t timeout_ms) {
   rpc::CheckAliveRequest request;
   auto node_addr = local_node_info_.node_manager_address() + ":" +
                    std::to_string(local_node_info_.node_manager_port());
@@ -505,6 +536,36 @@ Status NodeInfoAccessor::AsyncDrainNode(const NodeID &node_id,
         }
         RAY_LOG(DEBUG) << "Finished draining node, status = " << status
                        << ", node id = " << node_id;
+      });
+  return Status::OK();
+}
+
+Status NodeInfoAccessor::AsyncDrainNodes(const std::vector<NodeID> &node_ids,
+                                         const MultiItemCallback<NodeID> &callback) {
+  rpc::DrainNodeRequest request;
+
+  RAY_LOG(DEBUG) << "Draining nodes, node ids = ";
+  for (const auto &node_id : node_ids) {
+    RAY_LOG(DEBUG) << ", " << node_id;
+    request.add_drain_node_data()->set_node_id(node_id.Binary());
+  }
+
+  client_impl_->GetGcsRpcClient().DrainNode(
+      request,
+      [node_ids, callback](const Status &status, const rpc::DrainNodeReply &reply) {
+        std::vector<NodeID> drained_node_ids;
+        drained_node_ids.reserve(reply.drain_node_status_size());
+        for (const auto &node_id : reply.drain_node_status()) {
+          drained_node_ids.push_back(NodeID::FromBinary(node_id.node_id()));
+        }
+        if (callback) {
+          callback(status, std::move(drained_node_ids));
+        }
+        RAY_LOG(DEBUG) << "Finished draining node, status = " << status
+                       << ", drained node ids = ";
+        for (const auto &node_id : drained_node_ids) {
+          RAY_LOG(DEBUG) << ", " << node_id;
+        }
       });
   return Status::OK();
 }
@@ -570,6 +631,33 @@ const GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
 
 const absl::flat_hash_map<NodeID, GcsNodeInfo> &NodeInfoAccessor::GetAll() const {
   return node_cache_;
+}
+
+Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_addresses,
+                                    std::vector<bool> &results,
+                                    int64_t timeout_ms) {
+  std::promise<Status> ret_promise;
+  RAY_CHECK_OK(
+      AsyncCheckAlive(raylet_addresses,
+                      [&ret_promise, &results](const Status &status,
+                                               const std::vector<bool> &results_out) {
+                        results = results_out;
+                        ret_promise.set_value(status);
+                      }));
+  return ret_promise.get_future().get();
+}
+
+Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
+                                    std::vector<NodeID> &drained_node_ids) {
+  std::promise<Status> ret_promise;
+  RAY_CHECK_OK(AsyncDrainNodes(
+      node_ids,
+      [&ret_promise, &drained_node_ids](const Status &status,
+                                        const std::vector<NodeID> &drained_node_ids_out) {
+        drained_node_ids = drained_node_ids_out;
+        ret_promise.set_value(status);
+      }));
+  return ret_promise.get_future().get();
 }
 
 bool NodeInfoAccessor::IsRemoved(const NodeID &node_id) const {
@@ -792,6 +880,18 @@ Status TaskInfoAccessor::AsyncAddTaskEventData(
         }
         RAY_LOG(DEBUG) << "Accessor added task events grpc OK";
       });
+  return Status::OK();
+}
+
+Status NodeResourceInfoAccessor::GetAllResourceUsage(
+    rpc::ResourceUsageBatchData &batch_data) {
+  std::promise<bool> ret_promise;
+  RAY_CHECK_OK(AsyncGetAllResourceUsage(
+      [&ret_promise, &batch_data](const rpc::ResourceUsageBatchData &batch_data_out) {
+        batch_data = batch_data_out;
+        ret_promise.set_value(true);
+      }));
+  ret_promise.get_future().get();
   return Status::OK();
 }
 
@@ -1079,14 +1179,18 @@ Status InternalKVAccessor::AsyncInternalKVExists(
 Status InternalKVAccessor::AsyncInternalKVDel(const std::string &ns,
                                               const std::string &key,
                                               bool del_by_prefix,
-                                              const StatusCallback &callback) {
+                                              const OptionalItemCallback<int> &callback) {
   rpc::InternalKVDelRequest req;
   req.set_namespace_(ns);
   req.set_key(key);
   client_impl_->GetGcsRpcClient().InternalKVDel(
       req,
       [callback](const Status &status, const rpc::InternalKVDelReply &reply) {
-        callback(status);
+        if (!status.ok()) {
+          callback(status, boost::none);
+        } else {
+          callback(status, reply.deleted_num());
+        }
       },
       /*timeout_ms*/ GetGcsTimeoutMs());
   return Status::OK();
@@ -1116,15 +1220,15 @@ Status InternalKVAccessor::Put(const std::string &ns,
                                const std::string &key,
                                const std::string &value,
                                bool overwrite,
-                               bool &added) {
+                               int &added_num) {
   std::promise<Status> ret_promise;
   RAY_CHECK_OK(AsyncInternalKVPut(
       ns,
       key,
       value,
       overwrite,
-      [&ret_promise, &added](Status status, boost::optional<int> added_num) {
-        added = static_cast<bool>(added_num.value_or(0));
+      [&ret_promise, &added_num](Status status, boost::optional<int> added_num_out) {
+        added_num = added_num_out.value_or(0);
         ret_promise.set_value(status);
       }));
   return ret_promise.get_future().get();
@@ -1158,11 +1262,18 @@ Status InternalKVAccessor::Get(const std::string &ns,
 
 Status InternalKVAccessor::Del(const std::string &ns,
                                const std::string &key,
-                               bool del_by_prefix) {
+                               bool del_by_prefix,
+                               int &deleted_num) {
   std::promise<Status> ret_promise;
-  RAY_CHECK_OK(AsyncInternalKVDel(ns, key, del_by_prefix, [&ret_promise](Status status) {
-    ret_promise.set_value(status);
-  }));
+  RAY_CHECK_OK(
+      AsyncInternalKVDel(ns,
+                         key,
+                         del_by_prefix,
+                         [&ret_promise, &deleted_num](
+                             Status status, const boost::optional<int> &deleted_num_out) {
+                           deleted_num = deleted_num_out.value_or(0);
+                           ret_promise.set_value(status);
+                         }));
   return ret_promise.get_future().get();
 }
 

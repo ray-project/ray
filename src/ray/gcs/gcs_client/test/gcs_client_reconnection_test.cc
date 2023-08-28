@@ -338,9 +338,9 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   )");
   StartGCS();
   auto client = CreateGCSClient();
-  bool added = false;
+  int added_num = 0;
   ASSERT_TRUE(client->InternalKV().Put("", "A", "B", false, added).ok());
-  ASSERT_TRUE(added);
+  ASSERT_EQ(added_num, 1);
 
   ShutdownGCS();
 

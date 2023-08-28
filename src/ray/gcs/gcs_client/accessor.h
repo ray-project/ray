@@ -250,6 +250,12 @@ class JobInfoAccessor {
   /// \return Status
   virtual Status AsyncGetNextJobID(const ItemCallback<JobID> &callback);
 
+  /// Get all job info from GCS synchronously.
+  ///
+  /// \param job_infos out parameter. All job infos known to the stub.
+  /// \return Status
+  virtual Status GetAll(std::vector<rpc::JobTableData> &job_infos);
+
  private:
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
@@ -305,13 +311,22 @@ class NodeInfoAccessor {
   virtual Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                                const StatusCallback &callback);
 
+  /// Send a check alive request to GCS for the liveness of these raylet addresses.
+  ///
+  /// \param callback The callback function once the request is finished.
+  /// \param timeout_ms The timeout for this request.
+  /// \return Status
+  Status AsyncCheckAlive(const std::vector<std::string> &raylet_addresses,
+                         const MultiItemCallback<bool> &callback,
+                         int64_t timeout_ms = -1);
+
   /// Send a check alive request to GCS for the liveness of some node.
   ///
   /// \param callback The callback function once the request is finished.
   /// \param timeout_ms The timeout for this request.
   /// \return Status
   virtual Status AsyncCheckSelfAlive(const std::function<void(Status, bool)> &callback,
-                                     int64_t timeout_ms);
+                                     int64_t timeout_ms = -1);
 
   /// Drain (remove the information of the node from the cluster) the local node from GCS
   /// asynchronously.
@@ -322,6 +337,17 @@ class NodeInfoAccessor {
   /// \param callback Callback that will be called when unregistration is complete.
   /// \return Status
   virtual Status AsyncDrainNode(const NodeID &node_id, const StatusCallback &callback);
+
+  /// Drain (remove the information of the node from the cluster) the nodes from GCS
+  /// asynchronously.
+  ///
+  /// Check gcs_service.proto NodeInfoGcsService.DrainNode for the API spec.
+  ///
+  /// \param node_id The ID of node that to be unregistered.
+  /// \param callback Callback with all drained node IDs.
+  /// \return Status
+  virtual Status AsyncDrainNodes(const std::vector<NodeID> &node_ids,
+                                 const MultiItemCallback<NodeID> &callback);
 
   /// Get information of all nodes from GCS asynchronously.
   ///
@@ -359,6 +385,27 @@ class NodeInfoAccessor {
   ///
   /// \return All nodes in cache.
   virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
+
+  /// Send a check alive request to GCS for the liveness of these raylet addresses.
+  ///
+  /// \param callback The callback function once the request is finished.
+  /// \param results out parameter. Each raylet's liveness.
+  /// \param timeout_ms The timeout for this request.
+  /// \return Status
+  Status CheckAlive(const std::vector<std::string> &raylet_addresses,
+                    std::vector<bool> &results,
+                    int64_t timeout_ms = -1);
+
+  /// Drain (remove the information of the node from the cluster) the local node from GCS
+  /// synchronously.
+  ///
+  /// Check gcs_service.proto NodeInfoGcsService.DrainNode for the API spec.
+  ///
+  /// \param node_ids The IDs of node that to be unregistered.
+  /// \param drained_node_ids out parameter. IDs that are successfully drained.
+  /// \return Status
+  virtual Status DrainNodes(const std::vector<NodeID> &node_ids,
+                            std::vector<NodeID> &drained_node_ids);
 
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
@@ -476,6 +523,12 @@ class NodeResourceInfoAccessor {
 
   /// Fill resource fields with cached resources. Used by light resource usage report.
   virtual void FillResourceUsageRequest(rpc::ReportResourceUsageRequest &resource_usage);
+
+  /// Get newest resource usage of all nodes from GCS synchronously.
+  ///
+  /// \param batch_data out parameter.
+  /// \return Status
+  virtual Status GetAllResourceUsage(rpc::ResourceUsageBatchData &batch_data);
 
  protected:
   /// Cache which stores resource usage in last report used to check if they are changed.
@@ -745,7 +798,7 @@ class InternalKVAccessor {
   virtual Status AsyncInternalKVDel(const std::string &ns,
                                     const std::string &key,
                                     bool del_by_prefix,
-                                    const StatusCallback &callback);
+                                    const OptionalItemCallback<int> &callback);
 
   // These are sync functions of the async above
 
@@ -770,14 +823,13 @@ class InternalKVAccessor {
   /// \param value The value of the pair
   /// \param overwrite If it's true, it'll overwrite existing <key, value> if it
   ///     exists.
-  /// \param added It's an output parameter. It'll be set to be true if
-  ///     any row is added.
-  /// \return Status
+  /// \param added It's an output parameter. It'll be set to the number of added keys (0
+  /// or 1). \return Status
   virtual Status Put(const std::string &ns,
                      const std::string &key,
                      const std::string &value,
                      bool overwrite,
-                     bool &added);
+                     int &added_num);
 
   /// Retrive the value associated with a key
   ///
@@ -796,8 +848,12 @@ class InternalKVAccessor {
   /// \param ns The namespace to delete from.
   /// \param key The key to delete
   /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
+  /// \param deleted_num Output parameter. Number of deleted keys (0 or 1).
   /// \return Status
-  virtual Status Del(const std::string &ns, const std::string &key, bool del_by_prefix);
+  virtual Status Del(const std::string &ns,
+                     const std::string &key,
+                     bool del_by_prefix,
+                     int &deleted_num);
 
   /// Check existence of a key in the store
   ///
