@@ -71,23 +71,21 @@ class RewardPredictorLayer(tf.keras.layers.Layer):
             trainable=trainable,
         )
 
-    def call(self, inputs, return_logits=False):
+    def call(self, inputs):
         """Computes the expected reward using N equal sized buckets of possible values.
 
         Args:
             inputs: The input tensor for the layer, which computes the reward bucket
                 weights (logits). [B, dim].
-            return_logits: Whether to return the logits over the reward buckets
-                as a second return value (besides the expected reward).
 
         Returns:
-            The expected reward OR a tuple consisting of the expected reward and the
-            tfp `FiniteDiscrete` distribution object. To get the individual bucket
+            A tuple consisting of the expected rewards and the logits that parameterize
+            the tfp `FiniteDiscrete` distribution object. To get the individual bucket
             probs, do `[FiniteDiscrete object].probs`.
         """
         # Compute the `num_buckets` weights.
         assert len(inputs.shape) == 2
-        logits = self.reward_buckets_layer(inputs)
+        logits = tf.cast(self.reward_buckets_layer(inputs), tf.float32)
         # out=[B, `num_buckets`]
 
         # Compute the expected(!) reward using the formula:
@@ -109,6 +107,4 @@ class RewardPredictorLayer(tf.keras.layers.Layer):
         expected_rewards = tf.reduce_sum(probs * possible_outcomes, axis=-1)
         # expected_rewards=[B]
 
-        if return_logits:
-            return expected_rewards, logits
-        return expected_rewards
+        return expected_rewards, logits

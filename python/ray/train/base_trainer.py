@@ -257,8 +257,8 @@ class BaseTrainer(abc.ABC):
             from ray.train.trainer import BaseTrainer
 
             experiment_name = "unique_experiment_name"
-            local_dir = "~/ray_results"
-            experiment_dir = os.path.join(local_dir, experiment_name)
+            storage_path = os.path.expanduser("~/ray_results")
+            experiment_dir = os.path.join(storage_path, experiment_name)
 
             # Define some dummy inputs for demonstration purposes
             datasets = {"train": ray.data.from_items([{"a": i} for i in range(10)])}
@@ -269,15 +269,14 @@ class BaseTrainer(abc.ABC):
 
             if CustomTrainer.can_restore(experiment_dir):
                 trainer = CustomTrainer.restore(
-                    experiment_dir,
-                    datasets=datasets,
+                    experiment_dir, datasets=datasets
                 )
             else:
                 trainer = CustomTrainer(
                     datasets=datasets,
                     run_config=train.RunConfig(
                         name=experiment_name,
-                        local_dir=local_dir,
+                        storage_path=storage_path,
                         # Tip: You can also enable retries on failure for
                         # worker-level fault tolerance
                         failure_config=train.FailureConfig(max_failures=3),

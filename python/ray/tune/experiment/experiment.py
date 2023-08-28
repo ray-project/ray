@@ -30,7 +30,7 @@ from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
 from ray.tune.result import _get_defaults_results_dir
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
-from ray.tune.syncer import SyncConfig
+from ray.train import SyncConfig
 from ray.tune.utils import date_str
 from ray.tune.utils.util import _resolve_storage_path, _split_remote_local_path
 from ray.util import log_once

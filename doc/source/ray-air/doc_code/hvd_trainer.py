@@ -1,3 +1,6 @@
+import os
+import tempfile
+
 import horovod.torch as hvd
 import ray
 from ray import train
@@ -55,10 +58,12 @@ def train_loop_per_worker():
             loss.backward()
             optimizer.step()
             print(f"epoch: {epoch}, loss: {loss.item()}")
-        train.report(
-            {},
-            checkpoint=Checkpoint.from_dict(dict(model=model.state_dict())),
-        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report(
+                {"loss": loss.item()}, checkpoint=Checkpoint.from_directory(tmpdir)
+            )
 
 
 train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
