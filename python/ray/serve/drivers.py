@@ -4,9 +4,8 @@ import logging
 import sys
 from typing import Any, Callable, Dict, Optional, Union
 
-from fastapi import Depends, FastAPI
-
 import grpc
+from fastapi import Depends, FastAPI
 
 import ray
 from ray import cloudpickle, serve

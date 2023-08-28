@@ -10,14 +10,13 @@ from abc import ABC, abstractmethod
 from asyncio.tasks import FIRST_COMPLETED
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
 
+import grpc
 import starlette.responses
 import starlette.routing
 import uvicorn
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 from starlette.types import Message, Receive, Send
-
-import grpc
 
 import ray
 from ray import serve

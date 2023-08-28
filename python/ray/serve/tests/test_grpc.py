@@ -3,10 +3,10 @@ import sys
 import time
 from unittest.mock import patch
 
+import grpc
+
 # coding: utf-8
 import pytest
-
-import grpc
 
 import ray
 from ray import serve

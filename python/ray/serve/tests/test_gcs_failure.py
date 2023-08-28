@@ -1,10 +1,9 @@
 import os
 import sys
 
+import grpc
 import pytest
 import requests
-
-import grpc
 
 import ray
 from ray import serve

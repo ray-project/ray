@@ -3,9 +3,8 @@ import pickle
 from abc import ABC, abstractmethod
 from typing import Any, Generator, List, Optional, Tuple
 
-from starlette.types import Receive, Scope, Send
-
 import grpc
+from starlette.types import Receive, Scope, Send
 
 from ray.actor import ActorHandle
 from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest

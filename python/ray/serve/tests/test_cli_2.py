@@ -8,12 +8,11 @@ import time
 from tempfile import NamedTemporaryFile
 from typing import Pattern
 
+import grpc
 import pytest
 import requests
 import yaml
 from pydantic import BaseModel
-
-import grpc
 
 import ray
 from ray import serve

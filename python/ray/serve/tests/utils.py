@@ -1,11 +1,10 @@
 import time
 from typing import Any, Dict
 
+import grpc
 import pytest
 import requests
 from starlette.requests import Request
-
-import grpc
 
 import ray
 from ray import serve
