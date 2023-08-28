@@ -24,6 +24,9 @@ def test_replace_nested_in_obj():
         def __init__(self, inner: Source):
             self._inner: Source = inner
 
+        def __eq__(self, other):
+            return self._inner == other._inner
+
     my_objs = [Outer(Source())]
 
     found = scanner.find_nodes(my_objs)
@@ -31,23 +34,6 @@ def test_replace_nested_in_obj():
 
     replaced = scanner.replace_nodes({obj: 1 for obj in found})
     assert replaced == [Outer(1)]
-
-
-class NotSerializable:
-    def __reduce__(self):
-        raise Exception("don't even try to serialize me.")
-
-
-def test_not_serializing_objects():
-    scanner = _PyObjScanner(source_type=Source)
-    not_serializable = NotSerializable()
-    my_objs = [not_serializable, {"key": Source()}]
-
-    found = scanner.find_nodes(my_objs)
-    assert len(found) == 1
-
-    replaced = scanner.replace_nodes({obj: 1 for obj in found})
-    assert replaced == [not_serializable, {"key": 1}]
 
 
 def test_scanner_clear():

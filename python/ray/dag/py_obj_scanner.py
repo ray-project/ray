@@ -32,15 +32,6 @@ def _get_node(instance_id: int, node_index: int) -> SourceType:
     return _instances[instance_id]._replace_index(node_index)
 
 
-def _get_object(instance_id: int, node_index: int) -> Any:
-    """Used to get arbitrary object other than SourceType.
-
-    Note: This function should be static and globally importable,
-    otherwise the serialization overhead would be very significant.
-    """
-    return _instances[instance_id]._objects[node_index]
-
-
 class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, TransformedType]):
     """Utility to find and replace the `source_type` in Python objects.
 
@@ -74,17 +65,12 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transforme
         to internal data structures, preventing actually writing them to
         the buffer.
         """
-        if obj is _get_node or obj is _get_object:
-            # Only fall back to cloudpickle for these two functions.
-            return super().reducer_override(obj)
-        elif isinstance(obj, self.source_type):
+        if isinstance(obj, self.source_type):
             index = len(self._found)
             self._found.append(obj)
             return _get_node, (id(self), index)
         else:
-            index = len(self._objects)
-            self._objects.append(obj)
-            return _get_object, (id(self), index)
+            return super().reducer_override(obj)
 
     def find_nodes(self, obj: Any) -> List[SourceType]:
         """Find top-level DAGNodes."""

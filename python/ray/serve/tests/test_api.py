@@ -1057,6 +1057,33 @@ def test_get_deployment_handle_basic(serve_instance):
     assert app_handle.remote().result() == "hello world!!"
 
 
+def test_deployment_handle_nested_in_obj(serve_instance):
+    """Test binding a handle within a custom object."""
+
+    class HandleWrapper:
+        def __init__(self, handle: RayServeHandle):
+            self._handle = handle
+
+        def get(self) -> DeploymentHandle:
+            return self._handle.options(use_new_handle_api=True)
+
+    @serve.deployment
+    def f() -> str:
+        return "hi"
+
+    @serve.deployment
+    class MyDriver:
+        def __init__(self, handle_wrapper: HandleWrapper):
+            self.handle_wrapper = handle_wrapper
+
+        async def __call__(self) -> str:
+            return await self.handle_wrapper.get().remote()
+
+    handle_wrapper = HandleWrapper(f.bind())
+    h = serve.run(MyDriver.bind(handle_wrapper)).options(use_new_handle_api=True)
+    assert h.remote().result() == "hi"
+
+
 if __name__ == "__main__":
     import sys
 
