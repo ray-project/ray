@@ -6,6 +6,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 
 
+@DeveloperAPI
 def input_to_output_specs(
     input_specs: SpecDict,
     num_input_feature_dims: int,
@@ -152,6 +153,7 @@ def get_activation_fn(
     )
 
 
+@DeveloperAPI
 def get_filter_config(shape):
     """Returns a default Conv2D filter config (list) for a given image shape.
 

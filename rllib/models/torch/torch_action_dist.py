@@ -449,6 +449,7 @@ class TorchBeta(TorchDistributionWrapper):
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
+@DeveloperAPI
 class TorchDeterministic(TorchDistributionWrapper):
     """Action distribution that returns the input values directly.
 

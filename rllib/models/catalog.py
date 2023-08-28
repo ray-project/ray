@@ -201,6 +201,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
 # fmt: on
 
 
+@DeveloperAPI
 class ModelCatalog:
     """Registry of models, preprocessors, and action distributions for envs.
 

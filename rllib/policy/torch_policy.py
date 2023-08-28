@@ -1202,6 +1202,7 @@ class TorchPolicy(Policy):
         return outputs
 
 
+@DeveloperAPI
 class DirectStepOptimizer:
     """Typesafe method for indicating `apply_gradients` can directly step the
     optimizers with in-place gradients.

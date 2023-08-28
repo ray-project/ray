@@ -920,6 +920,7 @@ class DynamicTFPolicy(TFPolicy):
         return losses
 
 
+@DeveloperAPI
 class TFMultiGPUTowerStack:
     """Optimizer that runs in parallel across multiple local devices.
 
