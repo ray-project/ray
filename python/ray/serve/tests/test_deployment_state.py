@@ -157,7 +157,7 @@ class MockReplicaActorWrapper:
 
     @property
     def availability_zone(self) -> Optional[str]:
-        return None
+        return RAY_SERVE_UNKNOWN_AVAILABILITY_ZONE
 
     @property
     def node_ip(self) -> Optional[str]:
