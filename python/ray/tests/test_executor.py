@@ -10,13 +10,24 @@ from concurrent.futures import (
     ProcessPoolExecutor,
     TimeoutError as ConTimeoutError,
 )
+from concurrent.futures.thread import BrokenThreadPool
+from ray.exceptions import RayActorError, RayTaskError
 
 from ray._private.worker import RayContext
+
 
 # ProcessPoolExecutor uses pickle which can only serialize top-level functions
 def f_process1(x):
     return len([i for i in range(x) if i % 2 == 0])
 
+class TestInitializerException(Exception):
+    pass
+
+def unsafe(exc):
+    raise exc
+
+def safe(*args):
+    pass
 
 class TestShared:
 
@@ -433,6 +444,37 @@ class TestIsolated:
         assert type(ray_result) == type(tpe_result)
         assert sorted(ray_result) == sorted(tpe_result)
 
+    def test_conformity_with_threadpool_initializer_initargs(self):
+
+        assert os.path.isdir("./python/ray/tests/.")
+
+        #----------------------------
+        with ThreadPoolExecutor(max_workers=2, initializer=safe, initargs=(TestInitializerException,)) as tpe:
+            tpe_iter = tpe.map(f_process1, range(10))
+            _ = list(tpe_iter)
+        with ThreadPoolExecutor(max_workers=2, initializer=unsafe, initargs=(TestInitializerException,)) as tpe:
+            tpe_iter = tpe.map(f_process1, range(10))
+            with pytest.raises(BrokenThreadPool):
+                _ = list(tpe_iter)
+        #----------------------------
+
+        #----------------------------
+        with RayExecutor(max_workers=2, initializer=safe, initargs=(TestInitializerException,), runtime_env={"working_dir": "./python/ray/tests/."}) as ex:
+            ray_iter = ex.map(lambda x: x, range(10))
+            _ = list(ray_iter)
+        with RayExecutor(max_workers=2, initializer=unsafe, initargs=(TestInitializerException,), runtime_env={"working_dir": "./python/ray/tests/."}) as ex:
+            ray_iter = ex.map(f_process1, range(10))
+            with pytest.raises(RayTaskError):
+                _ = list(ray_iter)
+        #----------------------------
+
+    def test_working_directory_must_be_supplied_for_initializer(self):
+
+        with pytest.raises(ValueError):
+            with RayExecutor(max_workers=2, initializer=safe, initargs=(TestInitializerException,)) as _:
+                pass
+        with RayExecutor(max_workers=2, initializer=unsafe, initargs=(TestInitializerException,), runtime_env={"working_dir": "./python/ray/tests/."}) as _:
+            pass
 
 
 

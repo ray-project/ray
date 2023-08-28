@@ -13,8 +13,7 @@ from typing import (
     TypeVar,
     Generator,
 )
-
-# from uuid import uuid4
+import os
 
 import ray
 from ray.util.annotations import PublicAPI
@@ -28,6 +27,18 @@ P = ParamSpec("P")
 if TYPE_CHECKING:
     from ray._private.worker import BaseContext
     from ray.actor import ActorHandle
+
+@ray.remote
+class ExecutorActor:
+    def __init__(self, initializer, initargs) -> None:
+        self.initializer = initializer
+        self.initargs = initargs
+        pass
+
+    def actor_function(self, fn: Callable[[], T]) -> T:
+        if self.initializer is not None:
+            self.initializer(*self.initargs)
+        return fn()
 
 
 class RoundRobinActorPool:
@@ -87,6 +98,8 @@ class RayExecutor(Executor):
         self,
         max_workers: Optional[int] = None,
         shutdown_ray: Optional[bool] = None,
+        initializer: Optional[Callable[..., Any]] = None,
+        initargs: tuple[Any, ...] = (),
         **kwargs: Any,
     ):
 
@@ -124,14 +137,12 @@ class RayExecutor(Executor):
         self._context: "BaseContext" = ray.init(ignore_reinit_error=True, **kwargs)
         self.futures: List[Future[Any]] = []
         self.shutdown_ray = shutdown_ray
-
-        @ray.remote
-        class ExecutorActor:
-            def __init__(self) -> None:
-                pass
-
-            def actor_function(self, fn: Callable[[], T]) -> T:
-                return fn()
+        if initializer is not None:
+            runtime_env = kwargs.get("runtime_env")
+            if runtime_env is None or "working_dir" not in runtime_env:
+                raise ValueError(f"`working_dir` must be specified in `runtime_env` dictionary if \
+                                 `initializer` function is not `None` so that \
+                                 it can be accessible by remote workers")
 
         if max_workers is None:
             max_workers = int(ray._private.state.cluster_resources()["CPU"])
@@ -143,7 +154,7 @@ class RayExecutor(Executor):
         self.max_workers = max_workers
 
         self.actor_pool = RoundRobinActorPool(
-            [ExecutorActor.options().remote() for _ in range(max_workers)]  # type: ignore[attr-defined]
+            [ExecutorActor.options().remote(initializer, initargs) for _ in range(max_workers)]  # type: ignore[attr-defined]
         )
 
     def submit(
@@ -171,6 +182,13 @@ class RayExecutor(Executor):
         self._check_shutdown_lock()
         if self.actor_pool is None:
             raise ValueError("actor_pool is not defined")
+
+        # def wrapped_fn(inner_fn, *args, initializer=None, initargs=(), **kwargs):
+        #     if initializer is not None:
+        #         initializer(initargs)
+        #     return partial(inner_fn, *args, **kwargs)
+
+        # curried_wrapped_function = wrapped_fn(fn, *args, initializer=self.initializer, initargs=self.initargs, **kwargs)
         future = self.actor_pool.submit(partial(fn, *args, **kwargs))
         self.futures.append(future)
         return future
