@@ -907,7 +907,7 @@ py_test(
     size = "large",
     srcs = ["examples/xgboost_dynamic_resources_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example", "new_storage"],
     args = ["--test"]
 )
 
