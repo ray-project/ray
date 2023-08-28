@@ -1212,7 +1212,7 @@ class HTTPProxy(GenericProxy):
                     elif asgi_message["type"] == "http.response.trailers":
                         # If we are expecting trailers, the response is only done when
                         # the trailers message has been sent.
-                        response_done = True
+                        response_done = not asgi_message.get("more_trailers", False)
                     elif asgi_message["type"] == "websocket.disconnect":
                         status_code = str(asgi_message["code"])
                         response_done = True
