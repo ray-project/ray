@@ -1235,13 +1235,13 @@ class Node:
         else:
             raise_on_api_server_failure = self._ray_params.include_dashboard
 
+        assert self.get_gcs_client() is not None
+        self._write_cluster_info_to_kv()
+
         self.start_api_server(
             include_dashboard=self._ray_params.include_dashboard,
             raise_on_failure=raise_on_api_server_failure,
         )
-
-        assert self.get_gcs_client() is not None
-        self._write_cluster_info_to_kv()
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""

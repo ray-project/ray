@@ -113,6 +113,9 @@ class DashboardHead:
                 minimal flags.
         """
         self.minimal = minimal
+        logger.info(
+            "vct are we minimal " + str(self.minimal) + " " + str(serve_frontend)
+        )
         self.serve_frontend = serve_frontend
         # If it is the minimal mode, we shouldn't serve frontend.
         if self.minimal:
@@ -175,6 +178,7 @@ class DashboardHead:
 
     @async_loop_forever(dashboard_consts.GCS_CHECK_ALIVE_INTERVAL_SECONDS)
     async def _gcs_check_alive(self):
+        logger.info("vct AAAA")
         check_future = self.health_check_thread.check_once()
 
         # NOTE(simon): making sure the check procedure doesn't timeout itself.
@@ -184,12 +188,14 @@ class DashboardHead:
                 check_future, dashboard_consts.GCS_CHECK_ALIVE_RPC_TIMEOUT + 1
             )
         except asyncio.TimeoutError:
+            logger.info("vct BBBB")
             logger.error("Failed to check gcs health, client timed out.")
             is_alive = False
 
         if is_alive:
             self._gcs_rpc_error_counter = 0
         else:
+            logger.info("vct CCCC")
             self._gcs_rpc_error_counter += 1
             if (
                 self._gcs_rpc_error_counter
@@ -207,6 +213,7 @@ class DashboardHead:
                 # shutdown(). Please refer to:
                 # https://github.com/ray-project/ray/issues/16328
                 os._exit(-1)
+        logger.info("vct dDDDD")
 
     def _load_modules(self, modules_to_load: Optional[Set[str]] = None):
         """Load dashboard head modules.
@@ -314,13 +321,16 @@ class DashboardHead:
             await self.server.start()
 
         async def _async_notify():
+            logger.info("vct EEEEE")
             """Notify signals from queue."""
             while True:
                 co = await dashboard_utils.NotifyQueue.get()
                 try:
                     await co
                 except Exception:
+                    logger.info("vct FFFF")
                     logger.exception(f"Error notifying coroutine {co}")
+            logger.info("vct unexpectedd GGGGG")
 
         modules = self._load_modules(self._modules_to_load)
 
