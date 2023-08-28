@@ -305,8 +305,9 @@ class StreamingObjectRefGenerator:
         return await self._next_async()
 
     def _next_sync(
-            self,
-            timeout_s: Optional[float] = None) -> ObjectRef:
+        self,
+        timeout_s: Optional[float] = None
+    ) -> ObjectRef:
         """Waits for timeout_s and returns the object ref if available.
 
         If an object is not available within the given timeout, it
@@ -314,8 +315,7 @@ class StreamingObjectRefGenerator:
 
         If -1 timeout is provided, it means it waits infinitely.
 
-        Waiting is implemented as busy waiting. You can control
-        the busy waiting interval via sleep_interval_s.
+        Waiting is implemented as busy waiting.
 
         Raises StopIteration if there's no more objects
         to generate.
@@ -374,8 +374,8 @@ class StreamingObjectRefGenerator:
 
     async def _next_async(
             self,
-            timeout_s: Optional[float] = None,
-            sleep_interval_s: float = 0.0001):
+            timeout_s: Optional[float] = None
+    ):
         """Same API as _next_sync, but it is for async context."""
         self.worker.check_connected()
         core_worker = self.worker.core_worker

@@ -14,7 +14,7 @@ import uuid
 import uvicorn
 import starlette.responses
 import starlette.routing
-from starlette.types import Message, Receive, Send
+from starlette.types import Message, Receive
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 
@@ -85,7 +85,6 @@ from ray.serve._private.utils import (
     call_function_from_import_path,
 )
 from ray.serve.config import gRPCOptions
-from ray.serve.exceptions import RayServeTimeout
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
 
@@ -1135,8 +1134,9 @@ class HTTPProxy(GenericProxy):
     async def _consume_and_send_asgi_message_generator(
         self,
         obj_ref_generator: StreamingObjectRefGenerator,
-        send: Send,
         disconnected_task: asyncio.Task,
+        request_id: str,
+        proxy_request: ProxyRequest,
         timeout_s: Optional[float] = None,
     ) -> Optional[str]:
         """Consumes an obj ref generator that yields ASGI messages.
@@ -1151,18 +1151,12 @@ class HTTPProxy(GenericProxy):
         status_code = ""
         start = time.time()
         response_done = False
-        is_first_message = True
+        response_started = False
         expecting_trailers = False
         while True:
             try:
                 next_obj_ref_task = asyncio.ensure_future(
-                    obj_ref_generator._next_async(
-                        timeout_s=calculate_remaining_timeout(
-                            timeout_s=timeout_s,
-                            start_time_s=start,
-                            curr_time_s=time.time(),
-                        )
-                    )
+                    obj_ref_generator._next_async()
                 )
                 tasks = [next_obj_ref_task]
                 # Once the response is completed, the client will immediately
@@ -1176,21 +1170,39 @@ class HTTPProxy(GenericProxy):
                 done, _ = await asyncio.wait(
                     tasks,
                     return_when=asyncio.FIRST_COMPLETED,
-                    # No timeout is set because it's already passed to `_next_async`.
+                    timeout=calculate_remaining_timeout(
+                        timeout_s=timeout_s,
+                        start_time_s=start,
+                        curr_time_s=time.time(),
+                    ),
                 )
-                if disconnected_task in done:
-                    logger.info(
-                        "Client disconnected during execution, cancelling request."
+                if len(done) == 0:
+                    logger.warning(
+                        f"Request {request_id} timed out after "
+                        f"{self.request_timeout_s}s while executing."
                     )
                     next_obj_ref_task.cancel()
                     ray.cancel(obj_ref_generator)
-                    status_code = DISCONNECT_ERROR_CODE
-                    break
+
+                    # We should only send timeout response if we have not sent
+                    # any messages to the client yet. Header (including status code)
+                    # messages can only be sent once.
+                    if not response_started:
+                        await self.timeout_response(
+                            proxy_request=proxy_request, request_id=request_id
+                        )
+
+                    return TIMEOUT_ERROR_CODE
+                elif disconnected_task in done:
+                    logger.info(
+                        f"Client for request {request_id} disconnected "
+                        "during execution, cancelling request."
+                    )
+                    next_obj_ref_task.cancel()
+                    ray.cancel(obj_ref_generator)
+                    return DISCONNECT_ERROR_CODE
 
                 obj_ref = next_obj_ref_task.result()
-                if obj_ref.is_nil():
-                    raise RayServeTimeout(is_first_message=is_first_message)
-
                 asgi_messages: List[Message] = pickle.loads(await obj_ref)
                 # See the ASGI spec for message details:
                 # https://asgi.readthedocs.io/en/latest/specs/www.html.
@@ -1217,8 +1229,8 @@ class HTTPProxy(GenericProxy):
                         status_code = str(asgi_message["code"])
                         response_done = True
 
-                    await send(asgi_message)
-                    is_first_message = False
+                    await proxy_request.send(asgi_message)
+                    response_started = True
             except StopAsyncIteration:
                 break
 
@@ -1302,32 +1314,17 @@ class HTTPProxy(GenericProxy):
                 )
                 return ProxyResponse(status_code=TIMEOUT_ERROR_CODE)
 
-            try:
-                status_code = await self._consume_and_send_asgi_message_generator(
-                    obj_ref_generator,
-                    proxy_request.send,
-                    disconnected_task=proxy_asgi_receive_task,
-                    timeout_s=calculate_remaining_timeout(
-                        timeout_s=self.request_timeout_s,
-                        start_time_s=start,
-                        curr_time_s=time.time(),
-                    ),
-                )
-            except RayServeTimeout as serve_timeout_error:
-                logger.warning(
-                    f"Request {request_id} timed out after "
-                    f"{self.request_timeout_s}s while executing."
-                )
-                ray.cancel(obj_ref_generator)
-
-                # We should only send timeout response if we have not sent
-                # any messages to the client yet. Header (including status code)
-                # messages can only be sent once.
-                if serve_timeout_error.is_first_message:
-                    await self.timeout_response(
-                        proxy_request=proxy_request, request_id=request_id
-                    )
-                return ProxyResponse(status_code=TIMEOUT_ERROR_CODE)
+            status_code = await self._consume_and_send_asgi_message_generator(
+                obj_ref_generator,
+                disconnected_task=proxy_asgi_receive_task,
+                request_id=request_id,
+                proxy_request=proxy_request,
+                timeout_s=calculate_remaining_timeout(
+                    timeout_s=self.request_timeout_s,
+                    start_time_s=start,
+                    curr_time_s=time.time(),
+                ),
+            )
 
         except Exception as e:
             logger.exception(e)

@@ -547,7 +547,11 @@ class TestHTTPProxy:
         asgi_message = {"type": "http.response.start", "status": status_code}
         asgi_messages = [asgi_message]
         obj_ref_generator = FakeRefGenerator(messages=asgi_messages)
-        send = AsyncMock()
+        proxy_request = ASGIProxyRequest(
+            scope={},
+            receive=AsyncMock(),
+            send=AsyncMock(),
+        )
 
         async def disconnected():
             await asyncio.sleep(10000)
@@ -555,13 +559,14 @@ class TestHTTPProxy:
         returned_status_code = (
             await http_proxy._consume_and_send_asgi_message_generator(
                 obj_ref_generator=obj_ref_generator,
-                send=send,
                 disconnected_task=asyncio.ensure_future(disconnected()),
+                request_id="fake_request_id",
+                proxy_request=proxy_request,
             )
         )
 
         assert returned_status_code == status_code
-        send.assert_called_with(asgi_message)
+        proxy_request.send.assert_called_with(asgi_message)
 
     @pytest.mark.asyncio
     @patch("ray.serve._private.http_proxy.ray.serve.context._serve_request_context")
