@@ -569,12 +569,12 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
         train_loop_per_worker,
         scaling_config=ScalingConfig(num_workers=2),
         datasets={"train": dataset},
-        metadata={"preprocessor_pkl": preprocessor.serialize()},
+        metadata={"preprocessor_pkl": scaler.serialize()},
     )
 
-    # Get the original preprocessor back from the result metadata.
+    # Get the fitted preprocessor back from the result metadata.
     metadata = my_trainer.fit().checkpoint.get_metadata()
-    print(Preprocessor.deserialize(metadata["preprocessor_pkl"]))
+    print(StandardScaler.deserialize(metadata["preprocessor_pkl"]))
 
 
 .. testoutput::
