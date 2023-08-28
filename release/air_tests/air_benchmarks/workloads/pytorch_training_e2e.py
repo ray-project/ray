@@ -15,7 +15,6 @@ import torch.optim as optim
 import ray
 from ray import train
 from ray.train import Checkpoint, RunConfig, ScalingConfig
-from ray.train._internal.storage import _use_storage_context
 from ray.train.torch import TorchTrainer
 
 

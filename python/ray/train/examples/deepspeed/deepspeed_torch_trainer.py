@@ -6,7 +6,6 @@ https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 Fine-tune a BERT model with DeepSpeed ZeRO-3 and Ray Train and Ray Data
 """
 
-import os
 import deepspeed
 import torch
 

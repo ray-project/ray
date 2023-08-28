@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
 from ray import train, tune
 from ray.train import Checkpoint, RunConfig, ScalingConfig
-from ray.train._internal.storage import _use_storage_context
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
