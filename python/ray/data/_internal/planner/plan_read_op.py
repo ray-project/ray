@@ -93,25 +93,24 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     See Planner.plan() for more details.
     """
 
-    def get_input_data() -> List[RefBundle]:
-        read_tasks = op._reader.get_read_tasks(op._parallelism)
-        return [
-            RefBundle(
-                [
-                    (
-                        # TODO(chengsu): figure out a better way to pass read
-                        # tasks other than ray.put().
-                        ray.put(read_task),
-                        cleaned_metadata(read_task),
-                    )
-                ],
-                owns_blocks=True,
-            )
-            for read_task in read_tasks
-        ]
+    read_tasks = op._reader.get_read_tasks(op._parallelism)
+    input_data = [
+        RefBundle(
+            [
+                (
+                    # TODO(chengsu): figure out a better way to pass read
+                    # tasks other than ray.put().
+                    ray.put(read_task),
+                    cleaned_metadata(read_task),
+                )
+            ],
+            owns_blocks=True,
+        )
+        for read_task in read_tasks
+    ]
 
     inputs = InputDataBuffer(
-        input_data_factory=get_input_data, num_output_blocks=op._estimated_num_blocks
+        input_data=input_data, num_output_blocks=op._estimated_num_blocks
     )
 
     def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
