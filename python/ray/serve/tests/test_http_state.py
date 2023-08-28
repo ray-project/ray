@@ -847,6 +847,63 @@ def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
     )
 
 
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+def test_proxy_actor_healthy_during_draining():
+    """Test that the proxy will remain DRAINING even if health check succeeds."""
+
+    @ray.remote(num_cpus=0)
+    class NewMockHTTPProxyActor:
+        def __init__(self):
+            self.num_health_checks = 0
+
+        def get_num_health_checks(self) -> int:
+            return self.num_health_checks
+
+        async def ready(self):
+            return json.dumps(["mock_worker_id", "mock_log_file_path"])
+
+        async def check_health(self):
+            self.num_health_checks = self.num_health_checks + 1
+            return "Success!"
+
+        async def update_draining(self, draining, _after):
+            pass
+
+        async def is_drained(self, _after):
+            return False
+
+    proxy_state = _create_http_proxy_state(proxy_actor_class=NewMockHTTPProxyActor)
+
+    # Wait for the proxy to become ready.
+    wait_for_condition(
+        condition_predictor=_update_and_check_proxy_status,
+        state=proxy_state,
+        status=HTTPProxyStatus.HEALTHY,
+    )
+
+    # Drain the proxy.
+    proxy_state.update(draining=True)
+    assert proxy_state.status == HTTPProxyStatus.DRAINING
+
+    cur_num_health_checks = ray.get(
+        proxy_state.actor_handle.get_num_health_checks.remote()
+    )
+
+    def _update_until_two_more_health_checks():
+        # Check 2 more health checks to make sure the proxy state
+        # at least sees the first successful health check.
+        proxy_state.update(draining=True)
+        return (
+            ray.get(proxy_state.actor_handle.get_num_health_checks.remote())
+            == cur_num_health_checks + 2
+        )
+
+    wait_for_condition(_update_until_two_more_health_checks)
+
+    # Make sure the status is still DRAINING not HEALTHY
+    assert proxy_state.status == HTTPProxyStatus.DRAINING
+
+
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 1)
 @patch("ray.serve._private.http_state.PROXY_DRAIN_CHECK_PERIOD_S", 0.1)
 @pytest.mark.parametrize("number_of_worker_nodes", [1])

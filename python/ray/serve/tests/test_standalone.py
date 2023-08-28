@@ -22,7 +22,7 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.serve.config import HTTPOptions
+from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
@@ -70,7 +70,8 @@ def lower_slow_startup_threshold_and_reset():
     os.environ["SERVE_SLOW_STARTUP_WARNING_PERIOD_S"] = "1"
 
     ray.init(num_cpus=2)
-    client = serve.start(detached=True)
+    serve.start()
+    client = get_global_client()
 
     yield client
 
@@ -143,7 +144,7 @@ def test_v1_shutdown_actors(ray_shutdown):
     deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
     ray.init(num_cpus=16)
-    serve.start(http_options=dict(port=8003), detached=True)
+    serve.start(http_options=dict(port=8003))
 
     @serve.deployment
     def f():
@@ -181,7 +182,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
     deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
     ray.init(num_cpus=16)
-    serve.start(http_options=dict(port=8003), detached=True)
+    serve.start(http_options=dict(port=8003))
 
     @serve.deployment
     def f():
@@ -219,7 +220,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
     ray.init(num_cpus=16)
-    serve.start(http_options=dict(port=8003), detached=True)
+    serve.start(http_options=dict(port=8003))
 
     @serve.deployment
     def f():
@@ -261,7 +262,7 @@ def test_detached_deployment(ray_cluster):
     # Create first job, check we can run a simple serve endpoint
     ray.init(head_node.address, namespace=SERVE_NAMESPACE)
     first_job_id = ray.get_runtime_context().get_job_id()
-    serve.start(detached=True)
+    serve.start()
 
     @serve.deployment(route_prefix="/say_hi_f")
     def f(*args):
@@ -661,7 +662,8 @@ def test_fixed_number_proxies(monkeypatch, ray_cluster):
 
 def test_serve_shutdown(ray_shutdown):
     ray.init(namespace="serve")
-    client = serve.start(detached=True)
+    serve.start()
+    client = get_global_client()
 
     @serve.deployment
     class A:
@@ -673,7 +675,8 @@ def test_serve_shutdown(ray_shutdown):
     assert len(client.list_deployments()) == 1
 
     serve.shutdown()
-    client = serve.start(detached=True)
+    serve.start()
+    client = get_global_client()
 
     assert len(client.list_deployments()) == 0
 
@@ -684,13 +687,13 @@ def test_serve_shutdown(ray_shutdown):
 
 def test_detached_namespace_default_ray_init(ray_shutdown):
     # Can start detached instance when ray is not initialized.
-    serve.start(detached=True)
+    serve.start()
 
 
 def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
     # Can start detached instance in non-anonymous namespace.
     ray.init(namespace="foo")
-    serve.start(detached=True)
+    serve.start()
 
 
 def test_checkpoint_isolation_namespace(ray_shutdown):
@@ -704,7 +707,7 @@ from ray import serve
 
 ray.init(address="{address}", namespace="{namespace}")
 
-serve.start(detached=True, http_options={{"port": {port}}})
+serve.start(http_options={{"port": {port}}})
 
 @serve.deployment
 class A:
@@ -733,12 +736,12 @@ def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, c
     logger.addHandler(WarningHandler())
 
     ray.init(namespace="serve-test")
-    serve.start(detached=True)
+    serve.start()
 
     # create a different config
     test_http = dict(host="127.1.1.8", port=new_port())
 
-    serve.start(detached=True, http_options=test_http)
+    serve.start(http_options=test_http)
 
     for test_config, msg in zip([["host", "port"]], warning_msg):
         for test_msg in test_config:
@@ -754,7 +757,8 @@ def test_recovering_controller_no_redeploy():
     """Ensure controller doesn't redeploy running deployments when recovering."""
     ray_context = ray.init(namespace="x")
     address = ray_context.address_info["address"]
-    client = serve.start(detached=True)
+    serve.start()
+    client = get_global_client()
 
     @serve.deployment
     def f():
@@ -860,7 +864,8 @@ def test_run_graph_task_uses_zero_cpus():
     """Check that the run_graph() task uses zero CPUs."""
 
     ray.init(num_cpus=2)
-    client = serve.start(detached=True)
+    serve.start()
+    client = get_global_client()
 
     config = {"import_path": "ray.serve.tests.test_standalone.WaiterNode"}
     config = ServeApplicationSchema.parse_obj(config)
@@ -876,6 +881,63 @@ def test_run_graph_task_uses_zero_cpus():
 
     serve.shutdown()
     ray.shutdown()
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {
+            "proxy_location": None,
+            "http_options": None,
+            "expected": HTTPOptions(location=DeploymentMode.EveryNode),
+        },
+        {
+            "proxy_location": None,
+            "http_options": HTTPOptions(location="NoServer"),
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+        {
+            "proxy_location": None,
+            "http_options": {"location": "NoServer"},
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+        {
+            "proxy_location": "NoServer",
+            "http_options": None,
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+        {
+            "proxy_location": "NoServer",
+            "http_options": {},
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+        {
+            "proxy_location": "NoServer",
+            "http_options": HTTPOptions(host="foobar"),
+            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+        },
+        {
+            "proxy_location": "NoServer",
+            "http_options": {"host": "foobar"},
+            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+        },
+        {
+            "proxy_location": "NoServer",
+            "http_options": {"location": "HeadOnly"},
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+        {
+            "proxy_location": DeploymentMode.NoServer,
+            "http_options": HTTPOptions(location=DeploymentMode.HeadOnly),
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+    ],
+)
+def test_serve_start_proxy_location(ray_shutdown, options):
+    expected_options = options.pop("expected")
+    serve.start(**options)
+    client = get_global_client()
+    assert ray.get(client._controller.get_http_config.remote()) == expected_options
 
 
 if __name__ == "__main__":
