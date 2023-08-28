@@ -239,6 +239,7 @@ class RayExecutor(Executor):
         """
         self._check_shutdown_lock()
 
+        end_time = None
         if timeout is not None:
             end_time = timeout + time.monotonic()
         fs = [self.submit(fn, *args) for args in zip(*iterables)]
@@ -249,7 +250,7 @@ class RayExecutor(Executor):
                 fs.reverse()
                 while fs:
                     # Careful not to keep a reference to the popped future
-                    if timeout is None:
+                    if end_time is None:
                         yield self._result_or_cancel(fs.pop())
                     else:
                         yield self._result_or_cancel(
