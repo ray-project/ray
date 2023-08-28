@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+import pytest
 import tempfile
 import unittest
 import subprocess
@@ -54,6 +55,9 @@ HEAD_POD_PREFIX = "raycluster-autoscaler-head"
 CPU_WORKER_PREFIX = "raycluster-autoscaler-worker-small-group"
 RAY_CLUSTER_NAME = "raycluster-autoscaler"
 RAY_CLUSTER_NAMESPACE = "default"
+
+# Test runs longer than the default timeout.
+pytestmark = pytest.mark.timeout(300)
 
 
 class KubeRayAutoscalingTest(unittest.TestCase):
