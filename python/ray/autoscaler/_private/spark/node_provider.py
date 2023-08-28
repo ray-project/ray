@@ -20,6 +20,7 @@ from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
     STATUS_UP_TO_DATE,
+    STATUS_SETTING_UP,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
@@ -53,9 +54,9 @@ class RayOnSparkNodeProvider(NodeProvider):
             },
         }
         self._next_node_id = 0
-        self.server_url = "http://127.0.0.1:8899"
 
         self.ray_head_ip = self.provider_config["ray_head_ip"]
+        self.server_url = f"http://{self.ray_head_ip}:8899"
         self.ray_head_port = self.provider_config["ray_head_port"]
         self.cluster_unique_id = self.provider_config["cluster_unique_id"]
 
@@ -78,12 +79,41 @@ class RayOnSparkNodeProvider(NodeProvider):
 
             return nodes
 
+    def _query_node_status(self, node_id):
+        spark_job_group_id = self._gen_spark_job_group_id(node_id)
+
+        response = requests.post(
+            url=self.server_url + "/create_node",
+            json={"spark_job_group_id": spark_job_group_id}
+        )
+        decoded_resp = response.content.decode("utf-8")
+        json_res = json.loads(decoded_resp)
+        return json_res["status"]
+
     def is_running(self, node_id):
+        task_status = self._query_node_status(node_id)
+
         with self.lock:
-            return node_id in self._nodes
+            if (
+                node_id in self._nodes and
+                self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS] == STATUS_SETTING_UP
+            ):
+                if task_status == "running":
+                    self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
+
+            return (
+                node_id in self._nodes and
+                self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS] == STATUS_UP_TO_DATE
+            )
 
     def is_terminated(self, node_id):
+        task_status = self._query_node_status(node_id)
+
         with self.lock:
+            if node_id in self._nodes:
+                if task_status == "terminated":
+                    self._nodes.pop(node_id)
+
             return node_id not in self._nodes
 
     def node_tags(self, node_id):
@@ -162,7 +192,6 @@ class RayOnSparkNodeProvider(NodeProvider):
                 response = requests.post(
                     url=self.server_url + "/create_node",
                     json={
-                        "num_worker_nodes": 1,
                         "spark_job_group_id": self._gen_spark_job_group_id(next_id),
                         "spark_job_group_desc":
                             "This job group is for spark job which runs the Ray "
@@ -188,7 +217,7 @@ class RayOnSparkNodeProvider(NodeProvider):
                         TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
                         TAG_RAY_USER_NODE_TYPE: node_type,
                         TAG_RAY_NODE_NAME: next_id,
-                        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+                        TAG_RAY_NODE_STATUS: STATUS_SETTING_UP,
                     },
                 }
 

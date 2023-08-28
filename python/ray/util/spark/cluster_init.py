@@ -7,6 +7,7 @@ import threading
 import logging
 import uuid
 import warnings
+import requests
 from packaging.version import Version
 from typing import Optional, Dict, Type
 
@@ -651,7 +652,7 @@ def _setup_ray_cluster(
                     object_store_memory_worker_node=object_store_memory_worker_node,
                     worker_node_options=worker_node_options,
                     collect_log_to_path=collect_log_to_path,
-                    capture_spark_task_exception=False,
+                    autoscale_mode=False,
                 )
             except Exception as e:
                 # NB:
@@ -1154,7 +1155,7 @@ def _start_ray_worker_nodes(
     object_store_memory_per_node,
     worker_node_options,
     collect_log_to_path,
-    capture_spark_task_exception,
+    autoscale_mode,
 ):
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -1247,8 +1248,15 @@ def _start_ray_worker_nodes(
             f"Start Ray worker, command: {' '.join(ray_worker_node_cmd)}"
         )
 
-
         try:
+            # Notify job server the task has been launched.
+            requests.post(
+                url=f"http://{ray_head_ip}:8899/notify_task_launched",
+                json={
+                    "spark_job_group_id": spark_job_group_id,
+                }
+            )
+
             # Note:
             # When a pyspark job cancelled, the UDF python worker process are killed by
             # signal "SIGKILL", then `start_ray_node` process will detect the parent died
@@ -1260,7 +1268,7 @@ def _start_ray_worker_nodes(
                 extra_env=ray_worker_node_extra_envs,
             )
         except Exception as e:
-            if capture_spark_task_exception:
+            if autoscale_mode:
                 _logger.warning(
                     f"Ray worker node process exit, reason: {repr(e)}."
                 )

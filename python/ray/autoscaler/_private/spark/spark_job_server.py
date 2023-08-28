@@ -28,7 +28,6 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
         if path_parts[0] == "create_node":
             assert len(path_parts) == 1, f"Illegal request path: {path}"
             spark_job_group_desc = data["spark_job_group_desc"]
-            num_worker_nodes = data["num_worker_nodes"]
             using_stage_scheduling = data["using_stage_scheduling"]
             ray_head_ip = data["ray_head_ip"]
             ray_head_port = data["ray_head_port"]
@@ -46,7 +45,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         spark=self.server.spark,
                         spark_job_group_id=spark_job_group_id,
                         spark_job_group_desc=spark_job_group_desc,
-                        num_worker_nodes=num_worker_nodes,
+                        num_worker_nodes=1,
                         using_stage_scheduling=using_stage_scheduling,
                         ray_head_ip=ray_head_ip,
                         ray_head_port=ray_head_port,
@@ -57,9 +56,12 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         object_store_memory_per_node=object_store_memory_per_node,
                         worker_node_options=worker_node_options,
                         collect_log_to_path=collect_log_to_path,
-                        capture_spark_task_exception=True,
+                        autoscale_mode=True,
                     )
                 except Exception:
+                    if spark_job_group_id in self.server.task_status_dict:
+                        self.server.task_status_dict.remove(spark_job_group_id)
+
                     # TODO: Refine error handling.
                     _logger.warning(
                         f"Spark job {spark_job_group_id} hosting Ray worker node exit."
@@ -70,12 +72,29 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                 args=(),
                 daemon=True,
             ).start()
+
+            self.server.task_status_dict[spark_job_group_id] = "pending"
             return {}
 
         elif path_parts[0] == "terminate_node":
             assert len(path_parts) == 1, f"Illegal request path: {path}"
             self.server.spark.sparkContext.cancelJobGroup(spark_job_group_id)
+            if spark_job_group_id in self.server.task_status_dict:
+                self.server.task_status_dict.remove(spark_job_group_id)
             return {}
+
+        elif path_parts[0] == "notify_task_launched":
+            if spark_job_group_id in self.server.task_status_dict:
+                # Note that if `spark_job_group_id` not in task_status_dict,
+                # the task has been terminated
+                self.server.task_status_dict[spark_job_group_id] = "running"
+            return {}
+
+        elif path_parts[0] == "query_task_status":
+            if spark_job_group_id in self.server.task_status_dict:
+                return {"status": self.server.task_status_dict[spark_job_group_id]}
+            else:
+                return {"status": "terminated"}
 
         else:
             raise ValueError(f"Illegal request path: {path}")
@@ -110,6 +129,7 @@ class SparkJobServer(ThreadingHTTPServer):
     def __init__(self, server_address, spark):
         super().__init__(server_address, SparkJobServerRequestHandler)
         self.spark = spark
+        self.task_status_dict = set()
 
 
 def _start_spark_job_server(host, port, spark):
