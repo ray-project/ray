@@ -462,24 +462,10 @@ to do that depending on whether you are using class or functional Trainable API.
 
 **You are training a large number of trials on a cluster, or you are saving huge checkpoints**
 
-Checkpoints and logs are synced between nodes
-- usually at least to the driver on the head node, but sometimes between worker nodes if needed (e.g. when
-using :ref:`Population Based Training <tune-scheduler-pbt>`). If these checkpoints are very large (e.g. for
-NLP models), or if you are training a large number of trials, this syncing can take a long time.
-
-If nothing else is specified, syncing happens via SSH, which can lead to network overhead as connections are
-not kept open by Ray Tune.
-
-**Solution**: There are multiple solutions, depending on your needs:
-
-1. You can disable syncing to the driver in the :class:`tune.SyncConfig <ray.tune.SyncConfig>`. In this case,
-   logs and checkpoints will not be synced to the driver, so if you need to access them later, you will have to
-   transfer them where you need them manually.
-
-2. You can use :ref:`cloud checkpointing <tune-cloud-checkpointing>` to save logs and checkpoints to a specified `storage_path`.
-   This is the preferred way to deal with this. All syncing will be taken care of automatically, as all nodes
-   are able to access the cloud storage. Additionally, your results will be safe, so even when you're working on
-   pre-emptible instances, you won't lose any of your data.
+**Solution**: You can use :ref:`cloud checkpointing <tune-cloud-checkpointing>` to save logs and checkpoints to a specified `storage_path`.
+This is the preferred way to deal with this. All syncing will be taken care of automatically, as all nodes
+are able to access the cloud storage. Additionally, your results will be safe, so even when you're working on
+pre-emptible instances, you won't lose any of your data.
 
 **You are reporting results too often**
 
@@ -604,14 +590,6 @@ Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
     :start-after: __log_1_start__
     :end-before: __log_1_end__
 
-You can customize synchronization behavior by implementing your own Syncer:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __log_2_start__
-    :end-before: __log_2_end__
-
 By default, syncing occurs whenever one of the following conditions are met:
 
 * if you have used a :py:class:`~ray.train.CheckpointConfig` with ``num_to_keep`` and a trial has checkpointed more than ``num_to_keep`` times since last sync,
@@ -626,53 +604,6 @@ Make sure that worker nodes have the write access to the cloud storage.
 Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
 For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes.
 Please :ref:`see here for more tips <aws-cluster-s3>`.
-
-
-.. _tune-cloud-syncing-command-line-example:
-
-How can I use the awscli or gsutil command line commands for syncing?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Some users reported to run into problems with the default pyarrow-based syncing.
-In this case, a custom syncer that invokes the respective command line tools
-for transferring files between nodes and cloud storage can be implemented.
-
-Here is an example for a syncer that uses string templates that will be run
-as a command:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __custom_command_syncer_start__
-    :end-before: __custom_command_syncer_end__
-
-For different cloud services, these are example templates you can use with this syncer:
-
-AWS S3
-''''''
-
-.. code-block::
-
-    sync_up_template="aws s3 sync {source} {target} --exact-timestamps --only-show-errors"
-    sync_down_template="aws s3 sync {source} {target} --exact-timestamps --only-show-errors"
-    delete_template="aws s3 rm {target} --recursive --only-show-errors"
-
-Google cloud storage
-''''''''''''''''''''
-
-.. code-block::
-
-    sync_up_template="gsutil rsync -r {source} {target}"
-    sync_down_template="down": "gsutil rsync -r {source} {target}"
-    delete_template="delete": "gsutil rm -r {target}"
-
-HDFS
-''''
-
-.. code-block::
-
-    sync_up_template="hdfs dfs -put -f {source} {target}"
-    sync_down_template="down": "hdfs dfs -get -f {source} {target}"
-    delete_template="delete": "hdfs dfs -rm -r {target}"
 
 
 .. _tune-docker:

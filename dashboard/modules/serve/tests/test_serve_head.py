@@ -26,7 +26,11 @@ def test_get_serve_instance_details(ray_start_stop):
     in test_serve_agent.py because the behavior in serve_head just proxies
     to the serve_agent endpoint.
     """
-
+    grpc_port = 9001
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+    ]
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
     config1 = {
@@ -34,6 +38,10 @@ def test_get_serve_instance_details(ray_start_stop):
         "http_options": {
             "host": "127.0.0.1",
             "port": 8005,
+        },
+        "grpc_options": {
+            "port": grpc_port,
+            "grpc_servicer_functions": grpc_servicer_functions,
         },
         "applications": [
             {
@@ -73,11 +81,18 @@ def test_get_serve_instance_details(ray_start_stop):
     serve_details = ServeInstanceDetails(
         **requests.get("http://localhost:8265/api/serve_head/applications/").json()
     )
-    # CHECK: host and port
+    # CHECK: proxy location, HTTP host, and HTTP port
     assert serve_details.http_options.host == "127.0.0.1"
     assert serve_details.http_options.port == 8005
     assert serve_details.proxy_location == DeploymentMode.HeadOnly
-    print('Confirmed fetched host and port metadata are "127.0.0.1" and "8000".')
+    print(
+        'Confirmed fetched HTTP host and HTTP port metadata are "127.0.0.1" and '
+        '"8005".'
+    )
+
+    # CHECK: gRPC port and grpc_servicer_functions
+    assert serve_details.grpc_options.port == grpc_port
+    assert serve_details.grpc_options.grpc_servicer_functions == grpc_servicer_functions
 
     app_details = serve_details.applications
 
