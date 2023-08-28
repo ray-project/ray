@@ -82,31 +82,6 @@ parts:
             title: User Guides
           - file: train/examples
             title: "Examples"
-            sections:
-              - file: train/examples/pytorch/torch_fashion_mnist_example
-                title: "PyTorch Fashion MNIST Example"
-              - file: train/examples/transformers/transformers_torch_trainer_basic
-                title: "Hugging Face Transformers Basic Example"
-              - file: train/examples/lightning/lightning_mnist_example
-                title: "PyTorch Lightning Basic Example"
-              - file: train/examples/lightning/lightning_cola_advanced
-                title: "PyTorch Lightning Advanced Example"
-              - file: train/examples/lightning/lightning_exp_tracking
-                title: "PyTorch Lightning with Experiment Tracking Tools"
-              - file: train/examples/tf/tensorflow_mnist_example
-                title: "TensorFlow MNIST Example"
-              - file: train/examples/horovod/horovod_example
-                title: "Horovod Example"
-              - file: train/examples/tf/tune_tensorflow_mnist_example
-                title: "Tune & TensorFlow Example"
-              - file: train/examples/pytorch/tune_cifar_torch_pbt_example
-                title: "Tune & PyTorch Example"
-              - file: train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example
-                title: "Torch Data Prefetching Benchmark"
-              - file: train/examples/pytorch/pytorch_resnet_finetune
-                title: "PyTorch Finetuning ResNet Example"
-              - file: train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune
-                title: "Fine-tune Vicuna-13B with DeepSpeed and PyTorch Lightning"
           - file: train/internals/index
             title: "Internals"
             sections:
