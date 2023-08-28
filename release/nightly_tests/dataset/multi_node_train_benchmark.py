@@ -68,9 +68,9 @@ def parse_args():
     args = parser.parse_args()
 
     if args.file_type == "image":
-        args.data_root = "s3://air-cuj-imagenet-1gb"
+        args.data_root = "s3://anonymous@air-example-data-2/20G-image-data-synthetic-raw"
     elif args.file_type == "parquet":
-        args.data_root = "s3://air-example-data-2/10G-image-data-synthetic-raw-parquet"
+        args.data_root = "s3://anonymous@air-example-data-2/20G-image-data-synthetic-raw-parquet"
     else:
         raise Exception(
             f"Unknown file type {args.file_type}; expected one of: ['image', 'parquet']"
@@ -122,6 +122,7 @@ def benchmark_code(args, cache_output_ds=False, cache_input_ds=False, prepartiti
     assert sum([cache_output_ds, cache_input_ds, prepartition_ds]) <= 1, "Can only test one caching variant at a time"
 
     # 1) Read in data with read_images() / read_parquet()
+    # TODO(scott): for extra-CPU case, pass `num_cpus=N` as ray_remote_args here?
     if args.file_type == "image":
         ray_dataset = ray.data.read_images(args.data_root)
     elif args.file_type == "parquet":
@@ -156,7 +157,10 @@ def benchmark_code(args, cache_output_ds=False, cache_input_ds=False, prepartiti
     torch_trainer = TorchTrainer(
         train_loop_per_worker,
         datasets={"train": ray_dataset},
-        scaling_config=ScalingConfig(num_workers=args.num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(
+            num_workers=args.num_workers,
+            use_gpu=True,
+        ),
         dataset_config=ray.train.DataConfig(
             execution_options=options,
         ),
@@ -178,9 +182,9 @@ if __name__ == "__main__":
 
     benchmark = Benchmark(benchmark_name)
 
-    benchmark.run_fn("default", benchmark_code, args=args)
+    benchmark.run_fn("cache-none", benchmark_code, args=args)
     benchmark.run_fn("cache-output", benchmark_code, args=args, cache_output_ds=True)
     # benchmark.run_fn("cache-output", benchmark_code, args=args, cache_output_ds=True) # TODO: cache output w/ extra CPU nodes
-    benchmark.run_fn("cache-intput", benchmark_code, args=args, cache_input_ds=True)
+    benchmark.run_fn("cache-input", benchmark_code, args=args, cache_input_ds=True)
     # benchmark.run_fn("cache-output", benchmark_code, args=args, cache_output_ds=True) # TODO: prepartition + cache inputs
     benchmark.write_result("/tmp/multi_node_train_benchmark.json")
