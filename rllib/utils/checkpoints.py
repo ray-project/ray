@@ -269,7 +269,7 @@ def convert_to_msgpack_checkpoint(
 
 @PublicAPI(stability="beta")
 def convert_to_msgpack_policy_checkpoint(
-    policy_checkpoint: Union[str, Checkpoint, NewCheckpoint],
+    policy_checkpoint: Union[str, Checkpoint],
     msgpack_checkpoint_dir: str,
 ) -> str:
     """Converts a Policy checkpoint (pickle based) to a msgpack based one.
