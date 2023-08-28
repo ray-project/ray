@@ -233,7 +233,7 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
         "from ray import serve\n"
         "\n"
         'ray.init(address="auto", namespace="x")\n'
-        "serve.start(detached=True)\n"
+        "serve.start()\n"
         "\n"
         "@serve.deployment\n"
         "def f(*args):\n"
@@ -279,8 +279,6 @@ def test_handle_early_detect_failure(shutdown_ray):
 
     It should detect replica raises ActorError and take them out of the replicas set.
     """
-    ray.init()
-    serve.start(detached=True)
 
     @serve.deployment(num_replicas=2, max_concurrent_queries=1)
     def f(do_crash: bool = False):
@@ -304,7 +302,6 @@ def test_handle_early_detect_failure(shutdown_ray):
     assert len(set(pids)) == 1
 
     # Restart the controller, and then clean up all the replicas
-    serve.start(detached=True)
     serve.shutdown()
 
 
@@ -471,7 +468,7 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
     """
     # Setup worker http proxy to be pointing to port 8001. Head node http proxy will
     # continue to be pointing to the default port 8000.
-    os.environ["TEST_WORKER_NODE_PORT"] = "8001"
+    os.environ["TEST_WORKER_NODE_HTTP_PORT"] = "8001"
 
     # Setup a cluster with 2 nodes
     cluster = Cluster()
@@ -519,10 +516,7 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
         expected_text="success",
     )
     assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
-    assert (
-        requests.get("http://127.0.0.1:8000/-/routes").text
-        == '{"/":"default_HelloModel"}'
-    )
+    assert requests.get("http://127.0.0.1:8000/-/routes").text == '{"/":"default"}'
     wait_for_condition(
         condition_predictor=check_request,
         url="http://127.0.0.1:8001/-/healthz",
@@ -530,10 +524,7 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
         expected_text="success",
     )
     assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 200
-    assert (
-        requests.get("http://127.0.0.1:8001/-/routes").text
-        == '{"/":"default_HelloModel"}'
-    )
+    assert requests.get("http://127.0.0.1:8001/-/routes").text == '{"/":"default"}'
 
     # Delete the deployment should bring the active actors down to 3 and drop
     # replicas on all nodes.

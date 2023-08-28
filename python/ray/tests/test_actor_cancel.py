@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 import time
+from collections import defaultdict
 
 import pytest
 
@@ -27,13 +28,6 @@ def test_async_actor_cancel(shutdown_only):
     """
     Test async actor task is canceled and
     asyncio.CancelledError is raised within a task.
-
-    If a task is canceled while it is executed,
-    it should raise RayTaskError.
-
-    TODO(sang): It is awkward we raise RayTaskError
-    when a task is interrupted. Should we just raise
-    TaskCancelledError? It is an API change.
     """
     ray.init(num_cpus=1)
 
@@ -41,38 +35,55 @@ def test_async_actor_cancel(shutdown_only):
     class VerifyActor:
         def __init__(self):
             self.called = False
+            self.running = False
 
         def called(self):
-            print("called")
             self.called = True
 
+        def set_running(self):
+            self.running = True
+
         def is_called(self):
-            print("is caled, ", self.called)
             return self.called
+
+        def is_running(self):
+            return self.running
+
+        def reset(self):
+            self.called = False
+            self.running = False
 
     @ray.remote
     class Actor:
         async def f(self, verify_actor):
             try:
-                await asyncio.sleep(5)
+                ray.get(verify_actor.set_running.remote())
+                await asyncio.sleep(10)
             except asyncio.CancelledError:
+                # It is False until this except block is finished.
+                print(asyncio.current_task().cancelled())
+                assert not asyncio.current_task().cancelled()
                 ray.get(verify_actor.called.remote())
-                assert asyncio.get_current_task.canceled()
+                raise
+            except Exception:
                 return True
-            return False
+            return True
 
     v = VerifyActor.remote()
     a = Actor.remote()
-    ref = a.f.remote(v)
-    ray.get(a.__ray_ready__.remote())
-    ray.get(v.__ray_ready__.remote())
-    ray.cancel(ref)
 
-    with pytest.raises(ray.exceptions.RayTaskError):
-        ray.get(ref)
+    for i in range(50):
+        ref = a.f.remote(v)
+        wait_for_condition(lambda: ray.get(v.is_running.remote()))
+        ray.cancel(ref)
 
-    # Verify asyncio.CancelledError is raised from the actor task.
-    assert ray.get(v.is_called.remote())
+        with pytest.raises(ray.exceptions.TaskCancelledError, match="was cancelled"):
+            ray.get(ref)
+
+        # Verify asyncio.CancelledError is raised from the actor task.
+        assert ray.get(v.is_running.remote())
+        assert ray.get(v.is_called.remote())
+        ray.get(v.reset.remote())
 
 
 def test_async_actor_client_side_cancel(ray_start_cluster):
@@ -310,7 +321,7 @@ def test_remote_cancel(ray_start_regular):
     wait_for_condition(lambda: list_tasks(filters=[("name", "=", "Actor.sleep")]))
     ref = f.remote([sleep_ref])  # noqa
 
-    with pytest.raises(ray.exceptions.RayTaskError):
+    with pytest.raises(ray.exceptions.TaskCancelledError):
         ray.get(sleep_ref)
 
 
@@ -338,7 +349,184 @@ def test_cancel_stress(shutdown_only):
         ray.cancel(ref)
 
     for ref in refs:
-        with pytest.raises((ray.exceptions.RayTaskError, TaskCancelledError)):
+        with pytest.raises((ray.exceptions.TaskCancelledError, TaskCancelledError)):
+            ray.get(ref)
+
+
+def test_cancel_recursive_tree(shutdown_only):
+    """Verify recursive cancel works for tree-nested tasks.
+
+    Task A -> Task B
+           -> Task C
+    """
+    ray.init(num_cpus=16)
+
+    # Test the tree structure.
+    @ray.remote
+    def child():
+        for _ in range(5):
+            time.sleep(1)
+        return True
+
+    @ray.remote
+    class ChildActor:
+        async def child(self):
+            await asyncio.sleep(5)
+            return True
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self.children_refs = defaultdict(list)
+
+        def get_children_refs(self, task_id):
+            return self.children_refs[task_id]
+
+        async def run(self, child_actor, sig):
+            ref1 = child.remote()
+            ref2 = child_actor.child.remote()
+            task_id = ray.get_runtime_context().get_task_id()
+            self.children_refs[task_id].append(ref1)
+            self.children_refs[task_id].append(ref2)
+
+            await sig.wait.remote()
+            await ref1
+            await ref2
+
+    sig = SignalActor.remote()
+    child_actor = ChildActor.remote()
+    a = Actor.remote()
+    ray.get(a.__ray_ready__.remote())
+
+    """
+    Test the basic case.
+    """
+    run_ref = a.run.remote(child_actor, sig)
+    task_id = run_ref.task_id().hex()
+    wait_for_condition(
+        lambda: list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING"
+    )
+    ray.cancel(run_ref, recursive=True)
+    ray.get(sig.send.remote())
+
+    children_refs = ray.get(a.get_children_refs.remote(task_id))
+
+    for ref in children_refs + [run_ref]:
+        with pytest.raises(ray.exceptions.TaskCancelledError):
+            ray.get(ref)
+
+    """
+    Test recursive = False
+    """
+    run_ref = a.run.remote(child_actor, sig)
+    task_id = run_ref.task_id().hex()
+    wait_for_condition(
+        lambda: list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING"
+    )
+    ray.cancel(run_ref, recursive=False)
+    ray.get(sig.send.remote())
+
+    children_refs = ray.get(a.get_children_refs.remote(task_id))
+
+    for ref in children_refs:
+        assert ray.get(ref)
+
+    with pytest.raises(ray.exceptions.TaskCancelledError):
+        ray.get(run_ref)
+
+    """
+    Test concurrent cases.
+    """
+    run_refs = [a.run.remote(ChildActor.remote(), sig) for _ in range(10)]
+    task_ids = []
+
+    for i, run_ref in enumerate(run_refs):
+        task_id = run_ref.task_id().hex()
+        task_ids.append(task_id)
+        wait_for_condition(
+            lambda task_id=task_id: list_tasks(filters=[("task_id", "=", task_id)])[
+                0
+            ].state
+            == "RUNNING"
+        )
+        children_refs = ray.get(a.get_children_refs.remote(task_id))
+        for child_ref in children_refs:
+            task_id = child_ref.task_id().hex()
+            wait_for_condition(
+                lambda task_id=task_id: list_tasks(filters=[("task_id", "=", task_id)])[
+                    0
+                ].state
+                == "RUNNING"
+            )
+        recursive = i % 2 == 0
+        ray.cancel(run_ref, recursive=recursive)
+
+    ray.get(sig.send.remote())
+
+    for i, task_id in enumerate(task_ids):
+        children_refs = ray.get(a.get_children_refs.remote(task_id))
+
+        if i % 2 == 0:
+            for ref in children_refs:
+                with pytest.raises(ray.exceptions.TaskCancelledError):
+                    ray.get(ref)
+        else:
+            for ref in children_refs:
+                assert ray.get(ref)
+
+        with pytest.raises(ray.exceptions.TaskCancelledError):
+            ray.get(run_ref)
+
+
+@pytest.mark.parametrize("recursive", [True, False])
+def test_cancel_recursive_chain(shutdown_only, recursive):
+    @ray.remote
+    class RecursiveActor:
+        def __init__(self, child=None):
+            self.child = child
+            self.chlid_ref = None
+
+        async def run(self, sig):
+            if self.child is None:
+                await sig.wait.remote()
+                return True
+
+            ref = self.child.run.remote(sig)
+            self.child_ref = ref
+            return await ref
+
+        def get_child_ref(self):
+            return self.child_ref
+
+    sig = SignalActor.remote()
+    r1 = RecursiveActor.remote()
+    r2 = RecursiveActor.remote(r1)
+    r3 = RecursiveActor.remote(r2)
+    r4 = RecursiveActor.remote(r3)
+
+    ref = r4.run.remote(sig)
+    ray.get(r4.__ray_ready__.remote())
+    wait_for_condition(
+        lambda: len(list_tasks(filters=[("name", "=", "RecursiveActor.run")])) == 4
+    )
+    ray.cancel(ref, recursive=recursive)
+    ray.get(sig.send.remote())
+
+    if recursive:
+        with pytest.raises(ray.exceptions.TaskCancelledError):
+            ray.get(ref)
+        with pytest.raises(ray.exceptions.TaskCancelledError):
+            ray.get(ray.get(r4.get_child_ref.remote()))
+        with pytest.raises(ray.exceptions.TaskCancelledError):
+            ray.get(ray.get(r3.get_child_ref.remote()))
+        with pytest.raises(ray.exceptions.TaskCancelledError):
+            ray.get(ray.get(r2.get_child_ref.remote()))
+    else:
+        assert ray.get(ray.get(r2.get_child_ref.remote()))
+        assert ray.get(ray.get(r3.get_child_ref.remote()))
+        assert ray.get(ray.get(r4.get_child_ref.remote()))
+
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ref)
 
 

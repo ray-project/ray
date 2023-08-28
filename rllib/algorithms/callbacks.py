@@ -655,7 +655,6 @@ def make_multi_callbacks(
 
         @override(DefaultCallbacks)
         def on_train_result(self, *, algorithm=None, result: dict, **kwargs) -> None:
-
             for callback in self._callback_list:
                 callback.on_train_result(algorithm=algorithm, result=result, **kwargs)
 
@@ -664,7 +663,6 @@ def make_multi_callbacks(
 
 # This Callback is used by the RE3 exploration strategy.
 # See rllib/examples/re3_exploration.py for details.
-@Deprecated(error=False)
 class RE3UpdateCallbacks(DefaultCallbacks):
     """Update input callbacks to mutate batch with states entropy rewards."""
 

@@ -209,10 +209,13 @@ Your preprocessed datasets can be passed into a Ray Train Trainer (e.g. :class:`
 
 The datasets passed into the Trainer's ``datasets`` can be accessed inside of the ``train_loop_per_worker`` run on each distributed training worker by calling :meth:`ray.train.get_dataset_shard`. 
 
-The default splitting behavior is as follows:
+All datasets are split (i.e. sharded) across the training workers by default. :meth:`~ray.train.get_dataset_shard` will return ``1/n`` of the dataset, where ``n`` is the number of training workers.
 
-- The ``"train"`` dataset is split (i.e. sharded) across the training workers. :meth:`~ray.train.get_dataset_shard` will return ``1/n`` of the dataset, where ``n`` is the number of training workers.
-- All other dataset are not split. :meth:`~ray.train.get_dataset_shard` will return the full dataset.
+.. note::
+
+    Please be aware that as the evaluation dataset is split, users have to aggregate the evaluation results across workers. 
+    You might consider using `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_ (:ref:`example <deepspeed_example>`) or 
+    utilities available in other frameworks that you can explore.
 
 This behavior can be overwritten by passing in the ``dataset_config`` argument. For more information on configuring splitting logic, see :ref:`Splitting datasets <train-datasets-split>`.
 
@@ -298,11 +301,11 @@ For more details, see the following sections for each framework.
 
 Splitting datasets
 ------------------
-By default, Ray Train splits the ``"train"`` dataset across workers using :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. Each worker sees a disjoint subset of the data, instead of iterating over the entire dataset. Unless randomly shuffled, the same splits are used for each iteration of the dataset. 
+By default, Ray Train splits all datasets across workers using :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. Each worker sees a disjoint subset of the data, instead of iterating over the entire dataset. Unless randomly shuffled, the same splits are used for each iteration of the dataset. 
 
-For all other datasets, Ray Train passes the entire dataset to each worker.
+If want to customize which datasets are split, pass in a :class:`DataConfig <ray.train.DataConfig>` to the Trainer constructor. 
 
-To customize this, pass in a :class:`DataConfig <ray.train.DataConfig>` to the Trainer constructor. For example, to split both the training and validation datasets, do the following:
+For example, to split only the training dataset, do the following:
 
 .. testcode::
 
@@ -317,18 +320,24 @@ To customize this, pass in a :class:`DataConfig <ray.train.DataConfig>` to the T
     train_ds, val_ds = ds.train_test_split(0.3)
 
     def train_loop_per_worker():
-        # Get an iterator to the dataset we passed in below.
-        it = train.get_dataset_shard("train")
+        # Get the sharded training dataset
+        train_ds = train.get_dataset_shard("train")
         for _ in range(2):
-            for batch in it.iter_batches(batch_size=128):
+            for batch in train_ds.iter_batches(batch_size=128):
                 print("Do some training on batch", batch)
+        
+        # Get the unsharded full validation dataset
+        val_ds = train.get_dataset_shard("val")
+        for _ in range(2):
+            for batch in val_ds.iter_batches(batch_size=128):
+                print("Do some evaluation on batch", batch)
 
     my_trainer = TorchTrainer(
         train_loop_per_worker,
         scaling_config=ScalingConfig(num_workers=2),
         datasets={"train": train_ds, "val": val_ds},
         dataset_config=ray.train.DataConfig(
-            datasets_to_split=["train", "val"],
+            datasets_to_split=["train"],
         ),
     )
     my_trainer.fit()
@@ -525,19 +534,18 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
     from ray.train import ScalingConfig
     from ray.train._checkpoint import Checkpoint
     from ray.train.torch import TorchTrainer
-    from ray.data import Preprocessor
-    from ray.data.preprocessors import Concatenator, Chain, StandardScaler
+    from ray.data.preprocessors import Concatenator, StandardScaler
 
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
-    # Create a preprocessor to scale some columns and concatenate the result.
-    preprocessor = Chain(
-        StandardScaler(columns=["mean radius", "mean texture"]),
-        Concatenator(exclude=["target"], dtype=np.float32),
-    )
-    # Compute dataset statistics and return a transformed dataset. Note that the
+    # Create preprocessors to scale some columns and concatenate the results.
+    scaler = StandardScaler(columns=["mean radius", "mean texture"])
+    concatenator = Concatenator(exclude=["target"], dtype=np.float32)
+
+    # Compute dataset statistics and get transformed datasets. Note that the
     # fit call is executed immediately, but the transformation is lazy.
-    dataset = preprocessor.fit_transform(dataset)
+    dataset = scaler.fit_transform(dataset)
+    dataset = concatenator.fit_transform(dataset)
 
     def train_loop_per_worker():
         context = train.get_context()

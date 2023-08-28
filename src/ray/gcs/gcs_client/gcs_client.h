@@ -82,6 +82,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
   /// \param instrumented_io_context IO execution service.
+  /// \param cluster_id Optional cluster ID to provide to the client.
   ///
   /// \return Status
   virtual Status Connect(instrumented_io_context &io_service,
@@ -156,6 +157,11 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *placement_group_accessor_;
   }
 
+  const ClusterID &GetClusterId() {
+    RAY_CHECK(client_call_manager_) << "Cannot retrieve cluster ID before it is set.";
+    return client_call_manager_->GetClusterId();
+  }
+
   /// Get the sub-interface for accessing worker information in GCS.
   /// This function is thread safe.
   virtual InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }
@@ -175,6 +181,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
+
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
 
  private:

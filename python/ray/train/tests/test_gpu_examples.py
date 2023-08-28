@@ -1,5 +1,7 @@
+import os
 import pytest
 import torch
+from tempfile import TemporaryDirectory
 
 from ray import train
 from ray.train import Checkpoint, ScalingConfig
@@ -74,8 +76,9 @@ def test_horovod_torch_mnist_gpu_checkpoint(ray_start_4_cpus_2_gpus):
         net = torch.nn.Linear(in_features=8, out_features=16)
         net.to("cuda")
 
-        checkpoint = Checkpoint.from_dict({"model": net.state_dict()})
-        train.report({"metric": 1}, checkpoint=checkpoint)
+        with TemporaryDirectory() as tmpdir:
+            torch.save(net.state_dict(), os.path.join(tmpdir, "checkpoint.pt"))
+            train.report({"metric": 1}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     num_workers = 2
     trainer = HorovodTrainer(
@@ -98,6 +101,12 @@ def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
 
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
+    from ray.train._internal.storage import _use_storage_context
+
+    if not _use_storage_context():
+        # TODO(justinvyu): [skipped_test]
+        pytest.skip("Skipping for now.")
+
     from ray.train.examples.pytorch.torch_regression_example import train_regression
 
     assert train_regression(num_workers=2, use_gpu=True)

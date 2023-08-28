@@ -47,6 +47,7 @@ def _add_serve_metric_default_tags(default_tags: Dict[str, str]):
     if APPLICATION_TAG in default_tags:
         raise ValueError(f"'{APPLICATION_TAG}' tag is reserved for Ray Serve metrics")
     replica_context = context.get_internal_replica_context()
+    # TODO(zcin): use replica_context.deployment for deployment tag
     default_tags[DEPLOYMENT_TAG] = replica_context.deployment
     default_tags[REPLICA_TAG] = replica_context.replica_tag
     if replica_context.app_name:

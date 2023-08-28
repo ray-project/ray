@@ -6,8 +6,11 @@ from typing import List
 
 import ci.ray_ci.bazel_sharding as bazel_sharding
 
-DOCKER_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
-DOCKER_REPO = "rayproject/citemp"
+_DOCKER_ECR_REPO = os.environ.get(
+    "RAYCI_WORK_REPO",
+    "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp",
+)
+_RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
 
 
 def run_tests(
@@ -46,16 +49,17 @@ def setup_test_environment(team: str) -> None:
 
 
 def _run_tests_in_docker(test_targets: List[str], team: str) -> subprocess.Popen:
-    commands = (
-        [
-            "cleanup() { ./ci/build/upload_build_info.sh; }",
-            "trap cleanup EXIT",
-        ]
-        if os.environ.get("BUILDKITE_BRANCH") == "master"
-        else []
-    )
+    commands = []
+    if os.environ.get("BUILDKITE_BRANCH", "") == "master":
+        commands.extend(
+            [
+                "cleanup() { ./ci/build/upload_build_info.sh; }",
+                "trap cleanup EXIT",
+            ]
+        )
     commands.append(
-        "bazel test --config=ci $(./ci/run/bazel_export_options) "
+        "bazel test --config=ci "
+        "$(./ci/run/bazel_export_options) "
         f"{' '.join(test_targets)}",
     )
     return subprocess.Popen(_docker_run_bash_script("\n".join(commands), team))
@@ -92,6 +96,8 @@ def _get_docker_run_command(team) -> List[str]:
         "--env",
         "BUILDKITE_BRANCH",
         "--env",
+        "BUILDKITE_PIPELINE_ID",
+        "--env",
         "BUILDKITE_COMMIT",
         "--env",
         "BUILDKITE_JOB_ID",
@@ -114,4 +120,4 @@ def _get_docker_image(team: str) -> str:
     """
     Get docker image for a particular commit
     """
-    return f"{DOCKER_ECR}/{DOCKER_REPO}:{os.environ.get('RAYCI_BUILD_ID')}-{team}build"
+    return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{team}build"
