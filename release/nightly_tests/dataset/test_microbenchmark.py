@@ -1,14 +1,11 @@
-import cProfile
 from collections import defaultdict
 import ray
 import torch
 import torchvision
 import os
 import time
-import json
 import tensorflow as tf
 import numpy as np
-import csv
 from PIL import Image
 
 DEFAULT_IMAGE_SIZE = 224
@@ -176,39 +173,40 @@ if __name__ == "__main__":
 
     metrics = {}
 
-    # tf_dataset = tf.keras.preprocessing.image_dataset_from_directory(
-    #     args.data_root, batch_size=args.batch_size, image_size=(DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE),
-    # )
-    # for i in range(args.num_epochs):
-    #     iterate(tf_dataset, "tf_data", args.batch_size, metrics)
+    tf_dataset = tf.keras.preprocessing.image_dataset_from_directory(
+        args.data_root, batch_size=args.batch_size, image_size=(DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE),
+    )
+    for i in range(args.num_epochs):
+        iterate(tf_dataset, "tf_data", args.batch_size, metrics)
 
-    # tf_dataset = tf.keras.preprocessing.image_dataset_from_directory(args.data_root)
-    # tf_dataset = tf_dataset.map(lambda img, label: (tf_crop_and_flip(img), label))
-    # tf_dataset.unbatch().batch(args.batch_size)
-    # for i in range(args.num_epochs):
-    #     iterate(tf_dataset, "tf_data+transform", args.batch_size, metrics)
+    tf_dataset = tf.keras.preprocessing.image_dataset_from_directory(args.data_root)
+    tf_dataset = tf_dataset.map(lambda img, label: (tf_crop_and_flip(img), label))
+    tf_dataset.unbatch().batch(args.batch_size)
+    for i in range(args.num_epochs):
+        iterate(tf_dataset, "tf_data+transform", args.batch_size, metrics)
 
-    # torch_dataset = build_torch_dataset(
-    #     args.data_root, args.batch_size, transform=torchvision.transforms.Compose([
-    #         torchvision.transforms.Resize((DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE)),
-    #         torchvision.transforms.ToTensor(),
-    #         ]))
-    # for i in range(args.num_epochs):
-    #     iterate(torch_dataset, "torch", args.batch_size, metrics)
-    # torch_dataset = build_torch_dataset(
-    #     args.data_root, args.batch_size, transform=get_transform(True)
-    # )
-    # for i in range(args.num_epochs):
-    #     iterate(torch_dataset, "torch+transform", args.batch_size, metrics)
+    torch_dataset = build_torch_dataset(
+        args.data_root, args.batch_size, transform=torchvision.transforms.Compose([
+            torchvision.transforms.Resize((DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE)),
+            torchvision.transforms.ToTensor(),
+            ]))
+    for i in range(args.num_epochs):
+        iterate(torch_dataset, "torch", args.batch_size, metrics)
 
-    # ray_dataset = ray.data.read_images(args.data_root, mode="RGB", size=(DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE))
-    # for i in range(args.num_epochs):
-    #    iterate(
-    #        ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-    #        "ray_data",
-    #        args.batch_size,
-    #        metrics,
-    #    )
+    torch_dataset = build_torch_dataset(
+        args.data_root, args.batch_size, transform=get_transform(True)
+    )
+    for i in range(args.num_epochs):
+        iterate(torch_dataset, "torch+transform", args.batch_size, metrics)
+
+    ray_dataset = ray.data.read_images(args.data_root, mode="RGB", size=(DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE))
+    for i in range(args.num_epochs):
+       iterate(
+           ray_dataset.iter_torch_batches(batch_size=args.batch_size),
+           "ray_data",
+           args.batch_size,
+           metrics,
+       )
 
     ray_dataset = ray.data.read_images(args.data_root, mode="RGB").map(crop_and_flip_image)
     for i in range(args.num_epochs):
