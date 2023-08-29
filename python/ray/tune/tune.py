@@ -31,6 +31,7 @@ from ray.air.util.node import _force_on_current_node
 from ray.train import SyncConfig
 from ray.train._internal.storage import _use_storage_context
 from ray.tune.analysis import ExperimentAnalysis
+from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
@@ -1159,7 +1160,7 @@ def run(
             )
 
     if _use_storage_context():
-        return ExperimentAnalysis(
+        return NewExperimentAnalysis(
             experiment_checkpoint_path=runner.experiment_path,
             default_metric=metric,
             default_mode=mode,
