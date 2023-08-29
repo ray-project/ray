@@ -75,7 +75,7 @@ class MapOperator(OneToOneOperator, ABC):
         # All active `MetadataOpTask`s.
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
-        # Keep track of which streaming generators have finished.
+        # Keep track of all finished streaming generators.
         # TODO(hchen): This is a workaround for a bug of lineage reconstruction.
         # When the streaming generator ref is GC'ed, the objects it generated
         # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
