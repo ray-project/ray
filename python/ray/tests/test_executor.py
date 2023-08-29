@@ -476,6 +476,9 @@ class TestIsolated:
         with RayExecutor(max_workers=2, initializer=unsafe, initargs=(TestInitializerException,), runtime_env={"working_dir": "./python/ray/tests/."}) as _:
             pass
 
+    def test_mp_context_does_nothing(self):
+        with RayExecutor(max_workers=2, mp_context="fork") as ex:
+            assert ex._mp_context == "fork"
 
 
 if __name__ == "__main__":

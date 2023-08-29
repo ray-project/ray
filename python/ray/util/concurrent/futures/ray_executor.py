@@ -100,6 +100,7 @@ class RayExecutor(Executor):
         shutdown_ray: Optional[bool] = None,
         initializer: Optional[Callable[..., Any]] = None,
         initargs: tuple[Any, ...] = (),
+        mp_context: Optional[Any] = None,
         **kwargs: Any,
     ):
 
@@ -137,6 +138,10 @@ class RayExecutor(Executor):
         self._context: "BaseContext" = ray.init(ignore_reinit_error=True, **kwargs)
         self.futures: List[Future[Any]] = []
         self.shutdown_ray = shutdown_ray
+
+        # mp_context is included for API consistency only, it does nothing in this context
+        self._mp_context = mp_context
+
         if initializer is not None:
             runtime_env = kwargs.get("runtime_env")
             if runtime_env is None or "working_dir" not in runtime_env:
