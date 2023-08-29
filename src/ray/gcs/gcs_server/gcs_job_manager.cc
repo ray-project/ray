@@ -146,7 +146,7 @@ void GcsJobManager::AddJobFinishedListener(JobFinishListenerCallback listener) {
 void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                                         rpc::GetAllJobInfoReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Getting all job info.";
+  RAY_LOG(DEBUG) << "Getting all job info.";
 
   int limit = std::numeric_limits<int>::max();
   if (request.has_limit()) {
@@ -158,7 +158,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid("Invalid limit"));
       return;
     }
-    RAY_LOG(INFO) << "Getting job info with limit " << limit << ".";
+    RAY_LOG(DEBUG) << "Getting job info with limit " << limit << ".";
   }
 
   auto on_done = [this, reply, send_reply_callback, limit](
@@ -182,7 +182,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     auto try_send_reply =
         [num_processed_jobs, kv_callback_done, reply, send_reply_callback]() {
           if (*num_processed_jobs == reply->job_info_list_size() && *kv_callback_done) {
-            RAY_LOG(INFO) << "Finished getting all job info.";
+            RAY_LOG(DEBUG) << "Finished getting all job info.";
             GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
           }
         };

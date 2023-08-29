@@ -423,7 +423,7 @@ def test_tuner_no_chdir_to_trial_dir(shutdown_only, chdir_tmpdir, runtime_env):
     results = tuner.fit()
     assert not results.errors
     for result in results:
-        artifact_data = open(result.log_dir / "write.txt", "r").read()
+        artifact_data = open(os.path.join(result.path, "write.txt"), "r").read()
         assert artifact_data == f"{result.config['id']}"
 
 
@@ -467,7 +467,7 @@ def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runti
     results = tuner.fit()
     assert not results.errors
     for result in results:
-        artifact_data = open(result.log_dir / "write.txt", "r").read()
+        artifact_data = open(os.path.join(result.path, "write.txt"), "r").read()
         assert artifact_data == f"{result.config['id']}"
 
 

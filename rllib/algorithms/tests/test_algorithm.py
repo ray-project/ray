@@ -127,7 +127,7 @@ class TestAlgorithm(unittest.TestCase):
                     self.assertTrue(f"p{j}" in pol_map)
                 self.assertTrue(len(pol_map) == i + 1)
                 algo.train()
-                checkpoint = algo.save()
+                checkpoint = algo.save().checkpoint
 
                 # Test restoring from the checkpoint (which has more policies
                 # than what's defined in the config dict).
