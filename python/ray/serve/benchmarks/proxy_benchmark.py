@@ -4,15 +4,16 @@ import asyncio
 import json
 import logging
 import time
-from pprint import pprint
 from random import random
 from typing import Callable, Dict
 
 import aiohttp
 import numpy as np
+import pandas as pd
 import ray
 from grpc import aio
 from ray import serve
+from ray.serve._private.common import RequestProtocol
 from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.handle import RayServeHandle
@@ -180,10 +181,8 @@ async def trial(
     max_concurrent_queries: int,
     data_size: int,
     num_clients: int,
-    test_grpc: bool = False,
+    proxy: RequestProtocol,
 ) -> Dict[str, float]:
-    results = {}
-
     # Generate input data as array of random floats.
     data = [random() for _ in range(data_size)]
 
@@ -196,9 +195,9 @@ async def trial(
     serve.run(app)
 
     # Start clients.
-    if test_grpc:
+    if proxy == RequestProtocol.GRPC:
         clients = [gRPCClient.remote() for _ in range(num_clients)]
-    else:
+    elif proxy == RequestProtocol.HTTP:
         clients = [HTTPClient.remote() for _ in range(num_clients)]
     ray.get([client.ready.remote() for client in clients])
 
@@ -209,7 +208,7 @@ async def trial(
         ray.get([a.do_queries.remote(CALLS_PER_BATCH, data) for a in clients])
 
     trial_key_base = (
-        f"proxy:{'gRPC' if test_grpc else 'HTTP'}/"
+        f"proxy:{proxy}/"
         f"num_client:{num_clients}/"
         f"replica:{num_replicas}/"
         f"concurrent_queries:{max_concurrent_queries}/"
@@ -224,7 +223,12 @@ async def trial(
         client_time_queries,
     )
 
-    results[trial_key_base] = {
+    results = {
+        "proxy": str(proxy),
+        "num_client": num_clients,
+        "replica": num_replicas,
+        "concurrent_queries": max_concurrent_queries,
+        "data_size": data_size,
         "tps_mean": tps_mean,
         "tps_sdt": tps_sdt,
         "latency_ms_mean": latency_ms_mean,
@@ -235,40 +239,29 @@ async def trial(
 
 
 async def main():
-    results = {}
-
+    results = []
     for num_replicas in [1, 8]:
         for max_concurrent_queries in [1, 10000]:
             for data_size in [1, 100, 10_000]:
                 for num_clients in [1, 8]:
-                    for test_grpc in [True, False]:
-                        results.update(
+                    for proxy in [RequestProtocol.GRPC, RequestProtocol.HTTP]:
+                        results.append(
                             await trial(
                                 num_replicas=num_replicas,
                                 max_concurrent_queries=max_concurrent_queries,
                                 data_size=data_size,
                                 num_clients=num_clients,
-                                test_grpc=test_grpc,
+                                proxy=proxy,
                             )
                         )
 
+    print(results)
+    df = pd.DataFrame.from_dict(results)
+    df = df.sort_values(
+        by=["proxy", "num_client", "replica", "concurrent_queries", "data_size"]
+    )
     print("Results from all conditions:")
-    pprint(results)
-
-    for key, stats in results.items():
-        key_split = key.split("/")
-        proxy = key_split[0].split(":")[1]
-        num_client = key_split[1].split(":")[1]
-        replica = key_split[2].split(":")[1]
-        concurrent_queries = key_split[3].split(":")[1]
-        data_size = key_split[4].split(":")[1]
-        print(
-            f"{proxy}\t{num_client}\t{replica}\t{concurrent_queries}\t{data_size}"
-            f"\t{stats['latency_ms_mean']}\t{stats['latency_ms_std']}"
-            f"\t{stats['tps_mean']}\t{stats['tps_sdt']}"
-        )
-
-    return results
+    print(df.to_string(index=False))
 
 
 if __name__ == "__main__":
