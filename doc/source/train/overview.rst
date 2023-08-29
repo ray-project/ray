@@ -5,13 +5,6 @@
 Ray Train Overview
 ==================
 
-.. image:: ./images/train-concepts.svg
-
-Ray Train abstracts away the complexities distributed computing for developers.
-Model training on a single node or multiple nodes, uses the same training code.
-Changing processes and resource allocation with a single line of code.
-Ray Train is the simplest way to train, whether you have large models or large datasets.
-
 Ray Train has four key concepts:
 
 #. :ref:`Training function <train-overview-training-function>`: User-defined Python training loop.

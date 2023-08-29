@@ -7,6 +7,17 @@ Ray Train: Scalable Model Training
 
 Ray Train is a scalable model training library for distributed training and fine-tuning.
 
+.. hidden:: 
+    
+    image:: ./images/train-concepts.svg
+        
+.. visible::
+
+Ray Train abstracts away the complexities of distributed computing.
+It allows you to use the same code to train your model on either a single node or multiple nodes.
+Configure resources with a single line.
+Whether you have large models or large datasets, Ray Train is the simplest solution for distributed training.
+
 Ray Train provides support for many frameworks:
 
 * PyTorch-based frameworks: PyTorch, PyTorch Lightning, Hugging Face Transformers, Hugging Face Accelerate, DeepSpeed
@@ -27,6 +38,9 @@ To learn more about installing Ray and its libraries, see
 
 Learn more
 ----------
+
+General
+~~~~~~~
 
 .. grid:: 1 2 2 2
     :gutter: 1
@@ -49,7 +63,59 @@ Learn more
 
     .. grid-item-card::
 
-        **Distributed PyTorch**
+        **User Guides**
+        ^^^
+
+        Learn how to use Ray Train effectively and efficiently for your use case.
+
+        +++
+        .. button-ref:: train-user-guides
+            :color: primary
+            :outline:
+            :expand:
+
+            Learn how to use Ray Train
+
+    .. grid-item-card::
+
+        **Examples**
+        ^^^
+
+        Find examples for different frameworks.
+
+        +++
+        .. button-ref:: train-examples
+            :color: primary
+            :outline:
+            :expand:
+
+            See examples
+
+    .. grid-item-card::
+
+        **API**
+        ^^^
+
+        Get more in-depth information about the Ray Train API.
+
+        +++
+        .. button-ref:: air-trainer-ref
+            :color: primary
+            :outline:
+            :expand:
+
+            Read the API Reference
+
+Get started
+~~~~~~~~~~~
+
+.. grid:: 1 2 2 2
+    :gutter: 1
+    :class-container: container pb-6
+
+    .. grid-item-card::
+
+        **PyTorch**
         ^^^
 
         Get started on distributing your model training with Ray Train and PyTorch.
@@ -64,7 +130,7 @@ Learn more
 
     .. grid-item-card::
 
-        **Distributed Lightning**
+        **PyTorch Lightning**
         ^^^
 
         Get started on distributing your model training with Ray Train and Lightning.
@@ -75,11 +141,11 @@ Learn more
             :outline:
             :expand:
 
-            Try Ray Train with Lightning
+            Try Ray Train and Lightning
 
     .. grid-item-card::
 
-        **Distributed Transformers**
+        **Hugging Face Transformers**
         ^^^
 
         Get started on distributing your model training with Ray Train and Transformers.
@@ -106,35 +172,5 @@ Learn more
             :expand:
 
             Try Ray Train with other frameworks
-
-    .. grid-item-card::
-
-        **Examples**
-        ^^^
-
-        Find both single-worker and scaling-out examples.
-
-        +++
-        .. button-ref:: train-examples
-            :color: primary
-            :outline:
-            :expand:
-
-            See examples
-
-    .. grid-item-card::
-
-        **API**
-        ^^^
-
-        Get more in-depth information about the Ray Train API.
-
-        +++
-        .. button-ref:: air-trainer-ref
-            :color: primary
-            :outline:
-            :expand:
-
-            Read the API Reference
 
 .. include:: /_includes/train/announcement_bottom.rst
