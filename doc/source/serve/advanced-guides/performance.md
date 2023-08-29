@@ -15,11 +15,12 @@ This section offers some tips and tricks to improve your Ray Serve application's
 
 ## Performance and known benchmarks
 
-We are continuously benchmarking Ray Serve. The metrics we care about are latency, throughput, and scalability. We can confidently say:
+We are continuously benchmarking Ray Serve. The metrics we care about are latency, throughput, scalability, and availability:
 
-- Ray Serve’s latency overhead is single digit milliseconds, around 1-2 milliseconds on average.
-- For throughput, Serve achieves about 3-4k queries per second on a single machine (8 cores) using 1 HTTP proxy actor and 8 replicas performing no-op requests.
-- It is horizontally scalable so you can add more machines to increase the overall throughput. Ray Serve is built on top of Ray,
+- Serve's latency overhead is approximately YYY. When a request is served by a single deployment on the same node as the proxy, the latency overhead is ZZZ. When the deployment is on a different node, the latency is AAA.
+- With 16 replicas per node, we've observe that Serve offers up to YYY queries per second per node. We've tested this up to ZZZ nodes.
+- We ran the chaos test workload for 1 week and observed ZZZ failures.
+- Serve is horizontally scalable so you can add more machines to increase the overall throughput. Ray Serve is built on top of Ray,
   so its scalability is bounded by Ray’s scalability. Please see Ray’s [scalability envelope](https://github.com/ray-project/ray/blob/master/release/benchmarks/README.md)
   to learn more about the maximum number of nodes and other limitations.
 
