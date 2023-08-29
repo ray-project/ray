@@ -1,4 +1,5 @@
 # Runs some request ping to compare HTTP and gRPC performances in TPS and latency.
+# Note: this takes around 1 hour to run.
 
 import asyncio
 import json
@@ -224,7 +225,7 @@ async def trial(
     )
 
     results = {
-        "proxy": str(proxy),
+        "proxy": proxy.value,
         "num_client": num_clients,
         "replica": num_replicas,
         "concurrent_queries": max_concurrent_queries,
@@ -239,9 +240,10 @@ async def trial(
 
 
 async def main():
+    start_time = time.time()
     results = []
     for num_replicas in [1, 8]:
-        for max_concurrent_queries in [1, 10000]:
+        for max_concurrent_queries in [1, 10_000]:
             for data_size in [1, 100, 10_000]:
                 for num_clients in [1, 8]:
                     for proxy in [RequestProtocol.GRPC, RequestProtocol.HTTP]:
@@ -255,13 +257,18 @@ async def main():
                             )
                         )
 
-    print(results)
+    print(f"Total time: {time.time() - start_time}s")
+    print("results", results)
+
     df = pd.DataFrame.from_dict(results)
     df = df.sort_values(
         by=["proxy", "num_client", "replica", "concurrent_queries", "data_size"]
     )
     print("Results from all conditions:")
-    print(df.to_string(index=False))
+    # Print the results in with tab separated so we can copy into google sheets.
+    for i in range(len(df.index)):
+        row = list(df.iloc[i])
+        print("\t".join(map(str, row)))
 
 
 if __name__ == "__main__":
