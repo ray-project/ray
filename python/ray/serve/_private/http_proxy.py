@@ -1156,7 +1156,7 @@ class HTTPProxy(GenericProxy):
         while True:
             try:
                 next_obj_ref_task = asyncio.ensure_future(
-                    obj_ref_generator._next_async()
+                    obj_ref_generator._next_async(),
                 )
                 tasks = [next_obj_ref_task]
                 # Once the response is completed, the client will immediately
