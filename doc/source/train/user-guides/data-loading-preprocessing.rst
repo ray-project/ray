@@ -531,8 +531,7 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
 
     import ray
     from ray import train
-    from ray.train import ScalingConfig
-    from ray.train._checkpoint import Checkpoint
+    from ray.train import Checkpoint, ScalingConfig
     from ray.train.torch import TorchTrainer
     from ray.data.preprocessors import Concatenator, StandardScaler
 
