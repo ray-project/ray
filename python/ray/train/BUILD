@@ -469,6 +469,14 @@ py_test(
 )
 
 py_test(
+    name = "test_storage",
+    size = "small",
+    srcs = ["tests/test_storage.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_sklearn_trainer",
     size = "medium",
     srcs = ["tests/test_sklearn_trainer.py"],
