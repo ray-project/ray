@@ -26,7 +26,7 @@ import textwrap
 import time
 
 from ray.air._internal.usage import AirEntrypoint
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.tune.search.sample import Domain
 from ray.tune.utils.log import Verbosity
 
