@@ -10,6 +10,7 @@ If you don't find an answer to your question here, please don't hesitate to conn
 - [Worker init container](#worker-init-container)
 - [Cluster domain](#cluster-domain)
 - [RayService](#rayservice)
+- [GPU multi-tenancy](#gpu-multitenancy)
 - [Other questions](#questions)
 
 ## Worker init container
@@ -59,6 +60,6 @@ or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challengin
 
 ## Questions
 
-### Why are my changes to RayCluster/RayJob CR not taking effect?
+### Why are changes to RayCluster/RayJob CR not taking effect?
 
 Currently, only modifications to the `replicas` field in `RayCluster/RayJob` CR are supported. Changes to other fields may not take effect or could lead to unexpected results.
