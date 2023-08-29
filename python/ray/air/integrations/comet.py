@@ -3,8 +3,7 @@ from typing import Dict, List
 
 import pyarrow.fs
 
-from ray.air.checkpoint import Checkpoint as LegacyCheckpoint
-from ray.train._checkpoint import Checkpoint as Checkpoint
+from ray.train import _use_storage_context
 from ray.tune.logger import LoggerCallback
 from ray.tune.experiment import Trial
 from ray.tune.utils import flatten_dict
@@ -228,14 +227,15 @@ class CometLoggerCallback(LoggerCallback):
             )
 
             checkpoint_root = None
-            if isinstance(trial.checkpoint, LegacyCheckpoint):
-                checkpoint_root = trial.checkpoint.dir_or_data
-            elif isinstance(trial.checkpoint, Checkpoint):
+
+            if _use_storage_context():
                 if isinstance(trial.checkpoint.storage, pyarrow.fs.LocalFileSystem):
                     checkpoint_root = trial.checkpoint.path
-                # Todo: For other filesystems, we may want to use
-                # artifact.add_remote() instead. However, this requires a full
-                # URI. We can add this once we have a way to retrieve it.
+                    # Todo: For other filesystems, we may want to use
+                    # artifact.add_remote() instead. However, this requires a full
+                    # URI. We can add this once we have a way to retrieve it.
+            else:
+                checkpoint_root = trial.checkpoint.dir_or_data
 
             # Walk through checkpoint directory and add all files to artifact
             if checkpoint_root:

@@ -16,9 +16,7 @@ from ray.air import session
 from ray.air._internal import usage as air_usage
 from ray.air.util.node import _force_on_current_node
 
-from ray.air.checkpoint import Checkpoint as LegacyCheckpoint
-from ray.train._checkpoint import Checkpoint as Checkpoint
-
+from ray.train import _use_storage_context
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
@@ -674,10 +672,10 @@ class WandbLoggerCallback(LoggerCallback):
 
     def log_trial_save(self, trial: "Trial"):
         if self.upload_checkpoints and trial.checkpoint:
-            if isinstance(trial.checkpoint, LegacyCheckpoint):
-                checkpoint_root = trial.checkpoint.dir_or_data
-            elif isinstance(trial.checkpoint, Checkpoint):
+            if _use_storage_context():
                 checkpoint_root = trial.checkpoint.path
+            else:
+                checkpoint_root = trial.checkpoint.dir_or_data
 
             self._trial_queues[trial].put((_QueueItem.CHECKPOINT, checkpoint_root))
 
