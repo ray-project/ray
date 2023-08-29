@@ -224,6 +224,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::function<void()> &on_all_replied);
 
  private:
+  /// If the primary objects' usage is over the threshold
+  /// specified in RayConfig, spill objects up to the max
+  /// throughput.
+  void SpillIfOverPrimaryObjectsThreshold();
+
   /// Methods for handling nodes.
 
   /// Handle an unexpected failure notification from GCS pubsub.

@@ -59,7 +59,6 @@ class PlasmaStore {
               ray::FileSystemMonitor &fs_monitor,
               const std::string &socket_name,
               uint32_t delay_on_oom_ms,
-              float object_spilling_threshold,
               ray::SpillObjectsCallback spill_objects_callback,
               std::function<void()> object_store_full_callback,
               ray::AddObjectCallback add_object_callback,
@@ -200,8 +199,7 @@ class PlasmaStore {
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
                                         bool fallback_allocator,
-                                        PlasmaObject *object,
-                                        bool *spilling_required)
+                                        PlasmaObject *object)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
@@ -268,9 +266,6 @@ class PlasmaStore {
   /// The amount of time to wait before retrying a creation request after an
   /// OOM error.
   const uint32_t delay_on_oom_ms_;
-
-  /// The percentage of object store memory used above which spilling is triggered.
-  const float object_spilling_threshold_;
 
   /// A timer that is set when the first request in the queue is not
   /// serviceable because there is not enough memory. The request will be
