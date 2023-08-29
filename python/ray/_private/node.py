@@ -1163,6 +1163,25 @@ class Node:
             process_info
         ]
 
+    def _get_or_set_value(
+        self,
+        key: bytes,
+        value: str,
+        namespace: Optional[str] = ray_constants.KV_NAMESPACE_SESSION,
+    ):
+        """Get or set the value in the redis server.
+
+        Args:
+            key: The key to get or set.
+            value: The value to set if the key does not exist.
+
+        """
+        added: int = self.get_gcs_client().internal_kv_put(
+            key, value.encode(), False, namespace
+        )
+        if not added:
+            value = self.get_gcs_client().internal_kv_get(key, namespace)
+
     def _write_cluster_info_to_kv(self):
         """Write the cluster metadata to GCS.
         Cluster metadata is always recorded, but they are
@@ -1174,38 +1193,18 @@ class Node:
 
         ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
         # Make sure GCS is up.
-        self.get_gcs_client().internal_kv_put(
-            b"session_name",
-            self._session_name.encode(),
-            False,
-            ray_constants.KV_NAMESPACE_SESSION,
-        )
-        self.get_gcs_client().internal_kv_put(
-            b"session_dir",
-            self._session_dir.encode(),
-            False,
-            ray_constants.KV_NAMESPACE_SESSION,
-        )
-        self.get_gcs_client().internal_kv_put(
-            b"temp_dir",
-            self._temp_dir.encode(),
-            False,
-            ray_constants.KV_NAMESPACE_SESSION,
-        )
+        self._get_or_set_value(b"session_name", self._session_name)
+        self._get_or_set_value(b"session_dir", self._session_dir)
+        self._get_or_set_value(b"temp_dir", self._temp_dir)
         if self._ray_params.storage is not None:
-            self.get_gcs_client().internal_kv_put(
-                b"storage",
-                self._ray_params.storage.encode(),
-                False,
-                ray_constants.KV_NAMESPACE_SESSION,
-            )
+            self._get_or_set_value(b"storage", self._ray_params.storage)
+
         # Add tracing_startup_hook to redis / internal kv manually
         # since internal kv is not yet initialized.
         if self._ray_params.tracing_startup_hook:
-            self.get_gcs_client().internal_kv_put(
+            self._get_or_set_value(
                 b"tracing_startup_hook",
                 self._ray_params.tracing_startup_hook.encode(),
-                False,
                 ray_constants.KV_NAMESPACE_TRACING,
             )
 
