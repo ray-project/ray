@@ -139,7 +139,7 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         def train(config):
             time.sleep(120)
-            tune.report(1.0)
+            train.report({"_metric": 1.0})
 
         class FailureInjectionCallback(Callback):
             def __init__(self):
