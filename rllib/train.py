@@ -430,8 +430,8 @@ def run_rllib_experiments(
 
     checkpoints = []
     for trial in trials:
-        if trial.checkpoint.dir_or_data:
-            checkpoints.append(trial.checkpoint.dir_or_data)
+        if trial.checkpoint:
+            checkpoints.append(trial.checkpoint)
 
     if checkpoints:
         from rich import print
@@ -441,13 +441,13 @@ def run_rllib_experiments(
 
         print("Best available checkpoint for each trial:")
         for cp in checkpoints:
-            print(f"  {cp}")
+            print(f"  {cp.path}")
 
         print(
             "\nYou can now evaluate your trained algorithm from any "
             "checkpoint, e.g. by running:"
         )
-        print(Panel(f"[green]  rllib evaluate {checkpoints[0]} --algo {algo}"))
+        print(Panel(f"[green]  rllib evaluate {checkpoints[0].path} --algo {algo}"))
 
 
 def main():
