@@ -219,7 +219,12 @@ def test_retry_with_max_failures(ray_start_4_cpus):
     assert len(df[TRAINING_ITERATION]) == 4
 
 
-def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, caplog):
+def test_restore_with_new_trainer(
+    ray_start_4_cpus, tmpdir, propagate_logs, caplog, monkeypatch
+):
+
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir))
+
     def train_func(config):
         raise RuntimeError("failing!")
 
@@ -227,7 +232,7 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
         train_func,
         backend_config=TestConfig(),
         scaling_config=ScalingConfig(num_workers=1),
-        run_config=RunConfig(local_dir=str(tmpdir), name="restore_new_trainer"),
+        run_config=RunConfig(name="restore_new_trainer"),
         datasets={"train": ray.data.from_items([{"a": i} for i in range(10)])},
     )
     results = Tuner(trainer).fit()

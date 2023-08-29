@@ -14,7 +14,6 @@ import logging
 import os
 
 import ray
-from ray._private.services import get_node_ip_address
 from ray.air import Checkpoint, ResourceRequest
 from ray.air._internal.uri_utils import URI
 from ray.air.config import CheckpointConfig
@@ -60,7 +59,7 @@ from ray.tune.callback import Callback, CallbackList
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
-from ray.tune.syncer import _HeadNodeSyncDeprecationWarning, SyncConfig
+from ray.train._internal.syncer import SyncConfig
 from ray.tune.experiment import Trial
 from ray.tune.utils.log import _dedup_logs
 from ray.tune.utils.object_cache import _ObjectCache
@@ -1540,6 +1539,13 @@ class TuneController:
 
         logger.debug(f"Requesting to STOP actor for trial {trial}")
 
+        if trial.is_saving:
+            logger.debug(
+                f"Trial {trial} is currently saving/pausing. Scheduling STOP after "
+                f"save resolved."
+            )
+            self._cached_trial_decisions[trial.trial_id] = TrialScheduler.STOP
+
         trial.temporary_state.saving_to = None
         trial.temporary_state.restoring_from = None
 
@@ -1629,10 +1635,10 @@ class TuneController:
                 return
 
             if should_checkpoint:
+                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
                 future_result = self._schedule_trial_save(
                     trial=trial, storage=CheckpointStorage.PERSISTENT
                 )
-                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
                 trial.temporary_state.saving_to = future_result
             else:
                 self._schedule_trial_stop(trial)
@@ -1949,29 +1955,13 @@ class TuneController:
         return checkpoint
 
     def _on_saving_result(self, trial, checkpoint_value: Union[ray.ObjectRef, str]):
-        with warn_if_slow("process_trial_save") as _profile:
+        with warn_if_slow("process_trial_save"):
             self._process_trial_save(trial, checkpoint_value)
+
         with warn_if_slow("callbacks.on_trial_save"):
             self._callbacks.on_trial_save(
                 iteration=self._iteration, trials=self._trials, trial=trial
             )
-        if _profile.too_slow and trial.sync_on_checkpoint:
-            # TODO(ujvl): Suggest using cloud checkpointing once
-            #  API has converged.
-
-            msg = (
-                "Consider turning off forced head-worker trial "
-                "checkpoint syncs by setting sync_on_checkpoint=False"
-                ". Note that this may result in faulty trial "
-                "restoration if a failure occurs while the checkpoint "
-                "is being synced from the worker to the head node."
-            )
-
-            if trial.temporary_state.location.hostname and (
-                trial.temporary_state.location.hostname != get_node_ip_address()
-            ):
-                if log_once("tune_head_worker_checkpoint"):
-                    logger.warning(msg)
 
         self._maybe_execute_queued_decision(trial, after_save=True)
 
@@ -2028,12 +2018,7 @@ class TuneController:
                 self._checkpoint_manager.on_trial_checkpoint(trial)
                 if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
                     self._mark_trial_to_checkpoint(trial)
-        except Exception as e:
-            if (
-                isinstance(e, _HeadNodeSyncDeprecationWarning)
-                or self._fail_fast == self.RAISE
-            ):
-                raise e
+        except Exception:
             logger.exception(
                 "Trial %s: Error handling checkpoint %s", trial, checkpoint_value
             )

@@ -55,6 +55,9 @@ training parameters are passed as the ``params`` dictionary.
 
 Ray-specific params are passed in through the trainer constructors.
 
+
+.. _train-gbdt-checkpoints:
+
 Saving and Loading XGBoost and LightGBM Checkpoints
 ---------------------------------------------------
 
