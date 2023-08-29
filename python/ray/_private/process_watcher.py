@@ -8,6 +8,7 @@ import ray
 from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
 import ray.dashboard.consts as dashboard_consts
 import ray._private.ray_constants as ray_constants
+from ray._private.utils import run_background_task
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -58,7 +59,7 @@ def create_check_raylet_task(log_dir, gcs_address, parent_dead_callback, loop):
     if sys.platform in ["win32", "cygwin"]:
         raise RuntimeError("can't check raylet process in Windows.")
     raylet_pid = get_raylet_pid()
-    return loop.create_task(
+    return run_background_task(
         _check_parent(raylet_pid, log_dir, gcs_address, parent_dead_callback)
     )
 
