@@ -192,7 +192,7 @@ if __name__ == "__main__":
         run_config=RunConfig(
             stop={"training_iteration": 1} if args.smoke_test else None,
             failure_config=FailureConfig(fail_fast=False),
-            checkpoint_config=CheckpointConfig(num_to_keep=2),
+            checkpoint_config=CheckpointConfig(num_to_keep=4),
             callbacks=[ProgressCallback()],
             storage_path="/mnt/cluster_storage",
         ),
