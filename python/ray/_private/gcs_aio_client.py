@@ -54,13 +54,6 @@ class GcsAioClient:
         self._gcs_client = GcsClient(address, nums_reconnect_retry)
         self._async_proxy = AsyncProxy(self._gcs_client, loop, executor)
         self._nums_reconnect_retry = nums_reconnect_retry
-        self._connect()
-
-    def _connect(self):
-        try:
-            self._gcs_client._connect()
-        except ray.exceptions.RpcError as e:
-            logger.warning(f"Failed to connect to GCS: {e}")
 
     @property
     def address(self):

@@ -2405,10 +2405,13 @@ cdef class GcsClient:
         with nogil:
             status = self.inner.get().Connect(self.cluster_id, timeout_ms, num_retries)
 
-        check_status(status)
-        if self.cluster_id.IsNil():
-            self.cluster_id = self.inner.get().GetClusterId()
-            assert not self.cluster_id.IsNil()
+        try:
+            check_status(status)
+            if self.cluster_id.IsNil():
+                self.cluster_id = self.inner.get().GetClusterId()
+                assert not self.cluster_id.IsNil()
+        except RpcError as e:
+            logger.exception("GcsClient failed to connect to GCS.")
 
     def get_cluster_id(self):
         return self.cluster_id.Hex().decode()

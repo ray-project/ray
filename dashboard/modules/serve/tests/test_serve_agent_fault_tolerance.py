@@ -10,6 +10,11 @@ DEPLOYMENTS_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
 
 
+@pytest.fixture
+def short_serve_kv_timeout(monkeypatch):
+    monkeypatch.setenv("RAY_SERVE_KV_TIMEOUT_S", "3")
+
+
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 @pytest.mark.parametrize(
     "ray_start_regular_with_external_redis",
@@ -24,9 +29,10 @@ STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
     ],
     indirect=True,
 )
-def test_deployments_get_tolerane(monkeypatch, ray_start_regular_with_external_redis):
+def test_deployments_get_tolerane(
+    short_serve_kv_timeout, ray_start_regular_with_external_redis
+):
     # test serve agent's availability when gcs is down
-    monkeypatch.setenv("RAY_SERVE_KV_TIMEOUT_S", "3")
     serve.start(detached=True)
 
     get_response = requests.get(DEPLOYMENTS_URL, timeout=15)
@@ -51,9 +57,10 @@ def test_deployments_get_tolerane(monkeypatch, ray_start_regular_with_external_r
     ],
     indirect=True,
 )
-def test_status_url_get_tolerane(monkeypatch, ray_start_regular_with_external_redis):
+def test_status_url_get_tolerane(
+    short_serve_kv_timeout, ray_start_regular_with_external_redis
+):
     # test serve agent's availability when gcs is down
-    monkeypatch.setenv("RAY_SERVE_KV_TIMEOUT_S", "3")
     serve.start(detached=True)
     get_response = requests.get(STATUS_URL, timeout=15)
     assert get_response.status_code == 200
