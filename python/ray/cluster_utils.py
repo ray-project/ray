@@ -190,9 +190,9 @@ class Cluster:
             "dashboard_port": None,
         }
         ray_params = ray._private.parameter.RayParams(**default_kwargs)
-        ray_params.update(**node_args)
         with disable_client_hook():
             if self.head_node is None:
+                ray_params.update(**node_args)
                 node = ray._private.node.Node(
                     ray_params,
                     head=True,
@@ -223,6 +223,9 @@ class Cluster:
                 ray_params.update(metrics_agent_port=None)
                 ray_params.update(metrics_export_port=None)
                 ray_params.update(runtime_env_agent_port=None)
+
+                # Overwrite with user provided arguments.
+                ray_params.update(**node_args)
 
                 node = ray._private.node.Node(
                     ray_params,
