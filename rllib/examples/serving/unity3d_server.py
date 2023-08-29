@@ -174,9 +174,9 @@ if __name__ == "__main__":
         print(algo.train())
         if count % args.checkpoint_freq == 0:
             print("Saving learning progress to checkpoint file.")
-            checkpoint = algo.save()
+            checkpoint = algo.save().checkpoint
             # Write the latest checkpoint location to CHECKPOINT_FILE,
             # so we can pick up from the latest one after a server re-start.
             with open(checkpoint_path, "w") as f:
-                f.write(checkpoint)
+                f.write(checkpoint.path)
         count += 1
