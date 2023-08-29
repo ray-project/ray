@@ -6,6 +6,7 @@ import os
 import time
 import json
 import tensorflow as tf
+import numpy as np
 
 
 DEFAULT_IMAGE_SIZE = 224
@@ -130,12 +131,19 @@ def get_transform(to_torch_tensor):
 
 def crop_and_flip_image_batch(image_batch):
     transform = get_transform(False)
-    batch_size, height, width, channels = image_batch["image"].shape
-    tensor_shape = (batch_size, channels, height, width)
     image_batch["image"] = transform(
-        torch.Tensor(image_batch["image"].reshape(tensor_shape))
+        # Make sure to use torch.tensor here to avoid a copy from numpy.
+        # Original dims are (batch_size, channels, height, width).
+        torch.tensor(np.transpose(image_batch["image"], axes=(0, 3, 1, 2)))
     )
     return image_batch
+
+
+def crop_and_flip_image(row):
+    transform = get_transform(False)
+    # Make sure to use torch.tensor here to avoid a copy from numpy.
+    row["image"] = transform(torch.tensor(np.transpose(row["image"], axes=(2, 0, 1))))
+    return row
 
 
 if __name__ == "__main__":
@@ -185,6 +193,15 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         iterate(torch_dataset, "torch+transform", args.batch_size, metrics)
 
+    ray_dataset = ray.data.read_images(args.data_root).map(crop_and_flip_image)
+    for i in range(args.num_epochs):
+        iterate(
+            ray_dataset.iter_torch_batches(batch_size=args.batch_size),
+            "ray_data+map_transform",
+            args.batch_size,
+            metrics,
+        )
+
     ray_dataset = ray.data.read_images(args.data_root).map_batches(
         crop_and_flip_image_batch
     )
@@ -212,28 +229,6 @@ if __name__ == "__main__":
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
             "ray_data",
-            args.batch_size,
-            metrics,
-        )
-
-    ray_dataset = ray.data.read_images(args.data_root).map_batches(
-        lambda x: x, batch_format="pyarrow", batch_size=args.batch_size
-    )
-    for i in range(args.num_epochs):
-        iterate(
-            ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray_data+dummy_pyarrow_transform",
-            args.batch_size,
-            metrics,
-        )
-
-    ray_dataset = ray.data.read_images(args.data_root).map_batches(
-        lambda x: x, batch_format="numpy", batch_size=args.batch_size
-    )
-    for i in range(args.num_epochs):
-        iterate(
-            ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray_data+dummy_np_transform",
             args.batch_size,
             metrics,
         )
