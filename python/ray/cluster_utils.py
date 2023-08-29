@@ -189,8 +189,8 @@ class Cluster:
             "max_worker_port": 0,
             "dashboard_port": None,
         }
-        ray_params = ray._private.parameter.RayParams(**node_args)
-        ray_params.update(**default_kwargs)
+        ray_params = ray._private.parameter.RayParams(**default_kwargs)
+        ray_params.update(**node_args)
         with disable_client_hook():
             if self.head_node is None:
                 node = ray._private.node.Node(
