@@ -67,40 +67,10 @@ gsutil iam ch serviceAccount:my-iam-sa@my-project-id.iam.gserviceaccount.com:rol
 
 ## Create a minimal RayCluster YAML manifest
 
-Create a file named `raycluster.yaml` with the following contents:
+You can download the RayCluster YAML manifest for this tutorial via `curl` as follows:
 
-```yaml
-apiVersion: ray.io/v1alpha1
-kind: RayCluster
-metadata:
-  name: raycluster-mini
-spec:
-  rayVersion: '2.6.3'
-  headGroupSpec:
-    rayStartParams:
-      dashboard-host: '0.0.0.0'
-    template:
-      spec:
-        serviceAccountName: my-ksa
-        nodeSelector:
-          iam.gke.io/gke-metadata-server-enabled: "true"
-        containers:
-        - name: ray-head
-          image: rayproject/ray:2.6.3
-          resources:
-            limits:
-              cpu: 1
-              memory: 2Gi
-            requests:
-              cpu: 1
-              memory: 2Gi
-          ports:
-          - containerPort: 6379
-            name: gcs-server
-          - containerPort: 8265
-            name: dashboard
-          - containerPort: 10001
-            name: client
+```bash
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.gke-bucket.yaml
 ```
 
 The key parts here are the following lines:
@@ -117,7 +87,7 @@ These should be included in every pod spec of your Ray cluster. In this example,
 ## Create the RayCluster
 
 ```bash
-kubectl apply -f raycluster.yaml
+kubectl apply -f ray-cluster.gke-bucket.yaml
 ```
 
 ## Test GCS bucket access from the RayCluster
