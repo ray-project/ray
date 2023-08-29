@@ -22,17 +22,17 @@ Run the following command to create a GPU node pool for Ray GPU workers. You can
 
 ```sh
 gcloud container node-pools create gpu-node-pool \
-  --accelerator type=nvidia-tesla-t4,count=4,gpu-driver-version=default \
+  --accelerator type=nvidia-l4-vws,count=1,gpu-driver-version=default \
   --zone us-west1-b \
   --cluster kuberay-gpu-cluster \
   --num-nodes 1 \
   --min-nodes 0 \
   --max-nodes 1 \
   --enable-autoscaling \
-  --machine-type n1-standard-64 \
+  --machine-type g2-standard-4 \
 ```
 
-The `--accelerator` flag specifies the type and number of GPUs for each node in the node pool.  In this example, we use four [Nvidia T4](https://cloud.google.com/compute/docs/gpus#nvidia_t4_gpus) GPUs.  The machine type is `n1-standard-64`, which has [64 vCPUs and 240 GB RAM](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machine_types). The `--min-nodes 0` and `--max-nodes 1` flags enable autoscaling for the node pool. The `--num-nodes 1` flag specifies the initial number of nodes in the node pool.
+The `--accelerator` flag specifies the type and number of GPUs for each node in the node pool. In this example, we use the [NVIDIA L4](https://cloud.google.com/compute/docs/gpus#l4-gpus) GPU. The machine type `g2-standard-4` has 1 GPU, 24 GB GPU Memory, 4 vCPUs and 16 GB RAM.
 
 .. note::
 
