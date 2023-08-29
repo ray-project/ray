@@ -25,13 +25,17 @@ A RayJob manages two aspects:
 ## RayJob Configuration
 
 * `entrypoint` - The shell command to run for this job.
-* `rayClusterSpec` - The spec for the **RayCluster** to run the job on.
+* `rayClusterSpec` - The spec for the Ray cluster to run the job on.
 * `jobId` - _(Optional)_ Job ID to specify for the job. If not provided, one will be generated.
 * `metadata` - _(Optional)_ Arbitrary user-provided metadata for the job.
-* `runtimeEnv` - _(Optional)_ base64-encoded string of the runtime env json string.
+* `runtimeEnvYAML` - _(Optional)_ The runtime environment configuration provided as a multi-line YAML string. _(New in KubeRay version 1.0.)_
 * `shutdownAfterJobFinishes` - _(Optional)_ whether to recycle the cluster after the job finishes. Defaults to false.
 * `ttlSecondsAfterFinished` - _(Optional)_ TTL to clean up the cluster. This only works if `shutdownAfterJobFinishes` is set.
 * `submitterPodTemplate` - _(Optional)_ Pod template spec for the pod that runs `ray job submit` against the Ray cluster.
+* `entrypointNumCpus` - _(Optional)_ Specifies the quantity of CPU cores to reserve for the entrypoint command. _(New in KubeRay version 1.0.)_
+* `entrypointNumGpus` - _(Optional)_ Specifies the number of GPUs to reserve for the entrypoint command. _(New in KubeRay version 1.0.)_
+* `entrypointResources` - _(Optional)_ A json formatted dictionary to specify custom resources and their quantity. _(New in KubeRay version 1.0.)_
+* `runtimeEnv` - [DEPRECATED] _(Optional)_ base64-encoded string of the runtime env json string.
 
 ## Example: Run a simple Ray job with RayJob
 
