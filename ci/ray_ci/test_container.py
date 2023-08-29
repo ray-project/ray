@@ -31,7 +31,11 @@ def test_run_script_in_docker() -> None:
 
 
 def test_run_tests() -> None:
-    def _mock_run_tests_in_docker(test_targets: List[str], team: str) -> MockPopen:
+    def _mock_run_tests_in_docker(
+        test_targets: List[str], 
+        team: str, 
+        test_env: List[str],
+    ) -> MockPopen:
         return MockPopen(test_targets)
 
     def _mock_shard_tests(tests: List[str], workers: int, worker_id: int) -> List[str]:
@@ -42,9 +46,9 @@ def test_run_tests() -> None:
         side_effect=_mock_run_tests_in_docker,
     ), mock.patch("ci.ray_ci.container.shard_tests", side_effect=_mock_shard_tests):
         # test_targets are not empty
-        assert run_tests("team", ["t1", "t2"], 2)
+        assert run_tests("team", ["t1", "t2"], 2, [])
         # test_targets is empty after chunking
-        assert not run_tests("team", ["t1"], 2)
+        assert not run_tests("team", ["t1"], 2, [])
 
 
 if __name__ == "__main__":

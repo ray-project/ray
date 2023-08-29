@@ -16,13 +16,14 @@ _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
 def run_tests(
     team: str,
     test_targets: List[str],
-    parallelism,
+    parallelism: int,
+    test_env: List[str],
 ) -> bool:
     """
     Run tests parallelly in docker.  Return whether all tests pass.
     """
     chunks = [shard_tests(test_targets, parallelism, i) for i in range(parallelism)]
-    runs = [_run_tests_in_docker(chunk, team) for chunk in chunks]
+    runs = [_run_tests_in_docker(chunk, team, test_env) for chunk in chunks]
     exits = [run.wait() for run in runs]
     return all(exit == 0 for exit in exits)
 
@@ -48,7 +49,11 @@ def setup_test_environment(team: str) -> None:
     )
 
 
-def _run_tests_in_docker(test_targets: List[str], team: str) -> subprocess.Popen:
+def _run_tests_in_docker(
+    test_targets: List[str], 
+    team: str, 
+    test_env: List[str],
+) -> subprocess.Popen:
     commands = []
     if os.environ.get("BUILDKITE_BRANCH", "") == "master":
         commands.extend(
@@ -59,7 +64,11 @@ def _run_tests_in_docker(test_targets: List[str], team: str) -> subprocess.Popen
         )
     commands.append(
         "bazel test --config=ci "
-        "$(./ci/run/bazel_export_options) "
+        "$(./ci/run/bazel_export_options) ",
+    )
+    for env in test_env:
+        commands.append(f"{' '.join(f'--test_env={env}')}")
+    commands.append(
         f"{' '.join(test_targets)}",
     )
     return subprocess.Popen(_docker_run_bash_script("\n".join(commands), team))

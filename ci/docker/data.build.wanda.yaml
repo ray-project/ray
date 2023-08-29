@@ -1,0 +1,10 @@
+name: "databuild"
+froms: ["cr.ray.io/rayproject/oss-ci-base_ml"]
+dockerfile: ci/docker/core.build.Dockerfile
+srcs:
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+  - python/requirements/ml/dl-cpu-requirements.txt
+tags:
+  - cr.ray.io/rayproject/corebuild

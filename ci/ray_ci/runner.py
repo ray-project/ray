@@ -52,6 +52,12 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     default=False,
     help=("Run flaky tests."),
 )
+@click.option(
+    "--test-env",
+    multiple=True,
+    type=str,
+    help="Environment variables to set for the test.",
+)
 def main(
     targets: List[str],
     team: str,
@@ -60,6 +66,7 @@ def main(
     parallelism_per_worker: int,
     except_tags: str,
     run_flaky_tests: bool,
+    test_env: List[str],
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
@@ -74,7 +81,7 @@ def main(
         logging.info("No tests to run")
         return
     logger.info(f"Running tests: {test_targets}")
-    success = run_tests(team, test_targets, parallelism_per_worker)
+    success = run_tests(team, test_targets, parallelism_per_worker, test_env)
     sys.exit(0 if success else 1)
 
 
