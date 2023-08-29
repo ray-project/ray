@@ -634,7 +634,7 @@ def test_grpc_proxy_timeouts(ray_instance):
     # Ensure unary request respond with timeout response when running longer than the
     # serve request timeout setting
     with pytest.raises(grpc.RpcError) as exception_info:
-        _, _ = stub.__call__(request=request)
+        stub.__call__(request=request)
     rpc_error = exception_info.value
     assert rpc_error.code() == grpc.StatusCode.CANCELLED
     assert timeout_response in rpc_error.details()
