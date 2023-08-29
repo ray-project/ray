@@ -390,7 +390,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tuner.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "medium_instance", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "medium_instance"],
 )
 
 py_test(
