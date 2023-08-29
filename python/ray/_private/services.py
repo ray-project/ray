@@ -1954,7 +1954,6 @@ def determine_plasma_store_config(
 def start_monitor(
     gcs_address: str,
     logs_dir: str,
-    session_name: str,
     stdout_file: Optional[str] = None,
     stderr_file: Optional[str] = None,
     autoscaling_config: Optional[str] = None,
@@ -1968,7 +1967,6 @@ def start_monitor(
     Args:
         gcs_address: The address of GCS server.
         logs_dir: The path to the log directory.
-        session_name: The name of the session.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1995,9 +1993,6 @@ def start_monitor(
     ]
     assert gcs_address is not None
     command.append(f"--gcs-address={gcs_address}")
-
-    assert session_name is not None
-    command.append(f"--session-name={session_name}")
 
     if stdout_file is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.

@@ -1132,7 +1132,6 @@ class Node:
         process_info = ray._private.services.start_monitor(
             self.gcs_address,
             self._logs_dir,
-            self._session_name,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             autoscaling_config=self._ray_params.autoscaling_config,
