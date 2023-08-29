@@ -39,6 +39,7 @@ def ensure_only_allowed_dataclass_keys_updated(
         key
         for key in prohibited_keys
         if dataclass.__dict__[key] != default_data.__dict__[key]
+        and (dataclass.__dict__[key] or default_data.__dict__[key])
     ]
     if bad_keys:
         raise ValueError(
