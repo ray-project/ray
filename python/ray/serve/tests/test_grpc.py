@@ -4,13 +4,16 @@ import sys
 import os
 from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
 import ray
-import time
 from ray import serve
 from ray.cluster_utils import Cluster
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.config import gRPCOptions
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
+from ray._private.test_utils import (
+    wait_for_condition,
+    run_string_as_driver,
+    SignalActor,
+)
 from ray.serve.exceptions import RayServeException
 
 from ray.serve._private.constants import (
@@ -583,12 +586,18 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     ],
     indirect=True,
 )
-def test_grpc_proxy_timeouts(ray_instance):
+@pytest.mark.parametrize("streaming", [False, True])
+def test_grpc_proxy_timeouts(ray_instance, streaming: bool):
     """Test gRPC request timed out.
 
     When the request timed out, gRPC proxy should return timeout response for both
     unary and streaming request.
     """
+    if streaming and not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+        print(
+            "Skipping streaming condition because streaming feature flag is disabled."
+        )
+        return
 
     grpc_port = 9000
     grpc_servicer_functions = [
@@ -603,27 +612,20 @@ def test_grpc_proxy_timeouts(ray_instance):
         ),
     )
 
+    signal_actor = SignalActor.remote()
+
     @serve.deployment
     class HelloModel:
         def __call__(self, user_message):
-            time.sleep(5)
+            ray.get(signal_actor.wait.remote())
             return serve_pb2.UserDefinedResponse(greeting="hello")
 
         def Streaming(self, user_message):
             for i in range(10):
-                time.sleep(5)
+                ray.get(signal_actor.wait.remote())
                 yield serve_pb2.UserDefinedResponse(greeting="hello")
 
-    model = HelloModel.bind()
-    app_name = "app1"
-    replica_name = DeploymentID("HelloModel", app_name)
-    serve.run(target=model, name=app_name)
-    replicas = ray.get(
-        serve.context._global_client._controller._all_running_replicas.remote()
-    )
-
-    # Ensures the app is deployed.
-    assert len(replicas[replica_name]) == 1
+    serve.run(HelloModel.bind())
 
     channel = grpc.insecure_channel("localhost:9000")
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
@@ -631,25 +633,23 @@ def test_grpc_proxy_timeouts(ray_instance):
 
     timeout_response = "timed out after 0.1s."
 
-    # Ensure unary request respond with timeout response when running longer than the
-    # serve request timeout setting
-    with pytest.raises(grpc.RpcError) as exception_info:
-        stub.__call__(request=request)
+    if streaming:
+        # Ensure streaming request respond with timeout response when running longer
+        # than the serve request timeout setting
+        with pytest.raises(grpc.RpcError) as exception_info:
+            list(stub.Streaming(request=request))
+    else:
+        # Ensure unary request respond with timeout response when running longer than
+        # the serve request timeout setting
+        with pytest.raises(grpc.RpcError) as exception_info:
+            stub.__call__(request=request)
+
     rpc_error = exception_info.value
     assert rpc_error.code() == grpc.StatusCode.CANCELLED
     assert timeout_response in rpc_error.details()
 
-    if not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        return
-
-    # Ensure streaming request respond with timeout response when running longer than
-    # the serve request timeout setting
-    with pytest.raises(grpc.RpcError) as exception_info:
-        responses = stub.Streaming(request=request)
-        list(responses)
-    rpc_error = exception_info.value
-    assert rpc_error.code() == grpc.StatusCode.CANCELLED
-    assert timeout_response in rpc_error.details()
+    # Unblock the handlers to avoid graceful shutdown time.
+    ray.get(signal_actor.send.remote())
 
     serve.shutdown()
 
