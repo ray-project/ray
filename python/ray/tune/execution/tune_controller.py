@@ -1539,6 +1539,13 @@ class TuneController:
 
         logger.debug(f"Requesting to STOP actor for trial {trial}")
 
+        if trial.is_saving:
+            logger.debug(
+                f"Trial {trial} is currently saving/pausing. Scheduling STOP after "
+                f"save resolved."
+            )
+            self._cached_trial_decisions[trial.trial_id] = TrialScheduler.STOP
+
         trial.temporary_state.saving_to = None
         trial.temporary_state.restoring_from = None
 
@@ -1628,10 +1635,10 @@ class TuneController:
                 return
 
             if should_checkpoint:
+                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
                 future_result = self._schedule_trial_save(
                     trial=trial, storage=CheckpointStorage.PERSISTENT
                 )
-                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
                 trial.temporary_state.saving_to = future_result
             else:
                 self._schedule_trial_stop(trial)

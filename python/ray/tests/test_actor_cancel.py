@@ -28,13 +28,6 @@ def test_async_actor_cancel(shutdown_only):
     """
     Test async actor task is canceled and
     asyncio.CancelledError is raised within a task.
-
-    If a task is canceled while it is executed,
-    it should raise RayTaskError.
-
-    TODO(sang): It is awkward we raise RayTaskError
-    when a task is interrupted. Should we just raise
-    TaskCancelledError? It is an API change.
     """
     ray.init(num_cpus=1)
 
@@ -84,7 +77,7 @@ def test_async_actor_cancel(shutdown_only):
         wait_for_condition(lambda: ray.get(v.is_running.remote()))
         ray.cancel(ref)
 
-        with pytest.raises(ray.exceptions.RayTaskError, match="was cancelled"):
+        with pytest.raises(ray.exceptions.TaskCancelledError, match="was cancelled"):
             ray.get(ref)
 
         # Verify asyncio.CancelledError is raised from the actor task.
@@ -328,7 +321,7 @@ def test_remote_cancel(ray_start_regular):
     wait_for_condition(lambda: list_tasks(filters=[("name", "=", "Actor.sleep")]))
     ref = f.remote([sleep_ref])  # noqa
 
-    with pytest.raises(ray.exceptions.RayTaskError):
+    with pytest.raises(ray.exceptions.TaskCancelledError):
         ray.get(sleep_ref)
 
 
@@ -356,7 +349,7 @@ def test_cancel_stress(shutdown_only):
         ray.cancel(ref)
 
     for ref in refs:
-        with pytest.raises((ray.exceptions.RayTaskError, TaskCancelledError)):
+        with pytest.raises((ray.exceptions.TaskCancelledError, TaskCancelledError)):
             ray.get(ref)
 
 
@@ -419,7 +412,7 @@ def test_cancel_recursive_tree(shutdown_only):
     children_refs = ray.get(a.get_children_refs.remote(task_id))
 
     for ref in children_refs + [run_ref]:
-        with pytest.raises(ray.exceptions.RayTaskError):
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ref)
 
     """
@@ -438,7 +431,7 @@ def test_cancel_recursive_tree(shutdown_only):
     for ref in children_refs:
         assert ray.get(ref)
 
-    with pytest.raises(ray.exceptions.RayTaskError):
+    with pytest.raises(ray.exceptions.TaskCancelledError):
         ray.get(run_ref)
 
     """
@@ -475,13 +468,13 @@ def test_cancel_recursive_tree(shutdown_only):
 
         if i % 2 == 0:
             for ref in children_refs:
-                with pytest.raises(ray.exceptions.RayTaskError):
+                with pytest.raises(ray.exceptions.TaskCancelledError):
                     ray.get(ref)
         else:
             for ref in children_refs:
                 assert ray.get(ref)
 
-        with pytest.raises(ray.exceptions.RayTaskError):
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(run_ref)
 
 
@@ -520,20 +513,20 @@ def test_cancel_recursive_chain(shutdown_only, recursive):
     ray.get(sig.send.remote())
 
     if recursive:
-        with pytest.raises(ray.exceptions.RayTaskError):
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ref)
-        with pytest.raises(ray.exceptions.RayTaskError):
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ray.get(r4.get_child_ref.remote()))
-        with pytest.raises(ray.exceptions.RayTaskError):
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ray.get(r3.get_child_ref.remote()))
-        with pytest.raises(ray.exceptions.RayTaskError):
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ray.get(r2.get_child_ref.remote()))
     else:
         assert ray.get(ray.get(r2.get_child_ref.remote()))
         assert ray.get(ray.get(r3.get_child_ref.remote()))
         assert ray.get(ray.get(r4.get_child_ref.remote()))
 
-        with pytest.raises(ray.exceptions.RayTaskError):
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ref)
 
 
