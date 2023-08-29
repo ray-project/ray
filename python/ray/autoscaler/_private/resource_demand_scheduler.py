@@ -123,19 +123,6 @@ class ResourceDemandScheduler:
             utilization_scorer_str
         )
 
-    def _get_head_and_workers(self, nodes: List[NodeID]) -> Tuple[NodeID, List[NodeID]]:
-        """Returns the head node's id and the list of all worker node ids,
-        given a list `nodes` of all node ids in the cluster.
-        """
-        head_id, worker_ids = None, []
-        for node in nodes:
-            tags = self.provider.node_tags(node)
-            if tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD:
-                head_id = node
-            elif tags[TAG_RAY_NODE_KIND] == NODE_KIND_WORKER:
-                worker_ids.append(node)
-        return head_id, worker_ids
-
     def reset_config(
         self,
         provider: NodeProvider,
@@ -157,6 +144,9 @@ class ResourceDemandScheduler:
         self.upscaling_speed = upscaling_speed
 
     def is_feasible(self, bundle: ResourceDict) -> bool:
+        """
+        Check if a bundle is feasible given all node types with max_workers > 0.
+        """
         for node_type, config in self.node_types.items():
             max_of_type = config.get("max_workers", 0)
             node_resources = config["resources"]
@@ -218,8 +208,12 @@ class ResourceDemandScheduler:
             nodes, launching_nodes, unused_resources_by_ip
         )
 
-        logger.debug("Cluster resources: {}".format(node_resources))
-        logger.debug("Node counts: {}".format(node_type_counts))
+        logger.info("node_resources = {}".format(node_resources))
+        logger.info("node_type_counts = {}".format(node_type_counts))
+        logger.info("ensure_min_cluster_size = {}".format(ensure_min_cluster_size))
+        logger.info("self.node_types = {}".format(self.node_types))
+        logger.info("self.max_workers = {}".format(self.max_workers))
+        logger.info("self.head_node_type = {}".format(self.head_node_type))
         # Step 2: add nodes to add to satisfy min_workers for each type
         (
             node_resources,
@@ -234,6 +228,9 @@ class ResourceDemandScheduler:
             ensure_min_cluster_size,
             utilization_scorer=utilization_scorer,
         )
+        logger.info("Node counts after min_workers: {}".format(node_type_counts))
+        logger.info("Node resources after min_workers: {}".format(node_resources))
+        logger.info("Adjusted min_workers: {}".format(adjusted_min_workers))
 
         # Step 3: get resource demands of placement groups and return the
         # groups that should be strictly spread.

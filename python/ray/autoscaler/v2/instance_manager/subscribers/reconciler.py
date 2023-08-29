@@ -31,13 +31,21 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         self._failure_handling_executor = ThreadPoolExecutor(max_workers=1)
         self._reconcile_interval_s = reconcile_interval_s
         self._reconcile_timer_lock = threading.Lock()
+        self._started = False
+
+    def start(self):
+        if self._started:
+            raise RuntimeError("InstanceReconciler already started")
+
         with self._reconcile_timer_lock:
+            self._started = True
             self._reconcile_timer = threading.Timer(
                 self._reconcile_interval_s, self._periodic_reconcile_helper
             )
 
     def shutdown(self):
         with self._reconcile_timer_lock:
+            self._started = False
             self._reconcile_timer.cancel()
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:

@@ -65,21 +65,6 @@ class NodeProviderAdapter(NodeProvider):
         self._node_launcher = node_launcher
         self._config = instance_config_provider
 
-    def _filter_instances(
-        self,
-        instances: Dict[str, Instance],
-        instance_ids_filter: Set[str],
-        instance_states_filter: Set[int],
-    ) -> Dict[str, Instance]:
-        filtered = {}
-        for instance_id, instance in instances.items():
-            if instance_ids_filter and instance_id not in instance_ids_filter:
-                continue
-            if instance_states_filter and instance.state not in instance_states_filter:
-                continue
-            filtered[instance_id] = instance
-        return filtered
-
     def create_nodes(self, instance_type_name: str, count: int) -> List[Instance]:
         created_nodes = self._node_launcher.launch_node(
             self._config.get_raw_config_mutable(),
@@ -101,7 +86,7 @@ class NodeProviderAdapter(NodeProvider):
     def is_readonly(self) -> bool:
         return self._provider.is_readonly()
 
-    def get_non_terminated_nodes(self):
+    def get_non_terminated_nodes(self) -> Dict[str, Instance]:
         clould_instance_ids = self._provider.non_terminated_nodes({})
         return self.get_nodes_by_cloud_instance_id(clould_instance_ids)
 

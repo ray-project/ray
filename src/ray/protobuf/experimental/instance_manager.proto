@@ -54,7 +54,7 @@ message Instance {
     // The unspecified state
     UNKNOWN = 0;
     // The instance is queued to be allocated.
-    QEUEUD = 1;
+    QUEUED = 1;
     // The instance is requested to be allocated - follows from the QUEUED state.
     REQUESTED = 2;
     // The instance is allocated - follows from the REQUESTED state.
@@ -88,7 +88,9 @@ message Instance {
   string instance_id = 11;
   // the status of the instance.
   InstanceStatus status = 12;
-  // the node type of the instance.
+  // the node type of the instance. This is the user defined ray instance type name
+  // It's the key of `available_node_types` in the ray-schema.json, e.g.
+  // `ray.head.default``
   string instance_type = 13;
   // The corresponding total resources on the node.
   map<string, double> total_resources = 14;
