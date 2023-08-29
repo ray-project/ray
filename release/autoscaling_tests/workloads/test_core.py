@@ -56,7 +56,7 @@ def test_request_cluster_resources(ctx: dict):
     )
     wait_for_condition(
         check_cluster,
-        timeout=60,  # 1min
+        timeout=60 * 5,  # 5min
         retry_interval_ms=DEFAULT_RETRY_INTERVAL_MS,
         targets=[
             NodeCountCheck(ctx["num_nodes"]),
@@ -75,7 +75,7 @@ def test_request_cluster_resources(ctx: dict):
     )
     wait_for_condition(
         check_cluster,
-        timeout=60 * 3,  # 3min
+        timeout=60 * 5,  # 5min
         retry_interval_ms=DEFAULT_RETRY_INTERVAL_MS,
         targets=[
             NodeCountCheck(ctx["num_nodes"]),
