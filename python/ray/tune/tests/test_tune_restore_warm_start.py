@@ -1,5 +1,7 @@
 # coding: utf-8
 import os
+from packaging.version import Version
+import pandas
 import pytest
 import shutil
 import tempfile
@@ -33,7 +35,7 @@ from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 
 class AbstractWarmStartTest:
     def setUp(self):
-        ray.init(num_cpus=1, local_mode=True)
+        ray.init(num_cpus=1)
         self.tmpdir = tempfile.mkdtemp()
         self.experiment_name = "results"
 
@@ -156,9 +158,9 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             "z": hp.uniform("z", -10, 0),
         }
 
-        def cost(space, reporter):
+        def cost(space):
             loss = space["x"] ** 2 + space["y"] ** 2 + space["z"] ** 2
-            reporter(loss=loss)
+            train.report(dict(loss=loss))
 
         search_alg = HyperOptSearch(
             space,
@@ -418,6 +420,9 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
+        if Version(pandas.__version__) >= Version("2.0.0"):
+            pytest.skip("HEBO does not support pandas>=2.0.0")
+
         space_config = [
             {"name": "width", "type": "num", "lb": 0, "ub": 20},
             {"name": "height", "type": "num", "lb": -100, "ub": 100},
