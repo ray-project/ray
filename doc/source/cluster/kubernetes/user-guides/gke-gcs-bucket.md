@@ -21,6 +21,8 @@ gcloud container clusters create cloud-bucket-cluster \
 
 This command creates a Kubernetes cluster named `cloud-bucket-cluster` with 1 node in the `us-west1-b` zone. In this example, we use the `e2-standard-8` machine type, which has 8 vCPUs and 32 GB RAM.
 
+For more information on how to find your project ID, see <https://support.google.com/googleapi/answer/7014113?hl=en> or <https://cloud.google.com/resource-manager/docs/creating-managing-projects>.
+
 Now get credentials for the cluster to use with `kubectl`:
 
 ```bash
