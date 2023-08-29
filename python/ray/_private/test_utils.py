@@ -1964,3 +1964,11 @@ def find_available_port(start, end, port_num=1):
             f"Can't find {port_num} available port from {start} to {end}."
         )
     return ports
+
+
+# TODO(rickyx): We could remove this once we unify the autoscaler v1 and v2
+# code path for ray status
+def reset_autoscaler_v2_enabled_cache():
+    import ray.autoscaler.v2.utils as u
+
+    u.cached_is_autoscaler_v2 = None
