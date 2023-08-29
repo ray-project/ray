@@ -51,7 +51,7 @@ class ModifiedImageClassifier:
         results = self.model(image)
         return results[0]["label"]
 
-    # __serve_example_modified_start__
+    # __serve_example_modified_begin__
     async def __call__(self, req: starlette.requests.Request):
         req = await req.json()
         result = await self.classify(req["image_url"])
@@ -65,12 +65,11 @@ class ModifiedImageClassifier:
 
 
 serve.run(app, name="app1")
+bear_image_url = "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"
 assert (
     requests.post(
         "http://localhost:8000/classify",
-        json={
-            "image_url": "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"
-        },
+        json={"image_url": bear_image_url},
     ).text
     == "brown bear, bruin, Ursus arctos"
 )
@@ -86,10 +85,7 @@ serve.run(translator_app, name="app2")
 assert (
     requests.post(
         "http://localhost:8000/classify",
-        json={
-            "image_url": "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg",
-            "should_translate": True,
-        },
+        json={"image_url": bear_image_url, "should_translate": True},
     ).text
     == "Braunbär, Bruin, Ursus arctos"
 )
