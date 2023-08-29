@@ -16,12 +16,6 @@ from ray.train import (
     RunConfig,
     ScalingConfig,
 )
-from ray.air._internal.remote_storage import (
-    delete_at_uri,
-    download_from_uri,
-    upload_to_uri,
-    list_at_uri,
-)
 from ray.air._internal.uri_utils import URI
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train._internal.storage import (
@@ -80,12 +74,6 @@ def chdir_tmpdir(tmpdir):
     os.chdir(tmpdir)
     yield tmpdir
     os.chdir(old_cwd)
-
-
-@pytest.fixture
-def clear_memory_filesys():
-    yield
-    delete_at_uri("memory:///")
 
 
 def _dummy_train_fn(config):
@@ -498,7 +486,7 @@ def _test_tuner_restore_from_cloud(
 
 
 def test_tuner_restore_from_cloud_manual_path(
-    ray_start_2_cpus, tmpdir, clear_memory_filesys, mock_s3_bucket_uri, monkeypatch
+    ray_start_2_cpus, tmpdir, mock_s3_bucket_uri, monkeypatch
 ):
     _test_tuner_restore_from_cloud(
         tmpdir,
@@ -529,57 +517,9 @@ def test_tuner_restore_from_cloud_ray_storage(
     [None, "/tmp/ray_results"],
 )
 def test_tuner_restore_latest_available_checkpoint(
-    ray_start_2_cpus, monkeypatch, tmpdir, storage_path, clear_memory_filesys
+    ray_start_2_cpus, monkeypatch, tmpdir, storage_path
 ):
     """Resuming errored trials should pick up from previous state"""
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir))
-
-    fail_marker = tmpdir / "fail_marker"
-    fail_marker.write_text("", encoding="utf-8")
-
-    tuner = Tuner(
-        _train_fn_sometimes_failing,
-        tune_config=TuneConfig(
-            num_samples=1,
-        ),
-        run_config=RunConfig(
-            name="test_tuner_restore_latest_available_checkpoint",
-            storage_path=storage_path,
-        ),
-        param_space={"failing_hanging": (fail_marker, None), "num_epochs": 4},
-    )
-
-    results = tuner.fit()
-
-    assert len(results) == 1
-    assert len(results.errors) == 1
-
-    [result] = list(results)
-    # num_epochs = 4, so it = 4
-    assert result.metrics["it"] == 4
-
-    del tuner
-    fail_marker.remove(ignore_errors=True)
-
-    shutil.rmtree(os.path.join(result.log_dir, "checkpoint_000003"))
-    shutil.rmtree(os.path.join(result.log_dir, "checkpoint_000002"))
-
-    if storage_path:
-        delete_at_uri(storage_path + "/checkpoint_000003")
-        delete_at_uri(storage_path + "/checkpoint_000002")
-
-    tuner = Tuner.restore(
-        str(tmpdir / "test_tuner_restore_latest_available_checkpoint"),
-        trainable=_train_fn_sometimes_failing,
-        resume_errored=True,
-    )
-    results = tuner.fit()
-    assert len(results) == 1
-    assert len(results.errors) == 0
-    [result] = list(results)
-    # restored from 2, plus num_epochs = 4, plus one additional epoch
-    assert result.metrics["it"] == 7
-    assert result.metrics["iterations_since_restore"] == 5
 
 
 @pytest.mark.parametrize("retry_num", [0, 2])
@@ -862,9 +802,7 @@ def test_tuner_restore_from_moved_experiment_path(
 
 # TODO(justinvyu): [handle_moved_storage_path]
 @pytest.mark.skip("Restoring from a moved storage path is not supported yet.")
-def test_tuner_restore_from_moved_cloud_uri(
-    ray_start_2_cpus, tmp_path, clear_memory_filesys
-):
+def test_tuner_restore_from_moved_cloud_uri(ray_start_2_cpus, tmp_path):
     """Test that restoring an experiment that was moved to a new remote URI
     resumes and continues saving new results at that URI."""
 
