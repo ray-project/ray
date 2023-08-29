@@ -8,6 +8,7 @@ import time
 import pytest
 
 import ray
+from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.test_utils import (
     SignalActor,
     kill_actor_and_wait_for_failure,
@@ -294,8 +295,7 @@ def test_async_callback(ray_start_regular_shared):
 
 @pytest.mark.parametrize("raise_in_callback", [False, True])
 @pytest.mark.skipif(
-    os.environ.get("RAY_CLIENT_MODE") == "1",
-    reason="Different ref counting in Ray client."
+    client_mode_should_convert(), reason="Different ref counting in Ray client."
 )
 def test_on_completed_callback_refcount(ray_start_regular_shared, raise_in_callback):
     """Check that the _on_completed callback is ref counted properly."""
