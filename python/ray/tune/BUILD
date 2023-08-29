@@ -83,7 +83,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_client.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "client", "exclusive", "no_new_storage"]
+    tags = ["team:ml", "client", "exclusive", "new_storage"]
 )
 
 py_test(
