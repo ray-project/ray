@@ -70,6 +70,7 @@ CUDA_FULL = {
 # image being used in ~/ci/docker/Dockerfile.base.gpu to match the same image being used
 # here.
 ML_CUDA_VERSION = "cu118"
+ML_IMAGES_BASE_VERSIONS = {"cu118", "cu121", "cpu"}
 
 DEFAULT_PYTHON_VERSION = "py38"
 
@@ -569,10 +570,7 @@ def create_image_tags(
     for py_name in py_versions:
         for image_type in image_types:
             if image_name == "ray-ml":
-                if image_type not in [
-                    ML_CUDA_VERSION,
-                    "cpu",
-                ]:
+                if image_type not in ML_IMAGES_BASE_VERSIONS:
                     print(
                         "ML Docker image is not built for the following "
                         f"device type: {image_type}"
