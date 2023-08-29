@@ -2,6 +2,9 @@ import contextlib
 from copy import deepcopy
 import numpy as np
 import os
+from packaging.version import Version
+import pandas
+import pytest
 import shutil
 import tempfile
 import unittest
@@ -224,6 +227,9 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertCorrectExperimentOutput(out)
 
     def testHEBO(self):
+        if Version(pandas.__version__) >= Version("2.0.0"):
+            pytest.skip("HEBO does not support pandas>=2.0.0")
+
         from ray.tune.search.hebo import HEBOSearch
 
         with self.check_searcher_checkpoint_errors_scope():
@@ -507,6 +513,9 @@ class AddEvaluatedPointTest(unittest.TestCase):
             dbr_searcher.add_evaluated_point(point, 1.0)
 
     def testHEBO(self):
+        if Version(pandas.__version__) >= Version("2.0.0"):
+            pytest.skip("HEBO does not support pandas>=2.0.0")
+
         from ray.tune.search.hebo import HEBOSearch
 
         searcher = HEBOSearch(
@@ -684,6 +693,9 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testHEBO(self):
+        if Version(pandas.__version__) >= Version("2.0.0"):
+            pytest.skip("HEBO does not support pandas>=2.0.0")
+
         from ray.tune.search.hebo import HEBOSearch
 
         searcher = HEBOSearch(
