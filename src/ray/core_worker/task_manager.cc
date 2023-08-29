@@ -32,16 +32,21 @@ const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   absl::flat_hash_set<ObjectID> result;
+  RAY_LOG(ERROR) << "SANG-TODO 1";
   for (int64_t index = 0; index <= max_index_seen_; index++) {
+    RAY_LOG(ERROR) << "SANG-TODO 7 " << index;
     const auto &object_id = GetObjectRefAtIndex(index);
+    RAY_LOG(ERROR) << "SANG-TODO 6 " << index;
     if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
       continue;
     }
+    RAY_LOG(ERROR) << "SANG-TODO 5 " << index;
 
     if (index >= next_index_) {
       result.emplace(object_id);
     }
   }
+  RAY_LOG(ERROR) << "SANG-TODO 2";
 
   if (end_of_stream_index_ != -1) {
     // End of stream index is never consumed by a caller
@@ -49,11 +54,13 @@ absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
     const auto &object_id = GetObjectRefAtIndex(end_of_stream_index_);
     result.emplace(object_id);
   }
+  RAY_LOG(ERROR) << "SANG-TODO 3";
 
   // Temporarily owned refs are not consumed.
   for (const auto &object_id : temporarily_owned_refs_) {
     result.emplace(object_id);
   }
+  RAY_LOG(ERROR) << "SANG-TODO 4";
   return result;
 }
 
@@ -433,14 +440,20 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
   RAY_LOG(DEBUG) << "Deleting an object ref stream of an id " << generator_id;
   absl::flat_hash_set<ObjectID> object_ids_unconsumed;
 
-  auto it = object_ref_streams_.find(generator_id);
-  if (it == object_ref_streams_.end()) {
+  auto deleted_it = object_ref_streams_deleted_.find(generator_id);
+  if (deleted_it == object_ref_streams_deleted_.end()) {
     return;
   }
 
+  auto it = object_ref_streams_.find(generator_id);
+  // if (it == object_ref_streams_.end()) {
+  //   return;
+  // }
+
   const auto &stream = it->second;
   object_ids_unconsumed = stream.GetItemsUnconsumed();
-  object_ref_streams_.erase(generator_id);
+  // object_ref_streams_.erase(generator_id);
+  object_ref_streams_deleted_.emplace(generator_id);
 
   // When calling RemoveLocalReference, we shouldn't hold a lock.
   for (const auto &object_id : object_ids_unconsumed) {
@@ -529,6 +542,9 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
       if (it->second.spec.AttemptNumber() > attempt_number) {
+        RAY_LOG(DEBUG)
+            << "SANG-TODO Ignore the result because the attempt number is wrong "
+            << generator_id;
         // Generator task reports can arrive at any time. If the first attempt
         // fails, we may receive a report from the first executor after the
         // second attempt has started. In this case, we should ignore the first
@@ -546,6 +562,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     // Stream has been already deleted. Do not handle it.
+    RAY_LOG(DEBUG) << "SANG-TODO The ref stream is already deleted " << generator_id;
     return false;
   }
 

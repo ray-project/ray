@@ -732,6 +732,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
       GUARDED_BY(objet_ref_stream_ops_mu_);
 
+  absl::flat_hash_set<ObjectID> object_ref_streams_deleted_
+      GUARDED_BY(objet_ref_stream_ops_mu_);
+
   /// Callback to store objects in plasma. This is used for objects that were
   /// originally stored in plasma. During reconstruction, we ensure that these
   /// objects get stored in plasma again so that any reference holders can
