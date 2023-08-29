@@ -115,19 +115,16 @@ class RandomTest:
         self.random_killer = random_killer_handle
 
         # Deploy in parallel to avoid long test startup time.
-        self.wait_for_deployments_ready([
-            self.create_deployment(blocking=False)
-            for _ in range(max_deployments)
-        ])
+        self.wait_for_deployments_ready(
+            [self.create_deployment(blocking=False) for _ in range(max_deployments)]
+        )
 
         self.random_killer.run.remote()
 
     def wait_for_deployments_ready(self, deployment_names: List[str]):
         client = get_global_client()
         for deployment_name in deployment_names:
-            client._wait_for_deployment_healthy(
-                deployment_name, timeout_s=60
-            )
+            client._wait_for_deployment_healthy(deployment_name, timeout_s=60)
 
     def create_deployment(self, blocking: bool = True) -> str:
         if len(self.deployments) == self.max_deployments:
