@@ -189,10 +189,10 @@ class Cluster:
             "max_worker_port": 0,
             "dashboard_port": None,
         }
-        ray_params = ray._private.parameter.RayParams(**default_kwargs)
+        ray_params = ray._private.parameter.RayParams(**node_args)
+        ray_params.update_if_absent(**default_kwargs)
         with disable_client_hook():
             if self.head_node is None:
-                ray_params.update(**node_args)
                 node = ray._private.node.Node(
                     ray_params,
                     head=True,
@@ -213,19 +213,19 @@ class Cluster:
                 # to the local cluster.
                 ray._private.utils.write_ray_address(self.head_node.gcs_address)
             else:
-                ray_params.update(redis_address=self.redis_address)
-                ray_params.update(gcs_address=self.gcs_address)
+                ray_params.update_if_absent(redis_address=self.redis_address)
+                ray_params.update_if_absent(gcs_address=self.gcs_address)
                 # We only need one log monitor per physical node.
-                ray_params.update(include_log_monitor=False)
-                # Each worker node should have it's own set of ports.
-                ray_params.update(node_manager_port=0)
-                ray_params.update(dashboard_agent_listen_port=None)
-                ray_params.update(metrics_agent_port=None)
-                ray_params.update(metrics_export_port=None)
-                ray_params.update(runtime_env_agent_port=None)
+                ray_params.update_if_absent(include_log_monitor=False)
+                # Let grpc pick a port.
+                ray_params.update_if_absent(node_manager_port=0)
 
-                # Overwrite with user provided arguments.
-                ray_params.update(**node_args)
+                # Let the node picks a listen port if not specified.
+                ray_params.update(
+                    dashboard_agent_listen_port=node_args.get(
+                        "dashboard_agent_listen_port", None
+                    )
+                )
 
                 node = ray._private.node.Node(
                     ray_params,
