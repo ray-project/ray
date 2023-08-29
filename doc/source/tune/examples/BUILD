@@ -15,7 +15,7 @@ filegroup(
 
 py_test_run_all_notebooks(
     size = "medium",
-    include = ["*.ipynb"],
+    include = ["**/*.ipynb"],
     exclude = [
         # TODO(krfricke): Enable this test for new persistence path.
         "bohb_example.ipynb",
