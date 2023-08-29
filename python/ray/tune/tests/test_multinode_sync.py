@@ -3,7 +3,7 @@ import time
 import unittest
 
 import ray
-from ray import tune
+from ray import train, tune
 from ray.air.util.node import _force_on_node
 from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
 from ray.tune.callback import Callback
@@ -137,9 +137,9 @@ class MultiNodeSyncTest(unittest.TestCase):
         self.cluster.connect(client=True, timeout=120)
         remote_api = self.cluster.remote_execution_api()
 
-        def train(config):
+        def train_fn(config):
             time.sleep(120)
-            tune.report(1.0)
+            train.report({"_metric": 1.0})
 
         class FailureInjectionCallback(Callback):
             def __init__(self):
@@ -155,7 +155,7 @@ class MultiNodeSyncTest(unittest.TestCase):
                     self._killed = True
 
         tune.run(
-            train,
+            train_fn,
             num_samples=3,
             resources_per_trial={"cpu": 4},
             max_failures=1,
