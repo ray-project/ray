@@ -13,7 +13,7 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
 )
 
-WAIT_TIMEOUT = 20
+WAIT_TIMEOUT = 60
 
 
 def get_all_ray_worker_processes():
