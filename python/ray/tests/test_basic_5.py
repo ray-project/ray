@@ -13,6 +13,7 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._private.test_utils import (
+    enable_external_redis,
     run_string_as_driver,
     wait_for_pid_to_exit,
     client_test_enabled,
@@ -85,6 +86,18 @@ def test_actor_killing(shutdown_only):
     ray.kill(worker_1, no_restart=False)
     worker_2 = Actor.remote()
     assert ray.get(worker_2.foo.remote()) is None
+
+
+def test_kv_restart(ray_start_regular):
+    import ray.experimental.internal_kv as kv
+
+    name: str = ray._private.worker._global_node.session_name
+    ray._private.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
+    if enable_external_redis():
+        assert name == ray._private.worker._global_node.session_name
+    else:
+        assert name != ray._private.worker._global_node.session_name
 
 
 def test_internal_kv(ray_start_regular):

@@ -83,6 +83,7 @@ class Node:
         )
         self.all_processes: dict = {}
         self.removal_lock = threading.Lock()
+        self.cluster_synced: bool = False
 
         # Set up external Redis when `RAY_REDIS_ADDRESS` is specified.
         redis_address_env = os.environ.get("RAY_REDIS_ADDRESS")
@@ -206,23 +207,6 @@ class Node:
                     f"{ray_params.dashboard_host}:{ray_params.dashboard_port}"
                 )
 
-        self._init_temp()
-
-        # Validate and initialize the persistent storage API.
-        if head:
-            storage._init_storage(ray_params.storage, is_head=True)
-        else:
-            if not self._default_worker:
-                storage_uri = ray._private.services.get_storage_uri_from_internal_kv()
-            else:
-                storage_uri = ray_params.storage
-            storage._init_storage(storage_uri, is_head=False)
-
-        # If it is a head node, try validating if
-        # external storage is configurable.
-        if head:
-            self.validate_external_storage()
-
         if connect_only:
             # Get socket names from the configuration.
             self._plasma_store_socket_name = ray_params.plasma_store_socket_name
@@ -289,6 +273,23 @@ class Node:
 
         # Start processes.
         if head:
+            self.start_gcs_server()
+            self._sync_cluster_info_with_kv()
+
+        # Initialize the temp directories
+        self._init_temp()
+
+        # Validate and initialize the persistent storage API.
+        if not head and self.default_worker:
+            storage_uri = ray._private.services.get_storage_uri_from_internal_kv()
+        else:
+            storage_uri = ray_params.storage
+        storage._init_storage(storage_uri, is_head=head)
+
+        # If it is a head node, try validating if
+        # external storage is configurable.
+        if head:
+            self.validate_external_storage()
             self.start_head_processes()
 
         if not connect_only:
@@ -370,8 +371,10 @@ class Node:
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
+        # For head nodes, we already set temp_dir and session_dir in
+        # _sync_cluster_info_with_kv, so we just double check here.
         if self.head:
-            self._temp_dir = self._ray_params.temp_dir
+            assert self.cluster_synced
         else:
             if self._ray_params.temp_dir is None:
                 assert not self._default_worker
@@ -385,11 +388,6 @@ class Node:
             else:
                 self._temp_dir = self._ray_params.temp_dir
 
-        try_to_create_directory(self._temp_dir)
-
-        if self.head:
-            self._session_dir = os.path.join(self._temp_dir, self._session_name)
-        else:
             if self._temp_dir is None or self._session_name is None:
                 assert not self._default_worker
                 session_dir = ray._private.utils.internal_kv_get_with_retry(
@@ -401,6 +399,8 @@ class Node:
                 self._session_dir = ray._private.utils.decode(session_dir)
             else:
                 self._session_dir = os.path.join(self._temp_dir, self._session_name)
+
+        try_to_create_directory(self._temp_dir)
         session_symlink = os.path.join(self._temp_dir, ray_constants.SESSION_LATEST)
 
         # Send a warning message if the session exists.
@@ -1023,6 +1023,11 @@ class Node:
 
     def start_gcs_server(self):
         """Start the gcs server."""
+        assert self._redis_address is None
+
+        if self._ray_params.external_addresses is not None:
+            self._redis_address = self._ray_params.external_addresses[0]
+
         gcs_server_port = self._ray_params.gcs_server_port
         assert gcs_server_port > 0
         assert self._gcs_address is None, "GCS server is already running."
@@ -1163,12 +1168,7 @@ class Node:
             process_info
         ]
 
-    def _get_or_set_value(
-        self,
-        key: bytes,
-        value: str,
-        namespace: Optional[str] = ray_constants.KV_NAMESPACE_SESSION,
-    ):
+    def _get_or_set_value(self, key: bytes, value: str) -> str:
         """Get or set the value in the redis server.
 
         Args:
@@ -1177,12 +1177,20 @@ class Node:
 
         """
         added: int = self.get_gcs_client().internal_kv_put(
-            key, value.encode(), False, namespace
+            key,
+            value.encode(),
+            False,
+            ray_constants.KV_NAMESPACE_SESSION,
         )
         if not added:
-            value = self.get_gcs_client().internal_kv_get(key, namespace)
+            gcs_value: str = self.get_gcs_client().internal_kv_get(
+                key, ray_constants.KV_NAMESPACE_SESSION
+            )
+            logger.info(f"Reusing existing {key}: {gcs_value}")
+            return gcs_value
+        return value
 
-    def _write_cluster_info_to_kv(self):
+    def _sync_cluster_info_with_kv(self):
         """Write the cluster metadata to GCS.
         Cluster metadata is always recorded, but they are
         not reported unless usage report is enabled.
@@ -1193,36 +1201,38 @@ class Node:
 
         ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
         # Make sure GCS is up.
-        self._get_or_set_value(b"session_name", self._session_name)
-        self._get_or_set_value(b"session_dir", self._session_dir)
-        self._get_or_set_value(b"temp_dir", self._temp_dir)
+        # For these values, we prefer the pre-existing value in GCS, if it exists.
+        self._session_name = self._get_or_set_value(b"session_name", self._session_name)
+        self._temp_dir = self._get_or_set_value(b"temp_dir", self._ray_params.temp_dir)
+        self._session_dir = self._get_or_set_value(
+            b"session_dir", os.path.join(self._temp_dir, self._session_name)
+        )
+
         if self._ray_params.storage is not None:
-            self._get_or_set_value(b"storage", self._ray_params.storage)
+            self.get_gcs_client().internal_kv_put(
+                b"storage",
+                self._ray_params.storage.encode(),
+                True,
+                ray_constants.KV_NAMESPACE_SESSION,
+            )
 
         # Add tracing_startup_hook to redis / internal kv manually
         # since internal kv is not yet initialized.
         if self._ray_params.tracing_startup_hook:
-            self._get_or_set_value(
+            self.get_gcs_client().internal_kv_put(
                 b"tracing_startup_hook",
                 self._ray_params.tracing_startup_hook.encode(),
+                True,
                 ray_constants.KV_NAMESPACE_TRACING,
             )
+        self.cluster_synced = True
 
     def start_head_processes(self):
         """Start head processes on the node."""
         logger.debug(
             f"Process STDOUT and STDERR is being " f"redirected to {self._logs_dir}."
         )
-        assert self._redis_address is None
-        assert self._gcs_address is None
-        assert self._gcs_client is None
-
-        if self._ray_params.external_addresses is not None:
-            self._redis_address = self._ray_params.external_addresses[0]
-
-        self.start_gcs_server()
         assert self.get_gcs_client() is not None
-        self._write_cluster_info_to_kv()
 
         if not self._ray_params.no_monitor:
             self.start_monitor()
@@ -1596,6 +1606,8 @@ class Node:
         This will also fill up the default setting for object spilling
         if not specified.
         """
+        assert self.cluster_synced
+
         object_spilling_config = self._config.get("object_spilling_config", {})
         automatic_spilling_enabled = self._config.get(
             "automatic_object_spilling_enabled", True

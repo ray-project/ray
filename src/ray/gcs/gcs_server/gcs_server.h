@@ -112,7 +112,7 @@ class GcsServer {
   /// Generate the redis client options
   RedisClientOptions GetRedisClientOptions() const;
 
-  void DoStart(const GcsInitData &gcs_init_data);
+  void DoStart(const GcsInitData &gcs_init_data, const std::string &&session_name);
 
   /// Initialize gcs node manager.
   void InitGcsNodeManager(const GcsInitData &gcs_init_data);
@@ -148,7 +148,7 @@ class GcsServer {
   void InitGcsTaskManager();
 
   /// Initialize gcs autoscaling manager.
-  void InitGcsAutoscalerStateManager();
+  void InitGcsAutoscalerStateManager(const std::string &&session_name);
 
   /// Initialize usage stats client.
   void InitUsageStatsClient();
@@ -193,6 +193,9 @@ class GcsServer {
   /// a new one and persist as necessary.
   /// Expected to be idempotent while server is up.
   void GetOrGenerateClusterId(std::function<void(ClusterID cluster_id)> &&continuation);
+
+  /// Get session name if persisted.
+  void GetSessionName(std::function<void(const std::string &&session_name)> &&continuation);
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();

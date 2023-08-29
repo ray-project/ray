@@ -55,7 +55,22 @@ void StatsConfig::SetGlobalTags(const TagsType &global_tags) {
   global_tags_ = global_tags;
 }
 
-const TagsType &StatsConfig::GetGlobalTags() const { return global_tags_; }
+void StatsConfig::SetGlobalTag(const TagKeyType &key, const std::string &value) {
+  absl::WriterMutexLock l(&mu_);
+  TagsType global_tags = global_tags_;
+  for (auto &tag : global_tags) {
+    if (tag.first == key) {
+      tag.second = value;
+      return;
+    }
+  }
+  global_tags_.push_back(std::make_pair(key, value));
+}
+
+const TagsType StatsConfig::GetGlobalTags() const { 
+  absl::ReaderMutexLock l(&mu_);
+  return global_tags_; 
+  }
 
 void StatsConfig::SetIsDisableStats(bool disable_stats) {
   is_stats_disabled_ = disable_stats;
@@ -122,9 +137,10 @@ void Metric::Record(double value, const TagsType &tags) {
 
   // Do record.
   TagsType combined_tags(tags);
+  TagsType global_tags = StatsConfig::instance().GetGlobalTags();
   combined_tags.insert(std::end(combined_tags),
-                       std::begin(StatsConfig::instance().GetGlobalTags()),
-                       std::end(StatsConfig::instance().GetGlobalTags()));
+                       std::begin(global_tags),
+                       std::end(global_tags));
   opencensus::stats::Record({{*measure_, value}}, combined_tags);
 }
 

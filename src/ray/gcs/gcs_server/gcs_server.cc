@@ -32,6 +32,7 @@
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/stats/metric.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -146,7 +147,9 @@ void GcsServer::Start() {
   gcs_init_data->AsyncLoad([this, gcs_init_data] {
     GetOrGenerateClusterId([this, gcs_init_data](ClusterID cluster_id) {
       rpc_server_.SetClusterId(cluster_id);
-      DoStart(*gcs_init_data);
+      GetSessionName([this, gcs_init_data](const std::string &&session_name) {
+        DoStart(*gcs_init_data, std::move(session_name));
+      });
     });
   });
 }
@@ -181,7 +184,31 @@ void GcsServer::GetOrGenerateClusterId(
       });
 }
 
-void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
+void GcsServer::GetSessionName(std::function<void(const std::string &&session_name)> &&continuation) {
+  static std::string const kNamespaceSession = "session";
+  static std::string const kSessionNameKey = "session_name";
+  kv_manager_->GetInstance().Get(
+    kNamespaceSession, 
+    kSessionNameKey,
+    [session_name_ = config_.session_name, continuation = std::move(continuation)](std::optional<std::string> session_name_kv) mutable {
+      if (session_name_kv.has_value()) {
+        RAY_LOG(INFO) << "Reusing persisted session name " 
+        << session_name_kv.value() << ", rather than the provided: "
+        << session_name_;
+
+        // This would originally have been initialized to the provided one.
+        // We set it to the correct one here, but do not guarantee that all metrics
+        // are tagged with the old one.
+        stats::StatsConfig::instance().SetGlobalTag(ray::stats::SessionNameKey, session_name_kv.value());
+        continuation(std::move(session_name_kv.value()));
+      } else {
+        continuation(std::move(session_name_));
+      }
+    }
+  );
+}
+
+void GcsServer::DoStart(const GcsInitData &gcs_init_data, const std::string &&session_name) {
   // Init cluster resource scheduler.
   InitClusterResourceScheduler();
 
@@ -234,7 +261,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InstallEventListeners();
 
   // Init autoscaling manager
-  InitGcsAutoscalerStateManager();
+  InitGcsAutoscalerStateManager(std::move(session_name));
 
   // Start RPC server when all tables have finished loading initial
   // data.
@@ -635,7 +662,7 @@ void GcsServer::InitGcsWorkerManager() {
   rpc_server_.RegisterService(*worker_info_service_);
 }
 
-void GcsServer::InitGcsAutoscalerStateManager() {
+void GcsServer::InitGcsAutoscalerStateManager(const std::string &&session_name) {
   RAY_CHECK(kv_manager_) << "kv_manager_ is not initialized.";
   auto v2_enabled = std::to_string(RayConfig::instance().enable_autoscaler_v2());
   RAY_LOG(INFO) << "Autoscaler V2 enabled: " << v2_enabled;
@@ -664,7 +691,7 @@ void GcsServer::InitGcsAutoscalerStateManager() {
       });
 
   gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
-      config_.session_name,
+      session_name,
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_resource_manager_,
       *gcs_node_manager_,

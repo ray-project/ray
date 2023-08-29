@@ -42,7 +42,7 @@ class StatsConfig final {
   static StatsConfig &instance();
 
   /// Get the current global tags.
-  const TagsType &GetGlobalTags() const;
+  const TagsType GetGlobalTags() const;
 
   /// Get whether or not stats are enabled.
   bool IsStatsDisabled() const;
@@ -69,6 +69,8 @@ class StatsConfig final {
   void SetIsDisableStats(bool disable_stats);
   /// Set the global tags that will be appended to all metrics in this process.
   void SetGlobalTags(const TagsType &global_tags);
+  /// Sets a single global tag.
+  void SetGlobalTag(const TagKeyType &key, const std::string &value);
   /// Add the initializer
   void AddInitializer(std::function<void()> func) {
     initializers_.push_back(std::move(func));
@@ -97,6 +99,9 @@ class StatsConfig final {
   // Whether or not if the stats has been initialized.
   bool is_initialized_ = false;
   std::vector<std::function<void()>> initializers_;
+
+  // To protect the tags mutex.
+  mutable absl::Mutex mu_ = absl::Mutex();
 };
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
