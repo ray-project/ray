@@ -292,6 +292,7 @@ parts:
               - file: cluster/kubernetes/user-guides
                 sections:
                   - file: cluster/kubernetes/user-guides/rayservice.md
+                  - file: cluster/kubernetes/user-guides/observability.md
                   - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
                     sections:
                       - file: cluster/kubernetes/user-guides/aws-eks-gpu-cluster.md
