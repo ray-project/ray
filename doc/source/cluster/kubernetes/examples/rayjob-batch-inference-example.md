@@ -15,7 +15,7 @@ You must have a Kubernetes cluster running and `kubectl` configured to use it, a
 If you already have a Kubernetes cluster with GPUs, you can skip this step.
 
 
-Otherwise, please follow [this tutorial]((kuberay-gke-gpu-cluster-setup), but substituting the following GPU node pool creation command to create a Kubernetes cluster on GKE with four Nvidia T4 GPUs:
+Otherwise, please follow [this tutorial](kuberay-gke-gpu-cluster-setup), but substituting the following GPU node pool creation command to create a Kubernetes cluster on GKE with four Nvidia T4 GPUs:
 
 ```sh
 gcloud container node-pools create gpu-node-pool \
