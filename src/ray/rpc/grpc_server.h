@@ -129,7 +129,7 @@ class GrpcServer {
 
   grpc::Server &GetServer() { return *server_; }
 
-  const ClusterID GetClusterId() const {
+  const ClusterID &GetClusterId() const {
     RAY_CHECK(!cluster_id_.IsNil()) << "Cannot fetch cluster ID before it is set.";
     return cluster_id_;
   }

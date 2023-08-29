@@ -98,7 +98,7 @@ class GcsServer {
   bool IsStopped() const { return is_stopped_; }
 
   /// Retrieve cluster ID
-  const ClusterID GetClusterId() const { return rpc_server_.GetClusterId(); }
+  const ClusterID &GetClusterId() const { return rpc_server_.GetClusterId(); }
 
   // TODO(vitsai): string <=> enum generator macro
   enum class StorageType {
