@@ -132,8 +132,8 @@ class HttpServerDashboardHead:
         if request.path.startswith("/static") or request.path.startswith("/logs"):
             parent = "/logs" if request.path.startswith("/logs") else "/static"
 
-            # If the destination is not relative to the expected directoy, then the user is attempting
-            # path traversal, so deny the request
+            # If the destination is not relative to the expected directoy,
+            # then the user is attempting path traversal, so deny the request.
             if not pathlib.Path(request.path).resolve().is_relative_to(parent):
                 raise aiohttp.web.HTTPForbidden()
         return await handler(request)
@@ -176,7 +176,8 @@ class HttpServerDashboardHead:
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
         app = aiohttp.web.Application(
-            client_max_size=100 * 1024**2, middlewares=[self.metrics_middleware, self.path_clean_middleware]
+            client_max_size=100 * 1024**2,
+            middlewares=[self.metrics_middleware, self.path_clean_middleware],
         )
         app.add_routes(routes=routes.bound_routes())
 
