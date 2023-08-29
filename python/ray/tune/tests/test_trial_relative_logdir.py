@@ -1,7 +1,5 @@
 import os
-import shutil
 import sys
-import tempfile
 import pytest
 
 from ray.tune.experiment import Trial
