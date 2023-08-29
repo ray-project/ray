@@ -173,7 +173,7 @@ def test_with_rest_api(ray_start_stop):
 @pytest.mark.parametrize(
     "ray_instance",
     [
-        {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"},
+        {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5"},
     ],
     indirect=True,
 )
