@@ -52,18 +52,10 @@ class TestShared:
 
     def test_round_robin_actor_pool_must_have_actor(self):
         with pytest.raises(ValueError):
-            RoundRobinActorPool([])
+            RoundRobinActorPool(num_actors=0)
 
     def test_round_robin_actor_pool_cycles_through_actors(self, call_ray_start):
-        @ray.remote
-        class ExecutorActor:
-            def __init__(self) -> None:
-                pass
-
-            def actor_function(self, fn):
-                return fn()
-        actors = [ExecutorActor.options().remote() for _ in range(2)]
-        pool = RoundRobinActorPool(actors)
+        pool = RoundRobinActorPool(num_actors=2)
         assert len(pool.pool) == 2
         assert pool.index == 0
         _ = pool.next()
@@ -74,21 +66,12 @@ class TestShared:
         assert pool.index == 0
 
     def test_round_robin_actor_pool_kills_actors(self, call_ray_start):
-        @ray.remote
-        class ExecutorActor:
-            def __init__(self) -> None:
-                pass
-
-            def actor_function(self, fn):
-                return fn()
-        actors = [ExecutorActor.options().remote() for _ in range(2)]
-        pool = RoundRobinActorPool(actors)
+        pool = RoundRobinActorPool(num_actors=2)
         assert len(pool.pool) == 2
         assert pool.index == 0
-        actors = pool.pool
 
-        def wait_actor_state(actors, state, timeout = 20):
-            actor_ids = [i._ray_actor_id.hex() for i in actors]
+        def wait_actor_state(actor_pool, state, timeout = 20):
+            actor_ids = [i["actor"]._ray_actor_id.hex() for i in actor_pool.pool.values()]
             while timeout > 0:
                 states = [actor_state for actor_state in list_actors() if actor_state.actor_id in actor_ids]
                 if not all(i.state == state for i in states):
@@ -102,13 +85,101 @@ class TestShared:
                 return True
 
         # wait for actors to live
-        assert wait_actor_state(pool.pool, "ALIVE") == True
+        assert wait_actor_state(pool, "ALIVE") == True
         pool.kill()
         # wait for actors to die
-        assert wait_actor_state(pool.pool, "DEAD") == True
+        assert wait_actor_state(pool, "DEAD") == True
 
+    def test_round_robin_actor_pool_replaces_expired_actors(self, call_ray_start):
+        pool = RoundRobinActorPool(num_actors=2, max_tasks_per_actor=2)
+        assert pool.index == 0
+        actor_id0 = pool.pool[0]["actor"]._ray_actor_id.hex()
+        pool._replace_actor_if_max_tasks()
+        assert pool.pool[0]["actor"]._ray_actor_id.hex() == actor_id0
+        pool.pool[0]["task_count"] = 2
+        pool._replace_actor_if_max_tasks()
+        assert pool.pool[0]["actor"]._ray_actor_id.hex() != actor_id0
 
+    def test_round_robin_actor_pool_replaces_actors_allowing_tasks_to_finish(self, call_ray_start):
+        def f():
+            time.sleep(5)
 
+        pool = RoundRobinActorPool(num_actors=2, max_tasks_per_actor=2)
+        assert pool.index == 0
+
+        actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
+        pool.submit(f)
+
+        assert pool.index == 1
+        pool.submit(f)
+
+        assert pool.index == 0
+        pool.submit(f)
+
+        assert pool.index == 1
+        pool.submit(f)
+
+        actor_id01 = pool.pool[0]["actor"]._ray_actor_id.hex()
+        assert pool.index == 0
+        pool.submit(f)
+        actor_id02 = pool.pool[0]["actor"]._ray_actor_id.hex()
+
+        assert pool.index == 1
+        assert actor_id00 == actor_id01
+        assert actor_id01 != actor_id02
+
+    def test_round_robin_actor_pool_replaces_actors_exits_gracefully(self, call_ray_start):
+        def f():
+            time.sleep(5)
+            return 123
+
+        pool = RoundRobinActorPool(num_actors=1, max_tasks_per_actor=1)
+        assert pool.index == 0
+        actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
+        future0 = pool.submit(f)
+        actor_id01 = pool.pool[0]["actor"]._ray_actor_id.hex()
+        future1 = pool.submit(f)
+        actor_id02 = pool.pool[0]["actor"]._ray_actor_id.hex()
+        assert actor_id00 == actor_id01
+        assert actor_id01 != actor_id02
+        assert 123 == future0.result()
+        assert 123 == future1.result()
+
+    def test_round_robin_actor_pool_replaces_actors_exits_gracefully_in_executor(self, call_ray_start):
+        def f():
+            time.sleep(5)
+            return 123
+
+        with RayExecutor(address=call_ray_start, max_workers=1, max_tasks_per_child=1) as ex:
+            pool = ex.actor_pool
+            assert pool.index == 0
+            actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
+            future0 = pool.submit(f)
+            actor_id01 = pool.pool[0]["actor"]._ray_actor_id.hex()
+            future1 = pool.submit(f)
+            actor_id02 = pool.pool[0]["actor"]._ray_actor_id.hex()
+            assert actor_id00 == actor_id01
+            assert actor_id01 != actor_id02
+            assert 123 == future0.result()
+            assert 123 == future1.result()
+
+    def test_round_robin_actor_pool_replaces_actors_exits_gracefully_in_executor2(self, call_ray_start):
+        def f():
+            time.sleep(5)
+            return 123
+
+        with RayExecutor(address=call_ray_start, max_workers=1, max_tasks_per_child=1) as ex:
+            pool = ex.actor_pool
+            assert pool.index == 0
+            actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
+            future0 = ex.submit(f)
+            actor_id01 = pool.pool[0]["actor"]._ray_actor_id.hex()
+            future1 = ex.submit(f)
+            actor_id02 = pool.pool[0]["actor"]._ray_actor_id.hex()
+            assert actor_id00 == actor_id01
+            assert actor_id01 != actor_id02
+            assert 123 == future0.result()
+            assert 123 == future1.result()
 
 
 #----------------------------------------------------------------------------------------------------

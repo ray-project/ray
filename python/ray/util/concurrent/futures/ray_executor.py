@@ -12,8 +12,9 @@ from typing import (
     TYPE_CHECKING,
     TypeVar,
     Generator,
+    Dict,
+    TypedDict
 )
-import os
 
 import ray
 from ray.util.annotations import PublicAPI
@@ -28,9 +29,16 @@ if TYPE_CHECKING:
     from ray._private.worker import BaseContext
     from ray.actor import ActorHandle
 
+class PoolActor(TypedDict):
+    actor: "ActorHandle"
+    task_count: int
+
 @ray.remote
 class ExecutorActor:
-    def __init__(self, initializer, initargs) -> None:
+    def __init__(self,
+            initializer: Optional[Callable[..., Any]] = None,
+            initargs: tuple[Any, ...] = (),
+            ) -> None:
         self.initializer = initializer
         self.initargs = initargs
         pass
@@ -40,32 +48,70 @@ class ExecutorActor:
             self.initializer(*self.initargs)
         return fn()
 
+    def exit(self) -> None:
+        ray.actor.exit_actor()
 
 class RoundRobinActorPool:
 
-    def __init__(self, seq: List["ActorHandle"]) -> None:
-        if seq == [] or seq is None:
+    def __init__(self,
+            num_actors: int = 2,
+            initializer: Optional[Callable[..., Any]] = None,
+            initargs: tuple[Any, ...] = (),
+            max_tasks_per_actor: Optional[int] = None
+            ) -> None:
+
+        if max_tasks_per_actor is not None:
+            if max_tasks_per_actor < 1:
+                raise ValueError(
+                    f"`max_tasks_per_child={max_tasks_per_actor}` was given. The argument \
+                    `max_tasks_per_child` must be >= 1 or None"
+                )
+        self.max_tasks_per_actor = max_tasks_per_actor
+        if num_actors < 1:
             raise ValueError("Pool must contain at least one Actor")
-        self.pool = seq
+        self.initializer = initializer
+        self.initargs = initargs
+        self.pool: Dict[int, PoolActor] = {i: self._build_actor()  for i in range(num_actors)}
         self.index: int = 0
 
     def next(self) -> "ActorHandle":
-        obj = self.pool[self.index]
+        obj = self.pool[self.index]["actor"]
         self.index += 1
         if self.index >= len(self.pool):
             self.index = 0
         return obj
 
+    def _build_actor(self) -> PoolActor:
+        return {"actor": ExecutorActor.options().remote(self.initializer, self.initargs), "task_count": 0} # type: ignore[attr-defined]
+
+    def _replace_actor_if_max_tasks(self) -> None:
+        if self.max_tasks_per_actor is not None:
+            if self.pool[self.index]["task_count"] >= self.max_tasks_per_actor:
+                self._exit_actor(self.index)
+                self.pool[self.index] = self._build_actor()
+
     def submit(self, fn: Callable[[], T]) -> Future[T]:
+        self._replace_actor_if_max_tasks()
+        self._increment_task_count()
         return self.next().actor_function.remote(fn).future()  # type: ignore
 
-    def get_next(self) -> Generator["ActorHandle", None, None]:
-        for obj in self.pool:
-            yield obj
+    def _increment_task_count(self) -> None:
+        self.pool[self.index]["task_count"] += 1
 
     def kill(self) -> None:
-        for actor in self.pool:
-            ray.kill(actor)
+        for i in self.pool:
+            self._kill_actor(i)
+
+    def _kill_actor(self, i: int) -> None:
+        pool_actor = self.pool[i]
+        ray.kill(pool_actor["actor"])
+
+    def _exit_actor(self, i: int) -> None:
+        """
+        Gracefully exit the actor and allow running jobs to finish.
+        """
+        pool_actor = self.pool.pop(i)
+        pool_actor["actor"].exit.remote()
 
 
 @PublicAPI(stability="alpha")  # type: ignore
@@ -101,6 +147,7 @@ class RayExecutor(Executor):
         initializer: Optional[Callable[..., Any]] = None,
         initargs: tuple[Any, ...] = (),
         mp_context: Optional[Any] = None,
+        max_tasks_per_child: Optional[int] = None,
         **kwargs: Any,
     ):
 
@@ -142,6 +189,14 @@ class RayExecutor(Executor):
         # mp_context is included for API consistency only, it does nothing in this context
         self._mp_context = mp_context
 
+        if max_tasks_per_child is not None:
+            if max_tasks_per_child < 1:
+                raise ValueError(
+                    f"`max_tasks_per_child={max_tasks_per_child}` was given. The argument \
+                    `max_tasks_per_child` must be >= 1 or None"
+                )
+        self.max_tasks_per_child = max_tasks_per_child
+
         if initializer is not None:
             runtime_env = kwargs.get("runtime_env")
             if runtime_env is None or "working_dir" not in runtime_env:
@@ -153,14 +208,17 @@ class RayExecutor(Executor):
             max_workers = int(ray._private.state.cluster_resources()["CPU"])
         if max_workers < 1:
             raise ValueError(
-                f"`max_workers={max_workers}` is given. The argument \
+                f"`max_workers={max_workers}` as given. The argument \
                 `max_workers` must be >= 1"
             )
         self.max_workers = max_workers
 
         self.actor_pool = RoundRobinActorPool(
-            [ExecutorActor.options().remote(initializer, initargs) for _ in range(max_workers)]  # type: ignore[attr-defined]
-        )
+                num_actors=max_workers,
+                initializer=initializer,
+                initargs=initargs,
+                max_tasks_per_actor=self.max_tasks_per_child
+                )
 
     def submit(
         self, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs
@@ -315,11 +373,11 @@ class RayExecutor(Executor):
         #    │               │                  │               │
         #    ├───────────────┼──────────────────┼───────────────┤
         #    │               │                  │               │
-        #    │   True        │    -             │ Yes           │
+        #    │   True        │    True/False    │ Yes           │
         #    │               │                  │               │
         #    ├───────────────┼──────────────────┼───────────────┤
         #    │               │                  │               │
-        #    │   False       │    -             │ No            │
+        #    │   False       │    True/False    │ No            │
         #    │               │                  │               │
         #    └───────────────┴──────────────────┴───────────────┘
 
