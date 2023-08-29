@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 import ray
-from ray import tune
+from ray import train, tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.tune.search import ConcurrencyLimiter
 
@@ -18,21 +18,21 @@ def _invalid_objective(config):
     metric = "point" if "point" in config else "report"
 
     if config[metric] > 4:
-        tune.report(float("inf"))
+        train.report({"_metric": float("inf")})
     elif config[metric] > 3:
-        tune.report(float("-inf"))
+        train.report({"_metric": float("-inf")})
     elif config[metric] > 2:
-        tune.report(np.nan)
+        train.report({"_metric": np.nan})
     else:
-        tune.report(float(config[metric]) or 0.1)
+        train.report({"_metric": float(config[metric]) or 0.1})
 
 
 def _multi_objective(config):
-    tune.report(a=config["a"] * 100, b=config["b"] * -100, c=config["c"])
+    train.report(dict(a=config["a"] * 100, b=config["b"] * -100, c=config["c"]))
 
 
 def _dummy_objective(config):
-    tune.report(metric=config["report"])
+    train.report(dict(metric=config["report"]))
 
 
 class InvalidValuesTest(unittest.TestCase):
