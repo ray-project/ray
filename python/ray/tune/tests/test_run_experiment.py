@@ -114,7 +114,7 @@ class RunExperimentTest(unittest.TestCase):
             self.assertTrue(trial.checkpoint)
 
     def testExportFormats(self):
-        class train(Trainable):
+        class train_fn(Trainable):
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
