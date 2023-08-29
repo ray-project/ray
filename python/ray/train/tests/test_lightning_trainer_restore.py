@@ -1,5 +1,4 @@
 import numpy as np
-from pathlib import Path
 import pytest
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
