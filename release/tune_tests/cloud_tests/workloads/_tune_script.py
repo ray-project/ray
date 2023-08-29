@@ -76,7 +76,7 @@ def run_tune(
     num_cpus_per_trial: int = 2,
 ):
     if trainable == "function":
-        train = fn_trainable
+        train_fn = fn_trainable
         config = {
             "max_iterations": 100,
             "sleep_time": 5,
@@ -87,9 +87,9 @@ def run_tune(
         kwargs = {"resources_per_trial": {"cpu": num_cpus_per_trial}}
     elif trainable == "rllib_str" or trainable == "rllib_trainer":
         if trainable == "rllib_str":
-            train = "PPO"
+            train_fn = "PPO"
         else:
-            train = PPO
+            train_fn = PPO
 
         config = {
             "env": "CartPole-v1",
@@ -107,13 +107,13 @@ def run_tune(
         raise RuntimeError(f"Unknown trainable: {trainable}")
 
     tune.run(
-        train,
+        train_fn,
         name=experiment_name,
         resume="AUTO",
         num_samples=1,  # 4 trials from the grid search
         config=config,
         storage_path=storage_path,
-        sync_config=train.SyncConfig(
+        sync_config=train_fn.SyncConfig(
             syncer="auto" if not no_syncer else None,
             sync_on_checkpoint=True,
             sync_period=0.5,

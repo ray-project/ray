@@ -298,7 +298,7 @@ def mock_get_trial_location(trial, result):
     return location
 
 
-def train(config):
+def train_fn(config):
     if config["do"] == "complete":
         time.sleep(0.1)
         ray_train.report(dict(acc=5, done=True))
@@ -317,7 +317,7 @@ np.random.seed(1234)
 with patch("ray.tune.progress_reporter._get_trial_location",
            mock_get_trial_location):
     tune.run(
-        train,
+        train_fn,
         config={
             "do": tune.grid_search(["complete", "once", "twice"])
         },"""

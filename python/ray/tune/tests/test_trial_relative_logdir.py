@@ -10,13 +10,13 @@ import pandas.testing as pd_testing
 import pytest
 
 import ray
-from ray import tune
+from ray import train, tune
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.tune.experiment import Trial
 
 
-def train(config):
-    tune.report(metric1=2, metric2=3)
+def train_fn(config):
+    train.report(dict(metric1=2, metric2=3))
 
 
 class TrialRelativeLogdirTest(unittest.TestCase):
@@ -28,7 +28,7 @@ class TrialRelativeLogdirTest(unittest.TestCase):
             ray.shutdown()
         ray.init(num_cpus=1, num_gpus=0)
 
-        tune.register_trainable("rel_logdir", train)
+        tune.register_trainable("rel_logdir", train_fn)
 
     def tearDown(self):
         ray.shutdown()
