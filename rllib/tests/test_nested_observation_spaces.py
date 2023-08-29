@@ -564,12 +564,12 @@ class TestNestedObservationSpaces(unittest.TestCase):
         config = PGConfig().environment("nested").framework("tf")
         algo = config.build()
         algo.train()
-        path = algo.save()
+        result = algo.save()
         algo.stop()
 
         # Test train works on restore
         algo2 = config.build()
-        algo2.restore(path)
+        algo2.restore(result)
         algo2.train()
 
         # Test rollout works on restore
