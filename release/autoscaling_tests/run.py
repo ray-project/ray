@@ -4,23 +4,7 @@ import json
 import os
 import time
 
-
-# Logger
-def setup_logger():
-    import logging
-    from rich.logging import RichHandler
-
-    FORMAT = "%(asctime)s - [%(filename)s:%(lineno)d] - %(message)s"
-
-    logging.basicConfig(
-        level="NOTSET", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
-    )
-
-    logger = logging.getLogger(__name__)
-    return logger
-
-
-logger = setup_logger()
+from ray_release.logger import logger
 
 WORKLOAD_SCRIPTS = [
     "test_core.py",
@@ -68,17 +52,26 @@ def run_test():
 @click.option("--local", is_flag=True, help="Run locally.", default=False)
 def run(local):
     start_time = time.time()
-    if local:
-        cluster = setup_cluster()
-        run_test()
-        cluster.shutdown()
-    else:
-        run_test()
+    cluster = None
+    try:
+        if local:
+            cluster = setup_cluster()
+            run_test()
+            cluster.shutdown()
+        else:
+            run_test()
 
-    end_time = time.time()
+        success = "1"
+    except Exception as e:
+        logger.error(f"Test failed with {e}")
+        success = "0"
+    finally:
+        if cluster:
+            cluster.shutdown()
+
     results = {
-        "time": end_time - start_time,
-        "success": "1",
+        "time": time.time() - start_time,
+        "success": success,
     }
     if "TEST_OUTPUT_JSON" in os.environ:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")

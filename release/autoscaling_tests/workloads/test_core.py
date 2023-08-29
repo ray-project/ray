@@ -6,17 +6,7 @@ from ray.autoscaler.v2.tests.util import (
     check_cluster,
 )
 import time
-import logging
-from rich.logging import RichHandler
-
-FORMAT = "%(asctime)s - [%(filename)s:%(lineno)d] - %(message)s"
-
-logging.basicConfig(
-    level="NOTSET", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
-)
-
-logger = logging.getLogger(__name__)
-
+from ray_release.logger import logger
 
 ray.init("auto")
 
@@ -31,7 +21,7 @@ ctx = {
     "num_cpus": 0,
     "num_nodes": 1,
 }
-logging.info(f"Starting cluster with {ctx['num_nodes']} nodes, {ctx['num_cpus']} cpus")
+logger.info(f"Starting cluster with {ctx['num_nodes']} nodes, {ctx['num_cpus']} cpus")
 check_cluster(
     [
         NodeCountCheck(ctx["num_nodes"]),
@@ -50,7 +40,7 @@ def test_request_cluster_resources(ctx: dict):
     ctx["num_nodes"] += 8 // WORKER_NODE_CPU
 
     # Assert on number of worker nodes.
-    logging.info(
+    logger.info(
         f"Requesting cluster constraints: {ctx['num_nodes']} nodes, "
         f"{ctx['num_cpus']} cpus"
     )
@@ -69,13 +59,13 @@ def test_request_cluster_resources(ctx: dict):
 
     ctx["num_cpus"] -= 8
     ctx["num_nodes"] -= 8 // WORKER_NODE_CPU
-    logging.info(
+    logger.info(
         f"Waiting for cluster go idle after constraint cleared: {ctx['num_nodes']} "
         f"nodes, {ctx['num_cpus']} cpus"
     )
     wait_for_condition(
         check_cluster,
-        timeout=60 * 5,  # 5min
+        timeout=60 + IDLE_TERMINATION_S,  # 1min + idle timeout
         retry_interval_ms=DEFAULT_RETRY_INTERVAL_MS,
         targets=[
             NodeCountCheck(ctx["num_nodes"]),
@@ -105,7 +95,7 @@ def test_run_tasks_concurrent(ctx: dict):
     ctx["num_cpus"] += (num_tasks + num_actors) * WORKER_NODE_CPU
     ctx["num_nodes"] += num_tasks + num_actors
 
-    logging.info(f"Waiting for {ctx['num_nodes']} nodes, {ctx['num_cpus']} cpus")
+    logger.info(f"Waiting for {ctx['num_nodes']} nodes, {ctx['num_cpus']} cpus")
     wait_for_condition(
         check_cluster,
         timeout=60 * 5,  # 5min
@@ -122,7 +112,7 @@ def test_run_tasks_concurrent(ctx: dict):
     ctx["num_cpus"] -= (num_actors + num_tasks) * WORKER_NODE_CPU
     ctx["num_nodes"] -= num_actors + num_tasks
 
-    logging.info(
+    logger.info(
         f"Waiting for cluster to scale down to {ctx['num_nodes']} nodes, "
         f"{ctx['num_cpus']} cpus"
     )
