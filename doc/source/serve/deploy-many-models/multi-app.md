@@ -10,7 +10,7 @@ With the introduction of multi-application Serve, we walk you through the new co
 An application consists of one or more deployments. The deployments in an application are tied into a direct acyclic graph through [model composition](serve-model-composition). An application can be called via HTTP at the specified route prefix, and the ingress deployment handles all such inbound traffic. Due to the dependence between deployments in an application, one application is a unit of upgrade. 
 
 ### When to Use Multiple Applications
-Since one application is a unit of upgrade, one of the main benefits of having multiple applications is that you can deploy multiple models or groups of models that communicate with each other, while still being able to upgrade each application independently.
+Since one application is a unit of upgrade, having multiple applications allows you to deploy multiple models or groups of models that communicate with each other, while still being able to upgrade each application independently.
 
 If you have many independent models each behind different endpoints, and you want to be able to easily add, delete, or upgrade these models, then you should use multiple applications. Each model should then be deployed as a separate application. On the other hand, if you have ML logic and business logic distributed among separate deployments that all need to be executed for a single request, then you should use model composition to build a single application consisting of multiple deployments.
 
@@ -18,54 +18,51 @@ If you have many independent models each behind different endpoints, and you wan
 ## Get Started
 
 Define a Serve application:
-```{literalinclude} ../doc_code/basic_calculator.py
+```{literalinclude} ../doc_code/image_classifier_example.py
 :language: python
 :start-after: __serve_example_begin__
 :end-before: __serve_example_end__
 ```
 
-Copy this to a file named `calculator.py`.
+Copy this to a file named `image_classifier.py`.
 
 Define a second Serve application:
-```{literalinclude} ../doc_code/basic_greet.py
+```{literalinclude} ../doc_code/translator_example.py
 :language: python
 :start-after: __serve_example_begin__
 :end-before: __serve_example_end__
 ```
-Copy this to a file named `greet.py`.
+Copy this to a file named `text_translator.py`.
 
 Generate a multi-application config file that contains both of these two applications and save it to `config.yaml`.
 
 ```
-serve build --multi-app calculator:app greet:app -o config.yaml
+serve build --multi-app image_classifier:app text_translator:app -o config.yaml
 ```
 
 This generates the following config:
 ```yaml
 proxy_location: EveryNode
+
 http_options:
   host: 0.0.0.0
   port: 8000
 
 applications:
-
 - name: app1
-  route_prefix: /calculator
-  import_path: calculator:app
+  route_prefix: /classify
+  import_path: image_classifier:app
   runtime_env: {}
   deployments:
-  - name: Multiplier
-  - name: Adder
-  - name: Router
-  - name: DAGDriver
+  - name: downloader
+  - name: ImageClassifier
 
 - name: app2
-  route_prefix: /greet
-  import_path: greet:app
+  route_prefix: /translate
+  import_path: text_translator:app
   runtime_env: {}
   deployments:
-  - name: greet
-  - name: DAGDriver
+  - name: Translator
 ```
 
 :::{note} 
@@ -82,66 +79,74 @@ $ serve deploy config.yaml
 > Sent deploy request successfully!
 ```
 
-Query the applications at their respective endpoints, `/calculator` and `/greet`.
+Query the applications at their respective endpoints, `/classify` and `/translate`.
 ```pycon
->>> requests.post("http://localhost:8000/calculator", json=["ADD", 5]).json()
-7
+>>> requests.post("http://localhost:8000/classify", json={"image_url": "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"}).text
+'brown bear, bruin, Ursus arctos'
 
->>> requests.post("http://localhost:8000/greet", json="Bob").json()
-'Good morning Bob!'
+>>> requests.post("http://localhost:8000/translate", json={"text": "Hello, the weather is quite fine today!"}).text
+'Hallo, das Wetter ist heute ziemlich gut!'
 ```
-
-:::{tip}
-If you prefer to use `cURL` to ping these endpoints, add the `-L` flag. The `DAGDriver` does an HTTP redirect, and the flag ensures that `cURL` follows the redirect:
-
-```
-curl -L -X POST -H "Content-Type: application/json" -d '["ADD", 5]' localhost:8000/calculator
-```
-:::
 
 ### Check Status
 Check the status of the applications by running `serve status`.
 
 ```console
 $ serve status
-name: app1
-app_status:
-  status: RUNNING
-  message: ''
-  deployment_timestamp: 1679969226.923282
-deployment_statuses:
-- name: app1_Multiplier
-  status: HEALTHY
-  message: ''
-- name: app1_Adder
-  status: HEALTHY
-  message: ''
-- name: app1_Router
-  status: HEALTHY
-  message: ''
-- name: app1_DAGDriver
-  status: HEALTHY
-  message: ''
-
----
-
-name: app2
-app_status:
-  status: RUNNING
-  message: ''
-  deployment_timestamp: 1679969226.923282
-deployment_statuses:
-- name: app2_greet
-  status: HEALTHY
-  message: ''
-- name: app2_DAGDriver
-  status: HEALTHY
-  message: ''
+proxies:
+  2e02a03ad64b3f3810b0dd6c3265c8a00ac36c13b2b0937cbf1ef153: HEALTHY
+applications:
+  classify:
+    status: RUNNING
+    message: ''
+    last_deployed_time_s: 1693267064.0735464
+    deployments:
+      downloader:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      ImageClassifier:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+  translate:
+    status: RUNNING
+    message: ''
+    last_deployed_time_s: 1693267064.0735464
+    deployments:
+      Translator:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
 ```
 
-:::{note} 
-Notice that in the output of `serve status`, the prefix of each deployment name is the application name. At runtime, all deployments will have their corresponding application prepended to their names.
-:::
+### Send requests between applications
+You can also make calls between applications without going through HTTP. Take the classifier and translator app above as an example. We can modify the `__call__` method of the `ImageClassifier` to check for another parameter in the HTTP request, and send requests to the translator application.
+
+```
+@serve.deployment
+class ImageClassifier:
+    ...
+    async def __call__(self, req: starlette.requests.Request):
+        req = await req.json()
+        result = await self.classify(req["image_url"])
+
+        if req.get("should_translate") is True:
+            handle = serve.get_app_handle("app2")
+            return handle.translate.remote(result)
+        
+        return result
+```
+
+Then, sending requests to the classifier application with the `should_translate` flag set to True:
+```pycon
+>>> requests.post("http://localhost:8000/classify", json={"image_url": "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg", "should_translate": False}).text
+'Braunbär, Bruin, Ursus arctos'
+```
+
 
 ### Inspect Deeper
 
@@ -172,11 +177,11 @@ $ serve run config.yaml
 
 You can then query the applications in the same way:
 ```pycon
->>> requests.post("http://localhost:8000/calculator", json=["ADD", 5]).json()
-7
+>>> requests.post("http://localhost:8000/classify", json={"image_url": "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"}).text
+'brown bear, bruin, Ursus arctos'
 
->>> requests.post("http://localhost:8000/greet", json="Bob").json()
-'Good morning Bob!'
+>>> requests.post("http://localhost:8000/translate", json={"text": "Hello, the weather is quite fine today!"}).text
+'Hallo, das Wetter ist heute ziemlich gut!'
 ```
 
 The command `serve run` blocks the terminal, which allows logs from Serve to stream to the console. This helps you test and debug your applications easily. If you want to change your code, you can hit Ctrl-C to interrupt the command and shutdown Serve and all its applications, then rerun `serve run`.
@@ -187,13 +192,10 @@ The command `serve run` blocks the terminal, which allows logs from Serve to str
 
 
 ## Adding, Deleting, and Updating Applications
-The config submitted to the cluster describes the target state for Ray Serve. Consequently, Ray Serve will add, remove, or update based on the list of applications in the config and the config options set for each application.
-* To add an application, add a new entry under the `applications` field.
-* To delete an application, remove the corresponding entry under the `applications` field.
-* To update an application, modify the config options in the corresponding entry under the `applications` field.
+You can add or remove entries under the `applications` field to add or remove applications from the cluster. This will not affect other applications on the cluster. To update an application, modify the config options in the corresponding entry under the `applications` field.
 
 :::{note}
-The update behavior for each application when a config is resubmitted is the same as the old single-application behavior. For how an application reacts to different config changes, see [Updating a Serve Application](serve-inplace-updates).
+The update behavior for an application when a config is resubmitted is the same as the old single-application behavior. For how an application reacts to different config changes, see [Updating a Serve Application](serve-inplace-updates).
 :::
 
 ## Sending requests to applications using Serve handle
@@ -202,7 +204,7 @@ Sometimes, you may want to send a request to an application without using HTTP. 
 For this situation, you can use the Serve API `serve.get_app_handle` to get a handle to any live Serve application. This handle can be used to directly execute a request on an application. For instance
 
 
-## New Multi-Application Config
+## Multi-Application Config
 
 Use the config from the above tutorial as an example. In a multi-application config, the first section is for cluster-level config options:
 ```yaml
@@ -215,24 +217,20 @@ http_options:
 Then, specify a list of applications to deploy to the Ray cluster. Each application must have a unique name and route prefix.
 ```yaml
 applications:
-
 - name: app1
-  route_prefix: /calculator
-  import_path: calculator:app
+  route_prefix: /classify
+  import_path: image_classifier:app
   runtime_env: {}
   deployments:
-  - name: Multiplier
-  - name: Adder
-  - name: Router
-  - name: DAGDriver
+  - name: downloader
+  - name: ImageClassifier
 
 - name: app2
-  route_prefix: /greet
-  import_path: greet:app
+  route_prefix: /translate
+  import_path: text_translator:app
   runtime_env: {}
   deployments:
-  - name: greet
-  - name: DAGDriver
+  - name: Translator
 ```
 
 (serve-config-migration)=
