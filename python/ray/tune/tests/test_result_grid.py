@@ -2,8 +2,7 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.train import Result
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint, Result
 from ray.tune.result_grid import ResultGrid
 
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint

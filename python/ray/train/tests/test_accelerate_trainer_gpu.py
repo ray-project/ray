@@ -1,12 +1,14 @@
+import os
 import pytest
 import torch
+from tempfile import TemporaryDirectory
 
 import ray
 import torch.nn as nn
 from ray.train.examples.pytorch.torch_linear_example import LinearDataset
 from ray.train import ScalingConfig
 import ray.train as train
-from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
+from ray.train import Checkpoint
 from ray.train.huggingface import AccelerateTrainer
 from accelerate import Accelerator
 
@@ -239,9 +241,10 @@ def linear_train_func(accelerator: Accelerator, config):
 
         result = dict(loss=loss)
         results.append(result)
-        train.report(
-            result, checkpoint=LegacyTorchCheckpoint.from_state_dict(state_dict)
-        )
+
+        with TemporaryDirectory() as tmpdir:
+            torch.save(state_dict, os.path.join(tmpdir, "checkpoint.pt"))
+            train.report(result, checkpoint=Checkpoint.from_directory(tmpdir))
 
     return results
 
@@ -307,7 +310,9 @@ def test_accelerate_e2e(ray_start_4_cpus, num_workers):
         assert accelerator.process_index == train.get_context().get_world_rank()
         model = torch.nn.Linear(3, 1)
         model = accelerator.prepare(model)
-        train.report({}, checkpoint=LegacyTorchCheckpoint.from_model(model))
+        with TemporaryDirectory() as tmpdir:
+            torch.save(model, os.path.join(tmpdir, "checkpoint.pt"))
+            train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     scaling_config = ScalingConfig(num_workers=num_workers)
     trainer = AccelerateTrainer(

@@ -26,7 +26,7 @@ from ray.air.constants import (
 
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.train._internal.checkpoint_manager import (
     _TrainingResult,
     _CheckpointManager as _NewCheckpointManager,
@@ -53,7 +53,7 @@ from ray.tune.result import (
     DEFAULT_EXPERIMENT_NAME,
     _get_defaults_results_dir,
 )
-from ray.tune.syncer import SyncConfig
+from ray.train import SyncConfig
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
@@ -1082,7 +1082,7 @@ class Trial:
 
     def has_checkpoint(self):
         if _use_storage_context():
-            return self.checkpoint.path is not None
+            return self.checkpoint is not None
         return self.checkpoint.dir_or_data is not None
 
     def clear_checkpoint(self):
