@@ -5,24 +5,27 @@
 Ray Train: Scalable Model Training
 ==================================
 
-Ray Train is a scalable model training library for distributed training and fine-tuning.
+Ray Train is a scalable machine learning library for distributed training and fine-tuning.
 
-.. hidden:: 
-    
-    image:: ./images/train-concepts.svg
-        
-.. visible::
-
-Ray Train abstracts away the complexities of distributed computing.
-It allows you to use the same code to train your model on either a single node or multiple nodes.
-Configure resources with a single line.
+Ray Train abstracts away the complexities of distributed computing, 
+and allows you to scale your model training code from a single machine to a cluster of machines in the cloud.
 Whether you have large models or large datasets, Ray Train is the simplest solution for distributed training.
 
 Ray Train provides support for many frameworks:
 
-* PyTorch-based frameworks: PyTorch, PyTorch Lightning, Hugging Face Transformers, Hugging Face Accelerate, DeepSpeed
-* Other deep learning frameworks: TensorFlow, Keras, Horovod
-* Tree-based frameworks: XGBoost, LightGBM
+* PyTorch ecosystem
+    * PyTorch
+    * PyTorch Lightning
+    * Hugging Face Transformers
+    * Hugging Face Accelerate
+    * DeepSpeed
+* More deep learning
+    * TensorFlow
+    * Keras
+    * Horovod
+* Boosted-trees
+    * XGBoost
+    * LightGBM
 
 Install Ray Train
 -----------------
@@ -36,11 +39,8 @@ To install Ray Train, run:
 To learn more about installing Ray and its libraries, see
 :ref:`Installing Ray <installation>`.
 
-Learn more
-----------
-
-General
-~~~~~~~
+Get started
+~~~~~~~~~~~
 
 .. grid:: 1 2 2 2
     :gutter: 1
@@ -60,58 +60,6 @@ General
             :expand:
 
             Learn the basics
-
-    .. grid-item-card::
-
-        **User Guides**
-        ^^^
-
-        Learn how to use Ray Train effectively and efficiently for your use case.
-
-        +++
-        .. button-ref:: train-user-guides
-            :color: primary
-            :outline:
-            :expand:
-
-            Learn how to use Ray Train
-
-    .. grid-item-card::
-
-        **Examples**
-        ^^^
-
-        Find examples for different frameworks.
-
-        +++
-        .. button-ref:: train-examples
-            :color: primary
-            :outline:
-            :expand:
-
-            See examples
-
-    .. grid-item-card::
-
-        **API**
-        ^^^
-
-        Get more in-depth information about the Ray Train API.
-
-        +++
-        .. button-ref:: air-trainer-ref
-            :color: primary
-            :outline:
-            :expand:
-
-            Read the API Reference
-
-Get started
-~~~~~~~~~~~
-
-.. grid:: 1 2 2 2
-    :gutter: 1
-    :class-container: container pb-6
 
     .. grid-item-card::
 
@@ -158,6 +106,58 @@ Get started
 
             Try Ray Train with Transformers
 
+earn more
+~~~~~~~~~~
+
+.. grid:: 1 2 2 2
+    :gutter: 1
+    :class-container: container pb-6
+
+    .. grid-item-card::
+
+        **User Guides**
+        ^^^
+
+        Use Ray Train effectively and efficiently for your use case.
+
+        +++
+        .. button-ref:: train-user-guides
+            :color: primary
+            :outline:
+            :expand:
+
+            Get instructions on how to use Ray Train
+
+    .. grid-item-card::
+
+        **Examples**
+        ^^^
+
+        Find examples for different frameworks.
+
+        +++
+        .. button-ref:: train-examples
+            :color: primary
+            :outline:
+            :expand:
+
+            See examples
+
+    .. grid-item-card::
+
+        **API**
+        ^^^
+
+        Consult the full description of the Ray Train API .
+
+        +++
+        .. button-ref:: air-trainer-ref
+            :color: primary
+            :outline:
+            :expand:
+
+            Read the API Reference
+
     .. grid-item-card::
 
         **More Frameworks**
@@ -173,4 +173,5 @@ Get started
 
             Try Ray Train with other frameworks
 
+L
 .. include:: /_includes/train/announcement_bottom.rst
