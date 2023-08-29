@@ -6,13 +6,7 @@ from pathlib import Path
 from queue import Queue
 from urllib.parse import urlparse
 import yaml
-
-
 import requests
-import scipy.linalg  # noqa: F401
-
-# Note: the scipy import has to stay here, it's used implicitly down the line
-import scipy.stats  # noqa: F401
 from preprocess_github_markdown import preprocess_github_markdown_file
 from sphinx.util import logging as sphinx_logging
 from sphinx.util.console import red  # type: ignore

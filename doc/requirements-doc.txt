@@ -22,6 +22,8 @@ sphinx-remove-toctrees==0.0.3
 autodoc_pydantic==1.6.1
 sphinx_design==0.4.1
 
+pydantic<2 # Pydantic is required by autodoc_pydantic, but must be <2 for ray
+
 # MyST
 myst-parser==0.15.2
 myst-nb==0.13.1

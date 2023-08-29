@@ -32,17 +32,10 @@ MOCK_MODULES = [
 ]
 sys.modules.update((mod_name, MagicMock()) for mod_name in MOCK_MODULES)
 
-
-assert (
-    "ray" not in sys.modules
-), "If ray is already imported, we will not render documentation correctly!"
-
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath("../../python/"))
-
-import ray
 
 # -- General configuration ------------------------------------------------
 
@@ -123,10 +116,6 @@ myst_enable_extensions = [
     "replacements",
 ]
 
-intersphinx_mapping = {
-    "sklearn": ("https://scikit-learn.org/stable/", None),
-}
-
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
 # To cache previous runs, set this to "cache".
@@ -150,31 +139,6 @@ copybutton_prompt_is_regexp = True
 # By default, tabs can be closed by selecting an open tab. We disable this
 # functionality with the `sphinx_tabs_disable_tab_closing` option.
 sphinx_tabs_disable_tab_closing = True
-
-autodoc_mock_imports = [
-    "transformers",
-    "horovod",
-    "datasets",
-    "tensorflow",
-    "torch",
-    "torchvision",
-    "lightgbm",
-    "lightgbm_ray",
-    "pytorch_lightning",
-    "xgboost",
-    "xgboost_ray",
-    "wandb",
-    "huggingface",
-    "joblib",
-    "watchfiles",
-]
-
-for mock_target in autodoc_mock_imports:
-    assert mock_target not in sys.modules, (
-        f"Problematic mock target ({mock_target}) found; "
-        "autodoc_mock_imports cannot mock modules that have already"
-        "been loaded into sys.modules when the sphinx build starts."
-    )
 
 # Special mocking of packaging.version.Version is required when using sphinx;
 # we can't just add this to autodoc_mock_imports, as packaging is imported by
@@ -233,11 +197,11 @@ author = "The Ray Team"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
-# built documents.
-from ray import __version__ as version
-
-# The full version, including alpha/beta/rc tags.
-release = version
+# built documents. Retrieve the version using `find_version` rather than importing
+# directly (from ray import __version__) because initializing ray will prevent
+# mocking of certain external dependencies.
+from setup import find_version
+release = find_version('ray', '__init__.py')
 
 language = None
 
@@ -489,3 +453,52 @@ autosummary_filename_map = {
     "ray.serve.deployment": "ray.serve.deployment_decorator",
     "ray.serve.Deployment": "ray.serve.Deployment",
 }
+
+# Mock out external dependencies here.
+autodoc_mock_imports = [
+    "transformers",
+    "horovod",
+    "datasets",
+    "tensorflow",
+    "torch",
+    "torchvision",
+    "lightgbm",
+    "lightgbm_ray",
+    "pytorch_lightning",
+    "xgboost",
+    "xgboost_ray",
+    "wandb",
+    "huggingface",
+    "joblib",
+    "watchfiles",
+    "setproctitle",
+    "gymnasium",
+    "fastapi",
+    "tree",
+    "uvicorn",
+    "starlette",
+    "fsspec",
+    "skimage",
+]
+
+
+for mock_target in autodoc_mock_imports:
+    assert mock_target not in sys.modules, (
+        f"Problematic mock target ({mock_target}) found; "
+        "autodoc_mock_imports cannot mock modules that have already"
+        "been loaded into sys.modules when the sphinx build starts."
+    )
+
+# Other sphinx docs can be linked to if the appropriate URL to the docs
+# is specified in the `intersphinx_mapping` - for example, types in function signatures
+# that are defined in dependencies can link to their respective documentation.
+intersphinx_mapping = {
+    "sklearn": ("https://scikit-learn.org/stable/", None),
+}
+
+# Ray must not be imported in conf.py because third party modules initialized by
+# `import ray` will no be mocked out correctly. Perform a check here to ensure
+# ray is not imported.
+assert (
+    "ray" not in sys.modules
+), "If ray is already imported, we will not render documentation correctly!"
