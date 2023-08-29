@@ -278,7 +278,7 @@ information about the training run, including the metrics and checkpoints report
 
     result.metrics     # The metrics reported during training.
     result.checkpoint  # The latest checkpoint reported during training.
-    result.log_dir     # The path where logs are stored.
+    result.path     # The path where logs are stored.
     result.error       # The exception that was raised, if training failed.
 
 .. TODO: Add results guide

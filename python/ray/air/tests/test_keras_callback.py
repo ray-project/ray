@@ -7,7 +7,7 @@ import tensorflow as tf
 
 import ray
 from ray import train
-from ray.air.integrations.keras import Callback, ReportCheckpointCallback
+from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train import ScalingConfig
 from ray.train.tensorflow import (
@@ -205,11 +205,6 @@ def test_keras_callback_e2e():
 
     items = np.random.uniform(0, 1, size=(10, 1))
     predictor.predict(data=items)
-
-
-def test_keras_callback_is_deprecated():
-    with pytest.raises(DeprecationWarning):
-        Callback()
 
 
 if __name__ == "__main__":
