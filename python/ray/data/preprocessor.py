@@ -1,5 +1,7 @@
 import abc
+import base64
 import collections
+import pickle
 import warnings
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
@@ -326,3 +328,18 @@ class Preprocessor(abc.ABC):
         path is the most optimal.
         """
         return BatchFormat.PANDAS
+
+    @DeveloperAPI
+    def serialize(self) -> str:
+        """Return this preprocessor serialized as a string.
+        Note: this is not a stable serialization format as it uses `pickle`.
+        """
+        # Convert it to a plain string so that it can be included as JSON metadata
+        # in Trainer checkpoints.
+        return base64.b64encode(pickle.dumps(self)).decode("ascii")
+
+    @staticmethod
+    @DeveloperAPI
+    def deserialize(serialized: str) -> "Preprocessor":
+        """Load the original preprocessor serialized via `self.serialize()`."""
+        return pickle.loads(base64.b64decode(serialized))
