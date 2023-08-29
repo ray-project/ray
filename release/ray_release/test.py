@@ -255,11 +255,10 @@ class Test(dict):
         """
         Returns the byod repo to use for this test.
         """
-        return (
-            DATAPLANE_ECR_REPO
-            if self.get_byod_type() == "cpu"
-            else DATAPLANE_ECR_ML_REPO
-        )
+        byod_type = self.get_byod_type()
+        if byod_type == "gpu":
+            return DATAPLANE_ECR_ML_REPO
+        return DATAPLANE_ECR_REPO
 
     def get_byod_ecr(self) -> str:
         """
