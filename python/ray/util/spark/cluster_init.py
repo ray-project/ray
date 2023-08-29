@@ -101,6 +101,7 @@ class RayClusterOnSpark:
         self.is_shutdown = False
         self.spark_job_is_canceled = False
         self.background_job_exception = None
+        self.ray_ctx = None
 
     def _cancel_background_spark_job(self):
         self.spark_job_is_canceled = True
@@ -115,11 +116,10 @@ class RayClusterOnSpark:
             )
         try:
             # connect to the ray cluster.
-            ray_ctx = ray.init(address=self.address)
-            webui_url = ray_ctx.address_info.get("webui_url", None)
-            if webui_url:
-                self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
-            else:
+            self.ray_ctx = ray.init(address=self.address)
+            webui_url = self.ray_ctx.address_info.get("webui_url", None)
+            self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
+            if not webui_url:
                 try:
                     __import__("ray.dashboard.optional_deps")
                 except ModuleNotFoundError:
@@ -193,6 +193,7 @@ class RayClusterOnSpark:
 
     def disconnect(self):
         ray.shutdown()
+        self.ray_ctx = None
 
     def shutdown(self, cancel_background_job=True):
         """
