@@ -1,8 +1,10 @@
+import asyncio
+import logging
 import os
 import random
 import string
 import time
-import asyncio
+from typing import List
 
 import requests
 
@@ -111,11 +113,23 @@ class RandomTest:
         self.deployments = []
 
         self.random_killer = random_killer_handle
-        for _ in range(max_deployments):
-            self.create_deployment()
+
+        # Deploy in parallel to avoid long test startup time.
+        self.wait_for_deployments_ready([
+            self.create_deployment(blocking=False)
+            for _ in range(max_deployments)
+        ])
+
         self.random_killer.run.remote()
 
-    def create_deployment(self):
+    def wait_for_deployments_ready(self, deployment_names: List[str]):
+        client = get_global_client()
+        for deployment_name in deployment_names:
+            client._wait_for_deployment_healthy(
+                deployment_name, timeout_s=60
+            )
+
+    def create_deployment(self, blocking: bool = True) -> str:
         if len(self.deployments) == self.max_deployments:
             deployment_to_delete = self.deployments.pop()
             serve.get_deployment(deployment_to_delete).delete()
@@ -124,15 +138,19 @@ class RandomTest:
 
         @serve.deployment(name=new_name)
         def handler(self, *args):
+            logging.getLogger("ray.serve").setLevel(logging.ERROR)
             return new_name
 
-        ray.get(self.random_killer.spare.remote(new_name))
+        if blocking:
+            ray.get(self.random_killer.spare.remote(new_name))
+            handler.deploy(_blocking=blocking)
+            self.deployments.append(new_name)
+            ray.get(self.random_killer.stop_spare.remote(new_name))
+        else:
+            handler.deploy(_blocking=False)
+            self.deployments.append(new_name)
 
-        handler.deploy(_blocking=True)
-
-        self.deployments.append(new_name)
-
-        ray.get(self.random_killer.stop_spare.remote(new_name))
+        return new_name
 
     def verify_deployment(self):
         deployment = random.choice(self.deployments)
