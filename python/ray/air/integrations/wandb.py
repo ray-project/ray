@@ -7,6 +7,8 @@ import warnings
 import numpy as np
 from numbers import Number
 
+import pyarrow.fs
+
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -673,7 +675,8 @@ class WandbLoggerCallback(LoggerCallback):
     def log_trial_save(self, trial: "Trial"):
         if self.upload_checkpoints and trial.checkpoint:
             if _use_storage_context():
-                checkpoint_root = trial.checkpoint.path
+                if isinstance(trial.checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+                    checkpoint_root = trial.checkpoint.path
             else:
                 checkpoint_root = trial.checkpoint.dir_or_data
 

@@ -229,7 +229,7 @@ class CometLoggerCallback(LoggerCallback):
             checkpoint_root = None
 
             if _use_storage_context():
-                if isinstance(trial.checkpoint.storage, pyarrow.fs.LocalFileSystem):
+                if isinstance(trial.checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
                     checkpoint_root = trial.checkpoint.path
                     # Todo: For other filesystems, we may want to use
                     # artifact.add_remote() instead. However, this requires a full
