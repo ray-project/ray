@@ -344,10 +344,8 @@
     - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only 
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/tests/xgboost/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only 
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/tests/horovod/...
 
 
