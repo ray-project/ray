@@ -39,16 +39,18 @@ document.addEventListener("DOMContentLoaded", function() {
             "User Guides", "Examples",
             // Ray Core
             "Ray Core", "Ray Core API",
+            // Ray Cluster
             "Ray Clusters", "Deploying on Kubernetes", "Deploying on VMs",
             "Applications Guide", "Ray Cluster Management API",
+            "Getting Started with KubeRay", "KubeRay Ecosystem", "KubeRay Benchmarks", "KubeRay Troubleshooting",
             // Ray AIR
             "Ray AIR API",
             // Ray Data
             "Ray Data", "Ray Data API", "Integrations",
             // Ray Train
-            "Ray Train", "Ray Train API",
-            "Distributed PyTorch", "Advanced Topics", "More Frameworks",
-            "Ray Train Internals",
+            "Ray Train", "More Frameworks",
+            "Advanced Topics", "Internals",
+            "Ray Train API",
             // Ray Tune
             "Ray Tune", "Ray Tune Examples", "Ray Tune API",
             // Ray Serve

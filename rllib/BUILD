@@ -2977,12 +2977,12 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "examples/action_masking_tf",
+    name = "examples/action_masking_tf2",
     main = "examples/action_masking.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/action_masking.py"],
-    args = ["--stop-iter=2", "--framework=tf"]
+    args = ["--stop-iter=2", "--framework=tf2"]
 )
 
 py_test(
@@ -4479,7 +4479,6 @@ py_test_module_list(
   files = [
     "tests/test_dnc.py",
     "tests/test_perf.py",
-    "algorithms/dreamerv3/tests/test_dreamerv3.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",

@@ -2,7 +2,6 @@ import copy
 import datetime
 import warnings
 from functools import partial
-import grpc
 import logging
 import os
 from pathlib import Path
@@ -22,18 +21,16 @@ from typing import (
     TYPE_CHECKING,
 )
 
+import ray
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.exceptions import RpcError
-from ray.train._internal.storage import (
-    _use_storage_context,
-    StorageContext,
-)
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
 from ray.tune.result import _get_defaults_results_dir
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
-from ray.tune.syncer import SyncConfig
+from ray.train import SyncConfig
 from ray.tune.utils import date_str
 from ray.tune.utils.util import _resolve_storage_path, _split_remote_local_path
 from ray.util import log_once
@@ -79,7 +76,12 @@ def _validate_log_to_file(log_to_file):
 
 
 def _get_local_dir_with_expand_user(local_dir: Optional[str]) -> str:
-    return os.path.abspath(os.path.expanduser(local_dir or _get_defaults_results_dir()))
+    return (
+        Path(local_dir or _get_defaults_results_dir())
+        .expanduser()
+        .absolute()
+        .as_posix()
+    )
 
 
 def _get_dir_name(run, explicit_name: Optional[str], combined_name: str) -> str:
@@ -182,7 +184,7 @@ class Experiment:
         try:
             self._run_identifier = Experiment.register_if_needed(run)
         except RpcError as e:
-            if e.rpc_code == grpc.StatusCode.RESOURCE_EXHAUSTED.value[0]:
+            if e.rpc_code == ray._raylet.GRPC_STATUS_CODE_RESOURCE_EXHAUSTED:
                 raise TuneError(
                     f"The Trainable/training function is too large for grpc resource "
                     f"limit. Check that its definition is not implicitly capturing a "
@@ -196,7 +198,8 @@ class Experiment:
 
         self.storage = None
         if _use_storage_context():
-            assert name is not None
+            if not name:
+                name = StorageContext.get_experiment_dir_name(run)
 
             self.storage = StorageContext(
                 storage_path=storage_path,
@@ -327,7 +330,7 @@ class Experiment:
             "log_to_file": (stdout_file, stderr_file),
             "export_formats": export_formats or [],
             "max_failures": max_failures,
-            "restore": os.path.abspath(os.path.expanduser(restore))
+            "restore": Path(restore).expanduser().absolute().as_posix()
             if restore
             else None,
             "storage": self.storage,
@@ -505,7 +508,7 @@ class Experiment:
     @property
     def remote_path(self) -> Optional[str]:
         if _use_storage_context():
-            return str(self.storage.storage_prefix / self.storage.experiment_fs_path)
+            return self.storage.experiment_fs_path
 
         if not self._legacy_remote_storage_path:
             return None

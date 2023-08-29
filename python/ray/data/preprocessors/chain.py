@@ -3,13 +3,11 @@ from typing import TYPE_CHECKING, Union
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.air.data_batch_type import DataBatchType
 
 
-@PublicAPI(stability="alpha")
 class Chain(Preprocessor):
     """Combine multiple preprocessors into a single :py:class:`Preprocessor`.
 

@@ -1,4 +1,5 @@
 import itertools
+import os
 import pathlib
 import posixpath
 import sys
@@ -23,10 +24,13 @@ from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.air._internal.remote_storage import _is_local_windows_path
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import _check_pyarrow_version, _resolve_custom_scheme
+from ray.data._internal.util import (
+    _check_pyarrow_version,
+    _resolve_custom_scheme,
+    get_attribute_from_class_name,
+)
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
@@ -54,6 +58,15 @@ FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
 
 # 16 file size fetches from S3 takes ~1.5 seconds with Arrow's S3FileSystem.
 PATHS_PER_FILE_SIZE_FETCH_TASK = 16
+
+# The errors to retry for opening file.
+OPEN_FILE_RETRY_ON_ERRORS = ["AWS Error SLOW_DOWN"]
+
+# The max retry backoff in seconds for opening file.
+OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
+
+# The max number of attempts for opening file.
+OPEN_FILE_MAX_ATTEMPTS = 10
 
 
 @DeveloperAPI
@@ -208,6 +221,10 @@ class FileBasedDatasource(Datasource):
         JSONDatasource, CSVDatasource, NumpyDatasource, BinaryDatasource
     """
 
+    # If `_WRITE_FILE_PER_ROW` is `True`, this datasource calls `_write_row` and writes
+    # each row to a file. Otherwise, this datasource calls `_write_block` and writes
+    # each block to a file.
+    _WRITE_FILE_PER_ROW = False
     _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
 
     def _open_input_source(
@@ -256,6 +273,32 @@ class FileBasedDatasource(Datasource):
             "Subclasses of FileBasedDatasource must implement _read_file()."
         )
 
+    def on_write_start(
+        self,
+        path: str,
+        try_create_dir: bool = True,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        **write_args,
+    ) -> None:
+        """Create a directory to write files to.
+
+        If ``try_create_dir`` is ``False``, this method is a no-op.
+        """
+        from pyarrow.fs import FileType
+
+        self.has_created_dir = False
+        if try_create_dir:
+            paths, filesystem = _resolve_paths_and_filesystem(path, filesystem)
+            assert len(paths) == 1, len(paths)
+            path = paths[0]
+
+            if filesystem.get_file_info(path).type is FileType.NotFound:
+                # Arrow's S3FileSystem doesn't allow creating buckets by default, so we
+                # add a query arg enabling bucket creation if an S3 URI is provided.
+                tmp = _add_creatable_buckets_param_if_s3_uri(path)
+                filesystem.create_dir(tmp, recursive=True)
+                self.has_created_dir = True
+
     def write(
         self,
         blocks: Iterable[Block],
@@ -267,17 +310,23 @@ class FileBasedDatasource(Datasource):
         open_stream_args: Optional[Dict[str, Any]] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
         write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        file_format: Optional[str] = None,
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **write_args,
     ) -> WriteResult:
         """Write blocks for a file-based datasource."""
-        file_format = self._FILE_EXTENSION
-        if isinstance(file_format, list):
-            file_format = file_format[0]
+        # `FileBasedDatasource` subclasses expose a `_FILE_EXTENSION` attribute. It
+        # represents a list of supported file extensions. If the user doesn't specify
+        # a file format, we default to the first extension in the list.
+        if file_format is None:
+            file_format = self._FILE_EXTENSION
+            if isinstance(file_format, list):
+                file_format = file_format[0]
 
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
         _write_block_to_file = self._write_block
+        _write_row_to_file = self._write_row
 
         if open_stream_args is None:
             open_stream_args = {}
@@ -288,16 +337,6 @@ class FileBasedDatasource(Datasource):
         num_rows_written = 0
         block_idx = 0
         for block in blocks:
-            write_path = block_path_provider(
-                path,
-                filesystem=filesystem,
-                dataset_uuid=dataset_uuid,
-                task_index=ctx.task_idx,
-                block_index=block_idx,
-                file_format=file_format,
-            )
-
-            logger.get_logger().debug(f"Writing {write_path} file.")
             if _block_udf is not None:
                 block = _block_udf(block)
 
@@ -305,24 +344,50 @@ class FileBasedDatasource(Datasource):
             if block.num_rows() == 0:
                 continue
 
-            if block_idx == 0:
-                # On the first non-empty block, try to create the directory.
-                if try_create_dir:
-                    # Arrow's S3FileSystem doesn't allow creating buckets by
-                    # default, so we add a query arg enabling bucket creation
-                    # if an S3 URI is provided.
-                    tmp = _add_creatable_buckets_param_if_s3_uri(path)
-                    filesystem.create_dir(tmp, recursive=True)
-                filesystem = _wrap_s3_serialization_workaround(filesystem)
-
             fs = _unwrap_s3_serialization_workaround(filesystem)
-            with fs.open_output_stream(write_path, **open_stream_args) as f:
-                _write_block_to_file(
-                    f,
-                    block,
-                    writer_args_fn=write_args_fn,
-                    **write_args,
+
+            if self._WRITE_FILE_PER_ROW:
+                for row_index, row in enumerate(
+                    block.iter_rows(public_row_format=False)
+                ):
+                    # TODO: Refactor `BlockWritePathProvider` to support rows.
+                    filename = (
+                        f"{dataset_uuid}_{ctx.task_idx:06}_{block_idx:06}_"
+                        f"{row_index:06}.{file_format}"
+                    )
+                    write_path = os.path.join(path, filename)
+                    logger.get_logger().debug(f"Writing {write_path} file.")
+                    with _open_file_with_retry(
+                        write_path,
+                        lambda: fs.open_output_stream(write_path, **open_stream_args),
+                    ) as f:
+                        _write_row_to_file(
+                            f,
+                            row,
+                            writer_args_fn=write_args_fn,
+                            file_format=file_format,
+                            **write_args,
+                        )
+            else:
+                write_path = block_path_provider(
+                    path,
+                    filesystem=filesystem,
+                    dataset_uuid=dataset_uuid,
+                    task_index=ctx.task_idx,
+                    block_index=block_idx,
+                    file_format=file_format,
                 )
+                logger.get_logger().debug(f"Writing {write_path} file.")
+                with _open_file_with_retry(
+                    write_path,
+                    lambda: fs.open_output_stream(write_path, **open_stream_args),
+                ) as f:
+                    _write_block_to_file(
+                        f,
+                        block,
+                        writer_args_fn=write_args_fn,
+                        **write_args,
+                    )
 
             num_rows_written += block.num_rows()
             block_idx += 1
@@ -336,6 +401,23 @@ class FileBasedDatasource(Datasource):
         # TODO: decide if we want to return richer object when the task
         # succeeds.
         return "ok"
+
+    def on_write_complete(
+        self,
+        write_results: List[WriteResult],
+        path: Optional[str] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        **kwargs,
+    ) -> None:
+        if not self.has_created_dir:
+            return
+
+        paths, filesystem = _resolve_paths_and_filesystem(path, filesystem)
+        assert len(paths) == 1, len(paths)
+        path = paths[0]
+
+        if all(write_results == "skip" for write_results in write_results):
+            filesystem.delete_dir(path)
 
     def _write_block(
         self,
@@ -351,6 +433,20 @@ class FileBasedDatasource(Datasource):
         raise NotImplementedError(
             "Subclasses of FileBasedDatasource must implement _write_files()."
         )
+
+    def _write_row(
+        self,
+        f: "pyarrow.NativeFile",
+        row,
+        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        **writer_args,
+    ):
+        """Writes a row to a single file, passing all kwargs to the writer.
+
+        If `_WRITE_FILE_PER_ROW` is set to `True`, this method will be called instead
+        of `_write_block()`.
+        """
+        raise NotImplementedError
 
     @classmethod
     def file_extension_filter(cls) -> Optional[PathPartitionFilter]:
@@ -370,8 +466,6 @@ class _FileBasedDatasourceReader(Reader):
         meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
         partition_filter: PathPartitionFilter = None,
         partitioning: Partitioning = None,
-        # TODO(ekl) deprecate this once read fusion is available.
-        _block_udf: Optional[Callable[[Block], Block]] = None,
         ignore_missing_paths: bool = False,
         **reader_args,
     ):
@@ -382,7 +476,6 @@ class _FileBasedDatasourceReader(Reader):
         self._meta_provider = meta_provider
         self._partition_filter = partition_filter
         self._partitioning = partitioning
-        self._block_udf = _block_udf
         self._ignore_missing_paths = ignore_missing_paths
         self._reader_args = reader_args
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
@@ -415,6 +508,10 @@ class _FileBasedDatasourceReader(Reader):
                     "'partition_filter' field is set properly."
                 )
 
+        ctx = DataContext.get_current()
+        shuffler_class = get_attribute_from_class_name(ctx.file_metadata_shuffler)
+        self._file_metadata_shuffler = shuffler_class(self._reader_args)
+
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
         for sz in self._file_sizes:
@@ -429,9 +526,12 @@ class _FileBasedDatasourceReader(Reader):
         open_stream_args = self._open_stream_args
         reader_args = self._reader_args
         partitioning = self._partitioning
-        _block_udf = self._block_udf
 
-        paths, file_sizes = self._paths, self._file_sizes
+        paths_and_sizes = self._file_metadata_shuffler.shuffle_files(
+            list(zip(self._paths, self._file_sizes))
+        )
+        paths, file_sizes = list(map(list, zip(*paths_and_sizes)))
+
         read_stream = self._delegate._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
 
@@ -447,9 +547,6 @@ class _FileBasedDatasourceReader(Reader):
             DataContext._set_current(ctx)
             logger.get_logger().debug(f"Reading {len(read_paths)} files.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
-            output_buffer = BlockOutputBuffer(
-                block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
-            )
             for read_path in read_paths:
                 compression = open_stream_args.pop("compression", None)
                 if compression is None:
@@ -485,17 +582,14 @@ class _FileBasedDatasourceReader(Reader):
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
 
-                with open_input_source(fs, read_path, **open_stream_args) as f:
+                with _open_file_with_retry(
+                    read_path,
+                    lambda: open_input_source(fs, read_path, **open_stream_args),
+                ) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         if partitions:
                             data = _add_partitions(data, partitions)
-
-                        output_buffer.add_block(data)
-                        if output_buffer.has_next():
-                            yield output_buffer.next()
-            output_buffer.finalize()
-            if output_buffer.has_next():
-                yield output_buffer.next()
+                        yield data
 
         # fix https://github.com/ray-project/ray/issues/24296
         parallelism = min(parallelism, len(paths))
@@ -623,7 +717,10 @@ def _resolve_paths_and_filesystem(
     if isinstance(paths, pathlib.Path):
         paths = [str(paths)]
     elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
-        raise ValueError("paths must be a path string or a list of path strings.")
+        raise ValueError(
+            "Expected `paths` to be a `str`, `pathlib.Path`, or `list[str]`, but got "
+            f"`{paths}`."
+        )
     elif len(paths) == 0:
         raise ValueError("Must provide at least one path.")
 
@@ -830,3 +927,44 @@ def _fetch_metadata_parallel(
         fetch_tasks.append(remote_fetch_func.remote(uri_chunk))
     results = metadata_fetch_bar.fetch_until_complete(fetch_tasks)
     yield from itertools.chain.from_iterable(results)
+
+
+def _open_file_with_retry(
+    file_path: str,
+    open_file: Callable[[], "pyarrow.NativeFile"],
+) -> "pyarrow.NativeFile":
+    """Open file with an exponential backoff retry strategy.
+
+    This is to avoid transient task failure with remote storage (such as S3),
+    when the remote storage throttles the requests.
+    """
+    import random
+    import time
+
+    if OPEN_FILE_MAX_ATTEMPTS < 1:
+        raise ValueError(
+            "OPEN_FILE_MAX_ATTEMPTS cannot be negative or 0. Get: "
+            f"{OPEN_FILE_MAX_ATTEMPTS}"
+        )
+
+    for i in range(OPEN_FILE_MAX_ATTEMPTS):
+        try:
+            return open_file()
+        except Exception as e:
+            error_message = str(e)
+            is_retryable = any(
+                [error in error_message for error in OPEN_FILE_RETRY_ON_ERRORS]
+            )
+            if is_retryable and i + 1 < OPEN_FILE_MAX_ATTEMPTS:
+                # Retry with binary expoential backoff with random jitter.
+                backoff = min(
+                    (2 ** (i + 1)) * random.random(),
+                    OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
+                )
+                logger.get_logger().debug(
+                    f"Retrying {i+1} attempts to open file {file_path} after "
+                    f"{backoff} seconds."
+                )
+                time.sleep(backoff)
+            else:
+                raise e from None

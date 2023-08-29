@@ -9,6 +9,10 @@ doctest(
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
             "huggingface/transformers/transformers_trainer.py",
+            "accelerate/accelerate_torch_trainer.py",
+            "accelerate/accelerate_torch_trainer_no_raydata.py",
+            "deepspeed/deepspeed_torch_trainer.py",
+            "deepspeed/deepspeed_torch_trainer_no_raydata.py",
             "_internal/session.py",
             "context.py"
         ]
@@ -21,6 +25,10 @@ doctest(
     files = [
         "tensorflow/tensorflow_trainer.py",
         "huggingface/transformers/transformers_trainer.py",
+        "accelerate/accelerate_torch_trainer.py",
+        "accelerate/accelerate_torch_trainer_no_raydata.py",
+        "deepspeed/deepspeed_torch_trainer.py",
+        "deepspeed/deepspeed_torch_trainer_no_raydata.py",
         "_internal/session.py",
         "context.py"
     ],
@@ -36,16 +44,6 @@ doctest(
 py_library(
     name = "conftest",
     srcs = ["tests/conftest.py"]
-)
-
-py_test(
-    name = "mlflow_fashion_mnist_example",
-    size = "medium",
-    main = "examples/mlflow_fashion_mnist_example.py",
-    srcs = ["examples/mlflow_fashion_mnist_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"],
-    args = ["--smoke-test"]
 )
 
 py_test(
@@ -73,30 +71,6 @@ py_test(
     srcs = ["examples/pytorch/torch_quick_start.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
-)
-
-py_test(
-    name = "transformers_example_gpu",
-    size = "medium",
-    main = "examples/transformers/transformers_example.py",
-    srcs = ["examples/transformers/transformers_example.py"],
-    tags = ["team:ml", "exclusive", "tune", "gpu_only"],
-    deps = [":train_lib"],
-    args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
-    "--max_length=32", "--per_device_train_batch_size=64",
-    "--max_train_steps=2", "--start_local", "--num_workers=2", "--use_gpu"]
-)
-
-py_test(
-    name = "transformers_example_cpu",
-    size = "medium",
-    main = "examples/transformers/transformers_example.py",
-    srcs = ["examples/transformers/transformers_example.py"],
-    tags = ["team:ml", "exclusive", "tune"],
-    deps = [":train_lib"],
-    args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
-    "--max_length=32", "--per_device_train_batch_size=64",
-    "--max_train_steps=2", "--start_local", "--num_workers=2"]
 )
 
 py_test(
@@ -271,33 +245,9 @@ py_test(
 )
 
 py_test(
-    name = "test_batch_predictor",
-    size = "medium",
-    srcs = ["tests/test_batch_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_batchpredictor_runtime",
-    size = "medium",
-    srcs = ["tests/test_batchpredictor_runtime.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "test_checkpoint",
     size = "small",
     srcs = ["tests/test_checkpoint.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_checkpoints",
-    size = "small",
-    srcs = ["tests/test_checkpoints.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
@@ -338,6 +288,14 @@ py_test(
     name = "test_gpu",
     size = "large",
     srcs = ["tests/test_gpu.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_gpu_2",
+    size = "medium",
+    srcs = ["tests/test_gpu_2.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib", ":conftest"]
 )
@@ -455,6 +413,22 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_lightning_train",
+    size = "large",
+    srcs = ["tests/test_torch_lightning_train.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_torch_transformers_train",
+    size = "large",
+    srcs = ["tests/test_torch_transformers_train.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
@@ -464,7 +438,7 @@ py_test(
 
 py_test(
     name = "test_new_persistence",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_new_persistence.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib", ":conftest"]
@@ -491,6 +465,14 @@ py_test(
     size = "small",
     srcs = ["tests/test_sklearn_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_storage",
+    size = "small",
+    srcs = ["tests/test_storage.py"],
+    tags = ["team:ml", "exclusive"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -583,14 +565,6 @@ py_test(
 )
 
 py_test(
-    name = "test_transformers_gpu",
-    size = "medium",
-    srcs = ["tests/test_transformers_gpu.py"],
-    tags = ["team:ml", "exclusive", "gpu_only"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
     name = "test_transformers_predictor",
     size = "medium",
     srcs = ["tests/test_transformers_predictor.py"],
@@ -670,8 +644,9 @@ py_test(
         "exclusive",
         "ray_air",
         "team:ml",
+        "new_storage",
     ],
-    deps = [":train_lib"],
+    deps = [":train_lib", ":conftest"],
 )
 
 # This is a dummy test dependency that causes the above tests to be

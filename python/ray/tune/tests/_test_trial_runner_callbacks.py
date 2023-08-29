@@ -12,19 +12,16 @@ from ray import tune
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
-from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, LegacyLoggerCallback
 from ray.tune.execution.ray_trial_executor import (
     _ExecutorEvent,
     _ExecutorEventType,
     RayTrialExecutor,
 )
-from ray.tune.syncer import SyncConfig, SyncerCallback
 
 from ray.tune.callback import warnings
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune import Callback
-from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.experiment import Experiment
 
 
@@ -154,7 +151,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
             storage_mode=CheckpointStorage.PERSISTENT,
             metrics={TRAINING_ITERATION: 0},
         )
-        trials[0].saving_to = cp
+        trials[0].temporary_state.saving_to = cp
 
         # Let the first trial save a checkpoint
         self.executor.next_future_result = _ExecutorEvent(
@@ -181,7 +178,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertEqual(trials[1].last_result["metric"], 800)
 
         # Let the second trial restore from a checkpoint
-        trials[1].restoring_from = cp
+        trials[1].temporary_state.restoring_from = cp
         self.executor.next_future_result = _ExecutorEvent(
             event_type=_ExecutorEventType.RESTORING_RESULT,
             trial=trials[1],
@@ -192,7 +189,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertEqual(self.callback.state["trial_restore"]["trial"].trial_id, "two")
 
         # Let the second trial finish
-        trials[1].restoring_from = None
+        trials[1].temporary_state.restoring_from = None
         self.executor.next_future_result = _ExecutorEvent(
             event_type=_ExecutorEventType.TRAINING_RESULT,
             trial=trials[1],
@@ -259,54 +256,6 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertIn("experiment_end", self.callback.state)
         # check if it was added last
         self.assertTrue(list(self.callback.state)[-1] == "experiment_end")
-
-    def testCallbackReordering(self):
-        """SyncerCallback should come after LoggerCallback callbacks"""
-
-        def get_positions(callbacks):
-            first_logger_pos = None
-            last_logger_pos = None
-            syncer_pos = None
-            for i, callback in enumerate(callbacks):
-                if isinstance(callback, LoggerCallback):
-                    if first_logger_pos is None:
-                        first_logger_pos = i
-                    last_logger_pos = i
-                elif isinstance(callback, SyncerCallback):
-                    syncer_pos = i
-            return first_logger_pos, last_logger_pos, syncer_pos
-
-        # Auto creation of loggers, no callbacks, no syncer
-        callbacks = _create_default_callbacks(None, sync_config=SyncConfig())
-        first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
-        self.assertLess(last_logger_pos, syncer_pos)
-
-        # Auto creation of loggers with callbacks
-        callbacks = _create_default_callbacks([Callback()], sync_config=SyncConfig())
-        first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
-        self.assertLess(last_logger_pos, syncer_pos)
-
-        # Auto creation of loggers with existing logger (but no CSV/JSON)
-        callbacks = _create_default_callbacks(
-            [LoggerCallback()], sync_config=SyncConfig()
-        )
-        first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
-        self.assertLess(last_logger_pos, syncer_pos)
-
-        # This should be reordered but preserve the regular callback order
-        [mc1, mc2, mc3] = [Callback(), Callback(), Callback()]
-        # Has to be legacy logger to avoid logger callback creation
-        lc = LegacyLoggerCallback(logger_classes=DEFAULT_LOGGERS)
-        callbacks = _create_default_callbacks(
-            [mc1, mc2, lc, mc3], sync_config=SyncConfig()
-        )
-        first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
-        self.assertLess(last_logger_pos, syncer_pos)
-        self.assertLess(callbacks.index(mc1), callbacks.index(mc2))
-        self.assertLess(callbacks.index(mc2), callbacks.index(mc3))
-        self.assertLess(callbacks.index(lc), callbacks.index(mc3))
-        # Syncer callback is appended
-        self.assertLess(callbacks.index(mc3), syncer_pos)
 
     @patch.object(warnings, "warn")
     def testCallbackSetupBackwardsCompatible(self, mocked_warning_method):

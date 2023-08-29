@@ -58,7 +58,7 @@ from ray.tests.test_autoscaler import (
     MULTI_WORKER_CLUSTER,
     TYPES_A,
     MockAutoscaler,
-    MockNodeInfoStub,
+    MockGcsClient,
     MockProcessRunner,
     MockProvider,
     fill_in_raylet_ids,
@@ -196,6 +196,17 @@ def test_bin_pack():
         [{"GPU": 1}],
         [{"GPU": 2}],
     )
+
+    implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
+    assert (
+        get_bin_pack_residual(
+            [{"CPU": 1}], [{implicit_resource: 0.5}, {implicit_resource: 0.5}]
+        )[0]
+        == []
+    )
+    assert get_bin_pack_residual(
+        [{"CPU": 1}], [{implicit_resource: 1}, {implicit_resource: 0.5}]
+    ) == ([{implicit_resource: 0.5}], [{"CPU": 1, implicit_resource: 0}])
 
 
 def test_get_nodes_packing_heuristic():
@@ -1929,7 +1940,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             max_launch_batch=1,
             max_concurrent_launches=10,
@@ -2044,7 +2055,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2076,7 +2087,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2111,7 +2122,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2194,7 +2205,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2275,7 +2286,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2318,7 +2329,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2362,7 +2373,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2405,7 +2416,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2457,7 +2468,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2513,7 +2524,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2584,7 +2595,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2678,7 +2689,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2713,7 +2724,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2764,7 +2775,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2873,7 +2884,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2984,7 +2995,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -3035,7 +3046,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,

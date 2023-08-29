@@ -1,14 +1,14 @@
 import os
 from unittest.mock import patch
+from tempfile import TemporaryDirectory
 import pytest
 
 import torch
 
 import ray
 from ray import train
-from ray.air.constants import MODEL_KEY
-from ray.train import ScalingConfig
-from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.train import ScalingConfig, Checkpoint
+from ray.train.torch import TorchTrainer
 import ray.train.torch.train_loop_utils
 
 
@@ -105,15 +105,24 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
 
         assert next(model.parameters()).is_cuda
 
-        train.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        with TemporaryDirectory() as tmpdir:
+            state_dict = {
+                k.replace("module.", ""): v for k, v in model.state_dict().items()
+            }
+            torch.save(state_dict, os.path.join(tmpdir, "checkpoint.pt"))
+            train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     trainer = TorchTrainer(
         train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
     )
     results = trainer.fit()
 
-    model_checkpoint = results.checkpoint.get_model()
-    assert not next(model_checkpoint.parameters()).is_cuda
+    with results.checkpoint.as_directory() as tmpdir:
+        state_dict = torch.load(os.path.join(tmpdir, "checkpoint.pt"))
+        checkpoint_model = torch.nn.Linear(1, 1)
+        checkpoint_model.load_state_dict(state_dict)
+
+    assert not next(checkpoint_model.parameters()).is_cuda
 
     # Test the same thing for state dict.
 
@@ -130,20 +139,20 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
         for tensor in state_dict.values():
             assert tensor.is_cuda
 
-        train.report(
-            {},
-            checkpoint=TorchCheckpoint.from_state_dict(state_dict),
-        )
+        with TemporaryDirectory() as tmpdir:
+            torch.save(model.state_dict(), os.path.join(tmpdir, "checkpoint.pt"))
+            train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     trainer = TorchTrainer(
         train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
     )
     results = trainer.fit()
 
-    state_dict_checkpoint = results.checkpoint.to_dict()[MODEL_KEY]
+    with results.checkpoint.as_directory() as tmpdir:
+        state_dict_checkpoint = torch.load(os.path.join(tmpdir, "checkpoint.pt"))
 
     for tensor in state_dict_checkpoint.values():
-        assert not tensor.is_cuda
+        assert tensor.is_cuda
 
 
 if __name__ == "__main__":

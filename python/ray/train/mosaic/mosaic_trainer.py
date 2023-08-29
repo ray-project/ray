@@ -137,8 +137,6 @@ class MosaicTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A MosiacCheckpoint to resume training from.
     """
 
@@ -155,6 +153,12 @@ class MosaicTrainer(TorchTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+
+        warnings.warn(
+            "This MosaicTrainer will be deprecated in Ray 2.8. "
+            "It is recommended to use the TorchTrainer instead.",
+            DeprecationWarning,
+        )
 
         self._validate_trainer_init_per_worker(
             trainer_init_per_worker, "trainer_init_per_worker"

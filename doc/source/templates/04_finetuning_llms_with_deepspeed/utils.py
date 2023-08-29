@@ -12,7 +12,7 @@ def get_hash_from_bucket(
 
     s3_sync_args = s3_sync_args or []
     subprocess.run(
-        ["aws", "s3", "cp", "--quiet"]
+        ["awsv2", "s3", "cp", "--quiet"]
         + s3_sync_args
         + [os.path.join(bucket_uri, "refs", "main"), "."]
     )
@@ -46,6 +46,13 @@ def get_checkpoint_and_refs_dir(
     return checkpoint_dir, refs_dir
 
 
+def get_download_path(model_id: str):
+    from transformers.utils.hub import TRANSFORMERS_CACHE
+
+    path = os.path.join(TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}")
+    return path
+
+
 def download_model(
     model_id: str,
     bucket_uri: str,
@@ -59,15 +66,11 @@ def download_model(
     The downloaded model may have a 'hash' file containing the commit hash corresponding
     to the commit on Hugging Face Hub.
     """
-
-    from transformers.utils.hub import TRANSFORMERS_CACHE
-
     s3_sync_args = s3_sync_args or []
-
-    path = os.path.join(TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}")
+    path = get_download_path(model_id)
 
     cmd = (
-        ["aws", "s3", "sync"]
+        ["awsv2", "s3", "sync"]
         + s3_sync_args
         + (["--exclude", "*", "--include", "*token*"] if tokenizer_only else [])
         + [bucket_uri, path]

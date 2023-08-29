@@ -1,4 +1,6 @@
 import os
+import tempfile
+
 import pytest
 
 import ray
@@ -8,14 +10,8 @@ from ray.train.examples.tf.tensorflow_regression_example import (
     train_func as tensorflow_linear_train_func,
 )
 from ray.data.preprocessors import Concatenator
-from ray.train.batch_predictor import BatchPredictor
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.tensorflow import (
-    TensorflowPredictor,
-    TensorflowTrainer,
-    TensorflowCheckpoint,
-)
-from ray.train.tests.dummy_preprocessor import DummyPreprocessor
+from ray.train.tensorflow import TensorflowTrainer, TensorflowCheckpoint
 
 
 @pytest.fixture
@@ -58,38 +54,16 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
     scaling_config = ScalingConfig(num_workers=num_workers)
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
     preprocessor = Concatenator(exclude=["", "y"], output_column_name="x")
+    dataset = preprocessor.transform(dataset)
 
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=train_loop_config,
         scaling_config=scaling_config,
         datasets={TRAIN_DATASET_KEY: dataset},
-        preprocessor=preprocessor,
-    )
-    trainer.fit()
-
-
-def test_tensorflow_e2e(ray_start_4_cpus):
-    def train_func():
-        model = build_model()
-        train.report({}, checkpoint=TensorflowCheckpoint.from_model(model))
-
-    scaling_config = ScalingConfig(num_workers=2)
-    trainer = TensorflowTrainer(
-        train_loop_per_worker=train_func,
-        scaling_config=scaling_config,
-        preprocessor=DummyPreprocessor(),
     )
     result = trainer.fit()
-    assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
-
-    batch_predictor = BatchPredictor.from_checkpoint(
-        result.checkpoint, TensorflowPredictor, model_definition=build_model
-    )
-
-    predict_dataset = ray.data.range(3)
-    predictions = batch_predictor.predict(predict_dataset)
-    assert predictions.count() == 3
+    assert result.checkpoint
 
 
 def test_report_and_load_using_ml_session(ray_start_4_cpus):
@@ -103,31 +77,31 @@ def test_report_and_load_using_ml_session(ray_start_4_cpus):
         else:
             model = build_model()
 
-        model.save("my_model")
-        train.report(
-            metrics={"iter": 1},
-            checkpoint=TensorflowCheckpoint.from_saved_model("my_model"),
-        )
+        if train.get_context().get_world_rank() == 0:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                model.save(tmp_dir)
+                train.report(
+                    metrics={"iter": 1},
+                    checkpoint=TensorflowCheckpoint.from_saved_model(tmp_dir),
+                )
+        else:
+            train.report(metrics={"iter": 1})
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
-        preprocessor=DummyPreprocessor(),
     )
     result = trainer.fit()
     checkpoint = result.checkpoint
-    assert isinstance(checkpoint.get_preprocessor(), DummyPreprocessor)
 
     trainer2 = TensorflowTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
         resume_from_checkpoint=checkpoint,
-        preprocessor=DummyPreprocessor(),
     )
     result = trainer2.fit()
     checkpoint = result.checkpoint
-    assert isinstance(checkpoint.get_preprocessor(), DummyPreprocessor)
     with checkpoint.as_directory() as ckpt_dir:
         assert os.path.exists(os.path.join(ckpt_dir, "saved_model.pb"))
     assert result.metrics["iter"] == 1

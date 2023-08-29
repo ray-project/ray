@@ -15,6 +15,9 @@ cost: A few dollars.
 """
 
 import numpy as np
+import os
+import pickle
+import tempfile
 
 from ray import train
 from ray.train import Checkpoint, RunConfig
@@ -25,20 +28,20 @@ from ray.tune.tuner import Tuner
 
 def func(config):
     starting_epoch = 0
-    if train.get_checkpoint():
-        checkpoint_dict = train.get_checkpoint().to_dict()
-
+    checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "ckpt.pkl"), "rb") as f:
+                checkpoint_dict = pickle.load(f)
         checkpoint_epoch = checkpoint_dict["epoch"]
         starting_epoch = checkpoint_epoch + 1
 
     for epoch in range(starting_epoch, 1000):
-        checkpoint = Checkpoint.from_dict(
-            {
-                "epoch": epoch,
-                "large_data": np.zeros(10000000),
-            }
-        )
-        train.report({}, checkpoint=checkpoint)
+        checkpoint_dict = {"epoch": epoch, "large_data": np.zeros(10000000)}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with open(os.path.join(tmpdir, "ckpt.pkl"), "wb") as f:
+                pickle.dump(checkpoint_dict, f)
+            train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 class FrequentPausesScheduler(FIFOScheduler):

@@ -13,7 +13,6 @@ parts:
         title: "Use Cases"
         sections:
           - file: ray-air/getting-started
-          - file: ray-air/computer-vision
 
       - file: ray-overview/examples
         title: "Example Gallery"
@@ -60,64 +59,31 @@ parts:
         title: Ray Train
         sections:
           - file: train/key-concepts
-            title: "Key Concepts"
-          - file: train/distributed-pytorch
-            sections:
-              - file: train/distributed-pytorch/converting-existing-training-loop
-              - file: train/distributed-pytorch/data-loading-preprocessing
-              - file: train/distributed-pytorch/using-gpus
-              - file: train/distributed-pytorch/persistent-storage
-                title: Configuring Persistent Storage
-              - file: train/distributed-pytorch/monitoring-logging
-              - file: train/distributed-pytorch/checkpoints
-              - file: train/distributed-pytorch/experiment-tracking
-              - file: train/distributed-pytorch/fault-tolerance
-              - file: train/distributed-pytorch/advanced
-                sections:
-                    - file: train/distributed-pytorch/reproducibility
-                    - file: train/distributed-pytorch/automatic-mixed-precision
-                    - file: train/distributed-pytorch/hyperparameter-optimization
-                      title: Hyperparameter optimization
+            title: Key Concepts
+          - file: train/getting-started-pytorch
+            title: PyTorch Guide
+          - file: train/getting-started-pytorch-lightning
+            title: PyTorch Lightning Guide
+          - file: train/getting-started-transformers
+            title: Hugging Face Transformers Guide
           - file: train/more-frameworks
             sections:
+              - file: train/huggingface-accelerate
+                title: Hugging Face Accelerate Guide
+              - file: train/deepspeed
+                title: DeepSpeed Guide
               - file: train/distributed-tensorflow-keras
+                title: TensorFlow and Keras Guide
               - file: train/distributed-xgboost-lightgbm
+                title: XGBoost and LightGBM Guide
               - file: train/horovod
-          - file: train/internals/index
-            sections:
-              - file: train/internals/architecture
-              - file: train/internals/benchmarks
-              - file: train/internals/environment-variables
+                title: Horovod Guide
+          - file: train/user-guides
+            title: User Guides
           - file: train/examples
             title: "Examples"
-            sections:
-              - file: train/examples/pytorch/torch_fashion_mnist_example
-                title: "PyTorch Fashion MNIST Example"
-              - file: train/examples/lightning/lightning_mnist_example
-                title: "PyTorch Lightning Basic Example"
-              - file: train/examples/lightning/lightning_cola_advanced
-                title: "PyTorch Lightning Advanced Example"
-              - file: train/examples/lightning/lightning_exp_tracking
-                title: "PyTorch Lightning with Experiment Tracking Tools"
-              - file: train/examples/transformers/transformers_example
-                title: "HF Transformers Example"
-              - file: train/examples/tf/tensorflow_mnist_example
-                title: "TensorFlow MNIST Example"
-              - file: train/examples/horovod/horovod_example
-                title: "Horovod Example"
-              - file: train/examples/mlflow_fashion_mnist_example
-                title: "MLflow Callback Example"
-              - file: train/examples/tf/tune_tensorflow_mnist_example
-                title: "Tune & TensorFlow Example"
-              - file: train/examples/pytorch/tune_cifar_torch_pbt_example
-                title: "Tune & PyTorch Example"
-              - file: train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example
-                title: "Torch Data Prefetching Benchmark"
-              - file: train/examples/pytorch/pytorch_resnet_finetune
-                title: "PyTorch Finetuning ResNet Example"
-              - file: train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune
-                title: "Fine-tune Vicuna-13B with DeepSpeed and PyTorch Lightning"
-          - file: train/faq
+          - file: train/benchmarks
+            title: "Benchmarks"
           - file: train/api/api
 
       - file: tune/index
@@ -224,8 +190,8 @@ parts:
           - file: serve/model_composition
           - file: serve/deploy-many-models/index
             sections:
-            - file: serve/deploy-many-models/multi-app
-            - file: serve/deploy-many-models/model-multiplexing
+              - file: serve/deploy-many-models/multi-app
+              - file: serve/deploy-many-models/model-multiplexing
           - file: serve/configure-serve-deployment
           - file: serve/http-guide
           - file: serve/production-guide/index
@@ -318,43 +284,70 @@ parts:
           - file: cluster/kubernetes/index
             title: Deploying on Kubernetes
             sections:
-            - file: cluster/kubernetes/getting-started
-            - file: cluster/kubernetes/user-guides
-              sections:
-                - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
-                - file: cluster/kubernetes/user-guides/config.md
-                - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
-                - file: cluster/kubernetes/user-guides/logging.md
-                - file: cluster/kubernetes/user-guides/gpu.md
-                - file: cluster/kubernetes/user-guides/experimental.md
-                - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay.md
-            - file: cluster/kubernetes/examples
-              sections:
-                - file: cluster/kubernetes/examples/ml-example.md
-                - file: cluster/kubernetes/examples/gpu-training-example.md
-            - file: cluster/kubernetes/references
+              - file: cluster/kubernetes/getting-started
+                sections:
+                  - file: cluster/kubernetes/getting-started/raycluster-quick-start.md
+                  - file: cluster/kubernetes/getting-started/rayjob-quick-start.md
+                  - file: cluster/kubernetes/getting-started/rayservice-quick-start.md
+              - file: cluster/kubernetes/user-guides
+                sections:
+                  - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
+                    sections:
+                      - file: cluster/kubernetes/user-guides/aws-eks-gpu-cluster.md
+                      - file: cluster/kubernetes/user-guides/gcp-gke-gpu-cluster.md
+                  - file: cluster/kubernetes/user-guides/config.md
+                  - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
+                  - file: cluster/kubernetes/user-guides/logging.md
+                  - file: cluster/kubernetes/user-guides/gpu.md
+                  - file: cluster/kubernetes/user-guides/rayserve-dev-doc.md
+                  - file: cluster/kubernetes/user-guides/experimental.md
+                  - file: cluster/kubernetes/user-guides/pod-command.md
+                  - file: cluster/kubernetes/user-guides/pod-security.md
+                  - file: cluster/kubernetes/user-guides/tls.md
+                  - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay.md
+              - file: cluster/kubernetes/examples
+                sections:
+                  - file: cluster/kubernetes/examples/ml-example.md
+                  - file: cluster/kubernetes/examples/gpu-training-example.md
+                  - file: cluster/kubernetes/examples/stable-diffusion-rayservice.md
+                  - file: cluster/kubernetes/examples/mobilenet-rayservice.md
+                  - file: cluster/kubernetes/examples/text-summarizer-rayservice.md
+              - file: cluster/kubernetes/k8s-ecosystem
+                sections:
+                  - file: cluster/kubernetes/k8s-ecosystem/ingress.md
+                  - file: cluster/kubernetes/k8s-ecosystem/prometheus-grafana.md
+                  - file: cluster/kubernetes/k8s-ecosystem/pyspy.md
+                  - file: cluster/kubernetes/k8s-ecosystem/kubeflow.md
+              - file: cluster/kubernetes/benchmarks
+                sections:
+                  - file: cluster/kubernetes/benchmarks/memory-scalability-benchmark.md
+              - file: cluster/kubernetes/troubleshooting
+                sections:
+                  - file: cluster/kubernetes/troubleshooting/troubleshooting.md
+                  - file: cluster/kubernetes/troubleshooting/rayservice-troubleshooting.md
+              - file: cluster/kubernetes/references
           - file: cluster/vms/index
             title: Deploying on VMs
             sections:
-            - file: cluster/vms/getting-started
-            - file: cluster/vms/user-guides/index
-              title: User Guides
-              sections:
-              - file: cluster/vms/user-guides/launching-clusters/index
-              - file: cluster/vms/user-guides/large-cluster-best-practices
-              - file: cluster/vms/user-guides/configuring-autoscaling
-              - file: cluster/vms/user-guides/logging
-              - file: cluster/vms/user-guides/community/index
-                title: Community-supported Cluster Managers
+              - file: cluster/vms/getting-started
+              - file: cluster/vms/user-guides/index
+                title: User Guides
                 sections:
-                - file: cluster/vms/user-guides/community/yarn
-                - file: cluster/vms/user-guides/community/slurm
-                - file: cluster/vms/user-guides/community/lsf
-            - file: cluster/vms/examples/index
-              title: Examples
-              sections:
-              - file: cluster/vms/examples/ml-example
-            - file: cluster/vms/references/index
+                  - file: cluster/vms/user-guides/launching-clusters/index
+                  - file: cluster/vms/user-guides/large-cluster-best-practices
+                  - file: cluster/vms/user-guides/configuring-autoscaling
+                  - file: cluster/vms/user-guides/logging
+                  - file: cluster/vms/user-guides/community/index
+                    title: Community-supported Cluster Managers
+                    sections:
+                      - file: cluster/vms/user-guides/community/yarn
+                      - file: cluster/vms/user-guides/community/slurm
+                      - file: cluster/vms/user-guides/community/lsf
+              - file: cluster/vms/examples/index
+                title: Examples
+                sections:
+                  - file: cluster/vms/examples/ml-example
+              - file: cluster/vms/references/index
           - file: cluster/metrics
           - file: cluster/configure-manage-dashboard
           - file: cluster/running-applications/index

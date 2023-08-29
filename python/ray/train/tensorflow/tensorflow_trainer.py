@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Dict, Union, TYPE_CHECKING
+from typing import Any, Callable, Optional, Dict, Union, TYPE_CHECKING
 
 from ray.train import DataConfig
 from ray.train.tensorflow.config import TensorflowConfig
@@ -43,7 +43,7 @@ class TensorflowTrainer(DataParallelTrainer):
     ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray AIR session methods <air-session-ref>`.
+    :ref:`Ray Train loop methods <train-loop-api>`.
 
     .. warning::
         Ray will not automatically set any environment variables or configuration
@@ -89,6 +89,8 @@ class TensorflowTrainer(DataParallelTrainer):
 
     .. testcode::
 
+        import os
+        import tempfile
         import tensorflow as tf
 
         import ray
@@ -118,13 +120,17 @@ class TensorflowTrainer(DataParallelTrainer):
             )
             for epoch in range(config["num_epochs"]):
                 model.fit(tf_dataset)
-                # You can also use ray.air.integrations.keras.Callback
-                # for reporting and checkpointing instead of reporting manually.
+
+                # Create checkpoint.
+                checkpoint_dir = tempfile.mkdtemp()
+                model.save_weights(
+                    os.path.join(checkpoint_dir, "my_checkpoint")
+                )
+                checkpoint = Checkpoint.from_directory(checkpoint_dir)
+
                 train.report(
                     {},
-                    checkpoint=Checkpoint.from_dict(
-                        dict(epoch=epoch, model=model.get_weights())
-                    ),
+                    checkpoint=checkpoint,
                 )
 
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
@@ -155,12 +161,11 @@ class TensorflowTrainer(DataParallelTrainer):
         run_config: Configuration for the execution of the training run.
         datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
-            dataset. If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be transformed
-            by the ``preprocessor`` if one is provided.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
+            dataset.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available via
+            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -173,8 +178,10 @@ class TensorflowTrainer(DataParallelTrainer):
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
     ):
         if not tensorflow_config:
             tensorflow_config = TensorflowConfig()
@@ -189,4 +196,5 @@ class TensorflowTrainer(DataParallelTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )

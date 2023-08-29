@@ -209,7 +209,7 @@ def train_loop_for_worker(config):
             print("epoch time", epoch, epoch_time_s)
 
 
-def crop_and_flip_image_batch(image_batch):
+def crop_and_flip_image(row):
     transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.RandomResizedCrop(
@@ -220,12 +220,9 @@ def crop_and_flip_image_batch(image_batch):
             torchvision.transforms.RandomHorizontalFlip(),
         ]
     )
-    batch_size, height, width, channels = image_batch["image"].shape
-    tensor_shape = (batch_size, channels, height, width)
-    image_batch["image"] = transform(
-        torch.Tensor(image_batch["image"].reshape(tensor_shape))
-    )
-    return image_batch
+    # Make sure to use torch.tensor here to avoid a copy from numpy.
+    row["image"] = transform(torch.tensor(np.transpose(row["image"], axes=(2, 0, 1))))
+    return row
 
 
 def decode_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.DataFrame:
@@ -326,10 +323,7 @@ def build_dataset(
             convert_class_to_idx,
             fn_kwargs={"classes": classes},
         )
-        ds = ds.map_batches(
-            crop_and_flip_image_batch,
-            zero_copy_batch=True,
-        )
+        ds = ds.map(crop_and_flip_image)
     else:
         filenames = get_tfrecords_filenames(
             data_root, num_images_per_epoch, num_images_per_input_file
@@ -569,7 +563,6 @@ if __name__ == "__main__":
 
             # Enable block splitting to support larger file sizes w/o OOM.
             ctx = ray.data.context.DataContext.get_current()
-            ctx.block_splitting_enabled = True
 
             options.resource_limits.object_store_memory = 10e9
 
