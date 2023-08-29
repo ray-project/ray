@@ -197,13 +197,13 @@ def test_tag_callbacks(mock_record, callback_classes_expected):
     assert callback_counts == expected
 
 
+# TODO(fixci)
 def test_tag_env_vars(ray_start_4_cpus, mock_record, tuner):
     """Test that env vars are recorded properly, and arbitrary user environment
     variables are ignored."""
     env_vars_to_record = {
-        "RAY_AIR_LOCAL_CACHE_DIR": "~/ray_results",
-        "RAY_AIR_NEW_PERSISTENCE_MODE": "0",
-        "TUNE_DISABLE_AUTO_CALLBACK_SYNCER": "1",
+        "TUNE_GLOBAL_CHECKPOINT_S": "20",
+        "TUNE_MAX_PENDING_TRIALS_PG": "1",
     }
     untracked_env_vars = {"RANDOM_USER_ENV_VAR": "asdf"}
 

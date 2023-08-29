@@ -5,6 +5,7 @@ from pathlib import Path
 import random
 import time
 from typing import Dict, List, Optional
+from tempfile import TemporaryDirectory
 
 import ray
 from ray import train, tune
@@ -98,10 +99,10 @@ def train_fn(config: dict, data: Optional[dict] = None):
     for iteration in range(start, ITERATIONS_PER_TRIAL + 1):
         time.sleep(TIME_PER_ITER_S)
 
-        train.report(
-            {"score": random.random()},
-            checkpoint=Checkpoint.from_dict({"iteration": iteration}),
-        )
+        with TemporaryDirectory() as tmpdir:
+            train.report(
+                {"score": random.random()}, checkpoint=Checkpoint.from_directory(tmpdir)
+            )
 
 
 def tuner(experiment_path: str, run_config: train.RunConfig) -> tune.ResultGrid:

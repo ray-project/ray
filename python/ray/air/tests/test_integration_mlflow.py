@@ -9,6 +9,7 @@ from mlflow.tracking import MlflowClient
 
 from ray._private.dict import flatten_dict
 from ray.train._internal.session import init_session
+from ray.train._internal.storage import StorageContext
 from ray.tune.trainable.session import _shutdown as tune_session_shutdown
 from ray.air.integrations.mlflow import MLflowLoggerCallback, setup_mlflow, _NoopModule
 from ray.air._internal.mlflow import _MLflowLoggerUtil
@@ -234,6 +235,7 @@ class MLflowTest(unittest.TestCase):
             node_rank=1,
             local_world_size=2,
             world_size=2,
+            storage=StorageContext(experiment_dir_name="dummy"),
         )
         mlflow = setup_mlflow({})
         assert isinstance(mlflow, _NoopModule)
