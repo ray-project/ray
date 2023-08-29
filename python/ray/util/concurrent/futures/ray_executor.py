@@ -11,7 +11,6 @@ from typing import (
     ParamSpec,
     TYPE_CHECKING,
     TypeVar,
-    Generator,
     Dict,
     TypedDict
 )
@@ -33,25 +32,22 @@ class PoolActor(TypedDict):
     actor: "ActorHandle"
     task_count: int
 
-@ray.remote
-class ExecutorActor:
-    def __init__(self,
-            initializer: Optional[Callable[..., Any]] = None,
-            initargs: tuple[Any, ...] = (),
-            ) -> None:
-        self.initializer = initializer
-        self.initargs = initargs
-        pass
-
-    def actor_function(self, fn: Callable[[], T]) -> T:
-        if self.initializer is not None:
-            self.initializer(*self.initargs)
-        return fn()
-
-    def exit(self) -> None:
-        ray.actor.exit_actor()
-
 class RoundRobinActorPool:
+
+    """ This class manages a pool of Ray actors by distributing tasks amongst
+    them in a simple round-robin fashion. Functions are executed remotely in
+    the actor pool using `submit()`.
+
+    Args:
+        num_actors:
+            Specify the size of the actor pool to create.
+        initializer:
+            A function that will be called remotely in the actor context before the submitted task (for compatibility with `concurrent.futures.ThreadPoolExecutor`).
+        initargs:
+            Arguments for `initializer` (for compatibility with concurrent.futures.ThreadPoolExecutor).
+        max_tasks_per_actor:
+            The maximum number of tasks to be performed by an actor before it is gracefully killed and replaced (for compatibility with `concurrent.futures.ProcessPoolExecutor`).
+    """
 
     def __init__(self,
             num_actors: int = 2,
@@ -82,6 +78,24 @@ class RoundRobinActorPool:
         return obj
 
     def _build_actor(self) -> PoolActor:
+
+        @ray.remote
+        class ExecutorActor:
+            def __init__(self,
+                    initializer: Optional[Callable[..., Any]] = None,
+                    initargs: tuple[Any, ...] = (),
+                    ) -> None:
+                self.initializer = initializer
+                self.initargs = initargs
+
+            def actor_function(self, fn: Callable[[], T]) -> T:
+                if self.initializer is not None:
+                    self.initializer(*self.initargs)
+                return fn()
+
+            def exit(self) -> None:
+                ray.actor.exit_actor()
+
         return {"actor": ExecutorActor.options().remote(self.initializer, self.initargs), "task_count": 0} # type: ignore[attr-defined]
 
     def _replace_actor_if_max_tasks(self) -> None:
