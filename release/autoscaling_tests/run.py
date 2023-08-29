@@ -4,7 +4,7 @@ import json
 import os
 import time
 
-from ray_release.logger import logger
+from logger import logger 
 
 WORKLOAD_SCRIPTS = [
     "test_core.py",
@@ -37,7 +37,7 @@ def run_test():
         # Run the python script.
         logger.info(f"Running workload {workload}:")
         try:
-            subprocess.check_call(["python", "workloads/" + workload])
+            subprocess.check_call(["python", workload])
         except subprocess.CalledProcessError as e:
             failed_workloads.append((workload, e))
 
