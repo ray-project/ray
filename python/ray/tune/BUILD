@@ -24,7 +24,7 @@ doctest(
             "utils/trainable.py",
         ]
     ),
-    tags = ["team:ml", "no_new_storage"]
+    tags = ["team:ml", "new_storage"]
 )
 
 py_library(
