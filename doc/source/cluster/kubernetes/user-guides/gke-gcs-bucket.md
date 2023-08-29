@@ -58,7 +58,7 @@ kubectl annotate serviceaccount my-ksa \
 
 Please follow the documentation at <https://cloud.google.com/storage/docs/creating-buckets> to create a bucket using the Google Cloud Console or the `gsutil` command line tool.  
 
-For this example, we will give our principal `my-iam-sa@my-project-id.iam.gserviceaccount.com` "Storage Admin" permissions on the bucket.  You can do this in the Google Cloud Console ("Permissions" tab under "Buckets" > "Bucket Details") or with the following command:
+For this example, we will give our principal `my-iam-sa@my-project-id.iam.gserviceaccount.com` "Storage Admin" permissions on the bucket. You can do this in the Google Cloud Console ("Permissions" tab under "Buckets" > "Bucket Details") or with the following command:
 
 ```bash
 gsutil iam ch serviceAccount:my-iam-sa@my-project-id.iam.gserviceaccount.com:roles/storage.admin gs://my-bucket
