@@ -216,6 +216,14 @@ def test_distributed_data_loading(ray_start_4_cpus):
     trainer.fit()
 
 
+def test_xgboost_trainer_resources():
+    """`trainer_resources` is not allowed in the scaling config"""
+    with pytest.raises(ValueError):
+        XGBoostTrainer._validate_scaling_config(
+            ScalingConfig(trainer_resources={"something": 1})
+        )
+
+
 if __name__ == "__main__":
     import pytest
     import sys

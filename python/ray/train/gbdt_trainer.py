@@ -128,7 +128,8 @@ class GBDTTrainer(BaseTrainer):
         **train_kwargs: Additional kwargs passed to framework ``train()`` function.
     """
 
-    _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
+    _scaling_config_allowed_keys = [
+        "_max_cpu_fraction_per_node",
         "num_workers",
         "resources_per_worker",
         "use_gpu",
