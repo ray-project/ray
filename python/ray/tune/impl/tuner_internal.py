@@ -34,7 +34,6 @@ from ray.train._internal.storage import (
     get_fs_and_path,
 )
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
-from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
 from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.tune import _Config
 from ray.tune.registry import is_function_trainable
@@ -446,10 +445,11 @@ class TunerInternal:
         # Load the experiment results at the point where it left off.
         try:
             if _use_storage_context():
-                self._experiment_analysis = NewExperimentAnalysis(
+                self._experiment_analysis = ExperimentAnalysis(
                     experiment_checkpoint_path=path_or_uri,
                     default_metric=self._tune_config.metric,
                     default_mode=self._tune_config.mode,
+                    storage_filesystem=storage_filesystem,
                 )
             else:
                 self._experiment_analysis = ExperimentAnalysis(

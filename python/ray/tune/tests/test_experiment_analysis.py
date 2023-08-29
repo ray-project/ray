@@ -13,7 +13,7 @@ from ray import train, tune
 from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_PROGRESS_FILE, EXPR_RESULT_FILE
 from ray.train._internal.storage import _delete_fs_path
-from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.experiment import Trial
 from ray.tune.utils import flatten_dict
 
@@ -97,7 +97,7 @@ def experiment_analysis(request):
         if load_from in ["dir", "cloud"]:
             # Test init without passing in in-memory trials.
             # Load them from an experiment directory instead.
-            yield NewExperimentAnalysis(
+            yield ExperimentAnalysis(
                 str(URI(storage_path) / "test_experiment_analysis"),
                 default_metric="ascending",
                 default_mode="max",
@@ -135,7 +135,7 @@ def test_fetch_trial_dataframes(experiment_analysis, filetype):
 def test_fetch_trial_dataframes_with_errors(
     experiment_analysis, tmp_path, propagate_logs, caplog
 ):
-    # Add "corrupted" json files)
+    # Add "corrupted" json files
     for trial in experiment_analysis.trials:
         fs = trial.storage.storage_filesystem
         with fs.open_output_stream(

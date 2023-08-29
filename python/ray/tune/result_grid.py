@@ -9,7 +9,6 @@ from ray.train._internal.storage import _use_storage_context
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.trainable.util import TrainableUtil
@@ -318,9 +317,9 @@ class ResultGrid:
             error=self._populate_exception(trial),
             _local_path=trial.local_path,
             _remote_path=trial.remote_path,
-            _storage_filesystem=self._experiment_analysis._fs
-            if isinstance(self._experiment_analysis, NewExperimentAnalysis)
-            else None,
+            _storage_filesystem=(
+                self._experiment_analysis._fs if _use_storage_context() else None
+            ),
             metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
         )
