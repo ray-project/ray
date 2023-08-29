@@ -34,6 +34,14 @@ gcloud container node-pools create gpu-node-pool \
 
 The `--accelerator` flag specifies the type and number of GPUs for each node in the node pool.  In this example, we use four [Nvidia T4](https://cloud.google.com/compute/docs/gpus#nvidia_t4_gpus) GPUs.  The machine type is `n1-standard-64`, which has [64 vCPUs and 240 GB RAM](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machine_types). The `--min-nodes 0` and `--max-nodes 1` flags enable autoscaling for the node pool. The `--num-nodes 1` flag specifies the initial number of nodes in the node pool.
 
+.. note::
+
+    GKE will automatically install the GPU drivers for you.  For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/gpus#create-gpu-pool-auto-drivers)
+
+.. note::
+
+    GKE will automatically configure taints and tolerations so that only GPU pods are scheduled on GPU nodes.  For more detais, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/gpus#create)
+
 ## Step 3: Configure `kubectl` to connect to the cluster
 
 Run the following command to download Google Cloud credentials and configure the Kubernetes CLI to use them.
