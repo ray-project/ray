@@ -66,7 +66,7 @@ ray.init(
     dashboard_host="0.0.0.0",
     log_to_driver=True,
 )
-serve.start(detached=True)
+serve.start(proxy_location="HeadOnly")
 
 
 @ray.remote(max_restarts=-1, max_task_retries=-1)
@@ -157,7 +157,7 @@ class RandomTest:
                 assert r.text == deployment
             except Exception:
                 print("Request to {} failed.".format(deployment))
-                time.sleep(0.01)
+                time.sleep(0.1)
 
     def run(self):
         start_time = time.time()
