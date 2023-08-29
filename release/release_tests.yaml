@@ -6884,3 +6884,26 @@
   run:
     timeout: 3600
     script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
+
+
+- name: autoscaler_aws
+  group: autoscaler-test
+  working_dir: autoscaling_tests
+
+  stable: False
+
+  frequency: nightly
+  team: core 
+
+  cluster:
+    # leave oom disabled as test is marked unstable at the moment.
+    byod:
+      runtime_env:
+        - RAY_memory_monitor_refresh_ms=0
+      pip:
+        - ray[default]
+    cluster_compute: aws.yaml 
+
+  run:
+    timeout: 1800
+    script: python run.py 
