@@ -1,0 +1,312 @@
+steps:
+  - name: "bootstrap civ2"
+    command:
+      - curl -sfL "https://raw.githubusercontent.com/ray-project/rayci/stable/run_rayci.sh" > /tmp/run_rayci.sh
+      - /bin/bash /tmp/run_rayci.sh -upload -config anyscale/ci/config.yaml
+    agents:
+      queue: "small"
+    priority: 10
+
+  - name: "build env info"
+    command:
+      - source anyscale/ci/setup-env.sh
+      - /bin/bash anyscale/ci/show-env.sh
+    agents:
+      queue: "small"
+    retry:
+      automatic:
+        limit: 1
+
+  - name: "ci test base image"
+    key: "ci-test-base-image"
+    command:
+      - source anyscale/ci/setup-env.sh
+      - /bin/bash anyscale/ci/build-ci-test-base-image.sh
+    agents:
+      queue: "large"
+    retry:
+      automatic:
+        limit: 1
+  
+  - name: "ci build image"
+    key: "ci-build-image"
+    depends_on: "ci-test-base-image"
+    command:
+      - source anyscale/ci/setup-env.sh
+      - /bin/bash anyscale/ci/build-ci-build-image.sh
+    agents:
+      queue: "large"
+    retry:
+      automatic:
+        limit: 1
+
+  - name: "ci ml image"
+    key: "ci-ml-image"
+    depends_on: "ci-test-base-image"
+    command:
+      - source anyscale/ci/setup-env.sh
+      - /bin/bash anyscale/ci/build-ci-ml-image.sh
+    agents:
+      queue: "large"
+    retry:
+      automatic:
+        limit: 1
+
+  - name: "serve tests"
+    depends_on: "ci-build-image"
+    command:
+      - source anyscale/ci/setup-env.sh
+      - /bin/bash anyscale/ci/run-tests-in-docker.sh serve
+    agents:
+      queue: "large"
+    retry:
+      automatic:
+        limit: 1
+
+  - group: "data tests"
+    steps:
+    - name: "Data tests (Arrow 6)"
+      depends_on: "ci-ml-image"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/run-tests-in-docker.sh data "6.0.1"
+      agents:
+        queue: "large"
+      retry:
+        automatic:
+          limit: 1
+    - name: "Data tests (Arrow 12)"
+      depends_on: "ci-ml-image"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/run-tests-in-docker.sh data "12"
+      agents:
+        queue: "large"
+      retry:
+        automatic:
+          limit: 1
+
+  - group: "wheels and container images (aarch64)"
+    if: build.env("RUNTIME_BUILD_ALL") == "true"
+    steps:
+    - name: "forge (aarch64)"
+      key: "forge-aarch64"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-forge.sh
+      agents:
+        queue: "largeg"
+      retry:
+        automatic:
+          limit: 1
+
+    - name: "{{matrix}} wheel (aarch64)"
+      depends_on: "forge-aarch64"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - BUILD_ONE_PYTHON_ONLY={{matrix}} /bin/bash anyscale/ci/build-wheels.sh
+      agents:
+        queue: "largeg"
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+        - py37
+        - py38
+        - py39
+        - py310
+        - py311
+      retry:
+        automatic:
+          limit: 1
+
+    - name: "{{matrix}} cpu base image (aarch64)"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-ray-base-image.sh {{matrix}} cpu
+      agents:
+        queue: "largeg"
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+        - py37
+        - py38
+        - py39
+        - py310
+        - py311
+      retry:
+        automatic:
+          limit: 1
+
+    - wait: ~
+
+    - name: "{{matrix}} image (aarch64)"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-ray-image.sh {{matrix}} cpu
+      agents:
+        queue: "largeg"
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+          - py37
+          - py38
+          - py39
+          - py310
+          - py311
+      retry:
+        automatic:
+          limit: 1
+
+  - group: "wheels and container images (x86)"
+    steps:
+    - name: "forge (x86_64)"
+      key: "forge-x86_64"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-forge.sh
+      agents:
+        queue: "large"
+      retry:
+        automatic:
+          limit: 1
+
+    - name: "{{matrix}} wheel (x86_64)"
+      depends_on: "forge-x86_64"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - BUILD_ONE_PYTHON_ONLY={{matrix}} /bin/bash anyscale/ci/build-wheels.sh
+      agents:
+        queue: large
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+        - py37
+        - py38
+        - py39
+        - py310
+        - py311
+      retry:
+        automatic:
+          limit: 1
+
+    - name: "{{matrix.py}} {{matrix.type}} base image"
+      if: build.env("RUNTIME_BUILD_ALL") == "true"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-ray-base-image.sh {{matrix.py}} {{matrix.type}}
+      agents:
+        queue: "large"
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+        setup:
+          py:
+            - py37
+            - py38
+            - py39
+            - py310
+            - py311
+          type:
+            - cpu
+            - cu115
+            - cu116
+            - cu117
+            - cu118
+            - cu121
+      retry:
+        automatic:
+          limit: 1
+
+    - name: "{{matrix.py}} {{matrix.type}} base image"
+      if: build.env("RUNTIME_BUILD_ALL") == null
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-ray-base-image.sh {{matrix.py}} {{matrix.type}}
+      agents:
+        queue: "large"
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+        setup:
+          py:
+            - py37
+            - py38
+            - py39
+            - py310
+            - py311
+          type:
+            - cpu
+            - cu118 # gpu
+            - cu121
+      retry:
+        automatic:
+          limit: 1
+
+    - wait: ~
+
+    - name: "{{matrix.py}} {{matrix.type}} image"
+      if: build.env("RUNTIME_BUILD_ALL") == "true"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.type}}
+      agents:
+        queue: "large"
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+        setup:
+          py:
+            - py37
+            - py38
+            - py39
+            - py310
+            - py311
+          type:
+            - cpu
+            - cu115
+            - cu116
+            - cu117
+            - cu118
+            - cu121
+      retry:
+        automatic:
+          limit: 1
+
+    - name: "{{matrix.py}} {{matrix.type}} image"
+      if: build.env("RUNTIME_BUILD_ALL") == null
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.type}}
+      agents:
+        queue: "large"
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+        setup:
+          py:
+            - py38
+            - py39
+            - py311
+          type:
+            - cpu
+            - cu118 #gpu
+            - cu121
+      retry:
+        automatic:
+          limit: 1
