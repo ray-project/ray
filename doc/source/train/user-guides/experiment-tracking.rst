@@ -34,52 +34,69 @@ logic to Ray Train with minimal changes.
 Log distributed training experiments
 ====================================
 
-For some scenarios, every Worker generates an identical copy and saving a single copy is sufficient. 
-Ray Train lets you apply logic to only the rank 0 Worker with the following method:
-:meth:`context.get_world_rank() <ray.train.context.TrainContext.get_world_rank>`.
+In this section, we break the interaction with experiment tracking backend into 4 logical steps:
+- Set up to connect to a tracking backend
+- Configure and launch a run
+- Log
+- Finish the run
 
-There are roughly two kinds of experiment tracking modes: online and offline. For online mode, you log
-towards a tracking service that is running. Usually you need credentials to access the service.
-For offline mode, you log towards local file directory. Usually no credentials are needed.
+Let's dive into each one of them.
 
-For online mode, it is important to make sure that all nodes and Worker processes have 
-access to credentials. For offline mode, major consideration is to ensure that there is a 
-shared file system where all nodes can write to.
+.. note::
 
-Step 1: Choose a tracking service to use
-----------------------------------------
+    For some scenarios, every Worker generates an identical copy and saving a single copy is sufficient. 
+    Ray Train lets you apply logic to only the rank 0 worker with the following method:
+    :meth:`context.get_world_rank() <ray.train.context.TrainContext.get_world_rank>`.
 
-The following tracking service setups have the simplest configurations for remote nodes
-to access and write logs to.
+Step 1: Set up necessary components to be able to connect to the tracking backend of your choice
+------------------------------------------------------------------------------------------------
 
-**W&B:**
+First, you should choose which tracking backend to use: W&B, MLflow, TensorBoard etc.
 
-- online mode: Should work out-of-the-box with correct credentials
+Some of them offer to operate under either online or offline mode. They have different considerations when
+setting up.
+For online mode, you log towards a tracking service that is running. Usually you need credentials to access the service.
+Under this mode, you need to ensure that all nodes and worker processes have access to credentials.
+For offline mode, you log towards local file directory. Usually no credentials are needed. You need to instead
+ensure that there is a shared file system where all nodes can write to.
 
-- offline mode: Set Wandb directory to point to a shared storage path: :code:`wandb.init(dir="some_shared_storage_path/wandb")`      
+.. tabs::
 
-**MLflow:**
+    .. tab:: Wandb
 
-- online mode: Start the run with externally hosted MLflow by Databricks: :code:`mlflow.start_run(tracking_uri="databricks")`
+        .. tabs::
 
-- offline mode: Start the run by setting tracking uri to a shared storage path: :code:`mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")`
+            .. tab:: online mode
 
-**TensorBoard(offline):**
+                Make sure that :code:`wandb.login(key="your_api_key")` 
+                or :code:`os.environ["WANDB_API_KEY"] = "your_api_key"` is called inside your ``train_func``.
 
-- Set up ``SummaryWriter`` to write to a shared storage path: :code:`writer = SummaryWriter("some_shared_storage_path/runs")`
+            .. tab:: offline mode
 
-Step 2: Make sure that all nodes and processes have access to credentials
--------------------------------------------------------------------------
+                Make sure that :code:`os.environ["WANDB_MODE"] = "offline"` is set in ``train_func``.
 
-**W&B:**
+                Set Wandb directory to point to a shared storage path: :code:`wandb.init(dir="some_shared_storage_path/wandb")` 
 
-- :code:`wandb.login(key="your_api_key")` or :code:`os.environ["WANDB_API_KEY"] = "your_api_key"`
+    .. tab:: MLflow
 
-**MLflow:**
+        .. tabs::
 
-- This is done by having ``databrickscfg`` accessible by all nodes. See below for code snippet.
+            .. tab:: online mode (hosted by Databricks)
+                
+                Start the run with :code:`mlflow.start_run(tracking_uri="databricks")`
 
-Step 3: Initialize the run 
+                Make sure that all nodes have access to ``databrickscfg`` file.
+
+            .. tab:: offline mode
+
+                Start the run by setting tracking uri to a shared storage path: 
+                :code:`mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")`
+
+    .. tab:: TensorBoard (offline)
+        
+        Set up ``SummaryWriter`` to write to a shared storage path: :code:`writer = SummaryWriter("some_shared_storage_path/runs")`
+
+Step 2: Initialize the run 
 --------------------------
 
 Ray Train provides a training context that provides access to training identifiers. For example, 
@@ -99,7 +116,7 @@ Ray Train provides a training context that provides access to training identifie
     - `CometLogger(experiment_key=UNIQUE_ID)`
     - `MLFlowLogger(run_id=UNIQUE_ID)`
 
-Step 4: Log
+Step 3: Log
 -----------
 
 You can customize when and where to log parameters, metrics, models, or media contents. 
@@ -107,24 +124,18 @@ You can also use some native integrations that these tracking frameworks have wi
 specific training frameworks, for example ``mlflow.pytorch.autolog()``, 
 ``lightning.pytorch.loggers.MLFlowLogger`` etc. 
 
-Step 5: Finish the run
+Step 4: Finish the run
 ----------------------
 
 For frameworks that require a call to mark a run as finished, include the appropriate call.
 For example, ``wandb.finish()``.
 
-Code Example
-============
+Conceptual code snippets
+========================
 
 Let's see how the above works with some code.
 
 The following session uses Wandb and MLflow but it is adaptable to other frameworks.
-
-PyTorch
--------
-
-Conceptual code snippets
-~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -245,7 +256,10 @@ Conceptual code snippets
                     mlflow.log_metrics(metrics)
 
 Runnable code
-~~~~~~~~~~~~~
+=============
+
+PyTorch
+-------
 
 .. tabs::
 
