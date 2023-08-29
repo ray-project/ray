@@ -5,7 +5,7 @@ import ray
 from ray import tune
 from ray.train.constants import TRAIN_DATASET_KEY
 
-from ray.train.sklearn import LegacySklearnCheckpoint, SklearnTrainer
+from ray.train.sklearn import SklearnTrainer
 from ray.train import ScalingConfig
 
 from sklearn.datasets import load_breast_cancer
@@ -77,9 +77,7 @@ def test_no_auto_cpu_params(ray_start_4_cpus, tmpdir):
         set_estimator_cpus=False,
     )
     result = trainer.fit()
-
-    checkpoint = LegacySklearnCheckpoint.from_checkpoint(result.checkpoint)
-    model = checkpoint.get_estimator()
+    model = SklearnTrainer.get_model(result.checkpoint)
     assert model.n_jobs == 1
 
 

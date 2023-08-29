@@ -18,7 +18,7 @@ gcloud container clusters create kuberay-gpu-cluster \
 
 ## Step 2: Create a GPU node pool
 
-Run the following command to create a GPU node pool for Ray GPU workers.  You can also create it from the Google Cloud Console: <https://cloud.google.com/kubernetes-engine/docs/how-to/gpus#console>
+Run the following command to create a GPU node pool for Ray GPU workers. You can also create it from the Google Cloud Console: <https://cloud.google.com/kubernetes-engine/docs/how-to/gpus#console>
 
 ```sh
 gcloud container node-pools create gpu-node-pool \

@@ -1,14 +1,14 @@
-(rayjob-batch-inference-example)=
+(kuberay-batch-inference-example)=
 
 # RayJob Batch Inference Example
 
 This page demonstrates how to use the RayJob custom resource to run a batch inference job on a Ray cluster.
 
-We will use an image classification workload.  The example is based on <https://docs.ray.io/en/latest/data/examples/huggingface_vit_batch_prediction.html>. Please see that page for a full explanation of the code.
+We will use an image classification workload. The example is based on <https://docs.ray.io/en/latest/data/examples/huggingface_vit_batch_prediction.html>. Please see that page for a full explanation of the code.
 
 ## Prerequisites
 
-You must have a Kubernetes cluster running and `kubectl` configured to use it, and GPUs available.  We provide a brief tutorial for setting up the necessary GPUs on Google Kubernetes Engine (GKE), but you can use any Kubernetes cluster with GPUs.
+You must have a Kubernetes cluster running and `kubectl` configured to use it, and GPUs available. We provide a brief tutorial for setting up the necessary GPUs on Google Kubernetes Engine (GKE), but you can use any Kubernetes cluster with GPUs.
 
 ## Step 0: Create a Kubernetes cluster on GKE (Optional)
 
@@ -16,15 +16,13 @@ Please follow [this tutorial]((kuberay-gke-gpu-cluster-setup) to create a Kubern
 
 ## Step 1: Install the KubeRay Operator
 
-Once `kubectl` is configured to connect to your cluster, you can install the KubeRay operator.
-
 Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
 
 It should be scheduled on the CPU pod.
 
 ## Step 2: Submit the RayJob
 
-Now we can submit the RayJob.  Our RayJob spec is defined in [ray_v1alpha1_rayjob.batch-inference.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.batch-inference.yaml).
+Now we can create the RayJob custom resource. Our RayJob spec is defined in [ray-job.batch-inference.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.batch-inference.yaml).
 
 You can download the file via `curl` as follows:
 
@@ -109,7 +107,7 @@ rayjob-sample-raycluster-j6t8n-head-kx2gz   1/1     Running     0          35m
 rayjob-sample-w98c7                         0/1     Completed   0          30m
 ```
 
-Here the Ray cluster is still running because we did not set `shutdownAfterJobFinishes` in the `RayJob` spec.  If you set `shutdownAfterJobFinishes` to `true`, the cluster will be shut down after the job finishes.
+Here the Ray cluster is still running because we did not set `shutdownAfterJobFinishes` in the `RayJob` spec. If you set `shutdownAfterJobFinishes` to `true`, the cluster will be shut down after the job finishes.
 
 Next, run
 
