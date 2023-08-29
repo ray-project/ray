@@ -16,10 +16,7 @@ import ray.cloudpickle as ray_pickle
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
-from ray.air.checkpoint import (
-    Checkpoint,
-    _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
-)
+from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
 from ray.air.constants import (
     TIMESTAMP,
     TIME_THIS_ITER_S,
@@ -31,7 +28,7 @@ from ray.train._internal.storage import (
     StorageContext,
     _exists_at_fs_path,
 )
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train import Checkpoint
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -543,7 +540,7 @@ class Trainable:
                             f"Got {checkpoint_dict_or_path} != {checkpoint_dir}"
                         )
 
-                local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
+                local_checkpoint = Checkpoint.from_directory(checkpoint_dir)
 
                 metrics = self._last_result.copy() if self._last_result else {}
 
@@ -928,11 +925,18 @@ class Trainable:
 
         """
         if _use_storage_context():
-            checkpoint_result: _TrainingResult = checkpoint_path
+            if isinstance(checkpoint_path, str):
+                checkpoint_path = Checkpoint.from_directory(checkpoint_path)
+            if isinstance(checkpoint_path, Checkpoint):
+                checkpoint_result = _TrainingResult(
+                    checkpoint=checkpoint_path, metrics={}
+                )
+            else:
+                checkpoint_result: _TrainingResult = checkpoint_path
             assert isinstance(checkpoint_result, _TrainingResult), type(
                 checkpoint_result
             )
-
+            checkpoint = checkpoint_result.checkpoint
             checkpoint_metrics = checkpoint_result.metrics
             self._iteration = checkpoint_metrics.get(TRAINING_ITERATION, 0)
             self._time_total = checkpoint_metrics.get(TIME_TOTAL_S, 0)
@@ -944,7 +948,6 @@ class Trainable:
             self._timesteps_since_restore = 0
             self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
 
-            checkpoint = checkpoint_result.checkpoint
             if not _exists_at_fs_path(checkpoint.filesystem, checkpoint.path):
                 raise ValueError(
                     f"Could not recover from checkpoint as it does not exist on "
@@ -976,8 +979,7 @@ class Trainable:
             self._restored = True
 
             logger.info(
-                f"Restored on {self._local_ip} from checkpoint: "
-                f"{checkpoint_result.checkpoint}"
+                f"Restored on {self._local_ip} from checkpoint: " f"{checkpoint}"
             )
             return True
 
