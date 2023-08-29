@@ -6,4 +6,4 @@ wget https://github.com/errata-ai/vale/releases/download/v2.28.0/vale_2.28.0_Lin
 VALE_BIN=$(mktemp -d)
 tar -xvzf vale_2.28.0_Linux_64-bit.tar.gz -C $VALE_BIN vale
 $VALE_BIN/vale doc/source/data
-rm -rf $VALE_BIN
+rm -rf "$VALE_BIN"
