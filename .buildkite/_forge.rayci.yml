@@ -21,6 +21,10 @@ steps:
     wanda: ci/docker/core.build.wanda.yaml
     depends_on: oss-ci-base_build
 
+  - name: data12build
+    wanda: ci/docker/data12.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+
   - name: servebuild
     wanda: ci/docker/serve.build.wanda.yaml
     depends_on: oss-ci-base_build

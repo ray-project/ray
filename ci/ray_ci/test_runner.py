@@ -38,12 +38,12 @@ def test_get_test_targets() -> None:
             "subprocess.check_output",
             return_value="\n".join(test_targets).encode("utf-8"),
         ):
-            assert _get_all_test_targets("targets", "core", yaml_dir=tmp) == [
+            assert _get_all_test_targets("targets", "core", "core", yaml_dir=tmp) == [
                 "//python/ray/tests:good_test_01",
                 "//python/ray/tests:good_test_02",
                 "//python/ray/tests:good_test_03",
             ]
-            assert _get_test_targets("targets", "core", 2, 0, yaml_dir=tmp) == [
+            assert _get_test_targets("targets", "core", "core", 2, 0, yaml_dir=tmp) == [
                 "//python/ray/tests:good_test_01",
                 "//python/ray/tests:good_test_02",
             ]

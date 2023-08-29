@@ -14,7 +14,7 @@ _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
 
 
 def run_tests(
-    team: str,
+    build_name: str,
     test_targets: List[str],
     parallelism: int,
     test_env: List[str],
@@ -23,12 +23,12 @@ def run_tests(
     Run tests parallelly in docker.  Return whether all tests pass.
     """
     chunks = [shard_tests(test_targets, parallelism, i) for i in range(parallelism)]
-    runs = [_run_tests_in_docker(chunk, team, test_env) for chunk in chunks]
+    runs = [_run_tests_in_docker(chunk, build_name, test_env) for chunk in chunks]
     exits = [run.wait() for run in runs]
     return all(exit == 0 for exit in exits)
 
 
-def setup_test_environment(team: str) -> None:
+def setup_test_environment(build_name: str) -> None:
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
     subprocess.check_call(
@@ -36,9 +36,9 @@ def setup_test_environment(team: str) -> None:
             "docker",
             "build",
             "--build-arg",
-            f"BASE_IMAGE={_get_docker_image(team)}",
+            f"BASE_IMAGE={_get_docker_image(build_name)}",
             "-t",
-            _get_docker_image(team),
+            _get_docker_image(build_name),
             "-f",
             "/ray/ci/ray_ci/tests.env.Dockerfile",
             "/ray",
@@ -50,8 +50,8 @@ def setup_test_environment(team: str) -> None:
 
 
 def _run_tests_in_docker(
-    test_targets: List[str], 
-    team: str, 
+    test_targets: List[str],
+    build_name: str,
     test_env: List[str],
 ) -> subprocess.Popen:
     commands = []
@@ -62,27 +62,23 @@ def _run_tests_in_docker(
                 "trap cleanup EXIT",
             ]
         )
-    commands.append(
-        "bazel test --config=ci "
-        "$(./ci/run/bazel_export_options) ",
-    )
+    test_cmd = "bazel test --config=ci $(./ci/run/bazel_export_options) "
     for env in test_env:
-        commands.append(f"{' '.join(f'--test_env={env}')}")
-    commands.append(
-        f"{' '.join(test_targets)}",
-    )
-    return subprocess.Popen(_docker_run_bash_script("\n".join(commands), team))
+        test_cmd += f"--test_env {env} "
+    test_cmd += f"{' '.join(test_targets)}"
+    commands.append(test_cmd)
+    return subprocess.Popen(_docker_run_bash_script("\n".join(commands), build_name))
 
 
-def run_script_in_docker(script: str, team: str) -> bytes:
+def run_script_in_docker(script: str, build_name: str) -> bytes:
     """
     Run command in docker
     """
-    return subprocess.check_output(_docker_run_bash_script(script, team))
+    return subprocess.check_output(_docker_run_bash_script(script, build_name))
 
 
-def _docker_run_bash_script(script: str, team: str) -> str:
-    return _get_docker_run_command(team) + ["/bin/bash", "-ice", script]
+def _docker_run_bash_script(script: str, build_name: str) -> List[str]:
+    return _get_docker_run_command(build_name) + ["/bin/bash", "-ice", script]
 
 
 def shard_tests(test_targets: List[str], shard_count: int, shard_id: int) -> List[str]:
@@ -92,7 +88,7 @@ def shard_tests(test_targets: List[str], shard_count: int, shard_id: int) -> Lis
     return bazel_sharding.main(test_targets, index=shard_id, count=shard_count)
 
 
-def _get_docker_run_command(team) -> List[str]:
+def _get_docker_run_command(build_name) -> List[str]:
     return [
         "docker",
         "run",
@@ -121,12 +117,12 @@ def _get_docker_run_command(team) -> List[str]:
         "--workdir",
         "/rayci",
         "--shm-size=2.5gb",
-        _get_docker_image(team),
+        _get_docker_image(build_name),
     ]
 
 
-def _get_docker_image(team: str) -> str:
+def _get_docker_image(build_name: str) -> str:
     """
     Get docker image for a particular commit
     """
-    return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{team}build"
+    return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{build_name}"

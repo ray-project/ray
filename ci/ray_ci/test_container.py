@@ -4,7 +4,7 @@ import pytest
 from unittest import mock
 from typing import List
 
-from ci.ray_ci.container import run_script_in_docker, run_tests
+from ci.ray_ci.container import run_script_in_docker, run_tests, _run_tests_in_docker
 from ci.ray_ci.utils import chunk_into_n
 
 
@@ -30,10 +30,22 @@ def test_run_script_in_docker() -> None:
         run_script_in_docker("run command", "team")
 
 
+def test_run_tests_in_docker() -> None:
+    def _mock_popen(input: List[str]) -> None:
+        input_str = " ".join(input)
+        assert (
+            "bazel test --config=ci $(./ci/run/bazel_export_options) "
+            "--test_env v=k t1 t2" in input_str
+        )
+
+    with mock.patch("subprocess.Popen", side_effect=_mock_popen):
+        _run_tests_in_docker(["t1", "t2"], "team", ["v=k"])
+
+
 def test_run_tests() -> None:
     def _mock_run_tests_in_docker(
-        test_targets: List[str], 
-        team: str, 
+        test_targets: List[str],
+        team: str,
         test_env: List[str],
     ) -> MockPopen:
         return MockPopen(test_targets)

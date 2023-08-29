@@ -1,4 +1,5 @@
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml
+ARG ARROW_VERSION
 FROM $DOCKER_IMAGE_BASE_BUILD
 
 # Unset dind settings; we are using the host's docker daemon.
@@ -11,8 +12,5 @@ SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
-RUN pip install -U --ignore-installed  \
-  -c python/requirements_compiled.txt \
-  -r python/requirements.txt \
-  -r python/requirements/test-requirements.txt \
-  -r python/requirements/ml/dl-cpu-requirements.txt
+RUN DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION ./ci/env/install-dependencies.sh
+RUN pip install "datasets==2.14.0"

@@ -1,0 +1,23 @@
+group: data tests
+steps:
+  - label: ":database: data: arrrow 12 tests"
+    instance_type: medium
+    parallelism: 3
+    commands:
+      - bazel run //ci/ray_ci -- //python/ray/data/... //python/ray/air/... data 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
+        --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --build-name data12build
+        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
+        --except-tags data_integration,doctest
+    depends_on: data12build
+    job_env: data12build
+
+  - label: ":database: data: arrorw 12 flaky tests"
+    instance_type: medium
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci -- //... data --run-flaky-tests --parallelism-per-worker 3
+        --build-name data12build
+    depends_on: data12build
+    job_env: data12build
