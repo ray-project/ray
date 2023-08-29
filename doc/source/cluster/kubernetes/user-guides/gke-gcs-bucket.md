@@ -73,8 +73,6 @@ Create a file named `raycluster.yaml` with the following contents:
 apiVersion: ray.io/v1alpha1
 kind: RayCluster
 metadata:
-  labels:
-    controller-tools.k8s.io: "1.0"
   name: raycluster-mini
 spec:
   rayVersion: '2.6.3'
