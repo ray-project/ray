@@ -3,7 +3,6 @@ from ray.anyscale.serve._private.cluster_node_info_cache import (
 )
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
-    DefaultClusterNodeInfoCache,
 )
 from ray.serve._private.deployment_scheduler import (
     DeploymentScheduler,
