@@ -42,7 +42,6 @@ namespace ray {
 using raylet::ClusterTaskManager;
 using raylet::NoopLocalTaskManager;
 
-class GcsClientTest;
 namespace gcs {
 
 struct GcsServerConfig {
@@ -97,6 +96,9 @@ class GcsServer {
 
   /// Check if gcs server is stopped.
   bool IsStopped() const { return is_stopped_; }
+
+  /// Retrieve cluster ID
+  const ClusterID GetClusterId() const { return rpc_server_.GetClusterId(); }
 
   // TODO(vitsai): string <=> enum generator macro
   enum class StorageType {
@@ -173,8 +175,6 @@ class GcsServer {
 
   /// Initialize monitor service.
   void InitMonitorServer();
-
-  friend class ray::GcsClientTest;
 
  private:
   /// Gets the type of KV storage to use from config.
