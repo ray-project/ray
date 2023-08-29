@@ -76,7 +76,7 @@ metadata:
     controller-tools.k8s.io: "1.0"
   name: raycluster-mini
 spec:
-  rayVersion: '2.5.0'
+  rayVersion: '2.6.3'
   headGroupSpec:
     rayStartParams:
       dashboard-host: '0.0.0.0'
