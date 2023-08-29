@@ -5,7 +5,7 @@ from tensorflow.keras.callbacks import Callback as KerasCallback
 import ray
 from ray.train._internal.storage import _use_storage_context
 from ray.train.tensorflow import TensorflowCheckpoint, LegacyTensorflowCheckpoint
-from ray.util.annotations import PublicAPI, Deprecated
+from ray.util.annotations import PublicAPI
 
 
 class _Callback(KerasCallback):
@@ -183,51 +183,3 @@ class ReportCheckpointCallback(_Callback):
 
         assert isinstance(reported_metrics, dict)
         return reported_metrics
-
-
-@Deprecated
-class Callback(_Callback):
-    """
-    Keras callback for Ray AIR reporting and checkpointing.
-
-    You can use this in both TuneSession and TrainSession.
-
-    Example:
-        .. code-block: python
-
-            ############# Using it in TrainSession ###############
-            from ray.air.integrations.keras import Callback
-            def train_loop_per_worker():
-                strategy = tf.distribute.MultiWorkerMirroredStrategy()
-                with strategy.scope():
-                    model = build_model()
-                    #model.compile(...)
-                model.fit(dataset_shard, callbacks=[Callback()])
-
-    Args:
-        metrics: Metrics to report. If this is a list, each item describes
-            the metric key reported to Keras, and it will reported under the
-            same name. If this is a dict, each key will be the name reported
-            and the respective value will be the metric key reported to Keras.
-            If this is None, all Keras logs will be reported.
-        on: When to report metrics. Must be one of
-            the Keras event hooks (less the ``on_``), e.g.
-            "train_start", or "predict_end". Defaults to "epoch_end".
-        frequency: Checkpoint frequency. If this is an integer `n`,
-            checkpoints are saved every `n` times each hook was called. If
-            this is a list, it specifies the checkpoint frequencies for each
-            hook individually.
-
-    """
-
-    def __init__(
-        self,
-        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
-        on: Union[str, List[str]] = "epoch_end",
-        frequency: Union[int, List[int]] = 1,
-    ):
-        # TODO: Remove this class in 2.6.
-        raise DeprecationWarning(
-            "`ray.air.integrations.keras.Callback` is deprecated. Use "
-            "`ray.air.integrations.keras.ReportCheckpointCallback` instead.",
-        )
