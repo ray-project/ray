@@ -98,7 +98,7 @@ py_test(
 )
 
 py_test(
-    name = "test_http_prefix_matching",
+    name = "test_proxy_router",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -115,7 +115,7 @@ py_test(
 
 py_test(
     name = "test_http_state",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -123,6 +123,14 @@ py_test(
 
 py_test(
     name = "test_http_util",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_grpc_util",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -163,7 +171,15 @@ py_test(
 
 py_test(
     name = "test_telemetry",
-    size = "medium",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_telemetry_2",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -273,6 +289,25 @@ py_test(
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_new_handle_api",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_new_handle_api_set_via_env_var",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+    env = {"RAY_SERVE_ENABLE_NEW_HANDLE_API": "1"},
 )
 
 
@@ -566,6 +601,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_max_replicas_per_node",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 # Make sure the example showing in doc is tested
 py_test(
     name = "quickstart_class",
@@ -585,7 +628,7 @@ py_test(
 
 py_test(
     name = "tutorial_rllib",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     main = "test_myst_doc.py",
     args = ["--path", "doc/source/serve/tutorials/rllib.md"],
@@ -691,7 +734,7 @@ py_test(
 
 py_test(
     name = "test_http_headers",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -708,6 +751,22 @@ py_test(
 py_test(
     name = "test_deploy_app",
     size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_proxy",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_proxy_request_response",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

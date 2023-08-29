@@ -9,23 +9,21 @@ from typing import Dict, List, Optional, Callable, Tuple
 import ray
 from ray import cloudpickle
 from ray.exceptions import RuntimeEnvSetupError
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.utils import import_attr
 from ray.serve.config import DeploymentConfig
 from ray.serve.exceptions import RayServeException
 
 from ray.serve._private.common import (
+    DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
     ApplicationStatusInfo,
     ApplicationStatus,
     EndpointInfo,
+    EndpointTag,
     DeploymentInfo,
 )
-from ray.serve._private.constants import (
-    SERVE_LOGGER_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
     get_app_code_version,
@@ -33,6 +31,7 @@ from ray.serve._private.deploy_utils import (
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.storage.kv_store import KVStoreBase
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
@@ -257,8 +256,9 @@ class ApplicationState:
         self._set_target_state(dict(), None, None, True)
 
     def _delete_deployment(self, name):
-        self._endpoint_state.delete_endpoint(name)
-        self._deployment_state_manager.delete_deployment(name)
+        id = EndpointTag(name, self._name)
+        self._endpoint_state.delete_endpoint(id)
+        self._deployment_state_manager.delete_deployment(id)
 
     def delete(self):
         """Delete the application"""
@@ -286,20 +286,20 @@ class ApplicationState:
                 f'Invalid route prefix "{route_prefix}", it must start with "/"'
             )
 
-        self._deployment_state_manager.deploy(deployment_name, deployment_info)
+        deployment_id = DeploymentID(deployment_name, self._name)
+        self._deployment_state_manager.deploy(deployment_id, deployment_info)
 
         if deployment_info.route_prefix is not None:
             config = deployment_info.deployment_config
             self._endpoint_state.update_endpoint(
-                deployment_name,
+                deployment_id,
                 EndpointInfo(
                     route=deployment_info.route_prefix,
-                    app_name=self._name,
                     app_is_cross_language=config.is_cross_language,
                 ),
             )
         else:
-            self._endpoint_state.delete_endpoint(deployment_name)
+            self._endpoint_state.delete_endpoint(deployment_id)
 
     def deploy(self, deployment_infos: Dict[str, DeploymentInfo]):
         """Deploy application from list of deployment infos.
@@ -362,7 +362,7 @@ class ApplicationState:
             # If there is an in progress build task, cancel it.
             if self._build_app_task_info and not self._build_app_task_info.finished:
                 logger.info(
-                    f'Received new config for application "{self._name}". '
+                    f"Received new config for application '{self._name}'. "
                     "Cancelling previous request."
                 )
                 ray.cancel(self._build_app_task_info.obj_ref)
@@ -372,7 +372,7 @@ class ApplicationState:
 
             # Kick off new build app task
             logger.info(
-                f"Starting build_serve_application task for application {self._name}."
+                f"Starting build_serve_application task for application '{self._name}'."
             )
             build_app_obj_ref = build_serve_application.options(
                 runtime_env=self._target_state.config.runtime_env
@@ -617,13 +617,16 @@ class ApplicationState:
 
     def get_deployment(self, name: str) -> DeploymentInfo:
         """Get deployment info for deployment by name."""
-        return self._deployment_state_manager.get_deployment(name)
+        deployment_id = DeploymentID(name, self._name)
+        return self._deployment_state_manager.get_deployment(deployment_id)
 
     def get_deployments_statuses(self) -> List[DeploymentStatusInfo]:
         """Return all deployment status information"""
-        return self._deployment_state_manager.get_deployment_statuses(
-            self.target_deployments
-        )
+        deployments = [
+            DeploymentID(deployment, self._name)
+            for deployment in self.target_deployments
+        ]
+        return self._deployment_state_manager.get_deployment_statuses(deployments)
 
     def get_application_status_info(self) -> ApplicationStatusInfo:
         """Return the application status information"""
@@ -645,8 +648,10 @@ class ApplicationState:
             been deleted.
         """
         details = {
-            name: self._deployment_state_manager.get_deployment_details(name)
-            for name in self.target_deployments
+            deployment_name: self._deployment_state_manager.get_deployment_details(
+                DeploymentID(deployment_name, self._name)
+            )
+            for deployment_name in self.target_deployments
         }
         return {k: v for k, v in details.items() if v is not None}
 
@@ -735,9 +740,7 @@ class ApplicationStateManager:
                 self._endpoint_state,
                 self._save_checkpoint_func,
             )
-        record_extra_usage_tag(
-            TagKey.SERVE_NUM_APPS, str(len(self._application_states))
-        )
+        ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
         deployment_infos = {
             params["deployment_name"]: deploy_args_to_deployment_info(
@@ -762,9 +765,7 @@ class ApplicationStateManager:
                 endpoint_state=self._endpoint_state,
                 save_checkpoint_func=self._save_checkpoint_func,
             )
-        record_extra_usage_tag(
-            TagKey.SERVE_NUM_APPS, str(len(self._application_states))
-        )
+        ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
         self._application_states[name].deploy_config(
             app_config,
             deployment_time,
@@ -834,13 +835,12 @@ class ApplicationStateManager:
             ready_to_be_deleted = app.update()
             if ready_to_be_deleted:
                 apps_to_be_deleted.append(name)
+                logger.debug(f"Application '{name}' deleted successfully.")
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
                 del self._application_states[app_name]
-            record_extra_usage_tag(
-                TagKey.SERVE_NUM_APPS, str(len(self._application_states))
-            )
+            ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
     def shutdown(self) -> None:
         for app_state in self._application_states.values():
@@ -911,10 +911,7 @@ def build_serve_application(
 
         # Check that all deployments specified in config are valid
         for deployment_name in config_deployments:
-            unique_deployment_name = (
-                (name + DEPLOYMENT_NAME_PREFIX_SEPARATOR) if len(name) else ""
-            ) + deployment_name
-            if unique_deployment_name not in app.deployments:
+            if deployment_name not in app.deployments:
                 raise KeyError(
                     f'There is no deployment named "{deployment_name}" in the '
                     f'application "{name}".'
@@ -933,8 +930,8 @@ def build_serve_application(
         # happens when deploy_apps() is called.
         logger.info("Existing config deployment request terminated.")
         return None, None
-    except Exception as e:
-        return None, repr(e)
+    except Exception:
+        return None, traceback.format_exc()
 
 
 def override_deployment_info(
@@ -967,10 +964,7 @@ def override_deployment_info(
     # Override options for each deployment listed in the config.
     for options in deployment_override_options:
         deployment_name = options["name"]
-        unique_deployment_name = (
-            (app_name + DEPLOYMENT_NAME_PREFIX_SEPARATOR) if len(app_name) else ""
-        ) + deployment_name
-        info = deployment_infos[unique_deployment_name]
+        info = deployment_infos[deployment_name]
 
         if (
             info.deployment_config.autoscaling_config is not None
@@ -1014,6 +1008,10 @@ def override_deployment_info(
             "placement_group_strategy", replica_config.placement_group_strategy
         )
 
+        override_max_replicas_per_node = options.pop(
+            "max_replicas_per_node", replica_config.max_replicas_per_node
+        )
+
         merged_env = override_runtime_envs_except_env_vars(
             app_runtime_env, override_actor_options.get("runtime_env", {})
         )
@@ -1022,6 +1020,7 @@ def override_deployment_info(
         replica_config.update_placement_group_options(
             override_placement_group_bundles, override_placement_group_strategy
         )
+        replica_config.update_max_replicas_per_node(override_max_replicas_per_node)
         override_options["replica_config"] = replica_config
 
         # Override deployment config options
@@ -1030,7 +1029,7 @@ def override_deployment_info(
         original_options.update(options)
         override_options["deployment_config"] = DeploymentConfig(**original_options)
 
-        deployment_infos[unique_deployment_name] = info.update(**override_options)
+        deployment_infos[deployment_name] = info.update(**override_options)
 
     # Overwrite ingress route prefix
     app_route_prefix = config_dict.get("route_prefix", DEFAULT.VALUE)

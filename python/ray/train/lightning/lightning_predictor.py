@@ -93,7 +93,10 @@ class LightningPredictor(TorchPredictor):
             .. testcode::
 
                 import pytorch_lightning as pl
-                from ray.train.lightning import LightningCheckpoint, LightningPredictor
+                from ray.train.lightning import (
+                    LightningCheckpoint,
+                    LightningPredictor,
+                )
 
                 class MyLightningModule(pl.LightningModule):
                     def __init__(self, input_dim, output_dim) -> None:

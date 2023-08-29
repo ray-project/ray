@@ -134,9 +134,7 @@ class TestStateMachine:
             return
         issue = self.ray_repo.get_issue(github_issue_number)
         issue.create_comment("Test has been failing for far too long. Jailing.")
-        labels = ["P1", "jailed-test"] + [label.name for label in issue.get_labels()]
-        if "P0" in labels:
-            labels.remove("P0")
+        labels = ["jailed-test"] + [label.name for label in issue.get_labels()]
         issue.edit(labels=labels)
 
     def _bisect_rate_limit_exceeded(self) -> bool:

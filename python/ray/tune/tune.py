@@ -28,8 +28,10 @@ from ray.air import CheckpointConfig
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
+from ray.train import SyncConfig
 from ray.train._internal.storage import _use_storage_context
 from ray.tune.analysis import ExperimentAnalysis
+from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
@@ -76,7 +78,6 @@ from ray.tune.search.util import (
     _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
 from ray.tune.search.variant_generator import _has_unresolved_values
-from ray.tune.syncer import SyncConfig
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.utils.callback import _create_default_callbacks
@@ -124,7 +125,7 @@ def _check_default_resources_override(
 ) -> bool:
     trainable_cls = _get_trainable(run_identifier)
     if not trainable_cls:
-        # Default to True
+        # If no trainable, assume override
         return True
 
     return hasattr(trainable_cls, "default_resource_request") and (
@@ -269,8 +270,6 @@ def _resolve_and_validate_storage_path(
             logger.info(
                 "Using configured Ray storage URI as storage path: " f"{remote_path}"
             )
-
-    sync_config.validate_upload_dir(remote_path)
 
     if not local_path:
         local_path = _get_defaults_results_dir()
@@ -466,8 +465,7 @@ def run(
             original working directory. However, all workers on the same node now
             share the same working directory, so be sure to use
             `ray.train.get_context().get_trial_dir()` as the path to save any outputs.
-        sync_config: Configuration object for syncing. See
-            tune.SyncConfig.
+        sync_config: Configuration object for syncing. See train.SyncConfig.
         export_formats: List of formats that exported at the end of
             the experiment. Default is None.
         max_failures: Try to recover a trial at least this many times.
@@ -514,8 +512,7 @@ def run(
         callbacks: List of callbacks that will be called at different
             times in the training loop. Must be instances of the
             ``ray.tune.callback.Callback`` class. If not passed,
-            `LoggerCallback` and `SyncerCallback` callbacks are automatically
-            added.
+            `LoggerCallback` (json/csv/tensorboard) callbacks are automatically added.
         max_concurrent_trials: Maximum number of trials to run
             concurrently. Must be non-negative. If None or 0, no limit will
             be applied. This is achieved by wrapping the ``search_alg`` in
@@ -963,7 +960,6 @@ def run(
     # Create default logging + syncer callbacks
     callbacks = _create_default_callbacks(
         callbacks,
-        sync_config=sync_config,
         air_verbosity=air_verbosity,
         entrypoint=_entrypoint,
         config=config,
@@ -1164,22 +1160,21 @@ def run(
             )
 
     if _use_storage_context():
-        # TODO(justinvyu): Leave refactoring the ExperimentAnalysis to use
-        # StorageContext for a follow-up PR.
-        # Just plug in the "remote_storage_path" for now.
-        remote_path = experiments[0].storage.storage_path
-
-    experiment_checkpoint = runner.experiment_state_path
-
-    ea = ExperimentAnalysis(
-        experiment_checkpoint,
-        trials=all_trials,
-        default_metric=metric,
-        default_mode=mode,
-        remote_storage_path=remote_path,
-    )
-
-    return ea
+        return NewExperimentAnalysis(
+            experiment_checkpoint_path=runner.experiment_path,
+            default_metric=metric,
+            default_mode=mode,
+            trials=all_trials,
+            storage_filesystem=experiments[0].storage.storage_filesystem,
+        )
+    else:
+        return ExperimentAnalysis(
+            runner.experiment_state_path,
+            trials=all_trials,
+            default_metric=metric,
+            default_mode=mode,
+            remote_storage_path=remote_path,
+        )
 
 
 @PublicAPI

@@ -1,11 +1,14 @@
 import argparse
+import os
+import tempfile
 
 import numpy as np
 import torch
 import torch.nn as nn
 import ray.train as train
-from ray.train import RunConfig, ScalingConfig
-from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.train import Checkpoint, RunConfig, ScalingConfig
+from ray.train.torch import TorchTrainer, LegacyTorchCheckpoint
+from ray.train._internal.storage import _use_storage_context
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -79,7 +82,16 @@ def train_func(config):
         state_dict, loss = validate_epoch(validation_loader, model, loss_fn)
         result = dict(loss=loss)
         results.append(result)
-        train.report(result, checkpoint=TorchCheckpoint.from_state_dict(state_dict))
+
+        if _use_storage_context():
+            with tempfile.TemporaryDirectory() as tmpdir:
+                torch.save(state_dict, os.path.join(tmpdir, "model.pt"))
+                train.report(result, checkpoint=Checkpoint.from_directory(tmpdir))
+        else:
+            # TODO(justinvyu): Temporary for CI to pass during the API transition.
+            train.report(
+                result, checkpoint=LegacyTorchCheckpoint.from_state_dict(state_dict)
+            )
 
     return results
 

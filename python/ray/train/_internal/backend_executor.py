@@ -1,7 +1,7 @@
 import logging
 import os
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Any
 
 import ray
 from ray.data import Dataset
@@ -11,14 +11,13 @@ from ray.exceptions import RayActorError
 from ray.train import DataConfig
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.session import (
-    _TrainSession,
     TrainingResult,
     TrialInfo,
     get_session,
     init_session,
     shutdown_session,
 )
-from ray.train._internal.storage import _use_storage_context
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
@@ -129,9 +128,10 @@ class BackendExecutor:
         # trainable, thus allowing for lazy checkpoint transfer to be used.
         # See https://github.com/ray-project/ray/issues/33073
         # for more context.
-        # TODO remove
-        if self._trial_info and self._trial_info.driver_ip:
-            self.worker_group._move_workers_with_ip_to_front(self._trial_info.driver_ip)
+        # TODO remove passing in trial_driver_ip.
+
+        trial_driver_ip = self._trial_info.driver_ip if self._trial_info else None
+        self.worker_group.group_workers_by_ip(trial_driver_ip)
 
         worker_locs = [
             f"{w.metadata.pid} ({w.metadata.node_ip})"
@@ -345,7 +345,9 @@ class BackendExecutor:
         self,
         train_func: Callable[[], T],
         datasets: Dict[str, Dataset],
+        metadata: Dict[str, Any],
         data_config: DataConfig,
+        storage: StorageContext,
         checkpoint: Optional[Checkpoint] = None,
         on_session_init: Callable[[], None] = None,
     ) -> None:
@@ -378,6 +380,7 @@ class BackendExecutor:
             trial_info,
             checkpoint,
             dataset_shard,
+            metadata,
             encode_data_fn,
             checkpoint_keep_all_ranks,
             checkpoint_upload_from_workers,
@@ -393,6 +396,7 @@ class BackendExecutor:
                     world_size=world_size,
                     trial_info=trial_info,
                     dataset_shard=dataset_shard,
+                    metadata=metadata,
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
@@ -425,12 +429,6 @@ class BackendExecutor:
             node_rank_map,
         ) = self._create_rank_world_size_mappings()
 
-        if _use_storage_context():
-            tune_session: _TrainSession = get_session()
-            assert (
-                tune_session
-            ), "`start_training` should only be called from within Tune"
-
         futures = []
         for index in range(len(self.worker_group)):
             futures.append(
@@ -445,13 +443,14 @@ class BackendExecutor:
                     trial_info=self._trial_info,
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
+                    metadata=metadata,
                     checkpoint=checkpoint,
                     encode_data_fn=self._backend._encode_data,
                     checkpoint_keep_all_ranks=self._checkpoint_keep_all_ranks,
                     checkpoint_upload_from_workers=(
                         self._checkpoint_upload_from_workers
                     ),
-                    storage=tune_session.storage if _use_storage_context() else None,
+                    storage=storage,
                 )
             )
 

@@ -13,6 +13,7 @@ from ray._private.test_utils import (
     generate_system_config_map,
     is_placement_group_removed,
     kill_actor_and_wait_for_failure,
+    reset_autoscaler_v2_enabled_cache,
     run_string_as_driver,
     wait_for_condition,
 )
@@ -458,18 +459,6 @@ def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
         assert len(gpu_ids_res) == 2
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster",
-    [
-        generate_system_config_map(
-            use_ray_syncer=True,
-        ),
-        generate_system_config_map(
-            use_ray_syncer=False,
-        ),
-    ],
-    indirect=True,
-)
 @pytest.mark.repeat(3)
 def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
     """Tests the scheduling of lots of actors will not be blocked
@@ -591,6 +580,7 @@ def test_placement_group_gpu_unique_assigned(ray_start_cluster, connect_to_clien
 
 @pytest.mark.parametrize("enable_v2", [True, False])
 def test_placement_group_status_no_bundle_demand(ray_start_cluster, enable_v2):
+    reset_autoscaler_v2_enabled_cache()
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=4, _system_config={"enable_autoscaler_v2": enable_v2})
     ray.init(address=cluster.address)

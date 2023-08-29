@@ -1,17 +1,20 @@
 import os
 import ray
-from ray.air import session
+from ray import train
 from ray.air.constants import MODEL_KEY
 from ray.data.dataset import DataIterator
-from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from ray.util import PublicAPI
 
 import logging
 import shutil
 import torch
 import tempfile
-from tempfile import TemporaryDirectory
 from ray.train import Checkpoint
+from ray.train._internal.storage import _use_storage_context
+from ray.train.lightning.lightning_checkpoint import (
+    LightningCheckpoint,
+    LegacyLightningCheckpoint,
+)
 from packaging.version import Version
 from typing import Any, Dict, Optional
 from torch.utils.data import IterableDataset, DataLoader
@@ -136,16 +139,16 @@ class RayLightningEnvironment(LightningEnvironment):
     """Setup Lightning DDP training environment for Ray cluster."""
 
     def world_size(self) -> int:
-        return session.get_world_size()
+        return train.get_context().get_world_size()
 
     def global_rank(self) -> int:
-        return session.get_world_rank()
+        return train.get_context().get_world_rank()
 
     def local_rank(self) -> int:
-        return session.get_local_rank()
+        return train.get_context().get_local_rank()
 
     def node_rank(self) -> int:
-        return session.get_node_rank()
+        return train.get_context().get_node_rank()
 
     def set_world_size(self, size: int) -> None:
         # Disable it since `world_size()` directly returns data from AIR session.
@@ -192,23 +195,37 @@ def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
 class RayTrainReportCallback(Callback):
     """A simple callback that reports checkpoints to Ray on train epoch end."""
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.trial_name = train.get_context().get_trial_name()
+        self.local_rank = train.get_context().get_local_rank()
+        self.tmpdir_prefix = os.path.join(tempfile.gettempdir(), self.trial_name)
+        if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
+            shutil.rmtree(self.tmpdir_prefix)
+
     def on_train_epoch_end(self, trainer, pl_module) -> None:
-        with TemporaryDirectory() as tmpdir:
-            # Fetch metrics
-            metrics = trainer.callback_metrics
-            metrics = {k: v.item() for k, v in metrics.items()}
+        # Creates a checkpoint dir with fixed name
+        tmpdir = os.path.join(self.tmpdir_prefix, str(trainer.current_epoch))
+        os.makedirs(tmpdir, exist_ok=True)
 
-            # (Optional) Add customized metrics
-            metrics["epoch"] = trainer.current_epoch
-            metrics["step"] = trainer.global_step
+        # Fetch metrics
+        metrics = trainer.callback_metrics
+        metrics = {k: v.item() for k, v in metrics.items()}
 
-            # Save checkpoint to local
-            ckpt_path = os.path.join(tmpdir, "checkpoint.ckpt")
-            trainer.save_checkpoint(ckpt_path, weights_only=False)
+        # (Optional) Add customized metrics
+        metrics["epoch"] = trainer.current_epoch
+        metrics["step"] = trainer.global_step
 
-            # Report to train session
-            checkpoint = Checkpoint.from_directory(tmpdir)
-            ray.train.report(metrics=metrics, checkpoint=checkpoint)
+        # Save checkpoint to local
+        ckpt_path = os.path.join(tmpdir, "checkpoint.ckpt")
+        trainer.save_checkpoint(ckpt_path, weights_only=False)
+
+        # Report to train session
+        checkpoint = Checkpoint.from_directory(tmpdir)
+        train.report(metrics=metrics, checkpoint=checkpoint)
+
+        if self.local_rank == 0:
+            shutil.rmtree(tmpdir)
 
 
 class RayIterableDataset(IterableDataset):
@@ -273,17 +290,17 @@ class RayModelCheckpoint(ModelCheckpoint):
             # For DeepSpeed, each node has a unique set of param and optimizer states,
             # so the local rank 0 workers report the checkpoint shards for all workers
             # on their node.
-            self.is_report_rank = session.get_local_rank() == 0
+            self.is_report_rank = train.get_context().get_local_rank() == 0
         else:
             # For DDP and FSDP, only the global rank 0 worker saves the full model.
             # Therefore, it is the only one that needs to report checkpoints.
-            self.is_report_rank = session.get_world_rank() == 0
+            self.is_report_rank = train.get_context().get_world_rank() == 0
 
     def _session_report(self, trainer: "pl.Trainer", stage: str):
         """Report latest metrics dict and checkpoint to AIR training session.
 
         This method is called whenever a new checkpoint is created. It creates
-        a `LightningCheckpoint` and reports it to the AIR session along with
+        a `LegacyLightningCheckpoint` and reports it to the AIR session along with
         the latest metrics.
         """
 
@@ -316,8 +333,11 @@ class RayModelCheckpoint(ModelCheckpoint):
 
             # Only the report_rank worker creates the actual checkpoints.
             # Other workers create placeholder checkpoints to prevent blocking.
-            checkpoint = LightningCheckpoint.from_directory(path=tmpdir)
-            session.report(metrics=metrics, checkpoint=checkpoint)
+            if _use_storage_context():
+                checkpoint = LightningCheckpoint.from_directory(tmpdir)
+            else:
+                checkpoint = LegacyLightningCheckpoint.from_directory(path=tmpdir)
+            train.report(metrics=metrics, checkpoint=checkpoint)
 
         self.is_checkpoint_step = False
 

@@ -349,7 +349,6 @@ def test_nonserializable_deployment(serve_instance):
 
     lock = threading.Lock()
 
-    @serve.deployment
     class D:
         def hello(self, _):
             return lock
@@ -359,7 +358,7 @@ def test_nonserializable_deployment(serve_instance):
         TypeError,
         match=r"Could not serialize the deployment[\s\S]*was found to be non-serializable.*",  # noqa
     ):
-        serve.run(D.bind())
+        serve.deployment(D)
 
     @serve.deployment
     class E:
@@ -406,27 +405,23 @@ def test_deploy_application_unhealthy(serve_instance):
 
     handle = serve.run(Model.bind(), name="app")
     assert ray.get(handle.remote()) == "hello world"
-    assert (
-        serve_instance.get_serve_status("app").app_status.status
-        == ApplicationStatus.RUNNING
-    )
+    assert serve.status().applications["app"].status == ApplicationStatus.RUNNING
 
     # When a deployment becomes unhealthy, application should transition -> UNHEALTHY
     event.set.remote()
     wait_for_condition(
-        lambda: serve_instance.get_serve_status("app").app_status.status
-        == ApplicationStatus.UNHEALTHY
+        lambda: serve.status().applications["app"].status == ApplicationStatus.UNHEALTHY
     )
 
     # Check that application stays unhealthy
     for _ in range(10):
-        assert (
-            serve_instance.get_serve_status("app").app_status.status
-            == ApplicationStatus.UNHEALTHY
-        )
+        assert serve.status().applications["app"].status == ApplicationStatus.UNHEALTHY
         time.sleep(0.1)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Runtime env support experimental on windows"
+)
 def test_deploy_bad_pip_package_deployment(serve_instance):
     """Test deploying with a bad runtime env at deployment level."""
 
@@ -440,11 +435,37 @@ def test_deploy_bad_pip_package_deployment(serve_instance):
     def check_fail():
         app_status = serve.status().applications["default"]
         assert app_status.status == ApplicationStatus.DEPLOY_FAILED
-        deployment_message = app_status.deployments["default_Model"].message
+        deployment_message = app_status.deployments["Model"].message
         assert "No matching distribution found for does_not_exist" in deployment_message
         return True
 
     wait_for_condition(check_fail, timeout=15)
+
+
+def test_deploy_same_deployment_name_different_app(serve_instance):
+    @serve.deployment
+    class Model:
+        def __init__(self, name):
+            self.name = name
+
+        def __call__(self):
+            return f"hello {self.name}"
+
+    serve.run(Model.bind("alice"), name="app1", route_prefix="/app1")
+    serve.run(Model.bind("bob"), name="app2", route_prefix="/app2")
+
+    assert requests.get("http://localhost:8000/app1").text == "hello alice"
+    assert requests.get("http://localhost:8000/app2").text == "hello bob"
+    routes = requests.get("http://localhost:8000/-/routes").json()
+    assert routes["/app1"] == "app1"
+    assert routes["/app2"] == "app2"
+
+    app1_status = serve.status().applications["app1"]
+    app2_status = serve.status().applications["app2"]
+    assert app1_status.status == "RUNNING"
+    assert app1_status.deployments["Model"].status == "HEALTHY"
+    assert app2_status.status == "RUNNING"
+    assert app2_status.deployments["Model"].status == "HEALTHY"
 
 
 if __name__ == "__main__":

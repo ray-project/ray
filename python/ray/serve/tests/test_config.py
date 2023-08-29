@@ -8,9 +8,18 @@ from ray.serve.config import (
     DeploymentMode,
     HTTPOptions,
     ReplicaConfig,
+    gRPCOptions,
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve._private.utils import DEFAULT
+from ray.serve.generated.serve_pb2_grpc import add_UserDefinedServiceServicer_to_server
+from ray.serve._private.constants import DEFAULT_GRPC_PORT
+from ray.serve.schema import (
+    ServeDeploySchema,
+    HTTPOptionsSchema,
+    ServeApplicationSchema,
+    DeploymentSchema,
+)
 
 
 def test_autoscaling_config_validation():
@@ -56,9 +65,8 @@ def test_autoscaling_config_validation():
 
 class TestDeploymentConfig:
     def test_deployment_config_validation(self):
-        # Test unknown key.
-        with pytest.raises(ValidationError):
-            DeploymentConfig(unknown_key=-1)
+        # Test config ignoring unknown keys (required for forward-compatibility)
+        DeploymentConfig(new_version_key=-1)
 
         # Test num_replicas validation.
         DeploymentConfig(num_replicas=1)
@@ -188,6 +196,60 @@ class TestReplicaConfig:
         for option in disallowed_ray_actor_options:
             with pytest.raises(ValueError):
                 ReplicaConfig.create(Class, ray_actor_options={option: None})
+
+    def test_max_replicas_per_node_validation(self):
+        class Class:
+            pass
+
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            max_replicas_per_node=5,
+        )
+
+        # Invalid type
+        with pytest.raises(TypeError, match="Get invalid type"):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node="1",
+            )
+
+        # Invalid: not in the range of [1, 100]
+        with pytest.raises(
+            ValueError,
+            match="Valid values are None or an integer in the range of \[1, 100\]",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node=0,
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="Valid values are None or an integer in the range of \[1, 100\]",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node=110,
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="Valid values are None or an integer in the range of \[1, 100\]",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node=-1,
+            )
 
     def test_placement_group_options_validation(self):
         class Class:
@@ -340,9 +402,36 @@ class TestReplicaConfig:
         assert config.init_kwargs == dict()
 
 
+def test_config_schemas_forward_compatible():
+    # Test configs ignoring unknown keys (required for forward-compatibility)
+    ServeDeploySchema(
+        http_options=HTTPOptionsSchema(
+            new_version_config_key="this config is from newer version of Ray"
+        ),
+        applications=[
+            ServeApplicationSchema(
+                import_path="module.app",
+                deployments=[
+                    DeploymentSchema(
+                        name="deployment",
+                        new_version_config_key="this config is from newer version"
+                        " of Ray",
+                    )
+                ],
+                new_version_config_key="this config is from newer version of Ray",
+            ),
+        ],
+        new_version_config_key="this config is from newer version of Ray",
+    )
+
+
 def test_http_options():
     HTTPOptions()
     HTTPOptions(host="8.8.8.8", middlewares=[object()])
+
+    # Test configs ignoring unknown keys (required for forward-compatibility)
+    HTTPOptions(new_version_config_key="this config is from newer version of Ray")
+
     assert HTTPOptions(host=None).location == "NoServer"
     assert HTTPOptions(location=None).location == "NoServer"
     assert HTTPOptions(location=DeploymentMode.EveryNode).location == "EveryNode"
@@ -377,6 +466,36 @@ def test_zero_default_proto():
     # Check that this test is not spuriously passing.
     default_downscale_delay_s = AutoscalingConfig().downscale_delay_s
     assert new_delay_s != default_downscale_delay_s
+
+
+def test_grpc_options():
+    """Test gRPCOptions.
+
+    When the gRPCOptions object is created, the default values are set correctly. When
+    the gRPCOptions object is created with user-specified values, the values are set
+    correctly. Also if the user provided an invalid grpc_servicer_function, it does not
+    raise an error.
+    """
+    default_grpc_options = gRPCOptions()
+    assert default_grpc_options.port == DEFAULT_GRPC_PORT
+    assert default_grpc_options.grpc_servicer_functions == []
+    assert default_grpc_options.grpc_servicer_func_callable == []
+
+    port = 9001
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "fake.service.that.does.not.exist",  # Import not found, ignore.
+        "ray.serve._private.constants.DEFAULT_HTTP_PORT",  # Not callable, ignore.
+    ]
+    grpc_options = gRPCOptions(
+        port=port,
+        grpc_servicer_functions=grpc_servicer_functions,
+    )
+    assert grpc_options.port == port
+    assert grpc_options.grpc_servicer_functions == grpc_servicer_functions
+    assert grpc_options.grpc_servicer_func_callable == [
+        add_UserDefinedServiceServicer_to_server
+    ]
 
 
 if __name__ == "__main__":

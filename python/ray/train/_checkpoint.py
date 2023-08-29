@@ -30,11 +30,11 @@ _CHECKPOINT_TEMP_DIR_PREFIX = "checkpoint_tmp_"
 class Checkpoint:
     """A reference to data persisted as a directory in local or remote storage.
 
-    Access checkpoint contents locally using `checkpoint.to_directory()`.
+    Access checkpoint contents locally using ``checkpoint.to_directory()``.
 
-    Example creating a checkpoint using `Checkpoint.from_directory`:
+    Example creating a checkpoint using ``Checkpoint.from_directory``:
 
-        >>> from ray.train._checkpoint import Checkpoint
+        >>> from ray.train import Checkpoint
         >>> checkpoint = Checkpoint.from_directory("/tmp/example_checkpoint_dir")
         >>> checkpoint.filesystem  # doctest: +ELLIPSIS
         <pyarrow._fs.LocalFileSystem object...
@@ -85,7 +85,7 @@ class Checkpoint:
         self._uuid = uuid.uuid4()
 
     def __repr__(self):
-        return f"Checkpoint(filesystem={self.filesystem}, path={self.path})"
+        return f"Checkpoint(filesystem={self.filesystem.type_name}, path={self.path})"
 
     def get_metadata(self) -> Dict[str, Any]:
         """Return the metadata dict stored with the checkpoint.
@@ -117,8 +117,8 @@ class Checkpoint:
         existing_metadata.update(metadata)
         self.set_metadata(existing_metadata)
 
-    @staticmethod
-    def from_directory(path: Union[str, os.PathLike]) -> "Checkpoint":
+    @classmethod
+    def from_directory(cls, path: Union[str, os.PathLike]) -> "Checkpoint":
         """Create checkpoint object from a local directory.
 
         Args:
@@ -128,9 +128,9 @@ class Checkpoint:
                 of the checkpoint directory.
 
         Returns:
-            Checkpoint: checkpoint object.
+            A ray.train.Checkpoint object.
         """
-        return Checkpoint(path, filesystem=pyarrow.fs.LocalFileSystem())
+        return cls(path, filesystem=pyarrow.fs.LocalFileSystem())
 
     def to_directory(self, path: Optional[Union[str, os.PathLike]] = None) -> str:
         """Write checkpoint data to directory.
@@ -192,7 +192,7 @@ class Checkpoint:
             from pathlib import Path
             import tempfile
 
-            from ray.train._checkpoint import Checkpoint
+            from ray.train import Checkpoint
 
             temp_dir = tempfile.mkdtemp()
             (Path(temp_dir) / "example.txt").write_text("example checkpoint data")

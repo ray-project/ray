@@ -7,20 +7,49 @@ from typing import Dict
 import pytest
 
 import ray
+from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.common import EndpointTag, EndpointInfo, RunningReplicaInfo
-from ray.serve._private.long_poll import (
-    LongPollClient,
-    LongPollHost,
-    UpdatedObject,
-    LongPollNamespace,
-)
+
 from ray.serve.generated.serve_pb2 import (
     LongPollRequest,
     LongPollResult,
     EndpointSet,
     ActorNameList,
 )
+from ray.serve._private.common import EndpointTag, EndpointInfo, RunningReplicaInfo
+from ray.serve._private.long_poll import (
+    LongPollClient,
+    LongPollHost,
+    LongPollState,
+    UpdatedObject,
+    LongPollNamespace,
+)
+
+
+def test_notifier_events_cleared_without_update(serve_instance):
+    """Verify that notifier events are not leaked.
+
+    Previously, events were leaked if there were timeouts and no updates on the key.
+    """
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(0.1, 0.1)
+    )
+    ray.get(host.notify_changed.remote("key_1", 999))
+
+    # Get an initial object snapshot for the key.
+    object_ref = host.listen_for_change.remote({"key_1": -1})
+    result: Dict[str, UpdatedObject] = ray.get(object_ref)
+    assert set(result.keys()) == {"key_1"}
+    assert {v.object_snapshot for v in result.values()} == {999}
+    new_snapshot_ids = {k: v.snapshot_id for k, v in result.items()}
+
+    # Listen for changes -- this should time out without an update.
+    object_ref = host.listen_for_change.remote(new_snapshot_ids)
+    assert ray.get(object_ref) == LongPollState.TIME_OUT
+
+    # Verify that the `asyncio.Event` used for the `listen_for_change` task
+    # is removed.
+    assert ray.get(host._get_num_notifier_events.remote()) == 0
 
 
 def test_host_standalone(serve_instance):
@@ -105,7 +134,7 @@ def test_long_poll_restarts(serve_instance):
 
 
 @pytest.mark.asyncio
-async def test_client(serve_instance):
+async def test_client_callbacks(serve_instance):
     host = ray.remote(LongPollHost).remote()
 
     # Write two values
@@ -120,7 +149,7 @@ async def test_client(serve_instance):
     def key_2_callback(result):
         callback_results["key_2"] = result
 
-    client = LongPollClient(
+    _ = LongPollClient(
         host,
         {
             "key_1": key_1_callback,
@@ -129,23 +158,17 @@ async def test_client(serve_instance):
         call_in_event_loop=get_or_create_event_loop(),
     )
 
-    while len(client.object_snapshots) == 0:
-        time.sleep(0.1)
-
-    assert client.object_snapshots["key_1"] == 100
-    assert client.object_snapshots["key_2"] == 999
+    await async_wait_for_condition(
+        lambda: callback_results == {"key_1": 100, "key_2": 999},
+        timeout=1,
+    )
 
     ray.get(host.notify_changed.remote("key_2", 1999))
 
-    values = set()
-    for _ in range(3):
-        values.add(client.object_snapshots["key_2"])
-        if 1999 in values:
-            break
-        await asyncio.sleep(1)
-    assert 1999 in values
-
-    assert callback_results == {"key_1": 100, "key_2": 1999}
+    await async_wait_for_condition(
+        lambda: callback_results == {"key_1": 100, "key_2": 999},
+        timeout=1,
+    )
 
 
 @pytest.mark.asyncio
@@ -182,8 +205,8 @@ def test_listen_for_change_java(serve_instance):
     assert poll_result_1.updated_objects["key_1"].object_snapshot.decode() == "999"
     request_2 = {"keys_to_snapshot_ids": {"ROUTE_TABLE": -1}}
     endpoints: Dict[EndpointTag, EndpointInfo] = dict()
-    endpoints["deployment_name"] = EndpointInfo(route="/test/xlang/poll", app_name="")
-    endpoints["deployment_name1"] = EndpointInfo(route="/test/xlang/poll1", app_name="")
+    endpoints["deployment_name"] = EndpointInfo(route="/test/xlang/poll")
+    endpoints["deployment_name1"] = EndpointInfo(route="/test/xlang/poll1")
     ray.get(host.notify_changed.remote(LongPollNamespace.ROUTE_TABLE, endpoints))
     object_ref_2 = host.listen_for_change_java.remote(
         LongPollRequest(**request_2).SerializeToString()
@@ -202,6 +225,7 @@ def test_listen_for_change_java(serve_instance):
         RunningReplicaInfo(
             deployment_name="deployment_name",
             replica_tag=str(i),
+            node_id="node_id",
             actor_handle=host,
             max_concurrent_queries=1,
         )

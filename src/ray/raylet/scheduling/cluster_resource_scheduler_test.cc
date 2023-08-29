@@ -20,7 +20,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
@@ -37,13 +37,6 @@ using namespace std;
     ASSERT_EQ(available[kCPU_ResourceLabel], expected_available);     \
     auto total = data->resources_total();                             \
     ASSERT_EQ(total[kCPU_ResourceLabel], expected_total);             \
-  }
-
-#define ASSERT_RESOURCES_EMPTY(data)                   \
-  {                                                    \
-    ASSERT_FALSE(data->resources_available_changed()); \
-    ASSERT_TRUE(data->resources_available().empty());  \
-    ASSERT_TRUE(data->resources_total().empty());      \
   }
 
 namespace ray {
@@ -84,25 +77,25 @@ ResourceRequest CreateResourceRequest(
 
 NodeResources CreateNodeResources(
     const absl::flat_hash_map<ResourceID, double> &resource_map) {
-  return NodeResources(CreateResourceRequest(resource_map));
+  return NodeResources(NodeResourceSet(resource_map));
 }
 
-ResourceRequest RandomResourceRequest() {
+NodeResourceSet RandomNodeResourceSet() {
   auto ids = {ResourceID::CPU(),
               ResourceID::Memory(),
               ResourceID::GPU(),
               ResourceID("custom1"),
               ResourceID("custom2")};
-  ResourceRequest resource_request;
+  NodeResourceSet resource_set;
   for (auto &id : ids) {
     if (rand() % 3 != 0) {
-      resource_request.Set(id, rand() % 10);
+      resource_set.Set(id, rand() % 10);
     }
   }
-  return resource_request;
+  return resource_set;
 }
 
-NodeResources RandomNodeResources() { return NodeResources(RandomResourceRequest()); }
+NodeResources RandomNodeResources() { return NodeResources(RandomNodeResourceSet()); }
 
 class ClusterResourceSchedulerTest : public ::testing::Test {
  public:
@@ -520,7 +513,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
     ASSERT_TRUE(
         resource_scheduler.GetClusterResourceManager().GetNodeResources(node_id, &nr2));
 
-    for (auto &resource_id : nr1.total.ResourceIds()) {
+    for (auto &resource_id : nr1.total.ExplicitResourceIds()) {
       auto t = nr1.available.Get(resource_id) - resource_request.Get(resource_id);
       if (t < 0) t = 0;
       ASSERT_EQ(nr2.available.Get(resource_id), t);
@@ -729,12 +722,12 @@ TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesWithCpuUnitTest) 
   ClusterResourceScheduler resource_scheduler(
       io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
-  TaskResourceInstances available_cluster_resources =
+  NodeResourceInstanceSet available_cluster_resources =
       resource_scheduler.GetLocalResourceManager()
           .GetLocalResources()
           .GetAvailableResourceInstances();
 
-  TaskResourceInstances expected_cluster_resources;
+  NodeResourceInstanceSet expected_cluster_resources;
   expected_cluster_resources.Set(ResourceID::CPU(), {1., 1., 1.});
   expected_cluster_resources.Set(ResourceID::Memory(), {4.});
   expected_cluster_resources.Set(ResourceID::GPU(), {1., 1., 1., 1., 1.});
@@ -757,12 +750,12 @@ TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest) {
   ClusterResourceScheduler resource_scheduler(
       io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
-  TaskResourceInstances available_cluster_resources =
+  NodeResourceInstanceSet available_cluster_resources =
       resource_scheduler.GetLocalResourceManager()
           .GetLocalResources()
           .GetAvailableResourceInstances();
 
-  TaskResourceInstances expected_cluster_resources;
+  NodeResourceInstanceSet expected_cluster_resources;
   expected_cluster_resources.Set(ResourceID::CPU(), {3.});
   expected_cluster_resources.Set(ResourceID::Memory(), {4.});
   expected_cluster_resources.Set(ResourceID::GPU(), {1., 1., 1., 1., 1.});
@@ -784,35 +777,6 @@ TEST_F(ClusterResourceSchedulerTest, GetCPUInstancesDoubleTest) {
   std::vector<FixedPoint> expected_cpu_instances{1., 1., 1.};
 
   ASSERT_EQ(cpu_instances, expected_cpu_instances);
-}
-
-TEST_F(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest) {
-  NodeResources node_resources = CreateNodeResources({{ResourceID::CPU(), 3}});
-  instrumented_io_context io_context;
-  ClusterResourceScheduler cluster(
-      io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
-
-  std::vector<FixedPoint> total = {6., 6., 6.};
-  std::vector<FixedPoint> available = {3., 2., 5.};
-  auto old_total = total;
-  auto old_available = available;
-
-  std::vector<FixedPoint> a{1., 1., 1.};
-  cluster.GetLocalResourceManager().AddAvailableResourceInstances(a, total, available);
-  cluster.GetLocalResourceManager().SubtractAvailableResourceInstances(a, available);
-
-  ASSERT_EQ(available, old_available);
-
-  a = {10., 1., 1.};
-  cluster.GetLocalResourceManager().AddAvailableResourceInstances(a, total, available);
-  std::vector<FixedPoint> expected_available{6., 3., 6.};
-
-  ASSERT_EQ(available, expected_available);
-
-  a = {10., 1., 1.};
-  cluster.GetLocalResourceManager().SubtractAvailableResourceInstances(a, available);
-  expected_available = {0., 2., 5.};
-  ASSERT_EQ(available, expected_available);
 }
 
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
@@ -1061,10 +1025,10 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
     resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
         ResourceID::GPU(), allocate_gpu_instances);
     std::vector<double> available_gpu_instances =
-        resource_scheduler.GetLocalResourceManager()
-            .GetLocalResources()
-            .GetAvailableResourceInstances()
-            .GetDouble(ResourceID::GPU());
+        FixedPointVectorToDouble(resource_scheduler.GetLocalResourceManager()
+                                     .GetLocalResources()
+                                     .GetAvailableResourceInstances()
+                                     .Get(ResourceID::GPU()));
     std::vector<double> expected_available_gpu_instances{0.5, 0.5, 0.5, 0.5};
     ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
                            available_gpu_instances.end(),
@@ -1075,10 +1039,11 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
 
     resource_scheduler.GetLocalResourceManager().AddResourceInstances(
         ResourceID::GPU(), allocate_gpu_instances);
-    available_gpu_instances = resource_scheduler.GetLocalResourceManager()
-                                  .GetLocalResources()
-                                  .GetAvailableResourceInstances()
-                                  .GetDouble(ResourceID::GPU());
+    available_gpu_instances =
+        FixedPointVectorToDouble(resource_scheduler.GetLocalResourceManager()
+                                     .GetLocalResources()
+                                     .GetAvailableResourceInstances()
+                                     .Get(ResourceID::GPU()));
     expected_available_gpu_instances = {1., 1., 1., 1.};
     ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
                            available_gpu_instances.end(),
@@ -1097,27 +1062,26 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
     std::vector<double> expected_underflow{.5, .5, 0., .5};
     ASSERT_TRUE(
         std::equal(underflow.begin(), underflow.end(), expected_underflow.begin()));
-    available_gpu_instances = resource_scheduler.GetLocalResourceManager()
-                                  .GetLocalResources()
-                                  .GetAvailableResourceInstances()
-                                  .GetDouble(ResourceID::GPU());
+    available_gpu_instances =
+        FixedPointVectorToDouble(resource_scheduler.GetLocalResourceManager()
+                                     .GetLocalResources()
+                                     .GetAvailableResourceInstances()
+                                     .Get(ResourceID::GPU()));
     expected_available_gpu_instances = {0., 0., 0.5, 0.};
     ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
                            available_gpu_instances.end(),
                            expected_available_gpu_instances.begin()));
 
-    allocate_gpu_instances = {1.0, .5, 1., .5};
-    std::vector<double> overflow =
-        resource_scheduler.GetLocalResourceManager().AddResourceInstances(
-            ResourceID::GPU(), allocate_gpu_instances);
+    allocate_gpu_instances = {1.0, .5, .5, .5};
+    resource_scheduler.GetLocalResourceManager().AddResourceInstances(
+        ResourceID::GPU(), allocate_gpu_instances);
     ASSERT_FALSE(
         resource_scheduler.GetLocalResourceManager().GetResourceIdleTime().has_value());
-    std::vector<double> expected_overflow{.0, .0, .5, 0.};
-    ASSERT_TRUE(std::equal(overflow.begin(), overflow.end(), expected_overflow.begin()));
-    available_gpu_instances = resource_scheduler.GetLocalResourceManager()
-                                  .GetLocalResources()
-                                  .GetAvailableResourceInstances()
-                                  .GetDouble(ResourceID::GPU());
+    available_gpu_instances =
+        FixedPointVectorToDouble(resource_scheduler.GetLocalResourceManager()
+                                     .GetLocalResources()
+                                     .GetAvailableResourceInstances()
+                                     .Get(ResourceID::GPU()));
     expected_available_gpu_instances = {1., .5, 1., .5};
     ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
                            available_gpu_instances.end(),
@@ -1143,10 +1107,10 @@ TEST_F(ClusterResourceSchedulerTest,
       resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
           ResourceID::GPU(), allocate_gpu_instances);
       std::vector<double> available_gpu_instances =
-          resource_scheduler.GetLocalResourceManager()
-              .GetLocalResources()
-              .GetAvailableResourceInstances()
-              .GetDouble(ResourceID::GPU());
+          FixedPointVectorToDouble(resource_scheduler.GetLocalResourceManager()
+                                       .GetLocalResources()
+                                       .GetAvailableResourceInstances()
+                                       .Get(ResourceID::GPU()));
       std::vector<double> expected_available_gpu_instances{0.5, 0.5, 0., 0.5};
       ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
                              available_gpu_instances.end(),
@@ -1159,16 +1123,16 @@ TEST_F(ClusterResourceSchedulerTest,
     }
 
     {
-      std::vector<double> allocate_gpu_instances{1.5, 0.5, 2, 0.3};
+      std::vector<double> allocate_gpu_instances{0.5, 0.5, 1, 0.3};
       // SubtractGPUResourceInstances() calls
       // UpdateLocalAvailableResourcesFromResourceInstances() under the hood.
       resource_scheduler.GetLocalResourceManager().AddResourceInstances(
           ResourceID::GPU(), allocate_gpu_instances);
       std::vector<double> available_gpu_instances =
-          resource_scheduler.GetLocalResourceManager()
-              .GetLocalResources()
-              .GetAvailableResourceInstances()
-              .GetDouble(ResourceID::GPU());
+          FixedPointVectorToDouble(resource_scheduler.GetLocalResourceManager()
+                                       .GetLocalResources()
+                                       .GetAvailableResourceInstances()
+                                       .Get(ResourceID::GPU()));
       std::vector<double> expected_available_gpu_instances{1., 1., 1., 0.8};
       ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
                              available_gpu_instances.end(),
@@ -1289,87 +1253,6 @@ TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
                                                       &is_infeasible));
 }
 
-TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
-  vector<int64_t> cust_ids{1, 2, 3, 4, 5};
-
-  NodeResources node_resources;
-
-  absl::flat_hash_map<std::string, double> initial_resources(
-      {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"1", 1}, {"2", 2}, {"3", 3}});
-  instrumented_io_context io_context;
-  ClusterResourceScheduler resource_scheduler(
-      io_context, scheduling::NodeID("0"), initial_resources, is_node_available_fn_);
-  NodeResources other_node_resources = CreateNodeResources({{ResourceID::CPU(), 1},
-                                                            {ResourceID::Memory(), 1},
-                                                            {ResourceID::GPU(), 1},
-                                                            {ResourceID("custom1"), 5},
-                                                            {ResourceID("custom2"), 4},
-                                                            {ResourceID("custom3"), 3},
-                                                            {ResourceID("custom4"), 2},
-                                                            {ResourceID("custom5"), 1}});
-  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
-      scheduling::NodeID(12345), other_node_resources);
-
-  {  // Cluster is idle.
-    rpc::ResourcesData data;
-    resource_scheduler.GetLocalResourceManager().FillResourceUsage(data);
-
-    auto available = data.resources_available();
-    auto total = data.resources_total();
-
-    ASSERT_EQ(available[kCPU_ResourceLabel], 1);
-    ASSERT_EQ(available[kGPU_ResourceLabel], 2);
-    ASSERT_EQ(available[kMemory_ResourceLabel], 3);
-    ASSERT_EQ(available["1"], 1);
-    ASSERT_EQ(available["2"], 2);
-    ASSERT_EQ(available["3"], 3);
-
-    ASSERT_EQ(total[kCPU_ResourceLabel], 1);
-    ASSERT_EQ(total[kGPU_ResourceLabel], 2);
-    ASSERT_EQ(total[kMemory_ResourceLabel], 3);
-    ASSERT_EQ(total["1"], 1);
-    ASSERT_EQ(total["2"], 2);
-    ASSERT_EQ(total["3"], 3);
-
-    // GCS doesn't like entries which are 0.
-    ASSERT_EQ(available.size(), 6);
-    ASSERT_EQ(total.size(), 6);
-  }
-  {  // Task running on node with {"CPU": 0.1, "1": 0.1}
-    std::shared_ptr<TaskResourceInstances> allocations =
-        std::make_shared<TaskResourceInstances>();
-    allocations->Set(ResourceID::CPU(), {0.1});
-    allocations->Set(ResourceID("1"), {0.1});
-    absl::flat_hash_map<std::string, double> allocation_map({
-        {"CPU", 0.1},
-        {"1", 0.1},
-    });
-    resource_scheduler.GetLocalResourceManager().AllocateLocalTaskResources(
-        allocation_map, allocations);
-    rpc::ResourcesData data;
-    resource_scheduler.GetLocalResourceManager().ResetLastReportResourceUsage(
-        NodeResources{});
-    resource_scheduler.GetLocalResourceManager().FillResourceUsage(data);
-
-    auto available = data.resources_available();
-    auto total = data.resources_total();
-
-    ASSERT_EQ(available[kCPU_ResourceLabel], 0.9);
-    ASSERT_EQ(available[kGPU_ResourceLabel], 2);
-    ASSERT_EQ(available[kMemory_ResourceLabel], 3);
-    ASSERT_EQ(available["1"], 0.9);
-    ASSERT_EQ(available["2"], 2);
-    ASSERT_EQ(available["3"], 3);
-
-    ASSERT_EQ(total[kCPU_ResourceLabel], 1);
-    ASSERT_EQ(total[kGPU_ResourceLabel], 2);
-    ASSERT_EQ(total[kMemory_ResourceLabel], 3);
-    ASSERT_EQ(total["1"], 1);
-    ASSERT_EQ(total["2"], 2);
-    ASSERT_EQ(total["3"], 3);
-  }
-}
-
 TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   vector<int64_t> cust_ids{1};
   NodeResources node_resources;
@@ -1393,12 +1276,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
       scheduling::NodeID(12345), other_node_resources);
 
   {
-    rpc::ResourcesData data;
-    resource_scheduler.GetLocalResourceManager().FillResourceUsage(data);
-    auto available = data.resources_available();
-    auto total = data.resources_total();
-    ASSERT_EQ(available["object_store_memory"], 750 * 1024 * 1024);
-    ASSERT_EQ(total["object_store_memory"], 1000 * 1024 * 1024);
+    resource_scheduler.GetLocalResourceManager().UpdateAvailableObjectStoreMemResource();
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
                   .available.Sum(ResourceID::ObjectStoreMemory())
@@ -1413,11 +1291,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
 
   used_object_store_memory = 450 * 1024 * 1024;
   {
-    rpc::ResourcesData data;
-    resource_scheduler.GetLocalResourceManager().FillResourceUsage(data);
-    auto available = data.resources_available();
-    auto total = data.resources_total();
-    ASSERT_EQ(available["object_store_memory"], 550 * 1024 * 1024);
+    resource_scheduler.GetLocalResourceManager().UpdateAvailableObjectStoreMemResource();
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
                   .available.Sum(ResourceID::ObjectStoreMemory())
@@ -1432,11 +1306,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
 
   used_object_store_memory = 0;
   {
-    rpc::ResourcesData data;
-    resource_scheduler.GetLocalResourceManager().FillResourceUsage(data);
-    auto available = data.resources_available();
-    auto total = data.resources_total();
-    ASSERT_EQ(available["object_store_memory"], 1000 * 1024 * 1024);
+    resource_scheduler.GetLocalResourceManager().UpdateAvailableObjectStoreMemResource();
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
                   .available.Sum(ResourceID::ObjectStoreMemory())
@@ -1451,11 +1321,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
 
   used_object_store_memory = 9999999999;
   {
-    rpc::ResourcesData data;
-    resource_scheduler.GetLocalResourceManager().FillResourceUsage(data);
-    auto available = data.resources_available();
-    auto total = data.resources_total();
-    ASSERT_EQ(available["object_store_memory"], 0);
+    resource_scheduler.GetLocalResourceManager().UpdateAvailableObjectStoreMemResource();
     ASSERT_EQ(resource_scheduler.GetLocalResourceManager()
                   .GetLocalResources()
                   .available.Sum(ResourceID::ObjectStoreMemory())
@@ -1486,11 +1352,6 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
   ASSERT_TRUE(resource_scheduler.GetLocalResourceManager().AllocateLocalTaskResources(
       task_spec, task_allocation));
   task_allocation = std::make_shared<TaskResourceInstances>();
-  ASSERT_FALSE(resource_scheduler.GetLocalResourceManager().AllocateLocalTaskResources(
-      task_spec, task_allocation));
-  // View of local resources is not affected by resource usage report.
-  rpc::ResourcesData data;
-  resource_scheduler.GetLocalResourceManager().FillResourceUsage(data);
   ASSERT_FALSE(resource_scheduler.GetLocalResourceManager().AllocateLocalTaskResources(
       task_spec, task_allocation));
 
@@ -1582,8 +1443,10 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
                                                      &is_infeasible);
   ASSERT_TRUE(result.IsNil());
 
+  resource_scheduler.GetLocalResourceManager().DeleteLocalResource(
+      scheduling::ResourceID("custom123"));
   resource_scheduler.GetLocalResourceManager().AddLocalResourceInstances(
-      scheduling::ResourceID("custom123"), {1.0});
+      scheduling::ResourceID("custom123"), {1.0, 1.0, 1.0});
   result = resource_scheduler.GetBestSchedulableNode(resource_request,
                                                      scheduling_strategy,
                                                      false,
@@ -1760,7 +1623,8 @@ TEST_F(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest) {
   ResourceRequest bundle_resource_request =
       CreateResourceRequest(AddPlacementGroupConstraint(
           {{"CPU", 1}, {"memory", 100}}, bundle_1.first, bundle_1.second));
-  NodeResources node_resources = NodeResources(bundle_resource_request);
+  NodeResources node_resources =
+      NodeResources(NodeResourceSet(bundle_resource_request.ToResourceMap()));
   instrumented_io_context io_service;
   ClusterResourceScheduler resource_scheduler(io_service,
                                               scheduling::NodeID(node_1.Binary()),
@@ -1769,7 +1633,8 @@ TEST_F(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest) {
   ResourceRequest bundle_resource_request_2 =
       CreateResourceRequest(AddPlacementGroupConstraint(
           {{"CPU", 1}, {"memory", 100}}, bundle_2.first, bundle_2.second));
-  NodeResources node_resources_2 = NodeResources(bundle_resource_request_2);
+  NodeResources node_resources_2 =
+      NodeResources(NodeResourceSet(bundle_resource_request_2.ToResourceMap()));
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       scheduling::NodeID(node_2.Binary()), node_resources_2);
   resource_scheduler.GetClusterResourceManager()

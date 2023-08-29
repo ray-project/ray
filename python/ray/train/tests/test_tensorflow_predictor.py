@@ -4,7 +4,6 @@ import pandas as pd
 import pytest
 import tensorflow as tf
 
-from ray.train import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import (
     _convert_pandas_to_batch_type,
@@ -70,7 +69,7 @@ def test_repr():
     assert pattern.match(representation)
 
 
-def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
+def create_checkpoint_preprocessor() -> Tuple[TensorflowCheckpoint, Preprocessor]:
     preprocessor = DummyPreprocessor()
     checkpoint = TensorflowCheckpoint.from_model(
         build_model(), preprocessor=preprocessor
@@ -84,9 +83,7 @@ def test_init():
 
     predictor = TensorflowPredictor(model=build_model(), preprocessor=preprocessor)
 
-    checkpoint_predictor = TensorflowPredictor.from_checkpoint(
-        checkpoint, model_definition=build_raw_model
-    )
+    checkpoint_predictor = TensorflowPredictor.from_checkpoint(checkpoint)
 
     assert checkpoint_predictor._model.get_weights() == predictor._model.get_weights()
     assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
@@ -98,17 +95,12 @@ def test_tensorflow_checkpoint():
     preprocessor = DummyPreprocessor()
 
     checkpoint = TensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
-    assert (
-        checkpoint.get_model(model=build_raw_model).get_weights() == model.get_weights()
-    )
+    assert checkpoint.get_model().get_weights() == model.get_weights()
 
     with checkpoint.as_directory() as path:
         checkpoint = TensorflowCheckpoint.from_directory(path)
         checkpoint_preprocessor = checkpoint.get_preprocessor()
-        assert (
-            checkpoint.get_model(model=build_raw_model).get_weights()
-            == model.get_weights()
-        )
+        assert checkpoint.get_model().get_weights() == model.get_weights()
         assert checkpoint_preprocessor == preprocessor
 
 

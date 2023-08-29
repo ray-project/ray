@@ -32,25 +32,13 @@ Scale out your PyTorch, Lightning, Hugging Face code with Ray TorchTrainer.
 PyTorch
 *******
 
-**Basic**
-
 .. autosummary::
     :toctree: doc/
 
     ~train.torch.get_device
     ~train.torch.prepare_model
     ~train.torch.prepare_data_loader
-
-
-**Advanced**
-
-.. autosummary::
-    :toctree: doc/
-
     ~train.torch.enable_reproducibility
-    ~train.torch.accelerate
-    ~train.torch.prepare_optimizer
-    ~train.torch.backward
 
 .. _train-lightning-integration:
 
@@ -80,6 +68,8 @@ PyTorch Lightning
     ~train.lightning.LightningConfigBuilder
     ~train.lightning.LightningCheckpoint
     ~train.lightning.LightningPredictor
+
+.. _train-transformers-integration:
 
 Hugging Face Transformers
 *************************
@@ -161,24 +151,6 @@ LightGBM
 
     ~train.lightgbm.LightGBMTrainer
     ~train.lightgbm.LightGBMCheckpoint
-
-Scikit-Learn
-~~~~~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.sklearn.SklearnTrainer
-    ~train.sklearn.SklearnCheckpoint
-
-
-Mosaic
-~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.mosaic.MosaicTrainer
 
 
 .. _ray-train-configs-api:

@@ -872,12 +872,20 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
-    SetTaskStatus(
-        it->second,
-        rpc::TaskStatus::FAILED,
-        (ray_error_info == nullptr
-             ? gcs::GetRayErrorInfo(error_type, (status ? status->ToString() : ""))
-             : *ray_error_info));
+
+    if (status && status->IsIntentionalSystemExit()) {
+      // We don't mark intentional system exit as failures, such as tasks that
+      // exit by exit_actor(), exit by ray.shutdown(), etc. These tasks are expected
+      // to exit and not be marked as failure.
+      SetTaskStatus(it->second, rpc::TaskStatus::FINISHED);
+    } else {
+      SetTaskStatus(
+          it->second,
+          rpc::TaskStatus::FAILED,
+          (ray_error_info == nullptr
+               ? gcs::GetRayErrorInfo(error_type, (status ? status->ToString() : ""))
+               : *ray_error_info));
+    }
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 

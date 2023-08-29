@@ -1,6 +1,6 @@
 import os
 import tempfile
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -10,6 +10,7 @@ from starlette.requests import Request
 from fastapi import Depends, FastAPI
 
 import ray
+import ray.cloudpickle as ray_pickle
 from ray import serve
 from ray.train import Checkpoint
 from ray.serve.air_integrations import _BatchingManager
@@ -128,6 +129,22 @@ class TestBatchingFunctionFunctions:
         )
 
 
+def create_dict_checkpoint(
+    data: Dict[str, Any], directory: Optional[str] = None
+) -> Checkpoint:
+    if not directory:
+        directory = tempfile.mkdtemp()
+    with open(os.path.join(directory, "data.pkl"), "wb") as f:
+        ray_pickle.dump(data, f)
+    return Checkpoint.from_directory(directory)
+
+
+def load_dict_checkpoint(checkpoint: Checkpoint) -> Dict[str, Any]:
+    with checkpoint.as_directory() as checkpoint_dir:
+        with open(os.path.join(checkpoint_dir, "data.pkl"), "rb") as f:
+            return ray_pickle.load(f)
+
+
 class AdderPredictor(Predictor):
     def __init__(self, increment: int, do_double: bool) -> None:
         self.increment = increment
@@ -137,7 +154,7 @@ class AdderPredictor(Predictor):
     def from_checkpoint(
         cls, checkpoint: Checkpoint, do_double: bool = False
     ) -> "AdderPredictor":
-        return cls(checkpoint.to_dict()["increment"], do_double)
+        return cls(load_dict_checkpoint(checkpoint)["increment"], do_double)
 
     def predict(
         self, data: np.ndarray, override_increment: Optional[int] = None
@@ -170,7 +187,7 @@ def test_simple_adder(serve_instance):
             return self.predictor.predict(np.array(data["array"]))
 
     AdderDeployment.options(name="Adder").deploy(
-        checkpoint=Checkpoint.from_dict({"increment": 2}),
+        checkpoint=create_dict_checkpoint({"increment": 2}),
     )
     resp = ray.get(send_request.remote(json={"array": [40]}))
     assert resp == [{"value": 42, "batch_size": 1}]
@@ -189,7 +206,7 @@ def test_predictor_kwargs(serve_instance):
             )
 
     AdderDeployment.options(name="Adder").deploy(
-        checkpoint=Checkpoint.from_dict({"increment": 2}),
+        checkpoint=create_dict_checkpoint({"increment": 2}),
     )
 
     resp = ray.get(send_request.remote(json={"array": [40]}))
@@ -207,7 +224,7 @@ def test_predictor_from_checkpoint_kwargs(serve_instance):
             return self.predictor.predict(np.array(data["array"]))
 
     AdderDeployment.options(name="Adder").deploy(
-        checkpoint=Checkpoint.from_dict({"increment": 2}),
+        checkpoint=create_dict_checkpoint({"increment": 2}),
     )
     resp = ray.get(send_request.remote(json={"array": [40]}))
     assert resp == [{"value": 84, "batch_size": 1}]
@@ -226,7 +243,7 @@ def test_batching(serve_instance):
             return self.predictor.predict(batch)
 
     AdderDeployment.options(name="Adder").deploy(
-        checkpoint=Checkpoint.from_dict({"increment": 2}),
+        checkpoint=create_dict_checkpoint({"increment": 2}),
     )
 
     refs = [send_request.remote(json={"array": [40]}) for _ in range(2)]
@@ -250,8 +267,7 @@ class Ingress:
 
 def test_air_integrations_in_pipeline(serve_instance):
     path = tempfile.mkdtemp()
-    uri = f"file://{path}/test_uri"
-    Checkpoint.from_dict({"increment": 2}).to_uri(uri)
+    create_dict_checkpoint({"increment": 2}, path)
 
     @serve.deployment
     class AdderDeployment:
@@ -263,10 +279,10 @@ def test_air_integrations_in_pipeline(serve_instance):
 
     with InputNode() as dag_input:
         m1 = AdderDeployment.bind(
-            checkpoint=Checkpoint.from_uri(uri),
+            checkpoint=Checkpoint.from_directory(path),
         )
         dag = m1.__call__.bind(dag_input)
-    deployments = build(Ingress.bind(dag))
+    deployments = build(Ingress.bind(dag), "")
     for d in deployments:
         d.deploy()
 
@@ -278,8 +294,7 @@ def test_air_integrations_in_pipeline(serve_instance):
 
 def test_air_integrations_reconfigure(serve_instance):
     path = tempfile.mkdtemp()
-    uri = f"file://{path}/test_uri"
-    Checkpoint.from_dict({"increment": 2}).to_uri(uri)
+    create_dict_checkpoint({"increment": 2}, path)
 
     @serve.deployment
     class AdderDeployment:
@@ -288,7 +303,7 @@ def test_air_integrations_reconfigure(serve_instance):
 
         def reconfigure(self, config):
             self.predictor = AdderPredictor.from_checkpoint(
-                Checkpoint.from_dict(config["checkpoint"])
+                create_dict_checkpoint(config["checkpoint"])
             )
 
         async def __call__(self, data):
@@ -300,10 +315,10 @@ def test_air_integrations_reconfigure(serve_instance):
 
     with InputNode() as dag_input:
         m1 = AdderDeployment.options(user_config=additional_config).bind(
-            checkpoint=Checkpoint.from_uri(uri),
+            checkpoint=Checkpoint.from_directory(path),
         )
         dag = m1.__call__.bind(dag_input)
-    deployments = build(Ingress.bind(dag))
+    deployments = build(Ingress.bind(dag), "")
     for d in deployments:
         d.deploy()
 

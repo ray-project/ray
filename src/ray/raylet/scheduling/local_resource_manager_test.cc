@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Don't know why macro redefinition happens, but this is failing windows
+// build.
 #include "ray/raylet/scheduling/local_resource_manager.h"
 
 #include "gtest/gtest.h"
@@ -42,6 +44,13 @@ class LocalResourceManagerTest : public ::testing::Test {
       RAY_LOG(INFO) << resource << ":"
                     << "\n\tAvailable: " << usage.avail << "\n\tUsed: " << usage.used;
     }
+  }
+
+  rpc::ResourcesData GetSyncMessageForResourceReport() {
+    auto msg = manager->CreateSyncMessage(0, syncer::MessageType::RESOURCE_VIEW);
+    rpc::ResourcesData resources_data;
+    resources_data.ParseFromString(msg->sync_message());
+    return resources_data;
   }
 
   scheduling::NodeID local_node_id = scheduling::NodeID(0);
@@ -149,8 +158,8 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
 
   // Make the node idle so that the node is drained and terminated.
   std::shared_ptr<TaskResourceInstances> task_allocation =
-      std::make_shared<TaskResourceInstances>(ResourceRequest(
-          ResourceMapToResourceRequest({{ResourceID::CPU(), 1.0}}, false)));
+      std::make_shared<TaskResourceInstances>(
+          ResourceSet({{ResourceID::CPU(), FixedPoint(1.0)}}));
   EXPECT_DEATH(manager->ReleaseWorkerResources(task_allocation), ".*");
 }
 
@@ -226,8 +235,8 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
   /// Test that deallocate some resources (not all) should not make it idle.
   {
     std::shared_ptr<TaskResourceInstances> task_allocation =
-        std::make_shared<TaskResourceInstances>(ResourceRequest(
-            ResourceMapToResourceRequest({{ResourceID::CPU(), 1.0}}, false)));
+        std::make_shared<TaskResourceInstances>(
+            ResourceSet({{ResourceID::CPU(), FixedPoint(1.0)}}));
     manager->FreeTaskResourceInstances(task_allocation, /* record_idle_resource */ true);
 
     auto idle_time = manager->GetResourceIdleTime();
@@ -238,7 +247,7 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
   {
     std::shared_ptr<TaskResourceInstances> task_allocation =
         std::make_shared<TaskResourceInstances>(
-            ResourceMapToResourceRequest({{ResourceID("CUSTOM"), 1.}}, false));
+            ResourceSet({{ResourceID("CUSTOM"), FixedPoint(1.)}}));
     manager->FreeTaskResourceInstances(task_allocation, /* record_idle_resource */
                                        true);
 
@@ -272,13 +281,16 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     {
       auto idle_time = manager->GetResourceIdleTime();
       ASSERT_EQ(idle_time, absl::nullopt);
+
+      const auto &resources_data = GetSyncMessageForResourceReport();
+      ASSERT_EQ(resources_data.idle_duration_ms(), 0);
     }
 
     // Deallocate the resource
     {
       std::shared_ptr<TaskResourceInstances> task_allocation =
           std::make_shared<TaskResourceInstances>(
-              ResourceMapToResourceRequest({{ResourceID::CPU(), 1.}}, false));
+              ResourceSet({{ResourceID::CPU(), FixedPoint(1.)}}));
       manager->FreeTaskResourceInstances(task_allocation, /* record_idle_resource */
                                          true);
     }
@@ -290,6 +302,10 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
       auto dur = absl::Now() - *idle_time;
       ASSERT_GE(dur, absl::ZeroDuration());
       ASSERT_LE(dur, absl::Seconds(1));
+
+      const auto &resources_data = GetSyncMessageForResourceReport();
+      ASSERT_GE(resources_data.idle_duration_ms(), 0);
+      ASSERT_LE(resources_data.idle_duration_ms(), 1 * 1000);
     }
   }
 
@@ -299,6 +315,9 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     manager->UpdateAvailableObjectStoreMemResource();
     auto idle_time = manager->GetResourceIdleTime();
     ASSERT_EQ(idle_time, absl::nullopt);
+
+    const auto &resources_data = GetSyncMessageForResourceReport();
+    ASSERT_EQ(resources_data.idle_duration_ms(), 0);
   }
 
   // Free object store memory usage should make node resource idle.
@@ -309,6 +328,10 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     ASSERT_TRUE(idle_time.has_value());
     auto dur = absl::Now() - *idle_time;
     ASSERT_GE(dur, absl::ZeroDuration());
+
+    // And syncer messages should be created correctly for resource reporting.
+    const auto &resources_data = GetSyncMessageForResourceReport();
+    ASSERT_GE(resources_data.idle_duration_ms(), 0);
   }
 }
 

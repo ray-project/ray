@@ -26,6 +26,7 @@ from ray.air.constants import (
 
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
+from ray.train import Checkpoint
 from ray.train._internal.checkpoint_manager import (
     _TrainingResult,
     _CheckpointManager as _NewCheckpointManager,
@@ -52,7 +53,7 @@ from ray.tune.result import (
     DEFAULT_EXPERIMENT_NAME,
     _get_defaults_results_dir,
 )
-from ray.tune.syncer import SyncConfig
+from ray.train import SyncConfig
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
@@ -300,7 +301,7 @@ def _change_working_directory(trial):
     if ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
         old_dir = os.getcwd()
         try:
-            os.chdir(trial.logdir)
+            os.chdir(trial.local_path)
             yield
         finally:
             os.chdir(old_dir)
@@ -541,13 +542,17 @@ class Trial:
         else:
             self.run_metadata.checkpoint_manager = _CheckpointManager(
                 checkpoint_config=checkpoint_config,
-                delete_fn=_CheckpointDeleter(
-                    self._trainable_name(), self.temporary_state.ray_actor
-                ),
+                delete_fn=_CheckpointDeleter(str(self), self.temporary_state.ray_actor),
             )
 
         # Restoration fields
         self.restore_path = restore_path
+        self._restore_checkpoint_result: Optional[_TrainingResult] = None
+        if restore_path:
+            # tune.run(restore) passes in a path without metrics.
+            self._restore_checkpoint_result = _TrainingResult(
+                checkpoint=Checkpoint.from_directory(restore_path), metrics={}
+            )
 
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
@@ -692,7 +697,7 @@ class Trial:
     @property
     def remote_experiment_path(self) -> str:
         if _use_storage_context():
-            return str(self.storage.storage_prefix / self.storage.experiment_fs_path)
+            return self.storage.experiment_fs_path
 
         return str(self._legacy_remote_experiment_path)
 
@@ -802,7 +807,7 @@ class Trial:
     @property
     def path(self) -> Optional[str]:
         if _use_storage_context():
-            return str(self.storage.storage_prefix / self.storage.trial_fs_path)
+            return self.storage.trial_fs_path
 
         return self.remote_path or self.local_path
 
@@ -832,14 +837,23 @@ class Trial:
         return config.checkpoint_frequency
 
     @property
-    def checkpoint(self):
-        """Returns the most recent checkpoint.
+    def latest_checkpoint_result(self) -> Optional[_TrainingResult]:
+        # NOTE: Fallback to the checkpoint passed in from `tune.run(restore)`
+        # if the trial hasn't saved any checkpoints itself yet.
+        return (
+            self.run_metadata.checkpoint_manager.latest_checkpoint_result
+            or self._restore_checkpoint_result
+        )
 
-        If the trial is in ERROR state, the most recent PERSISTENT checkpoint
-        is returned.
-        """
+    @property
+    def checkpoint(self) -> Optional[Checkpoint]:
+        """Returns the most recent checkpoint if one has been saved."""
         if _use_storage_context():
-            return self.run_metadata.checkpoint_manager.latest_checkpoint_result
+            return (
+                self.latest_checkpoint_result.checkpoint
+                if self.latest_checkpoint_result
+                else None
+            )
 
         if self.status == Trial.ERROR:
             checkpoint = (
@@ -963,7 +977,7 @@ class Trial:
             )
         if not _use_storage_context():
             self.run_metadata.checkpoint_manager.set_delete_fn(
-                _CheckpointDeleter(self._trainable_name(), ray_actor)
+                _CheckpointDeleter(str(self), ray_actor)
             )
 
     def set_location(self, location):
@@ -1067,14 +1081,23 @@ class Trial:
         )
 
     def has_checkpoint(self):
+        if _use_storage_context():
+            return self.checkpoint is not None
         return self.checkpoint.dir_or_data is not None
 
     def clear_checkpoint(self):
+        if _use_storage_context():
+            if self.latest_checkpoint_result:
+                self.latest_checkpoint_result.checkpoint = None
+            self.temporary_state.restoring_from = None
+            self.run_metadata.invalidate_cache()
+            return
+
         self.checkpoint.dir_or_data = None
         self.temporary_state.restoring_from = None
         self.run_metadata.invalidate_cache()
 
-    def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
+    def on_checkpoint(self, checkpoint: Union[_TrackedCheckpoint, _TrainingResult]):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
@@ -1090,6 +1113,7 @@ class Trial:
             self.storage.current_checkpoint_index += 1
         else:
             self.run_metadata.checkpoint_manager.on_checkpoint(checkpoint)
+        self.invalidate_json_state()
         self.run_metadata.invalidate_cache()
 
     def on_restore(self):

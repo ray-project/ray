@@ -80,6 +80,36 @@ class TrainingResult:
     metadata: Optional[Dict] = None
 
 
+class _FutureTrainingResult:
+    """A future that will be resolved to a `_TrainingResult`.
+
+    This is needed for specific schedulers such as PBT that schedule saves.
+
+    This wrapper should be removed after refactoring PBT to not schedule saves anymore.
+    """
+
+    def __init__(self, future: ray.ObjectRef):
+        self.future = future
+
+    def resolve(self, block: bool = True) -> Optional["_TrainingResult"]:
+        """Resolve into ``_TrainingResult``.
+
+        This will return None for function trainables if no checkpoint has been
+        saved before.
+        """
+        if block:
+            timeout = None
+        else:
+            timeout = 1e-9
+        try:
+            return ray.get(self.future, timeout=timeout)
+        except TimeoutError:
+            # Not ready, yet
+            pass
+        except Exception as exc:
+            logger.error(f"Error resolving result: {exc}")
+
+
 class _TrainingResult:
     """A (checkpoint, metrics) result reported by the user."""
 
@@ -107,6 +137,7 @@ class _TrainSession:
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
+        metadata: Dict[str, Any] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Checkpoint] = None,
         # Deprecated
@@ -136,6 +167,8 @@ class _TrainSession:
 
         # Ray Train worker properties
         self.dataset_shard = dataset_shard
+        self.metadata = metadata
+
         self.world_rank = world_rank
         self.local_rank = local_rank
         self.node_rank = node_rank
@@ -171,8 +204,7 @@ class _TrainSession:
 
         if _use_storage_context():
             assert storage
-            logger.debug(f"StorageContext on TRAIN WORKER {world_rank}:\n{storage}")
-            storage._check_validation_file()
+            logger.info(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
 
             # Change the working directory to the local trial directory.
             # -> All workers on the same node share a working directory.
@@ -254,6 +286,10 @@ class _TrainSession:
 
         # Release the lock so that training thread can process this event.
         self.continue_lock.release()
+
+        # Force a final (blocking) sync of artifacts in the trial path to storage.
+        if _use_storage_context():
+            self.storage.persist_artifacts(force=True)
 
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
@@ -543,8 +579,12 @@ class _TrainSession:
     def new_report(
         self, metrics: Dict, checkpoint: Optional[NewCheckpoint] = None
     ) -> None:
+        if self.ignore_report:
+            return
+
         persisted_checkpoint = None
         if checkpoint:
+            # TODO(justinvyu): [code_removal]
             if not isinstance(checkpoint, NewCheckpoint):
                 raise ValueError(
                     "You must pass a `ray.train.Checkpoint` "
@@ -554,12 +594,26 @@ class _TrainSession:
             # Persist the reported checkpoint files to storage.
             persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
 
+        # Persist trial artifacts to storage.
+        force_artifact_sync = (
+            persisted_checkpoint
+            and self.storage.sync_config.sync_artifacts_on_checkpoint
+        )
+        self.storage.persist_artifacts(force=force_artifact_sync)
+
         metrics = self._auto_fill_metrics(metrics)
 
-        result = _TrainingResult(
-            checkpoint=persisted_checkpoint,
-            metrics=metrics,
-        )
+        # Set additional user metadata from the Trainer.
+        if persisted_checkpoint and self.metadata:
+            user_metadata = persisted_checkpoint.get_metadata()
+            for k, v in self.metadata.items():
+                # Update keys not already set by the user. This gives user-set keys
+                # precedence over keys set at the Trainer level.
+                if k not in user_metadata:
+                    user_metadata[k] = v
+            persisted_checkpoint.set_metadata(user_metadata)
+
+        result = _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
 
         self._report_training_result(result)
 
@@ -575,7 +629,7 @@ class _TrainSession:
                     "Passing objects containg Torch tensors as metrics "
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
-                    "to Python objects or use a `TorchCheckpoint` as the "
+                    "to Python objects or use a `LegacyTorchCheckpoint` as the "
                     "`checkpoint` argument of `ray.train.report` to "
                     "store your Torch objects."
                 )
@@ -836,6 +890,13 @@ def get_checkpoint() -> Optional[Checkpoint]:
     """
 
     return _get_session().loaded_checkpoint
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse()
+def get_metadata() -> Dict[str, Any]:
+    """User metadata dict passed to the Trainer constructor."""
+    return _get_session().metadata
 
 
 @PublicAPI(stability="beta")

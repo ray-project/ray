@@ -27,14 +27,12 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             return {"timesteps_this_iter": 1, "done": True}
 
         def save_checkpoint(self, checkpoint_dir):
-            checkpoint_path = os.path.join(
-                checkpoint_dir, "checkpoint-{}".format(self._iteration)
-            )
+            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pkl")
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(self.state, f)
-            return checkpoint_path
 
-        def load_checkpoint(self, checkpoint_path):
+        def load_checkpoint(self, checkpoint_dir):
+            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pkl")
             with open(checkpoint_path, "rb") as f:
                 extra_data = pickle.load(f)
             self.state.update(extra_data)
@@ -91,7 +89,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(abs_trial_dir))
         self.assertTrue(
             os.path.isfile(
-                os.path.join(abs_trial_dir, "checkpoint_000001/checkpoint-1")
+                os.path.join(abs_trial_dir, "checkpoint_000001/checkpoint.pkl")
             )
         )
 
@@ -100,9 +98,11 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             os.path.join(absolute_local_dir, exp_name)
         )
 
-        checkpoint_path = os.path.join(
-            local_dir, exp_name, trial_name, "checkpoint_000001/checkpoint-1"
+        checkpoint_dir = os.path.join(
+            local_dir, exp_name, trial_name, "checkpoint_000001"
         )  # Relative checkpoint path
+
+        checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pkl")
 
         # The file tune would find. The absolute checkpoint path.
         tune_find_file = os.path.abspath(os.path.expanduser(checkpoint_path))
@@ -114,7 +114,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             self.MockTrainable,
             name=exp_name,
             stop={"training_iteration": 2},  # train one more iteration.
-            restore=checkpoint_path,  # Restore the checkpoint
+            restore=checkpoint_dir,  # Restore the checkpoint
             config={"env": "CartPole-v0", "log_level": "DEBUG"},
         ).trials
         self.assertIsNone(trial.error_file)
@@ -176,7 +176,6 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
                 return checkpoint_dir
 
         validate_save_restore(MockTrainable)
-        validate_save_restore(MockTrainable, use_object_store=True)
 
 
 if __name__ == "__main__":

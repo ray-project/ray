@@ -28,7 +28,6 @@
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
-#include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
@@ -42,6 +41,8 @@
 namespace ray {
 using raylet::ClusterTaskManager;
 using raylet::NoopLocalTaskManager;
+
+class GcsClientTest;
 namespace gcs {
 
 struct GcsServerConfig {
@@ -173,6 +174,8 @@ class GcsServer {
   /// Initialize monitor service.
   void InitMonitorServer();
 
+  friend class ray::GcsClientTest;
+
  private:
   /// Gets the type of KV storage to use from config.
   StorageType GetStorageType() const;
@@ -248,11 +251,6 @@ class GcsServer {
   std::unique_ptr<GcsMonitorServer> monitor_server_;
   /// Monitor service for monitor server
   std::unique_ptr<rpc::MonitorGrpcService> monitor_grpc_service_;
-
-  /// Synchronization service for ray.
-  /// TODO(iycheng): Deprecate this gcs_ray_syncer_ one once we roll out
-  /// to ray_syncer_.
-  std::unique_ptr<gcs_syncer::RaySyncer> gcs_ray_syncer_;
 
   /// Ray Syncer realted fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
