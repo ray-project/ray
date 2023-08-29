@@ -21,3 +21,4 @@ deployments of Ray on Kubernetes.
 * {ref}`kuberay-pod-security`
 * {ref}`kuberay-tls`
 * {ref}`deploy-a-static-ray-cluster-without-kuberay`
+* {ref}`kuberay-gke-bucket`
