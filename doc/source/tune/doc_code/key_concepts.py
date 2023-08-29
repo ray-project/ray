@@ -1,7 +1,7 @@
 # flake8: noqa
 
 # __function_api_start__
-from ray.air import session
+from ray import train
 
 
 def objective(x, a, b):  # Define an objective function.
@@ -13,7 +13,7 @@ def trainable(config):  # Pass a "config" dictionary into your trainable.
     for x in range(20):  # "Train" for 20 iterations and compute intermediate scores.
         score = objective(x, config["a"], config["b"])
 
-        session.report({"score": score})  # Send the score to Tune.
+        train.report({"score": score})  # Send the score to Tune.
 
 
 # __function_api_end__
@@ -92,7 +92,7 @@ config = {
 
 # __bayes_start__
 from ray.tune.search.bayesopt import BayesOptSearch
-from ray import air
+from ray import train
 
 # Define the search space
 search_space = {"a": tune.uniform(0, 1), "b": tune.uniform(0, 20)}
@@ -106,7 +106,7 @@ tuner = tune.Tuner(
         mode="min",
         search_alg=algo,
     ),
-    run_config=air.RunConfig(stop={"training_iteration": 20}),
+    run_config=train.RunConfig(stop={"training_iteration": 20}),
     param_space=search_space,
 )
 tuner.fit()
@@ -139,7 +139,7 @@ tuner = tune.Tuner(
         mode="min",
         search_alg=BayesOptSearch(random_search_steps=4),
     ),
-    run_config=air.RunConfig(
+    run_config=train.RunConfig(
         stop={"training_iteration": 20},
     ),
     param_space=config,
@@ -148,7 +148,7 @@ results = tuner.fit()
 
 best_result = results.get_best_result()  # Get best result object
 best_config = best_result.config  # Get best trial's hyperparameters
-best_logdir = best_result.log_dir  # Get best trial's logdir
+best_logdir = best_result.path  # Get best trial's result directory
 best_checkpoint = best_result.checkpoint  # Get best trial's best checkpoint
 best_metrics = best_result.metrics  # Get best trial's last results
 best_result_df = best_result.metrics_dataframe  # Get best result as pandas dataframe

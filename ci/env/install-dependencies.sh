@@ -28,7 +28,7 @@ install_bazel() {
       # Only reinstall Bazel if we need to upgrade to a different version.
       python="$(command -v python3 || command -v python || echo python)"
       current_version="$(bazel --version | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
-      new_version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${SCRIPT_DIR}/../../python/setup.py")"
+      new_version="$(grep 'USE_BAZEL_VERSION=' "${WORKSPACE_DIR}/.bazeliskrc" | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
       if [[ "$current_version" == "$new_version" ]]; then
         echo "Bazel of the same version already exists, skipping the install"
         export BAZEL_CONFIG_ONLY=1
@@ -37,9 +37,6 @@ install_bazel() {
   fi
 
   "${SCRIPT_DIR}"/install-bazel.sh
-  if [ -f /etc/profile.d/bazel.sh ]; then
-    . /etc/profile.d/bazel.sh
-  fi
 }
 
 install_base() {
@@ -192,7 +189,7 @@ install_shellcheck() {
 }
 
 install_linters() {
-  pip install -r "${WORKSPACE_DIR}"/python/requirements_linters.txt
+  pip install -r "${WORKSPACE_DIR}"/python/requirements/lint-requirements.txt
 
   install_shellcheck
 }
@@ -232,7 +229,7 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --upgrade "pip<23.1"
+    "${python}" -m pip install --upgrade pip
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
@@ -328,7 +325,7 @@ install_pip_packages() {
   # files.
   delayed_packages=()
 
-  requirements_files+=("${WORKSPACE_DIR}/python/requirements_test.txt")
+  requirements_files+=("${WORKSPACE_DIR}/python/requirements/test-requirements.txt")
 
   if [ "${LINT-}" = 1 ]; then
     install_linters
@@ -350,34 +347,34 @@ install_pip_packages() {
 
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_rllib.txt")
-    #TODO(amogkam): Add this back to requirements_rllib.txt once mlagents no longer pins torch<1.9.0 version.
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
+    #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
-  fi
 
-  # Some Ray Train dependencies have to be installed with --no-deps,
-  # as sub-dependencies conflict. The packages still work for our workflows.
-  # Todo(krfricke): Try to remove once we move to Python 3.8 in CI.
-  local install_ml_no_deps=0
+    # Install MuJoCo.
+    sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
+    wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+    mkdir -p /root/.mujoco
+    mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
+    (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
+    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco210/bin
+  fi
 
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_train.txt")
-    install_ml_no_deps=1
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt")
   fi
 
   # Additional Tune/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_tune.txt")
-  fi
-
-  # For Tune, install upstream dependencies.
-  if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_upstream.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt")
   fi
 
   # Additional dependency for Ludwig.
-  # This cannot be included in requirements_upstream.txt as it has conflicting
+  # This cannot be included in requirements files as it has conflicting
   # dependencies with Modin.
   if [ "${INSTALL_LUDWIG-}" = 1 ]; then
     # TODO: eventually pin this to master.
@@ -386,7 +383,7 @@ install_pip_packages() {
   fi
 
   # Additional dependency for time series libraries.
-  # This cannot be included in requirements_tune.txt as it has conflicting
+  # This cannot be included in tune-requirements.txt as it has conflicting
   # dependencies.
   if [ "${INSTALL_TIMESERIES_LIBS-}" = 1 ]; then
     requirements_packages+=("statsforecast==1.5.0")
@@ -394,17 +391,12 @@ install_pip_packages() {
     requirements_packages+=("holidays==0.24") # holidays 0.25 causes `import prophet` to fail.
   fi
 
-  # Additional dependency for vllm.
-  if [ "${INSTALL_VLLM-}" = 1 ]; then
-    requirements_packages+=("vllm")
-  fi
-
   # Data processing test dependencies.
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/data_processing/requirements.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt")
   fi
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/data_processing/requirements_dataset.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt")
     if [ -n "${ARROW_VERSION-}" ]; then
       if [ "${ARROW_VERSION-}" = nightly ]; then
         delayed_packages+=("--extra-index-url")
@@ -421,12 +413,6 @@ install_pip_packages() {
     fi
   fi
 
-  if [ "${install_ml_no_deps}" = 1 ]; then
-    # Install these requirements first. Their dependencies may be overwritten later
-    # by the main install.
-    pip install -r "${WORKSPACE_DIR}/python/requirements/ml/requirements_no_deps.txt"
-  fi
-
   retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
 
   # Install deeplearning libraries (Torch + TensorFlow)
@@ -436,10 +422,10 @@ install_pip_packages() {
         # Install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
         pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION-0.10.0}"
-        # We won't add requirements_dl.txt as it would otherwise overwrite our custom
+        # We won't add dl-cpu-requirements.txt as it would otherwise overwrite our custom
         # torch. Thus we have also have to install tensorflow manually.
-        TF_PACKAGE=$(grep "tensorflow==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
-        TFPROB_PACKAGE=$(grep "tensorflow-probability==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+        TF_PACKAGE=$(grep -ohE "tensorflow==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
+        TFPROB_PACKAGE=$(grep -ohE "tensorflow-probability==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
 
         # %%;* deletes everything after ; to get rid of e.g. python version specifiers
         pip install -U "${TF_PACKAGE%%;*}" "${TFPROB_PACKAGE%%;*}"
@@ -447,13 +433,18 @@ install_pip_packages() {
         # Otherwise, use pinned default torch version.
         # Again, install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
-        TORCH_PACKAGE=$(grep "torch==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
-        TORCHVISION_PACKAGE=$(grep "torchvision==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+        TORCH_PACKAGE=$(grep -ohE "torch==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
+        TORCHVISION_PACKAGE=$(grep -ohE "torchvision==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
 
         # %%;* deletes everything after ; to get rid of e.g. python version specifiers
         pip install "${TORCH_PACKAGE%%;*}" "${TORCHVISION_PACKAGE%%;*}"
-        requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+        requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
       fi
+  fi
+
+  # AIR core dependencies
+  if [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt")
   fi
 
   # Inject our own mirror for the CIFAR10 dataset
@@ -471,6 +462,16 @@ install_pip_packages() {
 
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
+
+  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt"  &&  "${PYTHON-}" != "3.7" && "${OSTYPE}" != msys ]]; then
+    # On Python 3.7, we don't, as the dependencies are compiled for 3.8+
+    # and we don't build ray-ml images. This means we don't have to keep
+    # consistency between CI and docker images.
+    # On Windows, some pinned dependencies are not built for win, so we
+    # skip this until we have a good wy to resolve cross-platform dependencies.
+    pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  fi
+
   for file in "${requirements_files[@]}"; do
      pip_cmd+=" -r ${file}"
   done
@@ -507,9 +508,9 @@ install_pip_packages() {
 }
 
 install_thirdparty_packages() {
-  # shellcheck disable=SC2262
-  alias pip="python -m pip"
-  CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  mkdir -p "${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  RAY_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/thirdparty_files")"
+  CC=gcc python -m pip install psutil setproctitle==1.2.2 colorama --target="${RAY_THIRDPARTY_FILES}"
 }
 
 install_dependencies() {
@@ -547,7 +548,7 @@ install_dependencies() {
   install_thirdparty_packages
 }
 
-install_dependencies "$@"
+install_dependencies
 
 # Pop caller's shell options (quietly)
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null

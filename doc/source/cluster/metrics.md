@@ -6,7 +6,7 @@ Ray records and emits time-series metrics using the [Prometheus format](https://
 
 
 ## System and application metrics
-Ray exports metrics if you use `ray[default]`, `ray[air]`, or {ref}`other installation commands <installation>` that include Dashboard component. Dashboard agent process is responsbile for aggregating and reporting metrics to the endpoints for Prometheus to scrape.
+Ray exports metrics if you use `ray[default]`, `ray[air]`, or {ref}`other installation commands <installation>` that include Dashboard component. Dashboard agent process is responsible for aggregating and reporting metrics to the endpoints for Prometheus to scrape.
 
 **System metrics**: Ray exports a number of system metrics. View {ref}`system metrics <system-metrics>` for more details about the emitted metrics.
 
@@ -14,13 +14,13 @@ Ray exports metrics if you use `ray[default]`, `ray[air]`, or {ref}`other instal
 
 (prometheus-setup)=
 ## Setting up your Prometheus server
-Use Promtheus to scrape metrics from Ray Clusters. Ray doesn't start Prometheus servers for users. Users need to decide where to host and configure it to scrape the metrics from Clusters.
+Use Prometheus to scrape metrics from Ray Clusters. Ray doesn't start Prometheus servers for users. Users need to decide where to host and configure it to scrape the metrics from Clusters.
 
 ```{admonition} Tip
 :class: tip
 The instructions below describe one way of setting up Prometheus on your local machine. View [Prometheus documentation](https://prometheus.io/docs/introduction/overview/) for the best strategy to set up your Prometheus server.
 
-For KubeRay users, follow [these instructions](https://ray-project.github.io/kuberay/guidance/prometheus-grafana/) to set up Prometheus.
+For KubeRay users, follow [these instructions](kuberay-prometheus-grafana) to set up Prometheus.
 ```
 
 First, [download Prometheus](https://prometheus.io/download/). Make sure to download the correct binary for your operating system. (For example, Darwin for macOS X.)
@@ -80,6 +80,10 @@ Many developers are not on macOS's trusted list. Users can manually override thi
 
 See [these instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac) for how to override the restriction and install or run the application.
 
+#### Loading Ray Prometheus configurations with Docker Compose
+In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Prometheus configuration files.
+
+To fix this issue, employ an automated shell script for seamlessly transferring the Prometheus configurations from the Ray container to a shared volume. To ensure a proper setup, mount the shared volume on the respective path for the container, which contains the recommended configurations to initiate the Prometheus servers.
 
 (scrape-metrics)=
 ## Scraping metrics
@@ -192,7 +196,7 @@ Grafana is a tool that supports advanced visualizations of Prometheus metrics an
 :class: note
 The instructions below describe one way of starting a Grafana server on a macOS machine. Refer to the [Grafana documentation](https://grafana.com/docs/grafana/latest/setup-grafana/start-restart-grafana/#start-the-grafana-server) for how to start Grafana servers in different systems. 
 
-For KubeRay users, follow [these instructions](https://ray-project.github.io/kuberay/guidance/prometheus-grafana/) to set up Grafana.
+For KubeRay users, follow [these instructions](kuberay-prometheus-grafana) to set up Grafana.
 ```
 
 First, [download Grafana](https://grafana.com/grafana/download). Follow the instructions on the download page to download the right binary for your operating system.
@@ -214,7 +218,8 @@ If this is your first time using Grafana, login with the username: `admin` and p
 
 ![grafana login](images/graphs.png)
 
-**Troubleshooting: Using Ray configurations in Grafana with Homebrew on macOS X**
+**Troubleshooting**
+***Using Ray configurations in Grafana with Homebrew on macOS X***
 
 Homebrew installs Grafana as a service that is automatically launched for you.
 Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
@@ -223,20 +228,18 @@ Instead, update the `/usr/local/etc/grafana/grafana.ini` file so that it matches
 
 You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
 
+***Loading Ray Grafana configurations with Docker Compose***
+In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Grafana configuration files and default dashboards.
+
+To fix this issue, employ an automated shell script for seamlessly transferring the necessary Grafana configurations and dashboards from the Ray container to a shared volume. To ensure a proper setup, mount the shared volume on the respective path for the container, which contains the recommended configurations and default dashboards to initiate Grafana servers.
+
 :::
 
 :::{tab-item} Using an existing Grafana server
 
 After your Grafana server is running, find the Ray-provided default Grafana dashboard JSON at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. [Import this dashboard](https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard) to your Grafana.
 
-If Grafana reports that datasource is not found, [add a datasource variable](https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable) and using [JSON model view](https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/modify-dashboard-settings/#view-dashboard-json-model), change all values of `datasource` key in the imported `default_grafana_dashboard.json` to the name of the variable. For example, if the variable name is `data_source`, all `"datasource"` mappings should be:
-
-```json
-"datasource": {
-  "type": "prometheus",
-  "uid": "$data_source"
-  }
-```
+If Grafana reports that the datasource is not found, [add a datasource variable](https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable). The datasource's name must be the same as value in the `RAY_PROMETHEUS_NAME` environment. By default, `RAY_PROMETHEUS_NAME` equals `Prometheus`.
 :::
 
 ::::

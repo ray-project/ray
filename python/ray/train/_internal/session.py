@@ -8,21 +8,27 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
+import functools
 from pathlib import Path
 import shutil
-from typing import Callable, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
+import warnings
 
 import ray
+from ray.air._internal.session import _get_session
 from ray.air._internal.util import StartTraceback, RunnerThread
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
     _RESULT_FETCH_TIMEOUT,
     _ERROR_FETCH_TIMEOUT,
+    SESSION_MISUSE_LOG_ONCE_KEY,
     TIMESTAMP,
     TIME_THIS_ITER_S,
 )
 from ray.data import Dataset, DatasetPipeline
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal.accelerator import Accelerator
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train.constants import (
     CHECKPOINT_METADATA_KEY,
     CHECKPOINT_RANK_KEY,
@@ -35,9 +41,12 @@ from ray.train.constants import (
 )
 
 from ray.train.error import SessionMisuseError
-from ray.train.session import _TrainSessionImpl
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
+
+if TYPE_CHECKING:
+    from ray.data import DataIterator
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 _INDEX_FILE_EXTENSION = ".files"
@@ -71,6 +80,47 @@ class TrainingResult:
     metadata: Optional[Dict] = None
 
 
+class _FutureTrainingResult:
+    """A future that will be resolved to a `_TrainingResult`.
+
+    This is needed for specific schedulers such as PBT that schedule saves.
+
+    This wrapper should be removed after refactoring PBT to not schedule saves anymore.
+    """
+
+    def __init__(self, future: ray.ObjectRef):
+        self.future = future
+
+    def resolve(self, block: bool = True) -> Optional["_TrainingResult"]:
+        """Resolve into ``_TrainingResult``.
+
+        This will return None for function trainables if no checkpoint has been
+        saved before.
+        """
+        if block:
+            timeout = None
+        else:
+            timeout = 1e-9
+        try:
+            return ray.get(self.future, timeout=timeout)
+        except TimeoutError:
+            # Not ready, yet
+            pass
+        except Exception as exc:
+            logger.error(f"Error resolving result: {exc}")
+
+
+class _TrainingResult:
+    """A (checkpoint, metrics) result reported by the user."""
+
+    def __init__(self, checkpoint: Optional[Checkpoint], metrics: Dict[str, Any]):
+        self.checkpoint = checkpoint
+        self.metrics = metrics
+
+    def __repr__(self) -> str:
+        return f"TrainingResult(checkpoint={self.checkpoint}, metrics={self.metrics})"
+
+
 # TODO(xwjiang): This needs a better name.
 @DeveloperAPI
 class _TrainSession:
@@ -87,6 +137,7 @@ class _TrainSession:
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
+        metadata: Dict[str, Any] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Checkpoint] = None,
         # Deprecated
@@ -98,24 +149,41 @@ class _TrainSession:
         enable_lazy_checkpointing: bool = True,
         checkpoint_keep_all_ranks: bool = False,
         checkpoint_upload_from_workers: bool = False,
+        storage: Optional[StorageContext] = None,
+        synchronous_result_reporting: bool = False,
     ):
+        # `synchronous_result_reporting` refers to whether or not the
+        # training function is immediately unblocked to continue running
+        # after the main thread receives its result.
+        # Ex 1: For 2 Ray Train workers with synchronous_result_reporting=True,
+        # the worker that produces a result first will immediately will continue
+        # onto the next iteration.
+        # Ex 2: For a Tune function Trainable with `synchronous_result_reporting=False`,
+        # training will only continue with an explicit call to `session.get_next`.
+        # Synchronous reporting in example 2 is needed for Tune schedulers to
+        # be able to stop the execution of the training function at will,
+        # for advanced pausing schedulers (PBT, BOHB) and actor reuse.
+        self.synchronous_result_reporting = synchronous_result_reporting
 
+        # Ray Train worker properties
         self.dataset_shard = dataset_shard
+        self.metadata = metadata
 
         self.world_rank = world_rank
         self.local_rank = local_rank
         self.node_rank = node_rank
         self.local_world_size = local_world_size
         self.world_size = world_size
-        self.trial_info = trial_info
-        # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        self.loaded_checkpoint = checkpoint
+
+        # Checkpoint configurations
+        # TODO(justinvyu): These should all be removed.
         self.enable_lazy_checkpointing = enable_lazy_checkpointing
         self.checkpoint_keep_all_ranks = checkpoint_keep_all_ranks
         self.checkpoint_upload_from_workers = checkpoint_upload_from_workers
         # Only used if checkpoint_upload_from_workers is True.
-        self.checkpoint_uri = None
+        self.legacy_checkpoint_uri = None
 
+        # TODO(justinvyu): Encode data fn to be removed.
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_data_fn:
 
@@ -125,15 +193,60 @@ class _TrainSession:
             encode_data_fn = noop
         self._encode_data_fn = encode_data_fn
 
-        # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        if trial_info:
-            # Change the working directory to `logdir`.
-            logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
-            os.makedirs(logdir, exist_ok=True)
-            os.chdir(logdir)
+        # NOTE: `reset` will initialize many properties needed to start running the
+        # training_func as a thread.
+        self.reset(
+            training_func=training_func,
+            trial_info=trial_info,
+            storage=storage,
+            loaded_checkpoint=checkpoint,
+        )
 
+        if _use_storage_context():
+            assert storage
+            logger.info(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
+
+            # Change the working directory to the local trial directory.
+            # -> All workers on the same node share a working directory.
+            os.makedirs(storage.trial_local_path, exist_ok=True)
+            os.chdir(storage.trial_local_path)
+        else:
+            if trial_info:
+                # Change the working directory to `logdir`.
+                logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
+                os.makedirs(logdir, exist_ok=True)
+                os.chdir(logdir)
+
+        # Autofilled metrics attributes.
+        self.detailed_autofilled_metrics = detailed_autofilled_metrics
+        self.last_report_time = time.time()
+        self.iteration = 0
+        self.time_total = 0.0
+        self.local_ip = self.get_current_ip()
+
+        self.accelerator = None
+
+    def get_current_ip(self):
+        self.local_ip = ray.util.get_node_ip_address()
+        return self.local_ip
+
+    def start(self):
+        """Starts the training thread."""
+        self.training_started = True
+        self.training_thread.start()
+
+    def reset(
+        self,
+        training_func: Callable,
+        trial_info: TrialInfo,
+        storage: StorageContext,
+        loaded_checkpoint=None,
+    ):
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
+
+        # This event is used to signal the training thread to stop.
+        self.stop_event = threading.Event()
 
         # Queue for sending results across threads.
         self.result_queue = queue.Queue(1)
@@ -148,42 +261,40 @@ class _TrainSession:
             target=training_func, daemon=True, error_queue=self.error_queue
         )
 
-        # Autofilled metrics attributes.
-        self.detailed_autofilled_metrics = detailed_autofilled_metrics
-        self.last_report_time = time.time()
-        self.iteration = 0
-        self.time_total = 0.0
-        self.local_ip = self.get_current_ip()
+        # Possibly override with new state
+        self.trial_info = trial_info
+        self.storage = storage
+        self.loaded_checkpoint = loaded_checkpoint
 
+        # Reset state
         self.ignore_report = False
         self.training_started = False
-
-        self.accelerator = None
-
-    def get_current_ip(self):
-        self.local_ip = ray.util.get_node_ip_address()
-        return self.local_ip
-
-    def start(self):
-        """Starts the training thread."""
-        self.training_started = True
-        self.training_thread.start()
+        self._first_report = True
 
     def pause_reporting(self):
         """Ignore all future ``session.report()`` calls."""
         self.ignore_report = True
 
-    def finish(self):
+    def finish(self, timeout: Optional[float] = None):
         """Finishes the training thread.
 
         Either returns the output from training or raises any Exception from
         training.
         """
+        # Set the stop event for the training thread to gracefully exit.
+        self.stop_event.set()
+
+        # Release the lock so that training thread can process this event.
+        self.continue_lock.release()
+
+        # Force a final (blocking) sync of artifacts in the trial path to storage.
+        if _use_storage_context():
+            self.storage.persist_artifacts(force=True)
 
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
         # SystemError
-        func_output = self.training_thread.join()
+        func_output = self.training_thread.join(timeout=timeout)
         # If training finished successfully, then return results.
         return func_output
 
@@ -194,6 +305,16 @@ class _TrainSession:
         """
         if not self.training_started:
             raise RuntimeError("Please call start before calling get_next.")
+
+        if self.synchronous_result_reporting:
+            # There's no need to release the lock on the first report
+            # since `start` already started the training thread.
+            if not self._first_report:
+                # Release the lock to trigger training to continue,
+                # until the next call to report.
+                self.continue_lock.release()
+            self._first_report = False
+
         result = None
         # While training is still ongoing, attempt to get the result.
         while result is None and self.training_thread.is_alive():
@@ -229,8 +350,13 @@ class _TrainSession:
                     )
                 )
 
-        # Release the lock to trigger training to continue.
-        self.continue_lock.release()
+        if not self.synchronous_result_reporting:
+            # At this point, the training thread has reached
+            # the `train.report` and is blocked there.
+            # If performing asynchronous result reporting,
+            # release the lock to allow each worker to keep training
+            # immediately after the coordinator fetches their result.
+            self.continue_lock.release()
 
         # Return None if there are no more results to fetch.
         return result
@@ -347,7 +473,7 @@ class _TrainSession:
             if log_once("keep_all_ranks_dict_checkpoint"):
                 logger.warning(
                     "Saving checkpoints from all ranks does not work with "
-                    "dictionary checkpoints. Set `ray.air.CheckpointConfig"
+                    "dictionary checkpoints. Set `ray.train.CheckpointConfig"
                     "(_checkpoint_keep_all_ranks=False)`, or write checkpoints "
                     "to a directory and report directory checkpoints that "
                     "contain unique files per worker rank. For example, "
@@ -359,18 +485,18 @@ class _TrainSession:
         upload_from_workers = (
             checkpoint_type == "local_path"
             and self.checkpoint_upload_from_workers
-            and self.checkpoint_uri
+            and self.legacy_checkpoint_uri
         )
         if upload_from_workers:
             self._create_checkpoint_file_list(checkpoint)
             logger.info(
                 f"Uploading checkpoint files from worker rank {self.world_rank} "
-                f"to cloud URI {self.checkpoint_uri}."
+                f"to cloud URI {self.legacy_checkpoint_uri}."
             )
             # We want to upload the files directly to cloud storage,
             # so that they won't need to be shipped to the driver node
             # via object store.
-            checkpoint.to_uri(self.checkpoint_uri)
+            checkpoint.to_uri(self.legacy_checkpoint_uri)
             logger.info("Done uploading checkpoint files.")
             self._remove_uploaded_checkpoint_files(checkpoint)
 
@@ -410,13 +536,86 @@ class _TrainSession:
         # checkpoint has been processed.
         self.continue_lock.acquire()
 
-    def _set_checkpoint_uri(self, uri: str):
+    def _set_legacy_checkpoint_uri(self, uri: str):
         """Tell session where to save the next directory checkpoint on the cloud.
 
         Args:
             uri: URI to the location where next checkpoint should be saved.
         """
-        self.checkpoint_uri = uri
+        self.legacy_checkpoint_uri = uri
+
+    def _report_training_result(self, training_result: _TrainingResult) -> None:
+        """Place a training result on the result queue for the main thread to process,
+        then block until the main thread signals that training should continue.
+
+        NOTE: This is used internally to report results from Train to Tune
+        without persisting checkpoints to storage 2 times.
+        `report` is the public API that directly persists to storage, which
+        should only be called by user code.
+        """
+        if training_result.checkpoint:
+            # NOTE: This populates `train.get_checkpoint`
+            self.loaded_checkpoint = training_result.checkpoint
+
+            # NOTE: This is where the coordinator AND workers increment their
+            # checkpoint index.
+            self.storage.current_checkpoint_index += 1
+
+        # Add result to a thread-safe queue.
+        self.result_queue.put(training_result, block=True)
+
+        # Acquire lock to stop the training thread until main thread
+        # triggers resume.
+        self.continue_lock.acquire()
+
+        # If the trial should be terminated, exit gracefully.
+        # NOTE: This is only really useful if `synchronous_result_reporting=True`.
+        # Otherwise, the lock is immediately released on reporting, and this
+        # check is skipped before the main thread decides to set the stop event.
+        if self.stop_event.is_set():
+            self.stop_event.clear()
+            sys.exit(0)
+
+    def new_report(
+        self, metrics: Dict, checkpoint: Optional[NewCheckpoint] = None
+    ) -> None:
+        if self.ignore_report:
+            return
+
+        persisted_checkpoint = None
+        if checkpoint:
+            # TODO(justinvyu): [code_removal]
+            if not isinstance(checkpoint, NewCheckpoint):
+                raise ValueError(
+                    "You must pass a `ray.train.Checkpoint` "
+                    "object to `train.report`. `ray.air.Checkpoint` is deprecated."
+                )
+
+            # Persist the reported checkpoint files to storage.
+            persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
+
+        # Persist trial artifacts to storage.
+        force_artifact_sync = (
+            persisted_checkpoint
+            and self.storage.sync_config.sync_artifacts_on_checkpoint
+        )
+        self.storage.persist_artifacts(force=force_artifact_sync)
+
+        metrics = self._auto_fill_metrics(metrics)
+
+        # Set additional user metadata from the Trainer.
+        if persisted_checkpoint and self.metadata:
+            user_metadata = persisted_checkpoint.get_metadata()
+            for k, v in self.metadata.items():
+                # Update keys not already set by the user. This gives user-set keys
+                # precedence over keys set at the Trainer level.
+                if k not in user_metadata:
+                    user_metadata[k] = v
+            persisted_checkpoint.set_metadata(user_metadata)
+
+        result = _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
+
+        self._report_training_result(result)
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.
@@ -430,31 +629,72 @@ class _TrainSession:
                     "Passing objects containg Torch tensors as metrics "
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
-                    "to Python objects or use a `TorchCheckpoint` as the "
-                    "`checkpoint` argument of `ray.air.session.report` to "
+                    "to Python objects or use a `LegacyTorchCheckpoint` as the "
+                    "`checkpoint` argument of `ray.train.report` to "
                     "store your Torch objects."
                 )
+
+        if _use_storage_context():
+            return self.new_report(metrics, checkpoint=checkpoint)
 
         if checkpoint:
             self.checkpoint(checkpoint)
         self._report_legacy(**metrics)
 
+    @property
+    def experiment_name(self) -> str:
+        return self.trial_info.experiment_name
+
+    @property
+    def trial_name(self) -> str:
+        return self.trial_info.name
+
+    @property
+    def trial_id(self) -> str:
+        return self.trial_info.id
+
+    @property
+    def trial_resources(self) -> "PlacementGroupFactory":
+        return self.trial_info.resources
+
+    @property
+    def trial_dir(self) -> str:
+        return self.trial_info.logdir
+
+    def get_dataset_shard(
+        self,
+        dataset_name: Optional[str] = None,
+    ) -> Optional["DataIterator"]:
+        shard = self.dataset_shard
+        if shard is None:
+            warnings.warn(
+                "No dataset passed in. Returning None. Make sure to "
+                "pass in a Dataset to Trainer.run to use this "
+                "function."
+            )
+        elif isinstance(shard, dict):
+            if not dataset_name:
+                raise RuntimeError(
+                    "Multiple datasets were passed into ``Trainer``, "
+                    "but no ``dataset_name`` is passed into "
+                    "``get_dataset_shard``. Please specify which "
+                    "dataset shard to retrieve."
+                )
+            return shard.get(dataset_name)
+        return shard
+
 
 _session: Optional[_TrainSession] = None
-# V2 Session API
-_session_v2: Optional[_TrainSessionImpl] = None
 
 
 def init_session(*args, **kwargs) -> None:
     global _session
-    global _session_v2
     if _session:
         raise ValueError(
             "A Train session is already in use. Do not call "
             "`init_session()` manually."
         )
     _session = _TrainSession(*args, **kwargs)
-    _session_v2 = _TrainSessionImpl(session=_session)
 
 
 def get_session() -> Optional[_TrainSession]:
@@ -464,9 +704,7 @@ def get_session() -> Optional[_TrainSession]:
 def shutdown_session():
     """Shuts down the initialized session."""
     global _session
-    global _session_v2
     _session = None
-    _session_v2 = None
 
 
 def _raise_accelerator_session_misuse():
@@ -510,3 +748,461 @@ def set_accelerator(accelerator: Accelerator) -> None:
     if session.accelerator is not None:
         raise RuntimeError("Cannot change accelerator once set.")
     session.accelerator = accelerator
+
+
+def _warn_session_misuse(default_value: Any = None):
+    """Warns if fn is being used outside of session and returns ``default_value``."""
+
+    def inner(fn: Callable):
+        fn_name = fn.__name__
+
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            session = _get_session()
+            if not session:
+                if log_once(f"{SESSION_MISUSE_LOG_ONCE_KEY}-{fn_name}"):
+                    warnings.warn(
+                        f"`{fn_name}` is meant to only be "
+                        "called inside a function that is executed by a Tuner"
+                        f" or Trainer. Returning `{default_value}`."
+                    )
+                return default_value
+            return fn(*args, **kwargs)
+
+        return wrapper
+
+    return inner
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse()
+def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
+    """Report metrics and optionally save a checkpoint.
+
+    Each invocation of this method will automatically increment the underlying
+    iteration number. The physical meaning of this "iteration" is defined by
+    user (or more specifically the way they call ``report``).
+    It does not necessarily map to one epoch.
+
+    This API is the canonical way to report metrics from Tune and Train, and
+    replaces the legacy ``tune.report``, ``with tune.checkpoint_dir``,
+    ``train.report`` and ``train.save_checkpoint`` calls.
+
+    Note on directory checkpoints: AIR will take ownership of checkpoints passed
+    to ``report()`` by moving them to a new path. The original directory will no
+    longer be accessible to the caller after the report call.
+
+    Example:
+        .. testcode::
+
+            import tensorflow as tf
+
+            from ray import train
+            from ray.train import Checkpoint, ScalingConfig
+            from ray.train.tensorflow import TensorflowTrainer
+
+            ######## Using it in the *per worker* train loop (TrainSession) #######
+            def train_func():
+                model = tf.keras.applications.resnet50.ResNet50()
+                model.save("my_model", overwrite=True)
+                train.report(
+                    metrics={"foo": "bar"},
+                    checkpoint=Checkpoint.from_directory("my_model")
+                )
+                # Air guarantees by this point, you can safely write new stuff to
+                # "my_model" directory.
+
+            scaling_config = ScalingConfig(num_workers=2)
+            trainer = TensorflowTrainer(
+                train_loop_per_worker=train_func, scaling_config=scaling_config
+            )
+            result = trainer.fit()
+            # If you navigate to result.checkpoint's path, you will find the
+            # content of ``model.save()`` under it.
+            # If you have `SyncConfig` configured, the content should also
+            # show up in the corresponding cloud storage path.
+
+        .. testoutput::
+            :hide:
+
+            ...
+
+    Args:
+        metrics: The metrics you want to report.
+        checkpoint: The optional checkpoint you want to report.
+    """
+
+    _get_session().report(metrics, checkpoint=checkpoint)
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse()
+def get_checkpoint() -> Optional[Checkpoint]:
+    """Access the session's last checkpoint to resume from if applicable.
+
+    Returns:
+        Checkpoint object if the session is currently being resumed.
+            Otherwise, return None.
+
+    .. testcode::
+
+        import tensorflow as tf
+
+        ######## Using it in the *per worker* train loop (TrainSession) ######
+        from ray import train
+        from ray.train import Checkpoint, ScalingConfig
+        from ray.train.tensorflow import TensorflowTrainer
+
+        def train_func():
+            ckpt = train.get_checkpoint()
+            if ckpt:
+                with ckpt.as_directory() as loaded_checkpoint_dir:
+                    model = tf.keras.models.load_model(loaded_checkpoint_dir)
+            else:
+                model = tf.keras.applications.resnet50.ResNet50()
+
+            model.save("my_model", overwrite=True)
+            train.report(
+                metrics={"iter": 1},
+                checkpoint=Checkpoint.from_directory("my_model")
+            )
+
+        scaling_config = ScalingConfig(num_workers=2)
+        trainer = TensorflowTrainer(
+            train_loop_per_worker=train_func, scaling_config=scaling_config
+        )
+        result = trainer.fit()
+
+        # trainer2 will pick up from the checkpoint saved by trainer1.
+        trainer2 = TensorflowTrainer(
+            train_loop_per_worker=train_func,
+            scaling_config=scaling_config,
+            # this is ultimately what is accessed through
+            # ``ray.train.get_checkpoint()``
+            resume_from_checkpoint=result.checkpoint,
+        )
+        result2 = trainer2.fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
+    """
+
+    return _get_session().loaded_checkpoint
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse()
+def get_metadata() -> Dict[str, Any]:
+    """User metadata dict passed to the Trainer constructor."""
+    return _get_session().metadata
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse()
+def get_experiment_name() -> str:
+    """Experiment name for the corresponding trial."""
+    return _get_session().experiment_name
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse()
+def get_trial_name() -> str:
+    """Trial name for the corresponding trial."""
+    return _get_session().trial_name
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse()
+def get_trial_id() -> str:
+    """Trial id for the corresponding trial."""
+    return _get_session().trial_id
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse()
+def get_trial_resources() -> "PlacementGroupFactory":
+    """Trial resources for the corresponding trial."""
+    return _get_session().trial_resources
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse()
+def get_trial_dir() -> str:
+    """Log directory corresponding to the trial directory for a Tune session.
+    If calling from a Train session, this will give the trial directory of its parent
+    Tune session.
+
+    .. testcode::
+
+        from ray import train, tune
+
+        def train_func(config):
+            print(train.get_context().get_trial_dir())
+
+        tuner = tune.Tuner(train_func)
+        tuner.fit()
+
+    .. testoutput::
+        :options: +MOCK
+
+        /Users/root/ray_results/train_func_2023-07-19_15-01-37/train_func_d620c_00000_0_2023-07-19_15-01-40
+    """
+    return _get_session().trial_dir
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse(default_value=1)
+def get_world_size() -> int:
+    """Get the current world size (i.e. total number of workers) for this run.
+
+    .. testcode::
+
+        import ray
+        from ray import train
+        from ray.train import ScalingConfig
+        from ray.train.tensorflow import TensorflowTrainer
+
+        NUM_WORKERS = 2
+
+        def train_loop_per_worker(config):
+            assert train.get_context().get_world_size() == NUM_WORKERS
+
+        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        trainer = TensorflowTrainer(
+            train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=NUM_WORKERS),
+            datasets={"train": train_dataset}
+        )
+        trainer.fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
+    """
+    session = _get_session()
+    if not hasattr(session, "world_size"):
+        raise RuntimeError(
+            "`get_world_size` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
+    return session.world_size
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse(default_value=0)
+def get_world_rank() -> int:
+    """Get the world rank of this worker.
+
+    .. testcode::
+
+        import ray
+        from ray import train
+        from ray.train import ScalingConfig
+        from ray.train.tensorflow import TensorflowTrainer
+
+        def train_loop_per_worker(config):
+            if train.get_context().get_world_rank() == 0:
+                print("Worker 0")
+
+        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        trainer = TensorflowTrainer(
+            train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=2),
+            datasets={"train": train_dataset}
+        )
+        trainer.fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
+    """
+    session = _get_session()
+    if not hasattr(session, "world_rank"):
+        raise RuntimeError(
+            "`get_world_rank` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
+    return session.world_rank
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse(default_value=0)
+def get_local_rank() -> int:
+    """Get the local rank of this worker (rank of the worker on its node).
+
+    .. testcode::
+
+        import torch
+
+        import ray
+        from ray import train
+        from ray.train import ScalingConfig
+        from ray.train.torch import TorchTrainer
+
+        def train_loop_per_worker(config):
+            if torch.cuda.is_available():
+                torch.cuda.set_device(train.get_context().get_local_rank())
+            ...
+
+        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        trainer = TorchTrainer(
+            train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+            datasets={"train": train_dataset}
+        )
+        trainer.fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
+    """
+    session = _get_session()
+    if not hasattr(session, "local_rank"):
+        raise RuntimeError(
+            "`get_local_rank` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
+    return session.local_rank
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse(default_value=0)
+def get_local_world_size() -> int:
+    """Get the local world size of this node (i.e. number of workers on this node).
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray import train
+            from ray.train import ScalingConfig
+            from ray.train.torch import TorchTrainer
+
+            def train_loop_per_worker():
+                print(train.get_context().get_local_world_size())
+
+            train_dataset = ray.data.from_items(
+                [{"x": x, "y": x + 1} for x in range(32)])
+            trainer = TorchTrainer(train_loop_per_worker,
+                scaling_config=ScalingConfig(num_workers=1),
+                datasets={"train": train_dataset})
+            trainer.fit()
+
+        .. testoutput::
+            :hide:
+
+            ...
+    """
+    session = _get_session()
+    if not hasattr(session, "local_world_size"):
+        raise RuntimeError(
+            "`get_local_world_size` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
+    return session.local_world_size
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse(default_value=0)
+def get_node_rank() -> int:
+    """Get the rank of this node.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray import train
+            from ray.train import ScalingConfig
+            from ray.train.torch import TorchTrainer
+
+            def train_loop_per_worker():
+                print(train.get_context().get_node_rank())
+
+            train_dataset = ray.data.from_items(
+                [{"x": x, "y": x + 1} for x in range(32)])
+            trainer = TorchTrainer(train_loop_per_worker,
+                scaling_config=ScalingConfig(num_workers=1),
+                datasets={"train": train_dataset})
+            trainer.fit()
+
+        .. testoutput::
+            :hide:
+
+            ...
+    """
+    session = _get_session()
+    if not hasattr(session, "node_rank"):
+        raise RuntimeError(
+            "`get_node_rank` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
+    return session.node_rank
+
+
+@PublicAPI(stability="beta")
+@_warn_session_misuse()
+def get_dataset_shard(
+    dataset_name: Optional[str] = None,
+) -> Optional["DataIterator"]:
+    """Returns the :class:`ray.data.DataIterator` shard for this worker.
+
+    Call :meth:`~ray.data.DataIterator.iter_torch_batches` or
+    :meth:`~ray.data.DataIterator.to_tf` on this shard to convert it to the
+    appropriate framework-specific data type.
+
+    .. testcode::
+
+        import ray
+        from ray import train
+        from ray.train import ScalingConfig
+        from ray.train.torch import TorchTrainer
+
+        def train_loop_per_worker(config):
+            ...
+            for epoch in range(2):
+                # Trainer will automatically handle sharding.
+                data_shard = train.get_dataset_shard("train")
+                for batch in data_shard.iter_torch_batches():
+                    ...
+
+        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        trainer = TorchTrainer(
+            train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=2),
+            datasets={"train": train_dataset}
+        )
+        trainer.fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
+
+    Args:
+        dataset_name: If a Dictionary of Datasets was passed to ``Trainer``, then
+            specifies which dataset shard to return.
+
+    Returns:
+        The ``DataIterator`` shard to use for this worker.
+        If no dataset is passed into Trainer, then return None.
+    """
+    session = _get_session()
+    if not hasattr(session, "get_dataset_shard"):
+        raise RuntimeError(
+            "`get_dataset_shard` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
+    return session.get_dataset_shard(dataset_name)

@@ -25,6 +25,7 @@ from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.metrics import (
     LEARN_ON_BATCH_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -226,6 +227,12 @@ class DDPPOConfig(PPOConfig):
             return self.rollout_fragment_length
 
 
+@Deprecated(
+    old="rllib/algorithms/ddppo/",
+    new="rllib_contrib/ddppo/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class DDPPO(PPO):
     @classmethod
     @override(PPO)

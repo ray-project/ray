@@ -5,7 +5,6 @@ import time
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
-    Any,
     Callable,
     Dict,
     Iterator,
@@ -41,6 +40,7 @@ if TYPE_CHECKING:
     import pyarrow
 
     from ray.data._internal.block_builder import BlockBuilder
+    from ray.data._internal.sort import SortKey
     from ray.data.aggregate import AggregateFn
 
 
@@ -51,35 +51,11 @@ KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
 
-def _validate_key_fn(
-    schema: Optional[Union[type, "pyarrow.lib.Schema"]],
-    key: Optional[str],
-) -> None:
-    """Check the key function is valid on the given schema."""
-    if schema is None:
-        # Dataset is empty/cleared, validation not possible.
-        return
-    is_simple_format = isinstance(schema, type)
-    if isinstance(key, str):
-        if is_simple_format:
-            raise ValueError(
-                "String key '{}' requires dataset format to be "
-                "'arrow' or 'pandas', was 'simple'.".format(key)
-            )
-        if len(schema.names) > 0 and key not in schema.names:
-            raise ValueError(
-                "The column '{}' does not exist in the "
-                "schema '{}'.".format(key, schema)
-            )
-    else:
-        raise ValueError(f"In Ray 2.5, the key must be a string, was: {key}")
-
-
 # Represents a batch of records to be stored in the Ray object store.
 #
-# Block data can be accessed in a uniform way via ``BlockAccessors`` such as
-# ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-Block = Union[list, "pyarrow.Table", "pandas.DataFrame", bytes]
+# Block data can be accessed in a uniform way via ``BlockAccessors`` like`
+# ``ArrowBlockAccessor``.
+Block = Union["pyarrow.Table", "pandas.DataFrame"]
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
@@ -158,6 +134,8 @@ class BlockExecStats:
     """
 
     def __init__(self):
+        self.start_time_s: Optional[float] = None
+        self.end_time_s: Optional[float] = None
         self.wall_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
@@ -191,9 +169,14 @@ class _BlockExecStatsBuilder:
         self.start_cpu = time.process_time()
 
     def build(self) -> "BlockExecStats":
+        self.end_time = time.perf_counter()
+        self.end_cpu = time.process_time()
+
         stats = BlockExecStats()
-        stats.wall_time_s = time.perf_counter() - self.start_time
-        stats.cpu_time_s = time.process_time() - self.start_cpu
+        stats.start_time_s = self.start_time
+        stats.end_time_s = self.end_time
+        stats.wall_time_s = self.end_time - self.start_time
+        stats.cpu_time_s = self.end_cpu - self.start_cpu
         if resource is None:
             # NOTE(swang): resource package is not supported on Windows. This
             # is only the memory usage at the end of the task, not the peak
@@ -236,11 +219,6 @@ class BlockAccessor:
     Ideally, we wouldn't need a separate accessor classes for blocks. However,
     this is needed if we want to support storing ``pyarrow.Table`` directly
     as a top-level Ray object, without a wrapping class (issue #17186).
-
-    There are three types of block accessors: ``SimpleBlockAccessor``, which
-    operates over a plain Python list, ``ArrowBlockAccessor`` for
-    ``pyarrow.Table`` type blocks, ``PandasBlockAccessor`` for ``pandas.DataFrame``
-    type blocks.
     """
 
     def num_rows(self) -> int:
@@ -425,12 +403,12 @@ class BlockAccessor:
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))
 
-    def sample(self, n_samples: int, key: Any) -> "Block":
+    def sample(self, n_samples: int, sort_key: "SortKey") -> "Block":
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
     def sort_and_partition(
-        self, boundaries: List[T], key: Any, descending: bool
+        self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
@@ -441,7 +419,7 @@ class BlockAccessor:
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List["Block"], key: Any, descending: bool
+        blocks: List["Block"], sort_key: "SortKey"
     ) -> Tuple[Block, BlockMetadata]:
         """Return a sorted block by merging a list of sorted blocks."""
         raise NotImplementedError

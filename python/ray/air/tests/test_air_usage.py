@@ -8,8 +8,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 import ray
-from ray import air, tune
-from ray.air import session
+from ray import train, tune
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.integrations import wandb, mlflow, comet
@@ -43,12 +42,12 @@ def mock_record(monkeypatch):
 
 
 def train_fn(config):
-    session.report({"score": 1})
+    train.report({"score": 1})
 
 
 @pytest.fixture
 def tuner(tmp_path):
-    yield tune.Tuner(train_fn, run_config=air.RunConfig(storage_path=str(tmp_path)))
+    yield tune.Tuner(train_fn, run_config=train.RunConfig(storage_path=str(tmp_path)))
 
 
 @pytest.fixture
@@ -57,8 +56,8 @@ def trainer(tmp_path):
 
     yield DataParallelTrainer(
         train_loop_per_worker=train_fn,
-        scaling_config=air.ScalingConfig(num_workers=2),
-        run_config=air.RunConfig(storage_path=str(tmp_path)),
+        scaling_config=train.ScalingConfig(num_workers=2),
+        run_config=train.RunConfig(storage_path=str(tmp_path)),
     )
 
 
@@ -111,9 +110,9 @@ def test_tag_ray_air_storage_config(
 
     local_path = str(tmp_path / "local_path")
     sync_config = (
-        tune.SyncConfig(syncer=None)
+        train.SyncConfig(syncer=None)
         if storage_test_config.syncing_disabled
-        else tune.SyncConfig()
+        else train.SyncConfig()
     )
 
     air_usage.tag_ray_air_storage_config(
@@ -203,6 +202,7 @@ def test_tag_env_vars(ray_start_4_cpus, mock_record, tuner):
     variables are ignored."""
     env_vars_to_record = {
         "RAY_AIR_LOCAL_CACHE_DIR": "~/ray_results",
+        "RAY_AIR_NEW_PERSISTENCE_MODE": "0",
         "TUNE_DISABLE_AUTO_CALLBACK_SYNCER": "1",
     }
     untracked_env_vars = {"RANDOM_USER_ENV_VAR": "asdf"}

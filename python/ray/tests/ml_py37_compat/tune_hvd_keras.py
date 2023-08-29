@@ -1,9 +1,9 @@
 from packaging.version import Version
 
 import ray
-from ray import tune
-from ray.air import ScalingConfig, session
-from ray.data.preprocessors import Concatenator, Chain, StandardScaler
+from ray import train, tune
+from ray.train import ScalingConfig
+from ray.data.preprocessors import Concatenator, StandardScaler
 from ray.train.horovod import HorovodTrainer
 from ray.tune import Tuner, TuneConfig
 import numpy as np
@@ -35,7 +35,7 @@ def keras_train_loop(config):
 
     hvd.init()
 
-    dataset = session.get_dataset_shard("train")
+    dataset = train.get_dataset_shard("train")
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
     with strategy.scope():
@@ -76,17 +76,17 @@ def tune_horovod_keras(num_workers, num_samples, use_gpu):
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
     num_features = len(dataset.schema().names) - 1
 
-    preprocessor = Chain(
-        StandardScaler(columns=["mean radius", "mean texture"]),
-        Concatenator(exclude=["target"], dtype=np.float32),
-    )
+    scaler = StandardScaler(columns=["mean radius", "mean texture"])
+    concatenator = Concatenator(exclude=["target"], dtype=np.float32)
+
+    dataset = scaler.fit_transform(dataset)
+    dataset = concatenator.transform(dataset)
 
     horovod_trainer = HorovodTrainer(
         train_loop_per_worker=keras_train_loop,
         train_loop_config={"epochs": 10, "num_features": num_features},
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": dataset},
-        preprocessor=preprocessor,
     )
 
     tuner = Tuner(

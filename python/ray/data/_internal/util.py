@@ -5,7 +5,7 @@ import pathlib
 import sys
 import urllib.parse
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Union
 
 import numpy as np
 
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     import pyarrow
 
     from ray.data._internal.compute import ComputeStrategy
+    from ray.data._internal.sort import SortKey
     from ray.data.block import Block, BlockMetadata, UserDefinedFunction
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
@@ -90,7 +91,7 @@ def _autodetect_parallelism(
     ctx: DataContext,
     reader: Optional["Reader"] = None,
     avail_cpus: Optional[int] = None,
-) -> (int, int):
+) -> (int, int, Optional[int]):
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
 
     This detects parallelism using the following heuristics, applied in order:
@@ -111,8 +112,9 @@ def _autodetect_parallelism(
         avail_cpus: Override avail cpus detection (for testing only).
 
     Returns:
-        Tuple of detected parallelism (only if -1 was specified), and the min safe
-        parallelism (which can be used to generate warnings about large blocks).
+        Tuple of detected parallelism (only if -1 was specified), the min safe
+        parallelism (which can be used to generate warnings about large blocks),
+        and the estimated inmemory size of the dataset.
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
@@ -140,7 +142,7 @@ def _autodetect_parallelism(
             f"estimated_available_cpus={avail_cpus} and "
             f"estimated_data_size={mem_size}."
         )
-    return parallelism, min_safe_parallelism
+    return parallelism, min_safe_parallelism, mem_size
 
 
 def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
@@ -405,10 +407,12 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
 
 
 def validate_compute(
-    fn: "UserDefinedFunction", compute: Optional[Union[str, "ComputeStrategy"]]
+    fn: "UserDefinedFunction",
+    compute: Optional[Union[str, "ComputeStrategy"]],
+    fn_constructor_args: Optional[Iterable[Any]] = None,
 ) -> None:
     # Lazily import these objects to avoid circular imports.
-    from ray.data._internal.compute import TaskPoolStrategy
+    from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
     from ray.data.block import CallableClass
 
     if isinstance(fn, CallableClass) and (
@@ -419,6 +423,20 @@ def validate_compute(
             f"specify the actor compute strategy, but got: {compute}. "
             "For example, use ``compute=ray.data.ActorPoolStrategy(size=n)``."
         )
+
+    if fn_constructor_args is not None:
+        if compute is None or (
+            compute != "actors" and not isinstance(compute, ActorPoolStrategy)
+        ):
+            raise ValueError(
+                "fn_constructor_args can only be specified if using the actor "
+                f"pool compute strategy, but got: {compute}"
+            )
+        if not isinstance(fn, CallableClass):
+            raise ValueError(
+                "fn_constructor_args can only be specified if providing a "
+                f"CallableClass instance for fn, but got: {fn}"
+            )
 
 
 def capfirst(s: str):
@@ -512,3 +530,83 @@ def unify_block_metadata_schema(
         # return the first schema.
         return schemas_to_unify[0]
     return None
+
+
+def find_partition_index(
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
+    desired: List[Any],
+    sort_key: "SortKey",
+) -> int:
+    columns = sort_key.get_columns()
+    descending = sort_key.get_descending()
+
+    left, right = 0, len(table)
+    for i in range(len(desired)):
+        if left == right:
+            return right
+        col_name = columns[i]
+        col_vals = table[col_name].to_numpy()[left:right]
+        desired_val = desired[i]
+
+        prevleft = left
+        if descending is True:
+            left = prevleft + (
+                len(col_vals)
+                - np.searchsorted(
+                    col_vals,
+                    desired_val,
+                    side="right",
+                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                )
+            )
+            right = prevleft + (
+                len(col_vals)
+                - np.searchsorted(
+                    col_vals,
+                    desired_val,
+                    side="left",
+                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                )
+            )
+        else:
+            left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
+            right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
+    return right if descending is True else left
+
+
+def find_partitions(table, boundaries, sort_key):
+    partitions = []
+
+    # For each boundary value, count the number of items that are less
+    # than it. Since the block is sorted, these counts partition the items
+    # such that boundaries[i] <= x < boundaries[i + 1] for each x in
+    # partition[i]. If `descending` is true, `boundaries` would also be
+    # in descending order and we only need to count the number of items
+    # *greater than* the boundary value instead.
+    bounds = [
+        find_partition_index(table, boundary, sort_key) for boundary in boundaries
+    ]
+
+    last_idx = 0
+    for idx in bounds:
+        partitions.append(table[last_idx:idx])
+        last_idx = idx
+    partitions.append(table[last_idx:])
+    return partitions
+
+
+def get_attribute_from_class_name(class_name: str) -> Any:
+    """Get Python attribute from the provided class name.
+
+    The caller needs to make sure the provided class name includes
+    full module name, and can be imported successfully.
+    """
+    from importlib import import_module
+
+    paths = class_name.split(".")
+    if len(paths) < 2:
+        raise ValueError(f"Cannot create object from {class_name}.")
+
+    module_name = ".".join(paths[:-1])
+    attribute_name = paths[-1]
+    return getattr(import_module(module_name), attribute_name)

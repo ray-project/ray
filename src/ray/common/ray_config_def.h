@@ -34,6 +34,9 @@ RAY_CONFIG(bool, event_stats_metrics, false)
 /// TODO(ekl) remove this after Ray 1.8
 RAY_CONFIG(bool, legacy_scheduler_warnings, false)
 
+/// Whether to enable cluster authentication.
+RAY_CONFIG(bool, enable_cluster_auth, false)
+
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available to
 /// debug_state_*.txt
@@ -456,8 +459,6 @@ RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024
 /// The duration between two checks for grpc status.
 RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
 
-/// Feature flag to use the ray syncer for resource synchronization
-RAY_CONFIG(bool, use_ray_syncer, true)
 /// Due to the protocol drawback, raylet needs to refresh the message if
 /// no message is received for a while.
 /// Refer to https://tinyurl.com/n6kvsp87 for more details
@@ -528,8 +529,8 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 100 * 1000)
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 #endif
 
-/// If the agent manager fails to communicate with the dashboard agent, we will retry
-/// after this interval.
+/// If the agent manager fails to communicate with the dashboard agent or the runtime env
+/// agent, we will retry after this interval.
 RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000)
 
 /// The maximum number of resource shapes included in the resource
@@ -553,8 +554,10 @@ RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
 /// The idle time threshold for an idle worker to be killed.
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 
-/// The soft limit of the number of workers.
-/// -1 means using num_cpus instead.
+/// The soft limit of the number of workers to keep around.
+/// We apply this limit to the idle workers instead of total workers,
+/// because the total number of workers used depends on the
+/// application. -1 means using the available number of CPUs.
 RAY_CONFIG(int64_t, num_workers_soft_limit, -1)
 
 // The interval where metrics are exported in milliseconds.
@@ -594,7 +597,7 @@ RAY_CONFIG(int, max_io_workers, 4)
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
-/// If set to less than 1.0, Ray will start spilling objects when existing objects
+/// If set to less than 1.0, Ray will start spilling objects when existing primary objects
 /// take more than this percentage of the available memory.
 RAY_CONFIG(float, object_spilling_threshold, 0.8)
 
@@ -688,9 +691,9 @@ RAY_CONFIG(uint32_t,
 RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 
 /// The scheduler will treat these custom resource types as unit_instance.
-/// Default custom_unit_instance_resources is empty.
-/// When set it to "FPGA", we will treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "")
+/// Default custom_unit_instance_resources is "neuron_cores".
+/// When set it to "neuron_cores,FPGA", we will also treat FPGA as unit_instance.
+RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores")
 
 // Maximum size of the batches when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)

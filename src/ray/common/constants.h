@@ -39,6 +39,8 @@ constexpr int kRayletStoreErrorExitCode = 100;
 /// Prefix for the object table keys in redis.
 constexpr char kObjectTablePrefix[] = "ObjectTable";
 
+constexpr char kClusterIdKey[] = "ray_cluster_id";
+
 constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";
 
@@ -61,8 +63,23 @@ constexpr char kSetupWorkerFilename[] = "setup_worker.py";
 /// The version of Ray
 constexpr char kRayVersion[] = "3.0.0.dev0";
 
+/*****************************/
+/* ENV labels for autoscaler */
+/*****************************/
+// Sync with python/ray/_private/ray_constants.py
+constexpr char kGcsAutoscalerStateNamespace[] = "__autoscaler";
+constexpr char kGcsAutoscalerV2EnabledKey[] = "__autoscaler_v2_enabled";
+
 /// Name for cloud instance id env
 constexpr char kNodeCloudInstanceIdEnv[] = "RAY_CLOUD_INSTANCE_ID";
+
+constexpr char kNodeTypeNameEnv[] = "RAY_NODE_TYPE_NAME";
+
+constexpr char kNodeCloudInstanceTypeNameEnv[] = "RAY_CLOUD_INSTANCE_TYPE_NAME";
+
+/**********************************/
+/* ENV labels for autoscaler ends */
+/**********************************/
 
 /// Key for the placement group's bundle placement constraint.
 /// Used by FormatPlacementGroupLabelName()
@@ -75,3 +92,15 @@ constexpr char kLibraryPathEnvName[] = "PATH";
 #else
 constexpr char kLibraryPathEnvName[] = "LD_LIBRARY_PATH";
 #endif
+
+#define RAY_LABEL_KEY_PREFIX "ray.io/"
+/// Default node label key: node_id
+constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
+#undef RAY_LABEL_KEY_PREFIX
+
+/// All nodes implicitly have resources with this prefix and the quantity is 1.
+/// NOTE: DON'T CHANGE THIS since autoscaler depends on it.
+/// Ideally we want to define the constant in autoscaler.proto so it
+/// can be shared but protobuf doesn't support defining string constants.
+/// https://docs.google.com/document/d/151T4VnknX_5EtPy6E-LbpL-r1T4ZSO0UBvSgWdSjx4Q/edit#heading=h.2ews5m5fmz
+constexpr char kImplicitResourcePrefix[] = "node:__internal_implicit_resource_";

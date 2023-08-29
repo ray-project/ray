@@ -5,6 +5,7 @@
 from functools import partial
 import numpy as np
 import os
+import tempfile
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,15 +16,16 @@ import torchvision
 import torchvision.transforms as transforms
 from typing import Dict
 import ray
-from ray import tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.tune.schedulers import ASHAScheduler
 # __import_end__
 
 
 # __load_data_begin__
-def load_data(data_dir="./data"):
+DATA_DIR = tempfile.mkdtemp()
+
+def load_data(data_dir):
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
@@ -79,16 +81,15 @@ def train_cifar(config):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
 
-    # Load existing checkpoint through `session.get_checkpoint()` API.
-    if session.get_checkpoint():
-        loaded_checkpoint = session.get_checkpoint()
+    # Load existing checkpoint through `get_checkpoint()` API.
+    if train.get_checkpoint():
+        loaded_checkpoint = train.get_checkpoint()
         with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
             model_state, optimizer_state = torch.load(os.path.join(loaded_checkpoint_dir, "checkpoint.pt"))
             net.load_state_dict(model_state)
             optimizer.load_state_dict(optimizer_state)
 
-    data_dir = os.path.abspath("./data")
-    trainset, testset = load_data(data_dir)
+    trainset, testset = load_data(DATA_DIR)
 
     test_abs = int(len(trainset) * 0.8)
     train_subset, val_subset = random_split(
@@ -150,7 +151,7 @@ def train_cifar(config):
                 val_steps += 1
 
         # Here we save a checkpoint. It is automatically registered with
-        # Ray Tune and will potentially be accessed through in ``session.get_checkpoint()``
+        # Ray Tune and will potentially be accessed through in ``get_checkpoint()``
         # in future iterations.
         # Note to save a file like checkpoint, you still need to put it under a directory
         # to construct an AIR checkpoint.
@@ -159,13 +160,13 @@ def train_cifar(config):
         torch.save(
             (net.state_dict(), optimizer.state_dict()), path)
         checkpoint = Checkpoint.from_directory("my_model")
-        session.report({"loss": (val_loss / val_steps), "accuracy": correct / total}, checkpoint=checkpoint)
+        train.report({"loss": (val_loss / val_steps), "accuracy": correct / total}, checkpoint=checkpoint)
     print("Finished Training")
 # __train_end__
 
 
 # __test_acc_begin__
-def test_best_model(config: Dict, checkpoint: "ray.air.Checkpoint"):
+def test_best_model(config: Dict, checkpoint: "Checkpoint"):
     best_trained_model = Net(config["l1"], config["l2"])
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     best_trained_model.to(device)
@@ -175,7 +176,7 @@ def test_best_model(config: Dict, checkpoint: "ray.air.Checkpoint"):
         model_state, optimizer_state = torch.load(checkpoint_path)
         best_trained_model.load_state_dict(model_state)
 
-    trainset, testset = load_data()
+    trainset, testset = load_data(DATA_DIR)
 
     testloader = torch.utils.data.DataLoader(
         testset, batch_size=4, shuffle=False, num_workers=2)

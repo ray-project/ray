@@ -71,7 +71,7 @@ For example, passing in a large pandas DataFrame or an unserializable model obje
 Instead, use strings or other identifiers as your values, and initialize/load the objects inside your Trainable directly depending on those.
 
 ```{note}
-[Datasets](data_getting_started) can be used as values in the search space directly.
+[Datasets](data_key_concepts) can be used as values in the search space directly.
 ```
 
 In our example, we want to tune the two model hyperparameters. We also want to set the number of epochs, so that we can easily tweak it later. For the hyperparameters, we will use the `tune.uniform` distribution. We will also modify the `training_function` to obtain those values from the `config` dictionary.
@@ -189,11 +189,11 @@ results = tuner.fit()
 
 We can now run our tuning run using the `training_function` Trainable. The next step is to report *metrics* to Tune that can be used to guide the optimization. We will also want to *checkpoint* our trained models so that we can resume the training after an interruption, and to use them for prediction later.
 
-The [`ray.air.session`](air-session-ref) API is used to get data out of the Trainable workers. `session.report` can be called multiple times in the Trainable function. Each call corresponds to one iteration (epoch, step, tree) of training.
+The `ray.train.report` API is used to get data out of the Trainable workers. It can be called multiple times in the Trainable function. Each call corresponds to one iteration (epoch, step, tree) of training.
 
 ### Reporting metrics with Tune
 
-*Metrics* are values passed through the `metrics` argument in a `session.report` call. Metrics can be used by Tune [Search Algorithms](search-alg-ref) and [Schedulers](schedulers-ref) to direct the search. After the tuning run is complete, you can [analyze the results](/tune/examples/tune_analyze_results), which include the reported metrics.
+*Metrics* are values passed through the `metrics` argument in a `train.report` call. Metrics can be used by Tune [Search Algorithms](search-alg-ref) and [Schedulers](schedulers-ref) to direct the search. After the tuning run is complete, you can [analyze the results](tune-analysis-guide), which include the reported metrics.
 
 ```{note}
 Similarly to search space values, each value reported as a metric will be saved directly in the Trial metadata. This means that every value reported as a metric **must** be serializable and take up a small amount of memory.
@@ -206,7 +206,7 @@ Tune will automatically include some metrics, such as the training iteration, ti
 In our example, we want to maximize the `metric`. We will report it each epoch to Tune, and set the `metric` and `mode` arguments in `tune.TuneConfig` to let Tune know that it should use it as the optimization objective.
 
 ```python
-from ray.air import session
+from ray import train
 
 
 def training_function(config, data):
@@ -224,7 +224,7 @@ def training_function(config, data):
             -1
         ) + model["hyperparameter_b"] * 0.1 * data["A"].sum()
         trained_model = {"state": model, "epoch": epoch}
-        session.report(metrics={"metric": metric})
+        train.report(metrics={"metric": metric})
 
 
 tuner = Tuner(
@@ -240,15 +240,16 @@ tuner = Tuner(
 
 ### Logging metrics with Tune callbacks
 
-Every metric logged using `session.report` can be accessed during the tuning run through Tune [Callbacks](tune-logging). Ray AIR provides [several built-in integrations](air-builtin-callbacks) with popular frameworks, such as MLFlow, Weights & Biases, CometML and more. You can also use the [Callback API](tune-callbacks-docs) to create your own callbacks.
+Every metric logged using `train.report` can be accessed during the tuning run through Tune [Callbacks](tune-logging). Ray Tune provides [several built-in integrations](loggers-docstring) with popular frameworks, such as MLFlow, Weights & Biases, CometML and more. You can also use the [Callback API](tune-callbacks-docs) to create your own callbacks.
 
 Callbacks are passed in the `callback` argument of the `Tuner`'s `RunConfig`.
 
 In our example, we'll use the MLFlow callback to track the progress of our tuning run and the changing value of the `metric` (requires `mlflow` to be installed).
 
 ```python
-from ray.air import RunConfig
-from ray.air.integrations.mlflow import MLflowLoggerCallback
+from ray import train
+from ray.train import RunConfig
+from ray.tune.logger.mlflow import MLflowLoggerCallback
 
 
 def training_function(config, data):
@@ -266,7 +267,7 @@ def training_function(config, data):
             -1
         ) + model["hyperparameter_b"] * 0.1 * data["A"].sum()
         trained_model = {"state": model, "epoch": epoch}
-        session.report(metrics={"metric": metric})
+        train.report(metrics={"metric": metric})
 
 
 tuner = Tuner(
@@ -287,11 +288,11 @@ tuner = Tuner(
 
 Aside from metrics, you may want to save the state of your trained model and any other artifacts to allow resumption from training failure and further inspection and usage. Those cannot be saved as metrics, as they are often far too large and may not be easily serializable. Finally, they should be persisted on disk or cloud storage to allow access after the Tune run is interrupted or terminated.
 
-Ray AIR (which contains Ray Tune) provides a [`Checkpoint`](air-checkpoints-doc) API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage) and used between different AIR components.
+Ray Train provides a {class}`Checkpoint <ray.train.Checkpoint>` API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage).
 
-In Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `session.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](/tune/examples/tune_analyze_results).
+In Ray Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `train.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](tune-analysis-guide).
 
-Ray Tune can be configured to [automatically sync checkpoints to cloud storage](tune-storage-options), keep only a certain number of checkpoints to save space (with {class}`ray.air.config.CheckpointConfig`) and more.
+Ray Tune can be configured to [automatically sync checkpoints to cloud storage](tune-storage-options), keep only a certain number of checkpoints to save space (with {class}`ray.train.CheckpointConfig`) and more.
 
 ```{note}
 The experiment state itself is checkpointed separately. See {ref}`tune-persisted-experiment-data` for more details.
@@ -300,7 +301,7 @@ The experiment state itself is checkpointed separately. See {ref}`tune-persisted
 In our example, we want to be able to resume the training from the latest checkpoint, and to save the `trained_model` in a checkpoint every iteration. To accomplish this, we will use the `session` and `Checkpoint` APIs.
 
 ```python
-from ray.air import Checkpoint
+from ray.train import Checkpoint
 
 
 def training_function(config, data):

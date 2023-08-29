@@ -1,9 +1,10 @@
-import gymnasium as gym
-from gymnasium.spaces import Discrete, MultiDiscrete
 import logging
+from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
+
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
+from gymnasium.spaces import Discrete, MultiDiscrete
 
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
@@ -602,7 +603,6 @@ def symlog(x: "tf.Tensor") -> "tf.Tensor":
     D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
     https://arxiv.org/pdf/2301.04104v1.pdf
     """
-    x = tf.cast(x, tf.float32)
     return tf.math.sign(x) * tf.math.log(tf.math.abs(x) + 1)
 
 
@@ -635,6 +635,7 @@ def two_hot(
     num_buckets: int = 255,
     lower_bound: float = -20.0,
     upper_bound: float = 20.0,
+    dtype=None,
 ):
     """Returns a two-hot vector of dim=num_buckets with two entries that are non-zero.
 
@@ -679,7 +680,10 @@ def two_hot(
     # First make sure, values are clipped.
     value = tf.clip_by_value(value, lower_bound, upper_bound)
     # Tensor of batch indices: [0, B=batch size).
-    batch_indices = tf.range(0, tf.shape(value)[0], dtype=tf.float32)
+    batch_indices = tf.cast(
+        tf.range(0, tf.shape(value)[0]),
+        dtype=dtype or tf.float32,
+    )
     # Calculate the step deltas (how much space between each bucket's central value?).
     bucket_delta = (upper_bound - lower_bound) / (num_buckets - 1)
     # Compute the float indices (might be non-int numbers: sitting between two buckets).
@@ -714,7 +718,7 @@ def two_hot(
     return tf.scatter_nd(
         tf.cast(indices, tf.int32),
         updates,
-        shape=(value.shape[0], num_buckets),
+        shape=(tf.shape(value)[0], num_buckets),
     )
 
 

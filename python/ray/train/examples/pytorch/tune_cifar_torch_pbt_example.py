@@ -1,5 +1,6 @@
 import argparse
 import os
+import tempfile
 
 import torch
 import torch.nn as nn
@@ -10,11 +11,9 @@ from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
 import ray
-import ray.train as train
-from ray import tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import FailureConfig, RunConfig, ScalingConfig
+import ray.cloudpickle as cpickle
+from ray import train, tune
+from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.tune_config import TuneConfig
@@ -22,7 +21,7 @@ from ray.tune.tuner import Tuner
 
 
 def train_epoch(dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset) // session.get_world_size()
+    size = len(dataloader.dataset) // train.get_context().get_world_size()
     model.train()
     for batch, (X, y) in enumerate(dataloader):
         # Compute prediction error
@@ -40,7 +39,7 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
 
 
 def validate_epoch(dataloader, model, loss_fn):
-    size = len(dataloader.dataset) // session.get_world_size()
+    size = len(dataloader.dataset) // train.get_context().get_world_size()
     num_batches = len(dataloader)
     model.eval()
     test_loss, correct = 0, 0
@@ -71,7 +70,7 @@ def train_func(config):
     model = resnet18()
 
     # Note that `prepare_model` needs to be called before setting optimizer.
-    if not session.get_checkpoint():  # fresh start
+    if not train.get_checkpoint():  # fresh start
         model = train.torch.prepare_model(model)
 
     # Create optimizer.
@@ -82,8 +81,10 @@ def train_func(config):
     optimizer = torch.optim.SGD(model.parameters(), **optimizer_config)
 
     starting_epoch = 0
-    if session.get_checkpoint():
-        checkpoint_dict = session.get_checkpoint().to_dict()
+    if train.get_checkpoint():
+        with train.get_checkpoint().as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "data.ckpt"), "rb") as fp:
+                checkpoint_dict = cpickle.load(fp)
 
         # Load in model
         model_state = checkpoint_dict["model"]
@@ -133,7 +134,7 @@ def train_func(config):
         train_dataset = Subset(train_dataset, list(range(64)))
         validation_dataset = Subset(validation_dataset, list(range(64)))
 
-    worker_batch_size = config["batch_size"] // session.get_world_size()
+    worker_batch_size = config["batch_size"] // train.get_context().get_world_size()
 
     train_loader = DataLoader(train_dataset, batch_size=worker_batch_size)
     validation_loader = DataLoader(validation_dataset, batch_size=worker_batch_size)
@@ -147,15 +148,19 @@ def train_func(config):
     for epoch in range(starting_epoch, epochs):
         train_epoch(train_loader, model, criterion, optimizer)
         result = validate_epoch(validation_loader, model, criterion)
-        checkpoint = Checkpoint.from_dict(
-            {
-                "epoch": epoch,
-                "model": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-            }
-        )
 
-        session.report(result, checkpoint=checkpoint)
+        with tempfile.TemporaryDirectory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "data.ckpt"), "wb") as fp:
+                cpickle.dump(
+                    {
+                        "epoch": epoch,
+                        "model": model.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                    },
+                    fp,
+                )
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            train.report(result, checkpoint=checkpoint)
 
 
 if __name__ == "__main__":

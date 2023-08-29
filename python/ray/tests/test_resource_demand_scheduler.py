@@ -58,7 +58,7 @@ from ray.tests.test_autoscaler import (
     MULTI_WORKER_CLUSTER,
     TYPES_A,
     MockAutoscaler,
-    MockNodeInfoStub,
+    MockGcsClient,
     MockProcessRunner,
     MockProvider,
     fill_in_raylet_ids,
@@ -196,6 +196,17 @@ def test_bin_pack():
         [{"GPU": 1}],
         [{"GPU": 2}],
     )
+
+    implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
+    assert (
+        get_bin_pack_residual(
+            [{"CPU": 1}], [{implicit_resource: 0.5}, {implicit_resource: 0.5}]
+        )[0]
+        == []
+    )
+    assert get_bin_pack_residual(
+        [{"CPU": 1}], [{implicit_resource: 1}, {implicit_resource: 0.5}]
+    ) == ([{implicit_resource: 0.5}], [{"CPU": 1, implicit_resource: 0}])
 
 
 def test_get_nodes_packing_heuristic():
@@ -1929,7 +1940,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             max_launch_batch=1,
             max_concurrent_launches=10,
@@ -2044,7 +2055,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2076,7 +2087,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2111,7 +2122,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2194,7 +2205,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2275,7 +2286,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2318,7 +2329,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2362,7 +2373,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2405,7 +2416,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2457,7 +2468,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2513,7 +2524,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2584,7 +2595,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2678,7 +2689,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2713,7 +2724,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2764,7 +2775,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2873,7 +2884,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -2984,7 +2995,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -3035,7 +3046,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = MockAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            MockGcsClient(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
@@ -3138,7 +3149,7 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3218,7 +3229,7 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3322,7 +3333,7 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3410,7 +3421,7 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3501,7 +3512,7 @@ Pending:
 Recent failures:
  A100: InstanceLimitExceeded (latest_attempt: 13:03:02)
  Inferentia-Spot: InsufficientInstanceCapacity (latest_attempt: 13:03:01)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3590,7 +3601,7 @@ Pending:
 Recent failures:
  A100: InstanceLimitExceeded (latest_attempt: 13:03:02) - you should fix it
  Inferentia-Spot: InsufficientInstanceCapacity (latest_attempt: 13:03:01) - desc
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3657,25 +3668,25 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.99)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.98)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.97)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.96)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.95)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.94)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.93)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.92)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.91)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.90)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.89)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.88)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.87)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.86)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.85)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.84)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.83)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.82)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.81)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.99)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.98)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.97)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.96)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.95)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.94)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.93)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.92)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.91)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.90)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.89)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.88)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.87)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.86)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.85)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.84)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.83)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.82)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.81)
 
 Resources
 --------------------------------------------------------

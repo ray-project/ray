@@ -5,7 +5,11 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +291,12 @@ class DDPGConfig(SimpleQConfig):
             return self.rollout_fragment_length
 
 
+@Deprecated(
+    old="rllib/algorithms/ddpg/",
+    new="rllib_contrib/ddpg/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class DDPG(SimpleQ):
     @classmethod
     @override(SimpleQ)

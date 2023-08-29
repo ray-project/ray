@@ -14,7 +14,7 @@ RAY_REPO = "ray-project/ray"
 AWS_SECRET_GITHUB = "ray_ci_github_token"
 AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
 MAX_BISECT_PER_DAY = 10  # Max number of bisects to run per day for all tests
-CONTINUOUS_FAILURE_TO_JAIL = 5  # Number of continuous failures before jailing
+CONTINUOUS_FAILURE_TO_JAIL = 3  # Number of continuous failures before jailing
 BUILDKITE_ORGANIZATION = "ray-project"
 BUILDKITE_BISECT_PIPELINE = "release-tests-bisect"
 
@@ -106,16 +106,12 @@ class TestStateMachine:
             self._create_github_issue()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.PASSING):
             self._close_github_issue()
-            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
-        elif change == (TestState.FAILING, TestState.PASSING):
-            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
         elif change == (TestState.PASSING, TestState.FAILING):
             self._trigger_bisect()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.JAILED):
             self._jail_test()
         elif change == (TestState.JAILED, TestState.PASSING):
             self._close_github_issue()
-            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
 
     def _state_hook(self, state: TestState) -> None:
         """
@@ -125,6 +121,9 @@ class TestStateMachine:
         """
         if state == TestState.JAILED:
             self._keep_github_issue_open()
+        if state == TestState.PASSING:
+            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
+            self.test.pop(Test.KEY_BISECT_BLAMED_COMMIT, None)
 
     def _jail_test(self) -> None:
         """
@@ -135,9 +134,7 @@ class TestStateMachine:
             return
         issue = self.ray_repo.get_issue(github_issue_number)
         issue.create_comment("Test has been failing for far too long. Jailing.")
-        labels = ["P1", "jailed-test"] + [label.name for label in issue.get_labels()]
-        if "P0" in labels:
-            labels.remove("P0")
+        labels = ["jailed-test"] + [label.name for label in issue.get_labels()]
         issue.edit(labels=labels)
 
     def _bisect_rate_limit_exceeded(self) -> bool:
@@ -208,15 +205,17 @@ class TestStateMachine:
         )
 
     def _create_github_issue(self) -> None:
+        labels = ["P0", "bug", "release-test", self.test.get_oncall()]
+        if not self.test.is_stable():
+            labels.append("unstable-release-test")
         issue_number = self.ray_repo.create_issue(
             title=f"Release test {self.test.get_name()} failed",
             body=(
-                f"Release test {self.test.get_name()} failed.\n"
-                f"See {self.test_results[0].url} for more details.\n"
-                f"cc @{self.test.get_oncall()}\n\n"
-                "\t -- created by ray-test-bot"
+                f"Release test **{self.test.get_name()}** failed. "
+                f"See {self.test_results[0].url} for more details.\n\n"
+                f"Managed by OSS Test Policy"
             ),
-            labels=["P0", "bug", "release-test"],
+            labels=labels,
             assignee="can-anyscale",
         ).number
         self.test[Test.KEY_GITHUB_ISSUE_NUMBER] = issue_number

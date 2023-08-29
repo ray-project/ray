@@ -18,7 +18,7 @@ for i in range(10):
     print(pretty_print(result))
 
     if i % 5 == 0:
-        checkpoint_dir = algo.save()
+        checkpoint_dir = algo.save().checkpoint.path
         print(f"Checkpoint saved in directory {checkpoint_dir}")
 # __rllib-first-config-end__
 
@@ -29,7 +29,7 @@ ray.shutdown()
 if False:
     # __rllib-tune-config-begin__
     import ray
-    from ray import air, tune
+    from ray import train, tune
 
     ray.init()
 
@@ -37,7 +37,7 @@ if False:
 
     tuner = tune.Tuner(
         "PPO",
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop={"episode_reward_mean": 150},
         ),
         param_space=config,
@@ -51,9 +51,9 @@ if False:
     tuner = ray.tune.Tuner(
         "PPO",
         param_space=config,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop={"episode_reward_mean": 150},
-            checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
+            checkpoint_config=train.CheckpointConfig(checkpoint_at_end=True),
         ),
     )
 

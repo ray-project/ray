@@ -3,6 +3,7 @@
 import os
 import argparse
 from filelock import FileLock
+import tempfile
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,9 +11,8 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 
 import ray
-from ray import air, tune
-from ray.air import session
-from ray.train.torch import TorchCheckpoint
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 # Change these values if you want the training to run quicker or slower.
@@ -33,7 +33,7 @@ class ConvNet(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def train(model, optimizer, train_loader, device=None):
+def train_func(model, optimizer, train_loader, device=None):
     device = device or torch.device("cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -47,7 +47,7 @@ def train(model, optimizer, train_loader, device=None):
         optimizer.step()
 
 
-def test(model, data_loader, device=None):
+def test_func(model, data_loader, device=None):
     device = device or torch.device("cpu")
     model.eval()
     correct = 0
@@ -103,13 +103,17 @@ def train_mnist(config):
     )
 
     while True:
-        train(model, optimizer, train_loader, device)
-        acc = test(model, test_loader, device)
-        checkpoint = None
+        train_func(model, optimizer, train_loader, device)
+        acc = test_func(model, test_loader, device)
+        metrics = {"mean_accuracy": acc}
+
+        # Report metrics (and possibly a checkpoint)
         if should_checkpoint:
-            checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
-        # Report metrics (and possibly a checkpoint) to Tune
-        session.report({"mean_accuracy": acc}, checkpoint=checkpoint)
+            with tempfile.TemporaryDirectory() as tempdir:
+                torch.save(model.state_dict(), os.path.join(tempdir, "model.pt"))
+                train.report(metrics, checkpoint=Checkpoint.from_directory(tempdir))
+        else:
+            train.report(metrics)
 
 
 if __name__ == "__main__":
@@ -136,7 +140,7 @@ if __name__ == "__main__":
             scheduler=sched,
             num_samples=1 if args.smoke_test else 50,
         ),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="exp",
             stop={
                 "mean_accuracy": 0.98,
@@ -151,3 +155,5 @@ if __name__ == "__main__":
     results = tuner.fit()
 
     print("Best config is:", results.get_best_result().config)
+
+    assert not results.errors

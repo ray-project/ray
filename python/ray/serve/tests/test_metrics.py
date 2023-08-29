@@ -1,4 +1,7 @@
+import grpc
 import os
+from functools import partial
+from multiprocessing import Pool
 from typing import List, Dict, DefaultDict
 
 import requests
@@ -6,14 +9,21 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.utils import block_until_http_ready
 import ray.util.state as state_api
 from fastapi import FastAPI
 from ray.serve.metrics import Counter, Histogram, Gauge
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
+from ray.serve.config import gRPCOptions
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
+from ray.serve.tests.utils import (
+    ping_grpc_list_applications,
+    ping_grpc_call_method,
+    ping_fruit_stand,
+)
+from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 
 
 @pytest.fixture
@@ -22,11 +32,21 @@ def serve_start_shutdown():
     ray.init(
         _metrics_export_port=9999,
         _system_config={
-            "metrics_report_interval_ms": 1000,
+            "metrics_report_interval_ms": 100,
             "task_retry_delay_ms": 50,
         },
     )
-    yield serve.start()
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+    ]
+    yield serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
     serve.shutdown()
     ray.shutdown()
 
@@ -36,12 +56,19 @@ def test_serve_metrics_for_successful_connection(serve_start_shutdown):
     async def f(request):
         return "hello"
 
-    handle = serve.run(f.bind())
+    app_name = "app1"
+    handle = serve.run(target=f.bind(), name=app_name)
 
     # send 10 concurrent requests
     url = "http://127.0.0.1:8000/metrics"
     ray.get([block_until_http_ready.remote(url) for _ in range(10)])
     ray.get([handle.remote(url) for _ in range(10)])
+
+    # Ping gPRC proxy
+    channel = grpc.insecure_channel("localhost:9000")
+    wait_for_condition(
+        ping_grpc_list_applications, channel=channel, app_names=[app_name]
+    )
 
     def verify_metrics(do_assert=False):
         try:
@@ -57,6 +84,7 @@ def test_serve_metrics_for_successful_connection(serve_start_shutdown):
             # counter
             "serve_num_router_requests",
             "serve_num_http_requests",
+            "serve_num_grpc_requests",
             "serve_deployment_queued_queries",
             "serve_deployment_request_counter",
             "serve_deployment_replica_starts",
@@ -88,19 +116,74 @@ def test_serve_metrics_for_successful_connection(serve_start_shutdown):
         verify_metrics(do_assert=True)
 
 
-def test_http_metrics(serve_start_shutdown):
+def test_http_replica_gauge_metrics(serve_start_shutdown):
+    """Test http replica gauge metrics"""
+    signal = SignalActor.remote()
+
+    @serve.deployment(graceful_shutdown_timeout_s=0.0001)
+    class A:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    handle = serve.run(A.bind(), name="app1")
+    _ = handle.remote()
+
+    processing_requests = get_metric_dictionaries(
+        "serve_replica_processing_queries", timeout=5
+    )
+    assert len(processing_requests) == 1
+    assert processing_requests[0]["deployment"] == "A"
+    assert processing_requests[0]["application"] == "app1"
+    print("serve_replica_processing_queries exists.")
+
+    pending_requests = get_metric_dictionaries(
+        "serve_replica_pending_queries", timeout=5
+    )
+    assert len(pending_requests) == 1
+    assert pending_requests[0]["deployment"] == "A"
+    assert pending_requests[0]["application"] == "app1"
+    print("serve_replica_pending_queries exists.")
+
+    def ensure_request_processing():
+        resp = requests.get("http://127.0.0.1:9999").text
+        resp = resp.split("\n")
+        expected_metrics = {
+            "serve_replica_processing_queries",
+            "serve_replica_pending_queries",
+        }
+        for metrics in resp:
+            if "# HELP" in metrics or "# TYPE" in metrics:
+                continue
+            if "serve_replica_processing_queries" in metrics:
+                assert "1.0" in metrics
+                expected_metrics.discard("serve_replica_processing_queries")
+            elif "serve_replica_pending_queries" in metrics:
+                assert "0.0" in metrics
+                expected_metrics.discard("serve_replica_pending_queries")
+        assert len(expected_metrics) == 0
+        return True
+
+    wait_for_condition(ensure_request_processing, timeout=5)
+
+
+def test_proxy_metrics(serve_start_shutdown):
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
     # Any updates here should be reflected there too.
-    expected_metrics = ["serve_num_http_requests", "serve_num_http_error_requests"]
+    expected_metrics = [
+        "serve_num_http_requests",
+        "serve_num_grpc_requests",
+        "serve_num_http_error_requests",
+        "serve_num_grpc_error_requests",
+    ]
 
-    def verify_metrics(expected_metrics, do_assert=False):
+    def verify_metrics(_expected_metrics, do_assert=False):
         try:
             resp = requests.get("http://127.0.0.1:9999").text
         # Requests will fail if we are crashing the controller
         except requests.ConnectionError:
             return False
-        for metric in expected_metrics:
+        for metric in _expected_metrics:
             if do_assert:
                 assert metric in resp
             if metric not in resp:
@@ -110,6 +193,12 @@ def test_http_metrics(serve_start_shutdown):
     # Trigger HTTP 404 error
     requests.get("http://127.0.0.1:8000/B/")
     requests.get("http://127.0.0.1:8000/B/")
+
+    # Ping gPRC proxy
+    channel = grpc.insecure_channel("localhost:9000")
+    wait_for_condition(ping_grpc_list_applications, channel=channel, app_names=[])
+    ping_grpc_call_method(channel=channel, app_name="foo", test_not_found=True)
+
     try:
         wait_for_condition(
             verify_metrics,
@@ -125,6 +214,8 @@ def test_http_metrics(serve_start_shutdown):
     # Any updates here should be reflected there too.
     expected_metrics.append("serve_num_deployment_http_error_requests")
     expected_metrics.append("serve_http_request_latency_ms")
+    expected_metrics.append("serve_num_deployment_grpc_error_requests")
+    expected_metrics.append("serve_grpc_request_latency_ms")
 
     @serve.deployment(name="A")
     class A:
@@ -135,9 +226,12 @@ def test_http_metrics(serve_start_shutdown):
             # Trigger RayActorError
             os._exit(0)
 
-    serve.run(A.bind(), name="app")
+    app_name = "app"
+    serve.run(A.bind(), name=app_name)
     requests.get("http://127.0.0.1:8000/A/")
     requests.get("http://127.0.0.1:8000/A/")
+    with pytest.raises(AssertionError):
+        ping_grpc_call_method(channel=channel, app_name=app_name)
     try:
         wait_for_condition(
             verify_metrics,
@@ -163,8 +257,20 @@ def test_http_metrics(serve_start_shutdown):
             elif "serve_num_deployment_http_error_requests" in metrics:
                 # deployment A should have error count 2
                 if do_assert:
-                    assert 'deployment="app_A"' in metrics and "2.0" in metrics
-                if 'deployment="app_A"' not in metrics or "2.0" not in metrics:
+                    assert 'deployment="A"' in metrics and "2.0" in metrics
+                if 'deployment="A"' not in metrics or "2.0" not in metrics:
+                    return False
+            elif "serve_num_grpc_error_requests" in metrics:
+                # gRPC pinged "A" once
+                if do_assert:
+                    assert "1.0" in metrics
+                if "1.0" not in metrics:
+                    return False
+            elif "serve_num_deployment_grpc_error_requests" in metrics:
+                # gRPC pinged "A" once
+                if do_assert:
+                    assert 'deployment="A"' in metrics and "1.0" in metrics
+                if 'deployment="A"' not in metrics or "1.0" not in metrics:
                     return False
         return True
 
@@ -175,20 +281,27 @@ def test_http_metrics(serve_start_shutdown):
         verify_error_count(do_assert=True)
 
 
-def test_http_metrics_fields(serve_start_shutdown):
-    """Tests the http metrics' fields' behavior."""
+def test_proxy_metrics_fields(serve_start_shutdown):
+    """Tests the proxy metrics' fields' behavior."""
 
-    @serve.deployment(route_prefix="/real_route")
+    @serve.deployment()
     def f(*args):
         return 1 / 0
 
-    serve.run(f.bind(), name="app")
+    real_app_name = "app"
+    real_app_name2 = "app2"
+    serve.run(f.bind(), name=real_app_name, route_prefix="/real_route")
+    serve.run(f.bind(), name=real_app_name2, route_prefix="/real_route2")
 
     # Should generate 404 responses
     broken_url = "http://127.0.0.1:8000/fake_route"
-    for _ in range(10):
-        requests.get(broken_url).text
+    requests.get(broken_url).text
     print("Sent requests to broken URL.")
+
+    # Ping gRPC proxy for not existing application.
+    channel = grpc.insecure_channel("localhost:9000")
+    fake_app_name = "fake-app"
+    ping_grpc_call_method(channel=channel, app_name=fake_app_name, test_not_found=True)
 
     num_requests = get_metric_dictionaries("serve_num_http_requests")
     assert len(num_requests) == 1
@@ -198,6 +311,14 @@ def test_http_metrics_fields(serve_start_shutdown):
     assert num_requests[0]["status_code"] == "404"
     print("serve_num_http_requests working as expected.")
 
+    num_requests = get_metric_dictionaries("serve_num_grpc_requests")
+    assert len(num_requests) == 1
+    assert num_requests[0]["route"] == fake_app_name
+    assert num_requests[0]["method"] == "/ray.serve.UserDefinedService/__call__"
+    assert num_requests[0]["application"] == ""
+    assert num_requests[0]["status_code"] == str(grpc.StatusCode.NOT_FOUND)
+    print("serve_num_grpc_requests working as expected.")
+
     num_errors = get_metric_dictionaries("serve_num_http_error_requests")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "/fake_route"
@@ -205,28 +326,59 @@ def test_http_metrics_fields(serve_start_shutdown):
     assert num_errors[0]["method"] == "GET"
     print("serve_num_http_error_requests working as expected.")
 
+    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
+    assert len(num_errors) == 1
+    assert num_errors[0]["route"] == fake_app_name
+    assert num_errors[0]["error_code"] == str(grpc.StatusCode.NOT_FOUND)
+    assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
+    print("serve_num_grpc_error_requests working as expected.")
+
     # Deployment should generate divide-by-zero errors
     correct_url = "http://127.0.0.1:8000/real_route"
-    for _ in range(10):
-        requests.get(correct_url).text
+    requests.get(correct_url).text
     print("Sent requests to correct URL.")
+
+    # Ping gPRC proxy for broken app
+    with pytest.raises(AssertionError):
+        ping_grpc_call_method(channel=channel, app_name=real_app_name)
 
     num_deployment_errors = get_metric_dictionaries(
         "serve_num_deployment_http_error_requests"
     )
     assert len(num_deployment_errors) == 1
-    assert num_deployment_errors[0]["deployment"] == "app_f"
+    assert num_deployment_errors[0]["deployment"] == "f"
     assert num_deployment_errors[0]["error_code"] == "500"
     assert num_deployment_errors[0]["method"] == "GET"
     assert num_deployment_errors[0]["application"] == "app"
     print("serve_num_deployment_http_error_requests working as expected.")
 
+    num_deployment_errors = get_metric_dictionaries(
+        "serve_num_deployment_grpc_error_requests"
+    )
+    assert len(num_deployment_errors) == 1
+    assert num_deployment_errors[0]["deployment"] == "f"
+    assert num_deployment_errors[0]["error_code"] == str(grpc.StatusCode.INTERNAL)
+    assert (
+        num_deployment_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
+    )
+    assert num_deployment_errors[0]["application"] == real_app_name
+    print("serve_num_deployment_grpc_error_requests working as expected.")
+
     latency_metrics = get_metric_dictionaries("serve_http_request_latency_ms_sum")
     assert len(latency_metrics) == 1
+    assert latency_metrics[0]["method"] == "GET"
     assert latency_metrics[0]["route"] == "/real_route"
     assert latency_metrics[0]["application"] == "app"
     assert latency_metrics[0]["status_code"] == "500"
     print("serve_http_request_latency_ms working as expected.")
+
+    latency_metrics = get_metric_dictionaries("serve_grpc_request_latency_ms_sum")
+    assert len(latency_metrics) == 1
+    assert latency_metrics[0]["method"] == "/ray.serve.UserDefinedService/__call__"
+    assert latency_metrics[0]["route"] == real_app_name
+    assert latency_metrics[0]["application"] == real_app_name
+    assert latency_metrics[0]["status_code"] == str(grpc.StatusCode.INTERNAL)
+    print("serve_grpc_request_latency_ms_sum working as expected.")
 
 
 def test_http_redirect_metrics(serve_start_shutdown):
@@ -258,7 +410,7 @@ def test_http_redirect_metrics(serve_start_shutdown):
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_num_http_requests")) == 2,
-        timeout=20,
+        timeout=40,
     )
     num_http_requests = get_metric_dictionaries("serve_num_http_requests")
     expected_output = [
@@ -279,7 +431,7 @@ def test_http_redirect_metrics(serve_start_shutdown):
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_http_request_latency_ms_sum")) == 2,
-        timeout=20,
+        timeout=40,
     )
     http_latency = get_metric_dictionaries("serve_num_http_requests")
     expected_output = [
@@ -314,19 +466,19 @@ def test_replica_metrics_fields(serve_start_shutdown):
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_deployment_request_counter")) == 2,
-        timeout=20,
+        timeout=40,
     )
 
     num_requests = get_metric_dictionaries("serve_deployment_request_counter")
     assert len(num_requests) == 2
-    expected_output = {"route": "/f", "deployment": "app1_f", "application": "app1"}
+    expected_output = {"route": "/f", "deployment": "f", "application": "app1"}
     verify_metrics(num_requests[0], expected_output)
 
     start_metrics = get_metric_dictionaries("serve_deployment_replica_starts")
     assert len(start_metrics) == 2
-    expected_output = {"deployment": "app1_f", "application": "app1"}
+    expected_output = {"deployment": "f", "application": "app1"}
     verify_metrics(start_metrics[0], expected_output)
-    expected_output = {"deployment": "app2_g", "application": "app2"}
+    expected_output = {"deployment": "g", "application": "app2"}
     verify_metrics(start_metrics[1], expected_output)
 
     # Latency metrics
@@ -335,7 +487,7 @@ def test_replica_metrics_fields(serve_start_shutdown):
             get_metric_dictionaries("serve_deployment_processing_latency_ms_count")
         )
         == 2,
-        timeout=20,
+        timeout=40,
     )
     for metric_name in [
         "serve_deployment_processing_latency_ms_count",
@@ -344,15 +496,17 @@ def test_replica_metrics_fields(serve_start_shutdown):
         latency_metrics = get_metric_dictionaries(metric_name)
         print(f"checking metric {metric_name}, {latency_metrics}")
         assert len(latency_metrics) == 2
-        expected_output1 = {"deployment": "app1_f", "application": "app1"}
-        expected_output2 = {"deployment": "app2_g", "application": "app2"}
+        expected_output1 = {"deployment": "f", "application": "app1"}
+        expected_output2 = {"deployment": "g", "application": "app2"}
         verify_metrics(latency_metrics[0], expected_output1)
         verify_metrics(latency_metrics[1], expected_output2)
 
+    wait_for_condition(
+        lambda: len(get_metric_dictionaries("serve_replica_processing_queries")) == 2
+    )
     processing_queries = get_metric_dictionaries("serve_replica_processing_queries")
-    assert len(processing_queries) == 2
-    expected_output1 = {"deployment": "app1_f", "application": "app1"}
-    expected_output2 = {"deployment": "app2_g", "application": "app2"}
+    expected_output1 = {"deployment": "f", "application": "app1"}
+    expected_output2 = {"deployment": "g", "application": "app2"}
     verify_metrics(processing_queries[0], expected_output1)
     verify_metrics(processing_queries[1], expected_output2)
 
@@ -364,19 +518,19 @@ def test_replica_metrics_fields(serve_start_shutdown):
     assert 500 == requests.get("http://127.0.0.1:8000/h").status_code
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_deployment_error_counter")) == 1,
-        timeout=20,
+        timeout=40,
     )
     err_requests = get_metric_dictionaries("serve_deployment_error_counter")
     assert len(err_requests) == 1
-    expected_output = {"route": "/h", "deployment": "app3_h", "application": "app3"}
+    expected_output = {"route": "/h", "deployment": "h", "application": "app3"}
     verify_metrics(err_requests[0], expected_output)
 
     health_metrics = get_metric_dictionaries("serve_deployment_replica_healthy")
     assert len(health_metrics) == 3
     expected_outputs = [
-        {"deployment": "app1_f", "application": "app1"},
-        {"deployment": "app2_g", "application": "app2"},
-        {"deployment": "app3_h", "application": "app3"},
+        {"deployment": "f", "application": "app1"},
+        {"deployment": "g", "application": "app2"},
+        {"deployment": "h", "application": "app3"},
     ]
     for i in range(len(health_metrics)):
         verify_metrics(health_metrics[i], expected_outputs[i])
@@ -396,11 +550,11 @@ class TestRequestContextMetrics:
         metrics_summary_route = DefaultDict(set)
         metrics_summary_app = DefaultDict(str)
 
-        for request_metrcis in metrics:
-            metrics_summary_route[request_metrcis["deployment"]].add(
-                request_metrcis["route"]
+        for request_metrics in metrics:
+            metrics_summary_route[request_metrics["deployment"]].add(
+                request_metrics["route"]
             )
-            metrics_summary_app[request_metrcis["deployment"]] = request_metrcis[
+            metrics_summary_app[request_metrics["deployment"]] = request_metrics[
                 "application"
             ]
         return metrics_summary_route, metrics_summary_app
@@ -412,15 +566,15 @@ class TestRequestContextMetrics:
     def test_request_context_pass_for_http_proxy(self, serve_start_shutdown):
         """Test HTTP proxy passing request context"""
 
-        @serve.deployment
+        @serve.deployment(graceful_shutdown_timeout_s=0.001)
         def f():
             return "hello"
 
-        @serve.deployment
+        @serve.deployment(graceful_shutdown_timeout_s=0.001)
         def g():
             return "world"
 
-        @serve.deployment
+        @serve.deployment(graceful_shutdown_timeout_s=0.001)
         def h():
             return 1 / 0
 
@@ -442,23 +596,38 @@ class TestRequestContextMetrics:
                 get_metric_dictionaries("serve_deployment_processing_latency_ms_sum")
             )
             == 3,
-            timeout=20,
+            timeout=40,
         )
 
+        def wait_for_route_and_name(
+            metric_name: str,
+            deployment_name: str,
+            app_name: str,
+            route: str,
+            timeout: float = 5,
+        ):
+            """Waits for app name and route to appear in deployment's metric."""
+
+            def check():
+                # Check replica qps & latency
+                (
+                    qps_metrics_route,
+                    qps_metrics_app_name,
+                ) = self._generate_metrics_summary(get_metric_dictionaries(metric_name))
+                assert qps_metrics_app_name[deployment_name] == app_name
+                assert qps_metrics_route[deployment_name] == {route}
+                return True
+
+            wait_for_condition(check, timeout=timeout)
+
         # Check replica qps & latency
-        qps_metrics_route, qps_metrics_app_name = self._generate_metrics_summary(
-            get_metric_dictionaries("serve_deployment_request_counter")
+        wait_for_route_and_name(
+            "serve_deployment_request_counter", "f", "app1", "/app1"
         )
-        print(qps_metrics_route)
-        assert qps_metrics_route["app1_f"] == {"/app1"}
-        assert qps_metrics_route["app2_g"] == {"/app2"}
-        assert qps_metrics_app_name["app1_f"] == "app1"
-        assert qps_metrics_app_name["app2_g"] == "app2"
-        qps_metrics_route, qps_metrics_app_name = self._generate_metrics_summary(
-            get_metric_dictionaries("serve_deployment_error_counter")
+        wait_for_route_and_name(
+            "serve_deployment_request_counter", "g", "app2", "/app2"
         )
-        assert qps_metrics_route["app3_h"] == {"/app3"}
-        assert qps_metrics_app_name["app3_h"] == "app3"
+        wait_for_route_and_name("serve_deployment_error_counter", "h", "app3", "/app3")
 
         # Check http proxy qps & latency
         for metric_name in [
@@ -480,12 +649,109 @@ class TestRequestContextMetrics:
             metrics_route, metrics_app_name = self._generate_metrics_summary(
                 get_metric_dictionaries(metric_name)
             )
-            assert metrics_route["app1_f"] == {"/app1"}
-            assert metrics_route["app2_g"] == {"/app2"}
-            assert metrics_route["app3_h"] == {"/app3"}
-            assert metrics_app_name["app1_f"] == "app1"
-            assert metrics_app_name["app2_g"] == "app2"
-            assert metrics_app_name["app3_h"] == "app3"
+            msg = f"Incorrect metrics for {metric_name}"
+            assert metrics_route["f"] == {"/app1"}, msg
+            assert metrics_route["g"] == {"/app2"}, msg
+            assert metrics_route["h"] == {"/app3"}, msg
+            assert metrics_app_name["f"] == "app1", msg
+            assert metrics_app_name["g"] == "app2", msg
+            assert metrics_app_name["h"] == "app3", msg
+
+    def test_request_context_pass_for_grpc_proxy(self, serve_start_shutdown):
+        """Test gRPC proxy passing request context"""
+
+        @serve.deployment(graceful_shutdown_timeout_s=0.001)
+        class H:
+            def __call__(self, *args, **kwargs):
+                return 1 / 0
+
+        h = H.bind()
+        app_name1 = "app1"
+        depl_name1 = "grpc-deployment"
+        app_name2 = "app2"
+        depl_name2 = "grpc-deployment-model-composition"
+        app_name3 = "app3"
+        depl_name3 = "H"
+        serve.run(g, name=app_name1, route_prefix="/app1")
+        serve.run(g2, name=app_name2, route_prefix="/app2")
+        serve.run(h, name=app_name3, route_prefix="/app3")
+
+        channel = grpc.insecure_channel("localhost:9000")
+        ping_grpc_call_method(channel, app_name1)
+        ping_fruit_stand(channel, app_name2)
+        with pytest.raises(AssertionError):
+            ping_grpc_call_method(channel, app_name3)
+
+        # app1 has 1 deployment, app2 has 3 deployments, and app3 has 1 deployment.
+        wait_for_condition(
+            lambda: len(
+                get_metric_dictionaries("serve_deployment_processing_latency_ms_sum")
+            )
+            == 5,
+            timeout=40,
+        )
+
+        def wait_for_route_and_name(
+            _metric_name: str,
+            deployment_name: str,
+            app_name: str,
+            route: str,
+            timeout: float = 5,
+        ):
+            """Waits for app name and route to appear in deployment's metric."""
+
+            def check():
+                # Check replica qps & latency
+                (
+                    qps_metrics_route,
+                    qps_metrics_app_name,
+                ) = self._generate_metrics_summary(
+                    get_metric_dictionaries(_metric_name)
+                )
+                assert qps_metrics_app_name[deployment_name] == app_name
+                assert qps_metrics_route[deployment_name] == {route}
+                return True
+
+            wait_for_condition(check, timeout=timeout)
+
+        # Check replica qps & latency
+        wait_for_route_and_name(
+            "serve_deployment_request_counter", depl_name1, app_name1, app_name1
+        )
+        wait_for_route_and_name(
+            "serve_deployment_request_counter", depl_name2, app_name2, app_name2
+        )
+        wait_for_route_and_name(
+            "serve_deployment_error_counter", depl_name3, app_name3, app_name3
+        )
+
+        # Check grpc proxy qps & latency
+        for metric_name in [
+            "serve_num_grpc_requests",
+            "serve_grpc_request_latency_ms_sum",
+        ]:
+            metrics = get_metric_dictionaries(metric_name)
+            assert {metric["route"] for metric in metrics} == {
+                "app1",
+                "app2",
+                "app3",
+            }
+
+        for metric_name in [
+            "serve_handle_request_counter",
+            "serve_num_router_requests",
+            "serve_deployment_processing_latency_ms_sum",
+        ]:
+            metrics_route, metrics_app_name = self._generate_metrics_summary(
+                get_metric_dictionaries(metric_name)
+            )
+            msg = f"Incorrect metrics for {metric_name}"
+            assert metrics_route[depl_name1] == {"app1"}, msg
+            assert metrics_route[depl_name2] == {"app2"}, msg
+            assert metrics_route[depl_name3] == {"app3"}, msg
+            assert metrics_app_name[depl_name1] == "app1", msg
+            assert metrics_app_name[depl_name2] == "app2", msg
+            assert metrics_app_name[depl_name3] == "app3", msg
 
     def test_request_context_pass_for_handle_passing(self, serve_start_shutdown):
         """Test handle passing contexts between replicas"""
@@ -530,7 +796,7 @@ class TestRequestContextMetrics:
         wait_for_condition(
             lambda: len(get_metric_dictionaries("serve_deployment_request_counter"))
             == 4,
-            timeout=20,
+            timeout=40,
         )
         (
             requests_metrics_route,
@@ -538,12 +804,12 @@ class TestRequestContextMetrics:
         ) = self._generate_metrics_summary(
             get_metric_dictionaries("serve_deployment_request_counter")
         )
-        assert requests_metrics_route["app_G"] == {"/api", "/api2"}
-        assert requests_metrics_route["app_g1"] == {"/api"}
-        assert requests_metrics_route["app_g2"] == {"/api2"}
-        assert requests_metrics_app_name["app_G"] == "app"
-        assert requests_metrics_app_name["app_g1"] == "app"
-        assert requests_metrics_app_name["app_g2"] == "app"
+        assert requests_metrics_route["G"] == {"/api", "/api2"}
+        assert requests_metrics_route["g1"] == {"/api"}
+        assert requests_metrics_route["g2"] == {"/api2"}
+        assert requests_metrics_app_name["G"] == "app"
+        assert requests_metrics_app_name["g1"] == "app"
+        assert requests_metrics_app_name["g2"] == "app"
 
     def test_customer_metrics_with_context(self, serve_start_shutdown):
         @serve.deployment
@@ -586,6 +852,8 @@ class TestRequestContextMetrics:
                 self.histogram.observe(200, tags={"my_runtime_tag": "200"})
                 self.gauge.set(300, tags={"my_runtime_tag": "300"})
                 return [
+                    # NOTE(zcin): this is to match the current implementation in
+                    # Serve's _add_serve_metric_default_tags().
                     ray.serve.context._INTERNAL_REPLICA_CONTEXT.deployment,
                     ray.serve.context._INTERNAL_REPLICA_CONTEXT.replica_tag,
                 ]
@@ -595,7 +863,7 @@ class TestRequestContextMetrics:
         deployment_name, replica_tag = resp.json()
         wait_for_condition(
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
-            timeout=20,
+            timeout=40,
         )
 
         counter_metrics = get_metric_dictionaries("my_counter")
@@ -731,7 +999,7 @@ class TestRequestContextMetrics:
         assert resp.text == "hello"
         wait_for_condition(
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
-            timeout=20,
+            timeout=40,
         )
 
         counter_metrics = get_metric_dictionaries("my_counter")
@@ -778,8 +1046,8 @@ def test_multiplexed_metrics(serve_start_shutdown):
     # Trigger model eviction.
     handle.remote("model3")
     expected_metrics = [
-        "serve_multiplexed_model_load_latency_s",
-        "serve_multiplexed_model_unload_latency_s",
+        "serve_multiplexed_model_load_latency_ms",
+        "serve_multiplexed_model_unload_latency_ms",
         "serve_num_multiplexed_models",
         "serve_multiplexed_models_load_counter",
         "serve_multiplexed_models_unload_counter",
@@ -797,9 +1065,87 @@ def test_multiplexed_metrics(serve_start_shutdown):
 
     wait_for_condition(
         verify_metrics,
-        timeout=20,
+        timeout=40,
         retry_interval_ms=1000,
     )
+
+
+def test_queued_queries_disconnected(serve_start_shutdown):
+    """Check that disconnected queued queries are tracked correctly."""
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        max_concurrent_queries=1,
+        graceful_shutdown_timeout_s=0.0001,
+    )
+    async def hang_on_first_request():
+        await signal.wait.remote()
+
+    serve.run(hang_on_first_request.bind())
+
+    print("Deployed hang_on_first_request deployment.")
+
+    def get_metric(metric: str) -> float:
+        metrics = requests.get("http://127.0.0.1:9999").text
+        metric_value = -1
+        for line in metrics.split("\n"):
+            if metric in line:
+                metric_value = line.split(" ")[-1]
+
+        return float(metric_value)
+
+    def first_request_executing(request_future) -> bool:
+        try:
+            request_future.get(timeout=0.1)
+        except Exception:
+            return ray.get(signal.cur_num_waiters.remote()) == 1
+
+    url = "http://localhost:8000/"
+
+    pool = Pool()
+
+    # Make a request to block the deployment from accepting other requests
+    fut = pool.apply_async(partial(requests.get, url))
+    wait_for_condition(lambda: first_request_executing(fut), timeout=5)
+    print("Executed first request.")
+    wait_for_condition(
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
+    )
+    print("ray_serve_num_ongoing_http_requests updated successfully.")
+
+    num_requests = 5
+    for _ in range(num_requests):
+        pool.apply_async(partial(requests.get, url))
+    print(f"Executed {num_requests} more requests.")
+
+    # First request should be processing. All others should be queued.
+    wait_for_condition(
+        lambda: get_metric("ray_serve_deployment_queued_queries") == num_requests,
+        timeout=15,
+    )
+    print("ray_serve_deployment_queued_queries updated successfully.")
+    wait_for_condition(
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == num_requests + 1,
+        timeout=15,
+    )
+    print("ray_serve_num_ongoing_http_requests updated successfully.")
+
+    # Disconnect all requests by terminating the process pool.
+    pool.terminate()
+    print("Terminated all requests.")
+
+    wait_for_condition(
+        lambda: get_metric("ray_serve_deployment_queued_queries") == 0, timeout=15
+    )
+    print("ray_serve_deployment_queued_queries updated successfully.")
+
+    # TODO (shrekris-anyscale): This should be 0 once async task cancellation
+    # is implemented.
+    wait_for_condition(
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
+    )
+    print("ray_serve_num_ongoing_http_requests updated successfully.")
 
 
 def test_actor_summary(serve_instance):
@@ -811,12 +1157,12 @@ def test_actor_summary(serve_instance):
     actors = state_api.list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
-        {"ServeController", "HTTPProxyActor", "ServeReplica:app_f"}
+        {"ServeController", "HTTPProxyActor", "ServeReplica:app:f"}
     )
 
 
 def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
-    """Gets a list of metric's dictionaries from metrics' text output.
+    """Gets a list of metric's tags from metrics' text output.
 
     Return:
         Example:
@@ -854,6 +1200,7 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
             metric_dict_str = f"dict({line[dict_body_start:dict_body_end]})"
             metric_dicts.append(eval(metric_dict_str))
 
+    print(metric_dicts)
     return metric_dicts
 
 

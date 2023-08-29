@@ -6,11 +6,11 @@ import os
 import numpy as np
 import torch
 import torch.optim as optim
-from ray.tune.examples.mnist_pytorch import train, test, ConvNet, get_data_loaders
+from ray.tune.examples.mnist_pytorch import test_func, ConvNet, get_data_loaders
 
-from ray import air, tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+import ray
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
 
 # __tutorial_imports_end__
@@ -28,11 +28,11 @@ def train_convnet(config):
         momentum=config.get("momentum", 0.9),
     )
 
-    # If `session.get_checkpoint()` is not None, then we are resuming from a checkpoint.
+    # If `get_checkpoint()` is not None, then we are resuming from a checkpoint.
     # Load model state and iteration step from checkpoint.
-    if session.get_checkpoint():
+    if train.get_checkpoint():
         print("Loading from checkpoint.")
-        loaded_checkpoint = session.get_checkpoint()
+        loaded_checkpoint = train.get_checkpoint()
         with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
             path = os.path.join(loaded_checkpoint_dir, "checkpoint.pt")
             checkpoint = torch.load(path)
@@ -40,8 +40,8 @@ def train_convnet(config):
             step = checkpoint["step"]
 
     while True:
-        train(model, optimizer, train_loader)
-        acc = test(model, test_loader)
+        ray.tune.examples.mnist_pytorch.train_func(model, optimizer, train_loader)
+        acc = test_func(model, test_loader)
         checkpoint = None
         if step % 5 == 0:
             # Every 5 steps, checkpoint our current state.
@@ -59,13 +59,13 @@ def train_convnet(config):
             checkpoint = Checkpoint.from_directory("my_model")
 
         step += 1
-        session.report({"mean_accuracy": acc}, checkpoint=checkpoint)
+        train.report({"mean_accuracy": acc}, checkpoint=checkpoint)
 
 
 # __train_end__
 
 
-def test_best_model(results: tune.ResultGrid):
+def eval_best_model(results: tune.ResultGrid):
     """Test the best model given output of tuner.fit()."""
     with results.get_best_result().checkpoint.as_directory() as best_checkpoint_path:
         best_model = ConvNet()
@@ -75,7 +75,7 @@ def test_best_model(results: tune.ResultGrid):
         best_model.load_state_dict(best_checkpoint["model"])
         # Note that test only runs on a small random set of the test data, thus the
         # accuracy may be different from metrics shown in tuning process.
-        test_acc = test(best_model, get_data_loaders()[1])
+        test_acc = test_func(best_model, get_data_loaders()[1])
         print("best model accuracy: ", test_acc)
 
 
@@ -118,11 +118,11 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         train_convnet,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="pbt_test",
             stop=stopper,
             verbose=1,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_score_attribute="mean_accuracy",
                 num_to_keep=4,
             ),
@@ -141,4 +141,4 @@ if __name__ == "__main__":
     results = tuner.fit()
     # __tune_end__
 
-    test_best_model(results)
+    eval_best_model(results)

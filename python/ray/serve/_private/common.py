@@ -1,7 +1,7 @@
 from enum import Enum
 from dataclasses import dataclass, field, asdict
 import json
-from typing import Any, List, Dict, Optional
+from typing import Any, List, Dict, Optional, NamedTuple
 
 import ray
 from ray.actor import ActorHandle
@@ -17,7 +17,27 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 
-EndpointTag = str
+
+class DeploymentID(NamedTuple):
+    name: str
+    app: str
+
+    def __str__(self):
+        # TODO(zcin): remove this once we no longer use the concatenated
+        # string for metrics
+        if self.app:
+            return f"{self.app}_{self.name}"
+        else:
+            return self.name
+
+    def to_replica_actor_class_name(self):
+        if self.app:
+            return f"ServeReplica:{self.app}:{self.name}"
+        else:
+            return f"ServeReplica:{self.name}"
+
+
+EndpointTag = DeploymentID
 ReplicaTag = str
 NodeId = str
 Duration = float
@@ -27,7 +47,7 @@ ApplicationName = str
 @dataclass
 class EndpointInfo:
     route: str
-    app_name: str
+    app_is_cross_language: bool = False
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
@@ -59,7 +79,7 @@ class ApplicationStatusInfo:
 
     def to_proto(self):
         return ApplicationStatusInfoProto(
-            status=f"APPLICATION_STATUS_{self.status}",
+            status=f"APPLICATION_STATUS_{self.status.name}",
             message=self.message,
             deployment_timestamp=self.deployment_timestamp,
         )
@@ -92,7 +112,7 @@ class DeploymentStatusInfo:
     def to_proto(self):
         return DeploymentStatusInfoProto(
             name=self.name,
-            status=f"DEPLOYMENT_STATUS_{self.status}",
+            status=f"DEPLOYMENT_STATUS_{self.status.name}",
             message=self.message,
         )
 
@@ -173,9 +193,11 @@ class StatusOverview:
         )
 
 
-HEALTH_CHECK_CONCURRENCY_GROUP = "health_check"
+# Concurrency group used for operations that cannot be blocked by user code
+# (e.g., health checks and fetching queue length).
+CONTROL_PLANE_CONCURRENCY_GROUP = "control_plane"
 REPLICA_DEFAULT_ACTOR_OPTIONS = {
-    "concurrency_groups": {HEALTH_CHECK_CONCURRENCY_GROUP: 1}
+    "concurrency_groups": {CONTROL_PLANE_CONCURRENCY_GROUP: 1}
 }
 
 
@@ -190,8 +212,9 @@ class DeploymentInfo:
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
         is_driver_deployment: Optional[bool] = False,
-        app_name: Optional[str] = None,
         route_prefix: str = None,
+        docs_path: str = None,
+        ingress: bool = False,
     ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
@@ -208,8 +231,9 @@ class DeploymentInfo:
 
         self.is_driver_deployment = is_driver_deployment
 
-        self.app_name = app_name
         self.route_prefix = route_prefix
+        self.docs_path = docs_path
+        self.ingress = ingress
         if deployment_config.autoscaling_config is not None:
             self.autoscaling_policy = BasicAutoscalingPolicy(
                 deployment_config.autoscaling_config
@@ -232,6 +256,30 @@ class DeploymentInfo:
 
     def set_autoscaled_num_replicas(self, autoscaled_num_replicas):
         self.autoscaled_num_replicas = autoscaled_num_replicas
+
+    def update(
+        self,
+        deployment_config: DeploymentConfig = None,
+        replica_config: ReplicaConfig = None,
+        version: str = None,
+        is_driver_deployment: bool = None,
+        route_prefix: str = None,
+    ) -> "DeploymentInfo":
+        return DeploymentInfo(
+            deployment_config=deployment_config or self.deployment_config,
+            replica_config=replica_config or self.replica_config,
+            start_time_ms=self.start_time_ms,
+            deployer_job_id=self.deployer_job_id,
+            actor_name=self.actor_name,
+            version=version or self.version,
+            end_time_ms=self.end_time_ms,
+            is_driver_deployment=is_driver_deployment
+            if is_driver_deployment is not None
+            else self.is_driver_deployment,
+            route_prefix=route_prefix or self.route_prefix,
+            docs_path=self.docs_path,
+            ingress=self.ingress,
+        )
 
     @property
     def actor_def(self):
@@ -265,7 +313,6 @@ class DeploymentInfo:
             "version": proto.version if proto.version != "" else None,
             "end_time_ms": proto.end_time_ms if proto.end_time_ms != 0 else None,
             "deployer_job_id": ray.get_runtime_context().get_job_id(),
-            "app_name": proto.app_name,
         }
 
         return cls(**data)
@@ -276,7 +323,6 @@ class DeploymentInfo:
             "actor_name": self.actor_name,
             "version": self.version,
             "end_time_ms": self.end_time_ms,
-            "app_name": self.app_name,
         }
         if self.deployment_config:
             data["deployment_config"] = self.deployment_config.to_proto()
@@ -287,16 +333,27 @@ class DeploymentInfo:
 
 @dataclass
 class ReplicaName:
-    deployment_tag: str
+    app_name: str
+    deployment_name: str
     replica_suffix: str
     replica_tag: ReplicaTag = ""
     delimiter: str = "#"
     prefix: str = "SERVE_REPLICA::"
 
-    def __init__(self, deployment_tag: str, replica_suffix: str):
-        self.deployment_tag = deployment_tag
+    def __init__(self, app_name: str, deployment_name: str, replica_suffix: str):
+        self.app_name = app_name
+        self.deployment_name = deployment_name
         self.replica_suffix = replica_suffix
-        self.replica_tag = f"{deployment_tag}{self.delimiter}{replica_suffix}"
+        if app_name:
+            self.replica_tag = self.delimiter.join(
+                [app_name, deployment_name, replica_suffix]
+            )
+        else:
+            self.replica_tag = self.delimiter.join([deployment_name, replica_suffix])
+
+    @property
+    def deployment_id(self):
+        return DeploymentID(self.deployment_name, self.app_name)
 
     @staticmethod
     def is_replica_name(actor_name: str) -> bool:
@@ -307,13 +364,24 @@ class ReplicaName:
         assert ReplicaName.is_replica_name(actor_name)
         # TODO(simon): this currently conforms the tag and suffix logic. We
         # can try to keep the internal name always hard coded with the prefix.
-        replica_name = actor_name.replace(cls.prefix, "")
-        parsed = replica_name.split(cls.delimiter)
-        assert len(parsed) == 2, (
-            f"Given replica name {replica_name} didn't match pattern, please "
-            f"ensure it has exactly two fields with delimiter {cls.delimiter}"
-        )
-        return cls(deployment_tag=parsed[0], replica_suffix=parsed[1])
+        replica_tag = actor_name.replace(cls.prefix, "")
+        return ReplicaName.from_replica_tag(replica_tag)
+
+    @classmethod
+    def from_replica_tag(cls, tag):
+        parsed = tag.split(cls.delimiter)
+        if len(parsed) == 3:
+            return cls(
+                app_name=parsed[0], deployment_name=parsed[1], replica_suffix=parsed[2]
+            )
+        elif len(parsed) == 2:
+            return cls("", deployment_name=parsed[0], replica_suffix=parsed[1])
+        else:
+            raise ValueError(
+                f"Given replica tag {tag} didn't match pattern, please "
+                "ensure it has either two or three fields with delimiter "
+                f"{cls.delimiter}"
+            )
 
     def __str__(self):
         return self.replica_tag
@@ -323,6 +391,7 @@ class ReplicaName:
 class RunningReplicaInfo:
     deployment_name: str
     replica_tag: ReplicaTag
+    node_id: Optional[str]
     actor_handle: ActorHandle
     max_concurrent_queries: int
     is_cross_language: bool = False
@@ -340,6 +409,7 @@ class RunningReplicaInfo:
                 [
                     self.deployment_name,
                     self.replica_tag,
+                    self.node_id if self.node_id else "",
                     str(self.actor_handle._actor_id),
                     str(self.max_concurrent_queries),
                     str(self.is_cross_language),
@@ -370,12 +440,17 @@ class ServeDeployMode(str, Enum):
     MULTI_APP = "MULTI_APP"
 
 
-# Keep in sync with ServeHTTPProxyStatus in
+# Keep in sync with ServeSystemActorStatus in
 # python/ray/dashboard/client/src/type/serve.ts
 class HTTPProxyStatus(str, Enum):
     STARTING = "STARTING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
+    DRAINING = "DRAINING"
+    # The DRAINED status is a momentary state
+    # just before the proxy is removed
+    # so this status won't show up on the dashboard.
+    DRAINED = "DRAINED"
 
 
 class ServeComponentType(str, Enum):
@@ -384,6 +459,28 @@ class ServeComponentType(str, Enum):
 
 @dataclass
 class MultiplexedReplicaInfo:
-    deployment_name: str
+    deployment_id: DeploymentID
     replica_tag: str
     model_ids: List[str]
+
+
+@dataclass
+class gRPCRequest:
+    """Sent from the GRPC proxy to replicas on both unary and streaming codepaths."""
+
+    grpc_user_request: bytes
+    grpc_proxy_handle: ActorHandle
+
+
+@dataclass
+class StreamingHTTPRequest:
+    """Sent from the HTTP proxy to replicas on the streaming codepath."""
+
+    pickled_asgi_scope: bytes
+    http_proxy_handle: ActorHandle
+
+
+class RequestProtocol(str, Enum):
+    UNDEFINED = "UNDEFINED"
+    HTTP = "HTTP"
+    GRPC = "gRPC"

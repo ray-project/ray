@@ -1,3 +1,7 @@
+import os
+from pathlib import Path
+import tempfile
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -7,12 +11,16 @@ import torchvision.transforms as transforms
 from torchvision.models import resnet18
 
 import ray
-from ray.air import RunConfig, session
-from ray.air.config import ScalingConfig, FailureConfig, CheckpointConfig
-from ray.air.checkpoint import Checkpoint
+from ray.train import (
+    Checkpoint,
+    CheckpointConfig,
+    FailureConfig,
+    RunConfig,
+    ScalingConfig,
+)
 import ray.train.torch
 from ray.train.horovod import HorovodTrainer
-from ray import tune
+from ray import train, tune
 from ray.tune.schedulers import create_scheduler
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -46,12 +54,15 @@ def train_loop_per_worker(config):
     )
     epoch = 0
 
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
-        checkpoint_dict = checkpoint.to_dict()
-        model_state = checkpoint_dict["model_state"]
-        optimizer_state = checkpoint_dict["optimizer_state"]
-        epoch = checkpoint_dict["epoch"] + 1
+        with checkpoint.as_directory() as checkpoint_dir:
+            checkpoint_dir = Path(checkpoint_dir)
+            model_state = torch.load(checkpoint_dir / "model.pt", map_location="cpu")
+            optimizer_state = torch.load(
+                checkpoint_dir / "optim.pt", map_location="cpu"
+            )
+            epoch = torch.load(checkpoint_dir / "extra_state.pt")["epoch"] + 1
 
         net.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)
@@ -107,14 +118,14 @@ def train_loop_per_worker(config):
             if config["smoke_test"]:
                 break
 
-        checkpoint = Checkpoint.from_dict(
-            dict(
-                model_state=net.state_dict(),
-                optimizer_state=optimizer.state_dict(),
-                epoch=epoch,
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(net.state_dict(), os.path.join(tmpdir, "model.pt"))
+            torch.save(optimizer.state_dict(), os.path.join(tmpdir, "optim.pt"))
+            torch.save({"epoch": epoch}, os.path.join(tmpdir, "extra_state.pt"))
+            train.report(
+                dict(loss=running_loss / epoch_steps),
+                checkpoint=Checkpoint.from_directory(tmpdir),
             )
-        )
-        session.report(dict(loss=running_loss / epoch_steps), checkpoint=checkpoint)
 
 
 if __name__ == "__main__":
@@ -181,8 +192,9 @@ if __name__ == "__main__":
         run_config=RunConfig(
             stop={"training_iteration": 1} if args.smoke_test else None,
             failure_config=FailureConfig(fail_fast=False),
-            checkpoint_config=CheckpointConfig(num_to_keep=1),
+            checkpoint_config=CheckpointConfig(num_to_keep=4),
             callbacks=[ProgressCallback()],
+            storage_path="/mnt/cluster_storage",
         ),
     )
 

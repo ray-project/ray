@@ -3,12 +3,10 @@ import pandas as pd
 
 import ray
 from ray import tune
-from ray.air.checkpoint import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 
-from ray.train.sklearn import SklearnCheckpoint, SklearnTrainer
-from ray.air.config import ScalingConfig
-from ray.data.preprocessor import Preprocessor
+from ray.train.sklearn import SklearnTrainer
+from ray.train import ScalingConfig
 
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
@@ -71,69 +69,16 @@ def test_no_auto_cpu_params(ray_start_4_cpus, tmpdir):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
 
-    class DummyPreprocessor(Preprocessor):
-        def __init__(self):
-            super().__init__()
-            self.is_same = True
-
-        def fit(self, dataset):
-            self.fitted_ = True
-
-        def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
-            return df
-
     trainer = SklearnTrainer(
         estimator=RandomForestClassifier(n_jobs=1),
         scaling_config=scale_config,
         label_column="target",
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
-        preprocessor=DummyPreprocessor(),
         set_estimator_cpus=False,
     )
     result = trainer.fit()
-
-    checkpoint = SklearnCheckpoint.from_checkpoint(result.checkpoint)
-    model = checkpoint.get_estimator()
+    model = SklearnTrainer.get_model(result.checkpoint)
     assert model.n_jobs == 1
-
-
-def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
-    train_dataset = ray.data.from_pandas(train_df)
-    valid_dataset = ray.data.from_pandas(test_df)
-
-    class DummyPreprocessor(Preprocessor):
-        def __init__(self):
-            super().__init__()
-            self.is_same = True
-
-        def fit(self, dataset):
-            self.fitted_ = True
-
-        def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
-            return df
-
-    trainer = SklearnTrainer(
-        estimator=RandomForestClassifier(),
-        scaling_config=scale_config,
-        label_column="target",
-        datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
-        preprocessor=DummyPreprocessor(),
-    )
-    result = trainer.fit()
-
-    # Move checkpoint to a different directory.
-    checkpoint_dict = result.checkpoint.to_dict()
-    checkpoint = Checkpoint.from_dict(checkpoint_dict)
-    checkpoint_path = checkpoint.to_directory(tmpdir)
-    resume_from = Checkpoint.from_directory(checkpoint_path)
-
-    checkpoint = SklearnCheckpoint.from_checkpoint(resume_from)
-
-    model = checkpoint.get_estimator()
-    preprocessor = checkpoint.get_preprocessor()
-    assert hasattr(model, "feature_importances_")
-    assert preprocessor.is_same
-    assert preprocessor.fitted_
 
 
 def test_tune(ray_start_4_cpus):

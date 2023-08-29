@@ -2,7 +2,8 @@ import os
 import unittest
 
 import ray
-from ray.air import CheckpointConfig
+import ray.train
+from ray.train import CheckpointConfig
 from ray.rllib import _register_all
 
 from ray.tune.result import TIMESTEPS_TOTAL
@@ -11,6 +12,11 @@ from ray.tune import register_trainable, run_experiments
 from ray.tune.logger import LegacyLoggerCallback, Logger
 from ray.tune.experiment import Experiment
 from ray.tune.experiment.trial import Trial, ExportFormat
+
+
+def train(config):
+    for i in range(100):
+        ray.train.report(dict(timesteps_total=i))
 
 
 class RunExperimentTest(unittest.TestCase):
@@ -22,10 +28,6 @@ class RunExperimentTest(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def testDict(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
         register_trainable("f1", train)
         trials = run_experiments(
             {
@@ -42,10 +44,6 @@ class RunExperimentTest(unittest.TestCase):
             self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testExperiment(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
         register_trainable("f1", train)
         exp1 = Experiment(
             **{
@@ -58,10 +56,6 @@ class RunExperimentTest(unittest.TestCase):
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testExperimentList(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
         register_trainable("f1", train)
         exp1 = Experiment(
             **{
@@ -81,10 +75,6 @@ class RunExperimentTest(unittest.TestCase):
             self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testAutoregisterTrainable(self):
-        def train(config, reporter):
-            for i in range(100):
-                reporter(timesteps_total=i)
-
         class B(Trainable):
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
@@ -102,7 +92,7 @@ class RunExperimentTest(unittest.TestCase):
             self.assertEqual(trial.status, Trial.TERMINATED)
 
     def testCheckpointAtEnd(self):
-        class train(Trainable):
+        class MyTrainable(Trainable):
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
@@ -110,19 +100,18 @@ class RunExperimentTest(unittest.TestCase):
                 checkpoint = os.path.join(path, "checkpoint")
                 with open(checkpoint, "w") as f:
                     f.write("OK")
-                return checkpoint
 
         trials = run_experiments(
             {
                 "foo": {
-                    "run": train,
+                    "run": MyTrainable,
                     "checkpoint_config": CheckpointConfig(checkpoint_at_end=True),
                 }
             }
         )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertTrue(trial.has_checkpoint())
+            self.assertTrue(trial.checkpoint)
 
     def testExportFormats(self):
         class train(Trainable):
@@ -141,7 +130,7 @@ class RunExperimentTest(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(trial.local_path, "exported")))
 
     def testInvalidExportFormats(self):
-        class train(Trainable):
+        class MyTrainable(Trainable):
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
@@ -150,7 +139,7 @@ class RunExperimentTest(unittest.TestCase):
                 return {}
 
         def fail_trial():
-            run_experiments({"foo": {"run": train, "export_formats": ["format"]}})
+            run_experiments({"foo": {"run": MyTrainable, "export_formats": ["format"]}})
 
         self.assertRaises(TuneError, fail_trial)
 
@@ -158,14 +147,14 @@ class RunExperimentTest(unittest.TestCase):
         ray.shutdown()
         ray.init(resources={"hi": 3})
 
-        class train(Trainable):
+        class MyTrainable(Trainable):
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
         trials = run_experiments(
             {
                 "foo": {
-                    "run": train,
+                    "run": MyTrainable,
                     "resources_per_trial": {"cpu": 1, "custom_resources": {"hi": 2}},
                 }
             }

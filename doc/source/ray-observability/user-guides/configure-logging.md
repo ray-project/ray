@@ -41,7 +41,7 @@ System logs may include information about your applications. For example, ``runt
 :::
 
 ### Application logs
-- ``job-driver-[submission_id].log``: The stdout of a job submitted with the :ref:`Ray Jobs API <jobs-overview>`.
+- ``job-driver-[submission_id].log``: The stdout of a job submitted with the {ref}`Ray Jobs API <jobs-overview>`.
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python or Java part of Ray drivers and workers. All stdout and stderr from Tasks or Actors are streamed to these files. Note that job_id is the ID of the driver.
 
 ### System (component) logs
@@ -58,7 +58,7 @@ System logs may include information about your applications. For example, ``runt
 - ``raylet.[out|err]``: A log file of raylets.
 - ``redis-shard_[shard_index].[out|err]``: Redis shard log files.
 - ``redis.[out|err]``: Redis log files.
-- ``runtime_env_agent.log``: Every Ray node has one agent that manages :ref:`Runtime Environment <runtime-environments>` creation, deletion, and caching.
+- ``runtime_env_agent.log``: Every Ray node has one agent that manages {ref}`Runtime Environment <runtime-environments>` creation, deletion, and caching.
   This is the log file of the agent containing logs of create or delete requests and cache hits and misses.
   For the logs of the actual installations (for example, ``pip install`` logs), see the ``runtime_env_setup-[job_id].log`` file (see below).
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a job when connecting with {ref}`Ray Client <ray-client-ref>`.
@@ -145,7 +145,7 @@ This feature is especially useful when importing libraries such as `tensorflow` 
 
 ## Distributed progress bars (tqdm)
 
-When using `tqdm <https://tqdm.github.io>`__ in Ray remote Tasks or Actors, you may notice that the progress bar output is corrupted. To avoid this problem, use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
+When using [tqdm](https://tqdm.github.io) in Ray remote Tasks or Actors, you may notice that the progress bar output is corrupted. To avoid this problem, use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
 
 ```{literalinclude} /ray-core/doc_code/tqdm.py
 ```
@@ -158,7 +158,7 @@ This tqdm implementation works as follows:
 
 Limitations:
 
-- Only a subset of tqdm functionality is supported. Refer to the ray_tqdm `implementation <https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py>`__ for more details.
+- Only a subset of tqdm functionality is supported. Refer to the ray_tqdm [implementation](https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py) for more details.
 - Performance may be poor if there are more than a couple thousand updates per second (updates are not batched).
 
 By default, the built-in print is also be patched to use `ray.experimental.tqdm_ray.safe_print` when `tqdm_ray` is used.
@@ -176,19 +176,17 @@ import logging
 logger = logging.getLogger("ray")
 logger # Modify the Ray logging config
 ```
-Similarly, to modify the logging configuration for Ray AIR or other libraries, specify the appropriate logger name:
+Similarly, to modify the logging configuration for Ray libraries, specify the appropriate logger name:
 
 ```python
 import logging
 
 # First, get the handle for the logger you want to modify
-ray_air_logger = logging.getLogger("ray.air")
 ray_data_logger = logging.getLogger("ray.data")
 ray_tune_logger = logging.getLogger("ray.tune")
 ray_rllib_logger = logging.getLogger("ray.rllib")
 ray_train_logger = logging.getLogger("ray.train")
 ray_serve_logger = logging.getLogger("ray.serve")
-ray_workflow_logger = logging.getLogger("ray.workflow")
 
 # Modify the ray.data logging level
 ray_data_logger.setLevel(logging.WARNING)
@@ -208,6 +206,12 @@ As a result, Python loggers need to be set up for both driver and worker process
 ::::{tab-set}
 
 :::{tab-item} Ray Core
+
+```{admonition} Caution
+:class: caution
+This is an experimental feature. It doesn't support [Ray Client](ray-client-ref) yet.
+```
+
 Set up the Python logger for driver and worker processes separately:
 1. Set up the logger for the driver process after importing `ray`.
 2. Use `worker_process_setup_hook` to configure the Python logger for all worker processes.
@@ -218,8 +222,8 @@ If you want to control the logger for particular actors or tasks, view [customiz
 
 :::
 
-:::{tab-item} Ray AIR or other libraries
-If you are using Ray AIR or any of the Ray libraries, follow the instructions provided in the documentation for the library.
+:::{tab-item} Ray libraries
+If you are using any of the Ray libraries, follow the instructions provided in the documentation for the library.
 :::
 
 ::::
@@ -375,7 +379,17 @@ ray.get(f.remote("A log message for a task."))
 :::
 
 :::{tab-item} Ray Core: all worker processes of a job
+
+```{admonition} Caution
+:class: caution
+This is an experimental feature. The semantic of the API is subject to change.
+It doesn't support [Ray Client](ray-client-ref) yet.
+
+Currently, all the runtime environment passed to a driver (`ray.init(runtime_env={...})`) will be ignored if you specify any runtime environment via [Ray Job Submission](jobs-quickstart) API (`ray job submit --working-dir` or `ray job submit --runtime-env`).
+```
+
 Use `worker_process_setup_hook` to apply the new logging configuration to all worker processes within a job.
+
 ```python
 # driver.py
 def logging_setup_func():
@@ -389,8 +403,8 @@ logging_setup_func()
 ```
 :::
 
-:::{tab-item} Ray AIR or other libraries
-If you are using Ray AIR or any of the Ray libraries, follow the instructions provided in the documentation for the library.
+:::{tab-item} Ray libraries
+If you are using any of the Ray libraries, follow the instructions provided in the documentation for the library.
 :::
 
 ::::

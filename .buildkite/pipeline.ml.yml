@@ -1,3 +1,5 @@
+#ci:group=ML tests
+
 - label: ":airplane: AIR tests (ray/air)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_ML_AFFECTED"]
   instance_size: large
@@ -5,9 +7,11 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu,-needs_credentials,-hdfs
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu,-hdfs
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/air/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air python/ray/data/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air 
+      python/ray/data/...
 
 - label: ":airplane: AIR/ML release smoke tests"
   conditions:
@@ -24,6 +28,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
       --test_tag_filters=team:ml
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       release/...
 
 
@@ -33,11 +38,13 @@
   parallelism: 4
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    # Todo (krfricke): Move mosaicml to train-test-requirements.txt
+    - pip install "mosaicml==0.12.1"
     - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-needs_credentials,-doctest
+      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-doctest
       python/ray/train/...
 
 - label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
@@ -48,6 +55,21 @@
     - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=tune,-gpu_only,-ray_air,-gpu,-doctest python/ray/train/...
+
+
+- label: ":brain: RLlib: Benchmarks (Torch 2.x)"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    # Install torch 2.x locally until we move to torch 2.x in the CI.
+    - pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=torch_2.x_only_benchmark
+      rllib/...
 
 - label: ":brain: RLlib: Learning tests TF2-static-graph"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
@@ -196,8 +218,9 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=-learning_tests,-memory_leak_tests,-examples,-tests_dir,-documentation,-multi_gpu,-no_cpu
-      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+      --test_tag_filters=-learning_tests,-memory_leak_tests,-examples,-tests_dir,-documentation,-multi_gpu,-no_cpu,-torch_2.x_only_benchmark
+      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+      rllib/...
 
 - label: ":brain: RLlib: RLModule tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
@@ -222,7 +245,8 @@
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=examples,-multi_gpu,-gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+      --test_tag_filters=examples,-multi_gpu,-gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
 
 - label: ":brain: RLlib: tests/ dir"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
@@ -233,7 +257,8 @@
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=tests_dir,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+      --test_tag_filters=tests_dir,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
 
 - label: ":brain: RLlib: Documentation code/examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
@@ -256,7 +281,8 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode,-new_storage
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/tune/...
 
 - label: ":octopus: Tune tests and examples (medium)"
@@ -267,7 +293,8 @@
     - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode,-new_storage
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/tune/...
 
 - label: ":octopus: :spiral_note_pad: New output: Tune tests and examples (small)"
@@ -280,8 +307,9 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode,-new_storage
       --test_env=AIR_VERBOSITY=1
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/tune/...
 
 - label: ":octopus: :spiral_note_pad: New output: Tune tests and examples (medium)"
@@ -292,9 +320,11 @@
     - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode,-new_storage
       --test_env=AIR_VERBOSITY=1
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       python/ray/tune/...
+
 
 - label: ":octopus: :brain: Tune tests and examples {using RLlib}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_RLLIB_AFFECTED"]
@@ -313,13 +343,19 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/xgboost/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/horovod/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only 
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
+      python/ray/tests/xgboost/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only 
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
+      python/ray/tests/horovod/...
 
-### OLD EXECUTION PATH COMPATIBILITY TESTS
 
 
-- label: ":octopus: :last_quarter_moon_with_face: Old execution path: Tune tests and examples (small)"
+##### STORAGE REFACTOR
+
+
+- label: ":octopus: :floppy_disk: New persistence mode: Tune tests and examples (small)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   instance_size: small
   parallelism: 3
@@ -329,11 +365,11 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_env=TUNE_NEW_EXECUTION=0
-      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode,-exclude_new_execution
+      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode,-no_new_storage
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
       python/ray/tune/...
 
-- label: ":octopus: :last_quarter_moon_with_face: Old execution path: Tune tests and examples (medium)"
+- label: ":octopus: :floppy_disk: New persistence mode: Tune tests and examples (medium)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   instance_size: medium
   commands:
@@ -341,30 +377,15 @@
     - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_env=TUNE_NEW_EXECUTION=0
-      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode,-exclude_new_execution
+      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode,-no_new_storage
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
       python/ray/tune/...
 
-- label: ":octopus: :brain: :last_quarter_moon_with_face: Old execution path: Tune tests and examples {using RLlib}"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_RLLIB_AFFECTED"]
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_env=TUNE_NEW_EXECUTION=0
-      --test_tag_filters=-gpu_only,rllib,-exclude_new_execution python/ray/tune/...
 
-- label: ":octopus: :last_quarter_moon_with_face: Old execution path: ML library integrations tests and examples. Python 3.7"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
-  instance_size: small
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_env=TUNE_NEW_EXECUTION=1 python/ray/tests/xgboost/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_env=TUNE_NEW_EXECUTION=1 python/ray/tests/horovod/...
+###### END STORAGE REFACTOR
+
+
+
 
 
 # TODO(amogkam): Re-enable Ludwig tests after Ludwig supports Ray 2.0
@@ -383,7 +404,10 @@
     - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client --test_env=RAY_CLIENT_MODE=1 python/ray/util/dask/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client python/ray/tune/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
+      --test_tag_filters=client
+      python/ray/tune/...
 
 - label: ":potable_water: Dataset library integrations tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
@@ -407,7 +431,7 @@
     - sudo apt-get install -y mongodb
     - sudo rm -rf /var/lib/mongodb/mongod.lock
     - sudo service mongodb start
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=data_integration python/ray/data/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=data_integration,-doctest python/ray/data/...
     - sudo service mongodb stop
     - sudo apt-get purge -y mongodb*
 
@@ -417,10 +441,13 @@
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=7.* ./ci/env/install-dependencies.sh
+    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=12.* ./ci/env/install-dependencies.sh
+    # TODO(scottjlee): Move datasets to train/data-test-requirements.txt 
+    # (see https://github.com/ray-project/ray/pull/38432/)
+    - pip install "datasets==2.14.0"
     - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATA_USE_STREAMING_EXECUTOR=1 --build_tests_only --test_tag_filters=-data_integration python/ray/data/...
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATA_USE_STREAMING_EXECUTOR=1 --build_tests_only --test_tag_filters=ray_data python/ray/air/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATA_USE_STREAMING_EXECUTOR=1 --build_tests_only --test_tag_filters=-data_integration,-doctest python/ray/data/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATA_USE_STREAMING_EXECUTOR=1 --build_tests_only --test_tag_filters=ray_data,-doctest python/ray/air/...
 
 - label: "Data tests (Arrow nightly)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
@@ -429,20 +456,26 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=nightly ./ci/env/install-dependencies.sh
+    # TODO(scottjlee): Move datasets to train/data-test-requirements.txt 
+    # (see https://github.com/ray-project/ray/pull/38432/)
+    - pip install "datasets==2.14.0"
     - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-data_integration python/ray/data/...
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data python/ray/air/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-data_integration,-doctest python/ray/data/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data,-doctest python/ray/air/...
 
-- label: "Data tests (Arrow 11)"
+- label: "Data tests (Arrow 12)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
   instance_size: medium
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=11.* ./ci/env/install-dependencies.sh
+    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=12.* ./ci/env/install-dependencies.sh
+    # TODO(scottjlee): Move datasets to train/data-test-requirements.txt 
+    # (see https://github.com/ray-project/ray/pull/38432/)
+    - pip install "datasets==2.14.0"
     - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-data_integration python/ray/data/...
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data python/ray/air/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-data_integration,-doctest python/ray/data/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data,-doctest python/ray/air/...
 
 - label: "Data tests (Arrow 6)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
@@ -452,8 +485,8 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=6.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-data_integration python/ray/data/...
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data python/ray/air/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-data_integration,-doctest python/ray/data/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data,-doctest python/ray/air/...
 
 - label: "Workflow tests"
   conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_WORKFLOW_AFFECTED"]
@@ -472,8 +505,15 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    # TODO (shrekris-anyscale): Remove transformers after core transformer
+    # requirement is upgraded
+    # TODO(scottjlee): Move datasets to train/data-test-requirements.txt 
+    # (see https://github.com/ray-project/ray/pull/38432/)
+    - pip install "transformers==4.30.2" "datasets==2.14.0"
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+      --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel
+      doc/...
 
 - label: ":book: Doc tests and examples with time series libraries"
   conditions:
@@ -494,18 +534,8 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-external,-timeseries_libs,-needs_credentials,-gpu,-post_wheel_build,-doctest doc/...
-
-- label: ":book: Doc examples with authentication "
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_BRANCH_BUILD"]
-  instance_size: medium
-  commands:
-    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DOC_TESTING=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - python ./ci/env/setup_credentials.py wandb comet_ml
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials,-external,-timeseries_libs,-gpu,-post_wheel_build,-doctest doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-external,-timeseries_libs,-gpu,-post_wheel_build,-doctest 
+      doc/...
 
 - label: ":book: Doc examples for external code "
   conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]
@@ -514,7 +544,8 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=external,-timeseries_libs,-gpu,-post_wheel_build,-doctest doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=external,-timeseries_libs,-gpu,-post_wheel_build,-doctest 
+      doc/...
 
 
 - label: ":exploding_death_star: RLlib Contrib: A3C Tests"
@@ -530,15 +561,34 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
 
-    # Install mujoco necessary for the testing environments
-    - sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
-    - wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
-    - mkdir /root/.mujoco
-    - mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
-    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
-    - echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco210/bin' >> /root/.bashrc
     - source /root/.bashrc
-
     - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e .)
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/maml/tests/test_maml.py
+
+- label: ":exploding_death_star: RLlib Contrib: A2C Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - (cd rllib_contrib/a2c && pip install -r requirements.txt && pip install -e .)
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/a2c/tests/
+    - python rllib_contrib/a2c/examples/a2c_cartpole_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: R2D2 Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - (cd rllib_contrib/r2d2 && pip install -r requirements.txt && pip install -e .)
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/r2d2/tests/
+    - python rllib_contrib/r2d2/examples/r2d2_stateless_cartpole.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: DDPG Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - (cd rllib_contrib/ddpg && pip install -r requirements.txt && pip install -e .)
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/ddpg/tests/
+    - python rllib_contrib/ddpg/examples/ddpg_pendulum_v1.py --run-as-test

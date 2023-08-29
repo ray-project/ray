@@ -305,7 +305,6 @@ def test_default_error_handling(serve_instance):
     serve.run(h.bind())
     r = requests.get("http://localhost:8000/h")
     assert r.status_code == 500
-    assert "retries" in r.text, r.text
 
 
 if __name__ == "__main__":

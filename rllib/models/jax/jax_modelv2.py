@@ -3,6 +3,8 @@ import gymnasium as gym
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.typing import ModelConfigDict
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 
 @PublicAPI
@@ -21,6 +23,8 @@ class JAXModelV2(ModelV2):
         name: str,
     ):
         """Initializes a JAXModelV2 instance."""
+        if log_once("jax_modelv2_deprecation_warning"):
+            deprecation_warning(old=("ray.rllib.models.jax.jax_modelv2." "JaxModelv2"))
 
         ModelV2.__init__(
             self,

@@ -15,9 +15,12 @@ cost: A few dollars.
 """
 
 import numpy as np
+import os
+import pickle
+import tempfile
 
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import train
+from ray.train import Checkpoint, RunConfig
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -25,30 +28,31 @@ from ray.tune.tuner import Tuner
 
 def func(config):
     starting_epoch = 0
-    if session.get_checkpoint():
-        checkpoint_dict = session.get_checkpoint().to_dict()
-
+    checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "ckpt.pkl"), "rb") as f:
+                checkpoint_dict = pickle.load(f)
         checkpoint_epoch = checkpoint_dict["epoch"]
         starting_epoch = checkpoint_epoch + 1
 
     for epoch in range(starting_epoch, 1000):
-        checkpoint = Checkpoint.from_dict(
-            {
-                "epoch": epoch,
-                "large_data": np.zeros(10000000),
-            }
-        )
-        session.report({}, checkpoint=checkpoint)
+        checkpoint_dict = {"epoch": epoch, "large_data": np.zeros(10000000)}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with open(os.path.join(tmpdir, "ckpt.pkl"), "wb") as f:
+                pickle.dump(checkpoint_dict, f)
+            train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 class FrequentPausesScheduler(FIFOScheduler):
-    def on_trial_result(self, trial_runner, trial, result):
+    def on_trial_result(self, tune_controller, trial, result):
         return TrialScheduler.PAUSE
 
 
 tuner = Tuner(
     func,
     tune_config=TuneConfig(num_samples=2, scheduler=FrequentPausesScheduler()),
+    run_config=RunConfig(storage_path="/mnt/cluster_storage", name="frequent_pausing"),
 )
 
 tuner.fit()

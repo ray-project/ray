@@ -1,3 +1,5 @@
+#ci:group=:mechanical_arm: :ferris_wheel: ARM64 wheels and containers
+
 - label: ":mechanical_arm: :ferris_wheel: ARM64 Linux wheels"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: arm64-medium
@@ -18,7 +20,7 @@
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: arm64-medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=py38 ./ci/ci.sh build
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
@@ -46,8 +48,9 @@
     - py38
     - py39
     - py310
+    - py311
 
-- label: ":mechanical_arm: :docker: Build Images: {{matrix}} [aarch64] cu117/cu118"
+- label: ":mechanical_arm: :docker: Build Images: {{matrix}} [aarch64] cu117/cu118/cu121"
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
@@ -55,9 +58,10 @@
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions {{matrix}} -T cu117 -T cu118 --build-type BUILDKITE --build-base --suffix aarch64
+    - python ./ci/build/build-docker-images.py --py-versions {{matrix}} -T cu117 -T cu118 -T cu121 --build-type BUILDKITE --build-base --suffix aarch64
   matrix:
     - py37
     - py38
     - py39
     - py310
+    - py311

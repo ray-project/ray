@@ -16,7 +16,7 @@ import numpy as np
 import psutil
 import ray
 from ray.air.checkpoint import Checkpoint
-from ray.air._internal.remote_storage import delete_at_uri
+from ray.air._internal.remote_storage import delete_at_uri, _is_local_windows_path
 from ray.air.util.node import _get_node_id_from_node_ip, _force_on_node
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.air._internal.json import SafeFallbackEncoder  # noqa
@@ -182,7 +182,7 @@ def _split_remote_local_path(
 
     """
     parsed = urllib.parse.urlparse(path)
-    if parsed.scheme:
+    if parsed.scheme and not _is_local_windows_path(path):
         # If a scheme is set, this means it's not a local path.
         # Note that we also treat `file://` as a URI.
         remote_path = path
@@ -321,10 +321,24 @@ class Tee(object):
         self.stream1 = stream1
         self.stream2 = stream2
 
+        # If True, we are currently handling a warning.
+        # We use this flag to avoid infinite recursion.
+        self._handling_warning = False
+
     def _warn(self, op, s, args, kwargs):
+        # If we are already handling a warning, this is because
+        # `logger.warning` below triggered the same object again
+        # (e.g. because stderr is redirected to this object).
+        # In that case, exit early to avoid recursion.
+        if self._handling_warning:
+            return
+
         msg = f"ValueError when calling '{op}' on stream ({s}). "
         msg += f"args: {args} kwargs: {kwargs}"
+
+        self._handling_warning = True
         logger.warning(msg)
+        self._handling_warning = False
 
     def seek(self, *args, **kwargs):
         for s in [self.stream1, self.stream2]:
@@ -646,7 +660,6 @@ def validate_save_restore(
     trainable_cls: Type,
     config: Optional[Dict] = None,
     num_gpus: int = 0,
-    use_object_store: bool = False,
 ):
     """Helper method to check if your Trainable class will resume correctly.
 
@@ -659,6 +672,7 @@ def validate_save_restore(
             algorithms that pause training (i.e., PBT, HyperBand).
     """
     assert ray.is_initialized(), "Need Ray to be initialized."
+
     remote_cls = ray.remote(num_gpus=num_gpus)(trainable_cls)
     trainable_1 = remote_cls.remote(config=config)
     trainable_2 = remote_cls.remote(config=config)
@@ -673,13 +687,7 @@ def validate_save_restore(
         "to be returned."
     )
 
-    if use_object_store:
-        restore_check = trainable_2.restore_from_object.remote(
-            trainable_1.save_to_object.remote()
-        )
-        ray.get(restore_check)
-    else:
-        restore_check = ray.get(trainable_2.restore.remote(trainable_1.save.remote()))
+    ray.get(trainable_2.restore.remote(trainable_1.save.remote()))
 
     res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 4

@@ -3,7 +3,7 @@ import shutil
 import tempfile
 import unittest
 import pytorch_lightning as pl
-from ray.air.config import CheckpointConfig
+from ray.train import CheckpointConfig
 import torch
 from ray.air.constants import TRAINING_ITERATION
 
@@ -13,7 +13,6 @@ from ray import tune
 from ray.tune.integration.pytorch_lightning import (
     TuneReportCallback,
     TuneReportCheckpointCallback,
-    _TuneCheckpointCallback,
 )
 
 
@@ -89,7 +88,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
                 max_epochs=1,
                 callbacks=[
                     TuneReportCallback(
-                        {"tune_loss": "avg_val_loss"}, on="validation_end"
+                        metrics={"tune_loss": "avg_val_loss"}, on="validation_end"
                     )
                 ],
             )
@@ -106,10 +105,10 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
         def train(config):
             module = _MockModule(10.0, 20.0)
             trainer = pl.Trainer(
-                max_epochs=1,
+                max_epochs=10,
                 callbacks=[
-                    _TuneCheckpointCallback(
-                        "trainer.ckpt", on=["batch_end", "train_end"]
+                    TuneReportCheckpointCallback(
+                        filename="trainer.ckpt", on=["train_epoch_end"]
                     )
                 ],
             )
@@ -128,8 +127,8 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             for dir in os.listdir(analysis.trials[0].local_path)
             if dir.startswith("checkpoint")
         ]
-        # 10 checkpoints after each batch, 1 checkpoint at end
-        self.assertEqual(len(checkpoints), 11)
+        # 1 checkpoint per epoch
+        self.assertEqual(len(checkpoints), 10)
 
     def testReportCheckpointCallback(self):
         tmpdir = tempfile.mkdtemp()
@@ -141,7 +140,9 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
                 max_epochs=1,
                 callbacks=[
                     TuneReportCheckpointCallback(
-                        ["avg_val_loss"], "trainer.ckpt", on="validation_end"
+                        metrics=["avg_val_loss"],
+                        filename="trainer.ckpt",
+                        on="validation_end",
                     )
                 ],
             )

@@ -23,6 +23,10 @@ It provides flexible and performant APIs for distributed data processing:
 
 Ray Data is built on top of Ray, so it scales effectively to large clusters and offers scheduling support for both CPU and GPU resources. Ray Data uses `streaming execution <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__ to efficiently process large datasets.
 
+.. note::
+
+    Ray Data doesn't have a SQL interface and isn't meant as a replacement for generic
+    ETL pipelines like Spark.
 
 Why choose Ray Data?
 --------------------
@@ -36,7 +40,7 @@ Why choose Ray Data?
 .. dropdown:: Cloud, framework, and data format agnostic
 
     Ray Data has no restrictions on cloud provider, ML framework, or data format.
-    
+
     Through the :ref:`Ray cluster launcher <cluster-index>`, you can start a Ray cluster on AWS, GCP, or Azure clouds. You can use any ML framework of your choice, including PyTorch, HuggingFace, or Tensorflow. Ray Data also does not require a particular file format, and supports a :ref:`wide variety of formats <loading_data>` including CSV, Parquet, and raw images.
 
 .. dropdown:: Out of the box scaling
@@ -56,7 +60,7 @@ Offline Batch Inference
 
 .. tip::
 
-    `Get in touch <https://forms.gle/sGX7PQhheBGL6yxQ6>`_ to get help using Ray Data, the industry's fastest and cheapest solution for offline batch inference. 
+    `Get in touch <https://forms.gle/sGX7PQhheBGL6yxQ6>`_ to get help using Ray Data, the industry's fastest and cheapest solution for offline batch inference.
 
 Offline batch inference is a process for generating model predictions on a fixed set of input data. Ray Data offers an efficient and scalable solution for batch inference, providing faster execution and cost-effectiveness for deep learning applications. For more details on how to use Ray Data for offline batch inference, see the :ref:`batch inference user guide <batch_inference_home>`.
 
@@ -105,7 +109,7 @@ Preprocessing and ingest for ML training
 Use Ray Data to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>` in a streaming fashion.
 Ray Data serves as a last-mile bridge from storage or ETL pipeline outputs to distributed
 applications and libraries in Ray. Don't use it as a replacement for more general data
-processing systems.
+processing systems. For more details on how to use Ray Data for preprocessing and ingest for ML training, see :ref:`Data loading for ML training <data-ingest-torch>`.
 
 .. image:: images/dataset-loading-1.png
    :width: 650px
@@ -150,4 +154,3 @@ ML ingest case studies
 ~~~~~~~~~~~~~~~~~~~~~~
 - `Predibase speeds up image augmentation for model training using Ray Data <https://predibase.com/blog/ludwig-v0-7-fine-tuning-pretrained-image-and-text-models-50x-faster-and>`_
 - `Spotify's new ML platform built on Ray, using Ray Data for feature preprocessing <https://engineering.atspotify.com/2023/02/unleashing-ml-innovation-at-spotify-with-ray/>`_
-

@@ -1,5 +1,5 @@
 import itertools
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -75,9 +75,6 @@ class ZipOperator(PhysicalOperator):
 
     def get_stats(self) -> StatsDict:
         return self._stats
-
-    def get_transformation_fn(self) -> Callable:
-        return self._zip
 
     def _zip(
         self, left_input: List[RefBundle], right_input: List[RefBundle]

@@ -1,14 +1,14 @@
 import ray
-from ray import tune
-from ray.air import ScalingConfig, session
-from ray.data.preprocessors import Concatenator, Chain, StandardScaler
+from ray import train, tune
+from ray.train import ScalingConfig
+from ray.data.preprocessors import Concatenator, StandardScaler
 from ray.train.horovod import HorovodTrainer
 from ray.tune import Tuner, TuneConfig
 import numpy as np
 
 
 # Torch-specific
-from ray.train.torch import TorchCheckpoint
+from ray.train.torch import LegacyTorchCheckpoint
 
 import horovod.torch as hvd
 
@@ -38,7 +38,7 @@ def torch_train_loop(config):
 
     torch.set_num_threads(1)
 
-    dataset = session.get_dataset_shard("train")
+    dataset = train.get_dataset_shard("train")
 
     model = create_model(num_features)
 
@@ -63,24 +63,24 @@ def torch_train_loop(config):
             train_loss.backward()
             optimizer.step()
         loss = train_loss.item()
-        session.report({"loss": loss}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({"loss": loss}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
 
 def tune_horovod_torch(num_workers, num_samples, use_gpu):
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
     num_features = len(dataset.schema().names) - 1
 
-    preprocessor = Chain(
-        StandardScaler(columns=["mean radius", "mean texture"]),
-        Concatenator(exclude=["target"], dtype=np.float32),
-    )
+    scaler = StandardScaler(columns=["mean radius", "mean texture"])
+    concatenator = Concatenator(exclude=["target"], dtype=np.float32)
+
+    dataset = scaler.fit_transform(dataset)
+    dataset = concatenator.transform(dataset)
 
     horovod_trainer = HorovodTrainer(
         train_loop_per_worker=torch_train_loop,
         train_loop_config={"epochs": 10, "num_features": num_features},
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": dataset},
-        preprocessor=preprocessor,
     )
 
     tuner = Tuner(

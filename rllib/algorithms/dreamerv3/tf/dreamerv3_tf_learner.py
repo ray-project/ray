@@ -53,9 +53,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         dreamerv3_module = self._module[module_id]
 
         # World Model optimizer.
-        optim_world_model = tf.keras.optimizers.Adam(
-            learning_rate=hps.world_model_lr, epsilon=1e-8
-        )
+        optim_world_model = tf.keras.optimizers.Adam(epsilon=1e-8)
         optim_world_model.build(dreamerv3_module.world_model.trainable_variables)
         params_world_model = self.get_parameters(dreamerv3_module.world_model)
         self.register_optimizer(
@@ -63,10 +61,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             optimizer_name="world_model",
             optimizer=optim_world_model,
             params=params_world_model,
+            lr_or_lr_schedule=hps.world_model_lr,
         )
 
         # Actor optimizer.
-        optim_actor = tf.keras.optimizers.Adam(learning_rate=hps.actor_lr, epsilon=1e-5)
+        optim_actor = tf.keras.optimizers.Adam(epsilon=1e-5)
         optim_actor.build(dreamerv3_module.actor.trainable_variables)
         params_actor = self.get_parameters(dreamerv3_module.actor)
         self.register_optimizer(
@@ -74,12 +73,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             optimizer_name="actor",
             optimizer=optim_actor,
             params=params_actor,
+            lr_or_lr_schedule=hps.actor_lr,
         )
 
         # Critic optimizer.
-        optim_critic = tf.keras.optimizers.Adam(
-            learning_rate=hps.critic_lr, epsilon=1e-5
-        )
+        optim_critic = tf.keras.optimizers.Adam(epsilon=1e-5)
         optim_critic.build(dreamerv3_module.critic.trainable_variables)
         params_critic = self.get_parameters(dreamerv3_module.critic)
         self.register_optimizer(
@@ -87,6 +85,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             optimizer_name="critic",
             optimizer=optim_critic,
             params=params_critic,
+            lr_or_lr_schedule=hps.critic_lr,
         )
 
     @override(TfLearner)
@@ -173,12 +172,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         batch: SampleBatch,
         fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
-
         # World model losses.
         prediction_losses = self._compute_world_model_prediction_losses(
             hps=hps,
             rewards_B_T=batch[SampleBatch.REWARDS],
-            continues_B_T=(1.0 - batch["is_terminated"]),
+            continues_B_T=(1.0 - tf.cast(batch["is_terminated"], tf.float32)),
             fwd_out=fwd_out,
         )
 
@@ -259,8 +257,6 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 "z": fwd_out["z_posterior_states_BxT"],
             },
             start_is_terminated=tf.reshape(batch["is_terminated"], [-1]),  # ->BxT
-            timesteps_H=hps.horizon_H,
-            gamma=hps.gamma,
         )
         if hps.report_dream_data:
             # To reduce this massive mount of data a little, slice out a T=1 piece
@@ -371,7 +367,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # [B x num_buckets].
         reward_logits_BxT = fwd_out["reward_logits_BxT"]
         # Learn to produce symlog'd reward predictions.
-        rewards_symlog_B_T = symlog(rewards_B_T)
+        rewards_symlog_B_T = symlog(tf.cast(rewards_B_T, tf.float32))
         # Fold time dim.
         rewards_symlog_BxT = tf.reshape(rewards_symlog_B_T, shape=[-1])
 
@@ -873,10 +869,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         actor.ema_value_target_pct95.assign(new_val_pct95)
 
         # [1] eq. 11 (first term).
-        # Danijar's code: TODO: describe ...
         offset = actor.ema_value_target_pct5
         invscale = tf.math.maximum(
-            1e-8, (actor.ema_value_target_pct95 - actor.ema_value_target_pct5)
+            1e-8, actor.ema_value_target_pct95 - actor.ema_value_target_pct5
         )
         scaled_value_targets_H_B = (value_targets_H_B - offset) / invscale
         scaled_value_predictions_H_B = (value_predictions_H_B - offset) / invscale

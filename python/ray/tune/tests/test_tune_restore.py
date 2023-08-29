@@ -4,6 +4,7 @@ import subprocess
 from collections import Counter
 import multiprocessing
 import os
+from pathlib import Path
 
 import pytest
 import shutil
@@ -17,16 +18,16 @@ from unittest import mock
 import ray
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
-from ray.air.config import CheckpointConfig
+from ray.train import CheckpointConfig, Checkpoint
 from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
+from ray.train._internal.session import _TrainingResult
 from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.search.basic_variant import BasicVariantGenerator
 from ray.tune.search import Searcher
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import TrialRunner
+from ray.tune.execution.tune_controller import TuneController
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
@@ -51,6 +52,7 @@ class TuneRestoreTest(unittest.TestCase):
         logdir = os.path.expanduser(os.path.join(tmpdir, test_name))
         self.logdir = logdir
         self.checkpoint_path = recursive_fnmatch(logdir, "algorithm_state.pkl")[0]
+        self.checkpoint_parent = Path(self.checkpoint_path).parent
 
     def tearDown(self):
         shutil.rmtree(self.logdir)
@@ -64,7 +66,7 @@ class TuneRestoreTest(unittest.TestCase):
             name="TuneRestoreTest",
             stop={"training_iteration": 2},  # train one more iteration.
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
-            restore=self.checkpoint_path,  # Restore the checkpoint
+            restore=self.checkpoint_parent,  # Restore the checkpoint
             config={
                 "env": "CartPole-v0",
                 "framework": "tf",
@@ -82,7 +84,7 @@ class TuneRestoreTest(unittest.TestCase):
                 num_to_keep=1,
                 checkpoint_frequency=1,
             ),
-            restore=self.checkpoint_path,
+            restore=self.checkpoint_parent,
             config={
                 "env": "CartPole-v0",
                 "framework": "tf",
@@ -271,6 +273,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             storage_path=self.logdir,
+            name="testFailResumeGridSearch",
             verbose=1,
         )
 
@@ -299,6 +302,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             storage_path=self.logdir,
+            name="testResourceUpdateInResume",
             verbose=1,
         )
 
@@ -345,6 +349,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             storage_path=self.logdir,
+            name="testConfigUpdateInResume",
             verbose=1,
         )
 
@@ -399,6 +404,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             storage_path=self.logdir,
+            name="testFailResumeWithPreset",
             verbose=1,
         )
         with self.assertRaises(RuntimeError):
@@ -442,6 +448,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             storage_path=self.logdir,
+            name="testFailResumeAfterPreset",
             verbose=1,
         )
 
@@ -478,7 +485,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             experiments.append(
                 tune.Experiment(
                     run=MyTrainableClass,
-                    name="trainable",
+                    name="testMultiExperimentFail",
                     num_samples=2,
                     config={
                         "test": tune.grid_search([1, 2, 3]),
@@ -516,6 +523,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             storage_path=self.logdir,
+            name="testWarningLargeGrid",
             verbose=1,
         )
         with self.assertWarnsRegex(UserWarning, "exceeds the serialization threshold"):
@@ -539,7 +547,6 @@ class TuneExampleTest(unittest.TestCase):
 
         cifar10.load_data()
         validate_save_restore(Cifar10Model)
-        validate_save_restore(Cifar10Model, use_object_store=True)
 
     def testPyTorchMNIST(self):
         from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
@@ -547,15 +554,12 @@ class TuneExampleTest(unittest.TestCase):
 
         datasets.MNIST("~/data", train=True, download=True)
         validate_save_restore(TrainMNIST)
-        validate_save_restore(TrainMNIST, use_object_store=True)
 
     def testHyperbandExample(self):
         validate_save_restore(MyTrainableClass)
-        validate_save_restore(MyTrainableClass, use_object_store=True)
 
     def testAsyncHyperbandExample(self):
         validate_save_restore(MyTrainableClass)
-        validate_save_restore(MyTrainableClass, use_object_store=True)
 
 
 class AutoInitTest(unittest.TestCase):
@@ -618,7 +622,7 @@ class TrainableCrashWithFailFast(unittest.TestCase):
             raise RuntimeError("Error happens in trainable!!")
 
         with self.assertRaisesRegex(RayTaskError, "Error happens in trainable!!"):
-            tune.run(f, fail_fast=TrialRunner.RAISE)
+            tune.run(f, fail_fast=TuneController.RAISE)
 
 
 # For some reason, different tests are coupled through tune.registry.
@@ -659,15 +663,13 @@ def test_trial_last_result_restore(trial_config):
     trial = Trial(trainable_name="stub", config=trial_config, stub=True)
     trial.update_last_result(metrics)
 
-    checkpoint = _TrackedCheckpoint(
-        dir_or_data="no_data",
-        storage_mode=CheckpointStorage.PERSISTENT,
-        metrics=metrics,
+    result = _TrainingResult(
+        checkpoint=Checkpoint(path="file:///tmp/no_data"), metrics=metrics
     )
 
-    trial.restoring_from = checkpoint
+    trial.temporary_state.restoring_from = result
     trial.on_restore()
-    assert trial.last_result == metrics
+    assert trial.run_metadata.last_result == metrics
 
 
 def test_stacktrace():

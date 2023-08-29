@@ -10,6 +10,8 @@ Ray Data loads data from various sources. This guide shows you how to:
 * `Load in-memory data <#loading-data-from-other-libraries>`_ like pandas DataFrames
 * `Read databases <#reading-databases>`_ like MySQL
 
+.. _reading-files:
+
 Reading files
 =============
 
@@ -307,7 +309,7 @@ Handling compressed files
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To read a compressed file, specify ``compression`` in ``arrow_open_stream_args``.
-You can use any `Codec supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`__.
+You can use any `codec supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`__.
 
 .. testcode::
 
@@ -567,6 +569,8 @@ Ray Data interoperates with distributed data processing frameworks like
             {'col1': 1, 'col2': '1'}
             {'col1': 2, 'col2': '2'}
 
+.. _loading_datasets_from_ml_libraries:
+
 Loading data from ML libraries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -592,8 +596,8 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
             from datasets import load_dataset
 
             hf_ds = load_dataset("wikitext", "wikitext-2-raw-v1")
-            ray_ds = ray.data.from_huggingface(hf_ds)
-            ray_ds["train"].take(2)
+            ray_ds = ray.data.from_huggingface(hf_ds["train"])
+            ray_ds.take(2)
 
         .. testoutput::
             :options: +MOCK
@@ -618,7 +622,12 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
 
             print(ds)
 
+        ..
+            The following `testoutput` is mocked to avoid illustrating download logs like
+            "Downloading and preparing dataset 162.17 MiB".
+
         .. testoutput::
+            :options: +MOCK
 
             MaterializedDataset(
                num_blocks=...,
@@ -633,7 +642,7 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
 Reading databases
 =================
 
-Ray Data reads from databases like MySQL, Postgres, and MongoDB.
+Ray Data reads from databases like MySQL, PostgreSQL, and MongoDB.
 
 .. _reading_sql:
 
@@ -916,7 +925,7 @@ Synthetic datasets can be useful for testing and benchmarking.
             ------  ----
             data    numpy.ndarray(shape=(64, 64), dtype=int64)
 
-Loading other data sources
+Loading other datasources
 ==========================
 
 If Ray Data can't load your data, subclass
@@ -937,8 +946,8 @@ For an example, see :ref:`Implementing a Custom Datasource <custom_datasources>`
 Performance considerations
 ==========================
 
-The dataset ``parallelism`` determines the number of blocks the base data will be split
-into for parallel reads. Ray Data will decide internally how many read tasks to run
+The dataset ``parallelism`` determines the number of blocks the base data is split
+into for parallel reads. Ray Data decides internally how many read tasks to run
 concurrently to best utilize the cluster, ranging from ``1...parallelism`` tasks. In
 other words, the higher the parallelism, the smaller the data blocks in the Dataset and
 hence the more opportunity for parallel execution.

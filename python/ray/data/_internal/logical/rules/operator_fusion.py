@@ -1,4 +1,4 @@
-from typing import Iterator, List, Tuple
+from typing import List, Tuple
 
 # TODO(Clark): Remove compute dependency once we delete the legacy compute.
 from ray.data._internal.compute import get_compute, is_task_compute
@@ -24,8 +24,8 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
 )
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import StatsDict
-from ray.data.block import Block
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
@@ -44,7 +44,23 @@ class OperatorFusionRule(Rule):
         # we fuse together MapOperator -> AllToAllOperator pairs.
         fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
 
+        # Update output dependencies after fusion.
+        # TODO(hchen): Instead of updating the depdencies manually,
+        # we need a better abstraction for manipulating the DAG.
+        self._remove_output_depes(fused_dag)
+        self._update_output_depes(fused_dag)
+
         return PhysicalPlan(fused_dag, self._op_map)
+
+    def _remove_output_depes(self, op: PhysicalOperator) -> None:
+        for input in op._input_dependencies:
+            input._output_dependencies = []
+            self._remove_output_depes(input)
+
+    def _update_output_depes(self, op: PhysicalOperator) -> None:
+        for input in op._input_dependencies:
+            input._output_dependencies.append(op)
+            self._update_output_depes(input)
 
     def _fuse_map_operators_in_dag(self, dag: PhysicalOperator) -> MapOperator:
         """Starting at the given operator, traverses up the DAG of operators
@@ -132,6 +148,9 @@ class OperatorFusionRule(Rule):
         down_logical_op = self._op_map[down_op]
         up_logical_op = self._op_map[up_op]
 
+        if isinstance(up_logical_op, Read) and not up_logical_op.fusable():
+            return False
+
         # If the downstream operator takes no input, it cannot be fused with
         # the upstream operator.
         if not down_logical_op._input_dependencies:
@@ -175,7 +194,8 @@ class OperatorFusionRule(Rule):
 
         # Only fuse if the ops' remote arguments are compatible.
         if not _are_remote_args_compatible(
-            up_logical_op._ray_remote_args or {}, down_logical_op._ray_remote_args or {}
+            getattr(up_logical_op, "_ray_remote_args", {}),
+            getattr(down_logical_op, "_ray_remote_args", {}),
         ):
             return False
 
@@ -214,22 +234,6 @@ class OperatorFusionRule(Rule):
         else:
             target_block_size = down_target_block_size
 
-        # Fuse transformation functions.
-        down_transform_fn = down_op.get_transformation_fn()
-        up_transform_fn = up_op.get_transformation_fn()
-
-        def fused_map_transform_fn(
-            blocks: Iterator[Block], ctx: TaskContext
-        ) -> Iterator[Block]:
-            blocks = up_transform_fn(blocks, ctx)
-            # TODO(Scott): Add zero-copy batching between transform functions.
-            return down_transform_fn(blocks, ctx)
-
-        # Fuse init funcitons.
-        fused_init_fn = (
-            down_op.get_init_fn() if isinstance(down_op, ActorPoolMapOperator) else None
-        )
-
         # We take the downstream op's compute in case we're fusing upstream tasks with a
         # downstream actor pool (e.g. read->map).
         compute = None
@@ -243,10 +247,9 @@ class OperatorFusionRule(Rule):
 
         # Fused physical map operator.
         op = MapOperator.create(
-            fused_map_transform_fn,
+            up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
             input_op,
             name=name,
-            init_fn=fused_init_fn,
             compute_strategy=compute,
             min_rows_per_bundle=target_block_size,
             ray_remote_args=ray_remote_args,
@@ -303,7 +306,7 @@ class OperatorFusionRule(Rule):
         # Fuse transformation functions.
         ray_remote_args = up_logical_op._ray_remote_args
         down_transform_fn = down_op.get_transformation_fn()
-        up_transform_fn = up_op.get_transformation_fn()
+        up_map_transformer = up_op.get_map_transformer()
 
         def fused_all_to_all_transform_fn(
             blocks: List[RefBundle], ctx: TaskContext
@@ -311,7 +314,7 @@ class OperatorFusionRule(Rule):
             """To fuse MapOperator->AllToAllOperator, we store the map function
             in the TaskContext so that it may be used by the downstream
             AllToAllOperator's transform function."""
-            ctx.upstream_map_transform_fn = up_transform_fn
+            ctx.upstream_map_transformer = up_map_transformer
             ctx.upstream_map_ray_remote_args = ray_remote_args
             return down_transform_fn(blocks, ctx)
 

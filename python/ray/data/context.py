@@ -2,7 +2,9 @@ import os
 import threading
 from typing import TYPE_CHECKING, Optional
 
+import ray
 from ray._private.ray_constants import env_integer
+from ray.data._default_config import DEFAULT_FILE_METADATA_SHUFFLER
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -29,10 +31,6 @@ DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 # This default appears to work well with most file sizes on remote storage systems,
 # which is very sensitive to the buffer size.
 DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
-
-# Whether dynamic block splitting is enabled.
-# NOTE: disable dynamic block splitting when using Ray client.
-DEFAULT_BLOCK_SPLITTING_ENABLED = True
 
 # Whether pandas block format is enabled.
 # TODO (kfstorm): Remove this once stable.
@@ -146,7 +144,6 @@ class DataContext:
 
     def __init__(
         self,
-        block_splitting_enabled: bool,
         target_max_block_size: int,
         target_min_block_size: int,
         streaming_read_buffer_size: int,
@@ -175,9 +172,9 @@ class DataContext:
         use_ray_tqdm: bool,
         use_legacy_iter_batches: bool,
         enable_progress_bars: bool,
+        file_metadata_shuffler: str,
     ):
         """Private constructor (use get_current() instead)."""
-        self.block_splitting_enabled = block_splitting_enabled
         self.target_max_block_size = target_max_block_size
         self.target_min_block_size = target_min_block_size
         self.streaming_read_buffer_size = streaming_read_buffer_size
@@ -209,6 +206,7 @@ class DataContext:
         self.use_ray_tqdm = use_ray_tqdm
         self.use_legacy_iter_batches = use_legacy_iter_batches
         self.enable_progress_bars = enable_progress_bars
+        self.file_metadata_shuffler = file_metadata_shuffler
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -217,15 +215,12 @@ class DataContext:
         If the context has not yet been created in this process, it will be
         initialized with default settings.
         """
-        from ray.data._internal.execution.interfaces import ExecutionOptions
 
         global _default_context
 
         with _context_lock:
-
             if _default_context is None:
                 _default_context = DataContext(
-                    block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
                     streaming_read_buffer_size=DEFAULT_STREAMING_READ_BUFFER_SIZE,
@@ -257,10 +252,11 @@ class DataContext:
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                     optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
-                    execution_options=ExecutionOptions(),
+                    execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
+                    file_metadata_shuffler=DEFAULT_FILE_METADATA_SHUFFLER,
                 )
 
             return _default_context

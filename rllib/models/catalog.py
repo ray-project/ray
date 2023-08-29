@@ -25,6 +25,7 @@ from ray.rllib.models.tf.tf_action_dist import (
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical,
     TorchDeterministic,
+    TorchDirichlet,
     TorchDiagGaussian,
     TorchMultiActionDistribution,
     TorchMultiCategorical,
@@ -200,7 +201,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
 # fmt: on
 
 
-@PublicAPI
+@DeveloperAPI
 class ModelCatalog:
     """Registry of models, preprocessors, and action distributions for envs.
 
@@ -330,12 +331,7 @@ class ModelCatalog:
             )
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
-            if framework == "torch":
-                # TODO(sven): implement
-                raise NotImplementedError(
-                    "Simplex action spaces not supported for torch."
-                )
-            dist_cls = Dirichlet
+            dist_cls = TorchDirichlet if framework == "torch" else Dirichlet
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, MultiDiscrete):
             dist_cls = (
@@ -350,7 +346,7 @@ class ModelCatalog:
                 "Unsupported args: {} {}".format(action_space, dist_type)
             )
 
-        return dist_cls, dist_cls.required_model_output_shape(action_space, config)
+        return dist_cls, int(dist_cls.required_model_output_shape(action_space, config))
 
     @staticmethod
     @DeveloperAPI
@@ -658,7 +654,6 @@ class ModelCatalog:
                 raise ValueError("ModelV2 class could not be determined!")
 
             if model_config.get("use_lstm") or model_config.get("use_attention"):
-
                 from ray.rllib.models.tf.attention_net import (
                     AttentionWrapper,
                 )
@@ -705,7 +700,6 @@ class ModelCatalog:
                 raise ValueError("ModelV2 class could not be determined!")
 
             if model_config.get("use_lstm") or model_config.get("use_attention"):
-
                 from ray.rllib.models.torch.attention_net import AttentionWrapper
                 from ray.rllib.models.torch.recurrent_net import LSTMWrapper
 
@@ -851,7 +845,6 @@ class ModelCatalog:
     def _get_v2_model_class(
         input_space: gym.Space, model_config: ModelConfigDict, framework: str = "tf"
     ) -> Type[ModelV2]:
-
         VisionNet = None
         ComplexNet = None
 

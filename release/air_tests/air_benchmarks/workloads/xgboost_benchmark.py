@@ -2,20 +2,18 @@ from functools import wraps
 import json
 import multiprocessing
 from multiprocessing import Process
+import numpy as np
 import os
+import pandas as pd
 import time
 import traceback
+from typing import Dict
 import xgboost as xgb
 
 import ray
 from ray import data
-from ray.train.xgboost import (
-    XGBoostTrainer,
-    XGBoostCheckpoint,
-    XGBoostPredictor,
-)
-from ray.train.batch_predictor import BatchPredictor
-from ray.air.config import ScalingConfig
+from ray.train.xgboost import XGBoostTrainer
+from ray.train import RunConfig, ScalingConfig
 
 _XGB_MODEL_PATH = "model.json"
 _TRAINING_TIME_THRESHOLD = 1000
@@ -97,10 +95,12 @@ def run_xgboost_training(data_path: str, num_workers: int, cpus_per_worker: int)
         label_column="labels",
         params=params,
         datasets={"train": ds},
+        run_config=RunConfig(
+            storage_path="/mnt/cluster_storage", name="xgboost_benchmark"
+        ),
     )
     result = trainer.fit()
-    checkpoint = XGBoostCheckpoint.from_checkpoint(result.checkpoint)
-    xgboost_model = checkpoint.get_model()
+    xgboost_model = XGBoostTrainer.get_model(result.checkpoint)
     xgboost_model.save_model(_XGB_MODEL_PATH)
     ray.shutdown()
 
@@ -110,13 +110,23 @@ def run_xgboost_prediction(model_path: str, data_path: str):
     model = xgb.Booster()
     model.load_model(model_path)
     ds = data.read_parquet(data_path)
-    ckpt = XGBoostCheckpoint.from_model(booster=model)
-    batch_predictor = BatchPredictor.from_checkpoint(ckpt, XGBoostPredictor)
-    result = batch_predictor.predict(
-        ds.drop_columns(["labels"]),
+    ds = ds.drop_columns(["labels"])
+
+    class XGBoostPredictor:
+        def __init__(self, model: xgb.Booster):
+            self.model = model
+
+        def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
+            dmatrix = xgb.DMatrix(data)
+            return {"predictions": self.model.predict(dmatrix)}
+
+    result = ds.map_batches(
+        XGBoostPredictor,
         # Improve prediction throughput for xgboost with larger
         # batch size than default 4096
         batch_size=8192,
+        compute=ray.data.ActorPoolStrategy(min_size=1, max_size=None),
+        fn_constructor_kwargs={"model": model},
     )
 
     for _ in result.iter_batches():

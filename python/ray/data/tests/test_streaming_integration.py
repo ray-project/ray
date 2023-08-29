@@ -20,6 +20,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    create_map_transformer_from_block_fn,
+)
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
@@ -28,12 +31,12 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 
 
-def make_transform(block_fn):
-    def map_fn(block_iter, ctx):
+def make_map_transformer(block_fn):
+    def map_fn(block_iter, _):
         for block in block_iter:
             yield pd.DataFrame({"id": block_fn(block["id"])})
 
-    return map_fn
+    return create_map_transformer_from_block_fn(map_fn)
 
 
 def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
@@ -47,23 +50,51 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
 def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
     from ray.data._internal.execution import streaming_executor
 
+    num_runs = 5
+
+    # Test that when an interator is fully consumed,
+    # the executor should be shut down.
     initial = streaming_executor._num_shutdown
+    for _ in range(num_runs):
+        ds = ray.data.range(100).repartition(10)
+        it = iter(ds.iter_batches(batch_size=10, prefetch_batches=0))
+        while True:
+            try:
+                next(it)
+            except StopIteration:
+                break
+    assert streaming_executor._num_shutdown - initial == num_runs
 
-    for _ in range(5):
-        ds = ray.data.range(100)
-        it = ds.iter_batches(batch_size=None, prefetch_batches=0)
+    # Test that when an partially-consumed iterator is deleted,
+    # the executor should be shut down.
+    initial = streaming_executor._num_shutdown
+    for _ in range(num_runs):
+        ds = ray.data.range(100).repartition(10)
+        it = iter(ds.iter_batches(batch_size=10, prefetch_batches=0))
         next(it)
+        del it
+        del ds
+    assert streaming_executor._num_shutdown - initial == num_runs
 
-    final = streaming_executor._num_shutdown - initial
-    assert final == 4
+    # Test that the executor is shut down when it's deleted,
+    # even if not using iterators.
+    initial = streaming_executor._num_shutdown
+    for _ in range(num_runs):
+        executor = StreamingExecutor(ExecutionOptions())
+        del executor
+    assert streaming_executor._num_shutdown - initial == num_runs
 
 
 def test_pipelined_execution(ray_start_10_cpus_shared):
     executor = StreamingExecutor(ExecutionOptions(preserve_order=True))
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+    )
 
     def reverse_sort(inputs: List[RefBundle], ctx):
         reversed_list = inputs[::-1]
@@ -103,6 +134,17 @@ def test_output_split_e2e(ray_start_10_cpus_shared):
     c1.start()
     c0.join()
     c1.join()
+
+    def get_outputs(out: List[RefBundle]):
+        outputs = []
+        for bundle in out:
+            for block, _ in bundle.blocks:
+                ids: pd.Series = ray.get(block)["id"]
+                outputs.extend(ids.values)
+        return outputs
+
+    assert get_outputs(c0.out) == list(range(0, 20, 2))
+    assert get_outputs(c1.out) == list(range(1, 20, 2))
     assert len(c0.out) == 10, c0.out
     assert len(c1.out) == 10, c0.out
 
@@ -121,7 +163,8 @@ def test_streaming_split_e2e(ray_start_10_cpus_shared):
                 x = 0
                 if use_iter_batches:
                     for batch in it.iter_batches():
-                        x += len(batch)
+                        for arr in batch.values():
+                            x += arr.size
                 else:
                     for _ in it.iter_rows():
                         x += 1
@@ -228,6 +271,10 @@ def test_streaming_split_invalid_iterator(ray_start_10_cpus_shared):
         )
 
 
+@pytest.mark.skip(
+    reason="Incomplete implementation of _validate_dag causes other errors, so we "
+    "remove DAG validation for now; see https://github.com/ray-project/ray/pull/37829"
+)
 def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
@@ -462,7 +509,7 @@ def test_can_pickle(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().use_streaming_executor = True
 
     ds = ray.data.range(1000000)
-    it = ds.iter_batches()
+    it = iter(ds.iter_batches())
     next(it)
 
     # Should work even if a streaming exec is in progress.

@@ -8,6 +8,7 @@ import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.exception.CrossLanguageException;
 import io.ray.api.exception.RayException;
+import io.ray.api.exception.RayTimeoutException;
 import io.ray.api.function.CppActorClass;
 import io.ray.api.function.CppActorMethod;
 import io.ray.api.function.CppFunction;
@@ -241,14 +242,14 @@ public class CrossLanguageInvocationTest extends BaseTest {
     Assert.assertEquals(b.get(), "C++ Worker".getBytes());
 
     ObjectRef<byte[]> b2 =
-        actor.task(CppActorMethod.of("echoBytes", byte[].class), "C++ Worker".getBytes()).remote();
+        actor.task(CppActorMethod.of("EchoBytes", byte[].class), "C++ Worker".getBytes()).remote();
     Assert.assertEquals(b2.get(), "C++ Worker".getBytes());
 
     ObjectRef<byte[]> b3 =
-        actor.task(CppActorMethod.of("echoBytes", byte[].class), new byte[0]).remote();
+        actor.task(CppActorMethod.of("EchoBytes", byte[].class), new byte[0]).remote();
     Assert.assertEquals(b3.get(), new byte[0]);
 
-    ObjectRef<byte[]> b4 = actor.task(CppActorMethod.of("echoBytes", byte[].class), null).remote();
+    ObjectRef<byte[]> b4 = actor.task(CppActorMethod.of("EchoBytes", byte[].class), null).remote();
     Assert.assertThrows(CrossLanguageException.class, () -> b4.get());
 
     // Test get cpp actor by actor name.
@@ -268,6 +269,45 @@ public class CrossLanguageInvocationTest extends BaseTest {
     CppActorHandle actor3 = optional3.get();
     ObjectRef<Integer> res4 = actor3.task(CppActorMethod.of("Plus1", Integer.class)).remote();
     Assert.assertEquals(res4.get(), Integer.valueOf(1));
+    Object[] strings = new Object[] {"str1", "str2"};
+    ObjectRef<Object[]> ref_strings =
+        actor.task(CppActorMethod.of("EchoStrings", Object[].class), strings).remote();
+    Assert.assertEquals(ref_strings.get(), strings);
+
+    if (System.getProperty("os.name").toUpperCase().indexOf("Windows") == -1) {
+      // Testing the supported parameter types for c++ worker std::any type
+      Object[] inputs =
+          new Object[] {
+            true, // Boolean
+            Byte.MAX_VALUE, // Byte
+            Short.MAX_VALUE, // Short
+            Integer.MAX_VALUE, // Integer
+            Long.MAX_VALUE, // Long
+            Long.MIN_VALUE,
+            BigInteger.valueOf(Long.MAX_VALUE), // BigInteger
+            "Hello World!", // String
+            1.234f, // Float
+            1.234, // Double
+            "binary".getBytes() // byte[]
+          };
+      ObjectRef<Object[]> ref_objs =
+          actor.task(CppActorMethod.of("EchoAnyArray", Object[].class), inputs).remote();
+      Object[] objs_result = ref_objs.get();
+      Assert.assertEquals(objs_result.length, inputs.length);
+      Assert.assertEquals((Boolean) objs_result[0], inputs[0]);
+      Assert.assertEquals((Byte) objs_result[1], inputs[1]);
+      Assert.assertEquals((Short) objs_result[2], inputs[2]);
+      Assert.assertEquals((Integer) objs_result[3], inputs[3]);
+      Assert.assertEquals((Long) objs_result[4], inputs[4]);
+      Assert.assertEquals((Long) objs_result[5], inputs[5]);
+      // BigInteger change to Long
+      Assert.assertEquals((Long) objs_result[6], Long.MAX_VALUE);
+      Assert.assertEquals((String) objs_result[7], inputs[7]);
+      // Float change to double
+      Assert.assertTrue(Math.abs((Double) objs_result[8] - 1.234) < 0.000001);
+      Assert.assertTrue(Math.abs((Double) objs_result[9] - (Double) inputs[9]) < 0.000001);
+      Assert.assertEquals((byte[]) objs_result[10], (byte[]) inputs[10]);
+    }
   }
 
   @Test
@@ -509,5 +549,30 @@ public class CrossLanguageInvocationTest extends BaseTest {
         Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_call_java_overloaded_method", Object.class))
             .remote();
     Assert.assertEquals(true, res.get());
+  }
+
+  @Test
+  public void testCppActorMaxConcurrency() {
+    CppActorHandle actor =
+        Ray.actor(CppActorClass.of("ActorConcurrentCall::FactoryCreate", "ActorConcurrentCall"))
+            .setMaxConcurrency(3)
+            .remote();
+    ObjectRef<String> ref1 = actor.task(CppActorMethod.of("CountDown", String.class)).remote();
+    ObjectRef<String> ref2 = actor.task(CppActorMethod.of("CountDown", String.class)).remote();
+    ObjectRef<String> ref3 = actor.task(CppActorMethod.of("CountDown", String.class)).remote();
+    Assert.assertEquals(ref1.get(), "ok");
+    Assert.assertEquals(ref2.get(), "ok");
+    Assert.assertEquals(ref3.get(), "ok");
+
+    CppActorHandle actor2 =
+        Ray.actor(CppActorClass.of("ActorConcurrentCall::FactoryCreate", "ActorConcurrentCall"))
+            .setMaxConcurrency(1)
+            .remote();
+    ObjectRef<String> r1 = actor2.task(CppActorMethod.of("CountDown", String.class)).remote();
+    ObjectRef<String> r2 = actor2.task(CppActorMethod.of("CountDown", String.class)).remote();
+    ObjectRef<String> r3 = actor2.task(CppActorMethod.of("CountDown", String.class)).remote();
+    Assert.expectThrows(RayTimeoutException.class, () -> r1.get(2000));
+    Assert.expectThrows(RayTimeoutException.class, () -> r2.get(2000));
+    Assert.expectThrows(RayTimeoutException.class, () -> r3.get(2000));
   }
 }

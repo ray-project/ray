@@ -1,21 +1,25 @@
+#ci:group=Large GPU tests
+
 - label: ":tv: :steam_locomotive: Train GPU tests "
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
+    - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only,-ray_air python/ray/train/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only,-ray_air 
+      python/ray/train/...
 
 - label: ":tv: :database: :steam_locomotive: Datasets Train Integration GPU Tests and Examples (Python 3.7)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
+    - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=datasets_train,-doctest doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=datasets_train,-doctest 
+      doc/...
 
 - label: ":tv: :brain: RLlib: Multi-GPU Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
@@ -23,7 +27,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
+    - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
     - ./ci/env/env_info.sh
     # --jobs 2 is necessary as we only need to have at least 2 gpus on the machine
     # and running tests in parallel would cause timeouts as the other scripts would
@@ -40,38 +44,43 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
+    - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu python/ray/air/... python/ray/train/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu 
+      python/ray/air/... python/ray/train/...
 
 - label: ":tv: :book: Doc GPU tests and examples"
   conditions:
     ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 INSTALL_VLLM=1 ./ci/env/install-dependencies.sh
-    - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
+    - DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
+    - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
     - ./ci/env/env_info.sh
     # Test examples with newer version of `transformers`
     # TODO(amogkam): Remove when https://github.com/ray-project/ray/issues/36011
     # is resolved.
     - pip install -U transformers
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,-timeseries_libs,-post_wheel_build,-doctest doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,-timeseries_libs,-post_wheel_build,-doctest 
+      doc/...
 
 - label: ":book: Doctest (GPU)"
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
+    - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
     - ./ci/env/install-horovod.sh
-    - ./ci/env/env_info.sh
     # Test examples with newer version of `transformers`
     # TODO(amogkam): Remove when https://github.com/ray-project/ray/issues/36011 
     # is resolved.
-    - pip install -U transformers
+    # TODO(scottjlee): Move datasets to train/data-test-requirements.txt 
+    # (see https://github.com/ray-project/ray/pull/38432/)
+    - pip install transformers==4.30.2 datasets==2.14.0
+    - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=doctest,-cpu python/ray/... doc/...
+      --test_tag_filters=doctest,-cpu
+      python/ray/... doc/...
 
 - label: ":zap: :python: Lightning 2.0 Train GPU tests"
   conditions:
@@ -80,8 +89,9 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - NO_DASHBOARD=1 ./ci/env/install-minimal.sh 3.8
     - PYTHON=3.8 DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
+    - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
     - pip uninstall -y pytorch-lightning
-    - pip install lightning==2.0.0
+    - pip install lightning==2.0.4 pytorch-lightning==2.0.4  # todo move to requirements-test.txt
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=ptl_v2 python/ray/train/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=ptl_v2 
+      python/ray/train/...

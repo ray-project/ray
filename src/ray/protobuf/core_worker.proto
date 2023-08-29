@@ -250,6 +250,8 @@ message CancelTaskRequest {
   bool force_kill = 2;
   // Whether to recursively cancel tasks.
   bool recursive = 3;
+  // The worker ID of the caller.
+  bytes caller_worker_id = 4;
 }
 
 message CancelTaskReply {
@@ -385,6 +387,12 @@ message RayletNotifyGCSRestartRequest {}
 
 message RayletNotifyGCSRestartReply {}
 
+message NumPendingTasksRequest {}
+
+message NumPendingTasksReply {
+  int64 num_pending_tasks = 1;
+}
+
 message ReportGeneratorItemReturnsRequest {
   // The intermediate return object that's dynamically
   // generated from the executor side.
@@ -396,9 +404,6 @@ message ReportGeneratorItemReturnsRequest {
   // because the ordering of this request
   // is not guaranteed.
   int64 item_index = 3;
-  // If true, it means there's going to be no more
-  // task return after this request.
-  bool finished = 4;
   // The object ref id of the executor task that
   // generates intermediate results.
   bytes generator_id = 5;
@@ -467,4 +472,6 @@ service CoreWorkerService {
   rpc Exit(ExitRequest) returns (ExitReply);
   // Assign the owner of an object to the intended worker.
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
+  // Get the number of pending tasks.
+  rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
 }

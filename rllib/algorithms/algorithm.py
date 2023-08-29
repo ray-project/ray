@@ -31,7 +31,7 @@ from typing import (
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -131,6 +131,48 @@ from ray.util import log_once
 from ray.util.timer import _Timer
 from ray.tune.registry import get_trainable_cls
 
+
+try:
+    from ray.rllib.extensions import AlgorithmBase
+except ImportError:
+
+    class AlgorithmBase:
+        @staticmethod
+        def _get_learner_bundles(cf: AlgorithmConfig) -> List[Dict[str, int]]:
+            """Selects the right resource bundles for learner workers based off of cf.
+
+            Args:
+                cf: The algorithm config.
+
+            Returns:
+                A list of resource bundles for the learner workers.
+            """
+            if cf.num_learner_workers > 0:
+                if cf.num_gpus_per_learner_worker:
+                    learner_bundles = [
+                        {"GPU": cf.num_learner_workers * cf.num_gpus_per_learner_worker}
+                    ]
+                elif cf.num_cpus_per_learner_worker:
+                    learner_bundles = [
+                        {
+                            "CPU": cf.num_cpus_per_learner_worker
+                            * cf.num_learner_workers,
+                        }
+                    ]
+            else:
+                learner_bundles = [
+                    {
+                        # sampling and training is not done concurrently when local is
+                        # used, so pick the max.
+                        "CPU": max(
+                            cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
+                        ),
+                        "GPU": cf.num_gpus_per_learner_worker,
+                    }
+                ]
+            return learner_bundles
+
+
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
@@ -146,7 +188,7 @@ def with_common_config(*args, **kwargs):
 
 
 @PublicAPI
-class Algorithm(Trainable):
+class Algorithm(Trainable, AlgorithmBase):
     """An RLlib algorithm responsible for optimizing one or more Policies.
 
     Algorithms contain a WorkerSet under `self.workers`. A WorkerSet is
@@ -764,6 +806,8 @@ class Algorithm(Trainable):
         This class will be used by an Algorithm in case
         the policy class is not provided by the user in any single- or
         multi-agent PolicySpec.
+
+        Note: This method is ignored when the RLModule API is enabled.
         """
         return None
 
@@ -2022,8 +2066,8 @@ class Algorithm(Trainable):
         self._sync_weights_to_workers(worker_set=self.workers)
 
     @override(Trainable)
-    def save_checkpoint(self, checkpoint_dir: str) -> str:
-        """Exports AIR Checkpoint to a local directory and returns its directory path.
+    def save_checkpoint(self, checkpoint_dir: str) -> None:
+        """Exports checkpoint to a local directory.
 
         The structure of an Algorithm checkpoint dir will be as follows::
 
@@ -2049,9 +2093,6 @@ class Algorithm(Trainable):
 
         Args:
             checkpoint_dir: The directory where the checkpoint files will be stored.
-
-        Returns:
-            The path to the created AIR Checkpoint directory.
         """
         state = self.__getstate__()
 
@@ -2101,18 +2142,16 @@ class Algorithm(Trainable):
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.save_state(learner_state_dir)
 
-        return checkpoint_dir
-
     @override(Trainable)
-    def load_checkpoint(self, checkpoint: str) -> None:
-        # Checkpoint is provided as a directory name.
+    def load_checkpoint(self, checkpoint_dir: str) -> None:
+        # Checkpoint is provided as a local directory.
         # Restore from the checkpoint file or dir.
 
-        checkpoint_info = get_checkpoint_info(checkpoint)
+        checkpoint_info = get_checkpoint_info(checkpoint_dir)
         checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
         if self.config._enable_learner_api:
-            learner_state_dir = os.path.join(checkpoint, "learner")
+            learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.load_state(learner_state_dir)
 
     @override(Trainable)
@@ -2161,22 +2200,12 @@ class Algorithm(Trainable):
             if cf.num_learner_workers == 0:
                 # in this case local_worker only does sampling and training is done on
                 # local learner worker
-                driver = {
-                    # sampling and training is not done concurrently when local is
-                    # used, so pick the max.
-                    "CPU": max(
-                        cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
-                    ),
-                    "GPU": cf.num_gpus_per_learner_worker,
-                }
+                driver = cls._get_learner_bundles(cf)[0]
             else:
                 # in this case local_worker only does sampling and training is done on
                 # remote learner workers
                 driver = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
         else:
-            # Without Learner API, the local_worker can do both sampling and training.
-            # So, we need to allocate the same resources for the driver as for the
-            # local_worker.
             driver = {
                 "CPU": cf.num_cpus_for_local_worker,
                 "GPU": 0 if cf._fake_gpus else cf.num_gpus,
@@ -2223,22 +2252,7 @@ class Algorithm(Trainable):
         # resources for remote learner workers
         learner_bundles = []
         if cf._enable_learner_api and cf.num_learner_workers > 0:
-            # can't specify cpus for learner workers at the same
-            # time as gpus
-            if cf.num_gpus_per_learner_worker:
-                learner_bundles = [
-                    {
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                    for _ in range(cf.num_learner_workers)
-                ]
-            elif cf.num_cpus_per_learner_worker:
-                learner_bundles = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                    }
-                    for _ in range(cf.num_learner_workers)
-                ]
+            learner_bundles = cls._get_learner_bundles(cf)
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 
@@ -2560,6 +2574,7 @@ class Algorithm(Trainable):
             state["train_exec_impl"] = self.train_exec_impl.shared_metrics.get().save()
         else:
             state["counters"] = self._counters
+        state["training_iteration"] = self.training_iteration
 
         return state
 
@@ -2615,6 +2630,9 @@ class Algorithm(Trainable):
             self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
         elif "counters" in state:
             self._counters = state["counters"]
+
+        if "training_iteration" in state:
+            self._iteration = state["training_iteration"]
 
     @staticmethod
     def _checkpoint_info_to_algorithm_state(

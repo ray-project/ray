@@ -4,9 +4,7 @@ from typing import TYPE_CHECKING, Optional
 
 import xgboost
 
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
-from ray.air.checkpoint import Checkpoint
-from ray.air.constants import MODEL_KEY
+from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -14,13 +12,10 @@ if TYPE_CHECKING:
 
 
 @PublicAPI(stability="beta")
-class XGBoostCheckpoint(Checkpoint):
-    """A :py:class:`~ray.air.checkpoint.Checkpoint` with XGBoost-specific
-    functionality.
+class XGBoostCheckpoint(FrameworkCheckpoint):
+    """A :py:class:`~ray.train.Checkpoint` with XGBoost-specific functionality."""
 
-    Create this from a generic :py:class:`~ray.air.checkpoint.Checkpoint` by calling
-    ``XGBoostCheckpoint.from_checkpoint(ckpt)``.
-    """
+    MODEL_FILENAME = "model.json"
 
     @classmethod
     def from_model(
@@ -40,38 +35,32 @@ class XGBoostCheckpoint(Checkpoint):
             An :py:class:`XGBoostCheckpoint` containing the specified ``Estimator``.
 
         Examples:
-            >>> import numpy as np
-            >>> import ray
-            >>> from ray.train.xgboost import XGBoostCheckpoint
-            >>> import xgboost
-            >>>
-            >>> train_X = np.array([[1, 2], [3, 4]])
-            >>> train_y = np.array([0, 1])
-            >>>
-            >>> model = xgboost.XGBClassifier().fit(train_X, train_y)
-            >>> checkpoint = XGBoostCheckpoint.from_model(model.get_booster())
 
-            You can use a :py:class:`XGBoostCheckpoint` to create an
-            :py:class:`~ray.train.xgboost.XGBoostPredictor` and preform inference.
+            ... testcode::
 
-            >>> from ray.train.xgboost import XGBoostPredictor
-            >>>
-            >>> predictor = XGBoostPredictor.from_checkpoint(checkpoint)
+                import numpy as np
+                import ray
+                from ray.train.xgboost import XGBoostCheckpoint
+                import xgboost
+
+                train_X = np.array([[1, 2], [3, 4]])
+                train_y = np.array([0, 1])
+
+                model = xgboost.XGBClassifier().fit(train_X, train_y)
+                checkpoint = XGBoostCheckpoint.from_model(model.get_booster())
+
         """
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            booster.save_model(os.path.join(tmpdirname, MODEL_KEY))
+        tmpdir = tempfile.mkdtemp()
+        booster.save_model(os.path.join(tmpdir, cls.MODEL_FILENAME))
 
-            if preprocessor:
-                save_preprocessor_to_dir(preprocessor, tmpdirname)
-
-            checkpoint = cls.from_directory(tmpdirname)
-            ckpt_dict = checkpoint.to_dict()
-
-        return cls.from_dict(ckpt_dict)
+        checkpoint = cls.from_directory(tmpdir)
+        if preprocessor:
+            checkpoint.set_preprocessor(preprocessor)
+        return checkpoint
 
     def get_model(self) -> xgboost.Booster:
         """Retrieve the XGBoost model stored in this checkpoint."""
         with self.as_directory() as checkpoint_path:
             booster = xgboost.Booster()
-            booster.load_model(os.path.join(checkpoint_path, MODEL_KEY))
+            booster.load_model(os.path.join(checkpoint_path, self.MODEL_FILENAME))
             return booster

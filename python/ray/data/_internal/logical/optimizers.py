@@ -6,12 +6,25 @@ from ray.data._internal.logical.interfaces import (
     PhysicalPlan,
     Rule,
 )
-from ray.data._internal.logical.rules import (
-    OperatorFusionRule,
-    ReorderRandomizeBlocksRule,
+from ray.data._internal.logical.rules._user_provided_optimizer_rules import (
+    add_user_provided_logical_rules,
+    add_user_provided_physical_rules,
 )
-from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
+from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
+from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
+from ray.data._internal.logical.rules.zero_copy_map_fusion import (
+    EliminateBuildOutputBlocks,
+)
 from ray.data._internal.planner.planner import Planner
+
+DEFAULT_LOGICAL_RULES = [
+    ReorderRandomizeBlocksRule,
+]
+
+DEFAULT_PHYSICAL_RULES = [
+    OperatorFusionRule,
+    EliminateBuildOutputBlocks,
+]
 
 
 class LogicalOptimizer(Optimizer):
@@ -19,7 +32,8 @@ class LogicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List[Rule]:
-        return [ReorderRandomizeBlocksRule(), LimitPushdownRule()]
+        rules = add_user_provided_logical_rules(DEFAULT_LOGICAL_RULES)
+        return [rule_cls() for rule_cls in rules]
 
 
 class PhysicalOptimizer(Optimizer):
@@ -27,7 +41,8 @@ class PhysicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List["Rule"]:
-        return [OperatorFusionRule()]
+        rules = add_user_provided_physical_rules(DEFAULT_PHYSICAL_RULES)
+        return [rule_cls() for rule_cls in rules]
 
 
 def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:

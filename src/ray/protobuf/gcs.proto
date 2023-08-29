@@ -242,6 +242,8 @@ message TaskStateUpdate {
   optional TaskLogInfo task_log_info = 10;
   // Actor task repr name.
   optional string actor_repr_name = 11;
+  // Worker Pid.
+  optional int32 worker_pid = 12;
 }
 
 // Represents events and state changes from a single task run.
@@ -316,6 +318,9 @@ message GcsNodeInfo {
   // The port at which the node will expose metrics to.
   int32 metrics_export_port = 9;
 
+  // The port at which the runtime env agent listens as HTTP.
+  int32 runtime_env_agent_port = 27;
+
   // The total resources of this node.
   map<string, double> resources_total = 11;
 
@@ -324,6 +329,15 @@ message GcsNodeInfo {
 
   // The instance id of the node if it's running on a cloud provider.
   string instance_id = 13;
+
+  // The instance node type of the node if it's running on a cloud provider.
+  // Set through ENV of src/ray/common/constants.h::kNodeTypeNameEnv
+  string node_type_name = 14;
+
+  // The instance type name of the node if running on a cloud provider and
+  // set through ENV of src/ray/common/constants.h::kNodeCloudInstanceTypeNameEnv
+  // e.g. m4.16xlarge
+  string instance_type_name = 15;
 
   // The unix ms timestamp the node was started at.
   uint64 start_time_ms = 23;
@@ -366,29 +380,6 @@ message JobsAPIInfo {
   // The node id that driver running on. It will be None only when the job status
   // is PENDING, and this field will not be deleted or modified even if the driver dies
   optional string driver_node_id = 13;
-}
-
-message JobTableData {
-  // The job ID.
-  bytes job_id = 1;
-  // Whether it's dead.
-  bool is_dead = 2;
-  // The UNIX timestamp corresponding to this event (job added or removed).
-  int64 timestamp = 3;
-  // IP address of the driver that started this job.
-  string driver_ip_address = 4;
-  // Process ID of the driver running this job.
-  int64 driver_pid = 5;
-  // The config of this job.
-  JobConfig config = 6;
-  // The timestamp the job was started at.
-  uint64 start_time = 7;
-  // The timestamp the job was ended at.
-  uint64 end_time = 8;
-  // The entrypoint of the job.
-  string entrypoint = 9;
-  // The optional JobInfo from the Ray Job API.
-  optional JobsAPIInfo job_info = 10;
 }
 
 message WorkerTableData {
@@ -513,13 +504,11 @@ message ResourceLoad {
 }
 
 message ResourcesData {
+  reserved 3;
   // Node id.
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
-  // Indicates whether available resources is changed. Only used when light
-  // heartbeat enabled.
-  bool resources_available_changed = 3;
   // Total resource capacity configured for this node manager.
   map<string, double> resources_total = 4;
   // Aggregate outstanding resource load on this node manager.
@@ -546,6 +535,12 @@ message ResourcesData {
   int64 resources_normal_task_timestamp = 13;
   // Whether this node has detected a resource deadlock (full of actors).
   bool cluster_full_of_actors_detected = 14;
+  // The duration in ms during which all the node's resources are idle. If the
+  // node currently has any resource being used, this will be 0.
+  int64 idle_duration_ms = 15;
+  // Whether the node is being drained.
+  bool is_draining = 16;
+  // Last unused = 17
 }
 
 message ResourceUsageBatchData {
@@ -672,5 +667,33 @@ message PlacementGroupTableData {
   // The time that the last bundle of a placement group is committed at,
   // effectively when the placement group has been "scheduled".
   int64 placement_group_final_bundle_placement_timestamp_ms = 15;
+}
+
+message JobTableData {
+  // The job ID.
+  bytes job_id = 1;
+  // Whether it's dead.
+  bool is_dead = 2;
+  // The UNIX timestamp corresponding to this event (job added or removed).
+  int64 timestamp = 3;
+  // IP address of the driver that started this job.
+  // Deprecated
+  string driver_ip_address = 4;
+  // Process ID of the driver running this job.
+  int64 driver_pid = 5;
+  // The config of this job.
+  JobConfig config = 6;
+  // The timestamp the job was started at.
+  uint64 start_time = 7;
+  // The timestamp the job was ended at.
+  uint64 end_time = 8;
+  // The entrypoint of the job.
+  string entrypoint = 9;
+  // The optional JobInfo from the Ray Job API.
+  optional JobsAPIInfo job_info = 10;
+  // Whether this job has running tasks.
+  bool is_running_tasks = 11;
+  // Address of the driver that started this job.
+  Address driver_address = 12;
 }
 ///////////////////////////////////////////////////////////////////////////////

@@ -1,5 +1,7 @@
 import abc
+import base64
 import collections
+import pickle
 import warnings
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
@@ -64,7 +66,7 @@ class Preprocessor(abc.ABC):
     def fit_status(self) -> "Preprocessor.FitStatus":
         if not self._is_fittable:
             return Preprocessor.FitStatus.NOT_FITTABLE
-        elif self._check_is_fitted():
+        elif hasattr(self, "_fitted") and self._fitted:
             return Preprocessor.FitStatus.FITTED
         else:
             return Preprocessor.FitStatus.NOT_FITTED
@@ -112,7 +114,9 @@ class Preprocessor(abc.ABC):
                 "All previously fitted state will be overwritten!"
             )
 
-        return self._fit(ds)
+        fitted_ds = self._fit(ds)
+        self._fitted = True
+        return fitted_ds
 
     def fit_transform(self, ds: "Dataset") -> "Dataset":
         """Fit this Preprocessor to the Dataset and then transform the Dataset.
@@ -203,15 +207,6 @@ class Preprocessor(abc.ABC):
             )
 
         return self._transform(pipeline)
-
-    def _check_is_fitted(self) -> bool:
-        """Returns whether this preprocessor is fitted.
-
-        We use the convention that attributes with a trailing ``_`` are set after
-        fitting is complete.
-        """
-        fitted_vars = [v for v in vars(self) if v.endswith("_")]
-        return bool(fitted_vars)
 
     @DeveloperAPI
     def _fit(self, ds: "Dataset") -> "Preprocessor":
@@ -333,3 +328,18 @@ class Preprocessor(abc.ABC):
         path is the most optimal.
         """
         return BatchFormat.PANDAS
+
+    @DeveloperAPI
+    def serialize(self) -> str:
+        """Return this preprocessor serialized as a string.
+        Note: this is not a stable serialization format as it uses `pickle`.
+        """
+        # Convert it to a plain string so that it can be included as JSON metadata
+        # in Trainer checkpoints.
+        return base64.b64encode(pickle.dumps(self)).decode("ascii")
+
+    @staticmethod
+    @DeveloperAPI
+    def deserialize(serialized: str) -> "Preprocessor":
+        """Load the original preprocessor serialized via `self.serialize()`."""
+        return pickle.loads(base64.b64decode(serialized))

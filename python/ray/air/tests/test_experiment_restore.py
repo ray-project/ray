@@ -102,19 +102,21 @@ def test_experiment_restore(tmp_path, runner_type):
 
     total_iters = iters_per_trial * num_trials
 
-    env = {
-        "RUNNER_TYPE": runner_type,
-        "STORAGE_PATH": str(storage_path),
-        "EXP_NAME": exp_name,
-        "CALLBACK_DUMP_FILE": str(callback_dump_file),
-        "RUN_STARTED_MARKER": str(run_started_marker),
-        "TIME_PER_ITER_S": str(time_per_iter_s),
-        "ITERATIONS_PER_TRIAL": str(iters_per_trial),
-        "NUM_TRIALS": str(num_trials),
-        "MAX_CONCURRENT_TRIALS": str(max_concurrent),
-        "CSV_DATA_FILE": csv_file,
-        "TUNE_NEW_EXECUTION": os.environ.get("TUNE_NEW_EXECUTION", "1"),
-    }
+    env = os.environ.copy()
+    env.update(
+        {
+            "RUNNER_TYPE": runner_type,
+            "STORAGE_PATH": str(storage_path),
+            "EXP_NAME": exp_name,
+            "CALLBACK_DUMP_FILE": str(callback_dump_file),
+            "RUN_STARTED_MARKER": str(run_started_marker),
+            "TIME_PER_ITER_S": str(time_per_iter_s),
+            "ITERATIONS_PER_TRIAL": str(iters_per_trial),
+            "NUM_TRIALS": str(num_trials),
+            "MAX_CONCURRENT_TRIALS": str(max_concurrent),
+            "CSV_DATA_FILE": csv_file,
+        }
+    )
 
     # Pass criteria
     no_interrupts_runtime = 16.0

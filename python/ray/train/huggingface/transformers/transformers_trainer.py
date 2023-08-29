@@ -8,13 +8,15 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
 from torch.utils.data import Dataset as TorchDataset
 
+from ray import train
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train.constants import (
     EVALUATION_DATASET_KEY,
     TRAIN_DATASET_KEY,
 )
+from ray.train import DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
@@ -119,7 +121,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
     It is tested with ``transformers==4.19.1``.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             # Based on
             # huggingface/notebooks/examples/language_modeling_from_scratch.ipynb
@@ -131,10 +133,10 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
 
             import ray
             from ray.train.huggingface import TransformersTrainer
-            from ray.air.config import ScalingConfig
+            from ray.train import ScalingConfig
 
             # If using GPUs, set this to True.
-            use_gpu = False
+            use_gpu = True
 
             model_checkpoint = "gpt2"
             tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
@@ -193,6 +195,8 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                     learning_rate=2e-5,
                     weight_decay=0.01,
                     no_cuda=(not use_gpu),
+                    # Take a small subset for doctest
+                    max_steps=100,
                 )
                 return transformers.Trainer(
                     model=model,
@@ -201,13 +205,18 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                     eval_dataset=eval_dataset,
                 )
 
-            scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
+            scaling_config = ScalingConfig(num_workers=4, use_gpu=use_gpu)
             trainer = TransformersTrainer(
                 trainer_init_per_worker=trainer_init_per_worker,
                 scaling_config=scaling_config,
                 datasets={"train": ray_train_ds, "evaluation": ray_evaluation_ds},
             )
             result = trainer.fit()
+
+        .. testoutput::
+            :hide:
+
+            ...
 
     Args:
         trainer_init_per_worker: The function that returns an instantiated
@@ -229,12 +238,9 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             dataset and key "evaluation" to denote the evaluation
             dataset. Can only contain a training dataset
             and up to one extra dataset to be used for evaluation.
-            If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be
-            transformed by the ``preprocessor`` if one is provided.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -247,11 +253,13 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
     ):
 
         if TRANSFORMERS_IMPORT_ERROR is not None:
@@ -282,6 +290,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )
 
     @classmethod
@@ -466,7 +475,7 @@ def _huggingface_train_loop_per_worker(config):
 
     trainer.add_callback(TrainReportCallback)
 
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_path:
             trainer.train(resume_from_checkpoint=checkpoint_path)

@@ -70,9 +70,9 @@ def train_rllib_policy(config: AlgorithmConfig):
     # Train for n iterations, then save, stop, and return the checkpoint path.
     for _ in range(args.train_iters):
         print(algo.train())
-    checkpoint_path = algo.save()
+    checkpoint_result = algo.save()
     algo.stop()
-    return checkpoint_path
+    return checkpoint_result
 
 
 if __name__ == "__main__":
@@ -81,23 +81,21 @@ if __name__ == "__main__":
     config = DQNConfig().environment("ALE/MsPacman-v5").framework(args.framework)
 
     # Train the Algorithm for some time, then save it and get the checkpoint path.
-    checkpoint_path = train_rllib_policy(config)
+    checkpoint_result = train_rllib_policy(config)
 
     ray.init(num_cpus=8)
 
     # Start Ray serve (create the RLlib Policy service defined by
     # our `ServeRLlibPolicy` class above).
     client = serve.start()
-    client.create_backend("backend", ServeRLlibPolicy, config, checkpoint_path)
+    client.create_backend("backend", ServeRLlibPolicy, config, checkpoint_result)
     client.create_endpoint(
         "endpoint", backend="backend", route="/mspacman-rllib-policy"
     )
 
     # Create the environment that we would like to receive
     # served actions for.
-    env = FrameStack(
-        WarpFrame(gym.make("GymV26Environment-v0", env_id="ALE/MsPacman-v5"), 84), 4
-    )
+    env = FrameStack(WarpFrame(gym.make("ALE/MsPacman-v5"), 84), 4)
     obs, info = env.reset()
 
     while True:

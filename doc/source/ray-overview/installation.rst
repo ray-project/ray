@@ -56,6 +56,8 @@ and macOS by choosing the option that best matches your use case.
             - Core, Tune
           * - `pip install -U "ray[serve]"`
             - Core, Dashboard, Cluster Launcher, Serve
+          * - `pip install -U "ray[serve-grpc]"`
+            - Core, Dashboard, Cluster Launcher, Serve with gRPC support
           * - `pip install -U "ray[rllib]"`
             - Core, Tune, RLlib
           * - `pip install -U "ray[air]"`
@@ -65,7 +67,7 @@ and macOS by choosing the option that best matches your use case.
 
         .. tip::
 
-          You can combine installation extras. 
+          You can combine installation extras.
           For example, to install Ray with Dashboard, Cluster Launcher, and Train support, you can run:
 
           .. code-block:: shell
@@ -125,6 +127,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
            * - `Windows Python 3.9`_
            * - `Windows Python 3.8`_
            * - `Windows Python 3.7`_
+           * - `Windows Python 3.11 (EXPERIMENTAL)`_
 
 .. note::
 
@@ -165,6 +168,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
 .. _`MacOS Python 3.8 (arm64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-macosx_11_0_arm64.whl
 
 
+.. _`Windows Python 3.11 (EXPERIMENTAL)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-win_amd64.whl
 .. _`Windows Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-win_amd64.whl
 .. _`Windows Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-win_amd64.whl
 .. _`Windows Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-win_amd64.whl
@@ -272,7 +276,7 @@ You can install and use Ray C++ API as follows.
 M1 Mac (Apple Silicon) Support
 ------------------------------
 
-Ray has experimental support for machines running Apple Silicon (such as M1 macs).
+Ray supports machines running Apple Silicon (such as M1 macs).
 Multi-node clusters are untested. To get started with local Ray development:
 
 #. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
@@ -293,21 +297,27 @@ Multi-node clusters are untested. To get started with local Ray development:
 
    * ``pip install ray``
 
-#. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio requires special compilation flags, which pypi does _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs.
-
-   * ``pip uninstall grpcio; conda install grpcio=1.43.0 -c conda-forge``
-
-.. note::
-
-  At this time, Apple Silicon ray wheels are being published for **releases only**. As support stabilizes, nightly wheels will be published in the future.
-
 .. _windows-support:
 
 Windows Support
 ---------------
 
-Windows support is currently in beta, and multi-node Ray clusters are untested.
-Please submit any issues you encounter on
+Windows support is in Beta. Ray supports running on Windows with the following caveats (only the first is
+Ray-specific, the rest are true anywhere Windows is used):
+
+* Multi-node Ray clusters are untested.
+
+* Filenames are tricky on Windows and there still may be a few places where Ray
+  assumes UNIX filenames rather than Windows ones. This can be true in downstream
+  packages as well.
+
+* Performance on Windows is known to be slower since opening files on Windows
+  is considerably slower than on other operating systems. This can affect logging.
+
+* Windows does not have a copy-on-write forking model, so spinning up new
+  processes can require more memory.
+
+Submit any issues you encounter to
 `GitHub <https://github.com/ray-project/ray/issues/>`_.
 
 Installing Ray on Arch Linux
@@ -511,12 +521,12 @@ Docker images for Python 3.9.
 
     .. group-tab:: ray (Python 3.9)
 
-        Ray version: nightly (`0d880e3 <https://github.com/ray-project/ray/commit/0d880e351d3c52bcb84207e397c531088c11ffda>`_)
+        Ray version: nightly (`cc983fc <https://github.com/ray-project/ray/commit/cc983fc3e64c1ba215e981a43dd0119c03c74ff1>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
     .. group-tab:: ray-ml (Python 3.9)
 
-        Ray version: nightly (`0d880e3 <https://github.com/ray-project/ray/commit/0d880e351d3c52bcb84207e397c531088c11ffda>`_)
+        Ray version: nightly (`cc983fc <https://github.com/ray-project/ray/commit/cc983fc3e64c1ba215e981a43dd0119c03c74ff1>`_)
 
         .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.txt

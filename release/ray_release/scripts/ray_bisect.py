@@ -5,15 +5,21 @@ import os
 import json
 import time
 from typing import Dict, List, Set
+from pathlib import Path
 
+from ray_release.bazel import bazel_runfile
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
-from ray_release.byod.build import build_anyscale_byod_images
+from ray_release.byod.build import (
+    build_anyscale_base_byod_images,
+    build_anyscale_custom_byod_image,
+)
 from ray_release.config import (
     read_and_validate_release_test_collection,
     parse_python_version,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
 )
+from ray_release.configs.global_config import init_global_config
 from ray_release.test import (
     Test,
     DEFAULT_PYTHON_VERSION,
@@ -51,6 +57,14 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     default=False,
     help=("Use the full, non-smoke version of the test"),
 )
+@click.option(
+    "--global-config",
+    default="oss_config.yaml",
+    type=click.Choice(
+        [x.name for x in (Path(__file__).parent.parent / "configs").glob("*.yaml")]
+    ),
+    help="Global config to use for test execution.",
+)
 def main(
     test_name: str,
     passing_commit: str,
@@ -58,7 +72,11 @@ def main(
     concurrency: int = 1,
     run_per_commit: int = 1,
     is_full_test: bool = False,
+    global_config: str = "oss_config.yaml",
 ) -> None:
+    init_global_config(
+        bazel_runfile("release/ray_release/configs", global_config),
+    )
     if concurrency <= 0:
         raise ValueError(
             f"Concurrency input need to be a positive number, received: {concurrency}"
@@ -160,20 +178,20 @@ def _trigger_test_run(
     if "python" in test:
         python_version = parse_python_version(test["python"])
     if test.is_byod_cluster():
-        ray_wheels_url = None
         os.environ["COMMIT_TO_TEST"] = commit
-        build_anyscale_byod_images([test])
-    else:
-        ray_wheels_url = find_and_wait_for_ray_wheels_url(
-            commit, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT, python_version=python_version
-        )
+        build_anyscale_base_byod_images([test])
+        build_anyscale_custom_byod_image(test)
+    ray_wheels_url = find_and_wait_for_ray_wheels_url(
+        commit, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT, python_version=python_version
+    )
     for run in range(run_per_commit):
         step = get_step(
             copy.deepcopy(test),  # avoid mutating the original test
             ray_wheels=ray_wheels_url,
-            smoke_test=not is_full_test,
+            smoke_test=test.get("smoke_test", False) and not is_full_test,
             env={
                 "RAY_COMMIT_OF_WHEEL": commit,
+                "COMMIT_TO_TEST": commit,
             },
         )
         step["label"] = f'{test["name"]}:{commit[:7]}-{run}'

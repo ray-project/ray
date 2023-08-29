@@ -1,13 +1,14 @@
-base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
-env_vars: {"RLLIB_TEST_NO_JAX_IMPORT": "1"}
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] }}
+env_vars: {"RLLIB_TEST_NO_JAX_IMPORT": "1", "RAY_AIR_NEW_PERSISTENCE_MODE": "1"}
 
 debian_packages:
+
   - curl
   - unzip
 
 python:
   pip_packages:
-    # These dependencies should be handled by requirements_rllib.txt and requirements_ml_docker.txt and removed here
+    # These dependencies should be handled by rllib-requirements.txt and removed here
     - gym>=0.21.0,<0.24.1
     - ale-py==0.7.5
     - pytest
