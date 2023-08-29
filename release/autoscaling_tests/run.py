@@ -1,25 +1,35 @@
 import subprocess
+import click
+import json
+import os
+import time
+
 
 # Logger
-import logging
-from ray.cluster_utils import AutoscalingCluster
-from rich.logging import RichHandler
+def setup_logger():
+    import logging
+    from rich.logging import RichHandler
 
-FORMAT = "%(asctime)s - [%(filename)s:%(lineno)d] - %(message)s"
+    FORMAT = "%(asctime)s - [%(filename)s:%(lineno)d] - %(message)s"
 
-logging.basicConfig(
-    level="NOTSET", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
-)
+    logging.basicConfig(
+        level="NOTSET", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
+    )
 
-logger = logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)
+    return logger
 
+
+logger = setup_logger()
 
 WORKLOAD_SCRIPTS = [
     "test_core.py",
 ]
 
 
-def setup_cluster() -> AutoscalingCluster:
+def setup_cluster():
+    from ray.cluster_utils import AutoscalingCluster
+
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
@@ -54,8 +64,28 @@ def run_test():
         logger.info("All workloads passed!")
 
 
-if __name__ == "__main__":
-    cluster = setup_cluster()
-    run_test()
+@click.command()
+@click.option("--local", is_flag=True, help="Run locally.", default=False)
+def run(local):
+    start_time = time.time()
+    if local:
+        cluster = setup_cluster()
+        run_test()
+        cluster.shutdown()
+    else:
+        run_test()
 
-    cluster.shutdown()
+    end_time = time.time()
+    results = {
+        "time": end_time - start_time,
+        "success": "1",
+    }
+    if "TEST_OUTPUT_JSON" in os.environ:
+        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
+        json.dump(results, out_file)
+
+    print(json.dumps(results, indent=2))
+
+
+if __name__ == "__main__":
+    run()

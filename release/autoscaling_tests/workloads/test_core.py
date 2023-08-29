@@ -51,7 +51,8 @@ def test_request_cluster_resources(ctx: dict):
 
     # Assert on number of worker nodes.
     logging.info(
-        f"Requesting cluster constraints: {ctx['num_nodes']} nodes, {ctx['num_cpus']} cpus"
+        f"Requesting cluster constraints: {ctx['num_nodes']} nodes, "
+        f"{ctx['num_cpus']} cpus"
     )
     wait_for_condition(
         check_cluster,
@@ -69,7 +70,8 @@ def test_request_cluster_resources(ctx: dict):
     ctx["num_cpus"] -= 8
     ctx["num_nodes"] -= 8 // WORKER_NODE_CPU
     logging.info(
-        f"Waiting for cluster go idle after constraint cleared: {ctx['num_nodes']} nodes, {ctx['num_cpus']} cpus"
+        f"Waiting for cluster go idle after constraint cleared: {ctx['num_nodes']} "
+        f"nodes, {ctx['num_cpus']} cpus"
     )
     wait_for_condition(
         check_cluster,
@@ -121,7 +123,8 @@ def test_run_tasks_concurrent(ctx: dict):
     ctx["num_nodes"] -= num_actors + num_tasks
 
     logging.info(
-        f"Waiting for cluster to scale down to {ctx['num_nodes']} nodes, {ctx['num_cpus']} cpus"
+        f"Waiting for cluster to scale down to {ctx['num_nodes']} nodes, "
+        f"{ctx['num_cpus']} cpus"
     )
     wait_for_condition(
         check_cluster,
