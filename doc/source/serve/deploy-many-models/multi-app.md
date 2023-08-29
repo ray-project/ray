@@ -126,19 +126,10 @@ applications:
 ### Send requests between applications
 You can also make calls between applications without going through HTTP. Take the classifier and translator app above as an example. We can modify the `__call__` method of the `ImageClassifier` to check for another parameter in the HTTP request, and send requests to the translator application.
 
-```
-@serve.deployment
-class ImageClassifier:
-    ...
-    async def __call__(self, req: starlette.requests.Request):
-        req = await req.json()
-        result = await self.classify(req["image_url"])
-
-        if req.get("should_translate") is True:
-            handle = serve.get_app_handle("app2")
-            return handle.translate.remote(result)
-        
-        return result
+```{literalinclude} ../doc_code/image_classifier_example.py
+:language: python
+:start-after: __serve_example_modified_begin__
+:end-before: __serve_example_modified_end__
 ```
 
 Then, sending requests to the classifier application with the `should_translate` flag set to True:

@@ -1,3 +1,5 @@
+import requests
+
 # __serve_example_begin__
 import starlette
 
@@ -21,3 +23,13 @@ class Translator:
 
 app = Translator.options(route_prefix="/translate").bind()
 # __serve_example_end__
+
+
+serve.run(app, name="app2")
+assert (
+    requests.post(
+        "http://localhost:8000/translate",
+        json={"text": "Hello, the weather is quite fine today!"},
+    ).text
+    == "Hallo, das Wetter ist heute ziemlich gut!"
+)
