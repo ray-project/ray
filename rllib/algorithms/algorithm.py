@@ -31,8 +31,7 @@ from typing import (
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
-from ray.air.checkpoint import Checkpoint
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train import Checkpoint
 import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -262,7 +261,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
     @staticmethod
     def from_checkpoint(
-        checkpoint: Union[str, Checkpoint, NewCheckpoint],
+        checkpoint: Union[str, Checkpoint],
         policy_ids: Optional[Container[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -2575,6 +2574,7 @@ class Algorithm(Trainable, AlgorithmBase):
             state["train_exec_impl"] = self.train_exec_impl.shared_metrics.get().save()
         else:
             state["counters"] = self._counters
+        state["training_iteration"] = self.training_iteration
 
         return state
 
@@ -2630,6 +2630,9 @@ class Algorithm(Trainable, AlgorithmBase):
             self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
         elif "counters" in state:
             self._counters = state["counters"]
+
+        if "training_iteration" in state:
+            self._iteration = state["training_iteration"]
 
     @staticmethod
     def _checkpoint_info_to_algorithm_state(
