@@ -566,7 +566,7 @@ py_test(
     size = "small",
     srcs = ["examples/custom_func_checkpointing.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example", "new_storage"],
     args = ["--smoke-test"]
 )
 
