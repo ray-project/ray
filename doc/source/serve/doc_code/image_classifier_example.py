@@ -65,7 +65,7 @@ class ModifiedImageClassifier:
 
 
 serve.run(app, name="app1")
-bear_image_url = "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"
+bear_image_url = "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"  # noqa
 assert (
     requests.post(
         "http://localhost:8000/classify",
