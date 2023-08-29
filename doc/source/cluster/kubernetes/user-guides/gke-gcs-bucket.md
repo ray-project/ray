@@ -93,7 +93,7 @@ spec:
               cpu: 1
               memory: 2Gi
             requests:
-              cpu: 500m
+              cpu: 1
               memory: 2Gi
           ports:
           - containerPort: 6379
