@@ -1,13 +1,10 @@
-import sys
 from typing import Optional, Set
 
 import os
 from dataclasses import dataclass
 
 import ray
-from ray.air.checkpoint import Checkpoint
-from ray.train.backend import BackendConfig, Backend, _warn_about_bad_checkpoint_type
-from ray.train._internal.storage import _use_storage_context
+from ray.train.backend import BackendConfig, Backend
 from ray.train._internal.utils import update_env_vars
 from ray.train._internal.worker_group import WorkerGroup, Worker
 
@@ -16,16 +13,6 @@ from horovod.ray.utils import detect_nics, nics_to_env_var
 from horovod.runner.common.util import secret, timeout
 
 from ray.util import PublicAPI
-
-try:
-    from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
-except ImportError:
-    LegacyTorchCheckpoint = None
-
-try:
-    from ray.train.tensorflow.tensorflow_checkpoint import LegacyTensorflowCheckpoint
-except ImportError:
-    LegacyTensorflowCheckpoint = None
 
 
 @PublicAPI(stability="beta")
@@ -144,33 +131,6 @@ class _HorovodBackend(Backend):
         coordinator_envs.update(nics_to_env_var(nics))
 
         worker_group.execute(update_env_vars, coordinator_envs)
-
-    # TODO(justinvyu): [code_removal]
-    @classmethod
-    def _encode_data(cls, checkpoint: Checkpoint):
-        if _use_storage_context():
-            return checkpoint
-
-        checkpoint = super()._encode_data(checkpoint)
-        if type(checkpoint) is Checkpoint:
-            if checkpoint.get_internal_representation()[0] == "data_dict":
-                if "tensorflow" in sys.modules:
-                    from ray.air._internal.tensorflow_utils import (
-                        contains_tensorflow_object,
-                    )
-
-                    if contains_tensorflow_object(checkpoint.to_dict()):
-                        _warn_about_bad_checkpoint_type(LegacyTensorflowCheckpoint)
-                        checkpoint = LegacyTensorflowCheckpoint.from_checkpoint(
-                            checkpoint
-                        )
-                if "torch" in sys.modules:
-                    from ray.air._internal.torch_utils import contains_tensor
-
-                    if contains_tensor(checkpoint.to_dict()):
-                        _warn_about_bad_checkpoint_type(LegacyTorchCheckpoint)
-                        checkpoint = LegacyTorchCheckpoint.from_checkpoint(checkpoint)
-        return checkpoint
 
 
 def _init_env_vars(world_rank: int, world_size: int, node_id: str):

@@ -10,9 +10,7 @@ from pytorch_lightning import Callback, Trainer, LightningModule
 from ray import train
 from ray.util import log_once
 from ray.util.annotations import PublicAPI, Deprecated
-from ray.air.checkpoint import Checkpoint as LegacyCheckpoint
-from ray.train._checkpoint import Checkpoint
-from ray.train._internal.storage import _use_storage_context
+from ray.train import Checkpoint
 
 
 logger = logging.getLogger(__name__)
@@ -155,21 +153,14 @@ class TuneReportCheckpointCallback(TuneCallback):
         return report_dict
 
     @contextmanager
-    def _get_checkpoint(
-        self, trainer: Trainer
-    ) -> Optional[Union[Checkpoint, LegacyCheckpoint]]:
+    def _get_checkpoint(self, trainer: Trainer) -> Optional[Checkpoint]:
         if not self._save_checkpoints:
             yield None
             return
 
         with tempfile.TemporaryDirectory() as checkpoint_dir:
             trainer.save_checkpoint(os.path.join(checkpoint_dir, self._filename))
-
-            if _use_storage_context():
-                checkpoint = Checkpoint.from_directory(checkpoint_dir)
-            else:
-                checkpoint = LegacyCheckpoint.from_directory(checkpoint_dir)
-
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
             yield checkpoint
 
     def _handle(self, trainer: Trainer, pl_module: LightningModule):
