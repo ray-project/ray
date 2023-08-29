@@ -315,8 +315,6 @@ class _FilesystemSyncer(_BackgroundSyncer):
     def _sync_up_command(
         self, local_path: str, uri: str, exclude: Optional[List] = None
     ) -> Tuple[Callable, Dict]:
-        # TODO(justinvyu): Defer this cleanup up as part of the
-        # external-facing Syncer deprecation.
         fs_path = uri
         return (
             _upload_to_fs_path,
