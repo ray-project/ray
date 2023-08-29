@@ -420,7 +420,7 @@ py_test(
     size = "small",
     srcs = ["tests/example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_main", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example", "no_main", "new_storage"],
 )
 
 # Todo: Ensure MPLBACKEND=Agg
@@ -611,7 +611,7 @@ py_test(
     size = "small",
     srcs = ["examples/lightgbm_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"]
+    tags = ["team:ml", "exclusive", "example", "new_storage"]
 )
 
 py_test(
@@ -620,7 +620,7 @@ py_test(
     main = "examples/lightgbm_example.py",
     srcs = ["examples/lightgbm_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example", "new_storage"],
     args = ["--use-cv"]
 )
 
