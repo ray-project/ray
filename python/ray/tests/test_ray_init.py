@@ -14,6 +14,7 @@ from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
 from ray._private.test_utils import wait_for_condition
+import ray._private.ray_constants as ray_constants
 
 
 @pytest.mark.skipif(
@@ -119,11 +120,13 @@ def test_ray_init_existing_instance_via_blocked_ray_start():
     reason="Flaky when run on windows CI",
 )
 @pytest.mark.parametrize("address", [None, "auto"])
-def test_ray_init_existing_instance_crashed(address):
+def test_ray_init_existing_instance_crashed(monkeypatch, address):
+    ray_constants.NUM_REDIS_GET_RETRIES = 1
+    monkeypatch.setenv("RAY_gcs_rpc_server_connect_timeout_s", "1")
+
     ray._private.utils.write_ray_address("localhost:6379")
     try:
         # If no address is specified, we will default to an existing cluster.
-        ray._private.node.NUM_REDIS_GET_RETRIES = 1
         with pytest.raises(ConnectionError):
             ray.init(address=address)
     finally:
