@@ -44,11 +44,8 @@ void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
 }
 
 static inline int _grpc_opencensus_initializer = []() {
-  RAY_CHECK(!StatsConfig::instance().IsInitialized());
-  StatsConfig::instance().AddInitializer([]() {
-    grpc::RegisterOpenCensusPlugin();
-    grpc::RegisterOpenCensusViewsForExport();
-  });
+  grpc::RegisterOpenCensusPlugin();
+  grpc::RegisterOpenCensusViewsForExport();
   return 1;
 }();
 
