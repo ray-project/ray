@@ -4,14 +4,14 @@ region: us-west-2
 max_workers: 20
 
 head_node_type:
-    name: head_node
-    instance_type: m5.16xlarge
-    resources:
-        cpu: 0
+  name: head_node
+  instance_type: m5.16xlarge
+  resources:
+    cpu: 0
 
 
 worker_node_types:
-    - name: worker_node
-        instance_type: m5.xlarge
-        min_workers: 0
-        max_workers: 20
+  - name: worker_node
+    instance_type: m5.xlarge
+    min_workers: 0
+    max_workers: 20
