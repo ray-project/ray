@@ -13,6 +13,7 @@ STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
 @pytest.fixture
 def short_serve_kv_timeout(monkeypatch):
     monkeypatch.setenv("RAY_SERVE_KV_TIMEOUT_S", "3")
+    yield
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
