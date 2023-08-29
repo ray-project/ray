@@ -1052,7 +1052,6 @@ class Node:
         # when possible.
         self._gcs_address = f"{self._node_ip_address}:" f"{gcs_server_port}"
         # Initialize gcs client, which also waits for GCS to start running.
-        self._init_gcs_client()
 
     def start_raylet(
         self,
@@ -1178,26 +1177,26 @@ class Node:
         self.get_gcs_client().internal_kv_put(
             b"session_name",
             self._session_name.encode(),
-            True,
+            False,
             ray_constants.KV_NAMESPACE_SESSION,
         )
         self.get_gcs_client().internal_kv_put(
             b"session_dir",
             self._session_dir.encode(),
-            True,
+            False,
             ray_constants.KV_NAMESPACE_SESSION,
         )
         self.get_gcs_client().internal_kv_put(
             b"temp_dir",
             self._temp_dir.encode(),
-            True,
+            False,
             ray_constants.KV_NAMESPACE_SESSION,
         )
         if self._ray_params.storage is not None:
             self.get_gcs_client().internal_kv_put(
                 b"storage",
                 self._ray_params.storage.encode(),
-                True,
+                False,
                 ray_constants.KV_NAMESPACE_SESSION,
             )
         # Add tracing_startup_hook to redis / internal kv manually
@@ -1206,7 +1205,7 @@ class Node:
             self.get_gcs_client().internal_kv_put(
                 b"tracing_startup_hook",
                 self._ray_params.tracing_startup_hook.encode(),
-                True,
+                False,
                 ray_constants.KV_NAMESPACE_TRACING,
             )
 
