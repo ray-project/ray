@@ -25,7 +25,7 @@ A RayJob manages two aspects:
 ## RayJob Configuration
 
 * `entrypoint` - The shell command to run for this job.
-* `rayClusterSpec` - The spec for the Ray cluster to run the job on.
+* `rayClusterSpec` - The spec for the **RayCluster** to run the job on.
 * `jobId` - _(Optional)_ Job ID to specify for the job. If not provided, one will be generated.
 * `metadata` - _(Optional)_ Arbitrary user-provided metadata for the job.
 * `runtimeEnvYAML` - _(Optional)_ The runtime environment configuration provided as a multi-line YAML string. _(New in KubeRay version 1.0.)_
