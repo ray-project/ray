@@ -76,7 +76,6 @@ def test_fit_with_advanced_scaling_config(ray_start_4_cpus):
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = ScalingConfigAssertingXGBoostTrainer(
         scaling_config=ScalingConfig(
-            trainer_resources={"CPU": 0},
             num_workers=2,
             placement_strategy="SPREAD",
             _max_cpu_fraction_per_node=0.9,
