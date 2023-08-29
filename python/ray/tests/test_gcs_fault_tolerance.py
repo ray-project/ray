@@ -421,9 +421,17 @@ def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconn
     assert passed[0]
 
 
+@pytest.fixture
+def short_gcs_client_connection_timeout(monkeypatch):
+    monkeypatch.setenv("RAY_gcs_rpc_server_connect_timeout_s", "1")
+    yield
+
+
 @pytest.mark.parametrize("auto_reconnect", [True, False])
 def test_gcs_aio_client_reconnect(
-    ray_start_regular_with_external_redis, auto_reconnect
+    short_gcs_client_connection_timeout,
+    ray_start_regular_with_external_redis,
+    auto_reconnect,
 ):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
     gcs_client = ray._raylet.GcsClient(address=gcs_address)
