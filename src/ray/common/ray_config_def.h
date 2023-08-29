@@ -597,7 +597,7 @@ RAY_CONFIG(int, max_io_workers, 4)
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
-/// If set to less than 1.0, Ray will start spilling objects when existing objects
+/// If set to less than 1.0, Ray will start spilling objects when existing primary objects
 /// take more than this percentage of the available memory.
 RAY_CONFIG(float, object_spilling_threshold, 0.8)
 
