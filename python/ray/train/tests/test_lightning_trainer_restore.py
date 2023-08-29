@@ -1,8 +1,8 @@
 import os
 import numpy as np
+from pathlib import Path
 import pytest
 import pytorch_lightning as pl
-from pathlib import Path
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 import ray
