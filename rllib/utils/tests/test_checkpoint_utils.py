@@ -9,9 +9,11 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.simple_q import SimpleQConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.checkpoints import (
     get_checkpoint_info,
     convert_to_msgpack_checkpoint,
+    convert_to_msgpack_policy_checkpoint,
 )
 from ray.rllib.utils.test_utils import check
 from ray import tune
@@ -86,7 +88,7 @@ class TestCheckpointUtils(unittest.TestCase):
     def test_msgpack_checkpoint_translation(self):
         """Tests, whether a checkpoint can be translated into a msgpack-checkpoint ...
 
-        ... and recovered back into and Algorithm, which is identical to a
+        ... and recovered back into an Algorithm, which is identical to a
         pickle-checkpoint-recovered Algorithm (given same initial config).
         """
         # Base config used for both pickle-based checkpoint and msgpack-based one.
@@ -143,9 +145,10 @@ class TestCheckpointUtils(unittest.TestCase):
     def test_msgpack_checkpoint_translation_multi_agent(self):
         """Tests, whether a checkpoint can be translated into a msgpack-checkpoint ...
 
-        ... and recovered back into and Algorithm, which is identical to a
+        ... and recovered back into an Algorithm, which is identical to a
         pickle-checkpoint-recovered Algorithm (given same initial config).
         """
+
         # Base config used for both pickle-based checkpoint and msgpack-based one.
         def mapping_fn(aid, episode, worker, **kwargs):
             return "pol" + str(aid)
@@ -226,6 +229,44 @@ class TestCheckpointUtils(unittest.TestCase):
 
         algo1.stop()
         algo2.stop()
+
+    def test_msgpack_policy_checkpoint_translation(self):
+        """Tests, whether a Policy checkpoint can be translated into msgpack ...
+
+        ... and recovered back into a Policy, which is identical to a
+        pickle-checkpoint-recovered Policy (given same initial config).
+        """
+        # Base config used for both pickle-based checkpoint and msgpack-based one.
+        config = SimpleQConfig().environment("CartPole-v1")
+        # Build algorithm/policy objects.
+        algo1 = config.build()
+        pol1 = algo1.get_policy()
+        # Get its state.
+        pickle_state = pol1.get_state()
+
+        # Create standard (pickle-based) checkpoint.
+        with tempfile.TemporaryDirectory() as pickle_cp_dir:
+            pol1.export_checkpoint(pickle_cp_dir)
+            # Now convert pickle checkpoint to msgpack using the provided
+            # utility function.
+            with tempfile.TemporaryDirectory() as msgpack_cp_dir:
+                convert_to_msgpack_policy_checkpoint(pickle_cp_dir, msgpack_cp_dir)
+                msgpack_cp_info = get_checkpoint_info(msgpack_cp_dir)
+                self.assertTrue(msgpack_cp_info["type"] == "Policy")
+                self.assertTrue(msgpack_cp_info["format"] == "msgpack")
+                self.assertTrue(msgpack_cp_info["policy_ids"] is None)
+                # Try recreating a new policy object from the msgpack checkpoint.
+                pol2 = Policy.from_checkpoint(msgpack_cp_dir)
+        # Get the state of the policy recovered from msgpack.
+        msgpack_state = pol2.get_state()
+
+        # Make sure the states? match 100%. Our `check` utility
+        # cannot handle comparing types/classes, so we'll have to serialize the
+        # pickle'd config (which contains types, rather than class strings).
+        pickle_state["policy_spec"]["config"] = AlgorithmConfig._serialize_dict(
+            pickle_state["policy_spec"]["config"]
+        )
+        check(pickle_state, msgpack_state)
 
 
 if __name__ == "__main__":

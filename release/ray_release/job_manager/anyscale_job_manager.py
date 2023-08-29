@@ -274,25 +274,25 @@ class AnyscaleJobManager:
         Obtain any ray logs that contain keywords that indicate a crash, such as
         ERROR or Traceback
         """
-        tmpdir = tempfile.mktemp()
-        try:
-            subprocess.check_output(
-                [
-                    "anyscale",
-                    "logs",
-                    "cluster",
-                    "--id",
-                    self.cluster_manager.cluster_id,
-                    "--head-only",
-                    "--download",
-                    "--download-dir",
-                    tmpdir,
-                ]
-            )
-        except Exception as e:
-            logger.log(f"Failed to download logs from anyscale {e}")
-            return None
-        return AnyscaleJobManager._find_job_driver_and_ray_error_logs(tmpdir)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                subprocess.check_output(
+                    [
+                        "anyscale",
+                        "logs",
+                        "cluster",
+                        "--id",
+                        self.cluster_manager.cluster_id,
+                        "--head-only",
+                        "--download",
+                        "--download-dir",
+                        tmpdir,
+                    ]
+                )
+            except Exception as e:
+                logger.log(f"Failed to download logs from anyscale {e}")
+                return None
+            return AnyscaleJobManager._find_job_driver_and_ray_error_logs(tmpdir)
 
     @staticmethod
     def _find_job_driver_and_ray_error_logs(
