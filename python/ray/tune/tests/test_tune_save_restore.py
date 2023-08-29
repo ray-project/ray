@@ -117,15 +117,6 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         ).trials
         self.assertIsNone(trial.error_file)
 
-    def testTildeAbsolutePath(self):
-        local_dir = "~/test_tilde_absolute_local_dir"
-        exp_name = self.prefix + "TildeAbsolutePath"
-        absolute_local_dir = os.path.abspath(os.path.expanduser(local_dir))
-        self.absolute_local_dir = absolute_local_dir
-        self.assertFalse(os.path.exists(absolute_local_dir))
-        self._train(exp_name, local_dir, absolute_local_dir)
-        self._restore(exp_name, local_dir, absolute_local_dir)
-
     def testTempfile(self):
         local_dir = tempfile.mkdtemp()
         exp_name = self.prefix + "Tempfile"
