@@ -593,7 +593,7 @@ py_test(
     size = "small",
     srcs = ["examples/hyperband_function_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "example", "new_storage"],
     args = ["--smoke-test"]
 )
 
