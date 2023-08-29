@@ -2,7 +2,6 @@ import os
 import json
 import pandas as pd
 import pyarrow
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -14,7 +13,6 @@ from ray.air.constants import (
     EXPR_PROGRESS_FILE,
     EXPR_ERROR_PICKLE_FILE,
 )
-from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 import logging
@@ -58,22 +56,6 @@ class Result:
     _remote_path: Optional[str] = None
     _storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
     _items_to_repr = ["error", "metrics", "path", "filesystem", "checkpoint"]
-    # Deprecate: raise in 2.5, remove in 2.6
-    log_dir: Optional[Path] = None
-
-    def __post_init__(self):
-        if self.log_dir and log_once("result_log_dir_deprecated"):
-            warnings.warn(
-                "The `Result.log_dir` property is deprecated. "
-                "Use `local_path` instead."
-            )
-            self._local_path = str(self.log_dir)
-
-        # Duplicate for retrieval
-        self.log_dir = Path(self._local_path) if self._local_path else None
-        # Backwards compatibility: Make sure to cast Path to string
-        # Deprecate: Remove this line after 2.6
-        self._local_path = str(self._local_path) if self._local_path else None
 
     @property
     def config(self) -> Optional[Dict[str, Any]]:
