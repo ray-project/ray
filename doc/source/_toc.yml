@@ -82,14 +82,9 @@ parts:
             title: User Guides
           - file: train/examples
             title: "Examples"
-          - file: train/internals/index
-            title: "Internals"
-            sections:
-              - file: train/internals/architecture
-              - file: train/internals/benchmarks
-              - file: train/internals/environment-variables
+          - file: train/benchmarks
+            title: "Benchmarks"
           - file: train/api/api
-          - file: train/faq
 
       - file: tune/index
         title: Ray Tune
