@@ -8,7 +8,6 @@ from typing import Dict, List, Optional
 
 import ray
 from ray import train, tune
-from ray.train import Checkpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune.experiment import Trial
 
