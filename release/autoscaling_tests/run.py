@@ -4,7 +4,7 @@ import json
 import os
 import time
 
-from logger import logger 
+from logger import logger
 
 WORKLOAD_SCRIPTS = [
     "test_core.py",

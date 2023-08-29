@@ -6,7 +6,7 @@ from ray.autoscaler.v2.tests.util import (
     check_cluster,
 )
 import time
-from logger import logger 
+from logger import logger
 
 ray.init("auto")
 
