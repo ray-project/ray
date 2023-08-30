@@ -4,10 +4,9 @@ import pandas as pd
 import pyarrow
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
     EXPR_RESULT_FILE,
     EXPR_PROGRESS_FILE,
@@ -16,6 +15,9 @@ from ray.air.constants import (
 from ray.util.annotations import PublicAPI
 
 import logging
+
+if TYPE_CHECKING:
+    from ray.train import Checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +50,10 @@ class Result:
     """
 
     metrics: Optional[Dict[str, Any]]
-    checkpoint: Optional[Checkpoint]
+    checkpoint: Optional["Checkpoint"]
     error: Optional[Exception]
     metrics_dataframe: Optional["pd.DataFrame"] = None
-    best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]] = None
+    best_checkpoints: Optional[List[Tuple["Checkpoint", Dict[str, Any]]]] = None
     _local_path: Optional[str] = None
     _remote_path: Optional[str] = None
     _storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
@@ -137,8 +139,7 @@ class Result:
             A :py:class:`Result` object of that trial.
         """
         # TODO(justinvyu): Fix circular dependency.
-        from ray.train._checkpoint import Checkpoint as NewCheckpoint
-        from ray.train._internal.storage import _use_storage_context
+        from ray.train import Checkpoint
         from ray.train.constants import CHECKPOINT_DIR_NAME
 
         cls._validate_trial_dir(path)
@@ -168,16 +169,10 @@ class Result:
         checkpoint_dirs = sorted(local_path.glob("checkpoint_*"))
 
         if checkpoint_dirs:
-            if _use_storage_context():
-                checkpoints = [
-                    NewCheckpoint.from_directory(checkpoint_dir)
-                    for checkpoint_dir in checkpoint_dirs
-                ]
-            else:
-                checkpoints = [
-                    Checkpoint.from_directory(checkpoint_dir)
-                    for checkpoint_dir in checkpoint_dirs
-                ]
+            checkpoints = [
+                Checkpoint.from_directory(checkpoint_dir)
+                for checkpoint_dir in checkpoint_dirs
+            ]
 
             metrics = []
             for checkpoint_dir in checkpoint_dirs:
@@ -220,7 +215,7 @@ class Result:
         )
 
     @PublicAPI(stability="alpha")
-    def get_best_checkpoint(self, metric: str, mode: str) -> Optional[Checkpoint]:
+    def get_best_checkpoint(self, metric: str, mode: str) -> Optional["Checkpoint"]:
         """Get the best checkpoint from this trial based on a specific metric.
 
         Any checkpoints without an associated metric value will be filtered out.
