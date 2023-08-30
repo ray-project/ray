@@ -8,7 +8,7 @@ Ray Train Overview
 .. .. image:: ./images/train-concepts.svg
         
 
-To use Ray Train effectively, there are four main concepts you need to understand:
+To use Ray Train effectively, you need to understand four main concepts:
 
 #. :ref:`Training function <train-overview-training-function>`: A Python function that contains your model training logic.
 #. :ref:`Worker <train-overview-worker>`: A process that runs the training function.
@@ -88,9 +88,10 @@ The Trainer ties the previous three concepts together to launch distributed trai
 Ray Train provides a Trainer class for different frameworks.
 
 Calling the ``fit()`` method executes the training job by:
-1. Launching workers as defined by the `scaling_config`.
-2. Setting up the framework's distributed environment on all workers.
-3. Running the `train_func` on all workers.
+
+#. Launching workers as defined by the `scaling_config`.
+#. Setting up the framework's distributed environment on all workers.
+#. Running the `train_func` on all workers.
 
 .. code-block:: python
 
