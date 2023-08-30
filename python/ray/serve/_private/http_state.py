@@ -484,6 +484,15 @@ class HTTPProxyStateManager:
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=0,
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+            runtime_env={
+                "env_vars": {
+                    "LD_PRELOAD": "/usr/lib/x86_64-linux-gnu/libtcmalloc_and_profiler.so.4",  # noqa: E501
+                    "HEAPPROFILE": "tcmalloc",
+                    "HEAP_PROFILE_INUSE_INTERVAL": "1073741824000000",
+                    "HEAP_PROFILE_ALLOCATION_INTERVAL": "5073741824000000",
+                    "HEAPPROFILESIGNAL": 12,
+                }
+            },
         ).remote(
             self._config.host,
             port,
