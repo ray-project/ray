@@ -56,7 +56,7 @@ GPU and GRAM profiling for your GPU workloads like distributed training. This he
 ### PyTorch Profiler
 PyTorch Profiler is a tool that allows the collection of performance metrics (especially GPU metrics) during training and inference.
 
-Here are the {ref}`steps to use PyTorch Profiler with Ray Train <performance-debugging-gpu-profiling>`.
+Here are the {ref}`steps to use PyTorch Profiler with Ray Train or Ray Data <performance-debugging-gpu-profiling>`.
 
 (profiling-task_actor)=
 ## Ray Task / Actor profiling
