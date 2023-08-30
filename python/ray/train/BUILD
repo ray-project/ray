@@ -69,7 +69,7 @@ py_test(
 
 py_test(
     name = "torch_exp_tracking_mlflow",
-    size = "small",
+    size = "medium",
     main = "examples/experiment_tracking/torch_exp_tracking_mlflow.py",
     srcs = ["examples/experiment_tracking/torch_exp_tracking_mlflow.py"],
     tags = ["team:ml", "exclusive", "no_main", "new_storage"],
@@ -82,7 +82,7 @@ py_test(
     size = "small",
     main = "examples/experiment_tracking/lightning_exp_tracking_wandb.py",
     srcs = ["examples/experiment_tracking/lightning_exp_tracking_wandb.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
-    tags = ["team:ml", "exclusive", "no_main", "needs_credentials"],
+    tags = ["team:ml", "exclusive", "no_main", "needs_credentials", "new_storage"],
     deps = [":train_lib"],
 )
 
@@ -91,7 +91,7 @@ py_test(
     size = "small",
     main = "examples/experiment_tracking/lightning_exp_tracking_comet.py",
     srcs = ["examples/experiment_tracking/lightning_exp_tracking_comet.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
-    tags = ["team:ml", "exclusive", "no_main", "needs_credentials"],
+    tags = ["team:ml", "exclusive", "no_main", "needs_credentials", "new_storage"],
     deps = [":train_lib"],
 )
 
@@ -100,7 +100,7 @@ py_test(
     size = "small",
     main = "examples/experiment_tracking/torch_exp_tracking_wandb.py",
     srcs = ["examples/experiment_tracking/torch_exp_tracking_wandb.py"],
-    tags = ["team:ml", "exclusive", "no_main", "needs_credentials"],
+    tags = ["team:ml", "exclusive", "no_main", "needs_credentials", "new_storage"],
     deps = [":train_lib"],
 )
 
