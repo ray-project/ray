@@ -44,7 +44,20 @@ Serve provides a library of HTTP adapters to help you avoid boilerplate code. Th
 (serve-handling-client-disconnects-http)=
 ### Handling client disconnects
 
-When an HTTP client disconnects after sending a request, but before receiving a response, Serve cancels the request. If the request is currently being processed by deployments, and `asyncio.CancelledError`
+When an HTTP client disconnects before receiving a response, Serve cancels its in-flight request:
+
+- If the proxy hasn't yet sent the request to a replica, the request is simply dropped.
+- If the request has been sent to a replica, Serve attempts to interrupt the replica and cancel the request. When the replica enters an `await` statement, Serve raises an `asyncio.CancelledError`. Handle this exception in a try-except block to customize your deployment's behavior when a request is cancelled:
+
+...
+
+If there are no remaining `await` statements in the deployment's code before the request completes, the replica processes the request as usual, sends the response back to the proxy, and the proxy discards the response. Use `await` statements for blocking operations in a deployment, so in-flight requests can be cancelled in the deployment without waiting for the blocking operation to complete.
+
+Serve implements cascading cancellations. If a deployment is `awaiting` a response from another Ray task, Ray actor, or Serve deployment, Serve raises the `asyncio.CancelledError` in the `awaiting` deployment as well as the downstream task, actor, or deployment. This cancellation cascades through any chain of tasks, actors, or deployments that are `awaiting` another task, actor, or deployment. To block a cancellation from cascading to a downstream task, actor, or deployment, use `asyncio.shield`:
+
+...
+
+Even if ... is cancelled, the cancellation won't be raised inside ... or any subsequent async calls that ... makes.
 
 (serve-fastapi-http)=
 ## FastAPI HTTP Deployments
@@ -137,7 +150,7 @@ Got result 0.9s after start: '9'
 (ServeReplica:default_StreamingResponder pid=41052) INFO 2023-05-25 10:49:52,230 default_StreamingResponder default_StreamingResponder#qlZFCa yomKnJifNJ / default replica.py:634 - __CALL__ OK 1017.6ms
 ```
 
-### Handling client disconnects
+### Terminating the stream when a client disconnects
 
 In some cases, you may want to cease processing a request when the client disconnects before the full stream has been returned.
 If you pass an async generator to `StreamingResponse`, it will be cancelled and raise an `asyncio.CancelledError` when the client disconnects.
