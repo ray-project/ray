@@ -11,6 +11,8 @@ from ray.tune.experiment.trial import Trial
 from ray.tune.web_server import TuneClient
 from ray.tune.execution.tune_controller import TuneController
 
+from ray.train.tests.util import mock_storage_context
+
 
 def get_valid_port():
     port = 4321
@@ -31,11 +33,12 @@ class TuneServerSuite(unittest.TestCase):
 
         ray.init(num_cpus=4, num_gpus=1)
         port = get_valid_port()
-        self.runner = TuneController(server_port=port)
+        self.runner = TuneController(server_port=port, storage=mock_storage_context())
         runner = self.runner
         kwargs = {
             "stopping_criterion": {"training_iteration": 3},
             "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+            "storage": mock_storage_context(),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
@@ -86,6 +89,7 @@ class TuneServerSuite(unittest.TestCase):
             trial_id="function_trial",
             stopping_criterion={"training_iteration": 3},
             config={"callbacks": {"on_episode_start": lambda x: None}},
+            storage=mock_storage_context(),
         )
         runner.add_trial(test_trial)
 

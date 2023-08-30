@@ -1,4 +1,3 @@
-import os
 import shutil
 import tempfile
 import unittest
@@ -9,11 +8,8 @@ from ray.air.constants import TRAINING_ITERATION
 
 from torch.utils.data import DataLoader, Dataset
 
-from ray import tune
-from ray.tune.integration.pytorch_lightning import (
-    TuneReportCallback,
-    TuneReportCheckpointCallback,
-)
+from ray import train, tune
+from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
 
 
 class _MockDataset(Dataset):
@@ -73,7 +69,12 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
         def train(config):
             module = _MockModule(10.0, 20.0)
             trainer = pl.Trainer(
-                max_epochs=1, callbacks=[TuneReportCallback(on="validation_end")]
+                max_epochs=1,
+                callbacks=[
+                    TuneReportCheckpointCallback(
+                        on="validation_end", save_checkpoints=False
+                    )
+                ],
             )
             trainer.fit(module)
 
@@ -87,8 +88,10 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             trainer = pl.Trainer(
                 max_epochs=1,
                 callbacks=[
-                    TuneReportCallback(
-                        metrics={"tune_loss": "avg_val_loss"}, on="validation_end"
+                    TuneReportCheckpointCallback(
+                        metrics={"tune_loss": "avg_val_loss"},
+                        on="validation_end",
+                        save_checkpoints=False,
                     )
                 ],
             )
@@ -102,7 +105,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         self.addCleanup(lambda: shutil.rmtree(tmpdir))
 
-        def train(config):
+        def train_fn(config):
             module = _MockModule(10.0, 20.0)
             trainer = pl.Trainer(
                 max_epochs=10,
@@ -115,54 +118,18 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             trainer.fit(module)
 
         checkpoint_config = CheckpointConfig(num_to_keep=100)
-        analysis = tune.run(
-            train,
-            stop={TRAINING_ITERATION: 10},
-            checkpoint_config=checkpoint_config,
-            storage_path=tmpdir,
+        tuner = tune.Tuner(
+            train_fn,
+            run_config=train.RunConfig(
+                stop={TRAINING_ITERATION: 10},
+                storage_path=tmpdir,
+                checkpoint_config=checkpoint_config,
+            ),
         )
+        results = tuner.fit()
 
-        checkpoints = [
-            dir
-            for dir in os.listdir(analysis.trials[0].local_path)
-            if dir.startswith("checkpoint")
-        ]
         # 1 checkpoint per epoch
-        self.assertEqual(len(checkpoints), 10)
-
-    def testReportCheckpointCallback(self):
-        tmpdir = tempfile.mkdtemp()
-        self.addCleanup(lambda: shutil.rmtree(tmpdir))
-
-        def train(config):
-            module = _MockModule(10.0, 20.0)
-            trainer = pl.Trainer(
-                max_epochs=1,
-                callbacks=[
-                    TuneReportCheckpointCallback(
-                        metrics=["avg_val_loss"],
-                        filename="trainer.ckpt",
-                        on="validation_end",
-                    )
-                ],
-            )
-            trainer.fit(module)
-
-        checkpoint_config = CheckpointConfig(num_to_keep=100)
-        analysis = tune.run(
-            train,
-            stop={TRAINING_ITERATION: 10},
-            checkpoint_config=checkpoint_config,
-            storage_path=tmpdir,
-        )
-
-        checkpoints = [
-            dir
-            for dir in os.listdir(analysis.trials[0].local_path)
-            if dir.startswith("checkpoint")
-        ]
-        # 1 checkpoint after the validation step
-        self.assertEqual(len(checkpoints), 1)
+        self.assertEqual(len(results[0].best_checkpoints), 10)
 
 
 if __name__ == "__main__":

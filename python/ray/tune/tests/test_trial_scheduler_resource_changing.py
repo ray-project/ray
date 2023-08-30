@@ -2,7 +2,6 @@ import shutil
 import tempfile
 import unittest
 
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune import PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
@@ -12,22 +11,14 @@ from ray.tune.schedulers.resource_changing_scheduler import (
     DistributeResources,
     DistributeResourcesToTopJob,
 )
+
 from ray.tune.tests.execution.utils import create_execution_test_objects
+from ray.train.tests.util import mock_storage_context
 
 
 class MockTuneController(TuneController):
     def get_live_trials(self):
         return [t for t in self._trials if t.status != "TERMINATED"]
-
-
-class MockTrial(Trial):
-    @property
-    def checkpoint(self):
-        return _TrackedCheckpoint(
-            dir_or_data="None",
-            storage_mode=CheckpointStorage.MEMORY,
-            metrics={},
-        )
 
 
 class TestUniformResourceAllocation(unittest.TestCase):
@@ -38,19 +29,20 @@ class TestUniformResourceAllocation(unittest.TestCase):
             resources={"CPU": 8, "GPU": 8},
             reuse_actors=False,
             tune_controller_cls=MockTuneController,
+            storage=mock_storage_context(),
         )
 
     def tearDown(self) -> None:
         shutil.rmtree(self.tmpdir)
 
     def _prepareTrials(self, scheduler, base_pgf):
-        trial1 = MockTrial("mock", config=dict(num=1), stub=True)
+        trial1 = Trial("mock", config=dict(num=1), stub=True)
         trial1.placement_group_factory = base_pgf
-        trial2 = MockTrial("mock", config=dict(num=2), stub=True)
+        trial2 = Trial("mock", config=dict(num=2), stub=True)
         trial2.placement_group_factory = base_pgf
-        trial3 = MockTrial("mock", config=dict(num=3), stub=True)
+        trial3 = Trial("mock", config=dict(num=3), stub=True)
         trial3.placement_group_factory = base_pgf
-        trial4 = MockTrial("mock", config=dict(num=4), stub=True)
+        trial4 = Trial("mock", config=dict(num=4), stub=True)
         trial4.placement_group_factory = base_pgf
 
         self.tune_controller._trials = [trial1, trial2, trial3, trial4]

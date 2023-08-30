@@ -1,5 +1,7 @@
 # coding: utf-8
 import os
+from packaging.version import Version
+import pandas
 import pytest
 import shutil
 import tempfile
@@ -13,9 +15,8 @@ from zoopt import ValueType
 from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
 import ray
-from ray import tune
+from ray import train, tune
 from ray.rllib import _register_all
-from ray.train._internal.storage import _use_storage_context
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search.dragonfly import DragonflySearch
@@ -34,7 +35,7 @@ from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 
 class AbstractWarmStartTest:
     def setUp(self):
-        ray.init(num_cpus=1, local_mode=True)
+        ray.init(num_cpus=1)
         self.tmpdir = tempfile.mkdtemp()
         self.experiment_name = "results"
 
@@ -157,9 +158,9 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             "z": hp.uniform("z", -10, 0),
         }
 
-        def cost(space, reporter):
+        def cost(space):
             loss = space["x"] ** 2 + space["y"] ** 2 + space["z"] ** 2
-            reporter(loss=loss)
+            train.report(dict(loss=loss))
 
         search_alg = HyperOptSearch(
             space,
@@ -175,8 +176,10 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self, analysis=None):
         space = {"width": (0, 20), "height": (-100, 100)}
 
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+        def cost(space):
+            train.report(
+                dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+            )
 
         search_alg = BayesOptSearch(space, metric="loss", mode="min", analysis=analysis)
         return search_alg, cost
@@ -198,8 +201,10 @@ class CFOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             "width": tune.randint(0, 100),
         }
 
-        def cost(param, reporter):
-            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
+        def cost(space):
+            train.report(
+                dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+            )
 
         search_alg = CFO(
             space=space,
@@ -219,8 +224,10 @@ class BlendSearchWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             "time_budget_s": 10,
         }
 
-        def cost(param, reporter):
-            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3), cost=1)
+        def cost(param):
+            train.report(
+                dict(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3), cost=1)
+            )
 
         search_alg = BlendSearch(
             space=space,
@@ -241,8 +248,8 @@ class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         previously_run_params = [[10, 0], [15, -20]]
         known_rewards = [-189, -1144]
 
-        def cost(space, reporter):
-            reporter(loss=(space["height"] ** 2 + space["width"] ** 2))
+        def cost(space):
+            train.report(dict(loss=(space["height"] ** 2 + space["width"] ** 2)))
 
         search_alg = SkOptSearch(
             optimizer,
@@ -261,8 +268,10 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         parameter_names = ["height", "width"]
         optimizer = optimizerlib.OnePlusOne(instrumentation)
 
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+        def cost(space):
+            train.report(
+                dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+            )
 
         search_alg = NevergradSearch(
             optimizer,
@@ -281,8 +290,10 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
         )
 
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+        def cost(space):
+            train.report(
+                dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+            )
 
         search_alg = OptunaSearch(
             space, sampler=TPESampler(seed=10), metric="loss", mode="min"
@@ -296,9 +307,9 @@ class DragonflyWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
         from dragonfly import load_config
 
-        def cost(space, reporter):
+        def cost(space):
             height, width = space["point"]
-            reporter(loss=(height - 14) ** 2 - abs(width - 3))
+            train.report(dict(loss=(height - 14) ** 2 - abs(width - 3)))
 
         domain_vars = [
             {"name": "height", "type": "float", "min": -10, "max": 10},
@@ -339,8 +350,10 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             },
         ]
 
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+        def cost(space):
+            train.report(
+                dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+            )
 
         # Unfortunately, SigOpt doesn't allow setting of random state. Thus,
         # we always end up with different suggestions, which is unsuitable
@@ -389,8 +402,10 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             "width": (ValueType.DISCRETE, [0, 20], False),
         }
 
-        def cost(param, reporter):
-            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
+        def cost(param):
+            train.report(
+                dict(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
+            )
 
         search_alg = ZOOptSearch(
             algo="Asracos",  # only support ASRacos currently
@@ -405,14 +420,19 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
+        if Version(pandas.__version__) >= Version("2.0.0"):
+            pytest.skip("HEBO does not support pandas>=2.0.0")
+
         space_config = [
             {"name": "width", "type": "num", "lb": 0, "ub": 20},
             {"name": "height", "type": "num", "lb": -100, "ub": 100},
         ]
         space = HEBODesignSpace().parse(space_config)
 
-        def cost(param, reporter):
-            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
+        def cost(param):
+            train.report(
+                dict(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
+            )
 
         search_alg = HEBOSearch(
             space=space, metric="loss", mode="min", random_state_seed=5
@@ -464,21 +484,24 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         client = AxClient(random_seed=4321, generation_strategy=gs)
         client.create_experiment(parameters=space, objective_name="loss", minimize=True)
 
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+        def cost(space):
+            train.report(
+                dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+            )
 
         search_alg = AxSearch(ax_client=client)
         return search_alg, cost
 
 
-@unittest.skipIf(not _use_storage_context(), "Disabled for old code path")
 class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space = {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
 
-        def cost(space, reporter):
+        def cost(space):
             for i in range(10):
-                reporter(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3 - i))
+                train.report(
+                    dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3 - i))
+                )
 
         search_alg = TuneBOHB(space=space, metric="loss", mode="min", seed=1)
 
