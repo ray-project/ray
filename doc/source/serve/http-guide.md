@@ -47,7 +47,7 @@ Serve provides a library of HTTP adapters to help you avoid boilerplate code. Th
 When an HTTP client disconnects before receiving a response, Serve cancels its in-flight request:
 
 - If the proxy hasn't yet sent the request to a replica, the request is simply dropped.
-- If the request has been sent to a replica, Serve attempts to interrupt the replica and cancel the request. When the replica enters an `await` statement, Serve raises an `asyncio.CancelledError`. Handle this exception in a try-except block to customize your deployment's behavior when a request is cancelled:
+- If the request has been sent to a replica, Serve attempts to interrupt the replica and cancel the request. The `asyncio.Task` running the handler on the replica will be cancelled, raising an `asyncio.CancelledError` the next time it enters an `await` statement. Handle this exception in a try-except block to customize your deployment's behavior when a request is cancelled:
 
 ```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __start_basic_disconnect__
