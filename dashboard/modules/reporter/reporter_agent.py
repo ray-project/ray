@@ -375,6 +375,7 @@ class ReporterAgent(
             worker_id = None if worker_id.is_nil() else worker_id.hex()
             self._metrics_agent.proxy_export_metrics(request.metrics, worker_id)
         except Exception:
+            logger.info(f"ReportOCMetrics {request}")
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
 
