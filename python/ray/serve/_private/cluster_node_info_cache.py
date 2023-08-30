@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import (
+    Optional,
     Set,
     List,
     Tuple,
@@ -16,6 +17,7 @@ class ClusterNodeInfoCache(ABC):
     def __init__(self, gcs_client: GcsClient):
         self._gcs_client = gcs_client
         self._cached_alive_nodes = None
+        self._cached_node_labels = dict()
 
     def update(self):
         """Update the cache by fetching latest node information from GCS.
@@ -35,6 +37,13 @@ class ClusterNodeInfoCache(ABC):
         # Sort on NodeID to ensure the ordering is deterministic across the cluster.
         sorted(alive_nodes)
         self._cached_alive_nodes = alive_nodes
+        self._cached_node_labels = {
+            ray.NodeID.from_binary(node_id).hex(): {
+                label_name.decode("utf-8"): label_value.decode("utf-8")
+                for label_name, label_value in node["labels"].items()
+            }
+            for (node_id, node) in nodes.items()
+        }
 
     def get_alive_nodes(self) -> List[Tuple[str, str]]:
         """Get IDs and IPs for all live nodes in the cluster.
@@ -53,6 +62,11 @@ class ClusterNodeInfoCache(ABC):
         """Get IDs of all draining nodes in the cluster."""
         raise NotImplementedError
 
+    @abstractmethod
+    def get_node_az(self, node_id: str) -> Optional[str]:
+        """Get availability zone of a node."""
+        raise NotImplementedError
+
     def get_active_node_ids(self) -> Set[str]:
         """Get IDs of all active nodes in the cluster.
 
@@ -67,3 +81,7 @@ class DefaultClusterNodeInfoCache(ClusterNodeInfoCache):
 
     def get_draining_node_ids(self) -> Set[str]:
         return set()
+
+    def get_node_az(self, node_id: str) -> Optional[str]:
+        """Get availability zone of a node."""
+        return None

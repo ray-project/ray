@@ -336,7 +336,7 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     """
 
     if set_flag:
-        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING"] = "1"
+        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"] = "1"
 
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
@@ -361,8 +361,8 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     else:
         assert len(set(responses)) == 2
 
-    if "RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING" in os.environ:
-        del os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING"]
+    if "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING" in os.environ:
+        del os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"]
 
 
 if __name__ == "__main__":
