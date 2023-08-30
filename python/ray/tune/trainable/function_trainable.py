@@ -6,7 +6,6 @@ import sys
 import threading
 import time
 import uuid
-import warnings
 from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type
@@ -45,7 +44,6 @@ from ray.tune.utils import (
     _detect_reporter,
 )
 from ray.util.annotations import DeveloperAPI
-from ray.util.debug import log_once
 
 
 logger = logging.getLogger(__name__)
