@@ -486,11 +486,11 @@ def test_detect_reuse_mixins():
 
     assert not _check_mixin("PPO")
 
-    def train(config):
+    def train_fn(config):
         pass
 
-    assert not _check_mixin(train)
-    assert _check_mixin(dummy_mixin(train))
+    assert not _check_mixin(train_fn)
+    assert _check_mixin(dummy_mixin(train_fn))
 
     class MyTrainable(Trainable):
         pass
