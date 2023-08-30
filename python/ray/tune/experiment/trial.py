@@ -27,6 +27,7 @@ from ray.air.constants import (
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.train import Checkpoint
+from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
 from ray.train._internal.checkpoint_manager import (
     _TrainingResult,
     _CheckpointManager as _NewCheckpointManager,
@@ -244,6 +245,13 @@ def _noop_logger_creator(config: Dict[str, Any], logdir: str):
     os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
 
     os.makedirs(logdir, exist_ok=True)
+
+    if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
+        # Set the working dir to the trial directory in the remote process,
+        # for user file writes
+        if not ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
+            os.chdir(logdir)
+
     return NoopLogger(config, logdir)
 
 
