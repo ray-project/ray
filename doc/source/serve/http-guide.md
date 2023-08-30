@@ -41,13 +41,13 @@ Often for ML models, you just need the API to accept a `numpy` array. You can us
 Serve provides a library of HTTP adapters to help you avoid boilerplate code. The [later section](serve-http-adapters) dives deeper into how these works.
 ```
 
-(serve-handling-client-disconnects-http)=
-### Handling client disconnects
+(serve-request-cancellation-http)=
+### Request cancellation
 
-When an HTTP client disconnects before receiving a response, Serve cancels its in-flight request:
+When processing a request takes longer than the [end-to-end timeout](serve-performance-e2e-timeout) or an HTTP client disconnects before receiving a response, Serve cancels the in-flight request:
 
 - If the proxy hasn't yet sent the request to a replica, the request is simply dropped.
-- If the request has been sent to a replica, Serve attempts to interrupt the replica and cancel the request. The `asyncio.Task` running the handler on the replica will be cancelled, raising an `asyncio.CancelledError` the next time it enters an `await` statement. Handle this exception in a try-except block to customize your deployment's behavior when a request is cancelled:
+- If the request has been sent to a replica, Serve attempts to interrupt the replica and cancel the request. The `asyncio.Task` running the handler on the replica will be cancelled, raising an `asyncio.CancelledError` the next time it enters an `await` statement. See [the asyncio docs](https://docs.python.org/3/library/asyncio-task.html#task-cancellation) for more info. Handle this exception in a try-except block to customize your deployment's behavior when a request is cancelled:
 
 ```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __start_basic_disconnect__
@@ -57,7 +57,9 @@ When an HTTP client disconnects before receiving a response, Serve cancels its i
 
 If there are no remaining `await` statements in the deployment's code before the request completes, the replica processes the request as usual, sends the response back to the proxy, and the proxy discards the response. Use `await` statements for blocking operations in a deployment, so in-flight requests can be cancelled in the deployment without waiting for the blocking operation to complete.
 
-Serve implements cascading cancellations. If a deployment is `awaiting` a response from another Ray task, Ray actor, or Serve deployment, Serve raises the `asyncio.CancelledError` in the `awaiting` deployment as well as the downstream task, actor, or deployment. This cancellation cascades through any chain of tasks, actors, or deployments that are `awaiting` another task, actor, or deployment. To block a cancellation from cascading to a downstream task, actor, or deployment, use `asyncio.shield`:
+Serve implements cascading cancellations. If a deployment makes a call to a Ray task, Ray actor, or another Serve deployment, Serve raises the `asyncio.CancelledError` in the calling deployment as well as the downstream task, actor, or deployment. In general, when any task, actor, or deployment is cancelled, the cancellation cascades to any downstream task, actor, or deployment that was called.
+
+To ignore cancellation, use `asyncio.shield`:
 
 ```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __start_shielded_disconnect__
@@ -65,7 +67,7 @@ Serve implements cascading cancellations. If a deployment is `awaiting` a respon
 :language: python
 ```
 
-When the request is cancelled, a cancellation error is raised inside the `Guardian` deployment. However, the cancellation won't be raised inside `sleeper` or any subsequent async calls that `sleeper` makes.
+When the request is cancelled, a cancellation error is raised inside the `Guardian` deployment. However, the cancellation won't be raised inside `sleeper`. Note that `asyncio.shield` does not block cascading canellations. It must be use on each call that should not be cancelled.
 
 (serve-fastapi-http)=
 ## FastAPI HTTP Deployments

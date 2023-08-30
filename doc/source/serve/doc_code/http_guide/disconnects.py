@@ -1,21 +1,24 @@
+# flake8: noqa
+# fmt: off
+
 import ray
 from typing import List
 
 # Overwrite print statement to make doc code testable
 @ray.remote
 class PrintStorage:
-
     def __init__(self):
         self.print_storage: List[str] = []
-    
+
     def add(self, s: str):
         self.print_storage.append(s)
-    
+
     def clear(self):
         self.print_storage.clear()
-    
+
     def get(self) -> List[str]:
         return self.print_storage
+
 
 print_storage_handle = PrintStorage.remote()
 
@@ -52,10 +55,7 @@ print_statements = ray.get(print_storage_handle.get.remote())
 
 original_print(print_statements)
 
-assert {
-    "Replica received request!",
-    "Request got cancelled!"
-} == set(print_statements)
+assert {"Replica received request!", "Request got cancelled!"} == set(print_statements)
 
 ray.get(print_storage_handle.clear.remote())
 
@@ -64,9 +64,9 @@ import asyncio
 from ray import serve
 from ray.serve.handle import RayServeHandle
 
+
 @serve.deployment
 class Guardian:
-
     def __init__(self, sleeper_handle: RayServeHandle):
         self.sleeper_handle = sleeper_handle
 
@@ -80,11 +80,13 @@ class Guardian:
         except asyncio.CancelledError:
             print("Guardian's request was cancelled!")
 
+
 @serve.deployment
 async def sleeper():
     print("Sleeper received request!")
     await asyncio.sleep(3)
     print("Sleeper deployment finished sleeping!")
+
 
 app = Guardian.bind(sleeper.bind())
 # __end_shielded_disconnect__
@@ -103,7 +105,7 @@ assert {
     "Guardian received request!",
     "Guardian's request was cancelled!",
     "Sleeper received request!",
-    "Sleeper deployment finished sleeping!"
+    "Sleeper deployment finished sleeping!",
 } == set(print_statements)
 
 ray.get(print_storage_handle.clear.remote())
