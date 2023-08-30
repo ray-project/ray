@@ -75,6 +75,10 @@ TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 
 RAY_AIR_NEW_PERSISTENCE_MODE = "RAY_AIR_NEW_PERSISTENCE_MODE"
 
+# Set this to 0 to disable changing the working directory of each Tune Trainable
+# or Train worker to the trial directory. Defaults to 1.
+RAY_CHDIR_TO_TRIAL_DIR = "RAY_CHDIR_TO_TRIAL_DIR"
+
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
@@ -82,6 +86,7 @@ TRAIN_ENV_VARS = {
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     RAY_AIR_NEW_PERSISTENCE_MODE,
+    RAY_CHDIR_TO_TRIAL_DIR,
 }
 
 # Blacklist virtualized networking.

@@ -38,6 +38,7 @@ from ray.train.constants import (
     WORKER_PID,
     TIME_TOTAL_S,
     LAZY_CHECKPOINT_MARKER_FILE,
+    RAY_CHDIR_TO_TRIAL_DIR,
 )
 
 from ray.train.error import SessionMisuseError
@@ -209,7 +210,12 @@ class _TrainSession:
             # Change the working directory to the local trial directory.
             # -> All workers on the same node share a working directory.
             os.makedirs(storage.trial_local_path, exist_ok=True)
-            os.chdir(storage.trial_local_path)
+            if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
+                logger.debug(
+                    "Switching the working directory to the trial directory: "
+                    f"{storage.trial_local_path}"
+                )
+                os.chdir(storage.trial_local_path)
         else:
             if trial_info:
                 # Change the working directory to `logdir`.
