@@ -73,9 +73,8 @@ Each of the Ray pods in the group can be scheduled on an AWS `p2.xlarge` instanc
 GPU multi-tenancy
 _________________
 
-If a Pod doesn't include `nvidia.com/gpu` in its resource configurations, even if it's scheduled on a GPU node, users typically expect the Pod not to have visibility of any GPU devices.
-However, if `nvidia.com/gpu` isn't specified, the default value for `NVIDIA_VISIBLE_DEVICES` is `all` 
-and the Pod has visibility of all GPU devices on the node.
+If a Pod doesn't include `nvidia.com/gpu` in its resource configurations, users typically expect the Pod to be unaware of any GPU devices, even if it's scheduled on a GPU node.
+However, when `nvidia.com/gpu` isn't specified, the default value for `NVIDIA_VISIBLE_DEVICES` becomes `all`, giving the Pod awareness of all GPU devices on the node.
 This behavior isn't unique to KubeRay, but is a known issue for NVIDIA.
 A workaround is to set the `NVIDIA_VISIBLE_DEVICES` environment variable to `void` in the Pods which don't require GPU devices.
 
