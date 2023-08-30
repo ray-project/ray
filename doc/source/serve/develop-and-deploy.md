@@ -52,6 +52,8 @@ For other HTTP options, see [Set Up FastAPI and HTTP](serve-set-up-fastapi-http)
 
 Note that the code configures parameters for the deployment, such as `num_replicas` and `ray_actor_options`. These parameters help configure the number of copies of the deployment and the resource requirements for each copy. In this case, we set up 2 replicas of the model that take 0.2 CPUs and 0 GPUs each. For a complete guide on the configurable parameters on a deployment, see [Configure a Serve deployment](serve-configure-deployment).
 
+If you have need of sending gRPC requests, see [Set Up gRPC Proxy](serve-set-up-grpc-proxy).
+
 ## Test a Ray Serve application locally
 
 To test locally, run the script with the `serve run` CLI command. This command takes in an import path formatted as `module:application`. Run the command from a directory containing a local copy of the script saved as `model.py`, so it can import the application:
