@@ -4550,7 +4550,7 @@ cdef class CoreWorker:
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
-                         void *user_callback) with gil:
+                         void *user_callback_ptr) with gil:
     cdef:
         c_vector[shared_ptr[CRayObject]] objects_to_deserialize
 
@@ -4564,12 +4564,12 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         result = ray._private.worker.global_worker.deserialize_objects(
             data_metadata_pairs, ids_to_deserialize)[0]
 
-        py_user_callback = <object>user_callback
-        py_user_callback(result)
+        user_callback = <object>user_callback_ptr
+        user_callback(result)
     finally:
         # NOTE: we manually increment the Python reference count of the callback when
         # registering it in the core worker, so we must decrement here to avoid a leak.
-        cpython.Py_DECREF(py_user_callback)
+        cpython.Py_DECREF(user_callback)
 
 
 def del_key_from_storage(host, port, password, use_ssl, key):
