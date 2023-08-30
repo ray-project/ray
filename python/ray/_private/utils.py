@@ -98,7 +98,9 @@ def get_ray_temp_dir():
 def get_ray_address_file(temp_dir: Optional[str]):
     if temp_dir is None:
         temp_dir = get_ray_temp_dir()
-    return os.path.join(temp_dir, "ray_current_cluster")
+    ray_address_file =  os.path.join(temp_dir, "ray_current_cluster")
+    print("Ray address file: ", ray_address_file)
+    return ray_address_file
 
 
 def write_ray_address(ray_address: str, temp_dir: Optional[str] = None):
@@ -125,16 +127,20 @@ def reset_ray_address(temp_dir: Optional[str] = None):
     if os.path.exists(address_file):
         try:
             os.remove(address_file)
-        except OSError:
+        except OSError as error:
+            print(error)
             pass
 
 
 def read_ray_address(temp_dir: Optional[str] = None) -> str:
     address_file = get_ray_address_file(temp_dir)
     if not os.path.exists(address_file):
+        print("Ray address file not found: ", address_file)
         return None
     with open(address_file, "r") as f:
-        return f.read().strip()
+        address =  f.read().strip()
+        print("Ray address: ", address)
+        return address
 
 
 def format_error_message(exception_message: str, task_exception: bool = False):
