@@ -8,7 +8,7 @@ import ray
 from ray.train import CheckpointConfig
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.air.constants import TRAINING_ITERATION
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.tune import PlacementGroupFactory

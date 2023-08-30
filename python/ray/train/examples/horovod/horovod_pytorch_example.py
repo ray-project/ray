@@ -10,8 +10,7 @@ from torchvision import datasets, transforms
 import tempfile
 
 from ray import train
-from ray.train import ScalingConfig
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.horovod import HorovodTrainer
 import ray.train.torch
 
