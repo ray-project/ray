@@ -586,6 +586,45 @@ In this example, we persist the fitted preprocessor using the ``Trainer(metadata
 Performance tips
 ----------------
 
+Prefetching batches
+~~~~~~~~~~~~~~~~~~~
+While iterating over your dataset for training, you can increase ``prefetch_batches`` in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` to further increase performance. While training on the current batch, this launches N background threads to fetch and process the next N batches.
+
+This approach can help if training is bottlenecked on cross-node data transfer or on last-mile preprocessing such as converting batches to tensors or executing ``collate_fn``. However, increasing ``prefetch_batches`` leads to more data that needs to be held in heap memory. By default, ``prefetch_batches`` is set to 1.
+
+For example, the following code prefetches 10 batches at a time for each training worker:
+
+.. testcode::
+
+    import ray
+    from ray import train
+    from ray.train import ScalingConfig
+    from ray.train.torch import TorchTrainer
+
+    ds = ray.data.read_text(
+        "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
+    )
+
+    def train_loop_per_worker():
+        # Get an iterator to the dataset we passed in below.
+        it = train.get_dataset_shard("train")
+        for _ in range(2):
+            # Prefetch 10 batches at a time.
+            for batch in it.iter_batches(batch_size=128, prefetch_batches=10):
+                print("Do some training on batch", batch)
+
+    my_trainer = TorchTrainer(
+        train_loop_per_worker,
+        scaling_config=ScalingConfig(num_workers=2),
+        datasets={"train": ds},
+    )
+    my_trainer.fit()
+
+.. testoutput::
+    :hide:
+
+    ...
+
 .. _dataset_cache_performance:
 
 Caching the preprocessed dataset
@@ -635,49 +674,9 @@ Transformations that you want run per-epoch, such as randomization, should go af
 
     ...
 
-Prefetching batches
-~~~~~~~~~~~~~~~~~~~
-While iterating over your dataset for training, you can increase ``prefetch_batches`` in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` to further increase performance. While training on the current batch, this launches N background threads to fetch and process the next N batches.
-
-This approach can help if training is bottlenecked on cross-node data transfer or on last-mile preprocessing such as converting batches to tensors or executing ``collate_fn``. However, increasing ``prefetch_batches`` leads to more data that needs to be held in heap memory. By default, ``prefetch_batches`` is set to 1.
-
-For example, the following code prefetches 10 batches at a time for each training worker:
-
-.. testcode::
-
-    import ray
-    from ray import train
-    from ray.train import ScalingConfig
-    from ray.train.torch import TorchTrainer
-
-    ds = ray.data.read_text(
-        "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
-    )
-
-    def train_loop_per_worker():
-        # Get an iterator to the dataset we passed in below.
-        it = train.get_dataset_shard("train")
-        for _ in range(2):
-            # Prefetch 10 batches at a time.
-            for batch in it.iter_batches(batch_size=128, prefetch_batches=10):
-                print("Do some training on batch", batch)
-
-    my_trainer = TorchTrainer(
-        train_loop_per_worker,
-        scaling_config=ScalingConfig(num_workers=2),
-        datasets={"train": ds},
-    )
-    my_trainer.fit()
-
-.. testoutput::
-    :hide:
-
-    ...
-
-
 Adding CPU-only nodes to your cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you are bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then the above tip doesn't work. In this case, since Ray supports heterogeneous clusters, you can add more CPU-only nodes to your cluster.
+If you are bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then materializing the dataset doesn't work. In this case, since Ray supports heterogeneous clusters, you can add more CPU-only nodes to your cluster.
 
 For cases where you're bottlenecked by object store memory, adding more CPU-only nodes to your cluster increases total cluster object store memory, allowing more data to be buffered in between preprocessing and training stages.
 
