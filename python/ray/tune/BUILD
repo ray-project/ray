@@ -238,7 +238,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_sample.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "medium_instance", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "medium_instance"],
 )
 
 py_test(
@@ -254,7 +254,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_searchers.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "medium_instance", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "medium_instance"],
 )
 
 py_test(
@@ -334,7 +334,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_trial_scheduler.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "medium_instance", "new_storage"],
+    tags = ["team:ml", "exclusive", "medium_instance"],
 )
 
 py_test(
@@ -342,7 +342,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "medium_instance", "new_storage"],
+    tags = ["team:ml", "exclusive", "medium_instance"],
 )
 
 py_test(
@@ -390,7 +390,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tuner.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "medium_instance", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "medium_instance"],
 )
 
 py_test(
