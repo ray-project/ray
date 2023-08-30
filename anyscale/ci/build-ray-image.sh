@@ -149,7 +149,7 @@ if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
     docker push "${DEST_COMMIT_ML_IMAGE}"
     if [[ "${IMAGE_TYPE}" == "${ML_CUDA_VERSION}" ]]; then
         DEST_ALIAS_IMAGE="${RUNTIME_ML_REPO}:${SHORT_COMMIT}-${PYTHON_VERSION_CODE}-gpu${IMAGE_SUFFIX}"
-        docker tag "${DEST_IMAGE}" "${DEST_ALIAS_IMAGE}"
+        docker tag "${DEST_ML_IMAGE}" "${DEST_ALIAS_IMAGE}"
         docker push "${DEST_ALIAS_IMAGE}"
     fi
 fi
