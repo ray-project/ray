@@ -126,7 +126,7 @@ kubectl delete pod curl
 
 ## Next steps
 
-* Check the [RayService](kuberay-rayservice) document for the full list of RayService features.
+* See [RayService](kuberay-rayservice) document for the full list of RayService features, including in-place update, zero downtime upgrade, and high-availability.
 * Check the [RayService troubleshooting guide](kuberay-raysvc-troubleshoot) if you encounter any issues.
 * Check [Examples](kuberay-examples) for more RayService examples.
 The [MobileNet example](kuberay-mobilenet-rayservice-example) is a good example to start with because it does not require GPUs and is easy to run on a local machine.
