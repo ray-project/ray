@@ -32,7 +32,7 @@ namespace gcs {
 
 class RedisStoreClient : public StoreClient {
  public:
-  explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client);
+  explicit RedisStoreClient(std::unique_ptr<RedisClient> &&redis_client);
 
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
@@ -77,7 +77,7 @@ class RedisStoreClient : public StoreClient {
   /// Otherwise it will disturb the status of the RedisScanner.
   class RedisScanner {
    public:
-    explicit RedisScanner(std::shared_ptr<RedisClient> redis_client,
+    explicit RedisScanner(RedisClient *redis_client,
                           const std::string &external_storage_namespace,
                           const std::string &table_name);
 
@@ -110,7 +110,7 @@ class RedisStoreClient : public StoreClient {
     /// The pending shard scan count.
     std::atomic<size_t> pending_request_count_{0};
 
-    std::shared_ptr<RedisClient> redis_client_;
+    RedisClient *redis_client_;
   };
 
   // Push a request to the sending queue.
@@ -157,7 +157,7 @@ class RedisStoreClient : public StoreClient {
                   const MapCallback<std::string, std::string> &callback);
 
   std::string external_storage_namespace_;
-  std::shared_ptr<RedisClient> redis_client_;
+  std::unique_ptr<RedisClient> redis_client_;
   absl::Mutex mu_;
 
   // The pending redis requests queue for each key.

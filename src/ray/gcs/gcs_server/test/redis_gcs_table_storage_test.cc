@@ -31,16 +31,18 @@ class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
                                     TEST_REDIS_SERVER_PORTS.front(),
                                     "",
                                     /*enable_sharding_conn=*/false);
-    redis_client_ = std::make_shared<gcs::RedisClient>(options);
-    RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
+    auto redis_client = std::make_unique<gcs::RedisClient>(options);
+    RAY_CHECK_OK(redis_client->Connect(io_service_pool_->GetAll()));
+    redis_client_ = redis_client.get();
+    store_client_ = std::make_unique<gcs::RedisStoreClient>(std::move(redis_client));
 
-    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
+    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_.get());
   }
 
   void TearDown() override { redis_client_->Disconnect(); }
 
  protected:
-  std::shared_ptr<gcs::RedisClient> redis_client_;
+  gcs::RedisClient *redis_client_;
 };
 
 TEST_F(RedisGcsTableStorageTest, TestGcsTableApi) { TestGcsTableApi(); }

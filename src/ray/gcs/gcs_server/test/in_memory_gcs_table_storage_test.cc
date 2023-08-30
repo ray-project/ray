@@ -17,14 +17,16 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/test/gcs_table_storage_test_base.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/store_client/observable_store_client.h"
 
 namespace ray {
 
 class InMemoryGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
  public:
   void SetUp() override {
-    gcs_table_storage_ =
-        std::make_shared<gcs::InMemoryGcsTableStorage>(*(io_service_pool_->Get()));
+    store_client_ = std::make_unique<gcs::ObservableStoreClient>(
+        std::make_unique<gcs::InMemoryStoreClient>(*(io_service_pool_->Get())));
+    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_.get());
   }
 };
 
