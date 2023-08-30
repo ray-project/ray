@@ -844,11 +844,14 @@ class DeploymentReplica(VersionedReplica):
         )
         self._multiplexed_model_ids: List = []
 
-    def get_running_replica_info(self) -> RunningReplicaInfo:
+    def get_running_replica_info(
+        self, cluster_node_info_cache: ClusterNodeInfoCache
+    ) -> RunningReplicaInfo:
         return RunningReplicaInfo(
             deployment_name=self.deployment_name,
             replica_tag=self._replica_tag,
             node_id=self.actor_node_id,
+            availability_zone=cluster_node_info_cache.get_node_az(self.actor_node_id),
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
             is_cross_language=self._actor.is_cross_language,
@@ -1287,7 +1290,7 @@ class DeploymentState:
 
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
-            replica.get_running_replica_info()
+            replica.get_running_replica_info(self._cluster_node_info_cache)
             for replica in self._replicas.get([ReplicaState.RUNNING])
         ]
 

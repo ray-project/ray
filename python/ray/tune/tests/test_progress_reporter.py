@@ -251,36 +251,38 @@ VERBOSE_EXP_OUT_1 = "Number of trials: 3/3 (2 PENDING, 1 RUNNING)"
 VERBOSE_EXP_OUT_2 = "Number of trials: 3/3 (3 TERMINATED)"
 
 VERBOSE_TRIAL_NORM_1 = (
-    "Trial train_xxxxx_00000 reported acc=5 "
+    "Trial train_fn_xxxxx_00000 reported acc=5 "
     "with parameters={'do': 'complete'}. This trial completed.\n"
 )
 
 # NOTE: We use Regex for `VERBOSE_TRIAL_NORM_2` to make the test deterministic.
-# `"Trial train_xxxxx_00001 reported..."` and `"Trial train_xxxxx_00001 completed..."`
+# `"Trial train_fn_xxxxx_00001 reported..."` and
+# `"Trial train_fn_xxxxx_00001 completed..."`
 # are printed in separate calls. Sometimes, a status update is printed between the
 # calls. For more information, see #29693.
 VERBOSE_TRIAL_NORM_2_PATTERN = (
-    r"Trial train_xxxxx_00001 reported _metric=6 with parameters=\{'do': 'once'\}\.\n"
+    r"Trial train_fn_xxxxx_00001 reported _metric=6 "
+    r"with parameters=\{'do': 'once'\}\.\n"
     r"(?s).*"
-    r"Trial train_xxxxx_00001 completed\. Last result: _metric=6\n"
+    r"Trial train_fn_xxxxx_00001 completed\. Last result: _metric=6\n"
 )
 
 VERBOSE_TRIAL_NORM_3 = (
-    "Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.\n"
+    "Trial train_fn_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.\n"
 )
 
 VERBOSE_TRIAL_NORM_4 = (
-    "Trial train_xxxxx_00002 reported acc=8 "
+    "Trial train_fn_xxxxx_00002 reported acc=8 "
     "with parameters={'do': 'twice'}. This trial completed.\n"
 )
 
-VERBOSE_TRIAL_WITH_ONCE_RESULT = "Result for train_xxxxx_00001"
-VERBOSE_TRIAL_WITH_ONCE_COMPLETED = "Trial train_xxxxx_00001 completed."
+VERBOSE_TRIAL_WITH_ONCE_RESULT = "Result for train_fn_xxxxx_00001"
+VERBOSE_TRIAL_WITH_ONCE_COMPLETED = "Trial train_fn_xxxxx_00001 completed."
 
 VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------------------+----------+
 | Trial name        | status   | loc               | do       |
 |-------------------+----------+-------------------+----------|
-| train_xxxxx_00000 | RUNNING  | 123.123.123.123:1 | complete |"""
+| train_fn_xxxxx_00000 | RUNNING  | 123.123.123.123:1 | complete |"""
 
 VERBOSE_CMD = """from ray import train as ray_train, tune
 import random
@@ -298,7 +300,7 @@ def mock_get_trial_location(trial, result):
     return location
 
 
-def train(config):
+def train_fn(config):
     if config["do"] == "complete":
         time.sleep(0.1)
         ray_train.report(dict(acc=5, done=True))
@@ -317,7 +319,7 @@ np.random.seed(1234)
 with patch("ray.tune.progress_reporter._get_trial_location",
            mock_get_trial_location):
     tune.run(
-        train,
+        train_fn,
         config={
             "do": tune.grid_search(["complete", "once", "twice"])
         },"""

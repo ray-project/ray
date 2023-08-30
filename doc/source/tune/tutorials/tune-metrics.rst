@@ -22,13 +22,13 @@ This simple callback just prints a metric each time a result is received:
             print(f"Got result: {result['metric']}")
 
 
-    def train(config):
+    def train_fn(config):
         for i in range(10):
             train.report({"metric": i})
 
 
     tuner = tune.Tuner(
-        train,
+        train_fn,
         run_config=air.RunConfig(callbacks=[MyCallback()]))
     tuner.fit()
 
