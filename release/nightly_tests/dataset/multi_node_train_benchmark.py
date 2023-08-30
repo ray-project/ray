@@ -10,15 +10,23 @@ from ray.data.dataset import Dataset
 from ray.data.iterator import DataIterator
 
 import torch.distributed as dist
+import numpy as np
 
 from benchmark import Benchmark, BenchmarkMetric
 
+from torchdata.dataloader2 import DataLoader2
+from torch.utils.data.distributed import DistributedSampler
 
 import time
 import torchvision
 import torch
+from torch.utils.data import DataLoader
 
 from typing import Union, Literal, List, Optional, Dict
+
+from torchdata.datapipes.iter import IterableWrapper, S3FileLoader
+from torchdata.datapipes.iter import FSSpecFileLister
+
 
 # This benchmark does the following:
 # 1) Read files (images or parquet) with ray.data
@@ -94,8 +102,10 @@ def parse_args():
     if args.data_root is None:
         # use default datasets if data root is not provided
         if args.file_type == "image":
-            args.data_root = "s3://anonymous@air-example-data-2/20G-image-data-synthetic-raw"
+            # args.data_root = "s3://anonymous@air-example-data-2/20G-image-data-synthetic-raw"
+            args.data_root = "s3://imagenetmini-1000-1gb" # ragged dataset
             # args.data_root = "s3://air-cuj-imagenet-1gb"
+
         elif args.file_type == "parquet":
             args.data_root = "s3://anonymous@air-example-data-2/20G-image-data-synthetic-raw-parquet"
         else:
@@ -127,14 +137,27 @@ def get_transform(to_torch_tensor):
     return transform
 
 
-def crop_and_flip_image_batch(image_batch):
+# def crop_and_flip_image_batch(image_batch):
+#     transform = get_transform(False)
+#     print("===> image_batch['image'].shape", type(image_batch['image']), image_batch['image'].shape)
+#     print("===> single elem shape:", type(image_batch['image'][0]), image_batch['image'][0].shape)
+#     # batch_size, height, width, channels = image_batch["image"].shape
+    
+#     # tensor_shape = (batch_size, channels, height, width)
+#     image_batch["image"] = transform(
+#         # torch.Tensor(image_batch["image"].reshape(tensor_shape))
+#         torch.tensor(np.transpose(image_batch["image"], axes=(0, 3, 1, 2)))
+#     )
+#     return image_batch
+
+def crop_and_flip_image(row):
     transform = get_transform(False)
-    batch_size, height, width, channels = image_batch["image"].shape
-    tensor_shape = (batch_size, channels, height, width)
-    image_batch["image"] = transform(
-        torch.Tensor(image_batch["image"].reshape(tensor_shape))
-    )
-    return image_batch
+    # Handle case where image has single channel 
+    # if len(row["image"].shape) == 2:
+    #     row["image"] = np.expand_dims(row["image"], axis=-1)
+    # Make sure to use torch.tensor here to avoid a copy from numpy.
+    row["image"] = transform(torch.tensor(np.transpose(row["image"], axes=(2, 0, 1))))
+    return row
 
 
 def benchmark_code(args, read_num_cpus=None, cache_output_ds=False, cache_input_ds=False, prepartition_ds=False):
@@ -153,10 +176,12 @@ def benchmark_code(args, read_num_cpus=None, cache_output_ds=False, cache_input_
     read_ray_remote_args = {}
     if read_num_cpus is not None:
         read_ray_remote_args.update({"num_cpus": read_num_cpus})
+    
 
     if args.file_type == "image":
         ray_dataset = ray.data.read_images(
             args.data_root,
+            mode="RGB",
             ray_remote_args=read_ray_remote_args,
         )
     elif args.file_type == "parquet":
@@ -174,7 +199,8 @@ def benchmark_code(args, read_num_cpus=None, cache_output_ds=False, cache_input_
         ray_dataset = ray_dataset.materialize()
 
     # 2) Preprocess data by applying transformation with map_batches()
-    ray_dataset = ray_dataset.map_batches(crop_and_flip_image_batch, batch_size=args.batch_size)
+    # ray_dataset = ray_dataset.map_batches(crop_and_flip_image_batch, batch_size=args.batch_size)
+    ray_dataset = ray_dataset.map(crop_and_flip_image)
     if cache_output_ds:
         ray_dataset = ray_dataset.materialize()
 
@@ -185,7 +211,7 @@ def benchmark_code(args, read_num_cpus=None, cache_output_ds=False, cache_input_
             print(f"Epoch {i+1} of {args.num_epochs}")
             num_rows = 0
             start_t = time.time()
-            for batch in it.iter_batches(
+            for batch in it.iter_torch_batches(
                 batch_size=args.batch_size,
                 # local_shuffle_buffer_size=args.local_shuffle_buffer_size,
                 prefetch_batches=10,
@@ -198,9 +224,48 @@ def benchmark_code(args, read_num_cpus=None, cache_output_ds=False, cache_input_
         all_workers_time_list = [torch.zeros((2), dtype=torch.double) for _ in range(world_size)]
         curr_worker_time = torch.tensor([start_t, end_t], dtype=torch.double)
         dist.all_gather(all_workers_time_list, curr_worker_time)
+
+        all_num_rows = [torch.zeros((1), dtype=torch.int32) for _ in range(world_size)]
+        curr_num_rows = torch.tensor([num_rows], dtype=torch.int32)
+        dist.all_gather(all_num_rows, curr_num_rows)
+
         train.report({
             f"time_final_epoch": [tensor.tolist() for tensor in all_workers_time_list],
+            "num_rows": [tensor.item() for tensor in all_num_rows]
         })
+
+    # def train_loop_per_worker_torch():
+    #     # s3_urls = IterableWrapper([args.data_root]).list_files_by_s3()
+    #     # torch_dataset = S3FileLoader(s3_urls)
+    #     dp = IterableWrapper([args.data_root]).list_files_by_fsspec()
+    #     # dp = dp.open_files_by_fsspec(mode="rb", anon=True)
+    #     sampler = DistributedSampler(dp)
+       
+    #     data_loader = DataLoader(dp, sampler=sampler)
+    #     data_loader = ray.train.torch.prepare_data_loader(data_loader)
+
+
+    #     for i in range(args.num_epochs):
+    #         print(f"Epoch {i+1} of {args.num_epochs}")
+    #         num_rows = 0
+    #         start_t = time.time()
+    #         for batch in data_loader:
+    #             num_rows += args.batch_size
+    #         end_t = time.time()
+    #     # Workaround to report the final epoch time from each worker, so that we
+    #     # can sum up the times at the end when calculating throughput.
+    #     world_size = ray.train.get_context().get_world_size()
+    #     all_workers_time_list = [torch.zeros((2), dtype=torch.double) for _ in range(world_size)]
+    #     curr_worker_time = torch.tensor([start_t, end_t], dtype=torch.double)
+    #     dist.all_gather(all_workers_time_list, curr_worker_time)
+
+    #     all_num_rows = [torch.zeros((1), dtype=torch.int32) for _ in range(world_size)]
+    #     curr_num_rows = torch.tensor([num_rows], dtype=torch.int32)
+    #     dist.all_gather(all_num_rows, curr_num_rows)
+    #     train.report({
+    #         f"time_final_epoch": [tensor.tolist() for tensor in all_workers_time_list],
+    #         "num_rows": [tensor.item() for tensor in all_num_rows]
+    #     })
 
     # 3) Train TorchTrainer on processed data
     options = DataConfig.default_ingest_options()
@@ -250,15 +315,23 @@ def benchmark_code(args, read_num_cpus=None, cache_output_ds=False, cache_input_
             execution_options=options,
         ),
     )
+    # torch_trainer = TorchTrainer(
+    #     train_loop_per_worker_torch,
+    #     scaling_config=ScalingConfig(
+    #         num_workers=args.num_workers,
+    #     ),
+    # )
     
     result = torch_trainer.fit()
     # Report the throughput of the last epoch, sum runtime across all workers.
     time_last_epoch = result.metrics["time_final_epoch"]
+    
     time_start_last_epoch = [t[0] for t in time_last_epoch]
     time_end_last_epoch = [t[1] for t in time_last_epoch]
     # print("===> time_start_last_epoch:", time_start_last_epoch, min(time_start_last_epoch))
     # print("===> time_end_last_epoch:", time_end_last_epoch, max(time_end_last_epoch))
     runtime_last_epoch = max(time_end_last_epoch) - min(time_start_last_epoch)
+    num_rows_last_epoch = sum(result.metrics["num_rows"])
     tput_last_epoch = ray_dataset.count() / runtime_last_epoch
     # print("===> throughput last epoch:", tput_last_epoch, runtime_last_epoch)
     return {BenchmarkMetric.THROUGHPUT.value: tput_last_epoch}
