@@ -7,7 +7,7 @@ Ray Train Overview
     
 .. .. image:: ./images/train-concepts.svg
         
-The Ray Train interface is powerful yet simple. The use model has four main concepts:
+The Ray Train interface is powerful yet simple. The use model has four main concepts to understand:
 
 #. :ref:`Training function <train-overview-training-function>`: A Python function that contains your model training logic.
 #. :ref:`Worker <train-overview-worker>`: A process that runs the training function.
