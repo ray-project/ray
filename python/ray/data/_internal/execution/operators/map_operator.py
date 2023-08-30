@@ -348,9 +348,10 @@ class MapOperator(OneToOneOperator, ABC):
     def get_map_transformer(self) -> MapTransformer:
         return self._map_transformer
 
-    @abstractmethod
     def shutdown(self):
-        pass
+        self._data_tasks.clear()
+        self._metadata_tasks.clear()
+        self._finished_streaming_gens.clear()
 
     @abstractmethod
     def current_resource_usage(self) -> ExecutionResources:
