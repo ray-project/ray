@@ -132,6 +132,7 @@ from ray.includes.common cimport (
     kImplicitResourcePrefix,
     kWorkerSetupHookKeyName,
     PythonCheckGcsHealth,
+    PythonGetNodeLabels,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -2553,7 +2554,8 @@ cdef class GcsClient:
         for node_info in node_infos:
             result[node_info.node_id()] = {
                 "node_name": node_info.node_name(),
-                "state": node_info.state()
+                "state": node_info.state(),
+                "labels": PythonGetNodeLabels(node_info)
             }
         return result
 
@@ -4392,6 +4394,10 @@ cdef class CoreWorker:
         return tasks_count
 
     def set_get_async_callback(self, ObjectRef object_ref, callback):
+        # NOTE: we need to manually increment the Python reference count to avoid the
+        # callback object being garbage collected before it's called by the core worker.
+        # This means we *must* guarantee that the ref is manually decremented to avoid
+        # a leak.
         cpython.Py_INCREF(callback)
         CCoreWorkerProcess.GetCoreWorker().GetAsync(
             object_ref.native(),
@@ -4548,18 +4554,22 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     cdef:
         c_vector[shared_ptr[CRayObject]] objects_to_deserialize
 
-    # Object is retrieved from in memory store.
-    # Here we go through the code path used to deserialize objects.
-    objects_to_deserialize.push_back(obj)
-    data_metadata_pairs = RayObjectsToDataMetadataPairs(
-        objects_to_deserialize)
-    ids_to_deserialize = [ObjectRef(object_ref.Binary())]
-    result = ray._private.worker.global_worker.deserialize_objects(
-        data_metadata_pairs, ids_to_deserialize)[0]
+    try:
+        # Object is retrieved from in memory store.
+        # Here we go through the code path used to deserialize objects.
+        objects_to_deserialize.push_back(obj)
+        data_metadata_pairs = RayObjectsToDataMetadataPairs(
+            objects_to_deserialize)
+        ids_to_deserialize = [ObjectRef(object_ref.Binary())]
+        result = ray._private.worker.global_worker.deserialize_objects(
+            data_metadata_pairs, ids_to_deserialize)[0]
 
-    py_callback = <object>user_callback
-    py_callback(result)
-    cpython.Py_DECREF(py_callback)
+        py_callback = <object>user_callback
+        py_callback(result)
+    finally:
+        # NOTE: we manually increment the Python reference count of the callback when
+        # registering it in the core worker, so we must decrement here to avoid a leak.
+        cpython.Py_DECREF(py_callback)
 
 
 def del_key_from_storage(host, port, password, use_ssl, key):
