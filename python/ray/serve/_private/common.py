@@ -392,6 +392,7 @@ class RunningReplicaInfo:
     deployment_name: str
     replica_tag: ReplicaTag
     node_id: Optional[str]
+    availability_zone: Optional[str]
     actor_handle: ActorHandle
     max_concurrent_queries: int
     is_cross_language: bool = False
