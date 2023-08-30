@@ -3,8 +3,8 @@
 import os
 import tempfile
 
-tempdir = tempfile.TemporaryDirectory().name
-os.environ["SHARED_STORAGE_PATH"] = tempdir
+tempdir = tempfile.TemporaryDirectory()
+os.environ["SHARED_STORAGE_PATH"] = tempdir.name
 
 from lightning_exp_tracking_model_dl import DummyModel, dataloader
 
@@ -46,3 +46,6 @@ trainer = TorchTrainer(
 )
 
 trainer.fit()
+# __lightning_experiment_tracking_tensorboard_end__
+
+tempdir.cleanup()

@@ -292,6 +292,7 @@ PyTorch
             :emphasize-lines: 21, 22, 54, 55, 61
             :language: python
             :start-after: __start__
+            :end-before: __end__
 
 
 PyTorch Lightning
@@ -330,12 +331,14 @@ just for demonstration purposes.
         .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_mlflow.py
             :language: python
             :start-after: __lightning_experiment_tracking_mlflow_start__
+            :end-before: __lightning_experiment_tracking_mlflow_end__
 
     .. tab:: tensorboard
         
         .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_tensorboard.py
             :language: python
             :start-after: __lightning_experiment_tracking_tensorboard_start__
+            :end-before: __lightning_experiment_tracking_tensorboard_end__
 
 Common Errors
 =============

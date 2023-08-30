@@ -3,8 +3,8 @@
 import os
 import tempfile
 
-tempdir = tempfile.TemporaryDirectory().name
-os.environ["SHARED_STORAGE_PATH"] = tempdir
+tempdir = tempfile.TemporaryDirectory()
+os.environ["SHARED_STORAGE_PATH"] = tempdir.name
 
 # __start__
 # Run the following script with the SHARED_STORAGE_PATH env var set.
@@ -72,3 +72,6 @@ trainer = TorchTrainer(
     scaling_config=ScalingConfig(num_workers=4),
 )
 trainer.fit()
+# __end__
+
+tempdir.cleanup()
