@@ -9,8 +9,7 @@ import click
 import numpy as np
 
 from ray import train, tune
-from ray.train import CheckpointConfig, RunConfig
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint, CheckpointConfig, RunConfig
 from ray.tune import Callback
 
 

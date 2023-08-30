@@ -155,6 +155,10 @@ class MockReplicaActorWrapper:
         return None
 
     @property
+    def availability_zone(self) -> Optional[str]:
+        return None
+
+    @property
     def node_ip(self) -> Optional[str]:
         return None
 
@@ -338,6 +342,9 @@ class MockClusterNodeInfoCache:
 
     def get_active_node_ids(self):
         return self.alive_node_ids - self.draining_node_ids
+
+    def get_node_az(self, node_id):
+        return None
 
 
 @pytest.fixture
@@ -2245,9 +2252,8 @@ def mock_deployment_state_manager_full(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
     ), patch(
-        "ray.serve._private.deployment_scheduler.DeploymentScheduler",
-        new=MockDeploymentScheduler,
-    ), patch(
+        "ray.serve._private.default_impl.create_deployment_scheduler",
+    ) as mock_create_deployment_scheduler, patch(
         "time.time", new=timer.time
     ), patch(
         "ray.serve._private.long_poll.LongPollHost"
@@ -2266,6 +2272,10 @@ def mock_deployment_state_manager_full(
 
             if placement_group_names is None:
                 placement_group_names = []
+
+            mock_create_deployment_scheduler.return_value = MockDeploymentScheduler(
+                cluster_node_info_cache
+            )
 
             return DeploymentStateManager(
                 "name",
@@ -2494,9 +2504,8 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
     ), patch(
-        "ray.serve._private.deployment_scheduler.DeploymentScheduler",
-        new=MockDeploymentScheduler,
-    ), patch(
+        "ray.serve._private.default_impl.create_deployment_scheduler",
+    ) as mock_create_deployment_scheduler, patch(
         "time.time", new=timer.time
     ), patch(
         "ray.serve._private.long_poll.LongPollHost"
@@ -2504,6 +2513,9 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
 
         kv_store = RayInternalKVStore("test")
         cluster_node_info_cache = MockClusterNodeInfoCache()
+        mock_create_deployment_scheduler.return_value = MockDeploymentScheduler(
+            cluster_node_info_cache
+        )
         all_current_actor_names = []
         all_current_placement_group_names = []
         deployment_state_manager = DeploymentStateManager(

@@ -70,8 +70,9 @@ def test_multiple_directories(tmp_path, shutdown_only):
     print("Check deletion...")
     # Empty object refs.
     object_refs = []
-    # Add a new object so that the last entry is evicted.
-    ref = ray.put(arr)
+    # Add a new small object so that the last entry is evicted and we don't
+    # exceed the spill threshold.
+    ref = ray.put(np.ones(5 * 1024 * 1024, dtype=np.uint8))
     for temp_dir in temp_dirs:
         temp_folder = temp_dir
         wait_for_condition(lambda: is_dir_empty(temp_folder))
@@ -109,7 +110,8 @@ def _test_object_spilling_threshold(thres, num_objects, num_objects_spilled):
         objs = []
         for _ in range(num_objects):
             objs.append(ray.put(np.empty(200_000_000, dtype=np.uint8)))
-        time.sleep(10)  # Wait for spilling to happen
+        if num_objects_spilled == 0:
+            time.sleep(10)  # Wait for spilling to happen
         _check_spilled(num_objects_spilled)
     finally:
         ray.shutdown()
@@ -361,6 +363,33 @@ def test_spill_reconstruction_errors(ray_start_cluster, object_spilling_config):
 
     with pytest.raises(ray.exceptions.ObjectLostError):
         ray.get(ref)
+
+
+def test_evict_secondary_copies_before_spill(ray_start_cluster, object_spilling_config):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    ray.init(address=cluster.address)
+    for _ in range(3):
+        cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    wait_for_condition(lambda: ray.cluster_resources()["CPU"] >= 4)
+
+    # Spread data onto all nodes.
+    @ray.remote
+    def gen():
+        time.sleep(0.5)
+        return np.ones(10 * 1024 * 1024, dtype=np.uint8)
+
+    refs = [
+        gen.options(scheduling_strategy="SPREAD").remote() for _ in range(16)
+    ]  # 160MiB
+
+    # Iterate over the data on the worker nodes from the head node.
+    for i in range(10):
+        for j, r in enumerate(refs):
+            print("Iteration", i, j)
+            ray.get(r)
+
+    _check_spilled()
 
 
 if __name__ == "__main__":

@@ -516,6 +516,7 @@ class _Bracket:
             )
         self._completed_progress += delta
         self._live_trials[trial] = result
+        self.trials_to_unpause.discard(trial)
 
     def cleanup_trial(self, trial: Trial):
         """Clean up statistics tracking for terminated trials (either by force
