@@ -33,121 +33,10 @@ Ray Train lets you use native experiment tracking libraries by customizing the t
 logic inside the ``train_func`` function. In this way, you can port your experiment tracking 
 logic to Ray Train with minimal changes. 
 
-Log distributed training experiments
-====================================
-
-In this section, we break the interaction with experiment tracking backend into 4 logical steps:
-- Set up to connect to a tracking backend
-- Configure and launch a run
-- Log
-- Finish the run
-
-Let's dive into each one of them.
-
-.. note::
-
-    A major difference between distributed and non-distributed training is that in distributed training, 
-    multiple processes are running in parallel and under certain setups they have the same results. If all 
-    of them are reported to the tracking backend, there will be duplicated results. To address that,  
-    Ray Train lets you apply logging logic to only the rank 0 worker with the following method:
-    :meth:`context.get_world_rank() <ray.train.context.TrainContext.get_world_rank>`.
-
-    .. code-block:: python
-
-        from ray import train
-        def train_func(config):
-            ...
-            if train.get_context().get_world_rank() == 0:
-                # do your logging logic only for rank0 worker.
-            ...
-
-
-Step 1: Set up necessary components to be able to connect to the tracking backend of your choice
-------------------------------------------------------------------------------------------------
-
-First, you should choose which tracking backend to use: W&B, MLflow, TensorBoard etc.
-
-Some of them offer to operate under either online or offline mode. They have different considerations when
-setting up.
-For online mode, you log towards a tracking service that is running. Usually you need credentials to access the service.
-Under this mode, you need to ensure that all nodes and worker processes have access to credentials.
-For offline mode, you log towards local file directory. Usually no credentials are needed. You need to instead
-ensure that there is a shared file system where all nodes can write to.
-
-.. tabs::
-
-    .. tab:: Wandb
-
-        .. tabs::
-
-            .. tab:: online mode
-
-                Make sure that :code:`wandb.login(key="your_api_key")` 
-                or :code:`os.environ["WANDB_API_KEY"] = "your_api_key"` is called inside your ``train_func``.
-
-            .. tab:: offline mode
-
-                Make sure that :code:`os.environ["WANDB_MODE"] = "offline"` is set in ``train_func``.
-
-                Set Wandb directory to point to a shared storage path: :code:`wandb.init(dir="some_shared_storage_path/wandb")` 
-
-    .. tab:: MLflow
-
-        .. tabs::
-
-            .. tab:: online mode (hosted by Databricks)
-                
-                Start the run with :code:`mlflow.start_run(tracking_uri="databricks")`
-
-                Make sure that all nodes have access to ``databrickscfg`` file.
-
-            .. tab:: offline mode
-
-                Start the run by setting tracking uri to a shared storage path: 
-                :code:`mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")`
-
-    .. tab:: TensorBoard (offline)
-        
-        Set up ``SummaryWriter`` to write to a shared storage path: :code:`writer = SummaryWriter("some_shared_storage_path/runs")`
-
-Step 2: Initialize the run 
---------------------------
-
-Ray Train provides a training context that provides access to training identifiers. For example, 
-
-* Training ID (:meth:`context.get_trial_id() <ray.train.context.TrainContext.get_trial_id>`) 
-* Training Name (:meth:`context.get_trial_name() <ray.train.context.TrainContext.get_trial_name>`)
-
-.. tip::
-    
-    When performing **fault-tolerant training** with auto-restoration, be sure 
-    to specify a unique ID for the Loggers, so that the new workers report to
-    the same run after restoration.
-
-    For example:
-    
-    - `WandbLogger(id=UNIQUE_ID)`
-    - `CometLogger(experiment_key=UNIQUE_ID)`
-    - `MLFlowLogger(run_id=UNIQUE_ID)`
-
-Step 3: Log
------------
-
-You can customize when and where to log parameters, metrics, models, or media contents. 
-You can also use some native integrations that these tracking frameworks have with 
-specific training frameworks, for example ``mlflow.pytorch.autolog()``, 
-``lightning.pytorch.loggers.MLFlowLogger`` etc. 
-
-Step 4: Finish the run
-----------------------
-
-For frameworks that require a call to mark a run as finished, include the appropriate call.
-For example, ``wandb.finish()``.
-
 Conceptual code snippets
 ========================
 
-Let's see how the above works with some code.
+Let's see some code snippets that illustrate how this works.
 
 The following session uses Wandb and MLflow but it is adaptable to other frameworks.
 
@@ -268,6 +157,119 @@ The following session uses Wandb and MLflow but it is adaptable to other framewo
                 # Only report the first worker results to mlflow to avoid dup
                 if train.get_context().get_world_rank() == 0:
                     mlflow.log_metrics(metrics)
+
+Log distributed training experiments
+====================================
+
+The interaction with experiment tracking backend within the ``train_func`` can be broken 
+into 4 logical steps:
+
+- Set up to connect to a tracking backend
+- Configure and launch a run
+- Log
+- Finish the run
+
+Let's dive into each one of them.
+
+.. note::
+
+    A major difference between distributed and non-distributed training is that in distributed training, 
+    multiple processes are running in parallel and under certain setups they have the same results. If all 
+    of them are reported to the tracking backend, there may be duplicated results. To address that,  
+    Ray Train lets you apply logging logic to only the rank 0 worker with the following method:
+    :meth:`context.get_world_rank() <ray.train.context.TrainContext.get_world_rank>`.
+
+    .. code-block:: python
+
+        from ray import train
+        def train_func(config):
+            ...
+            if train.get_context().get_world_rank() == 0:
+                # do your logging logic only for rank0 worker.
+            ...
+
+
+Step 1: Set up necessary components to be able to connect to the tracking backend of your choice
+------------------------------------------------------------------------------------------------
+
+First, you should choose which tracking backend to use: W&B, MLflow, TensorBoard etc.
+
+Some of them offer to operate under either online or offline mode. They have different considerations when
+being setting up.
+For online mode, you log towards a tracking service that is running. Usually you need credentials to access the service.
+Under this mode, you need to ensure that all nodes and worker processes have access to credentials.
+For offline mode, you log towards local file directory. Usually no credentials are needed. You need to instead
+ensure that there is a shared file system where all nodes can write to.
+
+.. tabs::
+
+    .. tab:: Wandb
+
+        .. tabs::
+
+            .. tab:: online mode
+
+                Make sure that :code:`wandb.login(key="your_api_key")` 
+                or :code:`os.environ["WANDB_API_KEY"] = "your_api_key"` is called inside your ``train_func``.
+
+            .. tab:: offline mode
+
+                Make sure that :code:`os.environ["WANDB_MODE"] = "offline"` is set in ``train_func``.
+
+                Set Wandb directory to point to a shared storage path: :code:`wandb.init(dir="some_shared_storage_path/wandb")` 
+
+    .. tab:: MLflow
+
+        .. tabs::
+
+            .. tab:: online mode (hosted by Databricks)
+                
+                Start the run with :code:`mlflow.start_run(tracking_uri="databricks")`
+
+                Make sure that all nodes have access to ``databrickscfg`` file.
+
+            .. tab:: offline mode
+
+                Start the run by setting tracking uri to a shared storage path: 
+                :code:`mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")`
+
+    .. tab:: TensorBoard (offline)
+        
+        Set up ``SummaryWriter`` to write to a shared storage path: :code:`writer = SummaryWriter("some_shared_storage_path/runs")`
+
+Step 2: Initialize the run 
+--------------------------
+
+Ray Train provides a training context that provides access to training identifiers. For example, 
+
+* Training ID (:meth:`context.get_trial_id() <ray.train.context.TrainContext.get_trial_id>`) 
+* Training Name (:meth:`context.get_trial_name() <ray.train.context.TrainContext.get_trial_name>`)
+
+.. tip::
+    
+    When performing **fault-tolerant training** with auto-restoration, be sure 
+    to specify a unique ID for the Loggers, so that the new workers report to
+    the same run after restoration.
+
+    For example:
+    
+    - `WandbLogger(id=UNIQUE_ID)`
+    - `CometLogger(experiment_key=UNIQUE_ID)`
+    - `MLFlowLogger(run_id=UNIQUE_ID)`
+
+Step 3: Log
+-----------
+
+You can customize when and where to log parameters, metrics, models, or media contents. 
+You can also use some native integrations that these tracking frameworks have with 
+specific training frameworks, for example ``mlflow.pytorch.autolog()``, 
+``lightning.pytorch.loggers.MLFlowLogger`` etc. 
+
+Step 4: Finish the run
+----------------------
+
+For frameworks that require a call to mark a run as finished, include the appropriate call.
+For example, ``wandb.finish()``.
 
 Runnable code
 =============

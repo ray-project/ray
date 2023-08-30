@@ -3,7 +3,7 @@
 import os
 import tempfile
 
-tempdir = tempfile.TemporaryDirectory()
+tempdir = tempfile.TemporaryDirectory().name
 os.environ["SHARED_STORAGE_PATH"] = tempdir
 
 # __start__

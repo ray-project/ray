@@ -3,7 +3,7 @@
 import os
 import tempfile
 
-tempdir = tempfile.mktemp()
+tempdir = tempfile.TemporaryDirectory().name
 os.environ["SHARED_STORAGE_PATH"] = tempdir
 
 from lightning_exp_tracking_model_dl import DummyModel, dataloader
