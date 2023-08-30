@@ -17,23 +17,18 @@ class UserDefinedServiceStub(object):
         """
         self.__call__ = channel.unary_unary(
             "/userdefinedprotos.UserDefinedService/__call__",
-            request_serializer=user__defined__protos__pb2.UserDefinedMessage.SerializeToString,  # noqa:E501
-            response_deserializer=user__defined__protos__pb2.UserDefinedResponse.FromString,  # noqa:E501
+            request_serializer=user__defined__protos__pb2.UserDefinedMessage.SerializeToString,
+            response_deserializer=user__defined__protos__pb2.UserDefinedResponse.FromString,
         )
-        self.Method1 = channel.unary_unary(
-            "/userdefinedprotos.UserDefinedService/Method1",
-            request_serializer=user__defined__protos__pb2.UserDefinedMessage.SerializeToString,  # noqa:E501
-            response_deserializer=user__defined__protos__pb2.UserDefinedResponse.FromString,  # noqa:E501
-        )
-        self.Method2 = channel.unary_unary(
-            "/userdefinedprotos.UserDefinedService/Method2",
-            request_serializer=user__defined__protos__pb2.UserDefinedMessage2.SerializeToString,  # noqa:E501
-            response_deserializer=user__defined__protos__pb2.UserDefinedResponse2.FromString,  # noqa:E501
+        self.Multiplexing = channel.unary_unary(
+            "/userdefinedprotos.UserDefinedService/Multiplexing",
+            request_serializer=user__defined__protos__pb2.UserDefinedMessage2.SerializeToString,
+            response_deserializer=user__defined__protos__pb2.UserDefinedResponse2.FromString,
         )
         self.Streaming = channel.unary_stream(
             "/userdefinedprotos.UserDefinedService/Streaming",
-            request_serializer=user__defined__protos__pb2.UserDefinedMessage.SerializeToString,  # noqa:E501
-            response_deserializer=user__defined__protos__pb2.UserDefinedResponse.FromString,  # noqa:E501
+            request_serializer=user__defined__protos__pb2.UserDefinedMessage.SerializeToString,
+            response_deserializer=user__defined__protos__pb2.UserDefinedResponse.FromString,
         )
 
 
@@ -46,13 +41,7 @@ class UserDefinedServiceServicer(object):
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
 
-    def Method1(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details("Method not implemented!")
-        raise NotImplementedError("Method not implemented!")
-
-    def Method2(self, request, context):
+    def Multiplexing(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details("Method not implemented!")
@@ -69,23 +58,18 @@ def add_UserDefinedServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
         "__call__": grpc.unary_unary_rpc_method_handler(
             servicer.__call__,
-            request_deserializer=user__defined__protos__pb2.UserDefinedMessage.FromString,  # noqa:E501
-            response_serializer=user__defined__protos__pb2.UserDefinedResponse.SerializeToString,  # noqa:E501
+            request_deserializer=user__defined__protos__pb2.UserDefinedMessage.FromString,
+            response_serializer=user__defined__protos__pb2.UserDefinedResponse.SerializeToString,
         ),
-        "Method1": grpc.unary_unary_rpc_method_handler(
-            servicer.Method1,
-            request_deserializer=user__defined__protos__pb2.UserDefinedMessage.FromString,  # noqa:E501
-            response_serializer=user__defined__protos__pb2.UserDefinedResponse.SerializeToString,  # noqa:E501
-        ),
-        "Method2": grpc.unary_unary_rpc_method_handler(
-            servicer.Method2,
-            request_deserializer=user__defined__protos__pb2.UserDefinedMessage2.FromString,  # noqa:E501
-            response_serializer=user__defined__protos__pb2.UserDefinedResponse2.SerializeToString,  # noqa:E501
+        "Multiplexing": grpc.unary_unary_rpc_method_handler(
+            servicer.Multiplexing,
+            request_deserializer=user__defined__protos__pb2.UserDefinedMessage2.FromString,
+            response_serializer=user__defined__protos__pb2.UserDefinedResponse2.SerializeToString,
         ),
         "Streaming": grpc.unary_stream_rpc_method_handler(
             servicer.Streaming,
-            request_deserializer=user__defined__protos__pb2.UserDefinedMessage.FromString,  # noqa:E501
-            response_serializer=user__defined__protos__pb2.UserDefinedResponse.SerializeToString,  # noqa:E501
+            request_deserializer=user__defined__protos__pb2.UserDefinedMessage.FromString,
+            response_serializer=user__defined__protos__pb2.UserDefinedResponse.SerializeToString,
         ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -128,7 +112,7 @@ class UserDefinedService(object):
         )
 
     @staticmethod
-    def Method1(
+    def Multiplexing(
         request,
         target,
         options=(),
@@ -143,36 +127,7 @@ class UserDefinedService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/userdefinedprotos.UserDefinedService/Method1",
-            user__defined__protos__pb2.UserDefinedMessage.SerializeToString,
-            user__defined__protos__pb2.UserDefinedResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-        )
-
-    @staticmethod
-    def Method2(
-        request,
-        target,
-        options=(),
-        channel_credentials=None,
-        call_credentials=None,
-        insecure=False,
-        compression=None,
-        wait_for_ready=None,
-        timeout=None,
-        metadata=None,
-    ):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            "/userdefinedprotos.UserDefinedService/Method2",
+            "/userdefinedprotos.UserDefinedService/Multiplexing",
             user__defined__protos__pb2.UserDefinedMessage2.SerializeToString,
             user__defined__protos__pb2.UserDefinedResponse2.FromString,
             options,
@@ -226,7 +181,7 @@ class FruitServiceStub(object):
         """
         self.FruitStand = channel.unary_unary(
             "/userdefinedprotos.FruitService/FruitStand",
-            request_serializer=user__defined__protos__pb2.FruitAmounts.SerializeToString,  # noqa:E501
+            request_serializer=user__defined__protos__pb2.FruitAmounts.SerializeToString,
             response_deserializer=user__defined__protos__pb2.FruitCosts.FromString,
         )
 
