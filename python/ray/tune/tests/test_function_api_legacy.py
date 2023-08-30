@@ -24,7 +24,7 @@ def test_checkpoint_dir_deprecation():
         tune.run(train_fn, fail_fast="raise")
 
     def train_fn(config):
-        with tune.checkpoint_dir(step=1) as checkpoint_dir:
+        with tune.checkpoint_dir(step=1) as _:
             pass
 
     with pytest.raises(DeprecationWarning, match=r".*tune\.checkpoint_dir.*"):
