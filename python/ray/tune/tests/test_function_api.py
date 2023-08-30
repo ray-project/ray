@@ -47,7 +47,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
     def testCheckpointReuse(self):
         """Test that repeated save/restore never reuses same checkpoint dir."""
 
-        def train(config):
+        def train_fn(config):
             checkpoint = ray.train.get_checkpoint()
             if checkpoint:
                 with checkpoint.as_directory() as checkpoint_dir:
@@ -69,7 +69,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
 
         checkpoint = None
         for i in range(5):
-            new_trainable = self.create_trainable(train)
+            new_trainable = self.create_trainable(train_fn)
             if checkpoint:
                 new_trainable.restore(checkpoint)
             for i in range(2):
@@ -81,7 +81,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
     def testFunctionRecurringSave(self):
         """This tests that save and restore are commutative."""
 
-        def train(config):
+        def train_fn(config):
             for step in range(10):
                 with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                     if step % 3 == 0:
@@ -93,7 +93,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
                         checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
                     )
 
-        new_trainable = self.create_trainable(train)
+        new_trainable = self.create_trainable(train_fn)
         new_trainable.train()
         checkpoint_obj = new_trainable.save()
         new_trainable.restore(checkpoint_obj)
@@ -101,7 +101,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
 
         new_trainable.stop()
 
-        new_trainable2 = self.create_trainable(train)
+        new_trainable2 = self.create_trainable(train_fn)
         new_trainable2.restore(checkpoint)
         new_trainable2.train()
         new_trainable2.stop()
@@ -116,13 +116,17 @@ class FunctionApiTest(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def testCheckpointError(self):
-        def train(config):
+        def train_fn(config):
             pass
 
         with self.assertRaises(ValueError):
-            tune.run(train, checkpoint_config=CheckpointConfig(checkpoint_frequency=1))
+            tune.run(
+                train_fn, checkpoint_config=CheckpointConfig(checkpoint_frequency=1)
+            )
         with self.assertRaises(ValueError):
-            tune.run(train, checkpoint_config=CheckpointConfig(checkpoint_at_end=True))
+            tune.run(
+                train_fn, checkpoint_config=CheckpointConfig(checkpoint_at_end=True)
+            )
 
     def testWithParameters(self):
         class Data:
@@ -132,12 +136,12 @@ class FunctionApiTest(unittest.TestCase):
         data = Data()
         data.data[100] = 1
 
-        def train(config, data=None):
+        def train_fn(config, data=None):
             data.data[101] = 2  # Changes are local
             ray.train.report(dict(metric=len(data.data), hundred=data.data[100]))
 
         trial_1, trial_2 = tune.run(
-            with_parameters(train, data=data), num_samples=2
+            with_parameters(train_fn, data=data), num_samples=2
         ).trials
 
         self.assertEqual(data.data[101], 0)
@@ -148,12 +152,12 @@ class FunctionApiTest(unittest.TestCase):
         self.assertTrue(str(trial_1).startswith("train_"))
 
         # With checkpoint dir parameter
-        def train(config, data=None):
+        def train_fn(config, data=None):
             data.data[101] = 2  # Changes are local
             ray.train.report(dict(metric=len(data.data)))
 
         trial_1, trial_2 = tune.run(
-            with_parameters(train, data=data), num_samples=2
+            with_parameters(train_fn, data=data), num_samples=2
         ).trials
 
         self.assertEqual(data.data[101], 0)
@@ -168,10 +172,10 @@ class FunctionApiTest(unittest.TestCase):
 
                 self.data = np.random.rand((2 * 1024 * 1024))
 
-        def train(config, data=None):
+        def train_fn(config, data=None):
             pass
 
-        trainable = tune.with_parameters(train, data=Data())
+        trainable = tune.with_parameters(train_fn, data=Data())
         # ray.cloudpickle will crash for some reason
         import cloudpickle as cp
 
@@ -185,13 +189,13 @@ class FunctionApiTest(unittest.TestCase):
             )
         )
 
-        def train(config):
+        def train_fn(config):
             ray.train.report(
                 dict(metric=1, resources=ray.train.get_context().get_trial_resources())
             )
 
         analysis = tune.run(
-            train,
+            train_fn,
             scheduler=sched,
             stop={"training_iteration": 2},
             resources_per_trial=PlacementGroupFactory([{"CPU": 1}]),
@@ -239,46 +243,46 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEqual(out2.best_result["metric"], 9)
 
     def testReturnAnonymous(self):
-        def train(config):
+        def train_fn(config):
             return config["a"]
 
         trial_1, trial_2 = tune.run(
-            train, config={"a": tune.grid_search([4, 8])}
+            train_fn, config={"a": tune.grid_search([4, 8])}
         ).trials
 
         self.assertEqual(trial_1.last_result[DEFAULT_METRIC], 4)
         self.assertEqual(trial_2.last_result[DEFAULT_METRIC], 8)
 
     def testReturnSpecific(self):
-        def train(config):
+        def train_fn(config):
             return {"m": config["a"]}
 
         trial_1, trial_2 = tune.run(
-            train, config={"a": tune.grid_search([4, 8])}
+            train_fn, config={"a": tune.grid_search([4, 8])}
         ).trials
 
         self.assertEqual(trial_1.last_result["m"], 4)
         self.assertEqual(trial_2.last_result["m"], 8)
 
     def testYieldAnonymous(self):
-        def train(config):
+        def train_fn(config):
             for i in range(10):
                 yield config["a"] + i
 
         trial_1, trial_2 = tune.run(
-            train, config={"a": tune.grid_search([4, 8])}
+            train_fn, config={"a": tune.grid_search([4, 8])}
         ).trials
 
         self.assertEqual(trial_1.last_result[DEFAULT_METRIC], 4 + 9)
         self.assertEqual(trial_2.last_result[DEFAULT_METRIC], 8 + 9)
 
     def testYieldSpecific(self):
-        def train(config):
+        def train_fn(config):
             for i in range(10):
                 yield {"m": config["a"] + i}
 
         trial_1, trial_2 = tune.run(
-            train, config={"a": tune.grid_search([4, 8])}
+            train_fn, config={"a": tune.grid_search([4, 8])}
         ).trials
 
         self.assertEqual(trial_1.last_result["m"], 4 + 9)
