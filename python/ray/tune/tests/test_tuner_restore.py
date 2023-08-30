@@ -915,6 +915,7 @@ def test_tuner_restore_from_moved_cloud_uri(
             if path.startswith("experiment_state")
         ]
     )
+
     assert num_experiment_checkpoints == 2
 
     num_trial_checkpoints = len(

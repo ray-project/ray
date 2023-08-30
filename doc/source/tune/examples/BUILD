@@ -17,8 +17,6 @@ py_test_run_all_notebooks(
     size = "medium",
     include = ["*.ipynb"],
     exclude = [
-        # TODO(krfricke): Enable this test for new persistence path.
-        "bohb_example.ipynb",
         "pbt_ppo_example.ipynb",
         "tune-xgboost.ipynb",
         "pbt_transformers.ipynb",  # Transformers uses legacy Tune APIs.
