@@ -1,7 +1,7 @@
 import contextlib
 import io
-import logging
 import os
+import logging
 import platform
 import shutil
 import tarfile

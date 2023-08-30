@@ -266,6 +266,8 @@ class StateDataSourceClient:
             if key == "actor_id":
                 req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
             elif key == "state":
+                # Convert to uppercase.
+                value = value.upper()
                 if value not in ActorTableData.ActorState.keys():
                     raise ValueError(f"Invalid actor state for filtering: {value}")
                 req_filters.state = ActorTableData.ActorState.Value(value)

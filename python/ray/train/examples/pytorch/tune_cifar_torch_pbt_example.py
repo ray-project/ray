@@ -13,8 +13,7 @@ from torchvision.models import resnet18
 import ray
 import ray.cloudpickle as cpickle
 from ray import train, tune
-from ray.train import FailureConfig, RunConfig, ScalingConfig
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.tune_config import TuneConfig

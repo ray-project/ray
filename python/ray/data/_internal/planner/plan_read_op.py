@@ -105,7 +105,10 @@ def plan_read_op(op: Read) -> PhysicalOperator:
                         cleaned_metadata(read_task),
                     )
                 ],
-                owns_blocks=True,
+                # `owns_blocks` is False, because these refs are the root of the
+                # DAG. We shouldn't eagerly free them. Otherwise, the DAG cannot
+                # be reconstructed.
+                owns_blocks=False,
             )
             for read_task in read_tasks
         ]

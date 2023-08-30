@@ -74,7 +74,6 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=tests_dir,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=0
       rllib/...
 
 

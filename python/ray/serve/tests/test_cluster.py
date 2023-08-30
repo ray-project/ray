@@ -8,6 +8,7 @@ import pytest
 
 import ray
 from ray.cluster_utils import Cluster
+from ray.exceptions import RayActorError
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 from ray import serve
@@ -38,7 +39,13 @@ def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
             refs = [handle.remote()._to_object_ref_sync() for _ in range(10)]
 
         done, pending = ray.wait(refs)
-        pids = pids.union(set(ray.get(done)))
+        for ref in done:
+            try:
+                pids.add(ray.get(ref))
+            except RayActorError:
+                # Handle sent request to dead actor before running replicas were updated
+                # This can happen because health check period = 1s
+                pass
         refs = list(pending)
         if time.time() - start >= timeout:
             raise TimeoutError("Timed out waiting for pids.")
@@ -329,7 +336,7 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     """
 
     if set_flag:
-        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING"] = "1"
+        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"] = "1"
 
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
@@ -354,8 +361,8 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     else:
         assert len(set(responses)) == 2
 
-    if "RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING" in os.environ:
-        del os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING"]
+    if "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING" in os.environ:
+        del os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"]
 
 
 if __name__ == "__main__":
