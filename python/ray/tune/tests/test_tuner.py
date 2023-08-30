@@ -382,15 +382,19 @@ def test_nonserializable_trainable():
         Tuner(lambda config: print(lock))
 
 
-# TODO(justinvyu): [chdir_to_trial_dir]
-@pytest.mark.skip("chdir_to_trial_dir is not implemented yet.")
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
-def test_tuner_no_chdir_to_trial_dir(shutdown_only, chdir_tmpdir, runtime_env):
+def test_tuner_no_chdir_to_trial_dir(
+    shutdown_only, chdir_tmpdir, runtime_env, monkeypatch
+):
     """Tests that setting `chdir_to_trial_dir=False` in `TuneConfig` allows for
     reading relatives paths to the original working directory.
     Also tests that `get_trial_dir()` env variable can be used as the directory
     to write data to within the Trainable.
     """
+    from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+
+    monkeypatch.setenv(RAY_CHDIR_TO_TRIAL_DIR, "0")
+
     # Write a data file that we want to read in our training loop
     with open("./read.txt", "w") as f:
         f.write("data")
