@@ -245,10 +245,10 @@ if __name__ == "__main__":
         for _ in range(args.stop_iters):
             results = algo.train()
             print(pretty_print(results))
-            checkpoint = algo.save()
+            checkpoint = algo.save().checkpoint
             print("Last checkpoint", checkpoint)
             with open(checkpoint_path, "w") as f:
-                f.write(checkpoint)
+                f.write(checkpoint.path)
             if (
                 results["episode_reward_mean"] >= args.stop_reward
                 or ts >= args.stop_timesteps

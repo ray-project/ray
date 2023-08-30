@@ -1240,11 +1240,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id The id to call get on.
   /// \param[in] success_callback The callback to use the result object.
-  /// \param[in] python_future the void* object to be passed to SetResultCallback
+  /// \param[in] python_user_callback The user-provided Python callback object that
+  /// will be called inside of `success_callback`.
   /// \return void
   void GetAsync(const ObjectID &object_id,
                 SetResultCallback success_callback,
-                void *python_future);
+                void *python_user_callback);
 
   // Get serialized job configuration.
   rpc::JobConfig GetJobConfig() const;

@@ -3993,7 +3993,7 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
 
 void CoreWorker::GetAsync(const ObjectID &object_id,
                           SetResultCallback success_callback,
-                          void *python_future) {
+                          void *python_user_callback) {
   auto fallback_callback = std::bind(&CoreWorker::PlasmaCallback,
                                      this,
                                      success_callback,
@@ -4001,15 +4001,32 @@ void CoreWorker::GetAsync(const ObjectID &object_id,
                                      std::placeholders::_2,
                                      std::placeholders::_3);
 
-  memory_store_->GetAsync(object_id,
-                          [python_future, success_callback, fallback_callback, object_id](
-                              std::shared_ptr<RayObject> ray_object) {
-                            if (ray_object->IsInPlasmaError()) {
-                              fallback_callback(ray_object, object_id, python_future);
-                            } else {
-                              success_callback(ray_object, object_id, python_future);
-                            }
-                          });
+  memory_store_->GetAsync(
+      object_id,
+      [this,
+       object_id,
+       success_callback,
+       python_user_callback,
+       fallback_callback =
+           std::move(fallback_callback)](std::shared_ptr<RayObject> ray_object) {
+        // Post the callback to the io_service_ to avoid deadlocks.
+        // The user callback can make arbitrary Ray API calls and will be called
+        // immediately when the object is `Put` into the in-memory store. This can
+        // cause deadlocks if the callers of `Put` is holding a lock.
+        io_service_.post(
+            [object_id,
+             success_callback,
+             python_user_callback,
+             fallback_callback = std::move(fallback_callback),
+             ray_object = std::move(ray_object)]() {
+              if (ray_object->IsInPlasmaError()) {
+                fallback_callback(ray_object, object_id, python_user_callback);
+              } else {
+                success_callback(ray_object, object_id, python_user_callback);
+              }
+            },
+            "CoreWorker.GetAsync callback");
+      });
 }
 
 void CoreWorker::PlasmaCallback(SetResultCallback success,
