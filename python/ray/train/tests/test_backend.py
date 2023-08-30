@@ -7,6 +7,7 @@ import pytest
 import time
 
 import ray
+import ray._private.ray_constants as ray_constants
 from ray import train
 from ray.air._internal.util import StartTraceback
 
@@ -25,6 +26,7 @@ from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
+    ENABLE_SHARE_NEURON_RT_VISIBLE_CORES_ENV,
 )
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
@@ -97,7 +99,7 @@ def mock_add_workers(self, num_workers):
             node_id=0,
             node_ip=str(i % 2),
             hostname=0,
-            gpu_ids=[0],
+            gpu_and_accelerator_ids={"GPU": ["0"]},
             pid=0,
         )
         worker.metadata = metadata
@@ -307,12 +309,6 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
 def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
     config = TestConfig()
 
-    if worker_results[0] != len(worker_results[1]):
-        raise ValueError(
-            "Invalid test parameter. Length of expected result should "
-            "match number of workers."
-        )
-
     def get_resources():
         cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
         # Sort the cuda visible devices to have exact match with expected result.
@@ -411,6 +407,80 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
         config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=2
+    )
+    e.start()
+    _start_training(e, get_resources)
+    results = e.finish_training()
+    results.sort()
+    assert results == expected_results
+
+
+@pytest.mark.parametrize(
+    "worker_results",
+    [
+        (1, [[0]]),
+        (2, [[0, 1]] * 2),
+        (3, [[0]] + [[0, 1]] * 2),
+        (4, [[0, 1]] * 4),
+    ],
+)
+def test_neuron_core_accelerator_ids(ray_2_node_2_neuron_cores, worker_results):
+    config = TestConfig()
+
+    def get_resources():
+        neuron_runtime_ids = os.environ[ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR]
+        # Sort the runtime ids to have exact match with expected result.
+        sorted_devices = [
+            int(device) for device in sorted(neuron_runtime_ids.split(","))
+        ]
+        return sorted_devices
+
+    num_workers, expected_results = worker_results
+    # sharing enabled by default
+    os.environ.pop(ENABLE_SHARE_NEURON_RT_VISIBLE_CORES_ENV, None)
+    e = BackendExecutor(
+        config,
+        num_workers=num_workers,
+        num_cpus_per_worker=0,
+        additional_resources_per_worker={"neuron_cores": 1},
+    )
+    e.start()
+    _start_training(e, get_resources)
+    results = e.finish_training()
+    results.sort()
+    assert results == expected_results
+
+
+@pytest.mark.parametrize(
+    "worker_results",
+    [
+        (1, [[0]]),
+        (2, [[0]] + [[1]]),
+        (3, [[0]] * 2 + [[1]]),
+        (4, [[0]] * 2 + [[1]] * 2),
+    ],
+)
+def test_neuron_core_accelerator_ids_sharing_disabled(
+    ray_2_node_2_neuron_cores, worker_results
+):
+    config = TestConfig()
+
+    def get_resources():
+        neuron_runtime_ids = os.environ[ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR]
+        # Sort the runtime ids to have exact match with expected result.
+        sorted_devices = [
+            int(device) for device in sorted(neuron_runtime_ids.split(","))
+        ]
+        return sorted_devices
+
+    num_workers, expected_results = worker_results
+
+    os.environ[ENABLE_SHARE_NEURON_RT_VISIBLE_CORES_ENV] = "0"
+    e = BackendExecutor(
+        config,
+        num_workers=num_workers,
+        num_cpus_per_worker=0,
+        additional_resources_per_worker={"neuron_cores": 1},
     )
     e.start()
     _start_training(e, get_resources)

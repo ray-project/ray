@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple, Union
 
 import ray
+import ray._private.ray_constants as ray_constants
 from ray.actor import ActorHandle
 from ray.air._internal.util import skip_exceptions, exception_cause
 from ray.types import ObjectRef
@@ -44,14 +45,14 @@ class WorkerMetadata:
         node_id: ID of the node this worker is on.
         node_ip: IP address of the node this worker is on.
         hostname: Hostname that this worker is on.
-        gpu_ids: List of CUDA IDs available to this worker.
+        gpu_and_accelerator_ids: Map of GPU IDs, accelerator IDs (AWS NeuronCore, ..).
         pid: Process ID of this worker.
     """
 
     node_id: str
     node_ip: str
     hostname: str
-    gpu_ids: Optional[List[str]]
+    gpu_and_accelerator_ids: Dict[str, List[str]]
     pid: int
 
 
@@ -86,16 +87,40 @@ def construct_metadata() -> WorkerMetadata:
     node_id = ray.get_runtime_context().get_node_id()
     node_ip = ray.util.get_node_ip_address()
     hostname = socket.gethostname()
-    gpu_ids = [str(gpu_id) for gpu_id in ray.get_gpu_ids()]
     pid = os.getpid()
 
     return WorkerMetadata(
         node_id=node_id,
         node_ip=node_ip,
         hostname=hostname,
-        gpu_ids=gpu_ids,
+        gpu_and_accelerator_ids=_get_gpu_and_accelerator_ids(),
         pid=pid,
     )
+
+
+def _get_gpu_and_accelerator_ids() -> Dict[str, List[str]]:
+    """Get GPU and accelerator IDs from runtime context for given actor/worker.
+
+    Returns:
+        A dictionary mapping resource IDs to a list of resource IDs.
+        For example,
+        {
+            "GPU": ["0", "1"],
+            "neuron_cores": ["0", "1"]
+        }
+    """
+    gpu_and_accelerator_ids = defaultdict(list)
+
+    resource_ids = ray.get_runtime_context().get_resource_ids()
+    gpu_ids = resource_ids[ray_constants.GPU]
+    neuron_core_ids = resource_ids[ray_constants.NEURON_CORES]
+
+    gpu_and_accelerator_ids[ray_constants.GPU].extend(gpu_ids)
+    gpu_and_accelerator_ids[ray_constants.NEURON_CORES].extend(neuron_core_ids)
+
+    if len(gpu_ids) > 0 and len(neuron_core_ids) > 0:
+        raise RuntimeError("Cannot support GPU and Neuron Core IDs on same Worker.")
+    return gpu_and_accelerator_ids
 
 
 class WorkerGroup:

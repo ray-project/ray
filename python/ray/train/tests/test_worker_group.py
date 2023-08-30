@@ -4,11 +4,28 @@ import pytest
 
 import ray
 from ray.train._internal.worker_group import WorkerGroup, Worker, WorkerMetadata
+import ray._private.ray_constants as ray_constants
 
 
 @pytest.fixture
 def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_2_cpus_and_gpus():
+    address_info = ray.init(num_cpus=2, num_gpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_2_cpus_and_neuron_core_accelerator():
+    address_info = ray.init(num_cpus=2, resources={ray_constants.NEURON_CORES: 2})
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -59,6 +76,44 @@ def test_worker_restart(ray_start_2_cpus):
     wg.execute(lambda: 1)
 
 
+def test_worker_with_gpu_ids(ray_start_2_cpus_and_gpus):
+    num_gpus = 2
+    wg = WorkerGroup(num_workers=2, num_gpus_per_worker=1)
+    assert len(wg.workers) == 2
+    time.sleep(1)
+    assert ray_constants.GPU not in ray.available_resources()
+    wg.execute(lambda: 1)
+    assert len(wg.workers) == 2
+    for w in wg.workers:
+        gpu_and_accelerator_ids = w.metadata.gpu_and_accelerator_ids
+        assert len(gpu_and_accelerator_ids) == 2
+        gpu_ids = gpu_and_accelerator_ids[ray_constants.GPU]
+        for gpu_id in gpu_ids:
+            assert gpu_id in [str(i) for i in range(num_gpus)]
+        assert len(gpu_and_accelerator_ids[ray_constants.NEURON_CORES]) == 0
+
+
+def test_worker_with_neuron_core_accelerator_ids(
+    ray_start_2_cpus_and_neuron_core_accelerator,
+):
+    num_nc = 2
+    wg = WorkerGroup(
+        num_workers=2, additional_resources_per_worker={ray_constants.NEURON_CORES: 1}
+    )
+    assert len(wg.workers) == 2
+    time.sleep(1)
+    assert ray_constants.NEURON_CORES not in ray.available_resources()
+    wg.execute(lambda: 1)
+    assert len(wg.workers) == 2
+    for w in wg.workers:
+        gpu_and_accelerator_ids = w.metadata.gpu_and_accelerator_ids
+        assert len(gpu_and_accelerator_ids) == 2
+        assert len(gpu_and_accelerator_ids[ray_constants.GPU]) == 0
+        neuron_core_ids = gpu_and_accelerator_ids[ray_constants.NEURON_CORES]
+        for neuron_core_id in neuron_core_ids:
+            assert neuron_core_id in [str(i) for i in range(num_nc)]
+
+
 def test_execute_async(ray_start_2_cpus):
     wg = WorkerGroup(num_workers=2)
     futures = wg.execute_async(lambda: 1)
@@ -91,7 +146,7 @@ def test_group_workers_by_ip(ray_start_2_cpus):
                     node_id="dummy",
                     node_ip=ip,
                     hostname="dummy",
-                    gpu_ids=None,
+                    gpu_and_accelerator_ids=None,
                     pid=0,
                 ),
             )

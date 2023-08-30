@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Any
 
 import ray
+import ray._private.ray_constants as ray_constants
 from ray.data import Dataset
 from ray._private.ray_constants import env_integer
 from ray.air.config import CheckpointConfig
@@ -27,6 +28,7 @@ from ray.train.constants import (
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     DISABLE_LAZY_CHECKPOINTING_ENV,
+    ENABLE_SHARE_NEURON_RT_VISIBLE_CORES_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
@@ -153,6 +155,9 @@ class BackendExecutor:
 
             if self._num_gpus_per_worker > 0 and share_cuda_visible_devices_enabled:
                 self._share_cuda_visible_devices()
+            elif self._additional_resources_per_worker:
+                if self._share_neuron_core_ids_enabled():
+                    self._share_neuron_core_ids()
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
             logger.exception(str(exc))
@@ -245,31 +250,95 @@ class BackendExecutor:
             - Worker2: "0,1"
 
         """
-
         node_ids_and_gpu_ids = [
-            (w.metadata.node_id, w.metadata.gpu_ids) for w in self.worker_group.workers
+            (w.metadata.node_id, w.metadata.gpu_and_accelerator_ids[ray_constants.GPU])
+            for w in self.worker_group.workers
         ]
+        self._share_runtime_ids(
+            node_ids_and_runtime_ids=node_ids_and_gpu_ids,
+            env_var=ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR,
+        )
 
+    def _share_neuron_core_ids(self):
+        """Sets NEURON_RT_VISIBLE_CORES on all workers.
+
+        For each worker, NEURON_RT_VISIBLE_CORES will be set to the
+        NEURON_CORE IDs visible to all workers on that worker's node.
+
+        This allows the workers on the same node to communicate
+        with one another.
+
+        Example:
+
+            Setup:
+            - Node1:
+                - Worker1: {0, 1}
+                - Worker2: {2, 3}
+            - Node2:
+                - Worker3: {0, 1}
+
+            NEURON_RT_VISIBLE_CORES:
+            - Worker1: "0,1,2,3"
+            - Worker2: "0,1,2,3"
+            - Worker2: "0,1"
+        """
+        node_ids_and_neuron_core_ids = [
+            (
+                w.metadata.node_id,
+                w.metadata.gpu_and_accelerator_ids[ray_constants.NEURON_CORES],
+            )
+            for w in self.worker_group.workers
+        ]
+        self._share_runtime_ids(
+            node_ids_and_runtime_ids=node_ids_and_neuron_core_ids,
+            env_var=ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
+        )
+
+    def _share_runtime_ids(
+        self, node_ids_and_runtime_ids: List[Tuple[str, List[str]]], env_var: str
+    ):
+        """Sets the given env_var on all workers.
+        Args:
+            node_ids_and_runtime_ids: A list of tuples of node_id and
+                list of runtime_ids.
+            env_var: The name of the environment variable to set.
+        """
         node_id_to_worker_id = defaultdict(set)
-        node_id_to_gpu_ids = defaultdict(set)
+        node_id_to_runtime_ids = defaultdict(set)
 
-        for worker_id, (node_id, gpu_ids) in enumerate(node_ids_and_gpu_ids):
+        for worker_id, (node_id, runtime_id) in enumerate(node_ids_and_runtime_ids):
             node_id_to_worker_id[node_id].add(worker_id)
-            node_id_to_gpu_ids[node_id].update(gpu_ids)
+            node_id_to_runtime_ids[node_id].update(runtime_id)
 
         futures = []
-        for node_id, gpu_ids in node_id_to_gpu_ids.items():
-            gpu_ids = sorted(gpu_ids)
-            all_gpu_ids = ",".join(gpu_ids)
+        for node_id, runtime_ids in node_id_to_runtime_ids.items():
+            runtime_ids = sorted(runtime_ids)
+            all_runtime_ids = ",".join(runtime_ids)
 
-            def set_gpu_ids():
-                os.environ["CUDA_VISIBLE_DEVICES"] = all_gpu_ids
+            def set_runtime_ids():
+                os.environ[env_var] = all_runtime_ids
 
             for worker_id in node_id_to_worker_id[node_id]:
                 futures.append(
-                    self.worker_group.execute_single_async(worker_id, set_gpu_ids)
+                    self.worker_group.execute_single_async(worker_id, set_runtime_ids)
                 )
         ray.get(futures)
+
+    def _share_neuron_core_ids_enabled(self):
+        """Whether to share NEURON_RT_VISIBLE_CORES on all workers.
+        This is enabled by default if neuron_cores are requested for
+        workers. User can disable it by configuring the
+        TRAIN_ENABLE_SHARE_NEURON_RT_VISIBLE_CORES to "0"
+        """
+        return bool(
+            env_integer(
+                ENABLE_SHARE_NEURON_RT_VISIBLE_CORES_ENV,
+                self._additional_resources_per_worker.get(
+                    ray_constants.NEURON_CORES, None
+                )
+                is not None,
+            )
+        )
 
     def _create_rank_world_size_mappings(self) -> List[Dict]:
         """Create rank and world size mappings for workers.
