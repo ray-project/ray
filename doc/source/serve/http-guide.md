@@ -41,6 +41,11 @@ Often for ML models, you just need the API to accept a `numpy` array. You can us
 Serve provides a library of HTTP adapters to help you avoid boilerplate code. The [later section](serve-http-adapters) dives deeper into how these works.
 ```
 
+(serve-handling-client-disconnects-http)=
+### Handling client disconnects
+
+When an HTTP client disconnects after sending a request, but before receiving a response, Serve cancels the request. If the request is currently being processed by deployments, and `asyncio.CancelledError`
+
 (serve-fastapi-http)=
 ## FastAPI HTTP Deployments
 
