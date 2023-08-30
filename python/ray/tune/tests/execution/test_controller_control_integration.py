@@ -119,10 +119,10 @@ def test_remove_actor_tracking(ray_start_4_cpus_2_gpus_extra, resource_manager_c
         storage=STORAGE,
     )
 
-    def train(config):
+    def train_fn(config):
         return 1
 
-    register_trainable("test_remove_actor_tracking", train)
+    register_trainable("test_remove_actor_tracking", train_fn)
 
     kwargs = {
         "placement_group_factory": PlacementGroupFactory([{"CPU": 4, "GPU": 2}]),

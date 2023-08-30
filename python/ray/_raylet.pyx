@@ -132,6 +132,7 @@ from ray.includes.common cimport (
     kImplicitResourcePrefix,
     kWorkerSetupHookKeyName,
     PythonCheckGcsHealth,
+    PythonGetNodeLabels,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -2553,7 +2554,8 @@ cdef class GcsClient:
         for node_info in node_infos:
             result[node_info.node_id()] = {
                 "node_name": node_info.node_name(),
-                "state": node_info.state()
+                "state": node_info.state(),
+                "labels": PythonGetNodeLabels(node_info)
             }
         return result
 
