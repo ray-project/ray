@@ -49,15 +49,23 @@ When an HTTP client disconnects before receiving a response, Serve cancels its i
 - If the proxy hasn't yet sent the request to a replica, the request is simply dropped.
 - If the request has been sent to a replica, Serve attempts to interrupt the replica and cancel the request. When the replica enters an `await` statement, Serve raises an `asyncio.CancelledError`. Handle this exception in a try-except block to customize your deployment's behavior when a request is cancelled:
 
-...
+```{literalinclude} doc_code/http_guide/http_guide.py
+:start-after: __start_basic_disconnect__
+:end-before: __end_basic_disconnect__
+:language: python
+```
 
 If there are no remaining `await` statements in the deployment's code before the request completes, the replica processes the request as usual, sends the response back to the proxy, and the proxy discards the response. Use `await` statements for blocking operations in a deployment, so in-flight requests can be cancelled in the deployment without waiting for the blocking operation to complete.
 
 Serve implements cascading cancellations. If a deployment is `awaiting` a response from another Ray task, Ray actor, or Serve deployment, Serve raises the `asyncio.CancelledError` in the `awaiting` deployment as well as the downstream task, actor, or deployment. This cancellation cascades through any chain of tasks, actors, or deployments that are `awaiting` another task, actor, or deployment. To block a cancellation from cascading to a downstream task, actor, or deployment, use `asyncio.shield`:
 
-...
+```{literalinclude} doc_code/http_guide/http_guide.py
+:start-after: __start_shielded_disconnect__
+:end-before: __end_shielded_disconnect__
+:language: python
+```
 
-Even if ... is cancelled, the cancellation won't be raised inside ... or any subsequent async calls that ... makes.
+When the request is cancelled, a cancellation error is raised inside the `Guardian` deployment. However, the cancellation won't be raised inside `sleeper` or any subsequent async calls that `sleeper` makes.
 
 (serve-fastapi-http)=
 ## FastAPI HTTP Deployments
