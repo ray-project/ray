@@ -11,6 +11,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BuildOutputBlocksMapTransformFn,
     MapTransformer,
     MapTransformFn,
+    MapTransformFnData,
     MapTransformFnDataType,
 )
 from ray.data._internal.logical.operators.read_operator import Read
@@ -59,7 +60,7 @@ def _splitrange(n, k):
 class BuildOutputBlocksWithAdditionalSplit(MapTransformFn):
     """Build output blocks and do additional splits."""
 
-    def __init__(self, additional_split_factor: int):
+    def __init__(self, input_type: MapTransformFnDataType, additional_split_factor: int):
         """
         Args:
           additional_output_splits: The number of additional splits, must be
@@ -67,10 +68,13 @@ class BuildOutputBlocksWithAdditionalSplit(MapTransformFn):
         """
         assert additional_split_factor > 1
         self._additional_split_factor = additional_split_factor
-        super().__init__(MapTransformFnDataType.Block, MapTransformFnDataType.Block)
+        super().__init__(input_type, MapTransformFnDataType.Block)
 
     def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
-        blocks = BuildOutputBlocksMapTransformFn.for_blocks()(blocks, ctx)
+        if self._input_type == MapTransformFnDataType.Row:
+            blocks = BuildOutputBlocksMapTransformFn.for_rows()(blocks, ctx)
+        else:
+            blocks = BuildOutputBlocksMapTransformFn.for_blocks()(blocks, ctx)
         return self._do_additional_splits(blocks)
 
     def _do_additional_splits(
@@ -84,6 +88,23 @@ class BuildOutputBlocksWithAdditionalSplit(MapTransformFn):
             for size in split_sizes:
                 yield block.slice(offset, offset + size, copy=True)
                 offset += size
+
+
+class ReadTaskTranformFn(MapTransformFn):
+
+    def __init__(self, return_blocks: bool):
+        output_type = (
+            MapTransformFnDataType.Block
+            if return_blocks
+            else MapTransformFnDataType.Row
+        )
+        super().__init__(MapTransformFnDataType.Block, output_type)
+
+    def __call__(
+        self, blocks: Iterable[Block], ctx: TaskContext
+    ) -> Iterable[MapTransformFnData]:
+        for read_task in blocks:
+            yield from read_task()
 
 
 def plan_read_op(op: Read) -> PhysicalOperator:
@@ -117,24 +138,26 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         input_data_factory=get_input_data, num_output_blocks=op._estimated_num_blocks
     )
 
-    def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
-        for read_task in blocks:
-            yield from read_task()
+    read_task_returns_blocks = op._datasource.return_blocks()
 
     # Create a MapTransformer for a read operator
     transform_fns: List[MapTransformFn] = [
         # First, execute the read tasks.
-        BlockMapTransformFn(do_read),
+        ReadTaskTranformFn(return_blocks=read_task_returns_blocks),
     ]
     if op._additional_split_factor is None:
         # Then build the output blocks.
-        transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
+        if read_task_returns_blocks:
+            transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
+        else:
+            transform_fns.append(BuildOutputBlocksMapTransformFn.for_rows())
     else:
         # Build the output blocks and do additional splits.
         # NOTE, we explictly do these two steps in one MapTransformFn to avoid
         # `BuildOutputBlocksMapTransformFn` getting dropped by the optimizer.
+        input_type = MapTransformFnDataType.Block if read_task_returns_blocks else MapTransformFnDataType.Row
         transform_fns.append(
-            BuildOutputBlocksWithAdditionalSplit(op._additional_split_factor)
+            BuildOutputBlocksWithAdditionalSplit(input_type, op._additional_split_factor)
         )
 
     map_transformer = MapTransformer(transform_fns)

@@ -91,16 +91,12 @@ class ImageDatasource(FileBasedDatasource):
         if mode is not None:
             image = image.convert(mode)
 
-        builder = DelegatingBlockBuilder()
         array = np.array(image)
         if include_paths:
             item = {"image": array, "path": path}
         else:
             item = {"image": array}
-        builder.add(item)
-        block = builder.build()
-
-        return block
+        return item
 
     def _rows_per_file(self):
         return 1
@@ -122,6 +118,9 @@ class ImageDatasource(FileBasedDatasource):
         buffer = io.BytesIO()
         image.save(buffer, format=file_format)
         f.write(buffer.getvalue())
+
+    def return_blocks(self) -> bool:
+        return False
 
 
 class _ImageFileMetadataProvider(DefaultFileMetadataProvider):

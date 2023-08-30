@@ -141,6 +141,9 @@ class Datasource:
             name = name[: -len(datasource_suffix)]
         return name
 
+    def return_blocks(self) -> bool:
+        return True
+
 
 @PublicAPI
 class Reader:
