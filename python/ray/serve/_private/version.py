@@ -21,6 +21,7 @@ class DeploymentVersion:
         ray_actor_options: Optional[Dict],
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        max_replicas_per_node: Optional[int] = None,
     ):
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(f"code_version must be str, got {type(code_version)}.")
@@ -37,6 +38,7 @@ class DeploymentVersion:
         self.ray_actor_options = ray_actor_options
         self.placement_group_bundles = placement_group_bundles
         self.placement_group_strategy = placement_group_strategy
+        self.max_replicas_per_node = max_replicas_per_node
         self.compute_hashes()
 
     @classmethod
@@ -63,6 +65,7 @@ class DeploymentVersion:
             or self.ray_actor_options_hash != new_version.ray_actor_options_hash
             or self.placement_group_options_hash
             != new_version.placement_group_options_hash
+            or self.max_replicas_per_node != new_version.max_replicas_per_node
         )
 
     def requires_actor_reconfigure(self, new_version):
@@ -109,6 +112,7 @@ class DeploymentVersion:
             self.code_version.encode("utf-8")
             + serialized_ray_actor_options
             + serialized_placement_group_options
+            + str(self.max_replicas_per_node).encode("utf-8")
             + self._get_serialized_options(
                 [
                     DeploymentOptionUpdateType.NeedsReconfigure,
@@ -129,6 +133,9 @@ class DeploymentVersion:
             placement_group_strategy=self.placement_group_strategy
             if self.placement_group_strategy is not None
             else "",
+            max_replicas_per_node=self.max_replicas_per_node
+            if self.max_replicas_per_node is not None
+            else 0,
         )
 
     @classmethod
@@ -144,6 +151,9 @@ class DeploymentVersion:
             ),
             placement_group_version=(
                 proto.placement_group_version if proto.placement_group_version else None
+            ),
+            max_replicas_per_node=(
+                proto.max_replicas_per_node if proto.max_replicas_per_node else None
             ),
         )
 

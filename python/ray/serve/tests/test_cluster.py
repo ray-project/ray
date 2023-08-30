@@ -7,14 +7,15 @@ import requests
 import pytest
 
 import ray
+from ray.cluster_utils import Cluster
+from ray.exceptions import RayActorError
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 from ray import serve
-from ray.cluster_utils import Cluster
 from ray.serve.context import get_global_client
 from ray.serve.handle import RayServeHandle
-from ray.serve._private.constants import SERVE_NAMESPACE, RAY_SERVE_ENABLE_NEW_ROUTING
 from ray.serve._private.common import DeploymentID, ReplicaState
+from ray.serve._private.constants import SERVE_NAMESPACE, RAY_SERVE_ENABLE_NEW_ROUTING
 from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.utils import get_head_node_id
 
@@ -38,7 +39,13 @@ def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
             refs = [handle.remote()._to_object_ref_sync() for _ in range(10)]
 
         done, pending = ray.wait(refs)
-        pids = pids.union(set(ray.get(done)))
+        for ref in done:
+            try:
+                pids.add(ray.get(ref))
+            except RayActorError:
+                # Handle sent request to dead actor before running replicas were updated
+                # This can happen because health check period = 1s
+                pass
         refs = list(pending)
         if time.time() - start >= timeout:
             raise TimeoutError("Timed out waiting for pids.")
@@ -59,7 +66,7 @@ def test_scale_up(ray_cluster):
         time.sleep(0.1)
         return os.getpid()
 
-    serve.start(detached=True)
+    serve.start()
     client = serve.context._connect()
 
     D.deploy()
@@ -100,7 +107,7 @@ def test_node_failure(ray_cluster):
     # guarantee that the controller is placed on the head node (we should be
     # able to tolerate being placed on workers, but there's currently a bug).
     # We should add an explicit test for that in the future when it's fixed.
-    serve.start(detached=True)
+    serve.start()
 
     worker_node = cluster.add_node(num_cpus=2)
 
@@ -139,7 +146,8 @@ def test_replica_startup_status_transitions(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
     cluster.connect(namespace=SERVE_NAMESPACE)
-    serve_instance = serve.start()
+    serve.start()
+    client = get_global_client()
 
     signal = SignalActor.remote()
 
@@ -151,7 +159,7 @@ def test_replica_startup_status_transitions(ray_cluster):
     E.deploy(_blocking=False)
 
     def get_replicas(replica_state):
-        controller = serve_instance._controller
+        controller = client._controller
         replicas = ray.get(
             controller._dump_replica_states_for_testing.remote(DeploymentID(E.name, ""))
         )
@@ -226,7 +234,7 @@ def test_replica_spread(ray_cluster):
     # able to tolerate being placed on workers, but there's currently a bug).
     # We should add an explicit test for that in the future when it's fixed.
     cluster.connect(namespace=SERVE_NAMESPACE)
-    serve.start(detached=True)
+    serve.start()
 
     worker_node = cluster.add_node(num_cpus=2)
 
@@ -328,7 +336,7 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     """
 
     if set_flag:
-        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING"] = "1"
+        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"] = "1"
 
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
@@ -353,8 +361,8 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     else:
         assert len(set(responses)) == 2
 
-    if "RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING" in os.environ:
-        del os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_ROUTING"]
+    if "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING" in os.environ:
+        del os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"]
 
 
 if __name__ == "__main__":
