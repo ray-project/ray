@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Dict, Optional, Set
 
 import ray
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.error import TuneError
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import PublicAPI, Deprecated
@@ -31,6 +32,30 @@ _deprecation_msg = (
     "to-use API across Tune session and Data parallel worker sessions."
     "The old APIs will be removed in the future. "
 )
+
+_TUNE_REPORT_DEPRECATION_MSG = """`tune.report` is deprecated.
+Use `ray.train.report` instead -- see the example below:
+
+from ray import tune     ->     from ray import train
+tune.report(metric=1)    ->     train.report({'metric': 1})"""
+
+
+_TUNE_CHECKPOINT_DIR_DEPRECATION_MSG = """`tune.checkpoint_dir` is deprecated.
+Use `ray.train.report` instead -- see the example below:
+
+Before:
+
+with tune.checkpoint_dir(step=1) as checkpoint_dir:
+    torch.save(state_dict, os.path.join(checkpoint_dir, 'model.pt'))
+tune.report(metric=1)
+
+After:
+
+from ray.train import Checkpoint
+
+with tempfile.TemporaryDirectory as temp_checkpoint_dir:
+    torch.save(state_dict, os.path.join(temp_checkpoint_dir, 'model.pt'))
+    ray.train.report({'metric': 1}, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir))"""  # noqa: E501
 
 
 @Deprecated(message=_deprecation_msg)
@@ -195,6 +220,9 @@ def report(_metric=None, **kwargs):
         **kwargs: Any key value pair to be logged by Tune. Any of these
             metrics can be used for early stopping or optimization.
     """
+    if _use_storage_context():
+        raise DeprecationWarning(_TUNE_REPORT_DEPRECATION_MSG)
+
     warnings.warn(
         _deprecation_msg,
         DeprecationWarning,
@@ -259,6 +287,9 @@ def checkpoint_dir(step: int):
 
     .. versionadded:: 0.8.7
     """
+    if _use_storage_context():
+        raise DeprecationWarning(_TUNE_CHECKPOINT_DIR_DEPRECATION_MSG)
+
     warnings.warn(
         _deprecation_msg,
         DeprecationWarning,
@@ -294,6 +325,12 @@ def get_trial_dir():
 
     For function API use only.
     """
+    if _use_storage_context():
+        raise DeprecationWarning(
+            "`tune.get_trial_dir()` is deprecated. "
+            "Use `ray.train.get_context().get_trial_dir()` instead."
+        )
+
     warnings.warn(
         _deprecation_msg,
         DeprecationWarning,
@@ -309,6 +346,12 @@ def get_trial_name():
 
     For function API use only.
     """
+    if _use_storage_context():
+        raise DeprecationWarning(
+            "`tune.get_trial_name()` is deprecated. "
+            "Use `ray.train.get_context().get_trial_name()` instead."
+        )
+
     warnings.warn(
         _deprecation_msg,
         DeprecationWarning,
@@ -324,6 +367,12 @@ def get_trial_id():
 
     For function API use only.
     """
+    if _use_storage_context():
+        raise DeprecationWarning(
+            "`tune.get_trial_id()` is deprecated. "
+            "Use `ray.train.get_context().get_trial_id()` instead."
+        )
+
     warnings.warn(
         _deprecation_msg,
         DeprecationWarning,
@@ -341,6 +390,12 @@ def get_trial_resources():
 
     For function API use only.
     """
+    if _use_storage_context():
+        raise DeprecationWarning(
+            "`tune.get_trial_resources()` is deprecated. "
+            "Use `ray.train.get_context().get_trial_resources()` instead."
+        )
+
     warnings.warn(
         _deprecation_msg,
         DeprecationWarning,
