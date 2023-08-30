@@ -246,11 +246,6 @@ def _noop_logger_creator(
     os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
 
     os.makedirs(logdir, exist_ok=True)
-    if should_chdir:
-        # Set the working dir to the trial directory in the remote process,
-        # for user file writes
-        if not ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
-            os.chdir(logdir)
     return NoopLogger(config, logdir)
 
 
