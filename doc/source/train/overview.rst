@@ -7,11 +7,11 @@ Ray Train Overview
     
 .. .. image:: ./images/train-concepts.svg
         
-The Ray Train interface is powerful yet simple. The use model is based on four main concepts:
+The Ray Train interface is powerful yet simple. The use model has four main concepts:
 
 #. :ref:`Training function <train-overview-training-function>`: A Python function that contains your model training logic.
 #. :ref:`Worker <train-overview-worker>`: A process that runs the training function.
-#. :ref:`Scaling configuration: <train-overview-scaling-config>` A configuration of the number of workers and type of compute resources (for example, CPU or GPU) per worker.
+#. :ref:`Scaling configuration: <train-overview-scaling-config>` A configuration of the number of workers and type of compute resources, for example, CPU or GPU, per worker.
 #. :ref:`Trainer <train-overview-trainers>`: A Python class that ties together the training function, workers, and scaling configuration to execute a distributed training job.
 
 .. _train-overview-training-function:
@@ -45,7 +45,7 @@ Worker
 ------
 
 Ray Train distributes model training compute to individual worker processes across the cluster. 
-Each worker is a process that executes the `train_func` on compute resources (for example, CPUs or GPUs).
+Each worker is a process that executes the `train_func` on compute resources, for example, CPUs or GPUs.
 The number of workers determines the parallelism of the training job, and the `ScalingConfig` configures it.
 
 .. _train-overview-scaling-config:
