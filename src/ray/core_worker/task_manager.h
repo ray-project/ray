@@ -145,6 +145,21 @@ class ObjectRefStream {
   /// \return A list of object IDs that are not read yet.
   absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
 
+  void MarkStreamDeletedByLangFrontend() { is_stream_deleted_from_lang_frontend_ = true; }
+
+  bool IsStreamDeletedByLangFrontend() const {
+    return is_stream_deleted_from_lang_frontend_;
+  }
+
+  void MarkStreamLineageReleased() { is_stream_lineage_released_ = true; }
+
+  /// Stream should be deleted when it is not used by the lang frontend anymore
+  /// AND the related lineage is released (when a streaming generator task
+  /// doesn't need to be used to reconstruct objects anymore).
+  bool ShouldDelete() const {
+    return is_stream_deleted_from_lang_frontend_ && is_stream_lineage_released_;
+  }
+
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
 
@@ -168,6 +183,11 @@ class ObjectRefStream {
   /// ends with fewer returns. Then, we mark one past this index as the end of
   /// the stream.
   int64_t max_index_seen_ = -1;
+
+  /// True if the stream is deleted from the language frontend.
+  bool is_stream_deleted_from_lang_frontend_ = false;
+  /// True if the stream is not needed anymore by lineage reconstruction.
+  bool is_stream_lineage_released_ = false;
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -255,7 +275,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
    *
    * - The stream must be created when a task is submitted first time. The stream
    * must be deleted by the language frontend when the stream
-   * is not used anymore. The DelObjectRefStream APIs guarantee to clean
+   * is not used anymore. The MarkObjectRefStreamDeleted APIs guarantee to clean
    * up object references associated with the stream.
    * - The generator return values are reported via HandleReportGeneratorItemReturns.
    * The report ordering is not guaranteed. HandleReportGeneratorItemReturns
@@ -312,11 +332,17 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                                                 const ObjectID &generator_id)
       LOCKS_EXCLUDED(mu_);
 
-  /// Delete the object ref stream.
+  /// Delete the object ref stream when it is not
+  /// used by the language frontend.
   ///
   /// Once the stream is deleted, it will clean up all unconsumed
-  /// object references, and all the future intermediate report
-  /// will be ignored.
+  /// object references.
+  ///
+  /// Although the object ref stream is marked as deleted, it is
+  /// not immediately removed if the lineage to the original task
+  /// is not released. Once the lineage is removed AND the stream
+  /// is deleted from the language frontend, all the future
+  /// intermediate report will be ignored.
   ///
   /// This method is idempotent. It is because the language
   /// frontend often calls this method upon destructor, but
@@ -325,7 +351,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  void DelObjectRefStream(const ObjectID &generator_id) LOCKS_EXCLUDED(mu_);
+  void MarkObjectRefStreamDeleted(const ObjectID &generator_id) LOCKS_EXCLUDED(mu_);
+
+  /// Mark the ObjectRefStream's lineage is released.
+  /// It is no-op if the given task is not a streaming generator task.
+  ///
+  /// \param[in] task_spec the spec of the task.
+  void MarkObjectRefStreamLineageReleased(const TaskSpecification &spec);
 
   /// Return true if the object ref stream exists.
   ///
@@ -730,9 +762,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Mapping from a streaming generator task id -> object ref stream.
   absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
-      GUARDED_BY(objet_ref_stream_ops_mu_);
-
-  absl::flat_hash_set<ObjectID> object_ref_streams_deleted_
       GUARDED_BY(objet_ref_stream_ops_mu_);
 
   /// Callback to store objects in plasma. This is used for objects that were

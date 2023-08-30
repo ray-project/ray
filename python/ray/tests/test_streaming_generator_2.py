@@ -16,7 +16,7 @@ RECONSTRUCTION_CONFIG = {
     "health_check_timeout_ms": 100,
     "health_check_initial_delay_ms": 0,
     "max_direct_call_object_size": 100,
-    "task_retry_delay_ms": 100,
+    "task_retry_delay_ms": 1000,
     "object_timeout_milliseconds": 200,
     "fetch_warn_timeout_milliseconds": 1000,
 }
@@ -34,7 +34,7 @@ def assert_no_leak():
 
 
 @pytest.mark.parametrize("delay", [True, False])
-@pytest.mark.parametrize("actor_task", [False])
+@pytest.mark.parametrize("actor_task", [True, False])
 def test_reconstruction(monkeypatch, ray_start_cluster, delay, actor_task):
     with monkeypatch.context() as m:
         if delay:
@@ -119,7 +119,7 @@ def test_reconstruction(monkeypatch, ray_start_cluster, delay, actor_task):
 
 
 @pytest.mark.parametrize("failure_type", ["exception", "crash"])
-@pytest.mark.parametrize("actor_task", [False])
+@pytest.mark.parametrize("actor_task", [True, False])
 def test_reconstruction_retry_failed(ray_start_cluster, failure_type, actor_task):
     """Test the streaming generator retry fails in the second retry."""
     cluster = ray_start_cluster
@@ -211,7 +211,6 @@ def test_reconstruction_retry_failed(ray_start_cluster, failure_type, actor_task
 
     for ref in gen:
         refs.append(ref)
-    print(len(refs))
 
     for i, ref in enumerate(refs):
         print("second trial")
@@ -224,12 +223,17 @@ def test_reconstruction_retry_failed(ray_start_cluster, failure_type, actor_task
                 assert ray.get(fetch.remote(ref)) == i
 
 
-def test_reconstruction_batch_inference_like_test(monkeypatch, ray_start_cluster):
+@pytest.mark.parametrize("delay", [False])
+def test_reconstruction_batch_inference_like_test(
+    monkeypatch, ray_start_cluster, delay
+):
     with monkeypatch.context() as m:
-        # m.setenv(
-        #     "RAY_testing_asio_delay_us",
-        #     "CoreWorkerService.grpc_server." "ReportGeneratorItemReturns=10000:1000000",
-        # )
+        if delay:
+            m.setenv(
+                "RAY_testing_asio_delay_us",
+                "CoreWorkerService.grpc_server."
+                "ReportGeneratorItemReturns=10000:1000000",
+            )
         cluster = ray_start_cluster
         # Head node with no resources.
         cluster.add_node(

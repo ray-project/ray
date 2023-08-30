@@ -4509,7 +4509,7 @@ cdef class CoreWorker:
             CObjectID c_generator_id = generator_id.native()
 
         with nogil:
-            CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
+            CCoreWorkerProcess.GetCoreWorker().MarkObjectRefStreamDeleted(c_generator_id)
 
     def try_read_next_object_ref_stream(self, ObjectRef generator_id):
         cdef:
