@@ -942,7 +942,7 @@
   team: ml
   cluster:
     byod:
-      type: cu118
+      type: gpu
       pip:
         - myst-parser==0.15.2
         - myst-nb==0.13.1
@@ -1014,7 +1014,7 @@
   team: serve
   cluster:
     byod:
-      type: cu118
+      type: gpu
     cluster_compute: ../testing/compute_configs/gpu/aws.yaml
 
   run:
@@ -1037,7 +1037,7 @@
   team: ml
   cluster:
     byod:
-      type: cu118
+      type: gpu
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
 
   run:
