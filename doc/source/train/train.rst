@@ -130,7 +130,7 @@ Learn more
         **User Guides**
         ^^^
 
-        Use Ray Train effectively and efficiently for your use case.
+        Get how-to instructions for common training tasks with Ray Train.
 
         +++
         .. button-ref:: train-user-guides
@@ -138,14 +138,14 @@ Learn more
             :outline:
             :expand:
 
-            Explore how-to guides for Ray Train
+            Read how-to guides
 
     .. grid-item-card::
 
         **Examples**
         ^^^
 
-        Find examples for different frameworks.
+        Browse end-to-end code examples for different use cases.
 
         +++
         .. button-ref:: train-examples
@@ -153,14 +153,14 @@ Learn more
             :outline:
             :expand:
 
-            See examples
+            Learn through examples
 
     .. grid-item-card::
 
         **API**
         ^^^
 
-        Find full descriptions of the Ray Train API.
+        Consult the API Reference for full descriptions of the Ray Train API.
 
         +++
         .. button-ref:: air-trainer-ref

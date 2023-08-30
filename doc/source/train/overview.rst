@@ -7,8 +7,7 @@ Ray Train Overview
     
 .. .. image:: ./images/train-concepts.svg
         
-
-To use Ray Train effectively, you need to understand four main concepts:
+The Ray Train interface is powerful yet simple. The use model is based on four main concepts:
 
 #. :ref:`Training function <train-overview-training-function>`: A Python function that contains your model training logic.
 #. :ref:`Worker <train-overview-worker>`: A process that runs the training function.
@@ -21,7 +20,7 @@ Training function
 -----------------
 
 The training function is a user-defined Python function that contains the end-to-end model training loop logic.
-Typically, this training function contains logic for loading the dataset, training the model, and saving checkpoints.
+Typically, this training function contains logic for loading the dataset, training the model, saving checkpoints, and logging metrics.
 When launching a distributed training job, each worker executes this training function.
 
 Ray Train documentation uses the following conventions:
@@ -48,10 +47,6 @@ Worker
 Ray Train distributes model training compute to individual worker processes across the cluster. 
 Each worker is a process that executes the `train_func` on compute resources (for example, CPUs or GPUs).
 The number of workers determines the parallelism of the training job, and the `ScalingConfig` configures it.
-
-.. Ray Train abstracts away the allocation and orchestration of nodes and compute resources for workers.
-.. The user defines the number of workers in the scaling configuration.
-.. The number of workers typically equals the aggregate number of GPUs (or CPUs?) you are allocating to the entire training job.
 
 .. _train-overview-scaling-config:
 
