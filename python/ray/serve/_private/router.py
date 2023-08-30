@@ -43,7 +43,6 @@ from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
-    RAY_SERVE_UNKNOWN_AVAILABILITY_ZONE,
 )
 from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -461,7 +460,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 new_colocated_replica_ids[LocalityScope.NODE].add(r.replica_id)
             if (
                 self._self_availability_zone is not None
-                and self._self_availability_zone != RAY_SERVE_UNKNOWN_AVAILABILITY_ZONE
                 and r.availability_zone == self._self_availability_zone
             ):
                 new_colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE].add(

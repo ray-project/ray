@@ -6,13 +6,11 @@ from ray.serve._private.deployment_scheduler import (
     DeploymentScheduler,
     DefaultDeploymentScheduler,
 )
+from ray._raylet import GcsClient
 
 
-ClusterNodeInfoCacheImpl = DefaultClusterNodeInfoCache
-
-
-def create_cluster_node_info_cache() -> ClusterNodeInfoCache:
-    return ClusterNodeInfoCacheImpl()
+def create_cluster_node_info_cache(gcs_client: GcsClient) -> ClusterNodeInfoCache:
+    return DefaultClusterNodeInfoCache(gcs_client)
 
 
 def create_deployment_scheduler(

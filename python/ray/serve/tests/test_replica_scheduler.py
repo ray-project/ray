@@ -10,7 +10,6 @@ import ray
 from ray._private.utils import get_or_create_event_loop
 
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.constants import RAY_SERVE_UNKNOWN_AVAILABILITY_ZONE
 from ray.serve._private.router import (
     PowerOfTwoChoicesReplicaScheduler,
     Query,
@@ -100,7 +99,7 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
         request.param.get("prefer_local_node", False),
         request.param.get("prefer_local_az", False),
         SCHEDULER_NODE_ID,
-        request.param.get("az", RAY_SERVE_UNKNOWN_AVAILABILITY_ZONE),
+        request.param.get("az", None),
     )
 
     # Update the RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S

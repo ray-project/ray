@@ -37,7 +37,6 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_CONCURRENT_QUERIES,
-    RAY_SERVE_UNKNOWN_AVAILABILITY_ZONE,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import get_random_letters
@@ -157,7 +156,7 @@ class MockReplicaActorWrapper:
 
     @property
     def availability_zone(self) -> Optional[str]:
-        return RAY_SERVE_UNKNOWN_AVAILABILITY_ZONE
+        return None
 
     @property
     def node_ip(self) -> Optional[str]:
@@ -345,7 +344,7 @@ class MockClusterNodeInfoCache:
         return self.alive_node_ids - self.draining_node_ids
 
     def get_node_az(self, node_id):
-        return RAY_SERVE_UNKNOWN_AVAILABILITY_ZONE
+        return None
 
 
 @pytest.fixture

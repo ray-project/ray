@@ -3,6 +3,7 @@ import sys
 import pytest
 
 import ray
+from ray._raylet import GcsClient
 from ray.tests.conftest import *  # noqa
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.deployment_scheduler import (
@@ -45,7 +46,9 @@ def test_spread_deployment_scheduling_policy_upscale(
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    cluster_node_info_cache = create_cluster_node_info_cache()
+    cluster_node_info_cache = create_cluster_node_info_cache(
+        GcsClient(address=ray.get_runtime_context().gcs_address)
+    )
     cluster_node_info_cache.update()
 
     scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
@@ -131,7 +134,9 @@ def test_spread_deployment_scheduling_policy_downscale_multiple_deployments(
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    cluster_node_info_cache = create_cluster_node_info_cache()
+    cluster_node_info_cache = create_cluster_node_info_cache(
+        GcsClient(address=ray.get_runtime_context().gcs_address)
+    )
     cluster_node_info_cache.update()
 
     scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
@@ -196,7 +201,9 @@ def test_spread_deployment_scheduling_policy_downscale_single_deployment(
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    cluster_node_info_cache = create_cluster_node_info_cache()
+    cluster_node_info_cache = create_cluster_node_info_cache(
+        GcsClient(address=ray.get_runtime_context().gcs_address)
+    )
     cluster_node_info_cache.update()
 
     scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
@@ -277,7 +284,9 @@ def test_spread_deployment_scheduling_policy_downscale_head_node(ray_start_clust
     ray.init(address=cluster.address)
     head_node_id = get_head_node_id()
 
-    cluster_node_info_cache = create_cluster_node_info_cache()
+    cluster_node_info_cache = create_cluster_node_info_cache(
+        GcsClient(address=ray.get_runtime_context().gcs_address)
+    )
     cluster_node_info_cache.update()
 
     scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
@@ -328,7 +337,9 @@ def test_driver_deployment_scheduling_policy_upscale(ray_start_cluster):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    cluster_node_info_cache = create_cluster_node_info_cache()
+    cluster_node_info_cache = create_cluster_node_info_cache(
+        GcsClient(address=ray.get_runtime_context().gcs_address)
+    )
     cluster_node_info_cache.update()
 
     scheduler = DefaultDeploymentScheduler(cluster_node_info_cache)
