@@ -204,6 +204,7 @@ class ServerCallImpl : public ServerCall {
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
+    stats_handle_ = io_service_.stats().RecordStart(call_name_);
     bool auth_success = true;
     if (::RayConfig::instance().enable_cluster_auth()) {
       if constexpr (EnableAuth == AuthType::LAZY_AUTH) {
@@ -237,7 +238,7 @@ class ServerCallImpl : public ServerCall {
     }
     if (!io_service_.stopped()) {
       io_service_.post([this, auth_success] { HandleRequestImpl(auth_success); },
-                       call_name_);
+                       stats_handle_);
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
@@ -289,6 +290,7 @@ class ServerCallImpl : public ServerCall {
   }
 
   void OnReplySent() override {
+    stats_handle_.reset();
     if (record_metrics_) {
       ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
     }
@@ -300,6 +302,7 @@ class ServerCallImpl : public ServerCall {
   }
 
   void OnReplyFailed() override {
+    stats_handle_.reset();
     if (record_metrics_) {
       ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
     }
@@ -368,6 +371,9 @@ class ServerCallImpl : public ServerCall {
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
+
+  /// The stats handle tracking this RPC.
+  std::shared_ptr<StatsHandle> stats_handle_;
 
   /// ID of the cluster to check incoming RPC calls against.
   /// Check skipped if empty.
