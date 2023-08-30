@@ -12,7 +12,6 @@ from ray.data import (
     Dataset,
     DataIterator,
     ExecutionOptions,
-    ExecutionResources,
     NodeIdStr,
 )
 from ray.data.preprocessor import Preprocessor
@@ -111,14 +110,14 @@ class DataConfig:
     def default_ingest_options() -> ExecutionOptions:
         """The default Ray Data options used for data ingest.
 
-        We enable output locality, which means that Ray Data will try to place tasks on
-        the node the data is consumed. We also set the object store memory limit
-        to a fixed smaller value, to avoid using too much memory per Train worker.
+        By default, output locality is enabled, which means that Ray Data will try to
+        place tasks on the node the data is consumed. The remaining configurations are
+        carried over from what is already set in DataContext.
         """
         ctx = ray.data.DataContext.get_current()
         return ExecutionOptions(
             locality_with_output=True,
-            resource_limits=ExecutionResources(object_store_memory=2e9),
+            resource_limits=ctx.execution_options.resource_limits,
             preserve_order=ctx.execution_options.preserve_order,
             verbose_progress=ctx.execution_options.verbose_progress,
         )

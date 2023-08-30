@@ -14,7 +14,7 @@ import torch.optim as optim
 
 import ray
 from ray import train
-from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
+from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
 
@@ -108,14 +108,10 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1, smoke_test: bool = Fals
     dataset = dataset.map_batches(add_fake_labels)
     dataset = dataset.map_batches(transform_image, fn_kwargs={"transform": transform})
 
-    dataset_execution_options = DataConfig.default_ingest_options()
-    dataset_execution_options.resource_limits.object_store_memory = None
-
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop_per_worker,
         train_loop_config={"batch_size": 64, "num_epochs": num_epochs},
         datasets={"train": dataset},
-        dataset_config=DataConfig(execution_options=dataset_execution_options),
         scaling_config=ScalingConfig(
             num_workers=num_workers, use_gpu=int(not smoke_test)
         ),
