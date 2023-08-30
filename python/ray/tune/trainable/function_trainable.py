@@ -382,9 +382,7 @@ class FunctionTrainable(Trainable):
     def setup(self, config):
         if _use_storage_context():
             init_session(
-                training_func=lambda: self._trainable_func(
-                    self.config, get_session(), get_session().loaded_checkpoint
-                ),
+                training_func=lambda: self._trainable_func(self.config),
                 trial_info=TrialInfo(
                     name=self.trial_name,
                     id=self.trial_id,
@@ -446,7 +444,7 @@ class FunctionTrainable(Trainable):
         self._restore_tmpdir = None
         self.temp_checkpoint_dir = None
 
-    def _trainable_func(self, config, reporter, checkpoint_dir):
+    def _trainable_func(self, config: Dict[str, Any]):
         """Subclasses can override this to set the trainable func."""
 
         raise NotImplementedError
@@ -454,11 +452,7 @@ class FunctionTrainable(Trainable):
     def _start(self):
         def entrypoint():
             try:
-                return self._trainable_func(
-                    self.config,
-                    self._status_reporter,
-                    self._status_reporter.get_checkpoint(),
-                )
+                return self._trainable_func(self.config)
             except Exception as e:
                 raise StartTraceback from e
 
@@ -722,9 +716,7 @@ class FunctionTrainable(Trainable):
                 return False
 
             session.reset(
-                training_func=lambda: self._trainable_func(
-                    self.config, get_session(), get_session().loaded_checkpoint
-                ),
+                training_func=lambda: self._trainable_func(self.config),
                 trial_info=TrialInfo(
                     name=self.trial_name,
                     id=self.trial_id,
