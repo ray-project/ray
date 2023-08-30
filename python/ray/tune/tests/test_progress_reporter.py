@@ -261,7 +261,8 @@ VERBOSE_TRIAL_NORM_1 = (
 # are printed in separate calls. Sometimes, a status update is printed between the
 # calls. For more information, see #29693.
 VERBOSE_TRIAL_NORM_2_PATTERN = (
-    r"Trial train_fn_xxxxx_00001 reported _metric=6 with parameters=\{'do': 'once'\}\.\n"
+    r"Trial train_fn_xxxxx_00001 reported _metric=6 "
+    r"with parameters=\{'do': 'once'\}\.\n"
     r"(?s).*"
     r"Trial train_fn_xxxxx_00001 completed\. Last result: _metric=6\n"
 )
