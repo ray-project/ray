@@ -3,7 +3,6 @@ import shutil
 import tempfile
 import unittest
 from collections import namedtuple
-from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from mlflow.tracking import MlflowClient
@@ -229,23 +228,26 @@ class MLflowTest(unittest.TestCase):
 
     def testMlFlowSetupRankNonRankZero(self):
         """Assert that non-rank-0 workers get a noop module"""
-        with TemporaryDirectory() as tmpdir:
-            init_session(
-                training_func=None,
-                world_rank=1,
-                local_rank=1,
-                node_rank=1,
-                local_world_size=2,
-                world_size=2,
-                storage=StorageContext(
-                    experiment_dir_name="dummy", storage_path=tmpdir
-                ),
-            )
-            mlflow = setup_mlflow({})
-            assert isinstance(mlflow, _NoopModule)
+        storage = StorageContext(
+            storage_path=tempfile.mkdtemp(),
+            experiment_dir_name="exp_name",
+            trial_dir_name="trial_name",
+        )
 
-            mlflow.log_metrics()
-            mlflow.sklearn.save_model(None, "model_directory")
+        init_session(
+            training_func=None,
+            world_rank=1,
+            local_rank=1,
+            node_rank=1,
+            local_world_size=2,
+            world_size=2,
+            storage=storage,
+        )
+        mlflow = setup_mlflow({})
+        assert isinstance(mlflow, _NoopModule)
+
+        mlflow.log_metrics()
+        mlflow.sklearn.save_model(None, "model_directory")
 
 
 class MLflowUtilTest(unittest.TestCase):

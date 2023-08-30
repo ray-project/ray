@@ -1,4 +1,3 @@
-import boto3
 import contextlib
 import logging
 import os
@@ -49,6 +48,8 @@ def mock_s3_bucket_uri():
     port = 5002
     region = "us-west-2"
     with simulate_storage("s3", port=port, region=region) as s3_uri:
+        import boto3
+
         s3 = boto3.client(
             "s3", region_name=region, endpoint_url=f"http://localhost:{port}"
         )
