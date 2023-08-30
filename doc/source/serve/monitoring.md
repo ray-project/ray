@@ -49,7 +49,7 @@ For a detailed overview of the Ray dashboard, see the [dashboard documentation](
 
 (serve-in-production-inspecting)=
 
-### Inspect an application with `serve config` and `serve status`
+## Inspect an application with `serve config` and `serve status`
 
 Two Serve CLI commands help you inspect a Serve application in production: `serve config` and `serve status`.
 If you have a remote cluster, `serve config` and `serve status` also has an `--address/-a` argument to access the cluster. See [VM deployment](serve-in-production-remote-cluster) for more information on this argument.
