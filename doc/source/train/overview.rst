@@ -7,11 +7,11 @@ Ray Train Overview
     
 .. .. image:: ./images/train-concepts.svg
         
-The Ray Train interface is powerful yet simple. The use model has four main concepts to understand:
+To use Ray Train effectively, you need to understand four main concepts:
 
 #. :ref:`Training function <train-overview-training-function>`: A Python function that contains your model training logic.
-#. :ref:`Worker <train-overview-worker>`: A process that runs the training function.
 #. :ref:`Scaling configuration: <train-overview-scaling-config>` A configuration of the number of workers and type of compute resources, for example, CPU or GPU, per worker.
+#. :ref:`Worker <train-overview-worker>`: A process that runs the training function.
 #. :ref:`Trainer <train-overview-trainers>`: A Python class that ties together the training function, workers, and scaling configuration to execute a distributed training job.
 
 .. _train-overview-training-function:
@@ -25,7 +25,7 @@ When launching a distributed training job, each worker executes this training fu
 
 Ray Train documentation uses the following conventions:
 
-#. `train_func` is user-defined function that contains the training code.
+#. `train_func` is a user-defined function that contains the training code.
 #. `train_func` is passed into the Trainer's `train_loop_per_worker` parameter.
 
 .. code-block:: python
@@ -38,15 +38,6 @@ Ray Train documentation uses the following conventions:
         and logging metrics.
         """
         ...
-
-.. _train-overview-worker:
-
-Worker
-------
-
-Ray Train distributes model training compute to individual worker processes across the cluster. 
-Each worker is a process that executes the `train_func` on compute resources, for example, CPUs or GPUs.
-The number of workers determines the parallelism of the training job, and the `ScalingConfig` configures it.
 
 .. _train-overview-scaling-config:
 
@@ -71,6 +62,15 @@ Specify two basic parameters for worker parallelism and compute resources:
 
     # Multiple GPUs
     scaling_config = ScalingConfig(num_workers=4, use_gpu=True)
+
+.. _train-overview-worker:
+
+Worker
+------
+
+Ray Train distributes model training compute to individual worker processes across the cluster. 
+Each worker is a process that executes the `train_func` on compute resources, for example, CPUs or GPUs.
+The number of workers determines the parallelism of the training job, and the `ScalingConfig` configures it.
 
 .. _train-overview-trainers:
 

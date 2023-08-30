@@ -11,27 +11,21 @@ Whether you have large models or large datasets, Ray Train is the simplest solut
 Ray Train provides support for many frameworks:
 
 .. list-table::
-   :widths: 33 33 33
+   :widths: 1 1
    :header-rows: 1
 
    * - PyTorch Ecosystem
-     - More Deep Learning
-     - Boosted Trees
+     - More Frameworks
    * - PyTorch
      - TensorFlow
-     - XGBoost
    * - PyTorch Lightning
      - Keras
-     - LightGBM
    * - Hugging Face Transformers
      - Horovod
-     -
    * - Hugging Face Accelerate
-     - 
-     -
+     - XGBoost
    * - DeepSpeed
-     -
-     -
+     - LightGBM
 
 Install Ray Train
 -----------------
@@ -121,6 +115,21 @@ Learn more
 
     .. grid-item-card::
 
+        **More Frameworks**
+        ^^^
+
+        Don't see your framework? See these guides.
+
+        +++
+        .. button-ref:: train-more-frameworks
+            :color: primary
+            :outline:
+            :expand:
+
+            Try Ray Train with other frameworks
+
+    .. grid-item-card::
+
         **User Guides**
         ^^^
 
@@ -163,19 +172,3 @@ Learn more
             :expand:
 
             Read the API Reference
-
-    .. grid-item-card::
-
-        **More Frameworks**
-        ^^^
-
-        Don't see your framework? See these guides.
-
-        +++
-        .. button-ref:: train-more-frameworks
-            :color: primary
-            :outline:
-            :expand:
-
-            Try Ray Train with other frameworks
-
