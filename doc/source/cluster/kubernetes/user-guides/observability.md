@@ -10,6 +10,8 @@
 
 ## KubeRay Observability
 
+Methods 1 and 2 address control plane observability, while methods 3, 4, and 5 focus on data plane observability.
+
 ### Method 1: Check KubeRay operator's logs for errors
 
 ```bash
