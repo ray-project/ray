@@ -10,9 +10,11 @@ With the introduction of multi-application Serve, we walk you through the new co
 An application consists of one or more deployments. The deployments in an application are tied into a direct acyclic graph through [model composition](serve-model-composition). An application can be called via HTTP at the specified route prefix, and the ingress deployment handles all such inbound traffic. Due to the dependence between deployments in an application, one application is a unit of upgrade. 
 
 ### When to Use Multiple Applications
-Since one application is a unit of upgrade, having multiple applications allows you to deploy multiple models or groups of models that communicate with each other, while still being able to upgrade each application independently.
+Many use cases can be solved by either model composition or multi-application. However, both have their own individual benefits and can be used together.
 
-If you have many independent models each behind different endpoints, and you want to be able to easily add, delete, or upgrade these models, then you should use multiple applications. Each model should then be deployed as a separate application. On the other hand, if you have ML logic and business logic distributed among separate deployments that all need to be executed for a single request, then you should use model composition to build a single application consisting of multiple deployments.
+Suppose you have multiple models and/or business logic that all need to be executed for a single request. If they are living in one repository, then most likely they will be upgraded as a unit, so we recommend having all those deployments in one application.
+
+On the other hand, if there are logical groups among these models and/or business logic, e.g. where the groups of models still communicate with each other but live in different repositories, we recommend separating the models into applications. Since one application is a unit of upgrade, having multiple applications allows you to deploy many independent models (or groups of models) each behind different endpoints. You can then use easily add or delete applications from the cluster as well as upgrade applications independently of each other.
 
 
 ## Get Started
@@ -166,15 +168,6 @@ $ serve run config.yaml
 > 2023-04-04 11:00:09,012 SUCC scripts.py:393 -- Submitted deploy config successfully.
 ```
 
-You can then query the applications in the same way:
-```pycon
->>> requests.post("http://localhost:8000/classify", json={"image_url": "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"}).text
-'brown bear, bruin, Ursus arctos'
-
->>> requests.post("http://localhost:8000/translate", json={"text": "Hello, the weather is quite fine today!"}).text
-'Hallo, das Wetter ist heute ziemlich gut!'
-```
-
 The command `serve run` blocks the terminal, which allows logs from Serve to stream to the console. This helps you test and debug your applications easily. If you want to change your code, you can hit Ctrl-C to interrupt the command and shutdown Serve and all its applications, then rerun `serve run`.
 
 :::{note}
@@ -194,35 +187,6 @@ Sometimes, you may want to send a request to an application without using HTTP. 
 
 For this situation, you can use the Serve API `serve.get_app_handle` to get a handle to any live Serve application. This handle can be used to directly execute a request on an application. For instance
 
-
-## Multi-Application Config
-
-Use the config from the above tutorial as an example. In a multi-application config, the first section is for cluster-level config options:
-```yaml
-proxy_location: EveryNode
-http_options:
-  host: 0.0.0.0
-  port: 8000
-```
-
-Then, specify a list of applications to deploy to the Ray cluster. Each application must have a unique name and route prefix.
-```yaml
-applications:
-- name: app1
-  route_prefix: /classify
-  import_path: image_classifier:app
-  runtime_env: {}
-  deployments:
-  - name: downloader
-  - name: ImageClassifier
-
-- name: app2
-  route_prefix: /translate
-  import_path: text_translator:app
-  runtime_env: {}
-  deployments:
-  - name: Translator
-```
 
 (serve-config-migration)=
 ### Migrating from a Single-Application Config
