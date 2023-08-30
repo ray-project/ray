@@ -382,15 +382,7 @@ def test_nonserializable_trainable():
         Tuner(lambda config: print(lock))
 
 
-@pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
-def test_tuner_no_chdir_to_trial_dir(
-    shutdown_only, chdir_tmpdir, runtime_env, monkeypatch
-):
-    """Tests that setting `chdir_to_trial_dir=False` in `TuneConfig` allows for
-    reading relatives paths to the original working directory.
-    Also tests that `get_trial_dir()` env variable can be used as the directory
-    to write data to within the Trainable.
-    """
+def _test_no_chdir(monkeypatch, runner_type, runtime_env):
     from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
 
     monkeypatch.setenv(RAY_CHDIR_TO_TRIAL_DIR, "0")
@@ -399,33 +391,50 @@ def test_tuner_no_chdir_to_trial_dir(
     with open("./read.txt", "w") as f:
         f.write("data")
 
-    ray.init(num_cpus=1, runtime_env=runtime_env)
+    ray.init(num_cpus=4, runtime_env=runtime_env)
 
     def train_func(config):
-        orig_working_dir = Path(os.environ["TUNE_ORIG_WORKING_DIR"])
-        assert str(orig_working_dir) == os.getcwd(), (
-            "Working directory should not have changed from "
-            f"{orig_working_dir} to {os.getcwd()}"
-        )
         # Make sure we can access the data from the original working dir
         assert os.path.exists("./read.txt") and open("./read.txt", "r").read() == "data"
 
         # Write operations should happen in each trial's independent logdir to
         # prevent write conflicts
         trial_dir = Path(train.get_context().get_trial_dir())
-        with open(trial_dir / "write.txt", "w") as f:
-            f.write(f"{config['id']}")
+        trial_dir.joinpath("write.txt").touch()
 
-    tuner = Tuner(
-        train_func,
-        tune_config=TuneConfig(chdir_to_trial_dir=False),
-        param_space={"id": tune.grid_search(list(range(4)))},
-    )
-    results = tuner.fit()
-    assert not results.errors
+    if runner_type == "trainer":
+        trainer = DataParallelTrainer(
+            train_func, scaling_config=train.ScalingConfig(num_workers=2)
+        )
+        result = trainer.fit()
+        results = [result]
+    elif runner_type == "tuner":
+        tuner = Tuner(train_func, param_space={"id": tune.grid_search(list(range(4)))})
+        results = tuner.fit()
+        assert not results.errors
+    else:
+        raise NotImplementedError(f"Invalid: {runner_type}")
+
     for result in results:
-        artifact_data = open(os.path.join(result.path, "write.txt"), "r").read()
-        assert artifact_data == f"{result.config['id']}"
+        assert os.path.exists(os.path.join(result.path, "write.txt"))
+
+
+@pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
+def test_tuner_no_chdir_to_trial_dir(
+    shutdown_only, chdir_tmpdir, monkeypatch, runtime_env
+):
+    """Tests that disabling the env var to keep the working directory the same
+    works for a Tuner run."""
+    _test_no_chdir(monkeypatch, "tuner", runtime_env)
+
+
+@pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
+def test_trainer_no_chdir_to_trial_dir(
+    shutdown_only, chdir_tmpdir, monkeypatch, runtime_env
+):
+    """Tests that disabling the env var to keep the working directory the same
+    works for a Trainer run."""
+    _test_no_chdir(monkeypatch, "trainer", runtime_env)
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
