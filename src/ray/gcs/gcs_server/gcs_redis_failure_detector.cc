@@ -19,10 +19,9 @@
 namespace ray {
 namespace gcs {
 
-GcsRedisFailureDetector::GcsRedisFailureDetector(
-    instrumented_io_context &io_service,
-    std::shared_ptr<RedisClient> redis_client,
-    std::function<void()> callback)
+GcsRedisFailureDetector::GcsRedisFailureDetector(instrumented_io_context &io_service,
+                                                 RedisClient *redis_client,
+                                                 std::function<void()> callback)
     : io_service_(io_service),
       redis_client_(redis_client),
       callback_(std::move(callback)) {}

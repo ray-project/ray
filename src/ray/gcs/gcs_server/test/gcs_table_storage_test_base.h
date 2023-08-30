@@ -181,7 +181,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
  protected:
   size_t io_service_num_{2};
   std::shared_ptr<IOServicePool> io_service_pool_;
-
+  std::unique_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 
   std::atomic<int> pending_count_{0};

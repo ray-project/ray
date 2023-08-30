@@ -49,8 +49,7 @@ using rpc::WorkerTableData;
 template <typename Key, typename Data>
 class GcsTable {
  public:
-  explicit GcsTable(std::shared_ptr<StoreClient> store_client)
-      : store_client_(std::move(store_client)) {}
+  explicit GcsTable(StoreClient *store_client) : store_client_(store_client) {}
 
   virtual ~GcsTable() = default;
 
@@ -92,7 +91,7 @@ class GcsTable {
 
  protected:
   std::string table_name_;
-  std::shared_ptr<StoreClient> store_client_;
+  StoreClient *store_client_;
 };
 
 /// \class GcsTableWithJobId
@@ -107,8 +106,8 @@ class GcsTable {
 template <typename Key, typename Data>
 class GcsTableWithJobId : public GcsTable<Key, Data> {
  public:
-  explicit GcsTableWithJobId(std::shared_ptr<StoreClient> store_client)
-      : GcsTable<Key, Data>(std::move(store_client)) {}
+  explicit GcsTableWithJobId(StoreClient *store_client)
+      : GcsTable<Key, Data>(store_client) {}
 
   /// Write data to the table asynchronously.
   ///
@@ -160,16 +159,14 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
 
 class GcsJobTable : public GcsTable<JobID, JobTableData> {
  public:
-  explicit GcsJobTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
+  explicit GcsJobTable(StoreClient *store_client) : GcsTable(store_client) {
     table_name_ = TablePrefix_Name(TablePrefix::JOB);
   }
 };
 
 class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
  public:
-  explicit GcsActorTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTableWithJobId(std::move(store_client)) {
+  explicit GcsActorTable(StoreClient *store_client) : GcsTableWithJobId(store_client) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR);
   }
 
@@ -179,7 +176,7 @@ class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
 
 class GcsActorTaskSpecTable : public GcsTableWithJobId<ActorID, TaskSpec> {
  public:
-  explicit GcsActorTaskSpecTable(std::shared_ptr<StoreClient> &store_client)
+  explicit GcsActorTaskSpecTable(StoreClient *store_client)
       : GcsTableWithJobId(store_client) {
     table_name_ = TablePrefix_Name(TablePrefix::ACTOR_TASK_SPEC);
   }
@@ -191,48 +188,44 @@ class GcsActorTaskSpecTable : public GcsTableWithJobId<ActorID, TaskSpec> {
 class GcsPlacementGroupTable
     : public GcsTable<PlacementGroupID, PlacementGroupTableData> {
  public:
-  explicit GcsPlacementGroupTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
+  explicit GcsPlacementGroupTable(StoreClient *store_client) : GcsTable(store_client) {
     table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP);
   }
 };
 
 class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
  public:
-  explicit GcsNodeTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
+  explicit GcsNodeTable(StoreClient *store_client) : GcsTable(store_client) {
     table_name_ = TablePrefix_Name(TablePrefix::NODE);
   }
 };
 
 class GcsPlacementGroupScheduleTable : public GcsTable<PlacementGroupID, ScheduleData> {
  public:
-  explicit GcsPlacementGroupScheduleTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
+  explicit GcsPlacementGroupScheduleTable(StoreClient *store_client)
+      : GcsTable(store_client) {
     table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP_SCHEDULE);
   }
 };
 
 class GcsResourceUsageBatchTable : public GcsTable<NodeID, ResourceUsageBatchData> {
  public:
-  explicit GcsResourceUsageBatchTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
+  explicit GcsResourceUsageBatchTable(StoreClient *store_client)
+      : GcsTable(store_client) {
     table_name_ = TablePrefix_Name(TablePrefix::RESOURCE_USAGE_BATCH);
   }
 };
 
 class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
  public:
-  explicit GcsWorkerTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
+  explicit GcsWorkerTable(StoreClient *store_client) : GcsTable(store_client) {
     table_name_ = TablePrefix_Name(TablePrefix::WORKERS);
   }
 };
 
 class GcsInternalConfigTable : public GcsTable<UniqueID, StoredConfig> {
  public:
-  explicit GcsInternalConfigTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
+  explicit GcsInternalConfigTable(StoreClient *store_client) : GcsTable(store_client) {
     table_name_ = TablePrefix_Name(TablePrefix::INTERNAL_CONFIG);
   }
 };
@@ -243,8 +236,7 @@ class GcsInternalConfigTable : public GcsTable<UniqueID, StoredConfig> {
 /// derive from this class and override class member variables.
 class GcsTableStorage {
  public:
-  explicit GcsTableStorage(std::shared_ptr<StoreClient> store_client)
-      : store_client_(std::move(store_client)) {
+  explicit GcsTableStorage(StoreClient *store_client) : store_client_(store_client) {
     job_table_ = std::make_unique<GcsJobTable>(store_client_);
     actor_table_ = std::make_unique<GcsActorTable>(store_client_);
     actor_task_spec_table_ = std::make_unique<GcsActorTaskSpecTable>(store_client_);
@@ -309,7 +301,7 @@ class GcsTableStorage {
   }
 
  protected:
-  std::shared_ptr<StoreClient> store_client_;
+  StoreClient *store_client_;
   std::unique_ptr<GcsJobTable> job_table_;
   std::unique_ptr<GcsActorTable> actor_table_;
   std::unique_ptr<GcsActorTaskSpecTable> actor_task_spec_table_;
@@ -319,25 +311,6 @@ class GcsTableStorage {
   std::unique_ptr<GcsResourceUsageBatchTable> resource_usage_batch_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
   std::unique_ptr<GcsInternalConfigTable> system_config_table_;
-};
-
-/// \class RedisGcsTableStorage
-/// RedisGcsTableStorage is an implementation of `GcsTableStorage`
-/// that uses redis as storage.
-class RedisGcsTableStorage : public GcsTableStorage {
- public:
-  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client)
-      : GcsTableStorage(std::make_shared<RedisStoreClient>(std::move(redis_client))) {}
-};
-
-/// \class InMemoryGcsTableStorage
-/// InMemoryGcsTableStorage is an implementation of `GcsTableStorage`
-/// that uses memory as storage.
-class InMemoryGcsTableStorage : public GcsTableStorage {
- public:
-  explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
-      : GcsTableStorage(std::make_shared<ObservableStoreClient>(
-            std::make_unique<InMemoryStoreClient>(main_io_service))) {}
 };
 
 }  // namespace gcs

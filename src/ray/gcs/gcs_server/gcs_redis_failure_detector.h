@@ -39,7 +39,7 @@ class GcsRedisFailureDetector {
   /// \param redis_context The redis context is used to ping redis.
   /// \param callback Callback that will be called when redis is detected as not alive.
   explicit GcsRedisFailureDetector(instrumented_io_context &io_service,
-                                   std::shared_ptr<RedisClient> redis_client,
+                                   RedisClient *redis_client,
                                    std::function<void()> callback);
 
   /// Start detecting redis.
@@ -55,7 +55,7 @@ class GcsRedisFailureDetector {
  private:
   instrumented_io_context &io_service_;
 
-  std::shared_ptr<RedisClient> redis_client_;
+  RedisClient *redis_client_;
 
   /// The runner to run function periodically.
   std::unique_ptr<PeriodicalRunner> periodical_runner_;

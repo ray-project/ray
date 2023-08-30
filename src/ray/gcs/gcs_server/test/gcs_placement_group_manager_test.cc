@@ -90,7 +90,9 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         cluster_resource_manager_(io_service_) {
     gcs_publisher_ =
         std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    store_client_ = std::make_unique<ObservableStoreClient>(
+        std::make_unique<InMemoryStoreClient>(io_service_));
+    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(io_service_);
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_, cluster_resource_manager_, NodeID::FromRandom());
     gcs_placement_group_manager_.reset(new gcs::GcsPlacementGroupManager(
@@ -192,6 +194,9 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsPlacementGroupManager> gcs_placement_group_manager_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;
+
+ private:
+  std::unique_ptr<StoreClient> store_client_;
 
  protected:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
