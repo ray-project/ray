@@ -92,6 +92,11 @@ It will generate two files, `user_defined_protos_pb2.py` and
 :language: python
 ```
 
+:::{note}
+Depending on the version of `grpcio-tools` you are using, the generated code may be
+slightly different. But all the class and functions should be importable.
+:::
+
 For more details on `grpcio-tools` see: https://grpc.io/docs/languages/python/basics/#generating-client-and-server-code
 
 (start-serve-with-grpc-proxy)=
