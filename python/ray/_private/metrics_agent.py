@@ -80,13 +80,16 @@ def fix_metric(metric: Metric):
     Fix the inbound `opencensus.proto.metrics.v1.Metric` protos to make it acceptable
     by opencensus.stats.DistributionAggregationData.
 
-    - metric name: gRPC OpenCensus metrics have names with slashes and dots, e.g. `grpc.io/client/server_latency`[1]. However Prometheus metric names only take alphanums,
-    underscores and colons. [2]. We santinize the name by replacing non-alphanum chars to underscore,
-    like the official opencensus prometheus exporter [3].
-    - distribution bucket bounds: The Metric proto asks distribution bucket bounds to be > 0 [4]. However, gRPC OpenCensus metrics have their first bucket bound == 0 [1]. This makes
-    the `DistributionAggregationData` constructor to raise Exceptions. This applies to all bytes and
-    milliseconds (latencies). The fix: we update the initial 0 bounds to be 0.000_000_1. This will not affect
-    the precision of the metrics, since we don't expect any less-than-1 bytes, or less-than-1-nanosecond times.
+    - metric name: gRPC OpenCensus metrics have names with slashes and dots, e.g.
+    `grpc.io/client/server_latency`[1]. However Prometheus metric names only take
+    alphanums,underscores and colons[2]. We santinize the name by replacing non-alphanum
+    chars to underscore, like the official opencensus prometheus exporter[3].
+    - distribution bucket bounds: The Metric proto asks distribution bucket bounds to
+    be > 0[4]. However, gRPC OpenCensus metrics have their first bucket bound == 0 [1].
+    This makes the `DistributionAggregationData` constructor to raise Exceptions. This
+    applies to all bytes and milliseconds (latencies). The fix: we update the initial 0
+    bounds to be 0.000_000_1. This will not affect the precision of the metrics, since
+    we don't expect any less-than-1 bytes, or less-than-1-nanosecond times.
 
     [1] https://github.com/census-instrumentation/opencensus-specs/blob/master/stats/gRPC.md#units
     [2] https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
