@@ -4,7 +4,7 @@
 
 ## Ray Dashboard
 
-* To view the Ray dashboard running on the head Pod, users can follow [these instructions](kuberay-port-forward-dashboard).
+* To view the [Ray dashboard](observability-getting-started) running on the head Pod, users can follow [these instructions](kuberay-port-forward-dashboard).
 * The Ray dashboard also integrates with Prometheus and Grafana. See [Using Prometheus and Grafana](kuberay-prometheus-grafana) for more details.
 * The Ray dashboard also supports the "CPU Flame Graph" and "Stack Trace" features. Refer to [Profiling with py-spy](kuberay-pyspy-integration) to enable these features.
 
@@ -13,6 +13,7 @@
 ### Method 1: Check KubeRay operator's logs for errors
 
 ```bash
+# Typically, the operator's Pod name is kuberay-operator-xxxxxxxxxx-yyyyy.
 kubectl logs $KUBERAY_OPERATOR_POD -n $YOUR_NAMESPACE | tee operator-log
 ```
 
@@ -41,7 +42,8 @@ kubectl exec -it $RAY_POD -n $YOUR_NAMESPACE -- bash
 ```bash
 export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
 kubectl port-forward $RAY_POD -n $YOUR_NAMESPACE --address 0.0.0.0 8265:8265
-# Check $YOUR_IP:8265 in your browser
+# Check $YOUR_IP:8265 in your browser to access the dashboard.
+# For most cases, 127.0.0.1:8265 or localhost:8265 should work.
 ```
 
 ### Method 5: Ray State CLI
