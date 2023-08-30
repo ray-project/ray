@@ -686,6 +686,16 @@ class ServeDeploySchema(BaseModel):
 @PublicAPI(stability="alpha")
 @dataclass
 class DeploymentStatusOverview:
+    """Describes the status of a deployment.
+
+    Attributes:
+        status: The current status of the deployment.
+        replica_states: A map indicating how many replicas there are of
+            each replica state.
+        message: A message describing the deployment status in more
+            detail.
+    """
+
     status: DeploymentStatus
     replica_states: Dict[ReplicaState, int]
     message: str
@@ -694,6 +704,17 @@ class DeploymentStatusOverview:
 @PublicAPI(stability="alpha")
 @dataclass
 class ApplicationStatusOverview:
+    """Describes the status of an application and all its deployments.
+
+    Attributes:
+        status: The current status of the application.
+        message: A message describing the application status in more
+            detail.
+        last_deployed_time_s: The time at which the application was
+            deployed. A Unix timestamp in seconds.
+        deployments: The deployments in this application.
+    """
+
     status: ApplicationStatus
     message: str
     last_deployed_time_s: float
@@ -703,6 +724,14 @@ class ApplicationStatusOverview:
 @PublicAPI(stability="alpha")
 @dataclass(eq=True)
 class ServeStatus:
+    """Describes the status of Serve.
+
+    Attributes:
+        proxies: The proxy actors running on each node in the cluster.
+            A map from node ID to proxy status.
+        applications: The live applications in the cluster.
+    """
+
     proxies: Dict[str, ProxyStatus] = field(default_factory=dict)
     applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
 
