@@ -421,7 +421,7 @@ py_test(
 )
 
 py_test(
-    name = "test_accelerate_torch_trainer",
+    name = "accelerate_torch_trainer",
     size = "large",
     srcs = ["examples/accelerate/accelerate_torch_trainer.py"],
     tags = ["team:ml", "exclusive", "gpu"],
@@ -429,7 +429,7 @@ py_test(
 )
 
 py_test(
-    name = "test_accelerate_torch_trainer_no_raydata",
+    name = "accelerate_torch_trainer_no_raydata",
     size = "large",
     srcs = ["examples/accelerate/accelerate_torch_trainer_no_raydata.py"],
     tags = ["team:ml", "exclusive", "gpu"],
@@ -437,7 +437,7 @@ py_test(
 )
 
 py_test(
-    name = "test_deepspeed_torch_trainer",
+    name = "deepspeed_torch_trainer",
     size = "large",
     srcs = ["examples/deepspeed/deepspeed_torch_trainer.py"],
     tags = ["team:ml", "exclusive", "gpu"],
@@ -445,7 +445,7 @@ py_test(
 )
 
 py_test(
-    name = "test_deepspeed_torch_trainer_no_raydata",
+    name = "deepspeed_torch_trainer_no_raydata",
     size = "large",
     srcs = ["examples/deepspeed/deepspeed_torch_trainer_no_raydata.py"],
     tags = ["team:ml", "exclusive", "gpu"],
