@@ -9,7 +9,7 @@ To use GPUs on Kubernetes, you will need to configure both your Kubernetes setup
 To learn about GPU usage on different clouds, see instructions for `GKE`_, for `EKS`_, and for `AKS`_.
 
 Quickstart: Serve a GPU-based StableDiffusion model
-___________________________________________
+___________________________________________________
 
 There are several GPU workload examples in the :ref:`examples <kuberay-examples>` section of the docs.
 The :ref:`StableDiffusion example <kuberay-stable-diffusion-rayservice-example>` is a good place to start.
@@ -71,7 +71,7 @@ Each of the Ray pods in the group can be scheduled on an AWS `p2.xlarge` instanc
     Refer to your :ref:`cloud provider's documentation <kuberay-k8s-setup>` for details on autoscaling node pools.
 
 GPU multi-tenancy
-__________________________________
+_________________
 
 If a Pod doesn't include `nvidia.com/gpu` in its resource configurations, even if it's scheduled on a GPU node, users typically expect the Pod not to have visibility of any GPU devices.
 However, if `nvidia.com/gpu` isn't specified, the default value for `NVIDIA_VISIBLE_DEVICES` is `all`.
