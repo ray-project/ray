@@ -6,6 +6,12 @@ Available Scripts
 
 In the project directory, you can run:
 
+``npm install``
+~~~~~~~~~~~~~~~
+
+Once you've run this command, all the dependencies listed in your package.json
+file will be installed.
+
 ``npm start``
 ~~~~~~~~~~~~~
 
