@@ -57,7 +57,7 @@ When processing a request takes longer than the [end-to-end timeout](serve-perfo
 
 If there are no remaining `await` statements in the deployment's code before the request completes, the replica processes the request as usual, sends the response back to the proxy, and the proxy discards the response. Use `await` statements for blocking operations in a deployment, so in-flight requests can be cancelled in the deployment without waiting for the blocking operation to complete.
 
-Serve implements cascading cancellations. If a deployment makes a call to a Ray task, Ray actor, or another Serve deployment, Serve raises the `asyncio.CancelledError` in the calling deployment as well as the downstream task, actor, or deployment. In general, when any task, actor, or deployment is cancelled, the cancellation cascades to any downstream task, actor, or deployment that was called.
+Cancellation cascades to any downstream deployment handle, task, or actor calls that were spawned in the deployment's request-handling method. These can handle the `asyncio.CancelledError` in the same way as the ingress deployment.
 
 To ignore cancellation, use `asyncio.shield`:
 
