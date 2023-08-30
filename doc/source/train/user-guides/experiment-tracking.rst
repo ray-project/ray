@@ -5,14 +5,16 @@ Experiment Tracking
 ===================
 
 .. note::
-    This guide is relevant for all DataParallelTrainer, including TorchTrainer and TensorflowTrainer.
+    This guide is relevant for all trainers in which a custom training loop is defined. 
+    This includes :class:`TorchTrainer <ray.train.torch.TorchTrainer>` and 
+    :class:`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>`
 
 Most experiment tracking libraries work out-of-the-box with Ray Train. 
 This guide provides instructions on how to set up the code so that your favorite experiment tracking libraries 
-can work for distributed data parallel training with Ray Train. We will conclude the session with debugging
+can work for distributed training with Ray Train. We will conclude the session with debugging
 tips.
 
-Before we begin, the following is roughly how you can use the native experiment tracking lirary calls 
+Before we begin, the following is roughly how you can use the native experiment tracking library calls 
 inside of Ray Train. 
 
 .. code-block:: python
@@ -44,9 +46,21 @@ Let's dive into each one of them.
 
 .. note::
 
-    For some scenarios, every Worker generates an identical copy and saving a single copy is sufficient. 
-    Ray Train lets you apply logic to only the rank 0 worker with the following method:
+    A major difference between distributed and non-distributed training is that in distributed training, 
+    multiple processes are running in parallel and under certain setups they have the same results. If all 
+    of them are reported to the tracking backend, there will be duplicated results. To address that,  
+    Ray Train lets you apply logging logic to only the rank 0 worker with the following method:
     :meth:`context.get_world_rank() <ray.train.context.TrainContext.get_world_rank>`.
+
+    .. code-block:: python
+
+        from ray import train
+        def train_func(config):
+            ...
+            if train.get_context().get_world_rank() == 0:
+                # do your logging logic only for rank0 worker.
+            ...
+
 
 Step 1: Set up necessary components to be able to connect to the tracking backend of your choice
 ------------------------------------------------------------------------------------------------
