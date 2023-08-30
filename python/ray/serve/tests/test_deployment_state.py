@@ -155,6 +155,10 @@ class MockReplicaActorWrapper:
         return None
 
     @property
+    def availability_zone(self) -> Optional[str]:
+        return None
+
+    @property
     def node_ip(self) -> Optional[str]:
         return None
 
@@ -338,6 +342,9 @@ class MockClusterNodeInfoCache:
 
     def get_active_node_ids(self):
         return self.alive_node_ids - self.draining_node_ids
+
+    def get_node_az(self, node_id):
+        return None
 
 
 @pytest.fixture
