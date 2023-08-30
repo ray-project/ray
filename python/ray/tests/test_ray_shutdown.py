@@ -31,6 +31,8 @@ def get_all_ray_worker_processes():
 @pytest.fixture
 def short_gcs_publish_timeout(monkeypatch):
     monkeypatch.setenv("RAY_MAX_GCS_PUBLISH_RETRIES", "3")
+    monkeypatch.setenv("RAY_gcs_rpc_server_reconnect_timeout_s", "1")
+    monkeypatch.setenv("RAY_gcs_rpc_server_connect_timeout_s", "1")
     yield
 
 
@@ -154,8 +156,7 @@ def test_driver_dead(short_gcs_publish_timeout, shutdown_only):
     """Make sure all ray workers are shutdown when driver is killed."""
     driver = """
 import ray
-ray.init(_system_config={"gcs_rpc_server_reconnect_timeout_s": 1,
-                         "gcs_rpc_server_connect_timeout_s": 1})
+ray.init()
 @ray.remote
 def f():
     import time
@@ -186,13 +187,7 @@ def test_node_killed(short_gcs_publish_timeout, ray_start_cluster):
     """Make sure all ray workers when nodes are dead."""
     cluster = ray_start_cluster
     # head node.
-    cluster.add_node(
-        num_cpus=0,
-        _system_config={
-            "gcs_rpc_server_reconnect_timeout_s": 1,
-            "gcs_rpc_server_connect_timeout_s": 1,
-        },
-    )
+    cluster.add_node(num_cpus=0)
     ray.init(address="auto")
 
     num_worker_nodes = 2
@@ -224,13 +219,7 @@ def test_head_node_down(short_gcs_publish_timeout, ray_start_cluster):
     """Make sure all ray workers when head node is dead."""
     cluster = ray_start_cluster
     # head node.
-    head = cluster.add_node(
-        num_cpus=2,
-        _system_config={
-            "gcs_rpc_server_reconnect_timeout_s": 1,
-            "gcs_rpc_server_connect_timeout_s": 1,
-        },
-    )
+    head = cluster.add_node(num_cpus=2)
 
     # worker nodes.
     num_worker_nodes = 2
