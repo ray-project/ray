@@ -490,7 +490,7 @@ class HTTPProxyStateManager:
                     "HEAPPROFILE": "tcmalloc",
                     "HEAP_PROFILE_INUSE_INTERVAL": "1073741824000000",
                     "HEAP_PROFILE_ALLOCATION_INTERVAL": "5073741824000000",
-                    "HEAPPROFILESIGNAL": 12,
+                    "HEAPPROFILESIGNAL": "12",
                 }
             },
         ).remote(
