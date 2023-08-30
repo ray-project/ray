@@ -37,25 +37,19 @@ $ python
 Now, let's update the price of mangos in our deployment. We can change the `price` attribute in the `MangoStand` deployment to `5` in our config file:
 
 ```yaml
-import_path: fruit:deployment_graph
+...
 
-runtime_env: {}
+applications:
 
-deployments:
-
-- name: MangoStand
-  num_replicas: 2
-  route_prefix: null
-  max_concurrent_queries: 100
-  user_config:
-    # price: 3 (Outdated price)
-    price: 5
-  autoscaling_config: null
-  graceful_shutdown_wait_loop_s: 2.0
-  graceful_shutdown_timeout_s: 20.0
-  health_check_period_s: 10.0
-  health_check_timeout_s: 30.0
-  ray_actor_options: null
+- name: app1
+  route_prefix: /
+  import_path: fruit:deployment_graph
+  runtime_env: {}
+  deployments:
+  - name: MangoStand
+    user_config:
+      # price: 3 (outdated price)
+      price: 5
 
 ...
 ```
