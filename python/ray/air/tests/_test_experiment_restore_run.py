@@ -5,13 +5,13 @@ from pathlib import Path
 import random
 import time
 from typing import Dict, List, Optional
-from tempfile import TemporaryDirectory
 
 import ray
 from ray import train, tune
-from ray.train import Checkpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune.experiment import Trial
+
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 RUNNER_TYPE = os.environ.get("RUNNER_TYPE", "trainer")
@@ -84,7 +84,7 @@ class StatefulSearcher(tune.search.Searcher):
 
 def train_fn(config: dict, data: Optional[dict] = None):
     checkpoint = train.get_checkpoint()
-    start = checkpoint.to_dict()["iteration"] + 1 if checkpoint else 1
+    start = load_dict_checkpoint(checkpoint)["iteration"] + 1 if checkpoint else 1
 
     training_started_marker = Path(
         os.environ.get("RUN_STARTED_MARKER", "/tmp/does-not-exist")
@@ -99,10 +99,8 @@ def train_fn(config: dict, data: Optional[dict] = None):
     for iteration in range(start, ITERATIONS_PER_TRIAL + 1):
         time.sleep(TIME_PER_ITER_S)
 
-        with TemporaryDirectory() as tmpdir:
-            train.report(
-                {"score": random.random()}, checkpoint=Checkpoint.from_directory(tmpdir)
-            )
+        with create_dict_checkpoint({"iteration": iteration}) as checkpoint:
+            train.report({"score": random.random()}, checkpoint=checkpoint)
 
 
 def tuner(experiment_path: str, run_config: train.RunConfig) -> tune.ResultGrid:

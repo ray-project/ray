@@ -197,7 +197,6 @@ def test_tag_callbacks(mock_record, callback_classes_expected):
     assert callback_counts == expected
 
 
-# TODO(fixci)
 def test_tag_env_vars(ray_start_4_cpus, mock_record, tuner):
     """Test that env vars are recorded properly, and arbitrary user environment
     variables are ignored."""
