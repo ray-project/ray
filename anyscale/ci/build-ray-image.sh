@@ -33,7 +33,8 @@ else
 fi
 
 if [[ "${PUSH_COMMIT_TAGS:-}" == "" ]]; then
-    if [[ "${BUILDKITE_BRANCH:-}" == "master" ]]; then
+    # During branch cut, do not modify ray version in this script
+    if [[ "${BUILDKITE_BRANCH:-}" == "master" || "${RAY_VERSION}" != "3.0.0dev" ]]; then
         PUSH_COMMIT_TAGS="true"
     else
         PUSH_COMMIT_TAGS="false"
@@ -44,6 +45,10 @@ mkdir -p .whl
 
 FULL_COMMIT="$(git rev-parse HEAD)"
 SHORT_COMMIT="${FULL_COMMIT:0:6}"  # Use 6 chars to be consistent with Ray upstream
+# During branch cut, do not modify ray version in this script
+if [[ "${RAY_VERSION:-}" != "3.0.0dev" ]]; then
+    SHORT_COMMIT="${RAY_VERSION}.${SHORT_COMMIT}"
+fi
 
 echo "--- Fetch wheel and base image"
 
