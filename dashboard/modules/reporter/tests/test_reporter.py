@@ -184,6 +184,7 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
             "ray_node_network_received" in metric_names,
             "ray_node_network_send_speed" in metric_names,
             "ray_node_network_receive_speed" in metric_names,
+            "ray_grpc_io_client_sent_bytes_per_rpc_bucket" in metric_names,
         ]
         if sys.platform == "linux" or sys.platform == "linux2":
             predicates.append("ray_node_mem_shared_bytes" in metric_names)
