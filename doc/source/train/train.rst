@@ -5,8 +5,7 @@ Ray Train: Scalable Model Training
 
 Ray Train is a scalable machine learning library for distributed training and fine-tuning.
 
-Ray Train abstracts away the complexities of distributed computing, 
-and allows you to scale your model training code from a single machine to a cluster of machines in the cloud.
+Ray Train allows you to scale model training code from a single machine to a cluster of machines in the cloud, and abstracts away the complexities of distributed computing.
 Whether you have large models or large datasets, Ray Train is the simplest solution for distributed training.
 
 Ray Train provides support for many frameworks:
@@ -64,7 +63,7 @@ Get started
         **PyTorch**
         ^^^
 
-        Get started on distributing your model training with Ray Train and PyTorch.
+        Get started on distributed model training with Ray Train and PyTorch.
 
         +++
         .. button-ref:: train-pytorch
@@ -79,7 +78,7 @@ Get started
         **PyTorch Lightning**
         ^^^
 
-        Get started on distributing your model training with Ray Train and Lightning.
+        Get started on distributed model training with Ray Train and Lightning.
 
         +++
         .. button-ref:: train-pytorch-lightning
@@ -94,7 +93,7 @@ Get started
         **Hugging Face Transformers**
         ^^^
 
-        Get started on distributing your model training with Ray Train and Transformers.
+        Get started on distributed model training with Ray Train and Transformers.
 
         +++
         .. button-ref:: train-pytorch-transformers
@@ -103,6 +102,21 @@ Get started
             :expand:
 
             Try Ray Train with Transformers
+
+    .. grid-item-card::
+
+        **More Frameworks**
+        ^^^
+
+        Don't see your framework? See these guides.
+
+        +++
+        .. button-ref:: train-more-frameworks
+            :color: primary
+            :outline:
+            :expand:
+
+            Try Ray Train with other frameworks
 
 Learn more
 ~~~~~~~~~~
@@ -124,7 +138,7 @@ Learn more
             :outline:
             :expand:
 
-            Get instructions on how to use Ray Train
+            Explore how-to guides for Ray Train
 
     .. grid-item-card::
 
@@ -146,7 +160,7 @@ Learn more
         **API**
         ^^^
 
-        Consult the full description of the Ray Train API .
+        Find full descriptions of the Ray Train API.
 
         +++
         .. button-ref:: air-trainer-ref
@@ -155,18 +169,3 @@ Learn more
             :expand:
 
             Read the API Reference
-
-    .. grid-item-card::
-
-        **More Frameworks**
-        ^^^
-
-        Don't see your framework? See these guides.
-
-        +++
-        .. button-ref:: train-more-frameworks
-            :color: primary
-            :outline:
-            :expand:
-
-            Try Ray Train with other frameworks

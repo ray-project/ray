@@ -34,8 +34,9 @@ Ray Train documentation uses the following conventions:
     def train_func():
         """User-defined training function that runs on each distributed worker process.
         
-        This function typically contains logic for loading the model, loading the dataset, 
-        training the model, saving checkpoints, and logging metrics.
+        This function typically contains logic for loading the model, 
+        loading the dataset, training the model, saving checkpoints, 
+        and logging metrics.
         """
         ...
 
@@ -82,9 +83,7 @@ Trainer
 -------
 
 The Trainer ties the previous three concepts together to launch distributed training jobs.
-
 Ray Train provides a Trainer class for different frameworks.
-
 Calling the ``fit()`` method executes the training job by:
 
 #. Launching workers as defined by the `scaling_config`.
