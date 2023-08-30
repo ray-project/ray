@@ -43,13 +43,15 @@ tune.report(metric=1)    ->     train.report({'metric': 1})"""
 _TUNE_CHECKPOINT_DIR_DEPRECATION_MSG = """`tune.checkpoint_dir` is deprecated.
 Use `ray.train.report` instead -- see the example below:
 
-Before:
+Before
+------
 
 with tune.checkpoint_dir(step=1) as checkpoint_dir:
     torch.save(state_dict, os.path.join(checkpoint_dir, 'model.pt'))
 tune.report(metric=1)
 
-After:
+After
+-----
 
 from ray.train import Checkpoint
 
