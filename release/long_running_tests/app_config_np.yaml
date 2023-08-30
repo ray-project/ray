@@ -1,5 +1,5 @@
 base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] }}
-env_vars: {}
+env_vars: { "RAY_AIR_NEW_PERSISTENCE_MODE": "1" }
 
 debian_packages:
   - curl

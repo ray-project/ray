@@ -16,7 +16,7 @@ from ray import train, tune
 from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_RESULT_FILE
 from ray.train._internal.storage import _download_from_fs_path, StorageContext
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train._checkpoint import Checkpoint
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -199,7 +199,7 @@ def train_fn(config):
                     with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
                         pickle.dump({"iter": i}, f)
 
-                train.report(metrics, checkpoint=NewCheckpoint.from_directory(temp_dir))
+                train.report(metrics, checkpoint=Checkpoint.from_directory(temp_dir))
                 # `train.report` should not have deleted this!
                 assert os.path.exists(temp_dir)
 
@@ -260,7 +260,7 @@ class ClassTrainable(tune.Trainable):
             ).read_text() == "dummy"
 
 
-def _resume_from_checkpoint(checkpoint: NewCheckpoint, expected_state: dict):
+def _resume_from_checkpoint(checkpoint: Checkpoint, expected_state: dict):
     print(f"\nStarting run with `resume_from_checkpoint`: {checkpoint}\n")
 
     def assert_fn(config):
@@ -276,7 +276,7 @@ def _resume_from_checkpoint(checkpoint: NewCheckpoint, expected_state: dict):
         dummy_ckpt = tempfile.mkdtemp()
         with open(os.path.join(dummy_ckpt, "dummy.txt"), "w") as f:
             f.write("data")
-        train.report({"dummy": 1}, checkpoint=NewCheckpoint.from_directory(dummy_ckpt))
+        train.report({"dummy": 1}, checkpoint=Checkpoint.from_directory(dummy_ckpt))
 
     trainer = DataParallelTrainer(
         assert_fn,
@@ -432,6 +432,7 @@ def test_tuner(
                 verbose=0,
                 failure_config=train.FailureConfig(max_failures=1),
                 checkpoint_config=checkpoint_config,
+                sync_config=train.SyncConfig(sync_artifacts=True),
             ),
             # 2 samples (from the grid search). Run 1 at at time to test actor reuse
             tune_config=tune.TuneConfig(num_samples=1, max_concurrent_trials=1),
@@ -552,6 +553,7 @@ def test_trainer(
                 verbose=0,
                 checkpoint_config=checkpoint_config,
                 failure_config=train.FailureConfig(max_failures=1),
+                sync_config=train.SyncConfig(sync_artifacts=True),
             ),
         )
         print("\nStarting initial run.\n")
