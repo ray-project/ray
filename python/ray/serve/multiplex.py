@@ -13,7 +13,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve.context import (
     get_global_client,
-    get_internal_replica_context,
+    _get_internal_replica_context,
 )
 from ray.serve._private.common import DeploymentID, MultiplexedReplicaInfo
 from ray.serve._private.usage import ServeUsageTag
@@ -94,7 +94,7 @@ class _ModelMultiplexWrapper:
             description="The counter for loaded models on the current replica.",
         )
 
-        context = get_internal_replica_context()
+        context = _get_internal_replica_context()
         if context is None:
             raise RuntimeError(
                 "Fail to retrieve serve replica context, the model multiplexer ",

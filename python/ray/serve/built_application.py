@@ -23,6 +23,7 @@ class ImmutableDeploymentDict(dict):
         )
 
 
+# XXX: remove as public API, then also remove `deployment.set_options()`.
 @PublicAPI(stability="alpha")
 class BuiltApplication:
     """A static, pre-built Serve application.

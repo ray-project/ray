@@ -39,7 +39,7 @@ from ray.serve._private.utils import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class Application(DAGNodeBase):
     """One or more deployments bound with arguments that can be deployed together.
 
@@ -100,7 +100,7 @@ class Application(DAGNodeBase):
         return getattr(self._get_internal_dag_node(), name)
 
 
-@PublicAPI
+@PublicAPI(stability="stable")
 class Deployment:
     """Class (or function) decorated with the `@serve.deployment` decorator.
 
@@ -245,7 +245,6 @@ class Deployment:
             "Use `deployment.deploy() instead.`"
         )
 
-    @PublicAPI(stability="beta")
     def bind(self, *args, **kwargs) -> Application:
         """Bind the arguments to the deployment and return an Application.
 
@@ -384,7 +383,6 @@ class Deployment:
             sync=sync,
         )
 
-    @PublicAPI
     def options(
         self,
         func_or_class: Optional[Callable] = None,

@@ -133,7 +133,7 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
         return False
 
 
-@PublicAPI(stability="stable")
+# XXX: fix the missing annotation.
 class DeploymentConfig(BaseModel):
     """Configuration options for a deployment, to be set by the user.
 
@@ -333,7 +333,7 @@ class DeploymentConfig(BaseModel):
         return config
 
 
-@DeveloperAPI
+# XXX: fix the missing annotation.
 class ReplicaConfig:
     """Configuration for a deployment's replicas.
 
@@ -722,6 +722,7 @@ class ReplicaConfig:
 
 # Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
 @DeveloperAPI
+# XXX: add ProxyLocation enum that is used in `proxy_location` field, deprecate this one.
 class DeploymentMode(str, Enum):
     NoServer = "NoServer"
     HeadOnly = "HeadOnly"
@@ -729,9 +730,9 @@ class DeploymentMode(str, Enum):
     FixedNumber = "FixedNumber"
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class HTTPOptions(pydantic.BaseModel):
-    # Documentation inside serve.start for user's convenience.
+    # XXX: write docstring.
     host: Optional[str] = DEFAULT_HTTP_HOST
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
@@ -791,7 +792,7 @@ class HTTPOptions(pydantic.BaseModel):
         arbitrary_types_allowed = True
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class gRPCOptions(BaseModel):
     """Configuration options for gRPC proxy.
 

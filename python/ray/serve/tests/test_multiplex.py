@@ -12,7 +12,7 @@ from ray._private.test_utils import (
     SignalActor,
 )
 from ray._private.utils import get_or_create_event_loop
-from ray.serve.context import get_internal_replica_context
+from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import RayServeHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve._private.constants import (
@@ -317,8 +317,7 @@ def test_multiplexed_replica_info(serve_instance):
 
         async def __call__(self, model_id: str):
             _ = await self.get_model(model_id)
-            context = get_internal_replica_context()
-            return context.replica_tag
+            return _get_internal_replica_context().replica_tag
 
     handle = serve.run(MyModel.bind())
     replica_tag = ray.get(handle.remote("model1"))

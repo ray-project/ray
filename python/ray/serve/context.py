@@ -22,20 +22,21 @@ _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 @dataclass
 class ReplicaContext:
     """Stores data for Serve API calls from within deployments."""
 
+    # XXX: better docstring.
     deployment: str
     replica_tag: ReplicaTag
-    _internal_controller_name: str
     servable_object: Callable
     app_name: str
+    _internal_controller_name: str
 
 
-@PublicAPI(stability="alpha")
-def get_global_client(
+# XXX: fix annotation later.
+def _get_global_client(
     _health_check_controller: bool = False, raise_if_no_controller_running: bool = True
 ) -> Optional[ServeControllerClient]:
     """Gets the global client, which stores the controller's handle.
@@ -74,8 +75,7 @@ def _set_global_client(client):
     _global_client = client
 
 
-@PublicAPI(stability="alpha")
-def get_internal_replica_context():
+def _get_internal_replica_context():
     return _INTERNAL_REPLICA_CONTEXT
 
 

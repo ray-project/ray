@@ -30,7 +30,7 @@ from ray.serve._private.constants import (
 from ray.serve.context import (
     ReplicaContext,
     get_global_client,
-    get_internal_replica_context,
+    _get_internal_replica_context,
     _set_global_client,
 )
 from ray.serve.deployment import Application, Deployment
@@ -64,7 +64,7 @@ from ray.serve._private import api as _private_api
 logger = logging.getLogger(__file__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def start(
     detached: bool = True,
     proxy_location: Optional[Union[str, DeploymentMode]] = None,
@@ -187,7 +187,7 @@ def shutdown():
     _set_global_client(None)
 
 
-@PublicAPI(stability="beta")
+@DeveloperAPI
 def get_replica_context() -> ReplicaContext:
     """Returns the deployment and replica tag from within a replica at runtime.
 
@@ -212,7 +212,7 @@ def get_replica_context() -> ReplicaContext:
                     print(serve.get_replica_context().replica_tag)
 
     """
-    internal_replica_context = get_internal_replica_context()
+    internal_replica_context = _get_internal_replica_context()
     if internal_replica_context is None:
         raise RayServeException(
             "`serve.get_replica_context()` "
@@ -222,7 +222,7 @@ def get_replica_context() -> ReplicaContext:
     return internal_replica_context
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
     """Wrap a deployment class with a FastAPI application for HTTP request parsing.
 
@@ -294,7 +294,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
     return decorator
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def deployment(
     _func_or_class: Optional[Callable] = None,
     name: Default[str] = DEFAULT.VALUE,
@@ -508,7 +508,7 @@ def list_deployments() -> Dict[str, Deployment]:
     return _private_api.list_deployments()
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def run(
     target: Application,
     _blocking: bool = True,
@@ -656,7 +656,7 @@ def build(target: Application, name: str = None) -> BuiltApplication:
     return BuiltApplication(deployments, ingress)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def delete(name: str, _blocking: bool = True):
     """Delete an application by its name.
 
@@ -865,9 +865,7 @@ def status() -> ServeStatus:
 
 
 @PublicAPI(stability="alpha")
-def get_app_handle(
-    name: str,
-) -> DeploymentHandle:
+def get_app_handle(name: str) -> DeploymentHandle:
     """Get a handle to the application's ingress deployment by name.
 
     Args:
@@ -909,7 +907,7 @@ def get_deployment_handle(
     deployment_name: str,
     app_name: Optional[str] = None,
 ) -> DeploymentHandle:
-    """Get a handle to the named deployment.
+    """Get a handle to a deployment by name.
 
     This is a developer API and is for advanced Ray users and library developers.
 
@@ -928,7 +926,7 @@ def get_deployment_handle(
 
     client = get_global_client()
 
-    internal_replica_context = get_internal_replica_context()
+    internal_replica_context = _get_internal_replica_context()
     if app_name is None:
         if internal_replica_context is None:
             raise RayServeException(

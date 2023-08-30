@@ -57,7 +57,7 @@ def _route_prefix_format(cls, v):
     return v
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class RayActorOptionsSchema(BaseModel):
     """Options with which to start a replica actor."""
 
@@ -137,7 +137,7 @@ class RayActorOptionsSchema(BaseModel):
         return v
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     """
     Specifies options for one deployment within a Serve application. For each deployment
@@ -322,12 +322,11 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
     return schema
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class ServeApplicationSchema(BaseModel):
     """
     Describes one Serve application, and currently can also be used as a standalone
     config to deploy a single application to a Ray cluster.
-
 
     This is the request JSON schema for the v1 REST API `PUT "/api/serve/deployments/"`.
     """
@@ -538,13 +537,13 @@ class gRPCOptionsSchema(BaseModel):
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class HTTPOptionsSchema(BaseModel):
     """Options to start the HTTP Proxy with.
 
     NOTE: This config allows extra parameters to make it forward-compatible (ie
           older versions of Serve are able to accept configs from a newer versions,
-          simply ignoring new parameters)
+          simply ignoring new parameters).
     """
 
     host: str = Field(
@@ -583,7 +582,7 @@ class HTTPOptionsSchema(BaseModel):
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class ServeDeploySchema(BaseModel):
     """
     Multi-application config for deploying a list of Serve applications to the Ray
@@ -609,11 +608,11 @@ class ServeDeploySchema(BaseModel):
     http_options: HTTPOptionsSchema = Field(
         default=HTTPOptionsSchema(), description="Options to start the HTTP Proxy with."
     )
-    applications: List[ServeApplicationSchema] = Field(
-        ..., description=("The set of Serve applications to run on the Ray cluster.")
-    )
     grpc_options: gRPCOptionsSchema = Field(
         default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
+    )
+    applications: List[ServeApplicationSchema] = Field(
+        ..., description=("The set of Serve applications to run on the Ray cluster.")
     )
 
     @validator("applications")
@@ -707,7 +706,7 @@ class ServeStatus:
     applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class ServeActorDetails(BaseModel, frozen=True):
     node_id: Optional[str] = Field(
         description="ID of the node that the actor is running on."
@@ -726,7 +725,7 @@ class ServeActorDetails(BaseModel, frozen=True):
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class ReplicaDetails(ServeActorDetails, frozen=True):
     """Detailed info about a single deployment replica."""
 
@@ -748,7 +747,7 @@ class ReplicaDetails(ServeActorDetails, frozen=True):
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     """
     Detailed info about a deployment within a Serve application.
@@ -789,7 +788,7 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
         return v
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     """Detailed info about a Serve application."""
 
@@ -847,12 +846,12 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     )(_route_prefix_format)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class HTTPProxyDetails(ServeActorDetails, frozen=True):
     status: HTTPProxyStatus = Field(description="Current status of the HTTP Proxy.")
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     """
     Serve metadata with system-level info and details on all applications deployed to
