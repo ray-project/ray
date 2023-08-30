@@ -73,9 +73,7 @@ class Guardian:
     async def __call__(self):
         try:
             print("Guardian received request!")
-
-            # Shield downstream call from cancellation
-            await asyncio.shield(self.sleeper_handle.remote())
+            await self.sleeper_handle.remote()
 
         except asyncio.CancelledError:
             print("Guardian's request was cancelled!")
@@ -84,7 +82,10 @@ class Guardian:
 @serve.deployment
 async def sleeper():
     print("Sleeper received request!")
-    await asyncio.sleep(3)
+
+    # Shield sleep call from cancellation
+    await asyncio.shield(asyncio.sleep(3))
+
     print("Sleeper deployment finished sleeping!")
 
 

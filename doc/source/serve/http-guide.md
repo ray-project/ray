@@ -59,7 +59,7 @@ If there are no remaining `await` statements in the deployment's code before the
 
 Cancellation cascades to any downstream deployment handle, task, or actor calls that were spawned in the deployment's request-handling method. These can handle the `asyncio.CancelledError` in the same way as the ingress deployment.
 
-To ignore cancellation, use `asyncio.shield`:
+To ignore cancellation during an `await` statement, use `asyncio.shield`:
 
 ```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __start_shielded_disconnect__
@@ -67,7 +67,7 @@ To ignore cancellation, use `asyncio.shield`:
 :language: python
 ```
 
-When the request is cancelled, a cancellation error is raised inside the `Guardian` deployment. However, the cancellation won't be raised inside `sleeper`. Note that `asyncio.shield` does not block cascading canellations. It must be use on each call that should not be cancelled.
+When the request is cancelled, a cancellation error is raised inside the `Guardian` deployment. However, the cancellation won't be raised inside `sleeper` during the `asyncio.sleep()` call.
 
 (serve-fastapi-http)=
 ## FastAPI HTTP Deployments
