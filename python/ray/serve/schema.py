@@ -14,7 +14,7 @@ from ray.serve._private.common import (
     StatusOverview,
     ReplicaState,
     ServeDeployMode,
-    HTTPProxyStatus,
+    ProxyStatus,
 )
 from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
@@ -703,7 +703,7 @@ class ApplicationStatusOverview:
 @PublicAPI(stability="alpha")
 @dataclass(eq=True)
 class ServeStatus:
-    proxies: Dict[str, HTTPProxyStatus] = field(default_factory=dict)
+    proxies: Dict[str, ProxyStatus] = field(default_factory=dict)
     applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
 
 
@@ -848,8 +848,8 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 
 @PublicAPI(stability="alpha")
-class HTTPProxyDetails(ServeActorDetails, frozen=True):
-    status: HTTPProxyStatus = Field(description="Current status of the HTTP Proxy.")
+class ProxyDetails(ServeActorDetails, frozen=True):
+    status: ProxyStatus = Field(description="Current status of the Proxy.")
 
 
 @PublicAPI(stability="alpha")
@@ -874,7 +874,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
     grpc_options: Optional[gRPCOptionsSchema] = Field(description="gRPC Proxy options.")
-    http_proxies: Dict[str, HTTPProxyDetails] = Field(
+    proxies: Dict[str, ProxyDetails] = Field(
         description=(
             "Mapping from node_id to details about the HTTP Proxy running on that node."
         )
@@ -899,15 +899,13 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         return {
             "deploy_mode": "UNSET",
             "controller_info": {},
-            "http_proxies": {},
+            "proxies": {},
             "applications": {},
         }
 
     def _get_status(self) -> ServeStatus:
         return ServeStatus(
-            proxies={
-                node_id: proxy.status for node_id, proxy in self.http_proxies.items()
-            },
+            proxies={node_id: proxy.status for node_id, proxy in self.proxies.items()},
             applications={
                 app_name: ApplicationStatusOverview(
                     status=app.status,
