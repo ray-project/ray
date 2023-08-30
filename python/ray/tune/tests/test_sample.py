@@ -445,7 +445,7 @@ class SearchSpaceTest(unittest.TestCase):
         )
 
     def testCategoricalSeedInTrainingLoop(self):
-        def train(config):
+        def train_fn(config):
             return 0
 
         config = {
@@ -455,14 +455,14 @@ class SearchSpaceTest(unittest.TestCase):
 
         np.random.seed(1000)
 
-        out_1 = tune.run(train, config=config, num_samples=8, verbose=0)
+        out_1 = tune.run(train_fn, config=config, num_samples=8, verbose=0)
 
         integers_1 = [t.config["integer"] for t in out_1.trials]
         choices_1 = [t.config["choice"] for t in out_1.trials]
 
         np.random.seed(1000)
 
-        out_2 = tune.run(train, config=config, num_samples=8, verbose=0)
+        out_2 = tune.run(train_fn, config=config, num_samples=8, verbose=0)
 
         integers_2 = [t.config["integer"] for t in out_2.trials]
         choices_2 = [t.config["choice"] for t in out_2.trials]

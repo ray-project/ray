@@ -72,7 +72,7 @@ training loop.
     from ray import tune
     from ray.rllib.algorithms.ppo import PPO
 
-    def train(config, reporter):
+    def train_fn(config, reporter):
         algo = PPO(config=config, env=YourEnv)
         while True:
             result = algo.train()
@@ -92,7 +92,7 @@ training loop.
 
     ray.init()
     tune.Tuner(
-        tune.with_resources(train, resources=tune.PlacementGroupFactory(
+        tune.with_resources(train_fn, resources=tune.PlacementGroupFactory(
             [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
         ),)
         param_space={

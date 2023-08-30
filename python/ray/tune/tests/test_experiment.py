@@ -14,11 +14,11 @@ class ExperimentTest(unittest.TestCase):
         ray.shutdown()
 
     def setUp(self):
-        def train(config, reporter):
+        def train_fn(config, reporter):
             for i in range(100):
                 reporter(timesteps_total=i)
 
-        register_trainable("f1", train)
+        register_trainable("f1", train_fn)
 
     def testConvertExperimentFromExperiment(self):
         exp1 = Experiment(

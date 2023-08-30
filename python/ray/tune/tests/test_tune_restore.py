@@ -677,10 +677,10 @@ def test_stacktrace():
     CMD = """
 from ray import tune
 
-def train(config):
+def train_fn(config):
     raise Exception("Inducing exception for testing purposes.")
 
-tune.run(train, num_samples=1)
+tune.run(train_fn, num_samples=1)
     """
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
         run_string_as_driver(CMD)

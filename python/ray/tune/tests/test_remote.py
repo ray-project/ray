@@ -12,7 +12,7 @@ from ray.tune.experiment import Trial
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
-def train(config):
+def train_fn(config):
     for i in range(100):
         ray.train.report(dict(timesteps_total=i))
 
@@ -22,7 +22,7 @@ class RemoteTest(unittest.TestCase):
         ray.shutdown()
 
     def testRemoteRunExperiments(self):
-        register_trainable("f1", train)
+        register_trainable("f1", train_fn)
         exp1 = Experiment(
             **{
                 "name": "foo",
@@ -34,7 +34,7 @@ class RemoteTest(unittest.TestCase):
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testRemoteRun(self):
-        analysis = run(train, _remote=True)
+        analysis = run(train_fn, _remote=True)
         [trial] = analysis.trials
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
@@ -45,7 +45,7 @@ class RemoteTest(unittest.TestCase):
             return run(*args, **kwargs), capture_args_kwargs
 
         with patch("ray.tune.tune.run", mocked_run):
-            analysis, capture_args_kwargs = run(train, _remote=True)
+            analysis, capture_args_kwargs = run(train_fn, _remote=True)
         args, kwargs = capture_args_kwargs
         self.assertFalse(args)
         kwargs.pop("run_or_experiment")
@@ -64,7 +64,7 @@ class RemoteTest(unittest.TestCase):
 
     def testRemoteRunWithSearcher(self):
         analysis = run(
-            train,
+            train_fn,
             search_alg=HyperOptSearch(),
             config={"a": choice(["a", "b"])},
             metric="timesteps_total",
@@ -81,7 +81,7 @@ class RemoteTest(unittest.TestCase):
         with ray_start_client_server():
             assert ray.util.client.ray.is_connected()
 
-            register_trainable("f1", train)
+            register_trainable("f1", train_fn)
             exp1 = Experiment(
                 **{
                     "name": "foo",
@@ -98,7 +98,7 @@ class RemoteTest(unittest.TestCase):
         with ray_start_client_server():
             assert ray.util.client.ray.is_connected()
 
-            analysis = run(train)
+            analysis = run(train_fn)
             [trial] = analysis.trials
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)

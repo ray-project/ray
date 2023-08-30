@@ -66,7 +66,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
         pass
 
     def testReportCallbackUnnamed(self):
-        def train(config):
+        def train_fn(config):
             module = _MockModule(10.0, 20.0)
             trainer = pl.Trainer(
                 max_epochs=1,
@@ -78,12 +78,12 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             )
             trainer.fit(module)
 
-        analysis = tune.run(train, stop={TRAINING_ITERATION: 1})
+        analysis = tune.run(train_fn, stop={TRAINING_ITERATION: 1})
 
         self.assertEqual(analysis.trials[0].last_result["avg_val_loss"], 10.0 * 1.1)
 
     def testReportCallbackNamed(self):
-        def train(config):
+        def train_fn(config):
             module = _MockModule(10.0, 20.0)
             trainer = pl.Trainer(
                 max_epochs=1,
@@ -97,7 +97,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             )
             trainer.fit(module)
 
-        analysis = tune.run(train, stop={TRAINING_ITERATION: 1})
+        analysis = tune.run(train_fn, stop={TRAINING_ITERATION: 1})
 
         self.assertEqual(analysis.trials[0].last_result["tune_loss"], 10.0 * 1.1)
 

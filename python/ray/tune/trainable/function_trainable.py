@@ -744,7 +744,7 @@ def wrap_function(
                     "To save and load checkpoint in trainable functions, "
                     "please use the `report` API:\n\n"
                     "from ray import train\n\n"
-                    "def train(config):\n"
+                    "def train_fn(config):\n"
                     "    # ...\n"
                     '    train.report({"metric": metric}, checkpoint=checkpoint)\n\n'
                     "For more information please see "

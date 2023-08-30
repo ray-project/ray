@@ -2005,7 +2005,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 print("Cleaned up.", self.config)
                 self.active = False
 
-        def train(config):
+        def train_fn(config):
             with MockContext(config):
                 for i in range(10):
                     tune.report(metric=i + config["x"])
@@ -2016,7 +2016,9 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         scheduler = MockScheduler()
 
-        out = tune.run(train, config={"x": tune.grid_search(vals)}, scheduler=scheduler)
+        out = tune.run(
+            train_fn, config={"x": tune.grid_search(vals)}, scheduler=scheduler
+        )
 
         ever_active = set()
         active = set()
@@ -2479,11 +2481,11 @@ class AsyncHyperBandSuite(unittest.TestCase):
         self._test_metrics(result2, "mean_loss", "min")
 
     def _testAnonymousMetricEndToEnd(self, scheduler_cls, searcher=None):
-        def train(config):
+        def train_fn(config):
             return config["value"]
 
         out = tune.run(
-            train,
+            train_fn,
             mode="max",
             num_samples=1,
             config={"value": tune.uniform(-2.0, 2.0)},

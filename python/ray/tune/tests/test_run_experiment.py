@@ -14,7 +14,7 @@ from ray.tune.experiment import Experiment
 from ray.tune.experiment.trial import Trial, ExportFormat
 
 
-def train(config):
+def train_fn(config):
     for i in range(100):
         ray.train.report(dict(timesteps_total=i))
 
@@ -28,7 +28,7 @@ class RunExperimentTest(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def testDict(self):
-        register_trainable("f1", train)
+        register_trainable("f1", train_fn)
         trials = run_experiments(
             {
                 "foo": {
@@ -44,7 +44,7 @@ class RunExperimentTest(unittest.TestCase):
             self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testExperiment(self):
-        register_trainable("f1", train)
+        register_trainable("f1", train_fn)
         exp1 = Experiment(
             **{
                 "name": "foo",
@@ -56,7 +56,7 @@ class RunExperimentTest(unittest.TestCase):
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testExperimentList(self):
-        register_trainable("f1", train)
+        register_trainable("f1", train_fn)
         exp1 = Experiment(
             **{
                 "name": "foo",
@@ -79,11 +79,11 @@ class RunExperimentTest(unittest.TestCase):
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
-        register_trainable("f1", train)
+        register_trainable("f1", train_fn)
         trials = run_experiments(
             {
                 "foo": {
-                    "run": train,
+                    "run": train_fn,
                 },
                 "bar": {"run": B},
             }
@@ -114,7 +114,7 @@ class RunExperimentTest(unittest.TestCase):
             self.assertTrue(trial.checkpoint)
 
     def testExportFormats(self):
-        class train(Trainable):
+        class train_fn(Trainable):
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
@@ -124,7 +124,9 @@ class RunExperimentTest(unittest.TestCase):
                     f.write("OK")
                 return {export_formats[0]: path}
 
-        trials = run_experiments({"foo": {"run": train, "export_formats": ["format"]}})
+        trials = run_experiments(
+            {"foo": {"run": train_fn, "export_formats": ["format"]}}
+        )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(os.path.exists(os.path.join(trial.local_path, "exported")))
