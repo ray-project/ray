@@ -25,7 +25,10 @@ CPU profiling for Driver and Worker processes. This helps you understand the CPU
 - It dumps the stacktrace of the running process so that you can see what the process is doing at a certain time. It is useful when programs hangs.
 
 :::{note}
-   If you run Ray in a Docker container, you may run into permission errors when viewing the stack traces. Follow the [solution in the py-spy documentation](https://github.com/benfred/py-spy#how-do-i-run-py-spy-in-docker) to resolve it. If you are a KubeRay user, here is the guide for how to {ref}`configure KubeRay and apply the solution <kuberay-pyspy-integration>`.
+You may run into permission errors when using py-spy in the docker containers. To fix the issue:
+
+- if you start Ray manually in a Docker container, follow the `py-spy documentation`_ to resolve it. 
+- if you are a KubeRay user, follow the :ref:`guide to configure KubeRay <kuberay-pyspy-integration>` and resolve it.
 :::
 
 Here are the {ref}`steps to use py-spy with Ray and Ray Dashboard <observability-debug-hangs>`.
