@@ -29,6 +29,7 @@ from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.train import SyncConfig
+from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _DEPRECATED_VALUE
 from ray.train._internal.storage import _use_storage_context
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
@@ -312,7 +313,6 @@ def run(
     log_to_file: bool = False,
     trial_name_creator: Optional[Callable[[Trial], str]] = None,
     trial_dirname_creator: Optional[Callable[[Trial], str]] = None,
-    chdir_to_trial_dir: bool = True,
     sync_config: Optional[SyncConfig] = None,
     export_formats: Optional[Sequence] = None,
     max_failures: int = 0,
@@ -331,6 +331,7 @@ def run(
     checkpoint_at_end: bool = False,  # Deprecated (2.7)
     checkpoint_keep_all_ranks: bool = False,  # Deprecated (2.7)
     checkpoint_upload_from_workers: bool = False,  # Deprecated (2.7)
+    chdir_to_trial_dir: bool = _DEPRECATED_VALUE,  # Deprecated (2.8)
     local_dir: Optional[str] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
@@ -458,7 +459,8 @@ def run(
             unique identifier (such as `Trial.trial_id`) is used in each trial's
             directory name. Otherwise, trials could overwrite artifacts and checkpoints
             of other trials. The return value cannot be a path.
-        chdir_to_trial_dir: Whether to change the working directory of each worker
+        chdir_to_trial_dir: Deprecated. Use `RAY_CHDIR_TO_TRIAL_DIR=0` instead.
+            Whether to change the working directory of each worker
             to its corresponding trial directory. Defaults to `True` to prevent
             contention between workers saving trial-level outputs.
             If set to `False`, files are accessible with paths relative to the
@@ -755,6 +757,17 @@ def run(
             checkpoint_upload_from_workers
         )
 
+    if chdir_to_trial_dir != _DEPRECATED_VALUE:
+        warnings.warn(
+            "`chdir_to_trial_dir` is deprecated and will be removed. "
+            f"Use the {RAY_CHDIR_TO_TRIAL_DIR} environment variable instead. "
+            "Set it to 0 to disable the default behavior of changing the "
+            "working directory.",
+            DeprecationWarning,
+        )
+        if chdir_to_trial_dir is False:
+            os.environ[RAY_CHDIR_TO_TRIAL_DIR] = "0"
+
     if num_samples == -1:
         num_samples = sys.maxsize
 
@@ -1015,7 +1028,6 @@ def run(
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
         reuse_actors=reuse_actors,
-        chdir_to_trial_dir=chdir_to_trial_dir,
         storage=experiments[0].storage,
         _trainer_api=_entrypoint == AirEntrypoint.TRAINER,
     )

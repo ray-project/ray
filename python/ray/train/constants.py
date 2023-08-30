@@ -52,6 +52,8 @@ TRAIN_CHECKPOINT_SUBDIR = "checkpoints"
 # is restarted, the checkpoint_id can continue to increment.
 TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 
+# Deprecated configs can use this value to detect if the user has set it.
+_DEPRECATED_VALUE = "DEPRECATED"
 
 # ==================================================
 #               Environment Variables

@@ -238,9 +238,7 @@ def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
     return relative_logdir
 
 
-def _noop_logger_creator(
-    config: Dict[str, Any], logdir: str, should_chdir: bool = True
-):
+def _noop_logger_creator(config: Dict[str, Any], logdir: str):
     # Upon remote process setup, record the actor's original working dir before
     # changing to the Tune logdir
     os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
@@ -249,17 +247,10 @@ def _noop_logger_creator(
     return NoopLogger(config, logdir)
 
 
-def _get_trainable_kwargs(
-    trial: "Trial",
-    should_chdir: bool = False,
-) -> Dict[str, Any]:
+def _get_trainable_kwargs(trial: "Trial") -> Dict[str, Any]:
     trial.init_local_path()
 
-    logger_creator = partial(
-        _noop_logger_creator,
-        logdir=trial.local_path,
-        should_chdir=should_chdir,
-    )
+    logger_creator = partial(_noop_logger_creator, logdir=trial.local_path)
 
     trial_config = copy.deepcopy(trial.config)
     trial_config[TRIAL_INFO] = _TrialInfo(trial)

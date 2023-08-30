@@ -382,11 +382,7 @@ def test_nonserializable_trainable():
         Tuner(lambda config: print(lock))
 
 
-def _test_no_chdir(monkeypatch, runner_type, runtime_env):
-    from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
-
-    monkeypatch.setenv(RAY_CHDIR_TO_TRIAL_DIR, "0")
-
+def _test_no_chdir(runner_type, runtime_env, use_deprecated_config=False):
     # Write a data file that we want to read in our training loop
     with open("./read.txt", "w") as f:
         f.write("data")
@@ -409,7 +405,13 @@ def _test_no_chdir(monkeypatch, runner_type, runtime_env):
         result = trainer.fit()
         results = [result]
     elif runner_type == "tuner":
-        tuner = Tuner(train_func, param_space={"id": tune.grid_search(list(range(4)))})
+        tuner = Tuner(
+            train_func,
+            param_space={"id": tune.grid_search(list(range(4)))},
+            tune_config=(
+                TuneConfig(chdir_to_trial_dir=False) if use_deprecated_config else None
+            ),
+        )
         results = tuner.fit()
         assert not results.errors
     else:
@@ -419,13 +421,21 @@ def _test_no_chdir(monkeypatch, runner_type, runtime_env):
         assert os.path.exists(os.path.join(result.path, "write.txt"))
 
 
+def test_tuner_no_chdir_to_trial_dir_deprecated(shutdown_only, chdir_tmpdir):
+    """Test the deprecated `chdir_to_trial_dir` config."""
+    _test_no_chdir("tuner", {}, use_deprecated_config=True)
+
+
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
 def test_tuner_no_chdir_to_trial_dir(
     shutdown_only, chdir_tmpdir, monkeypatch, runtime_env
 ):
     """Tests that disabling the env var to keep the working directory the same
     works for a Tuner run."""
-    _test_no_chdir(monkeypatch, "tuner", runtime_env)
+    from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+
+    monkeypatch.setenv(RAY_CHDIR_TO_TRIAL_DIR, "0")
+    _test_no_chdir("tuner", runtime_env)
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
@@ -434,7 +444,10 @@ def test_trainer_no_chdir_to_trial_dir(
 ):
     """Tests that disabling the env var to keep the working directory the same
     works for a Trainer run."""
-    _test_no_chdir(monkeypatch, "trainer", runtime_env)
+    from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+
+    monkeypatch.setenv(RAY_CHDIR_TO_TRIAL_DIR, "0")
+    _test_no_chdir("trainer", runtime_env)
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
@@ -447,8 +460,7 @@ def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runti
         f.write("data")
 
     # Even if we set our runtime_env `{"working_dir": "."}` to the current directory,
-    # Tune should still chdir to the trial directory, since we didn't disable the
-    # `chdir_to_trial_dir` flag.
+    # Tune should still chdir to the trial directory.
     ray.init(num_cpus=1, runtime_env=runtime_env)
 
     def train_func(config):
@@ -469,11 +481,7 @@ def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runti
         with open(trial_dir / "write.txt", "w") as f:
             f.write(f"{config['id']}")
 
-    tuner = Tuner(
-        train_func,
-        tune_config=TuneConfig(chdir_to_trial_dir=True),
-        param_space={"id": tune.grid_search(list(range(4)))},
-    )
+    tuner = Tuner(train_func, param_space={"id": tune.grid_search(list(range(4)))})
     results = tuner.fit()
     assert not results.errors
     for result in results:

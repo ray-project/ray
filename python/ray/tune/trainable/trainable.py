@@ -94,18 +94,18 @@ class Trainable:
     By default, Tune will also change the current working directory of this process to
     its corresponding trial-level log directory ``self.logdir``.
     This is designed so that different trials that run on the same physical node won't
-    accidently write to the same location and overstep each other.
+    accidentally write to the same location and overstep each other.
 
     The behavior of changing the working directory can be disabled by setting the
-    flag `chdir_to_trial_dir=False` in `tune.TuneConfig`. This allows access to files
+    `RAY_CHDIR_TO_TRIAL_DIR=0` environment variable. This allows access to files
     in the original working directory, but relative paths should be used for read only
     purposes, and you must make sure that the directory is synced on all nodes if
     running on multiple machines.
 
     The `TUNE_ORIG_WORKING_DIR` environment variable was the original workaround for
     accessing paths relative to the original working directory. This environment
-    variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
-    used instead.
+    variable is deprecated, and the `RAY_CHDIR_TO_TRIAL_DIR` environment variable
+    described above should be used instead.
 
     This class supports checkpointing to and restoring from remote storage.
 

@@ -679,13 +679,12 @@ Read about this in the :ref:`Search Space API <tune-search-space>` page.
 How do I access relative filepaths in my Tune training function?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Let's say you launch a Tune experiment from ``~/code/my_script.py``. By default, Tune
-changes the working directory of each worker from ``~/code`` to its corresponding trial
-directory (e.g. ``~/ray_results/exp_name/trial_0000x``). This default
-guarantees separate working directories for each worker process, avoiding conflicts when
-saving trial-specific outputs.
+Let's say you launch a Tune experiment with ``my_script.py`` from inside ``~/code``.
+By default, Tune changes the working directory of each worker to its corresponding trial
+directory (e.g. ``~/ray_results/exp_name/trial_0000x``). This guarantees separate working
+directories for each worker process, avoiding conflicts when saving trial-specific outputs.
 
-You can configure this by setting `chdir_to_trial_dir=False` in `tune.TuneConfig`.
+You can configure this by setting the `RAY_CHDIR_TO_TRIAL_DIR=0` environment variable.
 This explicitly tells Tune to not change the working directory
 to the trial directory, giving access to paths relative to the original working directory.
 One caveat is that the working directory is now shared between workers, so the
@@ -703,8 +702,8 @@ API should be used to get the path for saving trial-specific outputs.
 
     The `TUNE_ORIG_WORKING_DIR` environment variable was the original workaround for
     accessing paths relative to the original working directory. This environment
-    variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
-    used instead.
+    variable is deprecated, and the `RAY_CHDIR_TO_TRIAL_DIR` environment variable above
+    should be used instead.
 
 
 .. _tune-multi-tenancy:

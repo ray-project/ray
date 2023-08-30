@@ -25,6 +25,7 @@ from ray.air._internal.remote_storage import (
     delete_at_uri,
     is_non_local_path_uri,
 )
+from ray.train.constants import _DEPRECATED_VALUE
 from ray.util import log_once
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
@@ -37,8 +38,6 @@ DEFAULT_SYNC_PERIOD = 300
 
 # Default sync timeout after which syncing processes are aborted
 DEFAULT_SYNC_TIMEOUT = 1800
-
-_DEPRECATED_VALUE = "DEPRECATED"
 
 
 @PublicAPI
