@@ -204,7 +204,7 @@ Configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`, `R
 * Set `RAY_GRAFANA_IFRAME_HOST` to an address that the user's browsers can use to access Grafana and embed visualizations. If `RAY_GRAFANA_IFRAME_HOST` is not set, Ray Dashboard uses the value of `RAY_GRAFANA_HOST`.
 
 For example, if the IP of the head node is 55.66.77.88 and Grafana is hosted on port 3000. Set the value to `RAY_GRAFANA_HOST=http://55.66.77.88:3000`.
-* If you start a single-node Ray Cluster manually, make sure these environment variables are set and accessible before you start the cluster or as a prefix to the `ray start ...` command.
+* If you start a single-node Ray Cluster manually, make sure these environment variables are set and accessible before you start the cluster or as a prefix to the `ray start ...` command, e.g., `RAY_GRAFANA_HOST=http://55.66.77.88:3000 ray start ...`
 * If you start a Ray Cluster with {ref}`VM Cluster Launcher <cloud-vm-index>`, the environment variables should be set under `head_start_ray_commands` as a prefix to the `ray start ...` command.
 * If you start a Ray Cluster with {ref}`KubeRay <kuberay-index>`, refer to this {ref}`tutorial <kuberay-prometheus-grafana>`.
 

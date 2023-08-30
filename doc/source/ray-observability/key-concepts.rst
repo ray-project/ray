@@ -75,14 +75,13 @@ Profiling
 ---------
 Profiling is way of analyzing the performance of an application by sampling the resource usage of it. Ray supports various profiling tools:
 
-- CPU profiling for Driver and Worker processes, including integration with :ref:`py-spy <dashboard-profiling>` and :ref:`cProfile <dashboard-cprofile>`
-- Memory profiling for Driver and Worker processes with :ref:`memray <memray-profiling>`
-- Built in Task and Actor profiling tool called :ref:`ray timeline <ray-core-timeline>`
-- GPU profiling with `Pytorch Profiler`_
+- CPU profiling for Driver and Worker processes, including integration with :ref:`py-spy <profiling-pyspy>` and :ref:`cProfile <profiling-cprofile>`
+- Memory profiling for Driver and Worker processes with :ref:`memray <profiling-memray>`
+- GPU profiling with :ref:`Pytorch Profiler <profiling-pytoch-profiler>`
+- Built in Task and Actor profiling tool called :ref:`Ray Timeline <profiling-timeline>`
 
 View :ref:`Profiling <profiling>` for more details. Note that this list is not comprehensive and feel free to contribute to it if you find other useful tools.
 
-.. _`Pytorch Profiler`: https://pytorch.org/tutorials/recipes/recipes/profiler_recipe.html
 
 Tracing
 -------

@@ -324,14 +324,25 @@ Our example in total now takes only 1.5 seconds to run:
   20    0.001    0.000    0.001    0.000 worker.py:514(submit_task)
   ...
 
-GPU Profiling
+
+.. _performance-debugging-gpu-profiling:
+
+GPU Profiling with PyTorch Profiler
 ------------------------
-Ray doesn't provide native integration with GPU profiling tools. Try running GPU profilers like `Pytorch Profiler`_ without Ray to identify the issues.
+Here are the steps to use PyTorch Profiler with Ray Train:
 
-If you have related feature requests, `let us know`_.
+* Follow the `PyTorch Profiler documentation <https://pytorch.org/tutorials/intermediate/tensorboard_profiler_tutorial.html>`_ to record events in your PyTorch code.
 
-.. _`let us know`: https://github.com/ray-project/ray/issues
-.. _`Pytorch Profiler`: https://pytorch.org/tutorials/recipes/recipes/profiler_recipe.html
+* :ref:`Convert your PyTorch script to a Ray Train script <train-pytorch>`. (no change to your profiler-related code)
+
+* Run your Ray Train script
+
+* Collect the profiling results from all the nodes (compared to 1 node in a non-distributed setting)
+
+    * You may want to upload results on each Node to NFS or object storage like S3 so that you don't have to fetch results from each Node.
+
+* Visualize the results with tools like Tensorboard.
+
 
 Profiling for Developers
 ------------------------
