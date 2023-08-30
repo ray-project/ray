@@ -12,7 +12,7 @@ To use Ray Train effectively, you need to understand four main concepts:
 
 #. :ref:`Training function <train-overview-training-function>`: A Python function that contains your model training logic.
 #. :ref:`Worker <train-overview-worker>`: A process that runs the training function.
-#. :ref:`Scaling configuration: <train-overview-scaling-config>` A configuration of the number of workers and compute resources (CPU, GPU) per worker.
+#. :ref:`Scaling configuration: <train-overview-scaling-config>` A configuration of the number of workers and compute resources (for example, CPU or GPU) per worker.
 #. :ref:`Trainer <train-overview-trainers>`: A Python class that ties together the training function, workers, and scaling configuration to execute a distributed training job.
 
 .. _train-overview-training-function:
@@ -21,9 +21,7 @@ Training function
 -----------------
 
 The training function is a user-defined Python function that contains the end-to-end model training loop logic.
-
-When launching a distribued training job, each worker executes this training function.
-
+When launching a distributed training job, each worker executes this training function.
 Typically, this training function contains logic for loading the dataset, training the model, and saving checkpoints.
 
 Ray Train documentation uses the following conventions:
@@ -36,7 +34,7 @@ Ray Train documentation uses the following conventions:
     def train_func():
         """User-defined training function that runs on each distributed worker process.
         
-        This typically contains logic for loading the model, loading the dataset, 
+        This function typically contains logic for loading the model, loading the dataset, 
         training the model, saving checkpoints, and logging metrics.
         """
         ...
@@ -47,7 +45,7 @@ Worker
 ------
 
 Ray Train distributes model training compute to individual worker processes across the cluster. 
-Each worker is a process that executes the `train_func` on compute resources (e.g., CPU, GPU). 
+Each worker is a process that executes the `train_func` on compute resources (for example, CPU or GPU).
 The number of workers determines the parallelism of the training job, and can be configured through the `ScalingConfig`.
 
 .. Ray Train abstracts away the allocation and orchestration of nodes and compute resources for workers.
