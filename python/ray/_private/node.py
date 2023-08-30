@@ -207,6 +207,66 @@ class Node:
                     f"{ray_params.dashboard_host}:{ray_params.dashboard_port}"
                 )
 
+        # Pick a GCS server port.
+        if head:
+            gcs_server_port = os.getenv(ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
+            if gcs_server_port:
+                ray_params.update_if_absent(gcs_server_port=int(gcs_server_port))
+            if ray_params.gcs_server_port is None or ray_params.gcs_server_port == 0:
+                ray_params.gcs_server_port = self._get_unused_port()
+
+        if not connect_only and spawn_reaper and not self.kernel_fate_share:
+            self.start_reaper_process()
+        if not connect_only:
+            self._ray_params.update_pre_selected_port()
+
+        # Start GCS, and sync session keys with persisted values.
+        if head:
+            self.start_gcs_server()
+            self._sync_cluster_info_with_kv()
+
+        # Initialize the temp and session directories
+        self._init_temp()
+
+        # Validate and initialize the persistent storage API.
+        if not head and self.default_worker:
+            storage_uri = ray._private.services.get_storage_uri_from_internal_kv()
+        else:
+            storage_uri = ray_params.storage
+        storage._init_storage(storage_uri, is_head=head)
+
+        # If it is a head node, try validating if
+        # external storage is configurable.
+        if head:
+            self.validate_external_storage()
+            self._cache_gcs_port(ray_params.gcs_server_port)
+
+        self.metrics_agent_port = self._get_cached_port(
+            "metrics_agent_port", default_port=ray_params.metrics_agent_port
+        )
+        self._metrics_export_port = self._get_cached_port(
+            "metrics_export_port", default_port=ray_params.metrics_export_port
+        )
+        self._dashboard_agent_listen_port = self._get_cached_port(
+            "dashboard_agent_listen_port",
+            default_port=ray_params.dashboard_agent_listen_port,
+        )
+        self._runtime_env_agent_port = self._get_cached_port(
+            "runtime_env_agent_port",
+            default_port=ray_params.runtime_env_agent_port,
+        )
+
+        ray_params.update_if_absent(
+            metrics_agent_port=self.metrics_agent_port,
+            metrics_export_port=self._metrics_export_port,
+            dashboard_agent_listen_port=self._dashboard_agent_listen_port,
+            runtime_env_agent_port=self._runtime_env_agent_port,
+        )
+
+        # Start processes.
+        if head:
+            self.start_head_processes()
+
         if connect_only:
             # Get socket names from the configuration.
             self._plasma_store_socket_name = ray_params.plasma_store_socket_name
@@ -236,63 +296,6 @@ class Node:
                 self._ray_params.raylet_socket_name, default_prefix="raylet"
             )
 
-        self.metrics_agent_port = self._get_cached_port(
-            "metrics_agent_port", default_port=ray_params.metrics_agent_port
-        )
-        self._metrics_export_port = self._get_cached_port(
-            "metrics_export_port", default_port=ray_params.metrics_export_port
-        )
-        self._dashboard_agent_listen_port = self._get_cached_port(
-            "dashboard_agent_listen_port",
-            default_port=ray_params.dashboard_agent_listen_port,
-        )
-        self._runtime_env_agent_port = self._get_cached_port(
-            "runtime_env_agent_port",
-            default_port=ray_params.runtime_env_agent_port,
-        )
-
-        ray_params.update_if_absent(
-            metrics_agent_port=self.metrics_agent_port,
-            metrics_export_port=self._metrics_export_port,
-            dashboard_agent_listen_port=self._dashboard_agent_listen_port,
-            runtime_env_agent_port=self._runtime_env_agent_port,
-        )
-
-        # Pick a GCS server port.
-        if head:
-            gcs_server_port = os.getenv(ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
-            if gcs_server_port:
-                ray_params.update_if_absent(gcs_server_port=int(gcs_server_port))
-            if ray_params.gcs_server_port is None or ray_params.gcs_server_port == 0:
-                ray_params.gcs_server_port = self._get_cached_port("gcs_server_port")
-
-        if not connect_only and spawn_reaper and not self.kernel_fate_share:
-            self.start_reaper_process()
-        if not connect_only:
-            self._ray_params.update_pre_selected_port()
-
-        # Start processes.
-        if head:
-            self.start_gcs_server()
-            self._sync_cluster_info_with_kv()
-
-        # Initialize the temp directories
-        self._init_temp()
-
-        # Validate and initialize the persistent storage API.
-        if not head and self.default_worker:
-            storage_uri = ray._private.services.get_storage_uri_from_internal_kv()
-        else:
-            storage_uri = ray_params.storage
-        storage._init_storage(storage_uri, is_head=head)
-
-        # If it is a head node, try validating if
-        # external storage is configurable.
-        if head:
-            self.validate_external_storage()
-            self.start_head_processes()
-
-        if not connect_only:
             self.start_ray_processes()
             # we should update the address info after the node has been started
             try:
@@ -882,6 +885,33 @@ class Node:
                     f"AF_UNIX path length cannot exceed {maxlen} bytes: {result!r}"
                 )
         return result
+    
+    def _cache_gcs_port(self, port: int):
+        """Cache the GCS port number in a file.
+            This cannot occur at the time of choosing the GCS server port
+            due to the following ordering of events:
+            1. The GCS server port is chosen.
+            2. GCS is started.
+            3. Session keys (session name, temp dir, session dir) are 
+               fetched from Redis if available.
+            4. The directories, including session_dir are created.
+            5. At this point, the GCS port may be cached.
+        """
+        file_path = os.path.join(self.get_session_dir_path(), "ports_by_node.json")
+        # Maps a Node.unique_id to a dict that maps port names to port numbers.
+        ports_by_node: Dict[str, Dict[str, int]] = defaultdict(dict)
+
+        with FileLock(file_path + ".lock"):
+            if not os.path.exists(file_path):
+                with open(file_path, "w") as f:
+                    json.dump({}, f)
+
+            with open(file_path, "r") as f:
+                ports_by_node.update(json.load(f))
+
+            ports_by_node[self.unique_id]["gcs_server_port"] = port
+            with open(file_path, "w") as f:
+                json.dump(ports_by_node, f)
 
     def _get_cached_port(
         self, port_name: str, default_port: Optional[int] = None

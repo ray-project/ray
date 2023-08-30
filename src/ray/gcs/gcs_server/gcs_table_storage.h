@@ -158,6 +158,21 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   absl::flat_hash_map<JobID, absl::flat_hash_set<Key>> index_ GUARDED_BY(mutex_);
 };
 
+class GcsKVTable : public GcsTable<JobID, JobTableData> {
+  public:
+   explicit GcsKVTable(std::shared_ptr<StoreClient> store_client) : GcsTable(std::move(store_client)) {
+    table_name_ = TablePrefix_Name(TablePrefix::KV);
+   }
+
+  private:
+std::string MakeKey(const std::string &ns, const std::string &key) {
+  if (ns.empty()) {
+    return key;
+  }
+  return absl::StrCat(kNamespacePrefix, ns, kNamespaceSep, key);
+}
+};
+
 class GcsJobTable : public GcsTable<JobID, JobTableData> {
  public:
   explicit GcsJobTable(std::shared_ptr<StoreClient> store_client)

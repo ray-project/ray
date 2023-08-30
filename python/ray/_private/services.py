@@ -1328,7 +1328,6 @@ def start_gcs_server(
 
     command = [
         GCS_SERVER_EXECUTABLE,
-        f"--log_dir={log_dir}",
         f"--config_list={serialize_config(config)}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
