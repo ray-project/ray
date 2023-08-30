@@ -6,6 +6,11 @@ Available Scripts
 
 In the project directory, you can run:
 
+``npm ci``
+~~~~~~~~~~~~~~~
+
+Installed based on package-lock.json
+
 ``npm start``
 ~~~~~~~~~~~~~
 
