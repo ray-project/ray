@@ -60,6 +60,6 @@ or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challengin
 
 ## Questions
 
-### Why are changes to RayCluster/RayJob CR not taking effect?
+### Why are changes to the RayCluster or RayJob CR not taking effect?
 
 Currently, only modifications to the `replicas` field in `RayCluster/RayJob` CR are supported. Changes to other fields may not take effect or could lead to unexpected results.

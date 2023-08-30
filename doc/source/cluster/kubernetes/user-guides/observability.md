@@ -4,9 +4,9 @@
 
 ## Ray Dashboard
 
-* To view the [Ray dashboard](observability-getting-started) running on the head Pod, users can follow [these instructions](kuberay-port-forward-dashboard).
-* The Ray dashboard also integrates with Prometheus and Grafana. See [Using Prometheus and Grafana](kuberay-prometheus-grafana) for more details.
-* The Ray dashboard also supports the "CPU Flame Graph" and "Stack Trace" features. Refer to [Profiling with py-spy](kuberay-pyspy-integration) to enable these features.
+* To view the [Ray dashboard](observability-getting-started) running on the head Pod, follow [these instructions](kuberay-port-forward-dashboard).
+* To integrate the Ray dashboard with Prometheus and Grafana, see [Using Prometheus and Grafana](kuberay-prometheus-grafana) for more details.
+* To enable the "CPU Flame Graph" and "Stack Trace" features, see [Profiling with py-spy](kuberay-pyspy-integration).
 
 ## KubeRay Observability
 
@@ -17,7 +17,7 @@
 kubectl logs $KUBERAY_OPERATOR_POD -n $YOUR_NAMESPACE | tee operator-log
 ```
 
-The command redirects the operator's logs to a file called `operator-log`. You can then search for errors in the file.
+Use this command to redirect the operator's logs to a file called `operator-log`. Then search for errors in the file.
 
 ### Method 2: Check custom resource status
 
@@ -25,7 +25,7 @@ The command redirects the operator's logs to a file called `operator-log`. You c
 kubectl describe [raycluster|rayjob|rayservice] $CUSTOM_RESOURCE_NAME -n $YOUR_NAMESPACE
 ```
 
-Check the status and events of the custom resource to see if there are any errors.
+After running this command, check the status and events of the custom resource for any errors.
 
 ### Method 3: Check logs of Ray Pods
 

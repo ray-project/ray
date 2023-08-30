@@ -2,8 +2,6 @@
 
 # RayService Quickstart
 
-> Note: This guide is a quickstart for RayService, so it does not cover advanced topics such as in-place update, zero downtime upgrade, and high-availability.
-For the full list of RayService features, please refer to [RayService](kuberay-rayservice). 
 ## Prerequisites
 
 This guide focuses solely on the Ray Serve multi-application API, which is available starting from Ray version 2.4.0.
@@ -13,7 +11,7 @@ This guide focuses solely on the Ray Serve multi-application API, which is avail
 
 ## What's a RayService?
 
-A RayService manages 2 things:
+A RayService manages these components:
 
 * **RayCluster**: Manages resources in a Kubernetes cluster.
 * **Ray Serve Applications**: Manages users' applications.
@@ -21,9 +19,9 @@ A RayService manages 2 things:
 ## What does the RayService provide?
 
 * **Kubernetes-native support for Ray clusters and Ray Serve applications:** After using a Kubernetes config to define a Ray cluster and its Ray Serve applications, you can use `kubectl` to create the cluster and its applications.
-* **In-place update for Ray Serve applications:** Check [RayService](kuberay-rayservice) for more details.
-* **Zero downtime upgrade for Ray clusters:** Check [RayService](kuberay-rayservice) for more details.
-* **High-availabilable services:** Check [RayService](kuberay-rayservice) for more details.
+* **In-place updating for Ray Serve applications:** See [RayService](kuberay-rayservice) for more details.
+* **Zero downtime upgrading for Ray clusters:** See [RayService](kuberay-rayservice) for more details.
+* **High-availabilable services:** See [RayService](kuberay-rayservice) for more details.
 
 ## Example: Serve two simple Ray Serve applications using RayService
 
@@ -82,7 +80,7 @@ kubectl get services
 # rayservice-sample-serve-svc                   ClusterIP   10.96.161.84    <none>        8000/TCP                                                  4m58s
 ```
 
-After the Ray Serve applications are healthy and ready, KubeRay will create a head service and a serve service for the RayService custom resource - for example, `rayservice-sample-head-svc` and `rayservice-sample-serve-svc` in Step 4.4.
+When the Ray Serve applications are healthy and ready, KubeRay creates a head service and a Ray Serve service for the RayService custom resource. For example, `rayservice-sample-head-svc` and `rayservice-sample-serve-svc` in Step 4.4.
 ## Step 5: Verify the status of the Serve applications
 
 ```sh
@@ -127,6 +125,6 @@ kubectl delete pod curl
 ## Next steps
 
 * See [RayService](kuberay-rayservice) document for the full list of RayService features, including in-place update, zero downtime upgrade, and high-availability.
-* Check the [RayService troubleshooting guide](kuberay-raysvc-troubleshoot) if you encounter any issues.
-* Check [Examples](kuberay-examples) for more RayService examples.
+* See [RayService troubleshooting guide](kuberay-raysvc-troubleshoot) if you encounter any issues.
+* See [Examples](kuberay-examples) for more RayService examples.
 The [MobileNet example](kuberay-mobilenet-rayservice-example) is a good example to start with because it does not require GPUs and is easy to run on a local machine.

@@ -4,14 +4,14 @@ Using GPUs
 ==========
 This document provides tips on GPU usage with KubeRay.
 
-To use GPUs on Kubernetes, you will need to configure both your Kubernetes setup and add additional values to your Ray cluster configuration.
+To use GPUs on Kubernetes, configure both your Kubernetes setup and add additional values to your Ray cluster configuration.
 
 To learn about GPU usage on different clouds, see instructions for `GKE`_, for `EKS`_, and for `AKS`_.
 
 Quickstart: Serve a GPU-based StableDiffusion model
 ___________________________________________________
 
-There are several GPU workload examples in the :ref:`examples <kuberay-examples>` section of the docs.
+You can find several GPU workload examples in the :ref:`examples <kuberay-examples>` section of the docs.
 The :ref:`StableDiffusion example <kuberay-stable-diffusion-rayservice-example>` is a good place to start.
 
 Dependencies for GPU-based machine learning
@@ -20,8 +20,8 @@ ___________________________________________
 The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based container images packaged
 with Ray and certain machine learning libraries.
 For example, the image ``rayproject/ray-ml:2.6.3-gpu`` is ideal for running GPU-based ML workloads with Ray 2.6.3.
-The Ray ML images are packaged with dependencies (such as TensorFlow and PyTorch) needed to use the Ray Libraries covered in these docs.
-To add custom dependencies, we recommend one, or both, of the following methods:
+The Ray ML images are packaged with dependencies (such as TensorFlow and PyTorch) needed for the Ray Libraries that are used in these docs.
+To add custom dependencies, use one, or both, of the following methods:
 
 * Building a docker image using one of the official :ref:`Ray docker images <docker-images>` as base.
 * Using :ref:`Ray Runtime environments <runtime-environments>`.
@@ -67,16 +67,16 @@ Each of the Ray pods in the group can be scheduled on an AWS `p2.xlarge` instanc
     GPU instances are expensive -- consider setting up autoscaling for your GPU Ray workers,
     as demonstrated with the `minReplicas:0` and `maxReplicas:5` settings above.
     To enable autoscaling, remember also to set `enableInTreeAutoscaling:True` in your RayCluster's `spec`
-    Finally, make sure your group or pool of GPU Kubernetes nodes are configured to autoscale.
+    Finally, make sure you configured the group or pool of GPU Kubernetes nodes, to autoscale.
     Refer to your :ref:`cloud provider's documentation <kuberay-k8s-setup>` for details on autoscaling node pools.
 
 GPU multi-tenancy
 _________________
 
 If a Pod doesn't include `nvidia.com/gpu` in its resource configurations, even if it's scheduled on a GPU node, users typically expect the Pod not to have visibility of any GPU devices.
-However, if `nvidia.com/gpu` isn't specified, the default value for `NVIDIA_VISIBLE_DEVICES` is `all`.
-In other words, the Pod has visibility of all GPU devices on the node.
-This behavior isn't unique to KubeRay, but rather a known issue for NVIDIA.
+However, if `nvidia.com/gpu` isn't specified, the default value for `NVIDIA_VISIBLE_DEVICES` is `all` 
+and the Pod has visibility of all GPU devices on the node.
+This behavior isn't unique to KubeRay, but is a known issue for NVIDIA.
 A workaround is to set the `NVIDIA_VISIBLE_DEVICES` environment variable to `void` in the Pods which don't require GPU devices.
 
 Some useful links:
