@@ -4,12 +4,9 @@
 
 Ray Train Overview
 ==================
-
-.. hidden:: 
     
-    image:: ./images/train-concepts.svg
+.. .. image:: ./images/train-concepts.svg
         
-.. visible::
 
 To use Ray Train effectively, there are four main concepts you need to understand:
 
@@ -63,7 +60,7 @@ Scaling configuration
 ---------------------
 
 The :class:`~ray.train.ScalingConfig` is the mechanism for defining the scale of the training job.
-Two basic parameters scale the worker parallelism and compute resources:
+Define two basic parameters for worker parallelism and compute resources:
 
 * `num_workers`: The number of workers to launch for a distributed training job.
 * `use_gpu`: Whether each worker should use GPUs or CPUs. 
@@ -86,9 +83,14 @@ Two basic parameters scale the worker parallelism and compute resources:
 Trainer
 -------
 
-The Trainer ties all three previous concepts together to execute distributed training runs.
-It's the primary class that the you interface with for launching distributed training.
-The Trainer creates multiple workers and runs your training function.
+The Trainer ties the previous three concepts together to launch distributed training jobs.
+
+Ray Train provides a Trainer class for different frameworks.
+
+Calling the ``fit()`` method executes the training job by:
+1. Launching workers as defined by the `scaling_config`.
+2. Setting up the framework's distributed environment on all workers.
+3. Running the `train_func` on all workers.
 
 .. code-block:: python
 

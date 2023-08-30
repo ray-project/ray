@@ -1,5 +1,3 @@
-.. include:: /_includes/train/announcement.rst
-
 .. _train-docs:
 
 Ray Train: Scalable Model Training
@@ -106,7 +104,7 @@ Get started
 
             Try Ray Train with Transformers
 
-earn more
+Learn more
 ~~~~~~~~~~
 
 .. grid:: 1 2 2 2
@@ -172,6 +170,3 @@ earn more
             :expand:
 
             Try Ray Train with other frameworks
-
-L
-.. include:: /_includes/train/announcement_bottom.rst
