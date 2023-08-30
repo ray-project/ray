@@ -3,6 +3,7 @@ from typing import List
 
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
+    BlocksToRowsMapTransformFn,
     BuildOutputBlocksMapTransformFn,
     MapTransformFn,
     MapTransformFnDataType,
@@ -36,6 +37,7 @@ class ZeroCopyMapFusionRule(Rule):
             # Physical operators won't be shared,
             # so it's safe to modify the transform_fns in place.
             map_transformer.set_transform_fns(new_transform_fns)
+            print("Optimized transform_fns:", new_transform_fns)
 
         for input_op in op.input_dependencies:
             self._traverse(input_op)
@@ -84,5 +86,40 @@ class EliminateBuildOutputBlocks(ZeroCopyMapFusionRule):
                     drop = True
             if not drop:
                 new_transform_fns.append(cur_fn)
+
+        return new_transform_fns
+
+
+class RowToRowOptimization(ZeroCopyMapFusionRule):
+
+    def _optimize(self, transform_fns: List[MapTransformFn]) -> List[MapTransformFn]:
+        # For the following subsquence,
+        # 1. Any MapTransformFn with block output.
+        # 2. BuildOutputBlocksMapTransformFn
+        # 3. Any MapTransformFn with block input.
+        # We drop the BuildOutputBlocksMapTransformFn in the middle.
+        new_transform_fns = []
+
+        i = 0
+        while i < len(transform_fns):
+            cur_fn = transform_fns[i]
+            drop = False
+            if (
+                i > 0
+                and i < len(transform_fns) - 2
+                and isinstance(cur_fn, BuildOutputBlocksMapTransformFn)
+            ):
+                prev_fn = transform_fns[i - 1]
+                next_fn = transform_fns[i + 1]
+                if (
+                    prev_fn.output_type == MapTransformFnDataType.Row
+                    and isinstance(next_fn, BlocksToRowsMapTransformFn)
+                ):
+                    drop = True
+            if not drop:
+                new_transform_fns.append(cur_fn)
+                i += 1
+            else:
+                i += 2
 
         return new_transform_fns
