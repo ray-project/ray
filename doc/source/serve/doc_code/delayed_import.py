@@ -1,5 +1,6 @@
 from ray import serve
 
+
 @serve.deployment
 class MyDeployment:
     def __call__(self, model_path):
