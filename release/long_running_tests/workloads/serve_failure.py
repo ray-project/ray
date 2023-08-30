@@ -93,8 +93,8 @@ class RandomKiller:
         routers = list(ray.get(controller.get_http_proxies.remote()).values())
         all_handles = routers + [controller]
         replica_dict = ray.get(controller._all_running_replicas.remote())
-        for deployment_name, replica_info_list in replica_dict.items():
-            if deployment_name not in self.sanctuary:
+        for deployment_id, replica_info_list in replica_dict.items():
+            if deployment_id.name not in self.sanctuary:
                 for replica_info in replica_info_list:
                     all_handles.append(replica_info.actor_handle)
 
