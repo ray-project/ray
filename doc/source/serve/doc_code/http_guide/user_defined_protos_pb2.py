@@ -14,35 +14,35 @@ _sym_db = _symbol_database.Default()
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
-    b'\n\x19user_defined_protos.proto\x12\x11userdefinedprotos"?\n\x12UserDefinedMessage\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0e\n\x06origin\x18\x02 \x01(\t\x12\x0b\n\x03num\x18\x03 \x01(\x03"4\n\x13UserDefinedResponse\x12\x10\n\x08greeting\x18\x01 \x01(\t\x12\x0b\n\x03num\x18\x02 \x01(\x03"\x15\n\x13UserDefinedMessage2"(\n\x14UserDefinedResponse2\x12\x10\n\x08greeting\x18\x01 \x01(\t"=\n\x0c\x46ruitAmounts\x12\x0e\n\x06orange\x18\x01 \x01(\x03\x12\r\n\x05\x61pple\x18\x02 \x01(\x03\x12\x0e\n\x06\x62\x61nana\x18\x03 \x01(\x03"\x1b\n\nFruitCosts\x12\r\n\x05\x63osts\x18\x01 \x01(\x02\x32\xae\x02\n\x12UserDefinedService\x12Y\n\x08__call__\x12%.userdefinedprotos.UserDefinedMessage\x1a&.userdefinedprotos.UserDefinedResponse\x12_\n\x0cMultiplexing\x12&.userdefinedprotos.UserDefinedMessage2\x1a\'.userdefinedprotos.UserDefinedResponse2\x12\\\n\tStreaming\x12%.userdefinedprotos.UserDefinedMessage\x1a&.userdefinedprotos.UserDefinedResponse0\x01\x32\\\n\x0c\x46ruitService\x12L\n\nFruitStand\x12\x1f.userdefinedprotos.FruitAmounts\x1a\x1d.userdefinedprotos.FruitCostsB:\n#io.ray.examples.user_defined_protosB\x11UserDefinedProtosP\x01\x62\x06proto3'
+    b'\n\x19user_defined_protos.proto\x12\x11userdefinedprotos"?\n\x12UserDefinedMessage\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0e\n\x06origin\x18\x02 \x01(\t\x12\x0b\n\x03num\x18\x03 \x01(\x03"4\n\x13UserDefinedResponse\x12\x10\n\x08greeting\x18\x01 \x01(\t\x12\x0b\n\x03num\x18\x02 \x01(\x03"\x15\n\x13UserDefinedMessage2"(\n\x14UserDefinedResponse2\x12\x10\n\x08greeting\x18\x01 \x01(\t"=\n\x0c\x46ruitAmounts\x12\x0e\n\x06orange\x18\x01 \x01(\x03\x12\r\n\x05\x61pple\x18\x02 \x01(\x03\x12\x0e\n\x06\x62\x61nana\x18\x03 \x01(\x03"\x1b\n\nFruitCosts\x12\r\n\x05\x63osts\x18\x01 \x01(\x02\x32\xae\x02\n\x12UserDefinedService\x12Y\n\x08__call__\x12%.userdefinedprotos.UserDefinedMessage\x1a&.userdefinedprotos.UserDefinedResponse\x12_\n\x0cMultiplexing\x12&.userdefinedprotos.UserDefinedMessage2\x1a\'.userdefinedprotos.UserDefinedResponse2\x12\\\n\tStreaming\x12%.userdefinedprotos.UserDefinedMessage\x1a&.userdefinedprotos.UserDefinedResponse0\x01\x32\\\n\x0c\x46ruitService\x12L\n\nFruitStand\x12\x1f.userdefinedprotos.FruitAmounts\x1a\x1d.userdefinedprotos.FruitCostsB:\n#io.ray.examples.user_defined_protosB\x11UserDefinedProtosP\x01\x62\x06proto3'  # noqa: E501
 )
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(
     DESCRIPTOR, "user_defined_protos_pb2", globals()
 )
-if _descriptor._USE_C_DESCRIPTORS == False:
+if _descriptor._USE_C_DESCRIPTORS is False:
 
     DESCRIPTOR._options = None
     DESCRIPTOR._serialized_options = (
         b"\n#io.ray.examples.user_defined_protosB\021UserDefinedProtosP\001"
     )
-    _USERDEFINEDMESSAGE._serialized_start = 48
-    _USERDEFINEDMESSAGE._serialized_end = 111
-    _USERDEFINEDRESPONSE._serialized_start = 113
-    _USERDEFINEDRESPONSE._serialized_end = 165
-    _USERDEFINEDMESSAGE2._serialized_start = 167
-    _USERDEFINEDMESSAGE2._serialized_end = 188
-    _USERDEFINEDRESPONSE2._serialized_start = 190
-    _USERDEFINEDRESPONSE2._serialized_end = 230
-    _FRUITAMOUNTS._serialized_start = 232
-    _FRUITAMOUNTS._serialized_end = 293
-    _FRUITCOSTS._serialized_start = 295
-    _FRUITCOSTS._serialized_end = 322
-    _USERDEFINEDSERVICE._serialized_start = 325
-    _USERDEFINEDSERVICE._serialized_end = 627
-    _FRUITSERVICE._serialized_start = 629
-    _FRUITSERVICE._serialized_end = 721
+    _USERDEFINEDMESSAGE._serialized_start = 48  # noqa: F821
+    _USERDEFINEDMESSAGE._serialized_end = 111  # noqa: F821
+    _USERDEFINEDRESPONSE._serialized_start = 113  # noqa: F821
+    _USERDEFINEDRESPONSE._serialized_end = 165  # noqa: F821
+    _USERDEFINEDMESSAGE2._serialized_start = 167  # noqa: F821
+    _USERDEFINEDMESSAGE2._serialized_end = 188  # noqa: F821
+    _USERDEFINEDRESPONSE2._serialized_start = 190  # noqa: F821
+    _USERDEFINEDRESPONSE2._serialized_end = 230  # noqa: F821
+    _FRUITAMOUNTS._serialized_start = 232  # noqa: F821
+    _FRUITAMOUNTS._serialized_end = 293  # noqa: F821
+    _FRUITCOSTS._serialized_start = 295  # noqa: F821
+    _FRUITCOSTS._serialized_end = 322  # noqa: F821
+    _USERDEFINEDSERVICE._serialized_start = 325  # noqa: F821
+    _USERDEFINEDSERVICE._serialized_end = 627  # noqa: F821
+    _FRUITSERVICE._serialized_start = 629  # noqa: F821
+    _FRUITSERVICE._serialized_end = 721  # noqa: F821
 # @@protoc_insertion_point(module_scope)
 
 # __end__
