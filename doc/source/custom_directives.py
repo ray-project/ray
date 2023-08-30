@@ -47,17 +47,6 @@ def update_context(app, pagename, templatename, context, doctree):
     context["feedback_form_url"] = feedback_form_url(app.config.project, pagename)
 
 
-def make_typing_mock(module, name):
-    class Object:
-        pass
-
-    Object.__module__ = module
-    Object.__qualname__ = name
-    Object.__name__ = name
-
-    return Object
-
-
 # Add doc files from external repositories to be downloaded during build here
 # (repo, ref, path to get, path to save on disk)
 EXTERNAL_MARKDOWN_FILES = []

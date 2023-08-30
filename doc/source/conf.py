@@ -18,7 +18,7 @@ from custom_directives import (
 # compiling these. See https://readthedocs-lst.readthedocs.io/en/latest/faq.html
 # for more information. Other external dependencies should not be added here.
 # Instead add them to autodoc_mock_imports below.
-MOCK_MODULES = [
+mock_modules = [
     "ray._raylet",
     "ray.core.generated",
     "ray.core.generated.common_pb2",
@@ -30,7 +30,7 @@ MOCK_MODULES = [
     "ray.serve.generated.serve_pb2",
     "ray.serve.generated.serve_pb2_grpc",
 ]
-sys.modules.update((mod_name, MagicMock()) for mod_name in MOCK_MODULES)
+sys.modules.update((mod_name, MagicMock()) for mod_name in mock_modules)
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -201,7 +201,8 @@ author = "The Ray Team"
 # directly (from ray import __version__) because initializing ray will prevent
 # mocking of certain external dependencies.
 from setup import find_version
-release = find_version('ray', '__init__.py')
+
+release = find_version("ray", "__init__.py")
 
 language = None
 
@@ -479,6 +480,7 @@ autodoc_mock_imports = [
     "starlette",
     "fsspec",
     "skimage",
+    "aiohttp",
 ]
 
 
@@ -495,6 +497,8 @@ for mock_target in autodoc_mock_imports:
 intersphinx_mapping = {
     "sklearn": ("https://scikit-learn.org/stable/", None),
 }
+
+autodoc_type_aliases = {"ray.ObjectRef": "ray.ObjectRef"}
 
 # Ray must not be imported in conf.py because third party modules initialized by
 # `import ray` will no be mocked out correctly. Perform a check here to ensure

@@ -2641,12 +2641,12 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    object_refs: List["ray.ObjectRef"],
+    object_refs: List[ray.ObjectRef],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
-) -> Tuple[List["ray.ObjectRef"], List["ray.ObjectRef"]]:
+) -> Tuple[List[ray.ObjectRef], List[ray.ObjectRef]]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
