@@ -12,7 +12,7 @@ To use Ray Train effectively, you need to understand four main concepts:
 
 #. :ref:`Training function <train-overview-training-function>`: A Python function that contains your model training logic.
 #. :ref:`Worker <train-overview-worker>`: A process that runs the training function.
-#. :ref:`Scaling configuration: <train-overview-scaling-config>` A configuration of the number of workers and compute resources (for example, CPU or GPU) per worker.
+#. :ref:`Scaling configuration: <train-overview-scaling-config>` A configuration of the number of workers and type of compute resources (for example, CPU or GPU) per worker.
 #. :ref:`Trainer <train-overview-trainers>`: A Python class that ties together the training function, workers, and scaling configuration to execute a distributed training job.
 
 .. _train-overview-training-function:
@@ -21,13 +21,13 @@ Training function
 -----------------
 
 The training function is a user-defined Python function that contains the end-to-end model training loop logic.
-When launching a distributed training job, each worker executes this training function.
 Typically, this training function contains logic for loading the dataset, training the model, and saving checkpoints.
+When launching a distributed training job, each worker executes this training function.
 
 Ray Train documentation uses the following conventions:
 
 #. `train_func` is user-defined function that contains the training code.
-#. The `train_func` is passed into the Trainer's `train_loop_per_worker` parameter.
+#. `train_func` is passed into the Trainer's `train_loop_per_worker` parameter.
 
 .. code-block:: python
 
@@ -45,8 +45,8 @@ Worker
 ------
 
 Ray Train distributes model training compute to individual worker processes across the cluster. 
-Each worker is a process that executes the `train_func` on compute resources (for example, CPU or GPU).
-The number of workers determines the parallelism of the training job, and can be configured through the `ScalingConfig`.
+Each worker is a process that executes the `train_func` on compute resources (for example, CPUs or GPUs).
+The number of workers determines the parallelism of the training job, and the `ScalingConfig` configures it.
 
 .. Ray Train abstracts away the allocation and orchestration of nodes and compute resources for workers.
 .. The user defines the number of workers in the scaling configuration.
@@ -58,7 +58,7 @@ Scaling configuration
 ---------------------
 
 The :class:`~ray.train.ScalingConfig` is the mechanism for defining the scale of the training job.
-Define two basic parameters for worker parallelism and compute resources:
+Specify two basic parameters for worker parallelism and compute resources:
 
 * `num_workers`: The number of workers to launch for a distributed training job.
 * `use_gpu`: Whether each worker should use GPUs or CPUs. 
