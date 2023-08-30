@@ -666,12 +666,11 @@ def delete(name: str, _blocking: bool = True):
     client.delete_apps([name], blocking=_blocking)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def multiplexed(
     func: Optional[Callable[..., Any]] = None, max_num_models_per_replica: int = 3
 ):
-    """Defines a function or method used to load multiplexed
-    models in a replica (experimental).
+    """Wrap a callable or method used to load multiplexed models in a replica.
 
     The function can be standalone function or a method of a class. The
     function must have exactly one argument, the model id of type `str` for the
@@ -805,9 +804,9 @@ def multiplexed(
     return _multiplex_decorator(func) if callable(func) else _multiplex_decorator
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def get_multiplexed_model_id() -> str:
-    """Get the multiplexed model ID for the current request (experimental).
+    """Get the multiplexed model ID for the current request.
 
     This is used with a function decorated with `@serve.multiplexed`
     to retrieve the model ID for the current request.
