@@ -49,24 +49,35 @@ deployments:
 ...
 ```
 
-`serve status` gets your Serve application's current status. The status has two parts per application: the `app_status` and the `deployment_statuses`.
+`serve status` gets your Serve application's current status. This command reports the status of the `proxies` and the `applications` running on the Ray cluster.
 
-The `app_status` contains three fields:
-* `status`: A Serve application has four possible statuses:
+`proxies` lists each proxy's status. Each proxy is identified by the node ID of the node that it runs on. A proxy has three possible statuses:
+* `STARTING`: The proxy is starting up and is not yet ready to serve requests.
+* `HEALTHY`: The proxy is capable of serving requests. It is behaving normally.
+* `UNHEALTHY`: The proxy has failed its health-checks. It will be killed, and a new proxy will be started on that node.
+* `DRAINING`: The proxy is healthy but is closed to new requests. It may contain pending requests that are still being processed.
+* `DRAINED`: The proxy is closed to new requests. There are no pending requests.
+
+`applications` contains a list of applications, their overall statuses, and their deployments' statuses. Each entry in `applications` maps an application's name to four fields:
+* `status`: A Serve application has four possible overall statuses:
     * `"NOT_STARTED"`: No application has been deployed on this cluster.
     * `"DEPLOYING"`: The application is currently carrying out a `serve deploy` request. It is deploying new deployments or updating existing ones.
     * `"RUNNING"`: The application is at steady-state. It has finished executing any previous `serve deploy` requests, and is attempting to maintain the goal state set by the latest `serve deploy` request.
     * `"DEPLOY_FAILED"`: The latest `serve deploy` request has failed.
 * `message`: Provides context on the current status.
 * `deployment_timestamp`: A UNIX timestamp of when Serve received the last `serve deploy` request. The timestamp is calculated using the `ServeController`'s local clock.
-
-The `deployment_statuses` contains a list of dictionaries representing each deployment's status. Each dictionary has three fields:
-* `name`: The deployment's name.
-* `status`: A Serve deployment has three possible statuses:
-    * `"UPDATING"`: The deployment is updating to meet the goal state set by a previous `deploy` request.
-    * `"HEALTHY"`: The deployment achieved the latest requests goal state.
-    * `"UNHEALTHY"`: The deployment has either failed to update, or has updated and has become unhealthy afterwards. This condition may be due to an error in the deployment's constructor, a crashed replica, or a general system or machine error.
-* `message`: Provides context on the current status.
+* `deployments`: A list of entries representing each deployment's status. Each entry maps a deployment's name to three fields:
+    * `status`: A Serve deployment has three possible statuses:
+        * `"UPDATING"`: The deployment is updating to meet the goal state set by a previous `deploy` request.
+        * `"HEALTHY"`: The deployment achieved the latest requests goal state.
+        * `"UNHEALTHY"`: The deployment has either failed to update, or has updated and has become unhealthy afterwards. This condition may be due to an error in the deployment's constructor, a crashed replica, or a general system or machine error.
+    * `replica_states`: A list of the replicas' states and the number of replicas in that state. Each replica has five possible states:
+        * `STARTING`: The replica is starting and not yet ready to serve requests.
+        * `UPDATING`: The replica is undergoing a `reconfigure` update.
+        * `RECOVERING`: The replica is recovering its state.
+        * `RUNNING`: The replica is running normally and able to serve requests.
+        * `STOPPING`: The replica is being stopped.
+    * `message`: Provides context on the current status.
 
 Use the `serve status` command to inspect your deployments after they are deployed and throughout their lifetime.
 
