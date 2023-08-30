@@ -17,6 +17,7 @@ These tests should:
 """
 import gc
 import pytest
+from tempfile import TemporaryDirectory
 
 import ray
 from ray import train, tune
@@ -62,7 +63,8 @@ class FailingTrainer(BaseTrainer):
 
 def passing_fn(config):
     # Trigger all the driver events (on_checkpoint, on_trial_save, etc.)
-    train.report({"score": 1}, checkpoint=Checkpoint.from_dict({"score": 1}))
+    with TemporaryDirectory() as tmpdir:
+        train.report({"score": 1}, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 def failing_fn(config):
@@ -127,11 +129,12 @@ def test_trainable_error_with_trainer(ray_start_4_cpus, tmp_path, fail_fast):
         # The cause of the error should be the trainable error
         assert isinstance(exc_info.value.__cause__, _TestSpecificError)
 
+        # TODO(justinvyu): re-enable it after changing the `Trainer.restore` API
         # Since the trainable failed, we should get a message about restore + setting
         # FailureConfig for retry on runtime errors for a new run.
-        assert TrainingFailedError._RESTORE_MSG.format(
-            trainer_cls_name="FailingTrainer", path=str(tmp_path / name)
-        ) in str(exc_info.value)
+        # assert TrainingFailedError._RESTORE_MSG.format(
+        #     trainer_cls_name="FailingTrainer", path=str(tmp_path / name)
+        # ) in str(exc_info.value)
         assert TrainingFailedError._FAILURE_CONFIG_MSG in str(exc_info.value)
 
     elif fail_fast == "raise":
@@ -181,11 +184,12 @@ def test_driver_error_with_trainer(ray_start_4_cpus, tmp_path, error_on):
     # TODO(ml-team): Assert the cause error type once driver error propagation is fixed
     assert "_TestSpecificError" in str(exc_info.value.__cause__)
 
+    # TODO(justinvyu): re-enable it after changing the `Trainer.restore` API
     # The error message should just recommend restore
     # FailureConfig doesn't apply since this is not a trainable error
-    assert TrainingFailedError._RESTORE_MSG.format(
-        trainer_cls_name="DataParallelTrainer", path=str(tmp_path / name)
-    ) in str(exc_info.value)
+    # assert TrainingFailedError._RESTORE_MSG.format(
+    #     trainer_cls_name="DataParallelTrainer", path=str(tmp_path / name)
+    # ) in str(exc_info.value)
     assert TrainingFailedError._FAILURE_CONFIG_MSG not in str(exc_info.value)
 
 
