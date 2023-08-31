@@ -269,7 +269,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         void GetAsync(const CObjectID &object_id,
                       ray_callback_function success_callback,
-                      void* python_future)
+                      void* python_user_callback)
 
         CRayStatus PushError(const CJobID &job_id, const c_string &type,
                              const c_string &error_message, double timestamp)
