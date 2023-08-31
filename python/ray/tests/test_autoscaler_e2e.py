@@ -65,6 +65,10 @@ def test_ray_status_e2e(shutdown_only, enable_v2):
 
 
 def test_metrics(shutdown_only):
+    reset_autoscaler_v2_enabled_cache()
+    import time
+
+    time.sleep(5)
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
