@@ -92,7 +92,7 @@ head_node = container(
         "--node-manager-port",
         "9379",
     ],
-    volumes={"/tmp": {"bind": "/tmp", "mode": "rw"}},
+    volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
     environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
     wrapper_class=Container,
     ports={
@@ -118,7 +118,7 @@ worker_node = container(
         "--node-manager-port",
         "9379",
     ],
-    volumes={"/tmp": {"bind": "/tmp", "mode": "rw"}},
+    volumes={"{worker_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
     environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
     wrapper_class=Container,
     ports={
