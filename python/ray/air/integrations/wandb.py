@@ -674,13 +674,15 @@ class WandbLoggerCallback(LoggerCallback):
 
     def log_trial_save(self, trial: "Trial"):
         if self.upload_checkpoints and trial.checkpoint:
+            checkpoint_root = None
             if _use_storage_context():
                 if isinstance(trial.checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
                     checkpoint_root = trial.checkpoint.path
             else:
                 checkpoint_root = trial.checkpoint.dir_or_data
 
-            self._trial_queues[trial].put((_QueueItem.CHECKPOINT, checkpoint_root))
+            if checkpoint_root:
+                self._trial_queues[trial].put((_QueueItem.CHECKPOINT, checkpoint_root))
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         self._signal_logging_actor_stop(trial=trial)
