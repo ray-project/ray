@@ -194,10 +194,10 @@ Setting up credentials
 Please refer to each tracking library's API documentation on this.
 This usually involves setting some environment variable or accessing some config file.
 
-Best practice is discussed as following:
-- Set environment variable: Pass the value of environment variable through the ``config`` 
-    argument of ``train_func`` and set the corresponding environment variable in the ``train_func``.
-- Access config file: Ensure that the config file is accessible to all nodes.
+For setting environment variable, one may pass the value of environment variable through the ``config`` 
+argument of ``train_func`` and set the corresponding environment variable in the ``train_func``.
+
+For accessing config file, one needs to ensure that the config file is accessible to all nodes.
 
 Setting up shared file system
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
