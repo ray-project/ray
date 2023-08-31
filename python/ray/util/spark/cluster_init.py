@@ -109,9 +109,8 @@ class RayClusterOnSpark:
             )
         try:
             # connect to the ray cluster.
-            ray_ctx = ray.init(address=self.address)
-            webui_url = ray_ctx.address_info.get("webui_url", None)
-            if webui_url:
+            self.connect()
+            if check_port_open(self.address.split(":")[0], self.ray_dashboard_port):
                 self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
             else:
                 try:
