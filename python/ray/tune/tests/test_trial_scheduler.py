@@ -740,10 +740,10 @@ class HyperbandSuite(unittest.TestCase):
 
         # Trials of the second bracket (s=1).
         # These halve after 4 timesteps.
-        _result(trials[4], timestep=8, reward=10)
-        _result(trials[5], timestep=8, reward=20)
-        _result(trials[6], timestep=8, reward=30)
-        _result(trials[7], timestep=8, reward=40)
+        _result(trials[4], timestep=4, reward=10)
+        _result(trials[5], timestep=4, reward=20)
+        _result(trials[6], timestep=4, reward=30)
+        _result(trials[7], timestep=4, reward=40)
 
         _execute_delayed_actions()
 
