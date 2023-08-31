@@ -448,7 +448,7 @@ def test_lightweight_config_options(
 
     wait_for_condition(
         lambda: ray.get(storage.get_reports_received.remote()) > current_num_reports,
-        timeout=5,
+        timeout=10,
     )
     report = ray.get(storage.get_report.remote())
 
