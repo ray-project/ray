@@ -17,11 +17,8 @@ from ray.dag.class_node import ClassNode
 from ray.dag.function_node import FunctionNode
 from ray.util.annotations import Deprecated, PublicAPI
 
-from ray.serve.config import (
-    AutoscalingConfig,
-    DeploymentConfig,
-    ReplicaConfig,
-)
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.schema import (

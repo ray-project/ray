@@ -10,7 +10,7 @@ import ray
 from ray import cloudpickle
 from ray.exceptions import RuntimeEnvSetupError
 from ray._private.utils import import_attr
-from ray.serve.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig
 from ray.serve.exceptions import RayServeException
 
 from ray.serve._private.common import (

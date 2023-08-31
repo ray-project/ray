@@ -30,7 +30,7 @@ from ray.serve._private.common import (
     StreamingHTTPRequest,
     gRPCRequest,
 )
-from ray.serve.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
     RECONFIGURE_METHOD,

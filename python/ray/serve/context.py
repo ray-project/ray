@@ -157,9 +157,8 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
 #       async task conflicts when using it concurrently.
 
 
-@DeveloperAPI
 @dataclass(frozen=True)
-class RequestContext:
+class _RequestContext:
     route: str = ""
     request_id: str = ""
     app_name: str = ""
@@ -167,7 +166,7 @@ class RequestContext:
 
 
 _serve_request_context = contextvars.ContextVar(
-    "Serve internal request context variable", default=RequestContext()
+    "Serve internal request context variable", default=_RequestContext()
 )
 
 
@@ -182,7 +181,7 @@ def _set_request_context(
 
     current_request_context = _serve_request_context.get()
     _serve_request_context.set(
-        RequestContext(
+        _RequestContext(
             route=route or current_request_context.route,
             request_id=request_id or current_request_context.request_id,
             app_name=app_name or current_request_context.app_name,

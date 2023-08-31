@@ -13,13 +13,12 @@ from ray.dag import DAGNode
 from ray.util.annotations import Deprecated, PublicAPI, DeveloperAPI
 
 from ray.serve.built_application import BuiltApplication
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.config import (
     gRPCOptions,
     AutoscalingConfig,
-    DeploymentConfig,
     DeploymentMode,
     ProxyLocation,
-    ReplicaConfig,
     HTTPOptions,
 )
 from ray.serve._private.constants import (

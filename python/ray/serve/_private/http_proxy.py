@@ -788,7 +788,7 @@ class gRPCProxy(GenericProxy):
             "multiplexed_model_id": multiplexed_model_id,
         }
         ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(**request_context_info)
+            ray.serve.context._RequestContext(**request_context_info)
         )
         proxy_request.send_request_id(request_id=request_id)
         return handle, request_id
@@ -1208,7 +1208,7 @@ class HTTPProxy(GenericProxy):
                 # "x-request-id" has higher priority than "RAY_SERVE_REQUEST_ID".
                 request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(**request_context_info)
+            ray.serve.context._RequestContext(**request_context_info)
         )
         return handle, request_context_info["request_id"]
 
