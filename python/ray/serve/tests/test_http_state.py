@@ -570,6 +570,10 @@ def test_http_proxy_state_update_healthy_check_health_sometimes_fails():
     def _update_until_num_health_checks_received(
         state: HTTPProxyState, num_health_checks: int
     ):
+        # state.update should not be called in the terminal states.
+        if state.status in {HTTPProxyStatus.UNHEALTHY, HTTPProxyStatus.DRAINED}:
+            return True
+
         state.update()
         assert (
             ray.get(state.actor_handle.get_num_health_checks.remote())
