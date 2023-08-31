@@ -91,10 +91,10 @@ def fix_metric(metric: Metric):
     bounds to be 0.000_000_1. This will not affect the precision of the metrics, since
     we don't expect any less-than-1 bytes, or less-than-1-nanosecond times.
 
-    [1] https://github.com/census-instrumentation/opencensus-specs/blob/master/stats/gRPC.md#units
+    [1] https://github.com/census-instrumentation/opencensus-specs/blob/master/stats/gRPC.md#units  # noqa: E501
     [2] https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
-    [3] https://github.com/census-instrumentation/opencensus-cpp/blob/50eb5de762e5f87e206c011a4f930adb1a1775b1/opencensus/exporters/stats/prometheus/internal/prometheus_utils.cc#L39
-    [4] https://github.com/census-instrumentation/opencensus-proto/blob/master/src/opencensus/proto/metrics/v1/metrics.proto#L218
+    [3] https://github.com/census-instrumentation/opencensus-cpp/blob/50eb5de762e5f87e206c011a4f930adb1a1775b1/opencensus/exporters/stats/prometheus/internal/prometheus_utils.cc#L39 # noqa: E501
+    [4] https://github.com/census-instrumentation/opencensus-proto/blob/master/src/opencensus/proto/metrics/v1/metrics.proto#L218 # noqa: E501
     """
 
     metric.metric_descriptor.name = RE_NON_ALPHANUMS.sub(

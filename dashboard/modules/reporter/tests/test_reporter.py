@@ -151,8 +151,17 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
     wait_for_condition(_check_workers, timeout=10)
 
 
+@pytest.fixture
+def enable_grpc_metrics_collection():
+    os.environ["RAY_enable_grpc_metrics_collection"] = "true"
+    yield
+    os.environ.pop("RAY_enable_grpc_metrics_collection", None)
+
+
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
-def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
+def test_prometheus_physical_stats_record(
+    enable_grpc_metrics_collection, enable_test_module, shutdown_only
+):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
     addr = addresses["raylet_ip_address"]
