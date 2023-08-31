@@ -32,7 +32,7 @@ gcloud container node-pools create gpu-node-pool \
   --machine-type g2-standard-4 \
 ```
 
-The `--accelerator` flag specifies the type and number of GPUs for each node in the node pool. In this example, we use the [NVIDIA L4](https://cloud.google.com/compute/docs/gpus#l4-gpus) GPU. The machine type `g2-standard-4` has 1 GPU, 24 GB GPU Memory, 4 vCPUs and 16 GB RAM.
+The `--accelerator` flag specifies the type and number of GPUs for each node in the node pool. This example uses the [NVIDIA L4](https://cloud.google.com/compute/docs/gpus#l4-gpus) GPU. The machine type `g2-standard-4` has 1 GPU, 24 GB GPU Memory, 4 vCPUs and 16 GB RAM.
 
 .. note::
 
