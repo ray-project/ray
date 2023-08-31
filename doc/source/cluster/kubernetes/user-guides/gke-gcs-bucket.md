@@ -84,7 +84,7 @@ The key parts are the following lines:
           iam.gke.io/gke-metadata-server-enabled: "true"
 ```
 
-These should be included in every pod spec of your Ray cluster. In this example, we are just using a single-node cluster (1 head node and 0 worker nodes) for simplicity.
+Include these lines in every pod spec of your Ray cluster. This example uses a single-node cluster (1 head node and 0 worker nodes) for simplicity.
 
 ## Create the RayCluster
 
