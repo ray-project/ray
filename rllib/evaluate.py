@@ -18,6 +18,8 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.common import CLIArguments as cli
+from ray.train._checkpoint import Checkpoint
+from ray.train._internal.session import _TrainingResult
 from ray.tune.utils import merge_dicts
 from ray.tune.registry import get_trainable_cls, _global_registry, ENV_CREATOR
 
@@ -253,7 +255,15 @@ def run(
 
     # Load state from checkpoint, if provided.
     if checkpoint:
-        algorithm.restore(checkpoint)
+        if os.path.isdir(checkpoint):
+            checkpoint_dir = checkpoint
+        else:
+            checkpoint_dir = str(Path(checkpoint).parent)
+        print(f"Restoring algorithm from {checkpoint_dir}")
+        restore_result = _TrainingResult(
+            checkpoint=Checkpoint.from_directory(checkpoint_dir), metrics={}
+        )
+        algorithm.restore(restore_result)
 
     # Do the actual rollout.
     with RolloutSaver(
