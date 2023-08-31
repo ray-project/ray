@@ -14,8 +14,6 @@
 
 #include "ray/stats/metric.h"
 
-#include <grpcpp/opencensus.h>
-
 #include "opencensus/stats/internal/aggregation_window.h"
 #include "opencensus/stats/internal/set_aggregation_window.h"
 #include "opencensus/stats/measure_registry.h"
@@ -42,12 +40,6 @@ void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
   opencensus::stats::View view(view_descriptor);
   view_descriptor.RegisterForExport();
 }
-
-static inline int _grpc_opencensus_initializer = []() {
-  grpc::RegisterOpenCensusPlugin();
-  grpc::RegisterOpenCensusViewsForExport();
-  return 1;
-}();
 
 }  // namespace internal
 ///

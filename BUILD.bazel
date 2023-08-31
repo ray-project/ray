@@ -589,7 +589,6 @@ ray_cc_library(
         "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
-        "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
 )
 
@@ -616,6 +615,7 @@ ray_cc_library(
     deps = [
         ":reporter_rpc",
         ":stats_metric",
+        "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
 )
 

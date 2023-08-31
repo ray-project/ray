@@ -19,6 +19,7 @@
 #include <unordered_map>
 
 #include "absl/synchronization/mutex.h"
+#include "grpcpp/opencensus.h"
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
@@ -107,6 +108,10 @@ static inline void Init(const TagsType &global_tags,
   StatsConfig::instance().SetGlobalTags(global_tags);
   for (auto &f : StatsConfig::instance().PopInitializers()) {
     f();
+  }
+  if (RayConfig::instance().enable_grpc_metrics_collection()) {
+    grpc::RegisterOpenCensusPlugin();
+    grpc::RegisterOpenCensusViewsForExport();
   }
   StatsConfig::instance().SetIsInitialized(true);
 }
