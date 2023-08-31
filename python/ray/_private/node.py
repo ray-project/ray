@@ -191,7 +191,7 @@ class Node:
         node_ip_address = ray_params.node_ip_address
         if node_ip_address is None:
             if connect_only:
-                node_ip_address = self._wait_for_node_address()
+                node_ip_address = self._wait_and_get_for_node_address()
             else:
                 node_ip_address = ray.util.get_node_ip_address()
 
@@ -200,7 +200,8 @@ class Node:
             node_ip_address=node_ip_address, raylet_ip_address=node_ip_address
         )
         self._node_ip_address = node_ip_address
-        self._write_node_ip_address(node_ip_address)
+        if not connect_only:
+            self._write_node_ip_address(node_ip_address)
 
         if ray_params.raylet_ip_address:
             raylet_ip_address = ray_params.raylet_ip_address
@@ -941,7 +942,7 @@ class Node:
 
         return port
 
-    def _wait_for_node_address(self, timeout_s: int = 60) -> str:
+    def _wait_and_get_for_node_address(self, timeout_s: int = 60) -> str:
         """Wait until the node_ip_address.json file is avialable.
 
         node_ip_address.json is created when a ray instance is started.

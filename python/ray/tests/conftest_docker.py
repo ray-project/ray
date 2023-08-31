@@ -98,6 +98,7 @@ head_node = container(
     ports={
         "8000/tcp": None,
     },
+    timeout=120,
     # volumes={
     #     "/tmp/ray/": {"bind": "/tmp/ray/", "mode": "rw"}
     # },
@@ -123,6 +124,7 @@ worker_node = container(
     ports={
         "8000/tcp": None,
     },
+    timeout=120,
     # volumes={
     #     "/tmp/ray/": {"bind": "/tmp/ray/", "mode": "rw"}
     # },
