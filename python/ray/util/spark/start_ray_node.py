@@ -86,7 +86,9 @@ if __name__ == "__main__":
                             collect_log_to_path,
                             os.path.basename(temp_dir) + "-logs"
                         )
-                        os.makedirs(base_dir, exist_ok=False)
+                        # Note: multiple Ray node launcher process might
+                        # execute this line code, so we set exist_ok=True here.
+                        os.makedirs(base_dir, exist_ok=True)
                         copy_log_dest_path = os.path.join(
                             base_dir,
                             socket.gethostname(),
