@@ -110,7 +110,10 @@ class RayClusterOnSpark:
         try:
             # connect to the ray cluster.
             self.connect()
-            if check_port_open(self.address.split(":")[0], self.ray_dashboard_port):
+            if (
+                self.ray_dashboard_port is not None and
+                check_port_open(self.address.split(":")[0], self.ray_dashboard_port)
+            ):
                 self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
             else:
                 try:
