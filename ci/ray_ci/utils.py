@@ -1,8 +1,9 @@
 import logging
 import sys
-
 from typing import List
 from math import ceil
+
+import ci.ray_ci.bazel_sharding as bazel_sharding
 
 
 def chunk_into_n(list: List[str], n: int) -> List[List[str]]:
@@ -11,6 +12,17 @@ def chunk_into_n(list: List[str], n: int) -> List[List[str]]:
     """
     size = ceil(len(list) / n)
     return [list[x * size : x * size + size] for x in range(n)]
+
+
+def shard_tests(
+    test_targets: List[str],
+    shard_count: int,
+    shard_id: int,
+) -> List[str]:
+    """
+    Shard tests into N shards and return the shard corresponding to shard_id
+    """
+    return bazel_sharding.main(test_targets, index=shard_id, count=shard_count)
 
 
 logger = logging.getLogger()

@@ -1,71 +1,158 @@
+import logging
 import os
 import sys
-from tempfile import TemporaryDirectory
-from unittest import mock
-from typing import List
+from typing import List, Optional
 
-import pytest
+import yaml
+import click
 
-from ci.ray_ci.runner import (
-    _get_all_test_targets,
-    _get_all_test_query,
-    _get_test_targets,
-    _get_flaky_test_targets,
+from ci.ray_ci.test_container import TestContainer
+from ci.ray_ci.utils import logger, shard_tests
+
+# Gets the path of product/tools/docker (i.e. the parent of 'common')
+bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+
+
+@click.command()
+@click.argument("targets", required=True, type=str, nargs=-1)
+@click.argument("team", required=True, type=str, nargs=1)
+@click.option(
+    "--workers",
+    default=1,
+    type=int,
+    help=("Number of concurrent test jobs to run."),
 )
-from ci.ray_ci.utils import chunk_into_n
+@click.option(
+    "--worker-id",
+    default=0,
+    type=int,
+    help=("Index of the concurrent shard to run."),
+)
+@click.option(
+    "--parallelism-per-worker",
+    default=1,
+    type=int,
+    help=("Number of concurrent test jobs to run per worker."),
+)
+@click.option(
+    "--except-tags",
+    default="",
+    type=str,
+    help=("Except tests with the given tags."),
+)
+@click.option(
+    "--run-flaky-tests",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("Run flaky tests."),
+)
+def main(
+    targets: List[str],
+    team: str,
+    workers: int,
+    worker_id: int,
+    parallelism_per_worker: int,
+    except_tags: str,
+    run_flaky_tests: bool,
+) -> None:
+    if not bazel_workspace_dir:
+        raise Exception("Please use `bazelisk run //ci/ray_ci`")
+    os.chdir(bazel_workspace_dir)
+
+    container = TestContainer(team)
+    container.setup_test_environment()
+    if run_flaky_tests:
+        test_targets = _get_flaky_test_targets(team)
+    else:
+        test_targets = _get_test_targets(
+            container,
+            targets,
+            team,
+            workers,
+            worker_id,
+            except_tags,
+        )
+    if not test_targets:
+        logging.info("No tests to run")
+        return
+    logger.info(f"Running tests: {test_targets}")
+    success = container.run_tests(test_targets, parallelism_per_worker)
+    sys.exit(0 if success else 1)
 
 
-def test_get_test_targets() -> None:
-    def _mock_shard_tests(tests: List[str], workers: int, worker_id: int) -> List[str]:
-        return chunk_into_n(tests, workers)[worker_id]
-
-    _TEST_YAML = "flaky_tests: [//python/ray/tests:flaky_test_01]"
-
-    with TemporaryDirectory() as tmp:
-        with open(os.path.join(tmp, "core.tests.yml"), "w") as f:
-            f.write(_TEST_YAML)
-
-        test_targets = [
-            "//python/ray/tests:good_test_01",
-            "//python/ray/tests:good_test_02",
-            "//python/ray/tests:good_test_03",
-            "//python/ray/tests:flaky_test_01",
-            "",
-        ]
-        with mock.patch(
-            "ci.ray_ci.runner.shard_tests", side_effect=_mock_shard_tests
-        ), mock.patch(
-            "subprocess.check_output",
-            return_value="\n".join(test_targets).encode("utf-8"),
-        ):
-            assert _get_all_test_targets("targets", "core", yaml_dir=tmp) == [
-                "//python/ray/tests:good_test_01",
-                "//python/ray/tests:good_test_02",
-                "//python/ray/tests:good_test_03",
-            ]
-            assert _get_test_targets("targets", "core", 2, 0, yaml_dir=tmp) == [
-                "//python/ray/tests:good_test_01",
-                "//python/ray/tests:good_test_02",
-            ]
-
-
-def test_get_all_test_query() -> None:
-    assert _get_all_test_query(["a", "b"], "core", "") == (
-        "attr(tags, 'team:core\\\\b', tests(a) union tests(b))"
+def _get_test_targets(
+    container: TestContainer,
+    targets: str,
+    team: str,
+    workers: int,
+    worker_id: int,
+    except_tags: Optional[str] = "",
+    yaml_dir: Optional[str] = None,
+) -> List[str]:
+    """
+    Get test targets to run for a particular shard
+    """
+    return shard_tests(
+        _get_all_test_targets(container, targets, team, except_tags, yaml_dir=yaml_dir),
+        workers,
+        worker_id,
     )
-    assert _get_all_test_query(["a"], "core", "tag") == (
-        "attr(tags, 'team:core\\\\b', tests(a)) except (attr(tags, tag, tests(a)))"
+
+
+def _get_all_test_query(targets: List[str], team: str, except_tags: str) -> str:
+    """
+    Get all test targets that are owned by a particular team, except those that
+    have the given tags
+    """
+    test_query = " union ".join([f"tests({target})" for target in targets])
+    team_query = f"attr(tags, 'team:{team}\\\\b', {test_query})"
+    if not except_tags:
+        # return all tests owned by the team if no except_tags are given
+        return team_query
+
+    # otherwise exclude tests with the given tags
+    except_query = " union ".join(
+        [f"attr(tags, {t}, {test_query})" for t in except_tags.split(",")]
     )
+    return f"{team_query} except ({except_query})"
 
 
-def test_get_flaky_test_targets() -> None:
-    _TEST_YAML = "flaky_tests: [//target]"
+def _get_all_test_targets(
+    container: TestContainer,
+    targets: str,
+    team: str,
+    except_tags: Optional[str] = "",
+    yaml_dir: Optional[str] = None,
+) -> List[str]:
+    """
+    Get all test targets that are not flaky
+    """
 
-    with TemporaryDirectory() as tmp:
-        with open(os.path.join(tmp, "core.tests.yml"), "w") as f:
-            f.write(_TEST_YAML)
-        assert _get_flaky_test_targets("core", yaml_dir=tmp) == ["//target"]
+    test_targets = (
+        container.run_script(
+            f'bazel query "{_get_all_test_query(targets, team, except_tags)}"',
+        )
+        .decode("utf-8")
+        .split("\n")
+    )
+    flaky_tests = _get_flaky_test_targets(team, yaml_dir)
+
+    return [test for test in test_targets if test and test not in flaky_tests]
+
+
+def _get_flaky_test_targets(team: str, yaml_dir: Optional[str] = None) -> List[str]:
+    """
+    Get all test targets that are flaky
+    """
+    if not yaml_dir:
+        yaml_dir = os.path.join(bazel_workspace_dir, "ci/ray_ci")
+
+    with open(f"{yaml_dir}/{team}.tests.yml", "rb") as f:
+        flaky_tests = yaml.safe_load(f)["flaky_tests"]
+
+    return flaky_tests
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    main()
