@@ -155,12 +155,14 @@ class Node:
             self._init_gcs_client()
 
         # Register the temp dir.
-        if head:
-            # date including microsecond
-            date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
-            self._session_name = f"session_{date_str}_{os.getpid()}"
-        else:
-            if ray_params.session_name is None:
+        self._session_name = ray_params.session_name
+
+        if self._session_name is None:
+            if head:
+                # date including microsecond
+                date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
+                self._session_name = f"session_{date_str}_{os.getpid()}"
+            else:
                 assert not self._default_worker
                 session_name = ray._private.utils.internal_kv_get_with_retry(
                     self.get_gcs_client(),
@@ -169,9 +171,6 @@ class Node:
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
                 self._session_name = ray._private.utils.decode(session_name)
-            else:
-                # worker mode
-                self._session_name = ray_params.session_name
 
         # Initialize webui url
         if head:
@@ -201,11 +200,6 @@ class Node:
         )
         self._node_ip_address = node_ip_address
         if not connect_only:
-            print(
-                "Writing node ip address to a session, ",
-                node_ip_address,
-                self._session_dir,
-            )
             self._write_node_ip_address(node_ip_address)
 
         if ray_params.raylet_ip_address:
