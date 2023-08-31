@@ -7,7 +7,7 @@ We will follow an abridged version of the documentation at <https://cloud.google
 
 ## Create a Kubernetes cluster on GKE
 
-For this example, we will create a minimal KubeRay cluster using GKE.
+This example creates a minimal KubeRay cluster using GKE.
 
 Run this command and all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, you will need to install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
 
