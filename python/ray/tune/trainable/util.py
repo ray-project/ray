@@ -230,18 +230,17 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
     .. code-block:: python
 
-        from ray import tune
-        from ray.air import session
+        from ray import train, tune
 
-        def train(config, data=None):
+        def train_fn(config, data=None):
             for sample in data:
                 loss = update_model(sample)
-                session.report(loss=loss)
+                train.report(loss=loss)
 
         data = HugeDataset(download=True)
 
         tuner = Tuner(
-            tune.with_parameters(train, data=data),
+            tune.with_parameters(train_fn, data=data),
             # ...
         )
         tuner.fit()
@@ -380,11 +379,11 @@ def with_resources(
         from ray import tune
         from ray.tune.tuner import Tuner
 
-        def train(config):
+        def train_fn(config):
             return len(ray.get_gpu_ids())  # Returns 2
 
         tuner = Tuner(
-            tune.with_resources(train, resources={"gpu": 2}),
+            tune.with_resources(train_fn, resources={"gpu": 2}),
             # ...
         )
         results = tuner.fit()

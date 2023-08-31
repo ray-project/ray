@@ -1,3 +1,4 @@
+from functools import wraps
 import json
 import logging
 
@@ -18,6 +19,24 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 routes = optional_utils.ClassMethodRouteTable
+
+
+def gracefully_handle_missing_serve_dependencies(func):
+    @wraps(func)
+    def check(self, *args, **kwargs):
+        try:
+            from ray import serve  # noqa: F401
+        except ImportError:
+            return Response(
+                status=501,
+                text=(
+                    "Serve dependencies are not installed. Please run `pip install "
+                    '"ray[serve]"`.'
+                ),
+            )
+        return func(self, *args, **kwargs)
+
+    return check
 
 
 # NOTE (shrekris-anyscale): This class uses delayed imports for all
@@ -54,6 +73,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
+    @gracefully_handle_missing_serve_dependencies
     async def get_all_deployments(self, req: Request) -> Response:
         from ray.serve.schema import ServeApplicationSchema
 
@@ -85,6 +105,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.get("/api/serve/applications/")
     @optional_utils.init_ray_and_catch_exceptions()
+    @gracefully_handle_missing_serve_dependencies
     async def get_serve_instance_details(self, req: Request) -> Response:
         from ray.serve.schema import ServeInstanceDetails
 
@@ -115,6 +136,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.get("/api/serve/deployments/status")
     @optional_utils.init_ray_and_catch_exceptions()
+    @gracefully_handle_missing_serve_dependencies
     async def get_all_deployment_statuses(self, req: Request) -> Response:
         from ray.serve.schema import serve_status_to_schema, ServeStatusSchema
 
@@ -141,6 +163,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.delete("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
+    @gracefully_handle_missing_serve_dependencies
     async def delete_serve_application(self, req: Request) -> Response:
         from ray import serve
 
@@ -161,6 +184,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
+    @gracefully_handle_missing_serve_dependencies
     async def put_all_deployments(self, req: Request) -> Response:
         from ray.serve._private.api import serve_start_async
         from ray.serve.schema import ServeApplicationSchema
@@ -244,6 +268,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
     @routes.put("/api/serve/applications/")
     @optional_utils.init_ray_and_catch_exceptions()
+    @gracefully_handle_missing_serve_dependencies
     async def put_all_applications(self, req: Request) -> Response:
         from ray.serve._private.api import serve_start_async
         from ray.serve.schema import ServeDeploySchema
@@ -251,51 +276,30 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
         try:
-            config = ServeDeploySchema.parse_obj(await req.json())
+            config: ServeDeploySchema = ServeDeploySchema.parse_obj(await req.json())
         except ValidationError as e:
             return Response(
                 status=400,
                 text=repr(e),
             )
 
+        config_http_options = config.http_options.dict()
+        full_http_options = dict(
+            {"location": config.proxy_location}, **config_http_options
+        )
+        grpc_options = config.grpc_options.dict()
+
         async with self._controller_start_lock:
             client = await serve_start_async(
                 detached=True,
-                http_options={
-                    "host": config.http_options.host,
-                    "port": config.http_options.port,
-                    "root_path": config.http_options.root_path,
-                    "location": config.proxy_location,
-                },
+                http_options=full_http_options,
+                grpc_options=grpc_options,
             )
 
-        # Check HTTP Host
-        host_conflict = self.check_http_options(
-            "host", client.http_config.host, config.http_options.host
-        )
-        if host_conflict is not None:
-            return host_conflict
-
-        # Check HTTP Port
-        port_conflict = self.check_http_options(
-            "port", client.http_config.port, config.http_options.port
-        )
-        if port_conflict is not None:
-            return port_conflict
-
-        # Check HTTP root path
-        root_path_conflict = self.check_http_options(
-            "root path", client.http_config.root_path, config.http_options.root_path
-        )
-        if root_path_conflict is not None:
-            return root_path_conflict
-
-        # Check HTTP location
-        location_conflict = self.check_http_options(
-            "location", client.http_config.location, config.proxy_location
-        )
-        if location_conflict is not None:
-            return location_conflict
+        # Serve ignores HTTP options if it was already running when
+        # serve_start_async() is called. Therefore we validate that no
+        # existing HTTP options are updated and print warning in case they are
+        self.validate_http_options(client, full_http_options)
 
         try:
             client.deploy_apps(config)
@@ -308,21 +312,19 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         else:
             return Response()
 
-    def check_http_options(self, option: str, old: str, new: str):
-        http_mismatch_message = (
-            "Serve is already running on this Ray cluster. Its HTTP {option} is set to "
-            '"{old}". However, the requested {option} is "{new}". The requested '
-            "{option} must match the running Serve instance's HTTP {option}. To change "
-            "the Serve HTTP {option}, shut down Serve on this Ray cluster using "
-            "the `serve shutdown` CLI command or by sending a DELETE request to the "
-            '"/api/serve/applications/" endpoint. CAUTION: shutting down Serve will '
-            "also shut down all Serve applications."
-        )
+    def validate_http_options(self, client, http_options):
+        divergent_http_options = []
 
-        if not old == new:
-            return Response(
-                status=400,
-                text=http_mismatch_message.format(option=option, old=old, new=new),
+        for option, new_value in http_options.items():
+            prev_value = getattr(client.http_config, option)
+            if prev_value != new_value:
+                divergent_http_options.append(option)
+
+        if divergent_http_options:
+            logger.warning(
+                f"Serve is already running on this Ray cluster and it's not possible "
+                f"to update its HTTP options without restarting it. Following options "
+                f"are attempted to be updated: {divergent_http_options}."
             )
 
     async def get_serve_controller(self):

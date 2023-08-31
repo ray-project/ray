@@ -446,8 +446,13 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
         episode.custom_metrics["tracemalloc/worker/vms"] = worker_vms
 
 
-def make_multi_callbacks(callback_class_list: List[Type[DefaultCallbacks]]):
+def make_multi_callbacks(
+    callback_class_list: List[Type[DefaultCallbacks]],
+) -> DefaultCallbacks:
     """Allows combining multiple sub-callbacks into one new callbacks class.
+
+    The resulting DefaultCallbacks will call all the sub-callbacks' callbacks
+    when called.
 
     .. testcode::
         :skipif: True
@@ -463,6 +468,9 @@ def make_multi_callbacks(callback_class_list: List[Type[DefaultCallbacks]]):
         callback_class_list: The list of sub-classes of DefaultCallbacks to
             be baked into the to-be-returned class. All of these sub-classes'
             implemented methods will be called in the given order.
+
+    Returns:
+        A DefaultCallbacks subclass that combines all the given sub-classes.
     """
 
     class _MultiCallbacks(DefaultCallbacks):
@@ -657,7 +665,6 @@ def make_multi_callbacks(callback_class_list: List[Type[DefaultCallbacks]]):
 
         @override(DefaultCallbacks)
         def on_train_result(self, *, algorithm=None, result: dict, **kwargs) -> None:
-
             for callback in self._callback_list:
                 callback.on_train_result(algorithm=algorithm, result=result, **kwargs)
 
@@ -666,7 +673,6 @@ def make_multi_callbacks(callback_class_list: List[Type[DefaultCallbacks]]):
 
 # This Callback is used by the RE3 exploration strategy.
 # See rllib/examples/re3_exploration.py for details.
-@Deprecated(error=False)
 class RE3UpdateCallbacks(DefaultCallbacks):
     """Update input callbacks to mutate batch with states entropy rewards."""
 

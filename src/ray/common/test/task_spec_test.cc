@@ -145,6 +145,57 @@ TEST(TaskSpecTest, TestTaskSpecification) {
   ASSERT_TRUE(task_spec.GetNodeAffinitySchedulingStrategySoft());
   ASSERT_TRUE(task_spec.GetNodeAffinitySchedulingStrategyNodeId() == node_id);
 }
+
+TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
+  rpc::SchedulingStrategy scheduling_strategy_1;
+  auto expr_1 = scheduling_strategy_1.mutable_node_label_scheduling_strategy()
+                    ->mutable_hard()
+                    ->add_expressions();
+  expr_1->set_key("key");
+  expr_1->mutable_operator_()->mutable_label_in()->add_values("value1");
+
+  rpc::SchedulingStrategy scheduling_strategy_2;
+  auto expr_2 = scheduling_strategy_2.mutable_node_label_scheduling_strategy()
+                    ->mutable_hard()
+                    ->add_expressions();
+  expr_2->set_key("key");
+  expr_2->mutable_operator_()->mutable_label_in()->add_values("value1");
+
+  ASSERT_TRUE(std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
+              std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_1));
+  ASSERT_TRUE(std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
+              std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_2));
+
+  rpc::SchedulingStrategy scheduling_strategy_3;
+  auto expr_3 = scheduling_strategy_3.mutable_node_label_scheduling_strategy()
+                    ->mutable_soft()
+                    ->add_expressions();
+  expr_3->set_key("key");
+  expr_3->mutable_operator_()->mutable_label_in()->add_values("value1");
+  ASSERT_FALSE(std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
+               std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_3));
+
+  rpc::SchedulingStrategy scheduling_strategy_4;
+  auto expr_4 = scheduling_strategy_4.mutable_node_label_scheduling_strategy()
+                    ->mutable_hard()
+                    ->add_expressions();
+  expr_4->set_key("key");
+  expr_4->mutable_operator_()->mutable_label_in()->add_values("value1");
+  expr_4->mutable_operator_()->mutable_label_in()->add_values("value2");
+
+  ASSERT_FALSE(std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
+               std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_4));
+
+  rpc::SchedulingStrategy scheduling_strategy_5;
+  auto expr_5 = scheduling_strategy_5.mutable_node_label_scheduling_strategy()
+                    ->mutable_hard()
+                    ->add_expressions();
+  expr_5->set_key("key");
+  expr_5->mutable_operator_()->mutable_label_not_in()->add_values("value1");
+
+  ASSERT_FALSE(std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_1) ==
+               std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_5));
+}
 }  // namespace ray
 
 int main(int argc, char **argv) {

@@ -2,9 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+
 from torch.utils.data import DataLoader
 from torchmetrics import Accuracy
-from ray.air import session
+
+from ray import train
 
 
 class LinearModule(pl.LightningModule):
@@ -13,7 +15,7 @@ class LinearModule(pl.LightningModule):
         self.linear = nn.Linear(input_dim, output_dim)
         self.loss = []
         self.strategy = strategy
-        self.restored = session.get_checkpoint() is not None
+        self.restored = train.get_checkpoint() is not None
         self.fail_epoch = fail_epoch
 
     def forward(self, input):
@@ -119,7 +121,7 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.layer_1 = torch.nn.Linear(28 * 28, layer_1)
         self.layer_2 = torch.nn.Linear(layer_1, layer_2)
         self.layer_3 = torch.nn.Linear(layer_2, 10)
-        self.accuracy = Accuracy(task="multiclass", num_classes=10)
+        self.accuracy = Accuracy(task="multiclass", num_classes=10, top_k=1)
         self.val_acc_list = []
         self.val_loss_list = []
 

@@ -7,12 +7,11 @@ import json
 import os
 
 import numpy as np
-from ray.air.result import Result
 import tensorflow as tf
 
 from ray.train.tensorflow import TensorflowTrainer
 from ray.air.integrations.keras import ReportCheckpointCallback
-from ray.air.config import ScalingConfig
+from ray.train import Result, RunConfig, ScalingConfig
 
 
 def mnist_dataset(batch_size: int) -> tf.data.Dataset:
@@ -79,13 +78,17 @@ def train_func(config: dict):
 
 
 def train_tensorflow_mnist(
-    num_workers: int = 2, use_gpu: bool = False, epochs: int = 4
+    num_workers: int = 2,
+    use_gpu: bool = False,
+    epochs: int = 4,
+    storage_path: str = None,
 ) -> Result:
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        run_config=RunConfig(storage_path=storage_path),
     )
     results = trainer.fit()
     return results

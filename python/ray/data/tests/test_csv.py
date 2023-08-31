@@ -16,7 +16,6 @@ from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
     PartitionStyle,
-    PathPartitionEncoder,
     PathPartitionFilter,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -26,6 +25,7 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.data.tests.util import Counter
 from ray.tests.conftest import *  # noqa
 
@@ -693,7 +693,7 @@ def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds = ray.data.from_pandas([df1])
     ds._set_uuid("data")
     ds.write_csv(data_path, filesystem=fs)
-    file_path = os.path.join(data_path, "data_000000.csv")
+    file_path = os.path.join(data_path, "data_000000_000000.csv")
     assert df1.equals(pd.read_csv(file_path, storage_options=storage_options))
 
     # Two blocks.
@@ -701,7 +701,7 @@ def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds = ray.data.from_pandas([df1, df2])
     ds._set_uuid("data")
     ds.write_csv(data_path, filesystem=fs)
-    file_path2 = os.path.join(data_path, "data_000001.csv")
+    file_path2 = os.path.join(data_path, "data_000001_000000.csv")
     df = pd.concat([df1, df2])
     ds_df = pd.concat(
         [
@@ -726,7 +726,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.from_pandas([df])
     ds._set_uuid("data")
     ds.write_csv(data_path, filesystem=fs)
-    file_path = os.path.join(data_path, "data_000000.csv")
+    file_path = os.path.join(data_path, "data_000000_000000.csv")
     ds2 = ray.data.read_csv([file_path], filesystem=fs)
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
@@ -763,7 +763,7 @@ def test_csv_write_block_path_provider(
     fs,
     data_path,
     endpoint_url,
-    test_block_write_path_provider,
+    mock_block_write_path_provider,
 ):
     if endpoint_url is None:
         storage_options = {}
@@ -775,9 +775,9 @@ def test_csv_write_block_path_provider(
     ds = ray.data.from_pandas([df1])
     ds._set_uuid("data")
     ds.write_csv(
-        data_path, filesystem=fs, block_path_provider=test_block_write_path_provider
+        data_path, filesystem=fs, block_path_provider=mock_block_write_path_provider
     )
-    file_path = os.path.join(data_path, "000000_03_data.test.csv")
+    file_path = os.path.join(data_path, "000000_000000_data.test.csv")
     assert df1.equals(pd.read_csv(file_path, storage_options=storage_options))
 
     # Two blocks.
@@ -785,9 +785,9 @@ def test_csv_write_block_path_provider(
     ds = ray.data.from_pandas([df1, df2])
     ds._set_uuid("data")
     ds.write_csv(
-        data_path, filesystem=fs, block_path_provider=test_block_write_path_provider
+        data_path, filesystem=fs, block_path_provider=mock_block_write_path_provider
     )
-    file_path2 = os.path.join(data_path, "000001_03_data.test.csv")
+    file_path2 = os.path.join(data_path, "000001_000000_data.test.csv")
     df = pd.concat([df1, df2])
     ds_df = pd.concat(
         [

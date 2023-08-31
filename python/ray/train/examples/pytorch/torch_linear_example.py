@@ -1,12 +1,14 @@
 import argparse
+import os
+import tempfile
 
 import numpy as np
-from ray.air import session
 import torch
 import torch.nn as nn
 import ray.train as train
-from ray.train.torch import TorchTrainer, TorchCheckpoint
-from ray.air.config import ScalingConfig
+from ray.train import Checkpoint, RunConfig, ScalingConfig
+from ray.train.torch import TorchTrainer, LegacyTorchCheckpoint
+from ray.train._internal.storage import _use_storage_context
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -80,17 +82,27 @@ def train_func(config):
         state_dict, loss = validate_epoch(validation_loader, model, loss_fn)
         result = dict(loss=loss)
         results.append(result)
-        session.report(result, checkpoint=TorchCheckpoint.from_state_dict(state_dict))
+
+        if _use_storage_context():
+            with tempfile.TemporaryDirectory() as tmpdir:
+                torch.save(state_dict, os.path.join(tmpdir, "model.pt"))
+                train.report(result, checkpoint=Checkpoint.from_directory(tmpdir))
+        else:
+            # TODO(justinvyu): Temporary for CI to pass during the API transition.
+            train.report(
+                result, checkpoint=LegacyTorchCheckpoint.from_state_dict(state_dict)
+            )
 
     return results
 
 
-def train_linear(num_workers=2, use_gpu=False, epochs=3):
+def train_linear(num_workers=2, use_gpu=False, epochs=3, storage_path=None):
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        run_config=RunConfig(storage_path=storage_path),
     )
     result = trainer.fit()
 

@@ -12,7 +12,7 @@ Launching a cluster (``ray up``)
 This will start up the machines in the cloud, install your dependencies and run
 any setup commands that you have, configure the Ray cluster automatically, and
 prepare you to scale your distributed system. See :ref:`the documentation
-<ray-up-doc>` for ``ray up``.
+<ray-up-doc>` for ``ray up``. The example config files can be accessed `here <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler>`_.
 
 .. tip:: The worker nodes will start only after the head node has finished
          starting. To monitor the progress of the cluster setup, you can run
@@ -54,7 +54,7 @@ Running ``ray up`` on an existing cluster will do all the following:
   reapplied and the ``setup_commands`` and ``ray start`` commands will be run.
   There may be some caching behavior here to skip setup/file mounts.
 * If the head node is out of date from the specified YAML (e.g.,
-  ``head_node_type`` has changed on the YAML), then the out of date node will
+  ``head_node_type`` has changed on the YAML), then the out-of-date node will
   be terminated and a new node will be provisioned to replace it. Setup/file
   mounts/``ray start`` will be applied.
 * After the head node reaches a consistent state (after ``ray start`` commands
@@ -62,7 +62,7 @@ Running ``ray up`` on an existing cluster will do all the following:
   nodes. The ``ray start`` commands tend to run a ``ray stop`` + ``ray start``,
   so this will kill currently working jobs.
 
-If you don't want the update to restart services (e.g., because the changes
+If you don't want the update to restart services (e.g. because the changes
 don't require a restart), pass ``--no-restart`` to the update call.
 
 If you want to force re-generation of the config to pick up possible changes in

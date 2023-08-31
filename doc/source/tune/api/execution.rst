@@ -3,8 +3,6 @@ Tune Execution (tune.Tuner)
 
 .. _tune-run-ref:
 
-.. _air-tuner-ref:
-
 Tuner
 -----
 
@@ -31,7 +29,7 @@ Tuner Configuration
 
 .. seealso::
 
-    The `Tuner` constructor also takes in a :class:`air.RunConfig <ray.air.RunConfig>`.
+    The `Tuner` constructor also takes in a :class:`air.RunConfig <ray.train.RunConfig>`.
 
 Restoring a Tuner
 ~~~~~~~~~~~~~~~~~

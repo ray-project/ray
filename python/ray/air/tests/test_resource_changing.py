@@ -1,6 +1,6 @@
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import FailureConfig, RunConfig, ScalingConfig
+import os
+from ray import train
+from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
 from ray.air.constants import TRAIN_DATASET_KEY
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -10,6 +10,9 @@ from sklearn.datasets import load_breast_cancer
 import pandas as pd
 import pytest
 import ray
+import json
+from tempfile import TemporaryDirectory
+
 from ray import tune
 from ray.tune.schedulers.resource_changing_scheduler import (
     DistributeResources,
@@ -29,32 +32,40 @@ def ray_start_8_cpus():
 def train_fn(config):
     start_epoch = 0
 
-    print(session.get_trial_resources())
-    checkpoint = session.get_checkpoint()
+    print(train.get_context().get_trial_resources())
+    checkpoint = train.get_checkpoint()
     if checkpoint:
-        # assume that we have run the session.report() example
+        # assume that we have run the train.report() example
         # and successfully save some model weights
-        checkpoint_dict = checkpoint.to_dict()
+        with checkpoint.as_directory() as tmpdir:
+            with open(os.path.join(tmpdir, "checkpoint.json"), "r") as fin:
+                checkpoint_dict = json.load(fin)
+
         start_epoch = checkpoint_dict.get("epoch", -1) + 1
 
     # wrap the model in DDP
     for epoch in range(start_epoch, config["num_epochs"]):
-        checkpoint = Checkpoint.from_dict(dict(epoch=epoch))
-        session.report(
-            {
-                "metric": config["metric"] * epoch,
-                "epoch": epoch,
-                "num_cpus": session.get_trial_resources().required_resources["CPU"],
-            },
-            checkpoint=checkpoint,
-        )
+        with TemporaryDirectory() as tmpdir:
+            with open(os.path.join(tmpdir, "checkpoint.json"), "w") as fout:
+                json.dump(dict(epoch=epoch), fout)
+
+            train.report(
+                {
+                    "metric": config["metric"] * epoch,
+                    "epoch": epoch,
+                    "num_cpus": train.get_context()
+                    .get_trial_resources()
+                    .required_resources["CPU"],
+                },
+                checkpoint=Checkpoint.from_directory(tmpdir),
+            )
 
 
 class AssertingDataParallelTrainer(DataParallelTrainer):
     def training_loop(self) -> None:
         scaling_config = self._validate_scaling_config(self.scaling_config)
         pgf = scaling_config.as_placement_group_factory()
-        tr = session.get_trial_resources()
+        tr = train.get_context().get_trial_resources()
         # Ensure that strategy attribute didn't get dropped.
         assert pgf.strategy == "SPREAD"
         assert pgf == tr, (pgf, tr)
@@ -66,7 +77,7 @@ class AssertingXGBoostTrainer(XGBoostTrainer):
     def _ray_params(self):
         scaling_config = self._validate_scaling_config(self.scaling_config)
         pgf = scaling_config.as_placement_group_factory()
-        tr = session.get_trial_resources()
+        tr = train.get_context().get_trial_resources()
         # Ensure that strategy attribute didn't get dropped.
         assert pgf.strategy == "SPREAD"
         assert pgf == tr, (scaling_config, pgf, tr)

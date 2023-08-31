@@ -33,7 +33,6 @@ from ray.data.datasource.parquet_datasource import ParquetDatasource
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
-    PathPartitionEncoder,
     PathPartitionFilter,
     PathPartitionParser,
 )
@@ -42,6 +41,9 @@ from ray.data.datasource.text_datasource import TextDatasource
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
 
+# Note: HuggingFaceDatasource should NOT be imported here, because
+# we want to only import the Hugging Face datasets library when we use
+# ray.data.from_huggingface() or HuggingFaceDatasource() directly.
 __all__ = [
     "BaseFileMetadataProvider",
     "BinaryDatasource",
@@ -65,7 +67,6 @@ __all__ = [
     "ParquetDatasource",
     "ParquetMetadataProvider",
     "PartitionStyle",
-    "PathPartitionEncoder",
     "PathPartitionFilter",
     "PathPartitionParser",
     "Partitioning",

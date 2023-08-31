@@ -180,8 +180,8 @@ class MLPHeadConfig(_MLPConfig):
     See _MLPConfig for usage details.
 
     Example:
+
     .. testcode::
-        :skipif: True
 
         # Configuration:
         config = MLPHeadConfig(
@@ -203,8 +203,8 @@ class MLPHeadConfig(_MLPConfig):
         # Linear(8, 2, bias=True)
 
     Example:
+
     .. testcode::
-        :skipif: True
 
         # Configuration:
         config = MLPHeadConfig(
@@ -423,7 +423,7 @@ class CNNTransposeHeadConfig(ModelConfig):
             ],
             cnn_transpose_activation="silu",  # or "swish", which is the same
             cnn_transpose_use_layernorm=False,
-            use_bias=True,
+            cnn_use_bias=True,
         )
         model = config.build(framework="torch)
 
@@ -458,7 +458,7 @@ class CNNTransposeHeadConfig(ModelConfig):
             ],
             cnn_transpose_activation="relu",
             cnn_transpose_use_layernorm=True,
-            use_bias=False,
+            cnn_use_bias=False,
         )
         model = config.build(framework="torch)
 
@@ -560,7 +560,6 @@ class CNNEncoderConfig(ModelConfig):
     Example:
 
     .. testcode::
-        :skipif: True
 
         # Configuration:
         config = CNNEncoderConfig(
@@ -571,7 +570,7 @@ class CNNEncoderConfig(ModelConfig):
             ],
             cnn_activation="relu",
             cnn_use_layernorm=False,
-            use_bias=True,
+            cnn_use_bias=True,
         )
         model = config.build(framework="torch")
 
@@ -713,7 +712,6 @@ class MLPEncoderConfig(_MLPConfig):
 
     Example:
     .. testcode::
-        :skipif: True
 
         # Configuration:
         config = MLPEncoderConfig(
@@ -731,7 +729,6 @@ class MLPEncoderConfig(_MLPConfig):
 
     Example:
     .. testcode::
-        :skipif: True
 
         # Configuration:
         config = MLPEncoderConfig(
@@ -809,7 +806,6 @@ class RecurrentEncoderConfig(ModelConfig):
 
     Example:
     .. testcode::
-        :skipif: True
 
         # Configuration:
         config = RecurrentEncoderConfig(
@@ -830,7 +826,6 @@ class RecurrentEncoderConfig(ModelConfig):
 
     Example:
     .. testcode::
-        :skipif: True
 
         # Configuration:
         config = RecurrentEncoderConfig(

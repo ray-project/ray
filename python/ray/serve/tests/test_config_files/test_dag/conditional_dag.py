@@ -1,7 +1,7 @@
 import os
 from enum import Enum
 from typing import Dict, List, TypeVar
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 
 import starlette.requests
 
@@ -23,9 +23,7 @@ class Operation(str, Enum):
     }
 )
 class Router:
-    def __init__(
-        self, multiplier: RayServeDeploymentHandle, adder: RayServeDeploymentHandle
-    ):
+    def __init__(self, multiplier: RayServeHandle, adder: RayServeHandle):
         self.adder = adder
         self.multiplier = multiplier
 

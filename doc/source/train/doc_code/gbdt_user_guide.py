@@ -3,8 +3,8 @@
 
 # __xgboost_start__
 import ray
+from ray.train import ScalingConfig
 from ray.train.xgboost import XGBoostTrainer
-from ray.air.config import ScalingConfig
 
 # Load data.
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
@@ -44,7 +44,7 @@ train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
 # __xgb_detail_intro_end__
 
 # __xgb_detail_scaling_start__
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 
 scaling_config = ScalingConfig(
     # Number of workers to use for data parallelism.
@@ -79,8 +79,8 @@ print(result.metrics)
 
 # __lightgbm_start__
 import ray
+from ray.train import ScalingConfig
 from ray.train.lightgbm import LightGBMTrainer
-from ray.air.config import ScalingConfig
 
 # Load data.
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
@@ -120,7 +120,7 @@ train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
 # __lgbm_detail_intro_end__
 
 # __lgbm_detail_scaling_start__
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 
 scaling_config = ScalingConfig(
     # Number of workers to use for data parallelism.

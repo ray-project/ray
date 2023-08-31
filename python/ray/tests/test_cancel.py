@@ -587,6 +587,7 @@ def test_recursive_cancel_actor_task(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.skip("Actor cancelation works now.")
 def test_recursive_cancel_error_messages(shutdown_only, capsys):
     """
     Make sure the error message printed from the core worker

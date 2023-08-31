@@ -183,6 +183,7 @@ def output_with_format(
             explicit_start=True,
             # We want to keep the defined ordering of the states, thus sort_keys=False
             sort_keys=False,
+            explicit_end=True,
         )
     elif format == AvailableFormat.JSON:
         return json.dumps(state_data)
@@ -443,7 +444,8 @@ def ray_get(
         "E.g., --filter 'key=value' or --filter 'key!=value'. "
         "You can specify multiple --filter options. In this case all predicates "
         "are concatenated as AND. For example, --filter key=value --filter key2=value "
-        "means (key==val) AND (key2==val2)"
+        "means (key==val) AND (key2==val2), "
+        "String filter values are case-insensitive."
     ),
     multiple=True,
 )
@@ -535,6 +537,10 @@ def ray_list(
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
+
+    Changes:
+        - changed in version 2.7: --filter values are case-insensitive.
+
     """  # noqa: E501
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))

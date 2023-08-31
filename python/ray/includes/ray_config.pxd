@@ -63,8 +63,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         c_bool start_python_importer_thread() const
 
-        c_bool use_ray_syncer() const
-
         c_string REDIS_CA_CERT() const
 
         c_string REDIS_CA_PATH() const
@@ -92,5 +90,3 @@ cdef extern from "ray/common/ray_config.h" nogil:
         int64_t grpc_client_keepalive_time_ms() const
 
         int64_t grpc_client_keepalive_timeout_ms() const
-
-        c_bool enable_autoscaler_v2() const

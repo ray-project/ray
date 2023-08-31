@@ -139,10 +139,10 @@ def is_non_local_path_uri(uri: str) -> bool:
 
 
 # Cache fs objects. Map from cache_key --> timestamp, fs
-_cached_fs: Dict[tuple, Tuple[float, pyarrow.fs.FileSystem]] = {}
+_cached_fs: Dict[tuple, Tuple[float, "pyarrow.fs.FileSystem"]] = {}
 
 
-def _get_cache(cache_key: tuple) -> Optional[pyarrow.fs.FileSystem]:
+def _get_cache(cache_key: tuple) -> Optional["pyarrow.fs.FileSystem"]:
     ts, fs = _cached_fs.get(cache_key, (0, None))
     if not fs:
         return None
@@ -155,7 +155,7 @@ def _get_cache(cache_key: tuple) -> Optional[pyarrow.fs.FileSystem]:
     return fs
 
 
-def _put_cache(cache_key: tuple, fs: pyarrow.fs.FileSystem):
+def _put_cache(cache_key: tuple, fs: "pyarrow.fs.FileSystem"):
     now = time.monotonic()
     _cached_fs[cache_key] = (now, fs)
 
@@ -184,8 +184,8 @@ def _is_network_mount(path: str) -> bool:
 
 def is_local_path(path: str) -> bool:
     """Check if a given path is a local path or a remote URI."""
-    if sys.platform == "win32":
-        return _is_local_windows_path(path)
+    if _is_local_windows_path(path):
+        return True
 
     scheme = urllib.parse.urlparse(path).scheme
     return scheme in ("", "file")
@@ -193,6 +193,9 @@ def is_local_path(path: str) -> bool:
 
 def _is_local_windows_path(path: str) -> bool:
     """Determines if path is a Windows file-system location."""
+    if sys.platform != "win32":
+        return False
+
     if len(path) >= 1 and path[0] == "\\":
         return True
     if (
@@ -594,7 +597,7 @@ def list_at_uri(uri: str) -> List[str]:
 
     if not is_non_local_path_uri(uri):
         # Make sure local paths get expanded fully
-        bucket_path = os.path.abspath(os.path.expanduser(bucket_path))
+        bucket_path = Path(bucket_path).expanduser().absolute().as_posix()
 
     selector = pyarrow.fs.FileSelector(
         bucket_path, allow_not_found=True, recursive=False

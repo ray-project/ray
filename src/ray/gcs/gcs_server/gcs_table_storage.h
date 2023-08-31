@@ -205,14 +205,6 @@ class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
   }
 };
 
-class GcsNodeResourceTable : public GcsTable<NodeID, ResourceMap> {
- public:
-  explicit GcsNodeResourceTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::NODE_RESOURCE);
-  }
-};
-
 class GcsPlacementGroupScheduleTable : public GcsTable<PlacementGroupID, ScheduleData> {
  public:
   explicit GcsPlacementGroupScheduleTable(std::shared_ptr<StoreClient> store_client)
@@ -258,7 +250,6 @@ class GcsTableStorage {
     actor_task_spec_table_ = std::make_unique<GcsActorTaskSpecTable>(store_client_);
     placement_group_table_ = std::make_unique<GcsPlacementGroupTable>(store_client_);
     node_table_ = std::make_unique<GcsNodeTable>(store_client_);
-    node_resource_table_ = std::make_unique<GcsNodeResourceTable>(store_client_);
     placement_group_schedule_table_ =
         std::make_unique<GcsPlacementGroupScheduleTable>(store_client_);
     resource_usage_batch_table_ =
@@ -290,11 +281,6 @@ class GcsTableStorage {
   GcsNodeTable &NodeTable() {
     RAY_CHECK(node_table_ != nullptr);
     return *node_table_;
-  }
-
-  GcsNodeResourceTable &NodeResourceTable() {
-    RAY_CHECK(node_resource_table_ != nullptr);
-    return *node_resource_table_;
   }
 
   GcsPlacementGroupScheduleTable &PlacementGroupScheduleTable() {
@@ -329,7 +315,6 @@ class GcsTableStorage {
   std::unique_ptr<GcsActorTaskSpecTable> actor_task_spec_table_;
   std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
-  std::unique_ptr<GcsNodeResourceTable> node_resource_table_;
   std::unique_ptr<GcsPlacementGroupScheduleTable> placement_group_schedule_table_;
   std::unique_ptr<GcsResourceUsageBatchTable> resource_usage_batch_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;

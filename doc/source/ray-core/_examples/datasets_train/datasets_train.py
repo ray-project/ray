@@ -14,11 +14,12 @@ import os
 import sys
 import time
 from typing import Tuple
+from tempfile import TemporaryDirectory
 
 import boto3
 import mlflow
 import pandas as pd
-from ray.air.config import DatasetConfig, ScalingConfig
+from ray.train import DataConfig, ScalingConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn
@@ -26,7 +27,7 @@ import torch.optim as optim
 
 import ray
 from ray import train
-from ray.air import session, Checkpoint, RunConfig
+from ray.train import Checkpoint, RunConfig
 from ray.data.aggregate import Mean, Std
 from ray.air.integrations.mlflow import MLflowLoggerCallback
 
@@ -406,8 +407,8 @@ def train_func(config):
     print(f"Device: {device}")
 
     # Setup data.
-    train_dataset_iterator = session.get_dataset_shard("train")
-    test_dataset_iterator = session.get_dataset_shard("test")
+    train_dataset_iterator = train.get_dataset_shard("train")
+    test_dataset_iterator = train.get_dataset_shard("test")
 
     def to_torch_dataset(torch_batch_iterator):
         for batch in torch_batch_iterator:
@@ -464,19 +465,20 @@ def train_func(config):
         )
 
         # Checkpoint model.
-        checkpoint = Checkpoint.from_dict(dict(model=net.state_dict()))
+        with TemporaryDirectory() as tmpdir:
+            torch.save(net.module.state_dict(), os.path.join(tmpdir, "checkpoint.pt"))
 
-        # Record and log stats.
-        print(f"session report on {session.get_world_rank()}")
-        session.report(
-            dict(
-                train_acc=train_acc,
-                train_loss=train_running_loss,
-                test_acc=test_acc,
-                test_loss=test_running_loss,
-            ),
-            checkpoint=checkpoint,
-        )
+            # Record and log stats.
+            print(f"train report on {train.get_context().get_world_rank()}")
+            train.report(
+                dict(
+                    train_acc=train_acc,
+                    train_loss=train_running_loss,
+                    test_acc=test_acc,
+                    test_loss=test_running_loss,
+                ),
+                checkpoint=Checkpoint.from_directory(tmpdir),
+            )
 
 
 if __name__ == "__main__":
@@ -601,6 +603,10 @@ if __name__ == "__main__":
     DROPOUT_EVERY = 5
     DROPOUT_PROB = 0.2
 
+    # The following random_shuffle operations are lazy.
+    # They will be re-run every epoch.
+    train_dataset = train_dataset.random_shuffle()
+    test_dataset = test_dataset.random_shuffle()
     datasets = {"train": train_dataset, "test": test_dataset}
 
     config = {
@@ -633,10 +639,12 @@ if __name__ == "__main__":
             resources_per_worker=resources_per_worker,
         ),
         run_config=RunConfig(callbacks=callbacks),
-        dataset_config={"train": DatasetConfig(global_shuffle=True)},
+        dataset_config=DataConfig(datasets_to_split=["train", "test"]),
     )
     results = trainer.fit()
-    state_dict = results.checkpoint.to_dict()["model"]
+
+    with results.checkpoint.as_directory() as tmpdir:
+        state_dict = torch.load(os.path.join(tmpdir, "checkpoint.pt"))
 
     def load_model_func():
         num_layers = config["num_layers"]

@@ -19,9 +19,9 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
@@ -77,6 +77,11 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
       rpc::GetAllAvailableResourcesRequest request,
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle get ids of draining nodes.
+  void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
+                              rpc::GetDrainingNodesReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle report resource usage rpc from a raylet.
   void HandleReportResourceUsage(rpc::ReportResourceUsageRequest request,

@@ -3,7 +3,7 @@
 Working with Tensors
 ====================
 
-N-dimensional arrays (i.e., tensors) are ubiquitous in ML workloads. This guide
+N-dimensional arrays (in other words, tensors) are ubiquitous in ML workloads. This guide
 describes the limitations and best practices of working with such data.
 
 Tensor data representation
@@ -98,9 +98,8 @@ Call :meth:`~ray.data.Dataset.map` or :meth:`~ray.data.Dataset.map_batches` to t
     # Increase the brightness, batch at a time.
     ds.map_batches(batch_increase_brightness)
 
-In this example, we return ``np.ndarray`` directly as the output. Ray Data will also treat
-returned lists of ``np.ndarray`` and objects implementing ``__array__`` (e.g., ``torch.Tensor``)
-as tensor data.
+In addition to NumPy ndarrays, Ray Data also treats returned lists of NumPy ndarrays and
+objects implementing ``__array__`` (for example, ``torch.Tensor``) as tensor data.
 
 For more information on transforming data, read
 :ref:`Transforming data <transforming_data>`.
@@ -122,7 +121,7 @@ formats, see the :ref:`Input/Output reference <input-output>`.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_parquet("/tmp/simple")
 
 
@@ -135,7 +134,7 @@ formats, see the :ref:`Input/Output reference <input-output>`.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_numpy("/tmp/simple", column="image")
 
     .. tab-item:: JSON
@@ -146,7 +145,7 @@ formats, see the :ref:`Input/Output reference <input-output>`.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_json("/tmp/simple")
 
 For more information on saving data, read :ref:`Saving data <loading_data>`.

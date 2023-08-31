@@ -32,7 +32,7 @@ from ray_release.util import get_anyscale_sdk
 from ray_release.test import Test
 
 TEST_CLUSTER_ENV = {
-    "base_image": "anyscale/ray:nightly-py37",
+    "base_image": "anyscale/ray:nightly-py38",
     "env_vars": {},
     "python": {
         "pip_packages": [],

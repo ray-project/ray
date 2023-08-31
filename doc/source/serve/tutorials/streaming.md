@@ -2,10 +2,6 @@
 
 # Streaming Tutorial
 
-:::{warning}
-Support for streaming is experimental. To enable this feature, set `RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1` on the cluster before starting Ray. If you encounter any issues, [file an issue on GitHub](https://github.com/ray-project/ray/issues/new/choose).
-:::
-
 This guide walks you through deploying a chatbot that streams output back to the
 user. It shows:
 

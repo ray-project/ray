@@ -2,7 +2,12 @@ import json
 import copy
 import logging
 import os
-from typing import Optional
+from typing import Optional, Tuple
+
+try:
+    import cProfile
+except ImportError:
+    pass
 
 import ray
 from ray.serve._private.common import ServeComponentType
@@ -21,10 +26,12 @@ from ray.serve._private.constants import (
     SERVE_LOG_TIME,
     SERVE_LOG_LEVEL_NAME,
     SERVE_LOG_REPLICA,
+    RAY_SERVE_ENABLE_MEMORY_PROFILING,
+    RAY_SERVE_ENABLE_CPU_PROFILING,
 )
 
 
-LOG_FILE_FMT = "{component_name}_{component_id}.log"
+LOG_FILE_FMT = "{component_name}_{component_id}{suffix}"
 
 
 class ServeJSONFormatter(logging.Formatter):
@@ -196,25 +203,20 @@ def configure_component_logger(
     stream_handler.addFilter(log_to_stderr_filter)
     logger.addHandler(stream_handler)
 
-    logs_dir = os.path.join(
-        ray._private.worker._global_node.get_logs_dir_path(), "serve"
-    )
+    logs_dir = get_serve_logs_dir()
     os.makedirs(logs_dir, exist_ok=True)
     if max_bytes is None:
         max_bytes = ray._private.worker._global_node.max_bytes
     if backup_count is None:
         backup_count = ray._private.worker._global_node.backup_count
 
-    # For DEPLOYMENT component type, we want to log the deployment name
-    # instead of adding the component type to the component name.
-    component_log_file_name = component_name
-    if component_type is not None:
-        component_log_file_name = f"{component_type}_{component_name}"
-        if component_type != ServeComponentType.DEPLOYMENT:
-            component_name = f"{component_type}_{component_name}"
-    log_file_name = LOG_FILE_FMT.format(
-        component_name=component_log_file_name, component_id=component_id
+    log_file_name = get_component_log_file_name(
+        component_name=component_name,
+        component_id=component_id,
+        component_type=component_type,
+        suffix=".log",
     )
+
     file_handler = logging.handlers.RotatingFileHandler(
         os.path.join(logs_dir, log_file_name),
         maxBytes=max_bytes,
@@ -227,6 +229,148 @@ def configure_component_logger(
     else:
         file_handler.setFormatter(ServeFormatter(component_name, component_id))
     logger.addHandler(file_handler)
+
+
+def configure_component_memory_profiler(
+    component_name: str,
+    component_id: str,
+    component_type: Optional[ServeComponentType] = None,
+):
+    """Configures the memory logger for this component.
+
+    Does nothing if RAY_SERVE_ENABLE_MEMORY_PROFILING is disabled.
+    """
+
+    if RAY_SERVE_ENABLE_MEMORY_PROFILING:
+        logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+        try:
+            import memray
+
+            logs_dir = get_serve_logs_dir()
+            memray_file_name = get_component_log_file_name(
+                component_name=component_name,
+                component_id=component_id,
+                component_type=component_type,
+                suffix="_memray_0.bin",
+            )
+            memray_file_path = os.path.join(logs_dir, memray_file_name)
+
+            # If the actor restarted, memray requires a new file to start
+            # tracking memory.
+            restart_counter = 1
+            while os.path.exists(memray_file_path):
+                memray_file_name = get_component_log_file_name(
+                    component_name=component_name,
+                    component_id=component_id,
+                    component_type=component_type,
+                    suffix=f"_memray_{restart_counter}.bin",
+                )
+                memray_file_path = os.path.join(logs_dir, memray_file_name)
+                restart_counter += 1
+
+            # Memray usually tracks the memory usage of only a block of code
+            # within a context manager. We explicitly call __enter__ here
+            # instead of using a context manager to track memory usage across
+            # all of the caller's code instead.
+            memray.Tracker(memray_file_path, native_traces=True).__enter__()
+
+            logger.info(
+                "RAY_SERVE_ENABLE_MEMORY_PROFILING is enabled. Started a "
+                "memray tracker on this actor. Tracker file located at "
+                f'"{memray_file_path}"'
+            )
+
+        except ImportError:
+            logger.warning(
+                "RAY_SERVE_ENABLE_MEMORY_PROFILING is enabled, but memray "
+                "is not installed. No memory profiling is happening. "
+                "`pip install memray` to enable memory profiling."
+            )
+
+
+def configure_component_cpu_profiler(
+    component_name: str,
+    component_id: str,
+    component_type: Optional[ServeComponentType] = None,
+) -> Tuple[Optional[cProfile.Profile], Optional[str]]:
+    """Configures the CPU profiler for this component.
+
+    Does nothing if RAY_SERVE_ENABLE_CPU_PROFILING is disabled.
+
+    Returns:
+        2-tuple containing profiler object and log file name for profile stats.
+    """
+
+    if RAY_SERVE_ENABLE_CPU_PROFILING:
+        logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+        try:
+            import cProfile
+        except ImportError:
+            logger.warning(
+                "RAY_SERVE_ENABLE_CPU_PROFILING is enabled, but cProfile "
+                "is not installed. No CPU profiling is happening."
+            )
+            return None, None
+        try:
+            # Need marshal to dump data. Check if marshal is installed before
+            # starting the profiler.
+            import marshal  # noqa: F401
+        except ImportError:
+            logger.warning(
+                "RAY_SERVE_ENABLE_CPU_PROFILING is enabled, but marshal "
+                "is not installed. No CPU profiling is happening."
+            )
+            return None, None
+
+        logs_dir = get_serve_logs_dir()
+        cpu_profiler_file_name = get_component_log_file_name(
+            component_name=component_name,
+            component_id=component_id,
+            component_type=component_type,
+            suffix="_cprofile.prof",
+        )
+        cpu_profiler_file_path = os.path.join(logs_dir, cpu_profiler_file_name)
+
+        profile = cProfile.Profile()
+        profile.enable()
+        logger.info(
+            "RAY_SERVE_ENABLE_CPU_PROFILING is enabled. Started cProfile "
+            "on this actor."
+        )
+        return profile, cpu_profiler_file_path
+    else:
+        return None, None
+
+
+def get_serve_logs_dir() -> str:
+    """Get the directory that stores Serve log files."""
+
+    return os.path.join(ray._private.worker._global_node.get_logs_dir_path(), "serve")
+
+
+def get_component_log_file_name(
+    component_name: str,
+    component_id: str,
+    component_type: Optional[ServeComponentType],
+    suffix: str = "",
+) -> str:
+    """Get the component's log file name."""
+
+    # For DEPLOYMENT component type, we want to log the deployment name
+    # instead of adding the component type to the component name.
+    component_log_file_name = component_name
+    if component_type is not None:
+        component_log_file_name = f"{component_type}_{component_name}"
+        if component_type != ServeComponentType.DEPLOYMENT:
+            component_name = f"{component_type}_{component_name}"
+    log_file_name = LOG_FILE_FMT.format(
+        component_name=component_log_file_name,
+        component_id=component_id,
+        suffix=suffix,
+    )
+    return log_file_name
 
 
 class LoggingContext:

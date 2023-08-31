@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
+
 .. _rllib-reference-docs:
 
 Ray RLlib API
@@ -25,6 +27,7 @@ If you think there is anything missing, please open an issue on `Github`_.
     models.rst
     catalogs.rst
     rl_modules.rst
+    learner.rst
     evaluation.rst
     replay-buffers.rst
     utils.rst

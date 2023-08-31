@@ -461,6 +461,7 @@ def one_hot(
     depth: int = 0,
     on_value: float = 1.0,
     off_value: float = 0.0,
+    dtype: type = np.float32,
 ) -> np.ndarray:
     """One-hot utility function for numpy.
 
@@ -515,7 +516,7 @@ def one_hot(
         indices.append(r)
     indices.append(x)
     out[tuple(indices)] = on_value
-    return out
+    return out.astype(dtype)
 
 
 @PublicAPI

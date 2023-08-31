@@ -93,7 +93,6 @@ COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
 # as Trainable)
 DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
 
-
 # NOTE: When adding a new environment variable, please track it in this list.
 # TODO(ml-team): Most env var constants should get moved here.
 AIR_ENV_VARS = {

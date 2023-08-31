@@ -13,7 +13,17 @@ Here is a single three-node DAG (note the use of ``.bind(...)`` instead of
 ``.remote(...)``). The DAG will not be executed until further actions are
 taken on it:
 
-.. code-block:: python
+.. testcode::
+    :hide:
+
+    import tempfile
+    import ray
+
+    temp_dir = tempfile.TemporaryDirectory()
+
+    ray.init(num_gpus=1, storage=f"file://{temp_dir.name}")
+
+.. testcode::
 
     from typing import List
     import ray
@@ -46,7 +56,7 @@ We can plot this DAG by using ``ray.dag.vis_utils.plot(output, "output.jpg")``:
 
 Next, let's execute the DAG we defined and inspect the result:
 
-.. code-block:: python
+.. testcode::
 
     # <follow the previous code>
     from ray import workflow
@@ -58,6 +68,11 @@ Next, let's execute the DAG we defined and inspect the result:
     # 'ray.get'
     output_ref = workflow.run_async(output)
     print(ray.get(output_ref))
+
+.. testoutput::
+
+    285
+    285
 
 
 Each node in the original DAG becomes a workflow task. You can think of workflow
@@ -72,7 +87,7 @@ You can directly set Ray options to a workflow task just like a normal
 Ray remote function. To set workflow-specific options, use ``workflow.options``
 either as a decorator or as kwargs to ``<task>.options``:
 
-.. code-block:: python
+.. testcode::
 
     import ray
     from ray import workflow
@@ -91,7 +106,7 @@ Retrieving Workflow Results
 
 To retrieve a workflow result, assign ``workflow_id`` when running a workflow:
 
-.. code-block:: python
+.. testcode::
 
     import ray
     from ray import workflow
@@ -100,7 +115,7 @@ To retrieve a workflow result, assign ``workflow_id`` when running a workflow:
         # Cleanup previous workflows
         # An exception will be raised if it doesn't exist.
         workflow.delete("add_example")
-    except workflow.WorkflowNotFoundError:
+    except workflow.exceptions.WorkflowNotFoundError:
         pass
 
     @ray.remote
@@ -113,17 +128,25 @@ To retrieve a workflow result, assign ``workflow_id`` when running a workflow:
 
     ret = add.bind(get_val.bind(), 20)
 
-    assert workflow.run(ret, workflow_id="add_example") == 30
+    print(workflow.run(ret, workflow_id="add_example"))
+
+.. testoutput::
+
+    30
 
 The workflow results can be retrieved with
 ``workflow.get_output(workflow_id)``. If a workflow is not given a
 ``workflow_id``, a random string is set as the ``workflow_id``. To list all
 workflow ids, call ``ray.workflow.list_all()``.
 
-.. code-block:: python
+.. testcode::
 
-    assert workflow.get_output("add_example") == 30
+    print(workflow.get_output("add_example"))
     # "workflow.get_output_async" is an asynchronous version
+
+.. testoutput::
+
+    30
 
 Sub-Task Results
 ~~~~~~~~~~~~~~~~
@@ -139,7 +162,7 @@ If there are multiple tasks with the same id, a suffix with a counter ``_n`` wil
 Once a task id is given, the result of the task will be retrievable via ``workflow.get_output(workflow_id, task_id="task_id")``.
 If the task with the given ``task_id`` hasn't been executed before the workflow completes, an exception will be thrown. Here are some examples:
 
-.. code-block:: python
+.. testcode::
 
     import ray
     from ray import workflow
@@ -148,7 +171,7 @@ If the task with the given ``task_id`` hasn't been executed before the workflow 
     try:
         # cleanup previous workflows
         workflow.delete(workflow_id)
-    except workflow.WorkflowNotFoundError:
+    except workflow.exceptions.WorkflowNotFoundError:
         pass
 
     @ray.remote
@@ -180,7 +203,7 @@ Workflow provides two ways to handle application-level exceptions: (1) automatic
 ``max_retries`` and ``retry_exceptions`` are also Ray task options,
 so they should be used inside the Ray remote decorator. Here is how you could use them:
 
-.. code-block:: python
+.. testcode::
 
     # specify in decorator
     @workflow.options(catch_exceptions=True)
@@ -196,7 +219,7 @@ so they should be used inside the Ray remote decorator. Here is how you could us
 
 Here is one example:
 
-.. code-block:: python
+.. testcode::
 
     from typing import Tuple
     import random
@@ -212,7 +235,10 @@ Here is one example:
 
     # Tries up to five times before giving up.
     r1 = faulty_function.options(max_retries=5).bind()
-    workflow.run(r1)
+    try:
+        workflow.run(r1)
+    except ray.exceptions.RayTaskError:
+        pass
 
     @ray.remote
     def handle_errors(result: Tuple[str, Exception]):
@@ -244,8 +270,10 @@ Failure model
 
 Note that tasks that have side effects still need to be idempotent. This is because the task could always fail before its result is logged.
 
-.. code-block:: python
-    :caption: Non-idempotent workflow:
+Non-idempotent workflow:
+
+.. testcode::
+    :skipif: True
 
     @ray.remote
     def book_flight_unsafe() -> FlightTicket:
@@ -256,8 +284,10 @@ Note that tasks that have side effects still need to be idempotent. This is beca
     # UNSAFE: we could book multiple flight tickets
     workflow.run(book_flight_unsafe.bind())
 
-.. code-block:: python
-    :caption: Idempotent workflow:
+Idempotent workflow:
+
+.. testcode::
+    :skipif: True
 
     @ray.remote
     def generate_id() -> str:
@@ -278,25 +308,33 @@ Note that tasks that have side effects still need to be idempotent. This is beca
 Dynamic workflows
 -----------------
 
-Workflow tasks can be dynamically created in the runtime. In theory, Ray DAG is
-static which means a DAG node can't be returned in a DAG node. For example, the
-following code is invalid:
+Ray DAGs are static -- returning a node from another node isn't a valid way to
+construct a graph. For example, the following code prints a DAG
+node, not the output of `bar`:
 
-.. code-block:: python
+.. testcode::
 
     @ray.remote
-    def bar(): ...
+    def bar():
+        print("Hello from bar!")
 
     @ray.remote
     def foo():
-        return bar.bind() # This is invalid since Ray DAG is static
+        # This is evaluated at runtime, not in DAG construction.
+        return bar.bind()
 
-    ray.get(foo.bind().execute()) # This will error
+    # Executing `foo` returns the `bar` DAG node, *not* its result.
+    print("Output of foo DAG:", type(ray.get(foo.bind().execute())))
 
-Workflow introduces a utility function called ``workflow.continuation`` which
-makes Ray DAG node can return a DAG in the runtime:
+.. testoutput::
 
-.. code-block:: python
+    Output of foo DAG: <class 'ray.dag.function_node.FunctionNode'>
+
+
+To enable dynamically executing DAG nodes at runtime, workflows introduces a utility
+function called ``workflow.continuation``:
+
+.. testcode::
 
     @ray.remote
     def bar():
@@ -317,7 +355,7 @@ The dynamic workflow enables nesting, looping, and recursion within workflows.
 The following example shows how to implement the recursive ``factorial`` program
 using dynamically workflow:
 
-.. code-block:: python
+.. testcode::
 
     @ray.remote
     def factorial(n: int) -> int:
@@ -343,7 +381,8 @@ substituted for the task's return.
 
 To better understand dynamic workflows, let's look at a more realistic example of booking a trip:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     @ray.remote
     def book_flight(...) -> Flight: ...
@@ -401,10 +440,10 @@ not resolved. But we ensure that all ancestors of a task are fully executed
 before the task starts which is different from passing them into a Ray remote
 function whether they have been executed or not is not defined.
 
-.. code-block:: python
+.. testcode::
 
     @ray.remote
-    def add(values: List[ray.ObjectRef[int]]) -> int:
+    def add(values: List[ray.ObjectRef]) -> int:
         # although those values are not resolved, they have been
         # *fully executed and checkpointed*. This guarantees exactly-once
         # execution semantics.
@@ -426,7 +465,7 @@ recoverability, their contents will be logged to durable storage before
 executing. However, an object will not be checkpointed more than once, even if
 it is passed to many different tasks.
 
-.. code-block:: python
+.. testcode::
 
     @ray.remote
     def do_add(a, b):
@@ -446,10 +485,10 @@ Setting custom resources for tasks
 
 You can assign resources (e.g., CPUs, GPUs to tasks via the same ``num_cpus``, ``num_gpus``, and ``resources`` arguments that Ray tasks take):
 
-.. code-block:: python
+.. testcode::
 
-    @ray.remote(num_gpus=1)
-    def train_model() -> Model:
+    @ray.remote
+    def train_model():
         pass  # This task is assigned to a GPU by Ray.
 
-    workflow.run(train_model.bind())
+    workflow.run(train_model.options(num_gpus=1).bind())

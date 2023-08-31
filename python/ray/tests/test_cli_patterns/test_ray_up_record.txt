@@ -73,9 +73,9 @@
 .+\.py.*Full command is `ssh.+`
 .+\.py.*NodeUpdater: i-.+: Setup commands succeeded \[LogTimer=.+\]
 .+\.py.*\[7/7\] Starting the Ray runtime
-.+\.py.*Running `export RAY_USAGE_STATS_ENABLED=1;export RAY_OVERRIDE_RESOURCES='{"CPU":1}';ray stop`
+.+\.py.*Running `export RAY_USAGE_STATS_ENABLED=1;export RAY_OVERRIDE_RESOURCES='{"CPU":1}';export RAY_OVERRIDE_LABELS='{"key1":"value1"}';ray stop`
 .+\.py.*Full command is `ssh.+`
-.+\.py.*Running `export RAY_USAGE_STATS_ENABLED=1;export RAY_OVERRIDE_RESOURCES='{"CPU":1}';ray start --head --autoscaling-config=~/ray_bootstrap_config\.yaml`
+.+\.py.*Running `export RAY_USAGE_STATS_ENABLED=1;export RAY_OVERRIDE_RESOURCES='{"CPU":1}';export RAY_OVERRIDE_LABELS='{"key1":"value1"}';ray start --head --autoscaling-config=~/ray_bootstrap_config\.yaml`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*NodeUpdater: i-.+: Ray start commands succeeded \[LogTimer=.+\]
 .+\.py.*NodeUpdater: i-.+: Applied config .+  \[LogTimer=.+\]

@@ -28,31 +28,42 @@ namespace ray {
 namespace rpc {
 /// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
 /// limit.
-#define _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, RECORD_METRICS) \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                    \
-      new ServerCallFactoryImpl<SERVICE,                                        \
-                                SERVICE##Handler,                               \
-                                HANDLER##Request,                               \
-                                HANDLER##Reply>(                                \
-          service_,                                                             \
-          &SERVICE::AsyncService::Request##HANDLER,                             \
-          service_handler_,                                                     \
-          &SERVICE##Handler::Handle##HANDLER,                                   \
-          cq,                                                                   \
-          main_service_,                                                        \
-          #SERVICE ".grpc_server." #HANDLER,                                    \
-          cluster_id,                                                           \
-          MAX_ACTIVE_RPCS,                                                      \
-          RECORD_METRICS));                                                     \
+#define _RPC_SERVICE_HANDLER(                                             \
+    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, RECORD_METRICS)         \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(              \
+      new ServerCallFactoryImpl<SERVICE,                                  \
+                                SERVICE##Handler,                         \
+                                HANDLER##Request,                         \
+                                HANDLER##Reply,                           \
+                                AUTH_TYPE>(                               \
+          service_,                                                       \
+          &SERVICE::AsyncService::Request##HANDLER,                       \
+          service_handler_,                                               \
+          &SERVICE##Handler::Handle##HANDLER,                             \
+          cq,                                                             \
+          main_service_,                                                  \
+          #SERVICE ".grpc_server." #HANDLER,                              \
+          AUTH_TYPE == AuthType::NO_AUTH ? ClusterID::Nil() : cluster_id, \
+          MAX_ACTIVE_RPCS,                                                \
+          RECORD_METRICS));                                               \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
 /// Define a RPC service handler with gRPC server metrics enabled.
 #define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, true)
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AuthType::LAZY_AUTH, true)
 
 /// Define a RPC service handler with gRPC server metrics disabled.
 #define RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, false)
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AuthType::LAZY_AUTH, false)
+
+/// Define a RPC service handler with gRPC server metrics enabled.
+#define RPC_SERVICE_HANDLER_CUSTOM_AUTH(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE) \
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, true)
+
+/// Define a RPC service handler with gRPC server metrics disabled.
+#define RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED( \
+    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE)                \
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false)
 
 // Define a void RPC client method.
 #define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
@@ -82,6 +93,7 @@ class GrpcServer {
   GrpcServer(std::string name,
              const uint32_t port,
              bool listen_to_localhost_only,
+             const ClusterID &cluster_id = ClusterID::Nil(),
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/)
       : name_(std::move(name)),

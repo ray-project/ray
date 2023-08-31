@@ -73,10 +73,6 @@ Existing middlewares, **automatic OpenAPI documentation generation**, and other 
 
 ### WebSockets
 
-```{warning}
-Support for WebSockets is experimental. To enable this feature, set `RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1` on the cluster before starting Ray. If you encounter any issues, [file an issue on GitHub](https://github.com/ray-project/ray/issues/new/choose).
-```
-
 Serve supports WebSockets via FastAPI:
 
 ```{literalinclude} doc_code/http_guide/websockets_example.py
@@ -98,10 +94,6 @@ Query the deployment using the `websockets` package (`pip install websockets`):
 (serve-http-streaming-response)=
 ## Streaming Responses
 
-```{warning}
-Support for HTTP streaming responses is experimental. To enable this feature, set `RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1` on the cluster before starting Ray. If you encounter any issues, [file an issue on GitHub](https://github.com/ray-project/ray/issues/new/choose).
-```
-
 Some applications must stream incremental results back to the caller.
 This is common for text generation using large language models (LLMs) or video processing applications.
 The full forward pass may take multiple seconds, so providing incremental results as they're available provides a much better user experience.
@@ -122,7 +114,7 @@ This code uses the `stream=True` option to the [requests](https://requests.readt
 Save this code in `stream.py` and run it:
 
 ```bash
-$ RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1 python stream.py
+$ python stream.py
 [2023-05-25 10:44:23]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (ServeController pid=40401) INFO 2023-05-25 10:44:25,296 controller 40401 deployment_state.py:1259 - Deploying new version of deployment default_StreamingResponder.
 (HTTPProxyActor pid=40403) INFO:     Started server process [40403]
@@ -138,6 +130,43 @@ Got result 0.7s after start: '7'
 Got result 0.8s after start: '8'
 Got result 0.9s after start: '9'
 (ServeReplica:default_StreamingResponder pid=41052) INFO 2023-05-25 10:49:52,230 default_StreamingResponder default_StreamingResponder#qlZFCa yomKnJifNJ / default replica.py:634 - __CALL__ OK 1017.6ms
+```
+
+### Handling client disconnects
+
+In some cases, you may want to cease processing a request when the client disconnects before the full stream has been returned.
+If you pass an async generator to `StreamingResponse`, it will be cancelled and raise an `asyncio.CancelledError` when the client disconnects.
+Note that you must `await` at some point in the generator for the cancellation to occur.
+
+In the example below, the generator streams responses forever until the client disconnects, then it prints that it was cancelled and exits. Save this code in `stream.py` and run it:
+
+
+```{literalinclude} doc_code/http_guide/streaming_example.py
+:start-after: __begin_cancellation__
+:end-before: __end_cancellation__
+:language: python
+```
+
+```bash
+$ python stream.py
+[2023-07-10 16:08:41]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
+(ServeController pid=50801) INFO 2023-07-10 16:08:42,296 controller 40401 deployment_state.py:1259 - Deploying new version of deployment default_StreamingResponder.
+(HTTPProxyActor pid=50803) INFO:     Started server process [50803]
+(ServeController pid=50805) INFO 2023-07-10 16:08:42,963 controller 50805 deployment_state.py:1586 - Adding 1 replica to deployment default_StreamingResponder.
+Got result 0.0s after start: '0'
+Got result 0.1s after start: '1'
+Got result 0.2s after start: '2'
+Got result 0.3s after start: '3'
+Got result 0.4s after start: '4'
+Got result 0.5s after start: '5'
+Got result 0.6s after start: '6'
+Got result 0.7s after start: '7'
+Got result 0.8s after start: '8'
+Got result 0.9s after start: '9'
+Got result 1.0s after start: '10'
+Client disconnecting
+(ServeReplica:default_StreamingResponder pid=50842) Cancelled! Exiting.
+(ServeReplica:default_StreamingResponder pid=50842) INFO 2023-07-10 16:08:45,756 default_StreamingResponder default_StreamingResponder#cmpnmF ahteNDQSWx / default replica.py:691 - __CALL__ OK 1019.1ms
 ```
 
 (serve-http-adapters)=
@@ -169,37 +198,10 @@ You can specify different type signatures to facilitate the extraction of HTTP f
 
 For more details, you can take a look at the [FastAPI documentation](https://fastapi.tiangolo.com/).
 
-In addition to above adapters, you also use other adapters. Below we examine at least three:
+In addition to above adapters, you also use other adapters. Below we examine at least two:
 
-- Ray AIR `Predictor`
 - Serve Deployment Graph `DAGDriver`
 - Embedded in Bring Your Own `FastAPI` Application
-
-### Ray AIR `Predictor`
-
-Ray Serve provides a suite of adapters to convert HTTP requests to ML inputs like `numpy` arrays.
-You can use them together with the [Ray AI Runtime (AIR) model wrapper](air-serving-guide) feature
-to one-click deploy pre-trained models.
-
-As an example, we provide a simple adapter for an *n*-dimensional array.
-
-When using [model wrappers](air-serving-guide), you can specify your HTTP adapter via the `http_adapter` field:
-
-```python
-from ray import serve
-from ray.serve.http_adapters import json_to_ndarray
-from ray.serve import PredictorDeployment
-
-serve.run(PredictorDeployment.options(name="my_model").bind(
-    my_ray_air_predictor,
-    my_ray_air_checkpoint,
-    http_adapter=json_to_ndarray
-))
-```
-
-:::{note}
-`my_ray_air_predictor` and `my_ray_air_checkpoint` are two arguments int `PredictorDeployment` constructor. For detailed usage, please checkout [Ray AI Runtime (AIR) model wrapper](air-serving-guide)
-:::
 
 ### Serve Deployment Graph `DAGDriver`
 
@@ -251,8 +253,6 @@ class User(BaseModel):
 
 # ...
 
-PredictorDeployment.deploy(..., http_adapter=User)
-# Or:
 DAGDriver.bind(other_node, http_adapter=User)
 
 ```
@@ -267,4 +267,3 @@ Here is a list of adapters; please feel free to [contribute more](https://github
     :members: json_to_ndarray, image_to_ndarray, starlette_request, json_request, pandas_read_json, json_to_multi_ndarray
 
 ```
-

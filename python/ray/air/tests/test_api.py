@@ -1,9 +1,8 @@
 import pytest
 
 import ray
-from ray.air import Checkpoint
+from ray.train import Checkpoint, CheckpointConfig, ScalingConfig
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
-from ray.air.config import ScalingConfig, CheckpointConfig
 from ray.data.preprocessor import Preprocessor
 from ray.train.trainer import BaseTrainer
 
@@ -35,7 +34,7 @@ def test_run_config():
     DummyTrainer(run_config=None)
 
     # Succeed
-    DummyTrainer(run_config=ray.air.RunConfig())
+    DummyTrainer(run_config=ray.train.RunConfig())
 
 
 def test_checkpointing_config():
@@ -202,27 +201,12 @@ def test_datasets():
     DummyTrainer(datasets={"test": DummyDataset()})
 
 
-def test_preprocessor():
-    with pytest.raises(ValueError):
-        DummyTrainer(preprocessor="invalid")
-
-    with pytest.raises(ValueError):
-        DummyTrainer(preprocessor=False)
-
-    with pytest.raises(ValueError):
-        DummyTrainer(preprocessor=True)
-
-    with pytest.raises(ValueError):
-        DummyTrainer(preprocessor={})
-
-    # Succeed
-    DummyTrainer(preprocessor=None)
-
-    # Succeed
-    DummyTrainer(preprocessor=Preprocessor())
+def test_preprocessor_deprecated():
+    with pytest.raises(DeprecationWarning):
+        DummyTrainer(preprocessor=Preprocessor())
 
 
-def test_resume_from_checkpoint():
+def test_resume_from_checkpoint(tmpdir):
     with pytest.raises(ValueError):
         DummyTrainer(resume_from_checkpoint="invalid")
 
@@ -239,7 +223,7 @@ def test_resume_from_checkpoint():
     DummyTrainer(resume_from_checkpoint=None)
 
     # Succeed
-    DummyTrainer(resume_from_checkpoint=Checkpoint.from_dict({"empty": ""}))
+    DummyTrainer(resume_from_checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 if __name__ == "__main__":

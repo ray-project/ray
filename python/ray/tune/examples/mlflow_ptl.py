@@ -4,14 +4,13 @@ import os
 import tempfile
 
 import pytorch_lightning as pl
-from pl_bolts.datamodules import MNISTDataModule
 
 import mlflow
 
-from ray import air, tune
+from ray import train, tune
 from ray.air.integrations.mlflow import setup_mlflow
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
-from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier
+from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier, MNISTDataModule
 
 
 def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
@@ -45,7 +44,7 @@ def tune_mnist(
 ):
     data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
     # Download data
-    MNISTDataModule(data_dir=data_dir).prepare_data()
+    MNISTDataModule(data_dir=data_dir, batch_size=32).prepare_data()
 
     # Set the MLflow experiment, or create it if it does not exist.
     mlflow.set_tracking_uri(tracking_uri)
@@ -76,7 +75,7 @@ def tune_mnist(
             mode="min",
             num_samples=num_samples,
         ),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="tune_mnist",
         ),
         param_space=config,

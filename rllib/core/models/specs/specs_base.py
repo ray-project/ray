@@ -54,6 +54,9 @@ class TypeSpec(Spec):
     def __init__(self, dtype: Type) -> None:
         self.dtype = dtype
 
+    def __repr__(self):
+        return f"TypeSpec({str(self.dtype)})"
+
     @override(Spec)
     def validate(self, data: Any) -> None:
         if not isinstance(data, self.dtype):

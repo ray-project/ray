@@ -110,7 +110,7 @@ class TestDeploymentOptions:
         def f():
             pass
 
-        assert f._config.user_configured_option_names == set(options.keys())
+        assert f._deployment_config.user_configured_option_names == set(options.keys())
 
     @pytest.mark.parametrize("options", deployment_option_combos)
     def test_user_configured_option_names_schematized(self, options: Dict):
@@ -140,11 +140,17 @@ class TestDeploymentOptions:
         # Don't track name in the deschematized deployment since it's optional
         # in deployment decorator but required in schema, leading to
         # inconsistent behavior.
-        if "name" in deschematized_deployment._config.user_configured_option_names:
-            deschematized_deployment._config.user_configured_option_names.remove("name")
+        if (
+            "name"
+            in deschematized_deployment._deployment_config.user_configured_option_names
+        ):
+            deschematized_deployment._deployment_config.user_configured_option_names.remove(  # noqa: E501
+                "name"
+            )
 
-        assert deschematized_deployment._config.user_configured_option_names == set(
-            options.keys()
+        assert (
+            deschematized_deployment._deployment_config.user_configured_option_names
+            == set(options.keys())
         )
 
     @pytest.mark.parametrize("options", deployment_option_combos)
@@ -165,7 +171,7 @@ class TestDeploymentOptions:
         def f():
             pass
 
-        serialized_config = f._config.to_proto_bytes()
+        serialized_config = f._deployment_config.to_proto_bytes()
         deserialized_config = DeploymentConfig.from_proto_bytes(serialized_config)
 
         assert deserialized_config.user_configured_option_names == set(options.keys())
@@ -208,14 +214,14 @@ class TestDeploymentOptions:
             pass
 
         f = f.options(**options)
-        assert f._config.user_configured_option_names == set(options.keys())
+        assert f._deployment_config.user_configured_option_names == set(options.keys())
 
         @serve.deployment
         def g():
             pass
 
         g.set_options(**options)
-        assert g._config.user_configured_option_names == set(options.keys())
+        assert g._deployment_config.user_configured_option_names == set(options.keys())
 
 
 if __name__ == "__main__":

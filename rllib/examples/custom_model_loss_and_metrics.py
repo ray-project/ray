@@ -1,4 +1,5 @@
-"""Example of using custom_loss() with an imitation learning loss.
+"""Example of using custom_loss() with an imitation learning loss under the Policy
+and ModelV2 API.
 
 The default input file is too small to learn a good policy, but you can
 generate new experiences for IL training as follows:
