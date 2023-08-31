@@ -68,10 +68,6 @@ And I have this code:
 
   print(ray.get(futures))
 
-.. testoutput::
-    :hide:
-
-    ...
 
 then you will get a mix of True and False. If
 ``check_file()`` runs on the Head Node, or we're running
