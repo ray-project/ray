@@ -186,3 +186,22 @@ def ray_cc_test(name, copts = [], **kwargs):
         copts = COPTS + copts,
         **kwargs
     )
+
+
+def _filter_files_with_suffix_impl(ctx):
+    suffix = ctx.attr.suffix
+    filtered_files = [f for f in ctx.files.srcs if f.basename.endswith(suffix)]
+    print(filtered_files)
+    return [
+        DefaultInfo(
+            files = depset(filtered_files),
+        ),
+    ]
+
+filter_files_with_suffix = rule(
+    implementation = _filter_files_with_suffix_impl,
+    attrs = {
+        "srcs": attr.label_list(allow_files=True),
+        "suffix": attr.string(),
+    },
+)

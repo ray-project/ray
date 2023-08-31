@@ -91,14 +91,6 @@ config_setting(
     }
 )
 
-malloc_deps = select({
-    ":jemalloc": [
-         "@jemalloc//:libjemalloc",
-    ],
-    "//conditions:default": [],
-})
-
-
 # === Begin of rpc definitions ===
 # GRPC common lib.
 cc_library(
@@ -513,7 +505,7 @@ cc_binary(
         ":raylet_lib",
         "//src/ray/util",
         "@com_github_gflags_gflags//:gflags",
-    ] + malloc_deps,
+    ],
 )
 
 cc_library(
@@ -585,7 +577,7 @@ cc_binary(
         ":gcs_server_lib",
         ":stats_lib",
         "@com_github_gflags_gflags//:gflags",
-    ] + malloc_deps,
+    ],
 )
 
 # Ray native pubsub module.
@@ -2693,6 +2685,13 @@ copy_to_workspace(
     dstdir = "python/ray/core/src/ray/gcs",
 )
 
+copy_to_workspace(
+    name = "cp_jemalloc",
+    srcs = ["@jemalloc//:shared"],
+    dstdir = "python/ray/core/",
+)
+
+
 genrule(
     name = "install_py_proto",
     srcs = [
@@ -2734,7 +2733,12 @@ genrule(
         ":cp_redis",
         ":cp_raylet",
         ":cp_gcs_server",
-    ],
+    ] + select({
+        ":jemalloc": [
+            ":cp_jemalloc",
+        ],
+        "//conditions:default": [],
+    }),
     outs = ["ray_pkg.out"],
     cmd = """
         if [ "$${OSTYPE-}" = "msys" ]; then
@@ -2744,3 +2748,4 @@ genrule(
     """,
     local = 1,
 )
+
