@@ -1,9 +1,9 @@
 (kuberay-rayjob-quickstart)=
 
-# RayJob
+# RayJob Quickstart
 
 :::{warning}
-RayJob support in KubeRay v0.x is in alpha.  In KubeRay v1.0, RayJob will be graduated to generally available.
+RayJob support in KubeRay v0.x is in alpha.
 :::
 
 ## Prerequisites
