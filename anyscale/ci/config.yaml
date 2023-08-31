@@ -18,6 +18,9 @@ runner_queues:
   medium-arm64: mediumg
 forge_dirs:
   - ci/forge
+buildkite_dirs:
+  - .buildkite
+  - anyscale/ci/buildkite
 env:
   BUILDKITE_BAZEL_CACHE_URL: https://bk-premerge-first-jawfish-artifacts.s3.us-west-2.amazonaws.com/bazel/cache/runtime
   RAYCI_SKIP_UPLOAD: "true"

@@ -7,14 +7,11 @@ SCRIPT_ROOT="anyscale/ci"
 TEST_TYPE="$1"
 shift
 
-if [[ "${TEST_TYPE}" == "serve" ]]; then
-  TEST_SCRIPT="${SCRIPT_ROOT}/run-serve-tests.sh"
-  IMAGE_SUFFIX="ci-build"
-elif [[ "${TEST_TYPE}" == "data" ]]; then
+if [[ "${TEST_TYPE}" == "data" ]]; then
   TEST_SCRIPT="${SCRIPT_ROOT}/run-data-tests.sh"
   IMAGE_SUFFIX="ci-ml"
 else
-  echo "Usage: $0 serve|data <extra args>"
+  echo "Usage: $0 data <extra args>"
   exit 1
 fi
 

@@ -28,35 +28,12 @@ steps:
       automatic:
         limit: 1
   
-  - name: "ci build image"
-    key: "ci-build-image"
-    depends_on: "ci-test-base-image"
-    command:
-      - source anyscale/ci/setup-env.sh
-      - /bin/bash anyscale/ci/build-ci-build-image.sh
-    agents:
-      queue: "large"
-    retry:
-      automatic:
-        limit: 1
-
   - name: "ci ml image"
     key: "ci-ml-image"
     depends_on: "ci-test-base-image"
     command:
       - source anyscale/ci/setup-env.sh
       - /bin/bash anyscale/ci/build-ci-ml-image.sh
-    agents:
-      queue: "large"
-    retry:
-      automatic:
-        limit: 1
-
-  - name: "serve tests"
-    depends_on: "ci-build-image"
-    command:
-      - source anyscale/ci/setup-env.sh
-      - /bin/bash anyscale/ci/run-tests-in-docker.sh serve
     agents:
       queue: "large"
     retry:
