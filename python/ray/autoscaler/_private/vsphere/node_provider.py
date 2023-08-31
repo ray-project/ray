@@ -19,7 +19,7 @@ from com.vmware.vcenter.guest_client import (
     CustomizationSpec,
     GlobalDNSSettings,
 )
-from com.vmware.vcenter.vm.hardware_client import Cpu, Ethernet, Memory
+from com.vmware.vcenter.vm.hardware_client import Cpu, Memory
 from com.vmware.vcenter.vm_client import Power as HardPower
 from com.vmware.vcenter_client import VM
 from pyVim.task import WaitForTask
@@ -370,8 +370,7 @@ class VsphereNodeProvider(NodeProvider):
         # https://cloudinit.readthedocs.io/en/latest/explanation/format.html
 
         modified_userdata = "#cloud-config\n" + modified_userdata
-        logger.debug(
-            "Successfully modified the userdata file for vm {}".format(vm_id))
+        logger.debug("Successfully modified the userdata file for vm {}".format(vm_id))
 
         # Create cloud-init spec and apply
         cloudinit_config = CloudinitConfiguration(
@@ -405,8 +404,7 @@ class VsphereNodeProvider(NodeProvider):
         set_spec = vmcust_svc.SetSpec(name=spec_name, spec=None)
         vmcust_svc.set(vm=vm_id, spec=set_spec)
 
-        logger.debug(
-            "Successfully added cloudinit config for vm {}".format(vm_id))
+        logger.debug("Successfully added cloudinit config for vm {}".format(vm_id))
 
     # Example: If a tag called node-status:initializing is present on the VM.
     # If we would like to add a new value called finished with the node-status key.
@@ -548,9 +546,7 @@ class VsphereNodeProvider(NodeProvider):
             # Update Memory
             update_spec = Memory.UpdateSpec(size_mib=resources["Memory"])
 
-            logger.debug(
-                "vm.hardware.Memory.update({}, {})".format(vm_id, update_spec)
-            )
+            logger.debug("vm.hardware.Memory.update({}, {})".format(vm_id, update_spec))
             self.vsphere_sdk_client.vcenter.vm.hardware.Memory.update(
                 vm_id, update_spec
             )
