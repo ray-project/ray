@@ -11,7 +11,6 @@ _DOCKER_ECR_REPO = os.environ.get(
     "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp",
 )
 _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
-_PIPELINE_POSTMERGE = "0189e759-8c96-4302-b6b5-b4274406bf89"
 
 
 def run_tests(
@@ -59,7 +58,8 @@ def _run_tests_in_docker(test_targets: List[str], team: str) -> subprocess.Popen
             ]
         )
     commands.append(
-        "bazel test --config=ci $(./ci/run/bazel_export_options) "
+        "bazel test --config=ci "
+        "$(./ci/run/bazel_export_options) "
         f"{' '.join(test_targets)}",
     )
     return subprocess.Popen(_docker_run_bash_script("\n".join(commands), team))

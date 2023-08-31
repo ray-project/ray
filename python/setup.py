@@ -271,7 +271,14 @@ if setup_spec.type == SetupType.RAY:
             if sys.platform == "darwin"
             else "grpcio",
         ],
-        "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
+        "serve": [
+            "uvicorn",
+            "requests",
+            "starlette",
+            "fastapi",
+            "aiorwlock",
+            "watchfiles",
+        ],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
         "observability": [
             "opentelemetry-api",

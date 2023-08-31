@@ -20,6 +20,7 @@ from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.serve._private.constants import (
+    DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
 )
@@ -57,7 +58,7 @@ def _route_prefix_format(cls, v):
 
 
 @PublicAPI(stability="beta")
-class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
+class RayActorOptionsSchema(BaseModel):
     """Options with which to start a replica actor."""
 
     runtime_env: dict = Field(
@@ -137,9 +138,7 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="beta")
-class DeploymentSchema(
-    BaseModel, extra=Extra.forbid, allow_population_by_field_name=True
-):
+class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     """
     Specifies options for one deployment within a Serve application. For each deployment
     this can optionally be included in `ServeApplicationSchema` to override deployment
@@ -161,16 +160,7 @@ class DeploymentSchema(
     route_prefix: Union[str, None] = Field(
         default=DEFAULT.VALUE,
         description=(
-            "Requests to paths under this HTTP path "
-            "prefix will be routed to this deployment. When null, no HTTP "
-            "endpoint will be created. When omitted, defaults to "
-            "the deployment's name. Routing is done based on "
-            "longest-prefix match, so if you have deployment A with "
-            'a prefix of "/a" and deployment B with a prefix of "/a/b", '
-            'requests to "/a", "/a/", and "/a/c" go to A and requests '
-            'to "/a/b", "/a/b/", and "/a/b/c" go to B. Routes must not '
-            'end with a "/" unless they\'re the root (just "/"), which '
-            "acts as a catch-all."
+            "[DEPRECATED] Please use route_prefix under ServeApplicationSchema instead."
         ),
     )
     max_concurrent_queries: int = Field(
@@ -259,6 +249,16 @@ class DeploymentSchema(
         ),
     )
 
+    max_replicas_per_node: int = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "[EXPERIMENTAL] The max number of deployment replicas can "
+            "run on a single node. Valid values are None (no limitation) "
+            "or an integer in the range of [1, 100]. "
+            "Defaults to no limitation."
+        ),
+    )
+
     is_driver_deployment: bool = Field(
         default=DEFAULT.VALUE,
         description="Indicate Whether the deployment is driver deployment "
@@ -323,7 +323,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
 
 
 @PublicAPI(stability="beta")
-class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
+class ServeApplicationSchema(BaseModel):
     """
     Describes one Serve application, and currently can also be used as a standalone
     config to deploy a single application to a Ray cluster.
@@ -342,7 +342,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         default="/",
         description=(
             "Route prefix for HTTP requests. If not provided, it will use"
-            "route_prefix of the ingress deployment. By default, the ingress route"
+            "route_prefix of the ingress deployment. By default, the ingress route "
             "prefix is '/'."
         ),
     )
@@ -516,8 +516,36 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
-    """Options to start the HTTP Proxy with."""
+class gRPCOptionsSchema(BaseModel):
+    """Options to start the gRPC Proxy with."""
+
+    port: int = Field(
+        default=DEFAULT_GRPC_PORT,
+        description=(
+            "Port for gRPC server. Defaults to 9000. Cannot be updated once "
+            "Serve has started running. Serve must be shut down and restarted "
+            "with the new port instead."
+        ),
+    )
+    grpc_servicer_functions: List[str] = Field(
+        default=[],
+        description=(
+            "List of import paths for gRPC `add_servicer_to_server` functions to add "
+            "to Serve's gRPC proxy. Default to empty list, which means no gRPC methods "
+            "will be added and no gRPC server will be started. The servicer functions "
+            "need to be importable from the context of where Serve is running."
+        ),
+    )
+
+
+@PublicAPI(stability="alpha")
+class HTTPOptionsSchema(BaseModel):
+    """Options to start the HTTP Proxy with.
+
+    NOTE: This config allows extra parameters to make it forward-compatible (ie
+          older versions of Serve are able to accept configs from a newer versions,
+          simply ignoring new parameters)
+    """
 
     host: str = Field(
         default="0.0.0.0",
@@ -556,13 +584,17 @@ class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+class ServeDeploySchema(BaseModel):
     """
     Multi-application config for deploying a list of Serve applications to the Ray
     cluster.
 
     This is the request JSON schema for the v2 REST API
     `PUT "/api/serve/applications/"`.
+
+    NOTE: This config allows extra parameters to make it forward-compatible (ie
+          older versions of Serve are able to accept configs from a newer versions,
+          simply ignoring new parameters)
     """
 
     proxy_location: DeploymentMode = Field(
@@ -579,6 +611,9 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
     )
     applications: List[ServeApplicationSchema] = Field(
         ..., description=("The set of Serve applications to run on the Ray cluster.")
+    )
+    grpc_options: gRPCOptionsSchema = Field(
+        default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
     )
 
     @validator("applications")
@@ -838,6 +873,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
+    grpc_options: Optional[gRPCOptionsSchema] = Field(description="gRPC Proxy options.")
     http_proxies: Dict[str, HTTPProxyDetails] = Field(
         description=(
             "Mapping from node_id to details about the HTTP Proxy running on that node."

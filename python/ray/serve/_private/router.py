@@ -2,6 +2,7 @@ from abc import ABC
 import asyncio
 from collections import defaultdict, deque
 from dataclasses import dataclass
+import enum
 import itertools
 import logging
 import math
@@ -41,6 +42,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
+    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
 )
 from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -222,6 +224,14 @@ class ActorReplicaWrapper:
         return self._replica_info.replica_tag
 
     @property
+    def node_id(self) -> str:
+        return self._replica_info.node_id
+
+    @property
+    def availability_zone(self) -> Optional[str]:
+        return self._replica_info.availability_zone
+
+    @property
     def multiplexed_model_ids(self) -> Set[str]:
         return self._multiplexed_model_ids
 
@@ -314,6 +324,11 @@ class PendingRequest:
     metadata: RequestMetadata
 
 
+class LocalityScope(str, enum.Enum):
+    NODE = "NODE"
+    AVAILABILITY_ZONE = "AVAILABILITY_ZONE"
+
+
 class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     """Chooses a replica for each request using the "power of two choices" procedure.
 
@@ -349,18 +364,31 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         event_loop: asyncio.AbstractEventLoop,
         deployment_id: DeploymentID,
+        prefer_local_node_routing: bool = False,
+        prefer_local_az_routing: bool = False,
+        self_node_id: Optional[str] = None,
+        self_availability_zone: Optional[str] = None,
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
+        self._prefer_local_node_routing = prefer_local_node_routing
+        self._prefer_local_az_routing = prefer_local_az_routing
+        self._self_node_id = self_node_id
+        self._self_availability_zone = self_availability_zone
 
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
         self._replicas_updated_event = make_asyncio_event_version_compat(event_loop)
+        # Colocated replicas (e.g. wrt node, AZ)
+        self._colocated_replica_ids: DefaultDict[LocalityScope, Set[str]] = defaultdict(
+            set
+        )
         self._multiplexed_model_id_to_replica_ids: DefaultDict[Set[str]] = defaultdict(
             set
         )
+
         # When there is no match for a multiplexed model id, we will try to fallback
         # to all replicas immediately. This set is used to make sure we only fallback
         # once for concurrent requests for the same model id.
@@ -411,6 +439,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
         return self._replicas
 
+    @property
+    def app_name(self) -> str:
+        return self._deployment_id.app
+
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
 
@@ -419,22 +451,34 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         new_replicas = {}
         new_replica_id_set = set()
+        new_colocated_replica_ids = defaultdict(set)
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
         for r in replicas:
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
+            if self._self_node_id is not None and r.node_id == self._self_node_id:
+                new_colocated_replica_ids[LocalityScope.NODE].add(r.replica_id)
+            if (
+                self._self_availability_zone is not None
+                and r.availability_zone == self._self_availability_zone
+            ):
+                new_colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE].add(
+                    r.replica_id
+                )
             for model_id in r.multiplexed_model_ids:
                 new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
 
         if self._replica_id_set != new_replica_id_set:
+            app_msg = f" in application '{self.app_name}'" if self.app_name else ""
             logger.info(
-                f"Got updated replicas for deployment '{self._deployment_id.name}' "
-                f"in application '{self._deployment_id.app}': {new_replica_id_set}.",
+                f"Got updated replicas for deployment '{self._deployment_id.name}'"
+                f"{app_msg}: {new_replica_id_set}.",
                 extra={"log_to_stderr": False},
             )
 
         self._replicas = new_replicas
         self._replica_id_set = new_replica_id_set
+        self._colocated_replica_ids = new_colocated_replica_ids
         self._multiplexed_model_id_to_replica_ids = (
             new_multiplexed_model_id_to_replica_ids
         )
@@ -489,12 +533,16 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
-        """Generator that repeatedly chooses (at most) two random replicas
-        from `self._replicas`.
+        """Generator that repeatedly chooses (at most) two random available replicas.
 
-        For multiplexing, this will choose replicas that have the requested model ID.
-        If there are no replicas with the requested model ID, it will choose from all
-        replicas.
+        In the first iteration, only replicas colocated on the same node as this router
+        will be considered. If those are occupied, the full set of replicas will be
+        considered on subsequent iterations.
+
+        For multiplexing, this will first attempt to choose replicas that have the
+        requested model ID for a configured timeout. If no replicas with the matching
+        model ID are available after that timeout, it will fall back to the regular
+        procedure.
 
         After each iteration, there will be an increasing backoff sleep time (dictated
         by `self.backoff_sequence_s`). The caller should exit the generator to reset the
@@ -507,29 +555,31 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
             RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
         )
+        tried_same_node = False
+        tried_same_az = False
 
         while True:
             # If no replicas are available, wait until `update_replicas` is called.
             while len(self._replicas) == 0:
+                app_msg = f" in application '{self.app_name}'" if self.app_name else ""
                 logger.info(
                     "Tried to assign replica for deployment "
-                    f"'{self._deployment_id.name}' in application "
-                    f"'{self._deployment_id.app}' but none are available. Waiting for "
-                    "new replicas to be added.",
+                    f"'{self._deployment_id.name}'{app_msg} but none are available. "
+                    "Waiting for new replicas to be added.",
                     extra={"log_to_stderr": False},
                 )
                 self._replicas_updated_event.clear()
                 await self._replicas_updated_event.wait()
                 logger.info(
-                    f"Got replicas for deployment '{self._deployment_id.name}' in "
-                    f"application '{self._deployment_id.app}', waking up.",
+                    f"Got replicas for deployment '{self._deployment_id.name}'"
+                    f"{app_msg}, waking up.",
                     extra={"log_to_stderr": False},
                 )
 
             if multiplexed_start_matching_time is None:
                 multiplexed_start_matching_time = time.time()
 
-            candidate_replica_ids = set()
+            candidate_replica_ids = None
             if request_metadata is not None and request_metadata.multiplexed_model_id:
                 # Get candidates for multiplexed model ID.
                 if (
@@ -568,8 +618,28 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                             get_from_all_replicas=True,
                         )
                     )
+            elif (
+                self._prefer_local_node_routing
+                and not tried_same_node
+                and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
+            ):
+                # Attempt to schedule requests to replicas on the same node at most once
+                candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
+                tried_same_node = True
+            elif (
+                self._prefer_local_az_routing
+                and not tried_same_az
+                and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE])
+                > 0
+            ):
+                # Attempt to schedule requests to replicas in the same AZ at most once
+                candidate_replica_ids = self._colocated_replica_ids[
+                    LocalityScope.AVAILABILITY_ZONE
+                ]
+                tried_same_az = True
             else:
-                # non-multiplexed use case
+                # On subsequent iterations or when there are no replicas on the same
+                # node or AZ, consider all available replicas.
                 candidate_replica_ids = self._replica_id_set
 
             if candidate_replica_ids:
@@ -623,6 +693,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 if isinstance(t.exception(), RayActorError):
                     self._replicas.pop(t.replica_id, None)
                     self._replica_id_set.discard(t.replica_id)
+                    for id_set in self._colocated_replica_ids.values():
+                        id_set.discard(t.replica_id)
                     msg += " This replica will no longer be considered for requests."
 
                 logger.warning(msg)
@@ -1023,8 +1095,11 @@ class Router:
         self,
         controller_handle: ActorHandle,
         deployment_id: DeploymentID,
+        self_node_id: str,
+        self_availability_zone: Optional[str],
         event_loop: asyncio.BaseEventLoop = None,
         _use_new_routing: bool = False,
+        _prefer_local_node_routing: bool = False,
         _router_cls: Optional[str] = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
@@ -1033,6 +1108,7 @@ class Router:
         wrapper that adds metrics and logging.
         """
         self._event_loop = event_loop
+        self.deployment_id = deployment_id
 
         if _router_cls:
             self._replica_scheduler = load_class(_router_cls)(
@@ -1040,7 +1116,12 @@ class Router:
             )
         elif _use_new_routing:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-                event_loop, deployment_id
+                event_loop,
+                deployment_id,
+                _prefer_local_node_routing,
+                RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+                self_node_id,
+                self_availability_zone,
             )
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
@@ -1056,7 +1137,9 @@ class Router:
             tag_keys=("deployment", "route", "application"),
         )
         # TODO(zcin): use deployment name and application name instead of deployment id
-        self.num_router_requests.set_default_tags({"deployment": str(deployment_id)})
+        self.num_router_requests.set_default_tags(
+            {"deployment": deployment_id.name, "application": deployment_id.app}
+        )
 
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(
@@ -1069,7 +1152,7 @@ class Router:
         )
         # TODO(zcin): use deployment name and application name instead of deployment id
         self.num_queued_queries_gauge.set_default_tags(
-            {"deployment": str(deployment_id)}
+            {"deployment": deployment_id.name, "application": deployment_id.app}
         )
 
         self.long_poll_client = LongPollClient(
@@ -1084,7 +1167,6 @@ class Router:
         )
 
         # Start the metrics pusher if autoscaling is enabled.
-        self.deployment_id = deployment_id
         deployment_route = DeploymentRoute.FromString(
             ray.get(controller_handle.get_deployment_info.remote(*deployment_id))
         )
@@ -1107,7 +1189,7 @@ class Router:
             self.autoscaling_enabled = False
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
-        return {str(self.deployment_id): self.num_queued_queries}
+        return {self.deployment_id: self.num_queued_queries}
 
     async def assign_request(
         self,
@@ -1117,16 +1199,9 @@ class Router:
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
         """Assign a query to a replica and return the resulting object_ref."""
 
-        self.num_router_requests.inc(
-            tags={"route": request_meta.route, "application": request_meta.app_name}
-        )
+        self.num_router_requests.inc(tags={"route": request_meta.route})
         self.num_queued_queries += 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "application": request_meta.app_name,
-            },
-        )
+        self.num_queued_queries_gauge.set(self.num_queued_queries)
 
         # Optimization: if there are currently zero replicas for a deployment,
         # push handle metric to controller to allow for fast cold start time.
@@ -1136,7 +1211,7 @@ class Router:
             and len(self._replica_scheduler.curr_replicas) == 0
             and self.num_queued_queries == 1
         ):
-            self.push_metrics_to_controller({str(self.deployment_id): 1}, time.time())
+            self.push_metrics_to_controller({self.deployment_id: 1}, time.time())
 
         try:
             query = Query(
@@ -1155,12 +1230,7 @@ class Router:
             # raised. The finally block ensures that num_queued_queries
             # is correctly decremented in this case.
             self.num_queued_queries -= 1
-            self.num_queued_queries_gauge.set(
-                self.num_queued_queries,
-                tags={
-                    "application": request_meta.app_name,
-                },
-            )
+            self.num_queued_queries_gauge.set(self.num_queued_queries)
 
     def shutdown(self):
         """Shutdown router gracefully.

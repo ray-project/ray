@@ -101,6 +101,7 @@ build:tsan --copt -fno-omit-frame-pointer
 build:tsan --copt -Wno-uninitialized
 build:tsan --linkopt -fsanitize=thread
 build:tsan --cxxopt="-D_RAY_TSAN_BUILD"
+build:tsan --no//:jemalloc_flag
 # This config is only for running TSAN with LLVM toolchain on Linux.
 build:tsan-clang --config=tsan
 build:tsan-clang --config=llvm
@@ -113,6 +114,7 @@ build:asan --copt -fsanitize=address
 build:asan --copt -DADDRESS_SANITIZER
 build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
+build:asan --no//:jemalloc_flag
 test:asan --jobs=1
 test:asan --test_env=ASAN_OPTIONS="detect_leaks=0"
 # This config is only for running ASAN with LLVM toolchain on Linux.

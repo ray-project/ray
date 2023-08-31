@@ -2,8 +2,7 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.train import Result
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint, Result
 from ray.tune.result_grid import ResultGrid
 
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
@@ -140,12 +139,14 @@ def test_result_grid_repr(tmp_path):
   Result(
     metrics={'loss': 1.0},
     path='log_1',
+    filesystem='local',
     checkpoint=Checkpoint(filesystem=local, path=/tmp/ckpt1)
   ),
   Result(
     error='RuntimeError',
     metrics={'loss': 2.0},
     path='log_2',
+    filesystem='local',
     checkpoint=Checkpoint(filesystem=local, path=/tmp/ckpt2)
   )
 ]>"""
