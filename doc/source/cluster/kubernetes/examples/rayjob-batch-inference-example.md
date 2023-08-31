@@ -49,7 +49,7 @@ curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operat
 
 Note that the `RayJob` spec contains a spec for the `RayCluster` that is to be created for the job. For this tutorial, we use a single-node cluster with 4 GPUs.  For production use cases, we recommend using a multi-node cluster where the head node does not have GPUs, so that Ray can automatically schedule GPU workloads on worker nodes and they won't interfere with critical Ray processes on the head node.
 
-Note the following fields in the `RayJob` spec, which specify the Ray image and the GPU resources for our Ray node:
+Note the following fields in the `RayJob` spec, which specify the Ray image and the GPU resources for the Ray node:
 
 ```yaml
         spec:
