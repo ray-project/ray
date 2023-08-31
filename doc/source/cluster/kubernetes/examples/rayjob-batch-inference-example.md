@@ -78,7 +78,7 @@ To submit the job, run the following command:
 kubectl apply -f ray-job.batch-inference.yaml
 ```
 
-We can check the status with `kubectl describe rayjob rayjob-sample`.
+Check the status with `kubectl describe rayjob rayjob-sample`.
 
 Sample output:
 
