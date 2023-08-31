@@ -157,7 +157,7 @@ def create_replica_wrapper(actor_class_name: str):
             # in.
             ray.serve.context._set_internal_replica_context(
                 app_name=app_name,
-                deployment_name=deployment_name,
+                deployment=deployment_name,
                 replica_tag=replica_tag,
                 servable_object=None,
                 controller_name=controller_name,
@@ -195,7 +195,7 @@ def create_replica_wrapper(actor_class_name: str):
                 # Setting the context again to update the servable_object.
                 ray.serve.context._set_internal_replica_context(
                     app_name=app_name,
-                    deployment_name=deployment_name,
+                    deployment=deployment_name,
                     replica_tag=replica_tag,
                     servable_object=_callable,
                     controller_name=controller_name,

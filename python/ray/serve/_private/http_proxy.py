@@ -174,7 +174,7 @@ class GenericProxy(ABC):
         # controller instance this proxy is running in.
         ray.serve.context._set_internal_replica_context(
             app_name=None,
-            deployment_name=None,
+            deployment=None,
             replica_tag=None,
             servable_object=None,
             controller_name=controller_name,
