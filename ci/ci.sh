@@ -208,7 +208,7 @@ test_python() {
   if [ "${OSTYPE}" = msys ]; then
     pathsep=";"
     args+=(
-      python/ray/tests:test_autosclaler_e2e
+      python/ray/tests:test_autoscaler_e2e
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
