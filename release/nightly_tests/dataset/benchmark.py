@@ -10,10 +10,11 @@ from typing import Any
 
 from enum import Enum
 
-# class syntax
+
 class BenchmarkMetric(Enum):
     RUNTIME = "time"
     THROUGHPUT = "tput"
+
 
 class Benchmark:
     """Benchmark class used for Ray Datasets.
@@ -61,7 +62,7 @@ class Benchmark:
         # TODO(chengsu): Record more metrics based on dataset stats.
         self.result[name] = {BenchmarkMetric.RUNTIME.value: duration}
         print(f"Result of case {name}: {self.result[name]}")
-    
+
     def run_fn(self, name: str, fn: Callable[..., Any], **fn_run_args):
         gc.collect()
 
@@ -79,7 +80,7 @@ class Benchmark:
                 metric_value = fn_output.get(m.value)
                 if metric_value:
                     curr_case_metrics[m.value] = metric_value
-        
+
         self.result[name] = curr_case_metrics
         print(f"Result of case {name}: {curr_case_metrics}")
 
@@ -88,5 +89,7 @@ class Benchmark:
         with open(test_output_json, "w") as f:
             f.write(json.dumps(self.result))
 
-        print(f"Finished benchmark {self.name}, metrics exported to {test_output_json}:")
+        print(
+            f"Finished benchmark {self.name}, metrics exported to {test_output_json}:"
+        )
         print(self.result)
