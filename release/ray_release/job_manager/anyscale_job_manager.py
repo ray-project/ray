@@ -296,8 +296,13 @@ class AnyscaleJobManager:
                 while time.time() - start_time < 3600:
                     poll = p.poll()
                     if poll is None:
-                        print(f"\nstill fetching... waited {time.time() - start_time}s")
+                        logger.info(
+                            f"\nStill fetching... waited {time.time() - start_time}s."
+                        )
                         time.sleep(30)
+                    else:
+                        logger.info("Fetching finished!!!")
+                        break
             except Exception as e:
                 logger.exception(f"Failed to download logs from anyscale {e}")
                 return None
