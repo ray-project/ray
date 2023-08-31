@@ -126,7 +126,7 @@ rayjob-sample-w98c7                         0/1     Completed   0          30m
 
 The Ray cluster is still running because `shutdownAfterJobFinishes` is not set in the `RayJob` spec. If you set `shutdownAfterJobFinishes` to `true`, the cluster is shut down after the job finishes.
 
-Next, run
+Next, run:
 
 ```text
 kubetcl logs rayjob-sample-w98c7
