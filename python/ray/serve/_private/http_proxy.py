@@ -707,10 +707,8 @@ class gRPCProxy(GenericProxy):
         self, proxy_request: ProxyRequest, error: Exception
     ) -> ProxyResponse:
         status_code = grpc.StatusCode.INTERNAL
-        await proxy_request.context.abort(
-            code=status_code,
-            details=str(error),
-        )
+        proxy_request.send_status_code(status_code=status_code)
+        proxy_request.send_details(message=str(error))
         return ProxyResponse(status_code=str(status_code))
 
     def service_handler_factory(self, service_method: str, stream: bool) -> Callable:

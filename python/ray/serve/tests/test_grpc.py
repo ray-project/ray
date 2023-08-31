@@ -583,7 +583,7 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     ],
     indirect=True,
 )
-def test_grpc_proxy_timeouts(ray_instance):
+def test_grpc_proxy_timeouts(ray_instance, ray_shutdown):
     """Test gRPC request timed out.
 
     When the request timed out, gRPC proxy should return timeout response for both
@@ -661,11 +661,6 @@ def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
     When the request error out, gRPC proxy should return INTERNAL status and the error
     message in the response for both unary and streaming request.
     """
-    if streaming and not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        print(
-            "Skipping streaming condition because streaming feature flag is disabled."
-        )
-        return
 
     grpc_port = 9000
     grpc_servicer_functions = [
