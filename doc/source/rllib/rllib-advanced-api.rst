@@ -69,14 +69,14 @@ training loop.
 .. code-block:: python
 
     import ray
-    from ray import tune
+    from ray import train, tune
     from ray.rllib.algorithms.ppo import PPO
 
-    def train(config, reporter):
+    def train_fn(config):
         algo = PPO(config=config, env=YourEnv)
         while True:
             result = algo.train()
-            reporter(**result)
+            train.report(result)
             if result["episode_reward_mean"] > 200:
                 task = 2
             elif result["episode_reward_mean"] > 100:
@@ -92,7 +92,7 @@ training loop.
 
     ray.init()
     tune.Tuner(
-        tune.with_resources(train, resources=tune.PlacementGroupFactory(
+        tune.with_resources(train_fn, resources=tune.PlacementGroupFactory(
             [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
         ),)
         param_space={

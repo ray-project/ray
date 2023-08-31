@@ -6,14 +6,12 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Un
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
-from ray import tune
-from ray.air.checkpoint import Checkpoint
+from ray import air, tune
 from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY, LAZY_CHECKPOINT_MARKER_FILE
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
-from ray.train import BackendConfig, TrainingIterator
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train import BackendConfig, Checkpoint, TrainingIterator
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
@@ -48,7 +46,7 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         )
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        air_checkpoint: Checkpoint = checkpoint.dir_or_data
+        air_checkpoint: air.Checkpoint = checkpoint.dir_or_data
         checkpoint.dir_or_data = add_preprocessor_to_checkpoint(
             air_checkpoint, self.preprocessor
         )
@@ -456,7 +454,7 @@ class DataParallelTrainer(BaseTrainer):
                 )
 
                 checkpoint = (
-                    NewCheckpoint(
+                    Checkpoint(
                         filesystem=tune_session.storage.storage_filesystem,
                         # NOTE: The checkpoint index has not been incremented yet
                         # at this point, which is why `checkpoint_fs_path` points
@@ -693,7 +691,7 @@ class DataParallelTrainer(BaseTrainer):
 
 
 def _load_checkpoint_dict(
-    checkpoint: Checkpoint, trainer_name: str
+    checkpoint: air.Checkpoint, trainer_name: str
 ) -> Tuple[Any, Optional["Preprocessor"]]:
     """Loads a Ray Train Checkpoint (dict based).
 

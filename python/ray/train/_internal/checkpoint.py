@@ -16,16 +16,10 @@ from ray.train.constants import (
     CHECKPOINT_RANK_KEY,
     TRAIN_CHECKPOINT_SUBDIR,
     TUNE_CHECKPOINT_ID,
-    TUNE_INSTALLED,
     CHECKPOINT_METADATA_KEY,
     LAZY_CHECKPOINT_MARKER_FILE,
 )
 from ray.air.constants import TIMESTAMP
-
-if TUNE_INSTALLED:
-    from ray import tune
-else:
-    tune = None
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +227,8 @@ class TuneCheckpointManager(CheckpointManager):
         run_dir: Optional[Path] = None,
         checkpoint_strategy: Optional[CheckpointConfig] = None,
     ):
+        from ray import tune
+
         super().__init__(run_dir, checkpoint_strategy)
 
         # Name of the marker dropped by the Trainable. If a worker detects
@@ -265,6 +261,8 @@ class TuneCheckpointManager(CheckpointManager):
         setattr(checkpoint, TUNE_CHECKPOINT_ID, self._latest_checkpoint_id)
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
+        from ray import tune
+
         self.add_tune_checkpoint_id(checkpoint.dir_or_data)
 
         # Train may choose not to commit a checkpoint, but make sure the

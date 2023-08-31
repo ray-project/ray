@@ -3,7 +3,6 @@ import glob
 import inspect
 import logging
 import os
-import tempfile
 import threading
 import time
 import urllib.parse
@@ -674,20 +673,9 @@ def validate_save_restore(
     """
     assert ray.is_initialized(), "Need Ray to be initialized."
 
-    from ray.train._internal.storage import _use_storage_context, StorageContext
-
-    storage = None
-    if _use_storage_context():
-        tmpdir = tempfile.mkdtemp()
-        storage = StorageContext(
-            storage_path=tmpdir,
-            experiment_dir_name="validate_save_restore",
-            trial_dir_name="val1",
-        )
-
     remote_cls = ray.remote(num_gpus=num_gpus)(trainable_cls)
-    trainable_1 = remote_cls.remote(config=config, storage=storage)
-    trainable_2 = remote_cls.remote(config=config, storage=storage)
+    trainable_1 = remote_cls.remote(config=config)
+    trainable_2 = remote_cls.remote(config=config)
 
     from ray.air.constants import TRAINING_ITERATION
 
@@ -725,10 +713,8 @@ def _detect_checkpoint_function(train_func, abort=False, partial=False):
     if abort and not validated:
         func_args = inspect.getfullargspec(train_func).args
         raise ValueError(
-            "Provided training function must have 2 args "
-            "in the signature, and the latter arg must "
-            "contain `checkpoint_dir`. For example: "
-            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args)
+            "Provided training function must have 1 `config` argument "
+            "`func(config)`. Got {}".format(func_args)
         )
     return validated
 

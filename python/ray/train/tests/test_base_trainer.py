@@ -6,8 +6,7 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.train import ScalingConfig
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint, ScalingConfig
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.tune.impl import tuner_internal
 from ray.train.gbdt_trainer import GBDTTrainer

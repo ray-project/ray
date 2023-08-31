@@ -16,10 +16,7 @@ import ray.cloudpickle as ray_pickle
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
-from ray.air.checkpoint import (
-    Checkpoint,
-    _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
-)
+from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
 from ray.air.constants import (
     TIMESTAMP,
     TIME_THIS_ITER_S,
@@ -31,7 +28,7 @@ from ray.train._internal.storage import (
     StorageContext,
     _exists_at_fs_path,
 )
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train import Checkpoint
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -59,7 +56,7 @@ from ray.tune.utils.callback import (
 )
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
+from ray.train._internal.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
 from ray.util.annotations import PublicAPI
@@ -142,7 +139,7 @@ class Trainable:
                 This is **per trial** directory,
                 which is different from **per checkpoint** directory.
             sync_config: Configuration object for syncing.
-                See :class:`~ray.tune.syncer.SyncConfig`.
+                See :class:`~ray.train.SyncConfig`.
         """
 
         self.config = config or {}
@@ -197,25 +194,34 @@ class Trainable:
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
-        self.remote_checkpoint_dir = remote_checkpoint_dir
-        # If no sync_config is provided, but we save to a remote_checkpoint_dir,
-        # then provide a default syncer. `upload_dir` here is just a dummy directory
-        # that tells the SyncConfig to create a default syncer.
-        self.sync_config = sync_config or SyncConfig(
-            upload_dir=self.remote_checkpoint_dir, syncer="auto"
-        )
+        # TODO(justinvyu): [code_removal] These attrs can be removed.
+        if _use_storage_context():
+            self.remote_checkpoint_dir = None
+            self.sync_config = None
+            self._last_artifact_sync_iter = None
+        else:
+            self.remote_checkpoint_dir = remote_checkpoint_dir
+            # If no sync_config is provided, but we save to a remote_checkpoint_dir,
+            # then provide a default syncer. `upload_dir` here is just a dummy directory
+            # that tells the SyncConfig to create a default syncer.
+            self.sync_config = sync_config or SyncConfig(
+                upload_dir=self.remote_checkpoint_dir, syncer="auto"
+            )
 
-        # Resolves syncer="auto" to an actual syncer cloud storage is used
-        # If sync_config.syncer is a custom Syncer instance, this is a no-op.
-        self.sync_config.syncer = get_node_to_storage_syncer(
-            self.sync_config, self.remote_checkpoint_dir
-        )
+            # Resolves syncer="auto" to an actual syncer cloud storage is used
+            # If sync_config.syncer is a custom Syncer instance, this is a no-op.
+            self.sync_config.syncer = get_node_to_storage_syncer(
+                self.sync_config, self.remote_checkpoint_dir
+            )
+            self._last_artifact_sync_iter = None
 
+        # TODO(justinvyu): These env vars aren't used at the moment.
+        # Consider having these be settings in SyncConfig if we want to
+        # keep this feature.
         self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "2"))
         self.sync_sleep_time = float(
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
         )
-        self._last_artifact_sync_iter = None
 
     @property
     def uses_cloud_checkpointing(self):
@@ -455,7 +461,7 @@ class Trainable:
 
         self._last_result = result
 
-        if _use_storage_context():
+        if _use_storage_context() and self._storage:
             # Launch background tasks to sync artifacts at some specified frequency.
             self._storage.persist_artifacts()
 
@@ -477,8 +483,11 @@ class Trainable:
         if _use_storage_context():
             # NOTE: There's no need to supply the checkpoint directory inside
             # the local trial dir, since it'll get persisted to the right location.
-            checkpoint_dir = tempfile.mkdtemp()
-            return checkpoint_dir
+            if checkpoint_dir:
+                os.makedirs(checkpoint_dir, exist_ok=True)
+                return checkpoint_dir
+            else:
+                return tempfile.mkdtemp()
 
         # Create checkpoint_xxxxx directory and drop checkpoint marker
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
@@ -531,7 +540,9 @@ class Trainable:
                             f"Got {checkpoint_dict_or_path} != {checkpoint_dir}"
                         )
 
-                local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
+                local_checkpoint = Checkpoint.from_directory(checkpoint_dir)
+
+                metrics = self._last_result.copy() if self._last_result else {}
 
                 if self._storage:
                     persisted_checkpoint = self._storage.persist_current_checkpoint(
@@ -543,8 +554,11 @@ class Trainable:
                     self._storage.current_checkpoint_index += 1
 
                     checkpoint_result = _TrainingResult(
-                        checkpoint=persisted_checkpoint,
-                        metrics=self._last_result.copy(),
+                        checkpoint=persisted_checkpoint, metrics=metrics
+                    )
+                    # Persist trial artifacts to storage.
+                    self._storage.persist_artifacts(
+                        force=self._storage.sync_config.sync_artifacts_on_checkpoint
                     )
                 else:
                     # `storage=None` only happens when initializing the
@@ -553,13 +567,8 @@ class Trainable:
                     # is to just not upload anything and report a local checkpoint.
                     # This is fine for the main use case of local debugging.
                     checkpoint_result = _TrainingResult(
-                        checkpoint=local_checkpoint, metrics=self._last_result.copy()
+                        checkpoint=local_checkpoint, metrics=metrics
                     )
-
-                # Persist trial artifacts to storage.
-                self._storage.persist_artifacts(
-                    force=self._storage.sync_config.sync_on_checkpoint
-                )
             else:
                 checkpoint_result: _TrainingResult = checkpoint_dict_or_path
                 assert self._last_result
@@ -916,11 +925,18 @@ class Trainable:
 
         """
         if _use_storage_context():
-            checkpoint_result: _TrainingResult = checkpoint_path
+            if isinstance(checkpoint_path, str):
+                checkpoint_path = Checkpoint.from_directory(checkpoint_path)
+            if isinstance(checkpoint_path, Checkpoint):
+                checkpoint_result = _TrainingResult(
+                    checkpoint=checkpoint_path, metrics={}
+                )
+            else:
+                checkpoint_result: _TrainingResult = checkpoint_path
             assert isinstance(checkpoint_result, _TrainingResult), type(
                 checkpoint_result
             )
-
+            checkpoint = checkpoint_result.checkpoint
             checkpoint_metrics = checkpoint_result.metrics
             self._iteration = checkpoint_metrics.get(TRAINING_ITERATION, 0)
             self._time_total = checkpoint_metrics.get(TIME_TOTAL_S, 0)
@@ -932,7 +948,6 @@ class Trainable:
             self._timesteps_since_restore = 0
             self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
 
-            checkpoint = checkpoint_result.checkpoint
             if not _exists_at_fs_path(checkpoint.filesystem, checkpoint.path):
                 raise ValueError(
                     f"Could not recover from checkpoint as it does not exist on "
@@ -964,8 +979,7 @@ class Trainable:
             self._restored = True
 
             logger.info(
-                f"Restored on {self._local_ip} from checkpoint: "
-                f"{checkpoint_result.checkpoint}"
+                f"Restored on {self._local_ip} from checkpoint: " f"{checkpoint}"
             )
             return True
 
