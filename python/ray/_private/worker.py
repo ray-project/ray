@@ -2854,9 +2854,9 @@ def cancel(
 
         Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
 
-        Calling ray.get on a cancelled Task raises a TaskCancelledError if
-        Task hasn't been scheduled yet, RayTaskError if the Task has been scheduled
-        and interrupted, or a WorkerCrashedError if `force=True`.
+        Calling ray.get on a cancelled Task raises a TaskCancelledError
+        if the Task has been scheduled or interrupted.
+        It raises a WorkerCrashedError if `force=True`.
 
         If `recursive=True`, all the child Tasks and Actor Tasks
         are cancelled. If `force=True` and `recursive=True`, `force=True`
@@ -2874,14 +2874,13 @@ def cancel(
         If the Task has finished, nothing happens.
 
         Only `force=False` is allowed for an Actor Task. Otherwise, it raises
-        `TypeError`. Use `ray.kill(actor)` instead to kill an Actor.
+        `ValueError`. Use `ray.kill(actor)` instead to kill an Actor.
 
         Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
 
-        Calling ray.get on a cancelled Task raises a TaskCancelledError if
-        the Task hasn't been scheduled yet and RayTaskError
-        if the Task has been already scheduled and interrupted. Note that `RayTaskError`
-        can be only raised when `asyncio.Task` is cancelled.
+        Calling ray.get on a cancelled Task raises a TaskCancelledError
+        if the Task has been scheduled or interrupted. Also note that
+        only async actor tasks can be interrupted.
 
         If `recursive=True`, all the child Tasks and actor Tasks
         are cancelled.

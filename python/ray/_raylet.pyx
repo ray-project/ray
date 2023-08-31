@@ -435,6 +435,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
+    if status.IsInvalidArgument():
+        raise ValueError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
     elif status.IsObjectRefEndOfStream():
@@ -3795,6 +3797,9 @@ cdef class CoreWorker:
         with nogil:
             status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
                                             c_object_id, force_kill, recursive)
+
+        if status.IsInvalidArgument():
+            raise ValueError(status.message().decode())
 
         if not status.ok():
             raise TypeError(status.message().decode())
