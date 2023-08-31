@@ -9,6 +9,10 @@ from ray.runtime_context import RuntimeContext
 @pytest.fixture
 def short_gcs_client_timeout(monkeypatch):
     monkeypatch.setenv("RAY_gcs_rpc_server_connect_timeout_s", "1")
+    monkeypatch.setenv("RAY_gcs_rpc_server_reconnect_timeout_s", "1")
+    monkeypatch.setenv("RAY_gcs_grpc_initial_reconnect_backoff_ms", "1")
+    monkeypatch.setenv("RAY_gcs_grpc_min_reconnect_backoff_ms", "1")
+    monkeypatch.setenv("RAY_gcs_grpc_max_reconnect_backoff_ms", "1")
     yield
 
 
