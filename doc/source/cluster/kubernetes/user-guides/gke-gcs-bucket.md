@@ -69,7 +69,7 @@ gsutil iam ch serviceAccount:my-iam-sa@my-project-id.iam.gserviceaccount.com:rol
 
 ## Create a minimal RayCluster YAML manifest
 
-You can download the RayCluster YAML manifest for this tutorial via `curl` as follows:
+You can download the RayCluster YAML manifest for this tutorial with `curl` as follows:
 
 ```bash
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.gke-bucket.yaml
