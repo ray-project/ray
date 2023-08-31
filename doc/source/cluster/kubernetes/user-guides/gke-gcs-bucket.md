@@ -100,7 +100,11 @@ Use `kubectl get pod` to get the name of the Ray head pod.  Then run the followi
 kubectl exec -it raycluster-mini-head-xxxx -- /bin/bash
 ```
 
-In the shell, run `pip install google-cloud-storage` to install the Google Cloud Storage Python client library. Then run the following Python code to test access to the bucket:
+In the shell, run `pip install google-cloud-storage` to install the Google Cloud Storage Python client library. 
+
+(For production use cases, you will need to make sure `google-cloud-storage` is installed on every node of your cluster, or use `ray.init(runtime_env={"pip": ["google-cloud-storage"]})` to have the package installed as needed at runtime -- see <https://docs.ray.io/en/latest/ray-core/handling-dependencies.html#runtime-environments> for more details.)
+
+Then run the following Python code to test access to the bucket:
 
 ```python
 import ray
