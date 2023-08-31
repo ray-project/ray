@@ -122,6 +122,8 @@ class ExternalMultiAgentEnv(ExternalEnv):
         reward_dict: MultiAgentDict,
         info_dict: MultiAgentDict = None,
         multiagent_done_dict: MultiAgentDict = None,
+        multiagent_terminated_dict: MultiAgentDict = None,
+        multiagent_truncated_dict: MultiAgentDict = None,
     ) -> None:
         """Record returns from the environment.
 
@@ -133,7 +135,10 @@ class ExternalMultiAgentEnv(ExternalEnv):
             episode_id: Episode id returned from start_episode().
             reward_dict: Reward from the environment agents.
             info_dict: Optional info dict.
-            multiagent_done_dict: Optional done dict for agents.
+            multiagent_done_dict: Optional done dict for agents. Deprecated. Use multiagent_terminated_dict and multiagent_truncated_dict instead
+            multiagent_terminated_dict: Optional terminated dict for agents.
+            multiagent_truncated_dict: Optional truncated dict for agents
+            
         """
 
         episode = self._get(episode_id)
@@ -147,8 +152,19 @@ class ExternalMultiAgentEnv(ExternalEnv):
                 episode.cur_reward_dict[agent] = rew
 
         if multiagent_done_dict:
+            # if this dict is provided, assume that the user wants to set both
+            # terminated and truncated dictionaries
             for agent, done in multiagent_done_dict.items():
-                episode.cur_done_dict[agent] = done
+                episode.cur_terminated_dict[agent] = done
+                episode.cur_truncated_dict[agent] = done
+        
+        if multiagent_terminated_dict:
+            for agent, done in multiagent_terminated_dict.items():
+                episode.cur_terminated_dict[agent] = done
+        
+        if multiagent_truncated_dict:
+            for agent, done in multiagent_truncated_dict.items():
+                episode.cur_truncated_dict[agent] = done
 
         if info_dict:
             episode.cur_info_dict = info_dict or {}
