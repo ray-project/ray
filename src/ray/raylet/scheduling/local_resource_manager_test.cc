@@ -335,4 +335,24 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
   }
 }
 
+TEST_F(LocalResourceManagerTest, CreateSyncMessageNegativeResourceAvailability) {
+  // Test to make sure we don't report negative resource availability
+  // even though it can be negative locally.
+  auto used_object_store = std::make_unique<int64_t>(0);
+  manager = std::make_unique<LocalResourceManager>(
+      local_node_id,
+      CreateNodeResources(
+          {{ResourceID::CPU(), 1.0}, {ResourceID::ObjectStoreMemory(), 100.0}}),
+      /* get_used_object_store_memory */
+      [&used_object_store]() { return *used_object_store; },
+      nullptr,
+      nullptr);
+
+  manager->SubtractResourceInstances(
+      ResourceID::CPU(), {2.0}, /*allow_going_negative=*/true);
+
+  const auto &resources_data = GetSyncMessageForResourceReport();
+  ASSERT_EQ(resources_data.resources_available().at("CPU"), 0);
+}
+
 }  // namespace ray

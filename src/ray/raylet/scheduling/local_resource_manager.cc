@@ -298,9 +298,15 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   auto total = resources.total.GetResourceMap();
   resources_data.mutable_resources_total()->insert(total.begin(), total.end());
 
-  auto available = resources.available.GetResourceMap();
-  resources_data.mutable_resources_available()->insert(available.begin(),
-                                                       available.end());
+  for (const auto &[resource_name, available] : resources.available.GetResourceMap()) {
+    // Resource availability can be negative locally but treat it as 0
+    // when we broadcast to others since other parts of the
+    // system assume resource availability cannot be negative and
+    // there is no difference between negative and zero from other nodes
+    // and gcs's point of view.
+    (*resources_data.mutable_resources_available())[resource_name] =
+        std::max(available, 0.0);
+  }
 
   if (get_pull_manager_at_capacity_ != nullptr) {
     resources.object_pulls_queued = get_pull_manager_at_capacity_();
