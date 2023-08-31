@@ -6,6 +6,7 @@ Spotify('s)?
 TFRecord(s)?
 UDF(s)?
 [Dd]atasource
+[Dd]iscretizer(s)?
 [Gg]roupby
 [Ii]ndexable
 [Ii]ngest
