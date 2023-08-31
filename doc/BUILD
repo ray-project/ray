@@ -307,7 +307,7 @@ doctest(
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
             "source/rllib/**/*.rst",
-            "source/rllib/**/*.md"
+            "source/rllib/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md"
         ]
     ),
