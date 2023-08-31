@@ -238,7 +238,7 @@ class ServerCallImpl : public ServerCall {
     }
     if (!io_service_.stopped()) {
       io_service_.post([this, auth_success] { HandleRequestImpl(auth_success); },
-                       stats_handle_);
+                       call_name_ + ".HandleRequestImpl");
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
