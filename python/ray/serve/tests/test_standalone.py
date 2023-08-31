@@ -22,7 +22,7 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.serve.config import DeploymentMode, HTTPOptions
+from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
@@ -905,32 +905,32 @@ def test_run_graph_task_uses_zero_cpus():
             "expected": HTTPOptions(location=DeploymentMode.NoServer),
         },
         {
-            "proxy_location": "NoServer",
+            "proxy_location": "Disabled",
             "http_options": None,
             "expected": HTTPOptions(location=DeploymentMode.NoServer),
         },
         {
-            "proxy_location": "NoServer",
+            "proxy_location": "Disabled",
             "http_options": {},
             "expected": HTTPOptions(location=DeploymentMode.NoServer),
         },
         {
-            "proxy_location": "NoServer",
+            "proxy_location": "Disabled",
             "http_options": HTTPOptions(host="foobar"),
             "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
         },
         {
-            "proxy_location": "NoServer",
+            "proxy_location": "Disabled",
             "http_options": {"host": "foobar"},
             "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
         },
         {
-            "proxy_location": "NoServer",
+            "proxy_location": "Disabled",
             "http_options": {"location": "HeadOnly"},
             "expected": HTTPOptions(location=DeploymentMode.NoServer),
         },
         {
-            "proxy_location": DeploymentMode.NoServer,
+            "proxy_location": ProxyLocation.Disabled,
             "http_options": HTTPOptions(location=DeploymentMode.HeadOnly),
             "expected": HTTPOptions(location=DeploymentMode.NoServer),
         },
