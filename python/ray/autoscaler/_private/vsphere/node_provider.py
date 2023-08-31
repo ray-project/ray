@@ -333,7 +333,7 @@ class VsphereNodeProvider(NodeProvider):
             self.vsphere_sdk_client.tagging.TagAssociation.attach(tag_id, dynamic_id)
             logger.debug(f"Tag {tag_id} attached on VM {dynamic_id}")
         except Exception as e:
-            logger.error(f"Check that the tag is attachable to {resource_type}")
+            logger.warning(f"Check that the tag is attachable to {resource_type}")
             raise e
 
     def set_cloudinit_userdata(self, vm_id):
@@ -714,7 +714,7 @@ class VsphereNodeProvider(NodeProvider):
         """Get the node object from vSphere."""
         vms = self.vsphere_sdk_client.vcenter.VM.list(VM.FilterSpec(vms={node_id}))
         if len(vms) == 0:
-            logger.error("VM with name ({}) not found".format(node_id))
+            logger.warning("VM with name ({}) not found".format(node_id))
             return None
         return vms[0]
 
