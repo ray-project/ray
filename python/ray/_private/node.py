@@ -201,6 +201,7 @@ class Node:
         )
         self._node_ip_address = node_ip_address
         if not connect_only:
+            print("Writing node ip address, ", node_ip_address)
             self._write_node_ip_address(node_ip_address)
 
         if ray_params.raylet_ip_address:
