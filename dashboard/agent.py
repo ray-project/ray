@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import io
 import json
 import logging
 import logging.handlers
@@ -15,8 +14,8 @@ import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
 from ray._raylet import GcsClient
+from ray._private.process_watcher import create_check_raylet_task
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging import (
     setup_component_logger,
@@ -26,22 +25,6 @@ from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_initialized,
 )
-
-# Import psutil after ray so the packaged version is used.
-import psutil
-
-# Publishes at most this number of lines of Raylet logs, when the Raylet dies
-# unexpectedly.
-_RAYLET_LOG_MAX_PUBLISH_LINES = 20
-
-# Reads at most this amount of Raylet logs from the tail, for publishing and
-# checking if the Raylet was terminated gracefully.
-_RAYLET_LOG_MAX_TAIL_SIZE = 1 * 1024**2
-
-try:
-    create_task = asyncio.create_task
-except AttributeError:
-    create_task = asyncio.ensure_future
 
 logger = logging.getLogger(__name__)
 
@@ -89,13 +72,6 @@ class DashboardAgent:
         self.metrics_collection_disabled = disable_metrics_collection
         self.agent_id = agent_id
         self.session_name = session_name
-        # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
-        # only used for fate-sharing with the raylet and we need a different
-        # fate-sharing mechanism for Windows anyways.
-        if sys.platform not in ["win32", "cygwin"]:
-            self.ppid = int(os.environ["RAY_RAYLET_PID"])
-            assert self.ppid > 0
-            logger.info("Parent pid is %s", self.ppid)
 
         # grpc server is None in mininal.
         self.server = None
@@ -192,105 +168,6 @@ class DashboardAgent:
         return self.aio_publisher
 
     async def run(self):
-        async def _check_parent():
-            """Check if raylet is dead and fate-share if it is."""
-            try:
-                curr_proc = psutil.Process()
-                parent_death_cnt = 0
-                while True:
-                    parent = curr_proc.parent()
-                    # If the parent is dead, it is None.
-                    parent_gone = parent is None
-                    init_assigned_for_parent = False
-                    parent_changed = False
-
-                    if parent:
-                        # Sometimes, the parent is changed to the `init` process.
-                        # In this case, the parent.pid is 1.
-                        init_assigned_for_parent = parent.pid == 1
-                        # Sometimes, the parent is dead, and the pid is reused
-                        # by other processes. In this case, this condition is triggered.
-                        parent_changed = self.ppid != parent.pid
-
-                    if parent_gone or init_assigned_for_parent or parent_changed:
-                        parent_death_cnt += 1
-                        logger.warning(
-                            f"Raylet is considered dead {parent_death_cnt} X. "
-                            f"If it reaches to {_PARENT_DEATH_THREASHOLD}, the agent "
-                            f"will kill itself. Parent: {parent}, "
-                            f"parent_gone: {parent_gone}, "
-                            f"init_assigned_for_parent: {init_assigned_for_parent}, "
-                            f"parent_changed: {parent_changed}."
-                        )
-                        if parent_death_cnt < _PARENT_DEATH_THREASHOLD:
-                            await asyncio.sleep(
-                                dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
-                            )
-                            continue
-
-                        log_path = os.path.join(self.log_dir, "raylet.out")
-                        error = False
-                        msg = f"Raylet is terminated: ip={self.ip}, id={self.node_id}. "
-                        try:
-                            with open(log_path, "r", encoding="utf-8") as f:
-                                # Seek to _RAYLET_LOG_MAX_TAIL_SIZE from the end if the
-                                # file is larger than that.
-                                f.seek(0, io.SEEK_END)
-                                pos = max(0, f.tell() - _RAYLET_LOG_MAX_TAIL_SIZE)
-                                f.seek(pos, io.SEEK_SET)
-                                # Read remaining logs by lines.
-                                raylet_logs = f.readlines()
-                                # Assume the SIGTERM message must exist within the last
-                                # _RAYLET_LOG_MAX_TAIL_SIZE of the log file.
-                                if any(
-                                    "Raylet received SIGTERM" in line
-                                    for line in raylet_logs
-                                ):
-                                    msg += "Termination is graceful."
-                                    logger.info(msg)
-                                else:
-                                    msg += (
-                                        "Termination is unexpected. Possible reasons "
-                                        "include: (1) SIGKILL by the user or system "
-                                        "OOM killer, (2) Invalid memory access from "
-                                        "Raylet causing SIGSEGV or SIGBUS, "
-                                        "(3) Other termination signals. "
-                                        f"Last {_RAYLET_LOG_MAX_PUBLISH_LINES} lines "
-                                        "of the Raylet logs:\n"
-                                    )
-                                    msg += "    " + "    ".join(
-                                        raylet_logs[-_RAYLET_LOG_MAX_PUBLISH_LINES:]
-                                    )
-                                    error = True
-                        except Exception as e:
-                            msg += f"Failed to read Raylet logs at {log_path}: {e}!"
-                            logger.exception(msg)
-                            error = True
-                        if error:
-                            logger.error(msg)
-                            # TODO: switch to async if necessary.
-                            ray._private.utils.publish_error_to_driver(
-                                ray_constants.RAYLET_DIED_ERROR,
-                                msg,
-                                gcs_publisher=ray._raylet.GcsPublisher(
-                                    address=self.gcs_address
-                                ),
-                            )
-                        else:
-                            logger.info(msg)
-                        sys.exit(0)
-                    else:
-                        parent_death_cnt = 0
-                    await asyncio.sleep(
-                        dashboard_consts.DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S
-                    )
-            except Exception:
-                logger.exception("Failed to check parent PID, exiting.")
-                sys.exit(1)
-
-        if sys.platform not in ["win32", "cygwin"]:
-            check_parent_task = create_task(_check_parent())
-
         # Start a grpc asyncio server.
         if self.server:
             await self.server.start()
@@ -329,6 +206,15 @@ class DashboardAgent:
 
         tasks = [m.run(self.server) for m in modules]
         if sys.platform not in ["win32", "cygwin"]:
+
+            def callback():
+                logger.info(
+                    f"Terminated Raylet: ip={self.ip}, node_id={self.node_id}. "
+                )
+
+            check_parent_task = create_check_raylet_task(
+                self.log_dir, self.gcs_address, callback, loop
+            )
             tasks.append(check_parent_task)
         await asyncio.gather(*tasks)
 
