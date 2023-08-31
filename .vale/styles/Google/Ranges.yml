@@ -2,6 +2,6 @@ extends: existence
 message: "Don't add words such as 'from' or 'between' to describe a range of numbers."
 link: 'https://developers.google.com/style/hyphens'
 nonword: true
-level: warning
+level: error
 tokens:
   - '(?:from|between)\s\d+\s?-\s?\d+'
