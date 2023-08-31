@@ -75,7 +75,7 @@ def test_client_disconnect(serve_instance):
 
             try:
                 await ws.receive_text()
-            except WebSocketDisconnect:
+            except (WebSocketDisconnect, asyncio.CancelledError):
                 print("Client disconnected.")
                 self._disconnected.set()
 
