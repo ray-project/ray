@@ -583,7 +583,6 @@ def start(
     disable_usage_stats,
     labels,
 ):
-    start_time = datetime.now()
     """Start Ray processes manually on the local machine."""
 
     if gcs_server_port is not None:
@@ -770,10 +769,7 @@ def start(
         # this is a noop if new-style is not set, so the old logger calls
         # are still in place
         cli_logger.newline()
-        startup_msg = (
-            "Ray runtime started "
-            f" ({(datetime.now() - start_time).total_seconds()} seconds)."
-        )
+        startup_msg = "Ray runtime started."
         cli_logger.success("-" * len(startup_msg))
         cli_logger.success(startup_msg)
         cli_logger.success("-" * len(startup_msg))
