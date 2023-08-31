@@ -34,7 +34,7 @@ describe("ServeApplicationsListPage", () => {
     mockGetServeApplications.mockResolvedValue({
       data: {
         http_options: { host: "1.2.3.4", port: 8000 },
-        http_proxies: {
+        proxies: {
           foo: {
             node_id: "node:12345",
             status: ServeSystemActorStatus.STARTING,

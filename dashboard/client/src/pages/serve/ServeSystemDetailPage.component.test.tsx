@@ -35,7 +35,7 @@ describe("ServeSystemDetailPage", () => {
       data: {
         http_options: { host: "1.2.3.4", port: 8000 },
         grpc_options: { port: 9000 },
-        http_proxies: {
+        proxies: {
           foo: {
             node_id: "node:12345",
             status: ServeSystemActorStatus.STARTING,

@@ -120,7 +120,7 @@ export type ServeApplicationsRsp = {
   };
   proxy_location: ServeProxyLocation;
   controller_info: ServeSystemActor;
-  http_proxies: {
+  proxies: {
     [name: string]: ServeHttpProxy;
   } | null;
   applications: {
