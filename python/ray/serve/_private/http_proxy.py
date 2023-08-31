@@ -26,7 +26,6 @@ from ray.serve._private.usage import ServeUsageTag
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator
 
-from ray import serve
 from ray.serve.handle import (
     DeploymentResponse,
     DeploymentResponseGenerator,
@@ -190,7 +189,11 @@ class GenericProxy(ABC):
             )
 
         def get_handle(deployment_name, app_name):
-            return serve.context.get_global_client().get_handle(
+            # Delayed import due to circular dependency.
+            # TODO(edoakes): use `get_deployment_handle` public API instead.
+            from ray.serve.context import _get_global_client
+
+            return _get_global_client().get_handle(
                 deployment_name,
                 app_name,
                 sync=False,
