@@ -169,7 +169,7 @@ def test_handle_cache_out_of_scope(serve_instance):
     assert len(handle_cache) == initial_num_cached + 1
 
     def sender_where_handle_goes_out_of_scope():
-        f = get_global_client().get_handle("app_f", missing_ok=True, sync=True)
+        f = get_global_client().get_handle("f", "app", missing_ok=True, sync=True)
         assert f is handle
         assert ray.get(f.remote()) == "hi"
 

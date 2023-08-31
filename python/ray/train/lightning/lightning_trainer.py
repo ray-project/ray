@@ -4,7 +4,6 @@ import pytorch_lightning as pl
 from copy import copy
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
-from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 from ray.air import session
 from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
@@ -20,10 +19,10 @@ from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
     RayFSDPStrategy,
     RayDeepSpeedStrategy,
-    RayEnvironment,
+    RayLightningEnvironment,
     RayDataModule,
     RayModelCheckpoint,
-    get_worker_root_device,
+    prepare_trainer,
 )
 
 
@@ -370,10 +369,6 @@ class LightningTrainer(TorchTrainer):
             dataset. Internally, LightningTrainer shards the training dataset
             across all workers, and creates a PyTorch Dataloader for each shard.
 
-            The datasets will be transformed by ``preprocessor`` if it is provided.
-            If the ``preprocessor`` has not already been fit, it will be fit on the
-            training dataset.
-
             If ``datasets`` is not specified, ``LightningTrainer`` will use datamodule
             or dataloaders specified in ``LightningConfigBuilder.fit_params`` instead.
         datasets_iter_config: Configuration for iterating over the input ray datasets.
@@ -385,9 +380,9 @@ class LightningTrainer(TorchTrainer):
             Note that if you provide a ``datasets`` parameter, you must always specify
             ``datasets_iter_config`` for it.
 
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -402,6 +397,7 @@ class LightningTrainer(TorchTrainer):
         datasets_iter_config: Optional[Dict[str, Any]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         run_config = copy(run_config) or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()
@@ -440,6 +436,7 @@ class LightningTrainer(TorchTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )
 
     def _unify_checkpoint_configs(
@@ -487,32 +484,6 @@ class LightningTrainer(TorchTrainer):
             )
         else:
             return air_ckpt_config
-
-    @PublicAPI(stability="alpha")
-    @classmethod
-    def restore(
-        cls: Type["LightningTrainer"],
-        path: str,
-        datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
-        scaling_config: Optional[ScalingConfig] = None,
-        **kwargs,
-    ) -> "LightningTrainer":
-        """Restores a LightningTrainer from a previously interrupted/failed run.
-
-        See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
-        for descriptions of the arguments.
-
-        Returns:
-            LightningTrainer: A restored instance of `LightningTrainer`
-        """
-        return super(LightningTrainer, cls).restore(
-            path=path,
-            datasets=datasets,
-            preprocessor=preprocessor,
-            scaling_config=scaling_config,
-            **kwargs,
-        )
 
 
 def _lightning_train_loop_per_worker(config):
@@ -576,17 +547,12 @@ def _lightning_train_loop_per_worker(config):
 
     # Prepare Lightning Trainer
     # Setup trainer's parallel devices
-    if trainer_config.get("accelerator", None) == "gpu":
-        current_device = get_worker_root_device()
-        trainer_config["devices"] = [current_device.index]
+    trainer_config["devices"] = "auto"
 
     # Setup ray cluster environment info
-    trainer_config["plugins"] = [
-        plugin
-        for plugin in trainer_config.get("plugins", [])
-        if not isinstance(plugin, ClusterEnvironment)
-    ]
-    trainer_config["plugins"].append(RayEnvironment())
+    if "plugins" not in trainer_config:
+        trainer_config["plugins"] = []
+    trainer_config["plugins"].append(RayLightningEnvironment())
 
     # Setup ddp strategy for ray orchestration
     if "strategy" in trainer_config:
@@ -612,6 +578,8 @@ def _lightning_train_loop_per_worker(config):
     ]
 
     trainer = pl.Trainer(**trainer_config)
+
+    trainer = prepare_trainer(trainer)
 
     checkpoint = session.get_checkpoint()
     if checkpoint:

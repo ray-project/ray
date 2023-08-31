@@ -415,7 +415,8 @@ class JobSupervisor:
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
-                [polling_task, self._stop_event.wait()], return_when=FIRST_COMPLETED
+                [polling_task, create_task(self._stop_event.wait())],
+                return_when=FIRST_COMPLETED,
             )
 
             if self._stop_event.is_set():
@@ -529,7 +530,7 @@ class JobManager:
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
-        self._gcs_address = gcs_aio_client._channel._gcs_address
+        self._gcs_address = gcs_aio_client.address
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self.monitored_jobs = set()

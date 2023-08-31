@@ -2,6 +2,7 @@ import os
 import sys
 from tempfile import TemporaryDirectory
 from unittest import mock
+from typing import List
 
 import pytest
 
@@ -11,9 +12,13 @@ from ci.ray_ci.runner import (
     _get_test_targets,
     _get_flaky_test_targets,
 )
+from ci.ray_ci.utils import chunk_into_n
 
 
 def test_get_test_targets() -> None:
+    def _mock_shard_tests(tests: List[str], workers: int, worker_id: int) -> List[str]:
+        return chunk_into_n(tests, workers)[worker_id]
+
     _TEST_YAML = "flaky_tests: [//python/ray/tests:flaky_test_01]"
 
     with TemporaryDirectory() as tmp:
@@ -28,30 +33,28 @@ def test_get_test_targets() -> None:
             "",
         ]
         with mock.patch(
+            "ci.ray_ci.runner.shard_tests", side_effect=_mock_shard_tests
+        ), mock.patch(
             "subprocess.check_output",
             return_value="\n".join(test_targets).encode("utf-8"),
         ):
-            assert _get_all_test_targets("targets", "core", "small", yaml_dir=tmp) == [
+            assert _get_all_test_targets("targets", "core", yaml_dir=tmp) == [
                 "//python/ray/tests:good_test_01",
                 "//python/ray/tests:good_test_02",
                 "//python/ray/tests:good_test_03",
             ]
-            assert _get_test_targets(
-                "targets", "core", 2, 0, "small", yaml_dir=tmp
-            ) == [
+            assert _get_test_targets("targets", "core", 2, 0, yaml_dir=tmp) == [
                 "//python/ray/tests:good_test_01",
                 "//python/ray/tests:good_test_02",
             ]
 
 
 def test_get_all_test_query() -> None:
-    assert _get_all_test_query(["a", "b"], "core", "small,medium") == (
-        "(attr(tags, team:core, tests(a) union tests(b)) intersect "
-        "(attr(size, small, tests(a) union tests(b)) union "
-        "attr(size, medium, tests(a) union tests(b)))) except "
-        "(attr(tags, debug_tests, tests(a) union tests(b)) union "
-        "attr(tags, asan_tests, tests(a) union tests(b)) union "
-        "attr(tags, xcommit, tests(a) union tests(b)))"
+    assert _get_all_test_query(["a", "b"], "core", "") == (
+        "attr(tags, 'team:core\\\\b', tests(a) union tests(b))"
+    )
+    assert _get_all_test_query(["a"], "core", "tag") == (
+        "attr(tags, 'team:core\\\\b', tests(a)) except (attr(tags, tag, tests(a)))"
     )
 
 

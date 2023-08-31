@@ -79,6 +79,7 @@ class Backend(metaclass=Singleton):
         Session API is available at this point."""
         pass
 
+    # TODO(justinvyu): [code_removal]
     @classmethod
     def _encode_data(cls, checkpoint: Checkpoint) -> Checkpoint:
         """Temporary method until ``encode_data`` is deprecated."""

@@ -98,7 +98,7 @@ class SearchGenerator(SearchAlgorithm):
         """
         if not self.is_finished():
             return self.create_trial_if_possible(
-                self._experiment.spec, self._experiment.dir_name
+                self._experiment.spec, self._experiment.legacy_dir_name
             )
         return None
 

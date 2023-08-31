@@ -1,4 +1,5 @@
 import copy
+import grpc
 import os
 import sys
 from typing import Dict
@@ -13,17 +14,15 @@ import ray._private.ray_constants as ray_constants
 from ray.util.state import list_actors
 from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_MESSAGE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
-from ray.serve.schema import ServeInstanceDetails
+from ray.serve.schema import ServeInstanceDetails, HTTPOptionsSchema
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentStatus,
     ReplicaState,
     HTTPProxyStatus,
 )
-from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+
 
 GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
@@ -454,10 +453,7 @@ def test_get_status(ray_start_stop):
 
     deployment_statuses = serve_status["deployment_statuses"]
     assert len(deployment_statuses) == 2
-    expected_deployment_names = {
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}BasicDriver",
-    }
+    expected_deployment_names = {"f", "BasicDriver"}
     for deployment_status in deployment_statuses:
         assert deployment_status["name"] in expected_deployment_names
         expected_deployment_names.remove(deployment_status["name"])
@@ -494,6 +490,11 @@ def test_get_serve_instance_details_not_started(ray_start_stop):
     ],
 )
 def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
+    grpc_port = 9001
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+    ]
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
     config = {
@@ -501,6 +502,10 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
         "http_options": {
             "host": "127.0.0.1",
             "port": 8005,
+        },
+        "grpc_options": {
+            "port": grpc_port,
+            "grpc_servicer_functions": grpc_servicer_functions,
         },
         "applications": [
             {
@@ -520,12 +525,12 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
         "app1": {
             "route_prefix": "/apple",
             "docs_path": None,
-            "deployments": {"app1_f", "app1_BasicDriver"},
+            "deployments": {"f", "BasicDriver"},
         },
         "app2": {
             "route_prefix": "/banana",
             "docs_path": "/my_docs",
-            "deployments": {"app2_FastAPIDeployment"},
+            "deployments": {"FastAPIDeployment"},
         },
     }
 
@@ -545,11 +550,19 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     print("All applications are in a RUNNING state.")
 
     serve_details = ServeInstanceDetails(**requests.get(GET_OR_PUT_URL_V2).json())
-    # CHECK: location, host, and port
+    # CHECK: proxy location, HTTP host, and HTTP port
     assert serve_details.proxy_location == "HeadOnly"
     assert serve_details.http_options.host == "127.0.0.1"
     assert serve_details.http_options.port == 8005
-    print("Confirmed fetched proxy location, host and port metadata correct.")
+
+    # CHECK: gRPC port and grpc_servicer_functions
+    assert serve_details.grpc_options.port == grpc_port
+    assert serve_details.grpc_options.grpc_servicer_functions == grpc_servicer_functions
+    print(
+        "Confirmed fetched proxy location, HTTP host, HTTP port, gRPC port, and grpc_"
+        "servicer_functions metadata correct."
+    )
+
     # Check HTTP Proxy statuses
     for proxy in serve_details.http_proxies.values():
         assert proxy.status == HTTPProxyStatus.HEALTHY
@@ -672,12 +685,12 @@ def test_put_multi_then_single(ray_start_stop):
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
+            lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).text
             == "4 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).json()
+            lambda: requests.post("http://localhost:8000/app2", json=["MUL", 2]).text
             == "6 pizzas please!",
             timeout=15,
         )
@@ -714,11 +727,16 @@ def test_serve_namespace(ray_start_stop):
     """
 
     config = {
-        "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+        "applications": [
+            {
+                "name": "my_app",
+                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+            }
+        ],
     }
 
     print("Deploying config.")
-    deploy_and_check_config(config)
+    deploy_config_multi_app(config)
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/").text == "wonderful world",
         timeout=15,
@@ -726,22 +744,16 @@ def test_serve_namespace(ray_start_stop):
     print("Deployments are live and reachable over HTTP.\n")
 
     ray.init(address="auto", namespace="serve")
-    client = serve.start()
-    print("Connected to Serve with Python API.")
-    serve_status = client.get_serve_status()
+    my_app_status = serve.status().applications["my_app"]
     assert (
-        len(serve_status.deployment_statuses) == 2
-        and serve_status.get_deployment_status(
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
-        )
-        is not None
+        len(my_app_status.deployments) == 2
+        and my_app_status.deployments["f"] is not None
     )
     print("Successfully retrieved deployment statuses with Python API.")
     print("Shutting down Python API.")
     serve.shutdown()
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 @pytest.mark.parametrize(
     "option,override",
     [
@@ -755,19 +767,22 @@ def test_put_with_http_options(ray_start_stop, option, override):
     """Submits a config with HTTP options specified.
 
     Trying to submit a config to the serve agent with the HTTP options modified should
-    fail, since users are required to shutdown Serve and restart it if they want to
-    change HTTP options.
+    NOT fail:
+      - If Serve is NOT running, HTTP options will be honored when starting Serve
+      - If Serve is running, HTTP options will be ignored, and warning will be logged
+      urging users to restart Serve if they want their options to take effect
     """
 
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
-    original_config = {
+    original_http_options_json = {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "root_path": "/serve",
+    }
+    original_serve_config_json = {
         "proxy_location": "EveryNode",
-        "http_options": {
-            "host": "127.0.0.1",
-            "port": 8000,
-            "root_path": "/serve",
-        },
+        "http_options": original_http_options_json,
         "applications": [
             {
                 "name": "app1",
@@ -781,13 +796,11 @@ def test_put_with_http_options(ray_start_stop, option, override):
             },
         ],
     }
-    deploy_config_multi_app(original_config)
+    deploy_config_multi_app(original_serve_config_json)
 
     # Wait for deployments to be up
     wait_for_condition(
-        lambda: requests.post(
-            "http://localhost:8000/serve/app1", json=["ADD", 2]
-        ).json()
+        lambda: requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).text
         == "4 pizzas please!",
         timeout=15,
     )
@@ -797,18 +810,83 @@ def test_put_with_http_options(ray_start_stop, option, override):
         timeout=15,
     )
 
-    modified_config = copy.deepcopy(original_config)
-    modified_config[option] = override
+    updated_serve_config_json = copy.deepcopy(original_serve_config_json)
+    updated_serve_config_json[option] = override
 
-    put_response = requests.put(GET_OR_PUT_URL_V2, json=modified_config, timeout=5)
-    assert put_response.status_code == 400
+    put_response = requests.put(
+        GET_OR_PUT_URL_V2, json=updated_serve_config_json, timeout=5
+    )
+    assert put_response.status_code == 200
+
+    # Fetch Serve status and confirm that HTTP options are unchanged
+    get_response = requests.get(GET_OR_PUT_URL_V2, timeout=5)
+    serve_details = ServeInstanceDetails.parse_obj(get_response.json())
+
+    original_http_options = HTTPOptionsSchema.parse_obj(original_http_options_json)
+
+    assert original_http_options == serve_details.http_options.dict(exclude_unset=True)
 
     # Deployments should still be up
     assert (
-        requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).json()
+        requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
     assert requests.post("http://localhost:8000/serve/app2").text == "wonderful world"
+
+
+def test_put_with_grpc_options(ray_start_stop):
+    """Submits a config with gRPC options specified.
+
+    Ensure gRPC options can be accepted by the api. HTTP deployment continue to
+    accept requests. gRPC deployment is also able to accept requests.
+    """
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+    test_files_import_path = "ray.serve.tests.test_config_files."
+    grpc_import_path = f"{test_files_import_path}grpc_deployment:g"
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+    original_config = {
+        "proxy_location": "EveryNode",
+        "http_options": {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "root_path": "/serve",
+        },
+        "grpc_options": {
+            "port": 9000,
+            "grpc_servicer_functions": grpc_servicer_functions,
+        },
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": grpc_import_path,
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": world_import_path,
+            },
+        ],
+    }
+    # Ensure api can accept config with gRPC options
+    deploy_config_multi_app(original_config)
+
+    # Ensure HTTP requests are still working
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/serve/app2").text
+        == "wonderful world",
+        timeout=15,
+    )
+
+    # Ensure gRPC requests also work
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    test_in = serve_pb2.UserDefinedMessage(name="foo", num=30)
+    metadata = (("application", "app1"),)
+    response = stub.Method1(request=test_in, metadata=metadata)
+    assert response.greeting == "Hello foo from method1"
 
 
 def test_default_dashboard_agent_listen_port():

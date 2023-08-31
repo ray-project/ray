@@ -106,7 +106,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     """
     Builds the Anyscale BYOD images for the given tests.
     """
-    build_ray()
+    build_ray(tests)
     _download_dataplane_build_file()
     to_be_built = {}
     built = set()
@@ -203,10 +203,14 @@ def _validate_and_push(byod_image: str) -> None:
         .decode("utf-8")
         .strip()
     )
-    expected_ray_commit = _get_ray_commit()
-    assert (
-        docker_ray_commit == expected_ray_commit
-    ), f"Expected ray commit {expected_ray_commit}, found {docker_ray_commit}"
+    if os.environ.get("RAY_IMAGE_TAG"):
+        logger.info(f"Ray commit from image: {docker_ray_commit}")
+    else:
+        expected_ray_commit = _get_ray_commit()
+        assert (
+            docker_ray_commit == expected_ray_commit
+        ), f"Expected ray commit {expected_ray_commit}, found {docker_ray_commit}"
+    logger.info(f"Pushing image to ECR: {byod_image}")
     subprocess.check_call(
         ["docker", "push", byod_image],
         stdout=sys.stderr,

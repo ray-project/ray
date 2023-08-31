@@ -14,6 +14,32 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "resource_set_test",
+    size = "small",
+    srcs = [
+        "resource_set_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:task_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "resource_instance_set_test",
+    size = "small",
+    srcs = [
+        "resource_instance_set_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:task_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "ray_syncer_test",
     srcs = ["ray_syncer_test.cc"],
     tags = ["team:core"],

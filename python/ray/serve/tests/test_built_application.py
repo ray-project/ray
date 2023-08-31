@@ -1,9 +1,9 @@
 import pytest
 import sys
 
-import ray
 from ray import serve
 from ray.serve.built_application import BuiltApplication
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray._private.test_utils import wait_for_condition
 
 
@@ -18,23 +18,24 @@ class TestBuiltApplicationConstruction:
             return "got C"
 
     def test_valid_deployments(self):
-        app = BuiltApplication([self.f, self.C])
+        app = BuiltApplication([self.f, self.C], "f")
 
         assert len(app.deployments) == 2
         app_deployment_names = {d.name for d in app.deployments.values()}
         assert "f" in app_deployment_names
         assert "C" in app_deployment_names
+        assert app.ingress.name == "f"
 
     def test_repeated_deployment_names(self):
         with pytest.raises(ValueError):
-            BuiltApplication([self.f, self.C.options(name="f")])
+            BuiltApplication([self.f, self.C.options(name="f")], "f")
 
         with pytest.raises(ValueError):
-            BuiltApplication([self.C, self.f.options(name="C")])
+            BuiltApplication([self.C, self.f.options(name="C")], "C")
 
     def test_non_deployments(self):
         with pytest.raises(TypeError):
-            BuiltApplication([self.f, 5, "hello"])
+            BuiltApplication([self.f, 5, "hello"], "f")
 
 
 class TestServeRun:
@@ -68,18 +69,16 @@ class TestServeRun:
 
         for i in range(len(deployments)):
             serve.run(
-                BuiltApplication([deployments[i]]),
+                BuiltApplication([deployments[i]], deployments[i].name),
                 name=f"app{i}",
                 _blocking=blocking,
             )
 
         def check_all_deployed():
-            try:
-                for deployment, response in zip(deployments, responses):
-                    if ray.get(deployment.get_handle().remote()) != response:
-                        return False
-            except Exception:
-                return False
+            for i in range(len(deployments)):
+                handle = serve.get_deployment_handle(deployments[i].name, f"app{i}")
+                if handle.remote().result() != responses[i]:
+                    return False
 
             return True
 
@@ -121,7 +120,7 @@ class TestServeRun:
         @serve.deployment(route_prefix=None)
         class MutualHandles:
             async def __init__(self, handle_name):
-                self.handle = serve.get_deployment(handle_name).get_handle()
+                self.handle = serve.get_deployment_handle(handle_name)
 
             async def __call__(self, echo: str):
                 return await self.handle.request_echo.remote(echo)
@@ -130,7 +129,7 @@ class TestServeRun:
                 return echo
 
         names = []
-        for i in range(10):
+        for i in range(1, 10):
             names.append("a" * i)
 
         deployments = []
@@ -144,10 +143,13 @@ class TestServeRun:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        serve.run(BuiltApplication(deployments), _blocking=True)
+        serve.run(BuiltApplication(deployments, deployments[-1].name), _blocking=True)
 
         for deployment in deployments:
-            assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
+            handle = serve.get_deployment_handle(
+                deployment.name, SERVE_DEFAULT_APP_NAME
+            )
+            assert handle.remote("hello").result() == "hello"
 
     def test_decorated_deployments(self, serve_instance):
         """
@@ -181,7 +183,7 @@ class TestServeRun:
         """
 
         with pytest.raises(TypeError):
-            BuiltApplication([self.f, self.C, "not a Deployment object"]).deploy(
+            BuiltApplication([self.f, self.C, "not a Deployment object"], "f").deploy(
                 blocking=True
             )
 
@@ -255,8 +257,10 @@ class TestServeRun:
         self.deploy_and_check_responses(deployments, responses)
 
         # Check that non-default decorated values were overwritten
-        assert serve.get_deployment("decorated_func").max_concurrent_queries != 17
-        assert serve.get_deployment("decorated_clss").max_concurrent_queries != 17
+        info, _ = serve_instance.get_deployment_info("decorated_func", "app0")
+        assert info.deployment_config.max_concurrent_queries != 17
+        info, _ = serve_instance.get_deployment_info("decorated_clss", "app1")
+        assert info.deployment_config.max_concurrent_queries != 17
 
 
 # Decorated function with non-default max_concurrent queries
@@ -273,7 +277,7 @@ class DecoratedClass:
 
 
 def test_immutable_deployment_list(serve_instance):
-    app = BuiltApplication([DecoratedClass, decorated_func])
+    app = BuiltApplication([DecoratedClass, decorated_func], "decorated_func")
     assert len(app.deployments.values()) == 2
 
     for name in app.deployments.keys():

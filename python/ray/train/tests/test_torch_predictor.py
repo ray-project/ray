@@ -2,18 +2,14 @@ import re
 
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 import pytest
-import ray
 import torch
 
-from ray.train import Checkpoint
-from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY, PREPROCESSOR_KEY
+from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import (
     _convert_pandas_to_batch_type,
     _convert_batch_type_to_pandas,
 )
-from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
@@ -64,12 +60,15 @@ def test_repr(model):
 def test_init(model, preprocessor):
     predictor = TorchPredictor(model=model, preprocessor=preprocessor)
 
-    checkpoint = {MODEL_KEY: model, PREPROCESSOR_KEY: preprocessor}
     checkpoint_predictor = TorchPredictor.from_checkpoint(
-        Checkpoint.from_dict(checkpoint)
+        TorchCheckpoint.from_model(model, preprocessor=preprocessor)
     )
 
-    assert checkpoint_predictor.model == predictor.model
+    data_batch = np.array([1, 2, 3])
+    np.testing.assert_array_equal(
+        predictor.predict(data_batch)["predictions"],
+        checkpoint_predictor.predict(data_batch)["predictions"],
+    )
     assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
 
 
@@ -94,40 +93,6 @@ def test_predict(batch_type):
 
     assert len(predictions) == 3
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
-
-
-@pytest.mark.parametrize("block_type", [pd.DataFrame, pa.Table])
-@pytest.mark.parametrize("use_state_dict", [True, False])
-def test_predict_dataset_block(ray_start_4_cpus, block_type, use_state_dict):
-    if use_state_dict:
-        checkpoint = TorchCheckpoint.from_state_dict({})
-        # Notice here that predictor needs to take in additional information
-        # of "model".
-        predictor = BatchPredictor.from_checkpoint(
-            checkpoint, TorchPredictor, model=DummyModelMultiInput()
-        )
-    else:  # directly using model
-        checkpoint = TorchCheckpoint.from_model(DummyModelMultiInput())
-        predictor = BatchPredictor.from_checkpoint(
-            checkpoint,
-            TorchPredictor,
-        )
-
-    dummy_data = pd.DataFrame(
-        [[0.0, 1.0], [0.0, 2.0], [0.0, 3.0]], columns=["X0", "X1"]
-    )
-
-    if block_type == pd.DataFrame:
-        dataset = ray.data.from_pandas(dummy_data)
-    elif block_type == pa.Table:
-        dataset = ray.data.from_arrow(pa.Table.from_pandas(dummy_data))
-    else:
-        raise RuntimeError("Invalid batch_type")
-
-    predictions = predictor.predict(dataset)
-
-    assert predictions.count() == 3
-    assert predictions.to_pandas().to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
@@ -278,23 +243,6 @@ def test_multi_modal_real_model(use_gpu):
         assert not next(
             predictor.model.parameters()
         ).is_cuda, "Model should not be on GPU if use_gpu is False"
-
-
-def test_predictor_w_ckpt_from_uri(mock_s3_bucket_uri):
-    def create_model():
-        return torch.nn.Sequential(
-            torch.nn.Linear(1, 1),
-            torch.nn.Sigmoid(),
-        )
-
-    model = create_model()
-    saved_checkpoint = TorchCheckpoint.from_model(model=model)
-    saved_checkpoint.to_uri(mock_s3_bucket_uri)
-    loaded_checkpoint = TorchCheckpoint.from_uri(mock_s3_bucket_uri)
-    batch_predictor = BatchPredictor.from_checkpoint(
-        checkpoint=loaded_checkpoint, predictor_cls=TorchPredictor
-    )
-    batch_predictor.predict(ray.data.from_numpy(np.array([1])), dtype=torch.float)
 
 
 if __name__ == "__main__":

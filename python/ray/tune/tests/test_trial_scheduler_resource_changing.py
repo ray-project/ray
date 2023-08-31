@@ -2,7 +2,6 @@ import shutil
 import tempfile
 import unittest
 
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune import PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
@@ -12,22 +11,14 @@ from ray.tune.schedulers.resource_changing_scheduler import (
     DistributeResources,
     DistributeResourcesToTopJob,
 )
+
 from ray.tune.tests.execution.utils import create_execution_test_objects
+from ray.train.tests.util import mock_storage_context
 
 
 class MockTuneController(TuneController):
     def get_live_trials(self):
         return [t for t in self._trials if t.status != "TERMINATED"]
-
-
-class MockTrial(Trial):
-    @property
-    def checkpoint(self):
-        return _TrackedCheckpoint(
-            dir_or_data="None",
-            storage_mode=CheckpointStorage.MEMORY,
-            metrics={},
-        )
 
 
 class TestUniformResourceAllocation(unittest.TestCase):
@@ -38,19 +29,20 @@ class TestUniformResourceAllocation(unittest.TestCase):
             resources={"CPU": 8, "GPU": 8},
             reuse_actors=False,
             tune_controller_cls=MockTuneController,
+            storage=mock_storage_context(),
         )
 
     def tearDown(self) -> None:
         shutil.rmtree(self.tmpdir)
 
     def _prepareTrials(self, scheduler, base_pgf):
-        trial1 = MockTrial("mock", config=dict(num=1), stub=True)
+        trial1 = Trial("mock", config=dict(num=1), stub=True)
         trial1.placement_group_factory = base_pgf
-        trial2 = MockTrial("mock", config=dict(num=2), stub=True)
+        trial2 = Trial("mock", config=dict(num=2), stub=True)
         trial2.placement_group_factory = base_pgf
-        trial3 = MockTrial("mock", config=dict(num=3), stub=True)
+        trial3 = Trial("mock", config=dict(num=3), stub=True)
         trial3.placement_group_factory = base_pgf
-        trial4 = MockTrial("mock", config=dict(num=4), stub=True)
+        trial4 = Trial("mock", config=dict(num=4), stub=True)
         trial4.placement_group_factory = base_pgf
 
         self.tune_controller._trials = [trial1, trial2, trial3, trial4]
@@ -68,7 +60,7 @@ class TestUniformResourceAllocation(unittest.TestCase):
 
     def _allocateAndAssertNewResources(self, trial, scheduler, target_pgf, metric=1):
         result = {"metric": metric, "training_iteration": 4}
-        trial.last_result = result
+        trial.run_metadata.last_result = result
         decision = scheduler.on_trial_result(self.tune_controller, trial, result)
         assert decision == TrialScheduler.PAUSE
         trial.status = Trial.PENDING
@@ -314,10 +306,10 @@ class TestUniformResourceAllocationAddBundles(TestUniformResourceAllocation):
 class TestTopJobResourceAllocation(TestUniformResourceAllocation):
     def _prepareTrials(self, scheduler, base_pgf):
         t1, t2, t3, t4 = super()._prepareTrials(scheduler, base_pgf)
-        t1.last_result = {"metric": 1, "training_iteration": 3}
-        t2.last_result = {"metric": 0.9, "training_iteration": 3}
-        t3.last_result = {"metric": 0.8, "training_iteration": 3}
-        t4.last_result = {"metric": 0.7, "training_iteration": 3}
+        t1.run_metadata.last_result = {"metric": 1, "training_iteration": 3}
+        t2.run_metadata.last_result = {"metric": 0.9, "training_iteration": 3}
+        t3.run_metadata.last_result = {"metric": 0.8, "training_iteration": 3}
+        t4.run_metadata.last_result = {"metric": 0.7, "training_iteration": 3}
         return t1, t2, t3, t4
 
     def testAllocateFreeResources(self):

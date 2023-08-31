@@ -123,7 +123,7 @@ if not MOCK:
     metric = None
 
     # __modin_start__
-    def train_fn(config, checkpoint_dir=None):
+    def train_fn(config):
         # some Modin operations here
         # import modin.pandas as pd
         train.report({"metric": metric})
@@ -148,7 +148,7 @@ from ray import tune
 import numpy as np
 
 
-def train_func(config, checkpoint_dir=None, num_epochs=5, data=None):
+def train_func(config, num_epochs=5, data=None):
     for i in range(num_epochs):
         for sample in data:
             # ... train on sample
@@ -249,102 +249,6 @@ if not MOCK:
     tuner.fit()
     # __log_1_end__
 
-    # __log_2_start__
-    from ray.tune.syncer import Syncer
-
-    class CustomSyncer(Syncer):
-        def sync_up(
-            self, local_dir: str, remote_dir: str, exclude: list = None
-        ) -> bool:
-            pass  # sync up
-
-        def sync_down(
-            self, remote_dir: str, local_dir: str, exclude: list = None
-        ) -> bool:
-            pass  # sync down
-
-        def delete(self, remote_dir: str) -> bool:
-            pass  # delete
-
-    tuner = tune.Tuner(
-        MyTrainableClass,
-        run_config=train.RunConfig(storage_path="s3://my-log-dir"),
-    )
-    tuner.fit()
-    # __log_2_end__
-
-    # __custom_command_syncer_start__
-    import subprocess
-    from ray.tune.syncer import Syncer
-
-    class CustomCommandSyncer(Syncer):
-        def __init__(
-            self,
-            sync_up_template: str,
-            sync_down_template: str,
-            delete_template: str,
-            sync_period: float = 300.0,
-        ):
-            self.sync_up_template = sync_up_template
-            self.sync_down_template = sync_down_template
-            self.delete_template = delete_template
-
-            super().__init__(sync_period=sync_period)
-
-        def sync_up(
-            self, local_dir: str, remote_dir: str, exclude: list = None
-        ) -> bool:
-            cmd_str = self.sync_up_template.format(
-                source=local_dir,
-                target=remote_dir,
-            )
-            try:
-                subprocess.check_call(cmd_str, shell=True)
-            except Exception as e:
-                print(f"Exception when syncing up {local_dir} to {remote_dir}: {e}")
-                return False
-            return True
-
-        def sync_down(
-            self, remote_dir: str, local_dir: str, exclude: list = None
-        ) -> bool:
-            cmd_str = self.sync_down_template.format(
-                source=remote_dir,
-                target=local_dir,
-            )
-            try:
-                subprocess.check_call(cmd_str, shell=True)
-            except Exception as e:
-                print(f"Exception when syncing down {remote_dir} to {local_dir}: {e}")
-                return False
-            return True
-
-        def delete(self, remote_dir: str) -> bool:
-            cmd_str = self.delete_template.format(
-                target=remote_dir,
-            )
-            try:
-                subprocess.check_call(cmd_str, shell=True)
-            except Exception as e:
-                print(f"Exception when deleting {remote_dir}: {e}")
-                return False
-            return True
-
-        def retry(self):
-            raise NotImplementedError
-
-        def wait(self):
-            pass
-
-    sync_config = tune.SyncConfig(
-        syncer=CustomCommandSyncer(
-            sync_up_template="aws s3 sync {source} {target}",
-            sync_down_template="aws s3 sync {source} {target}",
-            delete_template="aws s3 rm {target} --recursive",
-        ),
-    )
-    # __custom_command_syncer_end__
-
 
 if not MOCK:
     # __s3_start__
@@ -433,6 +337,11 @@ if not MOCK:
 
 
 # __iter_experimentation_initial_start__
+import os
+import tempfile
+
+import torch
+
 from ray import train, tune
 from ray.train import Checkpoint
 import random
@@ -442,10 +351,14 @@ def trainable(config):
     for epoch in range(1, config["num_epochs"]):
         # Do some training...
 
-        train.report(
-            {"score": random.random()},
-            checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
-        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            torch.save(
+                {"model_state_dict": {"x": 1}}, os.path.join(tempdir, "model.pt")
+            )
+            train.report(
+                {"score": random.random()},
+                checkpoint=Checkpoint.from_directory(tempdir),
+            )
 
 
 tuner = tune.Tuner(
@@ -466,18 +379,19 @@ import ray
 
 def trainable(config):
     # Add logic to handle the initial checkpoint.
-    checkpoint_ref = config["start_from_checkpoint"]
-    checkpoint: Checkpoint = ray.get(checkpoint_ref)
-    model_state_dict = checkpoint.to_dict()["model_state_dict"]
+    checkpoint: Checkpoint = config["start_from_checkpoint"]
+    with checkpoint.as_directory() as checkpoint_dir:
+        model_state_dict = torch.load(os.path.join(checkpoint_dir, "model.pt"))
+
     # Initialize a model from the checkpoint...
+    # model = ...
+    # model.load_state_dict(model_state_dict)
 
     for epoch in range(1, config["num_epochs"]):
-        # Do some training...
+        # Do some more training...
+        ...
 
-        train.report(
-            {"score": random.random()},
-            checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
-        )
+        train.report({"score": random.random()})
 
 
 new_tuner = tune.Tuner(
@@ -485,10 +399,7 @@ new_tuner = tune.Tuner(
     param_space={
         "num_epochs": 10,
         "hyperparam": tune.grid_search([4, 5, 6]),
-        # Put the best checkpoint from above into the object store.
-        # This way, all trials will be able to access the checkpoint,
-        # regardless of which node they are on.
-        "start_from_checkpoint": ray.put(best_checkpoint),
+        "start_from_checkpoint": best_checkpoint,
     },
     tune_config=tune.TuneConfig(metric="score", mode="max"),
 )

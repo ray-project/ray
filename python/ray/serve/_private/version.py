@@ -19,6 +19,9 @@ class DeploymentVersion:
         code_version: Optional[str],
         deployment_config: DeploymentConfig,
         ray_actor_options: Optional[Dict],
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
+        max_replicas_per_node: Optional[int] = None,
     ):
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(f"code_version must be str, got {type(code_version)}.")
@@ -30,9 +33,12 @@ class DeploymentVersion:
             self.code_version = code_version
 
         # Options for this field may be mutated over time, so any logic that uses this
-        # should access this field directly
-        self.deployment_config: DeploymentConfig = deployment_config
-        self.ray_actor_options: Dict = ray_actor_options
+        # should access this field directly.
+        self.deployment_config = deployment_config
+        self.ray_actor_options = ray_actor_options
+        self.placement_group_bundles = placement_group_bundles
+        self.placement_group_strategy = placement_group_strategy
+        self.max_replicas_per_node = max_replicas_per_node
         self.compute_hashes()
 
     @classmethod
@@ -57,6 +63,9 @@ class DeploymentVersion:
         return (
             self.code_version != new_version.code_version
             or self.ray_actor_options_hash != new_version.ray_actor_options_hash
+            or self.placement_group_options_hash
+            != new_version.placement_group_options_hash
+            or self.max_replicas_per_node != new_version.max_replicas_per_node
         )
 
     def requires_actor_reconfigure(self, new_version):
@@ -76,9 +85,18 @@ class DeploymentVersion:
         )
 
     def compute_hashes(self):
-        # If this changes, the controller will directly restart all existing replicas.
+        # If these change, the controller will rolling upgrade existing replicas.
         serialized_ray_actor_options = _serialize(self.ray_actor_options or {})
         self.ray_actor_options_hash = crc32(serialized_ray_actor_options)
+        combined_placement_group_options = {}
+        if self.placement_group_bundles is not None:
+            combined_placement_group_options["bundles"] = self.placement_group_bundles
+        if self.placement_group_strategy is not None:
+            combined_placement_group_options["strategy"] = self.placement_group_strategy
+        serialized_placement_group_options = _serialize(
+            combined_placement_group_options
+        )
+        self.placement_group_options_hash = crc32(serialized_placement_group_options)
 
         # If this changes, DeploymentReplica.reconfigure() will call reconfigure on the
         # actual replica actor
@@ -93,6 +111,8 @@ class DeploymentVersion:
         self._hash = crc32(
             self.code_version.encode("utf-8")
             + serialized_ray_actor_options
+            + serialized_placement_group_options
+            + str(self.max_replicas_per_node).encode("utf-8")
             + self._get_serialized_options(
                 [
                     DeploymentOptionUpdateType.NeedsReconfigure,
@@ -107,6 +127,15 @@ class DeploymentVersion:
             code_version=self.code_version,
             deployment_config=self.deployment_config.to_proto(),
             ray_actor_options=json.dumps(self.ray_actor_options),
+            placement_group_bundles=json.dumps(self.placement_group_bundles)
+            if self.placement_group_bundles is not None
+            else "",
+            placement_group_strategy=self.placement_group_strategy
+            if self.placement_group_strategy is not None
+            else "",
+            max_replicas_per_node=self.max_replicas_per_node
+            if self.max_replicas_per_node is not None
+            else 0,
         )
 
     @classmethod
@@ -115,6 +144,17 @@ class DeploymentVersion:
             proto.code_version,
             DeploymentConfig.from_proto(proto.deployment_config),
             json.loads(proto.ray_actor_options),
+            placement_group_bundles=(
+                json.loads(proto.placement_group_bundles)
+                if proto.placement_group_bundles
+                else None
+            ),
+            placement_group_version=(
+                proto.placement_group_version if proto.placement_group_version else None
+            ),
+            max_replicas_per_node=(
+                proto.max_replicas_per_node if proto.max_replicas_per_node else None
+            ),
         )
 
     def _get_serialized_options(

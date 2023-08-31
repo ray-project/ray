@@ -76,3 +76,18 @@ py_test(
         ci_require("pytest"),
     ],
 )
+
+py_test(
+    name = "test_bazel_sharding",
+    size = "small",
+    srcs = ["test_bazel_sharding.py"],
+    data = ["mock_BUILD"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ci_require("pytest"),
+    ],
+)

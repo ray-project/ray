@@ -6,13 +6,16 @@ import requests
 import starlette
 from starlette.middleware import Middleware
 import sys
-import time
 
 
 import ray
 from ray.exceptions import RayActorError
 from ray import serve
+from ray._private.test_utils import wait_for_condition
+from ray.serve._private.common import HTTPProxyStatus
 from ray.serve._private.utils import call_function_from_import_path
+from ray.serve.context import get_global_client
+from ray.serve.schema import ServeInstanceDetails
 
 
 # ==== Callbacks used in this test ====
@@ -213,26 +216,33 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
     indirect=True,
 )
 def test_http_proxy_calllback_failures(ray_instance, capsys):
-    """Test http proxy into unhealthy state when callback function fails"""
+    """Test http proxy keeps restarting when callback function fails"""
 
     try:
-        serve.start()
+        serve.start(detached=True)
     except RayActorError:
         # serve.start will fail because the http proxy is not started successfully
         # and client use proxy handle to check the proxy readiness, so it will raise
         # RayActorError.
         pass
 
-    # 1s sleep to be long enough for proxy unhealthy message logged.
-    time.sleep(1)
+    client = get_global_client()
 
-    captured = capsys.readouterr()
-    assert "this is from raise_error_callback" in captured.err
-    # Error message printed when http proxy in STARTING state and not
-    # able to be started.
-    assert (
-        "Unexpected actor death when checking readiness of HTTP Proxy" in captured.err
-    )
+    def check_http_proxy_keep_restarting():
+        # The proxy will be under "STARTING" status and keep restarting.
+        prev_actor_id = None
+        while True:
+            serve_details = ServeInstanceDetails(**client.get_serve_details())
+            for _, proxy_info in serve_details.http_proxies.items():
+                if proxy_info.status != HTTPProxyStatus.STARTING:
+                    return False
+                if prev_actor_id is None:
+                    prev_actor_id = proxy_info.actor_id
+                    break
+                elif prev_actor_id != proxy_info.actor_id:
+                    return True
+
+    wait_for_condition(check_http_proxy_keep_restarting)
 
 
 if __name__ == "__main__":

@@ -77,44 +77,21 @@ def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
     ray.init(num_cpus=8)
     ctx = ray.data.context.DataContext.get_current()
 
-    try:
-        original = ctx.block_splitting_enabled
+    ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
+    if not block_split:
+        # Setting infinite block size effectively disables block splitting.
+        ctx.target_max_block_size = float("inf")
+    ds = ray.data.read_datasource(
+        SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
+    )
 
-        ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
-        if not block_split:
-            # Setting infinite block size effectively disables block splitting.
-            ctx.target_max_block_size = float("inf")
-        ds = ray.data.read_datasource(
-            SlowCSVDatasource(), parallelism=8, paths=str(tmp_path)
-        )
+    start = time.time()
+    ds.map(lambda x: x)
+    delta = time.time() - start
 
-        start = time.time()
-        ds.map(lambda x: x)
-        delta = time.time() - start
-
-        print("full read time", delta)
-        # Should run in ~3 seconds. It takes >9 seconds if bulk read is broken.
-        assert delta < 8, delta
-    finally:
-        ctx.block_splitting_enabled = original
-
-
-def test_enable_in_ray_client(ray_start_cluster_enabled):
-    cluster = ray_start_cluster_enabled
-    cluster.add_node(num_cpus=4)
-    cluster.head_node._ray_params.ray_client_server_port = "10004"
-    cluster.head_node.start_ray_client_server()
-    address = "ray://localhost:10004"
-
-    # Import of ray.data.context module, and this triggers the initialization of
-    # default configuration values in DataContext.
-    from ray.data.context import DataContext
-
-    assert DataContext.get_current().block_splitting_enabled
-
-    # Verify Ray client also has dynamic block splitting enabled.
-    ray.init(address)
-    assert DataContext.get_current().block_splitting_enabled
+    print("full read time", delta)
+    # Should run in ~3 seconds. It takes >9 seconds if bulk read is broken.
+    assert delta < 8, delta
 
 
 @pytest.mark.parametrize(
@@ -126,7 +103,6 @@ def test_enable_in_ray_client(ray_start_cluster_enabled):
 )
 def test_dataset(
     shutdown_only,
-    enable_dynamic_block_splitting,
     target_max_block_size,
     compute,
 ):
@@ -197,9 +173,7 @@ def test_dataset(
         assert len(batch["one"]) == 10
 
 
-def test_dataset_pipeline(
-    ray_start_regular_shared, enable_dynamic_block_splitting, target_max_block_size
-):
+def test_dataset_pipeline(ray_start_regular_shared, target_max_block_size):
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
@@ -228,9 +202,7 @@ def test_dataset_pipeline(
     assert len(dsp.take(5)) == 5
 
 
-def test_filter(
-    ray_start_regular_shared, enable_dynamic_block_splitting, target_max_block_size
-):
+def test_filter(ray_start_regular_shared, target_max_block_size):
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
@@ -254,9 +226,7 @@ def test_filter(
     assert ds.num_blocks() == num_blocks_per_task
 
 
-def test_lazy_block_list(
-    shutdown_only, enable_dynamic_block_splitting, target_max_block_size
-):
+def test_lazy_block_list(shutdown_only, target_max_block_size):
     # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
     # row has 1024 bytes.
     num_blocks_per_task = 10
@@ -355,7 +325,8 @@ def test_lazy_block_list(
         assert block_metadata.schema is not None
 
 
-def test_read_large_data(ray_start_cluster, enable_dynamic_block_splitting):
+@pytest.mark.skip("Needs zero-copy optimization for read->map_batches.")
+def test_read_large_data(ray_start_cluster):
     # Test 20G input with single task
     num_blocks_per_task = 20
     block_size = 1024 * 1024 * 1024

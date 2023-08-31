@@ -132,6 +132,8 @@ def file(
     config_file: str = cli.ConfigFile,
     # stopping conditions
     stop: Optional[str] = cli.Stop,
+    # Environment override.
+    env: Optional[str] = cli.Env,
     # Checkpointing
     checkpoint_freq: int = cli.CheckpointFreq,
     checkpoint_at_end: bool = cli.CheckpointAtEnd,
@@ -143,9 +145,9 @@ def file(
     framework: FrameworkEnum = cli.Framework,
     trace: bool = cli.Trace,
     # WandB options.
-    wandb_key: Optional[str] = None,
-    wandb_project: Optional[str] = None,
-    wandb_run_name: Optional[str] = None,
+    wandb_key: Optional[str] = cli.WandBKey,
+    wandb_project: Optional[str] = cli.WandBProject,
+    wandb_run_name: Optional[str] = cli.WandBRunName,
     # Ray cluster options.
     local_mode: bool = cli.LocalMode,
     ray_address: Optional[str] = cli.RayAddress,
@@ -193,6 +195,11 @@ def file(
     experiment = experiments[exp_name]
     algo = experiment["run"]
 
+    # Override the env from the config by the value given on the command line.
+    if env is not None:
+        experiment["env"] = env
+
+    # WandB logging support.
     callbacks = None
     if wandb_key is not None:
         project = wandb_project or (
@@ -423,8 +430,8 @@ def run_rllib_experiments(
 
     checkpoints = []
     for trial in trials:
-        if trial.checkpoint.dir_or_data:
-            checkpoints.append(trial.checkpoint.dir_or_data)
+        if trial.checkpoint:
+            checkpoints.append(trial.checkpoint)
 
     if checkpoints:
         from rich import print
@@ -434,13 +441,13 @@ def run_rllib_experiments(
 
         print("Best available checkpoint for each trial:")
         for cp in checkpoints:
-            print(f"  {cp}")
+            print(f"  {cp.path}")
 
         print(
             "\nYou can now evaluate your trained algorithm from any "
             "checkpoint, e.g. by running:"
         )
-        print(Panel(f"[green]  rllib evaluate {checkpoints[0]} --algo {algo}"))
+        print(Panel(f"[green]  rllib evaluate {checkpoints[0].path} --algo {algo}"))
 
 
 def main():

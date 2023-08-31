@@ -20,6 +20,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    create_map_transformer_from_block_fn,
+)
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
@@ -28,12 +31,12 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 
 
-def make_transform(block_fn):
-    def map_fn(block_iter, ctx):
+def make_map_transformer(block_fn):
+    def map_fn(block_iter, _):
         for block in block_iter:
             yield pd.DataFrame({"id": block_fn(block["id"])})
 
-    return map_fn
+    return create_map_transformer_from_block_fn(map_fn)
 
 
 def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
@@ -86,8 +89,12 @@ def test_pipelined_execution(ray_start_10_cpus_shared):
     executor = StreamingExecutor(ExecutionOptions(preserve_order=True))
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+    )
 
     def reverse_sort(inputs: List[RefBundle], ctx):
         reversed_list = inputs[::-1]

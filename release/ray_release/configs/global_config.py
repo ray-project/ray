@@ -1,3 +1,5 @@
+import os
+
 import yaml
 from typing_extensions import TypedDict
 
@@ -10,6 +12,7 @@ class GlobalConfig(TypedDict):
     byod_aws_cr: str
     byod_gcp_cr: str
     state_machine_aws_bucket: str
+    aws2gce_credentials: str
 
 
 config = None
@@ -44,4 +47,9 @@ def _init_global_config(config_file: str):
         byod_aws_cr=config_content["byod"].get("aws_cr"),
         byod_gcp_cr=config_content["byod"].get("gcp_cr"),
         state_machine_aws_bucket=config_content["state_machine"]["aws_bucket"],
+        aws2gce_credentials=config_content.get("credentials", {}).get("aws2gce"),
     )
+    # setup GCP workload identity federation
+    os.environ[
+        "GOOGLE_APPLICATION_CREDENTIALS"
+    ] = f"/workdir/{config['aws2gce_credentials']}"

@@ -19,6 +19,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.interfaces.physical_operator import OpTask, Waitable
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -162,7 +163,7 @@ class OpState:
 
     def num_processing(self):
         """Return the number of bundles currently in processing for this operator."""
-        return self.op.num_active_work_refs() + self.op.internal_queue_size()
+        return self.op.num_active_tasks() + self.op.internal_queue_size()
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
@@ -178,7 +179,7 @@ class OpState:
 
     def summary_str(self) -> str:
         queued = self.num_queued() + self.op.internal_queue_size()
-        active = self.op.num_active_work_refs()
+        active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: {active} active, {queued} queued"
         mem = memory_string(
             (self.op.current_resource_usage().object_store_memory or 0)
@@ -314,23 +315,22 @@ def process_completed_tasks(topology: Topology) -> None:
     states, call `update_operator_states()` afterwards."""
 
     # Update active tasks.
-    active_tasks: Dict[ray.ObjectRef, PhysicalOperator] = {}
+    active_tasks: Dict[Waitable, OpTask] = {}
 
     for op in topology.keys():
-        for ref in op.get_work_refs():
-            active_tasks[ref] = op
+        for task in op.get_active_tasks():
+            active_tasks[task.get_waitable()] = task
 
     # Process completed Ray tasks and notify operators.
     if active_tasks:
-        completed, _ = ray.wait(
-            list(active_tasks),
+        ready, _ = ray.wait(
+            list(active_tasks.keys()),
             num_returns=len(active_tasks),
             fetch_local=False,
             timeout=0.1,
         )
-        for ref in completed:
-            op = active_tasks.pop(ref)
-            op.notify_work_completed(ref)
+        for ref in ready:
+            active_tasks[ref].on_waitable_ready()
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
@@ -427,7 +427,7 @@ def select_operator_to_run(
     if (
         ensure_at_least_one_running
         and not ops
-        and all(op.num_active_work_refs() == 0 for op in topology)
+        and all(op.num_active_tasks() == 0 for op in topology)
     ):
         # The topology is entirely idle, so choose from all ready ops ignoring limits.
         ops = [
@@ -483,7 +483,7 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
     for op, state in topology.items():
         per_task_resource = op.incremental_resource_usage()
         task_bundle = to_bundle(per_task_resource)
-        resource_request.extend([task_bundle] * op.num_active_work_refs())
+        resource_request.extend([task_bundle] * op.num_active_tasks())
         # Only include incremental resource usage for ops that are ready for
         # dispatch.
         if state.num_queued() > 0:

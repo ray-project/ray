@@ -54,6 +54,12 @@ message AutoscalingConfig {
 
   // Initial number of replicas deployment should start with. Must be non-negative.
   optional uint32 initial_replicas = 9;
+
+  // The multiplicative "gain" factor to limit upscale.
+  optional double upscale_smoothing_factor = 10;
+
+  // The multiplicative "gain" factor to limit downscale.
+  optional double downscale_smoothing_factor = 11;
 }
 
 // Configuration options for a deployment, to be set by the user.
@@ -152,6 +158,9 @@ message DeploymentVersion {
   string code_version = 1;
   DeploymentConfig deployment_config = 2;
   string ray_actor_options = 3;
+  string placement_group_bundles = 4;
+  string placement_group_strategy = 5;
+  int32 max_replicas_per_node = 6;
 }
 
 message ReplicaConfig {
@@ -160,6 +169,9 @@ message ReplicaConfig {
   bytes init_args = 3;
   bytes init_kwargs = 4;
   string ray_actor_options = 5;
+  string placement_group_bundles = 6;
+  string placement_group_strategy = 7;
+  int32 max_replicas_per_node = 8;
 }
 
 message DeploymentInfo {
@@ -170,7 +182,6 @@ message DeploymentInfo {
   string actor_name = 5;
   string version = 6;
   int64 end_time_ms = 7;
-  string app_name = 8;
 }
 
 // Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
@@ -237,4 +248,61 @@ message PredictResponse {
 
 service PredictAPIsService {
   rpc Predict(PredictRequest) returns (PredictResponse);
+}
+
+// Used for gRPC proxy health check
+message ListApplicationsRequest {}
+
+message ListApplicationsResponse {
+  repeated string application_names = 1;
+}
+
+message HealthzRequest {}
+
+message HealthzResponse {
+  string message = 1;
+}
+
+service RayServeAPIService {
+  rpc ListApplications(ListApplicationsRequest) returns (ListApplicationsResponse);
+  rpc Healthz(HealthzRequest) returns (HealthzResponse);
+}
+
+// Used for gRPC related tests
+message UserDefinedMessage {
+  string name = 1;
+  string foo = 2;
+  int64 num = 3;
+}
+
+message UserDefinedResponse {
+  string greeting = 1;
+  int64 num_x2 = 2;
+}
+
+message UserDefinedMessage2 {}
+
+message UserDefinedResponse2 {
+  string greeting = 1;
+}
+
+message FruitAmounts {
+  int64 orange = 1;
+  int64 apple = 2;
+  int64 banana = 3;
+}
+
+message FruitCosts {
+  float costs = 1;
+}
+
+service UserDefinedService {
+  rpc __call__(UserDefinedMessage) returns (UserDefinedResponse);
+  rpc Method1(UserDefinedMessage) returns (UserDefinedResponse);
+  rpc Method2(UserDefinedMessage2) returns (UserDefinedResponse2);
+  rpc Streaming(UserDefinedMessage) returns (stream UserDefinedResponse);
+}
+
+service FruitService {
+  rpc FruitStand(FruitAmounts) returns (FruitCosts);
 }

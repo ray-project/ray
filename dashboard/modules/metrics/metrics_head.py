@@ -37,6 +37,8 @@ METRICS_RECORD_INTERVAL_S = 5
 
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
+DEFAULT_PROMETHEUS_NAME = "Prometheus"
+PROMETHEUS_NAME_ENV_VAR = "RAY_PROMETHEUS_NAME"
 PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
@@ -78,6 +80,10 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._grafana_dashboard_output_dir = os.environ.get(
             GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR,
             os.path.join(grafana_config_output_path, "dashboards"),
+        )
+
+        self._prometheus_name = os.environ.get(
+            PROMETHEUS_NAME_ENV_VAR, DEFAULT_PROMETHEUS_NAME
         )
 
         # To be set later when dashboards gets generated
@@ -131,6 +137,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                     grafana_host=grafana_iframe_host,
                     session_name=self._session_name,
                     dashboard_uids=self._dashboard_uids,
+                    dashboard_datasource=self._prometheus_name,
                 )
 
         except Exception as e:
@@ -236,7 +243,12 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             ),
             "w",
         ) as f:
-            f.write(GRAFANA_DATASOURCE_TEMPLATE.format(prometheus_host=prometheus_host))
+            f.write(
+                GRAFANA_DATASOURCE_TEMPLATE.format(
+                    prometheus_host=prometheus_host,
+                    prometheus_name=self._prometheus_name,
+                )
+            )
         with open(
             os.path.join(
                 self._grafana_dashboard_output_dir,

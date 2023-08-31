@@ -1,7 +1,7 @@
 :orphan:
 
-Fine-tuning DreamBooth with Ray AIR
-===================================
+Fine-tuning DreamBooth with Ray Train
+=====================================
 
 This example shows how to do DreamBooth fine-tuning of a Stable Diffusion model using Ray AIR.
 See the original `DreamBooth project homepage <https://dreambooth.github.io/>`_ for more details on what this fine-tuning method achieves.
@@ -12,12 +12,12 @@ See the original `DreamBooth project homepage <https://dreambooth.github.io/>`_ 
 
 This example is built on top of `this HuggingFace 🤗 tutorial <https://huggingface.co/docs/diffusers/training/dreambooth>`_.
 See the HuggingFace tutorial for useful explanations and suggestions on hyperparameters.
-**Adapting this example to Ray AIR allows you to easily scale up the fine-tuning to an arbitrary number of distributed training workers.**
+**Adapting this example to Ray Train allows you to easily scale up the fine-tuning to an arbitrary number of distributed training workers.**
 
 **Compute requirements:**
 
-* Because of the large model sizes, you'll need a machine with at least 2 A10G GPUs.
-* Each training worker uses 2 GPUs, so you'll need ``N * 2`` total GPUs in your Ray cluster, if training with ``N`` distributed training workers. The example can leverage data-parallel training with more GPUs to speed up training time.
+* Because of the large model sizes, you'll need a machine with at least 1 A10G GPU.
+* Each training worker uses 1 GPU. You can use multiple GPUs/workers to leverage data-parallel training to speed up training time.
 
 This example fine-tunes both the ``text_encoder`` and ``unet`` models used in the Stable Diffusion process, with respect to a prior preserving loss.
 
@@ -92,14 +92,14 @@ Distributed training
 
 The central part of the training code is the *training function*. This function accepts a configuration dict that contains the hyperparameters. It then defines a regular PyTorch training loop.
 
-There are only a few locations where we interact with the Ray AIR API. We marked them with in-line comments in the snippet below.
+There are only a few locations where we interact with the Ray Train API. We marked them with in-line comments in the snippet below.
 
 Remember that we want to do data-parallel training for all our models.
 
 
 #. We load the data shard for each worker with session.get_dataset_shard("train")
 #. We iterate over the dataset with train_dataset.iter_torch_batches()
-#. We report results to Ray AIR with session.report(results)
+#. We report results to Ray Train with session.report(results)
 
 The code was compacted for brevity. The `full code <https://github.com/ray-project/ray/tree/master/doc/source/templates/05_dreambooth_finetuning/dreambooth/train.py>`_ is more thoroughly annotated.
 
@@ -123,9 +123,9 @@ Configuring the scale
 
 In the TorchTrainer, we can easily configure our scale.
 The above example uses the ``num_workers`` argument to specify the number
-of workers. This defaults to 2 workers with 2 GPUs each - so 4 GPUs in total.
+of workers. This defaults to 2 workers with 1 GPU each - so 2 GPUs in total.
 
-To run the example on 8 GPUs, just set the number of workers to 4 using ``--num-workers=4``!
+To run the example on 4 GPUs, just set the number of workers to 4 using ``--num-workers=4``!
 Or you can change the scaling config directly:
 
 .. code-block:: diff
@@ -134,9 +134,6 @@ Or you can change the scaling config directly:
          use_gpu=True,
     -    num_workers=args.num_workers,
     +    num_workers=4,
-         resources_per_worker={
-             "GPU": 2,
-         },
      )
 
 If you're running multi-node training, you should make sure that all nodes have access to a shared
@@ -146,23 +143,19 @@ storage (e.g. via NFS or EFS). In the example script below, you can adjust this 
 Training throughput
 ~~~~~~~~~~~~~~~~~~~
 
-We ran training using 1, 2, 4, and 8 workers (and 2, 4, 8, and 16 GPUs, respectively) to compare throughput.
+We ran training using 1,  2, and 4 workers/GPUs to compare throughput.
 
 Setup:
 
-* 2 x g5.12xlarge nodes with 4 A10G GPUs each
+* 1 GCE g2-standard-48-nvidia-l4-4 instance with 4 GPUs
 * Model as configured below
 * Data from this example
 * 200 regularization images
-* Training for 4 epochs (800 steps)
-* Use a mounted External File System to share data between nodes
+* Training for 4 epochs (local batch size = 2)
 * 3 runs per configuration
-
-Because network storage can be slow, we excluded the time it takes to save the final model from the training time.
 
 We expect that the training time should benefit from scale and decreases when running with
 more workers and GPUs.
-
 
 .. image:: /templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_training.png
    :alt: DreamBooth training times
@@ -170,21 +163,14 @@ more workers and GPUs.
 .. list-table::
    :header-rows: 1
 
-   * - Number of workers
-     - Number of GPUs
-     - Training time
+   * - Number of workers/GPUs
+     - Training time (seconds)
    * - 1
-     - 2
-     - 458.16 (3.82)
+     - 802.14
    * - 2
-     - 4
-     - 364.61 (1.65)
+     - 487.82
    * - 4
-     - 8
-     - 252.37 (3.18)
-   * - 8
-     - 16
-     - 160.97 (1.36)
+     - 313.25
 
 
 While the training time decreases linearly with the amount of workers/GPUs, we observe some penalty.
@@ -216,18 +202,30 @@ Clone the Ray repository, go to the example directory, and install dependencies.
 .. code-block:: bash
 
    git clone https://github.com/ray-project/ray.git
-   cd ray/python/ray/air/examples/dreambooth
-   pip install -Ur requirements.txt
+   cd doc/source/templates/05_dreambooth_finetuning
+   pip install -Ur dreambooth/requirements.txt
 
 Prepare some directories and environment variables.
 
 .. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
   :language: bash
-  :start-after: Step 0 cont
-  :end-at: export UNIQUE_TOKEN
+  :start-after: __preparation_start__
+  :end-before: __preparation_end__
 
 
-Step 1: Supply images of your subject
+Step 1: Download the pre-trained model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Download and cache a pre-trained Stable-Diffusion model locally.
+
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
+  :language: bash
+  :start-after: __cache_model_start__
+  :end-before: __cache_model_end__
+
+You can access the downloaded model checkpoint at the ``$ORIG_MODEL_PATH``.
+
+Step 2: Supply images of your subject
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Use one of the sample datasets (dog, lego car), or provide your own directory
@@ -237,25 +235,13 @@ Then, we copy these images to ``$IMAGES_OWN_DIR``.
 
 .. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
   :language: bash
-  :start-after: Step 1
-  :end-at: cp -rf $INSTANCE_DIR/*
+  :start-after: __supply_own_images_start__
+  :end-before: __supply_own_images_end__
 
 The ``$CLASS_NAME`` should be the general category of your subject.
 The images produced by the prompt ``photo of a unqtkn <class>`` should be diverse images
 that are different enough from the subject in order for generated images to clearly
 show the effect of fine-tuning.
-
-Step 2: Download the pre-trained model
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Download and cache a pre-trained Stable-Diffusion model locally.
-
-.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
-  :language: bash
-  :start-after: Step 2
-  :end-at: python cache_model.py
-
-You can access the downloaded model checkpoint at the ``$ORIG_MODEL_PATH``.
 
 Step 3: Create the regularization images
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -267,7 +253,7 @@ rather than just optimize for producing good images of the subject.
 
 .. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
   :language: bash
-  :start-at: Step 3: START
+  :start-after: Step 3: START
   :end-before: Step 3: END
 
 We use Ray Data to do batch inference with 4 workers, so more images can be generated in parallel.
