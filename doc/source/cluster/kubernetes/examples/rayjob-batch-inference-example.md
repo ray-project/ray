@@ -2,7 +2,7 @@
 
 # RayJob Batch Inference Example
 
-This page demonstrates how to use the RayJob custom resource to run a batch inference job on a Ray cluster.
+This example demonstrates how to use the RayJob custom resource to run a batch inference job on a Ray cluster.
 
 We will use an image classification workload. The example is based on <https://docs.ray.io/en/latest/data/examples/huggingface_vit_batch_prediction.html>. Please see that page for a full explanation of the code.
 
