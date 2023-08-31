@@ -28,10 +28,13 @@ def _setup_ray_cluster(*args, **kwds):
         shutdown_ray_cluster()
 
 
-pytestmark = pytest.mark.skipif(
-    not sys.platform.startswith("linux"),
-    reason="Ray on spark only supports running on Linux.",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not sys.platform.startswith("linux"),
+        reason="Ray on spark only supports running on Linux.",
+    ),
+    pytest.mark.timeout(300),
+]
 
 _logger = logging.getLogger(__name__)
 
