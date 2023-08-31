@@ -7,7 +7,8 @@ from ray.serve.config import (
     DeploymentConfig,
     DeploymentMode,
     HTTPOptions,
-    ReplicaConfig,
+    ProxyLocation,
+    _ReplicaConfig,
     gRPCOptions,
 )
 from ray.serve.config import AutoscalingConfig
@@ -123,7 +124,7 @@ class TestDeploymentConfig:
         assert dc.max_concurrent_queries == default.max_concurrent_queries
 
 
-class TestReplicaConfig:
+class Test_ReplicaConfig:
     def test_basic_validation(self):
         class Class:
             pass
@@ -131,16 +132,16 @@ class TestReplicaConfig:
         def function(_):
             pass
 
-        ReplicaConfig.create(Class)
-        ReplicaConfig.create(function)
+        _ReplicaConfig.create(Class)
+        _ReplicaConfig.create(function)
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class())
+            _ReplicaConfig.create(Class())
 
     def test_ray_actor_options_validation(self):
         class Class:
             pass
 
-        ReplicaConfig.create(
+        _ReplicaConfig.create(
             Class,
             tuple(),
             dict(),
@@ -153,29 +154,29 @@ class TestReplicaConfig:
             },
         )
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class, ray_actor_options=1.0)
+            _ReplicaConfig.create(Class, ray_actor_options=1.0)
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class, ray_actor_options=False)
+            _ReplicaConfig.create(Class, ray_actor_options=False)
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class, ray_actor_options={"num_cpus": "hello"})
+            _ReplicaConfig.create(Class, ray_actor_options={"num_cpus": "hello"})
         with pytest.raises(ValueError):
-            ReplicaConfig.create(Class, ray_actor_options={"num_cpus": -1})
+            _ReplicaConfig.create(Class, ray_actor_options={"num_cpus": -1})
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class, ray_actor_options={"num_gpus": "hello"})
+            _ReplicaConfig.create(Class, ray_actor_options={"num_gpus": "hello"})
         with pytest.raises(ValueError):
-            ReplicaConfig.create(Class, ray_actor_options={"num_gpus": -1})
+            _ReplicaConfig.create(Class, ray_actor_options={"num_gpus": -1})
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class, ray_actor_options={"memory": "hello"})
+            _ReplicaConfig.create(Class, ray_actor_options={"memory": "hello"})
         with pytest.raises(ValueError):
-            ReplicaConfig.create(Class, ray_actor_options={"memory": -1})
+            _ReplicaConfig.create(Class, ray_actor_options={"memory": -1})
         with pytest.raises(TypeError):
-            ReplicaConfig.create(
+            _ReplicaConfig.create(
                 Class, ray_actor_options={"object_store_memory": "hello"}
             )
         with pytest.raises(ValueError):
-            ReplicaConfig.create(Class, ray_actor_options={"object_store_memory": -1})
+            _ReplicaConfig.create(Class, ray_actor_options={"object_store_memory": -1})
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class, ray_actor_options={"resources": []})
+            _ReplicaConfig.create(Class, ray_actor_options={"resources": []})
 
         disallowed_ray_actor_options = {
             "max_concurrency",
@@ -195,13 +196,13 @@ class TestReplicaConfig:
 
         for option in disallowed_ray_actor_options:
             with pytest.raises(ValueError):
-                ReplicaConfig.create(Class, ray_actor_options={option: None})
+                _ReplicaConfig.create(Class, ray_actor_options={option: None})
 
     def test_max_replicas_per_node_validation(self):
         class Class:
             pass
 
-        ReplicaConfig.create(
+        _ReplicaConfig.create(
             Class,
             tuple(),
             dict(),
@@ -210,7 +211,7 @@ class TestReplicaConfig:
 
         # Invalid type
         with pytest.raises(TypeError, match="Get invalid type"):
-            ReplicaConfig.create(
+            _ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
@@ -222,7 +223,7 @@ class TestReplicaConfig:
             ValueError,
             match="Valid values are None or an integer in the range of \[1, 100\]",
         ):
-            ReplicaConfig.create(
+            _ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
@@ -233,7 +234,7 @@ class TestReplicaConfig:
             ValueError,
             match="Valid values are None or an integer in the range of \[1, 100\]",
         ):
-            ReplicaConfig.create(
+            _ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
@@ -244,7 +245,7 @@ class TestReplicaConfig:
             ValueError,
             match="Valid values are None or an integer in the range of \[1, 100\]",
         ):
-            ReplicaConfig.create(
+            _ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
@@ -256,7 +257,7 @@ class TestReplicaConfig:
             pass
 
         # Specify placement_group_bundles without num_cpus or placement_group_strategy.
-        ReplicaConfig.create(
+        _ReplicaConfig.create(
             Class,
             tuple(),
             dict(),
@@ -264,7 +265,7 @@ class TestReplicaConfig:
         )
 
         # Specify placement_group_bundles with integer value.
-        ReplicaConfig.create(
+        _ReplicaConfig.create(
             Class,
             tuple(),
             dict(),
@@ -272,7 +273,7 @@ class TestReplicaConfig:
         )
 
         # Specify placement_group_bundles and placement_group_strategy.
-        ReplicaConfig.create(
+        _ReplicaConfig.create(
             Class,
             tuple(),
             dict(),
@@ -281,7 +282,7 @@ class TestReplicaConfig:
         )
 
         # Specify placement_group_bundles and placement_group_strategy and num_cpus.
-        ReplicaConfig.create(
+        _ReplicaConfig.create(
             Class,
             tuple(),
             dict(),
@@ -294,7 +295,7 @@ class TestReplicaConfig:
         with pytest.raises(
             ValueError, match="`placement_group_bundles` must also be provided"
         ):
-            ReplicaConfig.create(
+            _ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
@@ -305,7 +306,7 @@ class TestReplicaConfig:
         with pytest.raises(
             ValueError, match="Invalid placement group strategy 'FAKE_NEWS'"
         ):
-            ReplicaConfig.create(
+            _ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
@@ -321,7 +322,7 @@ class TestReplicaConfig:
                 "of resource dictionaries."
             ),
         ):
-            ReplicaConfig.create(
+            _ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
@@ -336,7 +337,7 @@ class TestReplicaConfig:
                 "subset of the first bundle."
             ),
         ):
-            ReplicaConfig.create(
+            _ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
@@ -352,7 +353,7 @@ class TestReplicaConfig:
                 "subset of the first bundle."
             ),
         ):
-            ReplicaConfig.create(
+            _ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
@@ -368,7 +369,7 @@ class TestReplicaConfig:
                 "subset of the first bundle."
             ),
         ):
-            ReplicaConfig.create(
+            _ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
@@ -381,7 +382,7 @@ class TestReplicaConfig:
             return "Check this out!"
 
         f_serialized = cloudpickle.dumps(f)
-        config = ReplicaConfig(
+        config = _ReplicaConfig(
             "f", f_serialized, cloudpickle.dumps(()), cloudpickle.dumps({}), {}
         )
 
@@ -496,6 +497,31 @@ def test_grpc_options():
     assert grpc_options.grpc_servicer_func_callable == [
         add_UserDefinedServiceServicer_to_server
     ]
+
+
+def test_proxy_location_to_deployment_mode():
+    assert (
+        ProxyLocation._to_deployment_mode(ProxyLocation.Disabled)
+        == DeploymentMode.NoServer
+    )
+    assert (
+        ProxyLocation._to_deployment_mode(ProxyLocation.HeadOnly)
+        == DeploymentMode.HeadOnly
+    )
+    assert (
+        ProxyLocation._to_deployment_mode(ProxyLocation.EveryNode)
+        == DeploymentMode.EveryNode
+    )
+
+    assert ProxyLocation._to_deployment_mode("Disabled") == DeploymentMode.NoServer
+    assert ProxyLocation._to_deployment_mode("HeadOnly") == DeploymentMode.HeadOnly
+    assert ProxyLocation._to_deployment_mode("EveryNode") == DeploymentMode.EveryNode
+
+    with pytest.raises(ValueError):
+        ProxyLocation._to_deployment_mode("Unknown")
+
+    with pytest.raises(TypeError):
+        ProxyLocation._to_deployment_mode({"some_other_obj"})
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaTag
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import DeveloperAPI
 import contextvars
 
 logger = logging.getLogger(__file__)
@@ -25,17 +25,23 @@ _global_client: ServeControllerClient = None
 @DeveloperAPI
 @dataclass
 class ReplicaContext:
-    """Stores data for Serve API calls from within deployments."""
+    """Stores data for Serve API calls from within deployments.
 
-    # XXX: better docstring.
+    Fields:
+
+        - app_name: name of the application this is running in.
+        - deployment: name of the deployment this is running in.
+        - replica_tag: name of the replica this is running in.
+        - servable_object: instance of the user class/function this replica is running.
+    """
+
+    app_name: str
     deployment: str
     replica_tag: ReplicaTag
     servable_object: Callable
-    app_name: str
     _internal_controller_name: str
 
 
-# XXX: fix annotation later.
 def _get_global_client(
     _health_check_controller: bool = False, raise_if_no_controller_running: bool = True
 ) -> Optional[ServeControllerClient]:

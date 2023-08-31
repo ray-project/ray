@@ -11,7 +11,7 @@ from ray.serve._private.common import (
     DeploymentConfig,
     DeploymentInfo,
     DeploymentStatus,
-    ReplicaConfig,
+    _ReplicaConfig,
     ReplicaTag,
     ReplicaName,
     ReplicaState,
@@ -308,7 +308,7 @@ def deployment_info(
         deployment_config=DeploymentConfig(
             num_replicas=num_replicas, user_config=user_config, **config_opts
         ),
-        replica_config=ReplicaConfig.create(lambda x: x),
+        replica_config=_ReplicaConfig.create(lambda x: x),
         deployer_job_id="",
         is_driver_deployment=is_driver_deployment,
     )

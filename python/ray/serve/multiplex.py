@@ -12,7 +12,7 @@ from ray.serve._private.constants import (
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
 )
 from ray.serve.context import (
-    get_global_client,
+    _get_global_client,
     _get_internal_replica_context,
 )
 from ray.serve._private.common import DeploymentID, MultiplexedReplicaInfo
@@ -141,7 +141,7 @@ class _ModelMultiplexWrapper:
                 self.registered_model_gauge.set(1, tags={"model_id": model_id})
 
             if self._push_multiplexed_replica_info:
-                get_global_client().record_multiplexed_replica_info(
+                _get_global_client().record_multiplexed_replica_info(
                     MultiplexedReplicaInfo(
                         DeploymentID(self._deployment_name, self._app_name),
                         self._replica_tag,

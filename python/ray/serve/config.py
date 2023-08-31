@@ -43,7 +43,7 @@ from ray.serve.generated.serve_pb2 import (
 from ray._private import ray_option_utils
 from ray._private.utils import import_attr, resources_from_ray_options
 from ray._private.serialization import pickle_dumps
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -133,9 +133,8 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
         return False
 
 
-# XXX: fix the missing annotation.
 class DeploymentConfig(BaseModel):
-    """Configuration options for a deployment, to be set by the user.
+    """Internal datastructure wrapping config options for a deployment.
 
     Args:
         num_replicas (Optional[int]): The number of processes to start up that
@@ -333,9 +332,8 @@ class DeploymentConfig(BaseModel):
         return config
 
 
-# XXX: fix the missing annotation.
 class ReplicaConfig:
-    """Configuration for a deployment's replicas.
+    """Internal datastructure wrapping config options for a deployment's replicas.
 
     Provides five main properties (see property docstrings for more info):
         deployment_def: the code, or a reference to the code, that this
@@ -721,8 +719,7 @@ class ReplicaConfig:
 
 
 # Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
-@DeveloperAPI
-# XXX: add ProxyLocation enum that is used in `proxy_location` field, deprecate this one.
+@Deprecated
 class DeploymentMode(str, Enum):
     NoServer = "NoServer"
     HeadOnly = "HeadOnly"
@@ -730,9 +727,65 @@ class DeploymentMode(str, Enum):
     FixedNumber = "FixedNumber"
 
 
+@DeveloperAPI
+class ProxyLocation(str, Enum):
+    """Config for where to run proxies for ingress traffic to the cluster.
+
+    Options:
+
+        - Disabled: don't run proxies at all. This should be used if you are only
+          making calls to your applications via deployment handles.
+        - HeadOnly: only run a single proxy on the head node.
+        - EveryNode: run a proxy on every node in the cluster that has at least one
+          replica actor. This is the default.
+    """
+
+    Disabled = "Disabled"
+    HeadOnly = "HeadOnly"
+    EveryNode = "EveryNode"
+
+    @classmethod
+    def _to_deployment_mode(cls, v: Union["ProxyLocation", str]) -> DeploymentMode:
+        if not isinstance(v, (cls, str)):
+            raise TypeError(f"Must be a `ProxyLocation` or str, got: {type(v)}.")
+        elif v == ProxyLocation.Disabled:
+            return DeploymentMode.NoServer
+        elif v == ProxyLocation.HeadOnly:
+            return DeploymentMode.HeadOnly
+        elif v == ProxyLocation.EveryNode:
+            return DeploymentMode.EveryNode
+        else:
+            raise ValueError(f"Unrecognized `ProxyLocation`: {v}.")
+
+
 @PublicAPI(stability="stable")
 class HTTPOptions(pydantic.BaseModel):
-    # XXX: write docstring.
+    """HTTP options for the proxies. Supported fields:
+
+    - host: Host that the proxies will listen for HTTP on. Defaults to
+      "127.0.0.1". To expose Serve publicly, you probably want to set
+      this to "0.0.0.0".
+    - port: Port that the proxies will listen for HTTP on. Defaults to 8000.
+    - root_path: An optional root path to mount the serve application
+      (for example, "/prefix"). All deployment routes will be prefixed
+      with this path.
+    - request_timeout_s: End-to-end timeout for HTTP requests.
+    - keep_alive_timeout_s: Duration to keep idle connections alive when no
+      requests are ongoing.
+
+    - location: [DEPRECATED: use `proxy_location` field instead] The deployment
+      location of HTTP servers:
+
+        - "HeadOnly": start one HTTP server on the head node. Serve
+          assumes the head node is the node you executed serve.start
+          on. This is the default.
+        - "EveryNode": start one HTTP server per node.
+        - "NoServer": disable HTTP server.
+
+    - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
+      internal Serve HTTP proxy actor.
+    """
+
     host: Optional[str] = DEFAULT_HTTP_HOST
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
@@ -794,7 +847,7 @@ class HTTPOptions(pydantic.BaseModel):
 
 @PublicAPI(stability="alpha")
 class gRPCOptions(BaseModel):
-    """Configuration options for gRPC proxy.
+    """gRPC options for the proxies. Supported fields:
 
     Args:
         port (int):

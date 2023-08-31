@@ -18,6 +18,7 @@ from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
     DeploymentMode,
+    ProxyLocation,
     ReplicaConfig,
     HTTPOptions,
 )
@@ -29,7 +30,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve.context import (
     ReplicaContext,
-    get_global_client,
+    _get_global_client,
     _get_internal_replica_context,
     _set_global_client,
 )
@@ -67,8 +68,8 @@ logger = logging.getLogger(__file__)
 @PublicAPI(stability="stable")
 def start(
     detached: bool = True,
-    proxy_location: Optional[Union[str, DeploymentMode]] = None,
-    http_options: Optional[Union[dict, HTTPOptions]] = None,
+    proxy_location: Union[None, str, ProxyLocation] = None,
+    http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
     grpc_options: Optional[gRPCOptions] = None,
     **kwargs,
@@ -90,47 +91,15 @@ def start(
           script. If set, the instance will live on the Ray cluster until it is
           explicitly stopped with serve.shutdown().
         proxy_location: Where to run proxies that handle ingress traffic to the
-          cluster. Defaults to `EveryNode`. Supported options are:
-
-            - "EveryNode": run one proxy on every node in the cluster (default).
-            - "HeadOnly": run only one proxy on the head node of the cluster.
-            - "NoServer" or None: disable the proxies entirely.
-
-        http_options: HTTP-related configuration options for the cluster. These can
-          be passed as an unstructured dictionary or the structured `HTTPOptions` class.
-          Supported options:
-
-            - host: Host that the proxies will listen for HTTP on. Defaults to
-              "127.0.0.1". To expose Serve publicly, you probably want to set
-              this to "0.0.0.0".
-            - port: Port that the proxies will listen for HTTP on. Defaults to 8000.
-            - root_path: An optional root path to mount the serve application
-              (for example, "/prefix"). All deployment routes will be prefixed
-              with this path.
-            - request_timeout_s: End-to-end timeout for HTTP requests.
-            - keep_alive_timeout_s: Duration to keep idle connections alive when no
-              requests are ongoing.
-
-            - location: [DEPRECATED: use `proxy_location` field instead] The deployment
-              location of HTTP servers:
-
-                - "HeadOnly": start one HTTP server on the head node. Serve
-                  assumes the head node is the node you executed serve.start
-                  on. This is the default.
-                - "EveryNode": start one HTTP server per node.
-                - "NoServer": disable HTTP server.
-
-            - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
-              internal Serve HTTP proxy actor.
+          cluster (defaults to every node in the cluster with at least one replica on
+          it). See `ProxyLocation` for supported options.
+        http_options: HTTP config options for the proxies. These can be passed as an
+          unstructured dictionary or the structured `HTTPOptions` class. See
+          `HTTPOptions` for supported options.
         dedicated_cpu: [DEPRECATED] Whether to reserve a CPU core for the
           Serve controller actor.
-        grpc_options: [Experimental] Configuration options for gRPC proxy. You can pass
-          in a gRPCOptions object with fields:
-
-            - grpc_servicer_functions: List of import paths for gRPC
-              `add_servicer_to_server` functions to add to Serve's gRPC proxy. Default
-              empty list, meaning not to start the gRPC server.
-            - port: Port for gRPC server. Defaults to 9000.
+        grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. See
+          `gRPCOptions` for supported options.
     """
     if not detached:
         warnings.warn(
@@ -154,7 +123,7 @@ def start(
             http_options = HTTPOptions(**http_options)
 
         if isinstance(proxy_location, str):
-            proxy_location = DeploymentMode(proxy_location)
+            proxy_location = ProxyLocation(proxy_location)
 
         http_options.location = proxy_location
 
@@ -175,7 +144,7 @@ def shutdown():
     """
 
     try:
-        client = get_global_client()
+        client = _get_global_client()
     except RayServeException:
         logger.info(
             "Nothing to shut down. There's no Serve application "
@@ -618,8 +587,7 @@ def run(
         return handle
 
 
-@PublicAPI(stability="alpha")
-def build(target: Application, name: str = None) -> BuiltApplication:
+def _build(target: Application, name: str = None) -> BuiltApplication:
     """Builds a Serve application into a static, built application.
 
     Resolves the provided Application object into a list of deployments.
@@ -656,13 +624,21 @@ def build(target: Application, name: str = None) -> BuiltApplication:
     return BuiltApplication(deployments, ingress)
 
 
+@Deprecated(message="Use `serve build` CLI command instead.")
+def build(target: Application, name: str = None) -> BuiltApplication:
+    warnings.warn(
+        "The `serve.build` Python API is deprecated. Use the `serve build` CLI instead."
+    )
+    return _build(target, name=name)
+
+
 @PublicAPI(stability="stable")
 def delete(name: str, _blocking: bool = True):
     """Delete an application by its name.
 
     Deletes the app with all corresponding deployments.
     """
-    client = get_global_client()
+    client = _get_global_client()
     client.delete_apps([name], blocking=_blocking)
 
 
@@ -853,7 +829,7 @@ def status() -> ServeStatus:
             assert status.applications["default"].status == "RUNNING"
     """
 
-    client = get_global_client(raise_if_no_controller_running=False)
+    client = _get_global_client(raise_if_no_controller_running=False)
     if client is None:
         # Serve has not started yet
         return ServeStatus()
@@ -888,14 +864,14 @@ def get_app_handle(name: str) -> DeploymentHandle:
             assert handle.remote(3).result() == 6
     """
 
-    client = get_global_client()
+    client = _get_global_client()
     ingress = ray.get(client._controller.get_ingress_deployment_name.remote(name))
     if ingress is None:
         raise RayServeException(f"Application '{name}' does not exist.")
 
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
     # Default to async within a deployment and sync outside a deployment.
-    sync = get_internal_replica_context() is None
+    sync = _get_internal_replica_context() is None
     return client.get_handle(ingress, name, sync=sync).options(
         use_new_handle_api=True,
     )
@@ -923,7 +899,7 @@ def get_deployment_handle(
             name is specified.
     """
 
-    client = get_global_client()
+    client = _get_global_client()
 
     internal_replica_context = _get_internal_replica_context()
     if app_name is None:

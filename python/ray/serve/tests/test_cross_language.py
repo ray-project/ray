@@ -5,8 +5,8 @@ from ray.job_config import JobConfig
 from ray.tests.conftest import shutdown_only, maybe_external_redis  # noqa: F401
 
 from ray import serve
-from ray.serve.config import ReplicaConfig, DeploymentConfig
-from ray.serve.context import get_global_client
+from ray.serve.config import _ReplicaConfig, DeploymentConfig
+from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import JAVA, RequestMetadata
 
 
@@ -19,7 +19,7 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
         job_config=JobConfig(code_search_path=["."]),
     )
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
 
     controller = client._controller
 
@@ -27,7 +27,7 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
     config.deployment_language = JAVA
     config.is_cross_language = True
 
-    replica_config = ReplicaConfig.create(
+    replica_config = _ReplicaConfig.create(
         "io.ray.serve.util.ExampleEchoDeployment",
         init_args=["my_prefix "],
     )

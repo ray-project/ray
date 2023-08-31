@@ -80,6 +80,7 @@ export type ServeReplica = {
 
 // Keep in sync with DeploymentMode in python/ray/serve/config.py
 export enum ServeDeploymentMode {
+  Disabled = "Disabled",
   NoServer = "NoServer",
   HeadOnly = "HeadOnly",
   EveryNode = "EveryNode",

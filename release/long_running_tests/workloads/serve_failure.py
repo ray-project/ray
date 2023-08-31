@@ -8,7 +8,7 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import safe_write_to_results_json
 
@@ -89,7 +89,7 @@ class RandomKiller:
         self.sanctuary.discard(deployment_name)
 
     def _get_serve_actors(self):
-        controller = get_global_client()._controller
+        controller = _get_global_client()._controller
         routers = list(ray.get(controller.get_http_proxies.remote()).values())
         all_handles = routers + [controller]
         replica_dict = ray.get(controller._all_running_replicas.remote())

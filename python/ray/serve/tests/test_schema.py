@@ -11,7 +11,7 @@ from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P
 
 from ray import serve
 from ray.serve.config import AutoscalingConfig
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.serve.deployment import (
     deployment_to_schema,
     schema_to_deployment,
@@ -816,7 +816,7 @@ def test_status_schema_helpers():
         pass
 
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
     serve.run(f1.bind(), name="app1")
     serve.run(f2.bind(), name="app2")
 

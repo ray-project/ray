@@ -16,7 +16,7 @@ from ray.serve._private.common import (
     ServeDeployMode,
     HTTPProxyStatus,
 )
-from ray.serve.config import DeploymentMode
+from ray.serve.config import ProxyLocation
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.serve._private.constants import (
@@ -596,13 +596,13 @@ class ServeDeploySchema(BaseModel):
           simply ignoring new parameters)
     """
 
-    proxy_location: DeploymentMode = Field(
-        default=DeploymentMode.EveryNode,
+    proxy_location: ProxyLocation = Field(
+        default=ProxyLocation.EveryNode,
         description=(
-            "The location of HTTP servers.\n"
-            '- "EveryNode" (default): start one HTTP server per node.\n'
-            '- "HeadOnly": start one HTTP server on the head node.\n'
-            '- "NoServer": disable HTTP server.'
+            "Config for where to run proxies for ingress traffic to the cluster.\n"
+            '- "Disabled": disable the proxies entirely.'
+            '- "HeadOnly": run only one proxy on the head node.\n'
+            '- "EveryNode": run proxies on every node that has at least one replica.\n'
         ),
     )
     http_options: HTTPOptionsSchema = Field(
@@ -863,12 +863,12 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     controller_info: ServeActorDetails = Field(
         description="Details about the Serve controller actor."
     )
-    proxy_location: Optional[DeploymentMode] = Field(
+    proxy_location: Optional[ProxyLocation] = Field(
         description=(
-            "The location of HTTP servers.\n"
-            '- "EveryNode": start one HTTP server per node.\n'
-            '- "HeadOnly": start one HTTP server on the head node.\n'
-            '- "NoServer": disable HTTP server.'
+            "Config for where to run proxies for ingress traffic to the cluster.\n"
+            '- "Disabled": disable the proxies entirely.'
+            '- "HeadOnly": run only one proxy on the head node.\n'
+            '- "EveryNode": run proxies on every node that has at least one replica.\n'
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")

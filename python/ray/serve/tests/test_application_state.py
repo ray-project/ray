@@ -17,7 +17,7 @@ from ray.serve._private.common import (
     DeploymentConfig,
     DeploymentStatus,
     DeploymentStatusInfo,
-    ReplicaConfig,
+    _ReplicaConfig,
     DeploymentInfo,
 )
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
@@ -88,7 +88,7 @@ class MockDeploymentStateManager:
             # Return dummy deployment info object
             return DeploymentInfo(
                 deployment_config=DeploymentConfig(num_replicas=1, user_config={}),
-                replica_config=ReplicaConfig.create(lambda x: x),
+                replica_config=_ReplicaConfig.create(lambda x: x),
                 start_time_ms=0,
                 deployer_job_id="",
             )
@@ -148,7 +148,7 @@ def deployment_params(name: str, route_prefix: str = None, docs_path: str = None
         "deployment_config_proto_bytes": DeploymentConfig(
             num_replicas=1, user_config={}, version=get_random_letters()
         ).to_proto_bytes(),
-        "replica_config_proto_bytes": ReplicaConfig.create(
+        "replica_config_proto_bytes": _ReplicaConfig.create(
             lambda x: x
         ).to_proto_bytes(),
         "deployer_job_id": "random",
@@ -747,7 +747,7 @@ class TestOverrideDeploymentInfo:
             route_prefix="/",
             version="123",
             deployment_config=DeploymentConfig(num_replicas=1),
-            replica_config=ReplicaConfig.create(lambda x: x),
+            replica_config=_ReplicaConfig.create(lambda x: x),
             start_time_ms=0,
             deployer_job_id="",
         )
@@ -942,7 +942,7 @@ class TestOverrideDeploymentInfo:
             route_prefix="/",
             version="123",
             deployment_config=DeploymentConfig(num_replicas=1),
-            replica_config=ReplicaConfig.create(
+            replica_config=_ReplicaConfig.create(
                 lambda x: x,
                 ray_actor_options={"runtime_env": {"working_dir": "s3://A"}},
             ),
@@ -980,7 +980,7 @@ class TestOverrideDeploymentInfo:
             route_prefix="/",
             version="123",
             deployment_config=DeploymentConfig(num_replicas=1),
-            replica_config=ReplicaConfig.create(
+            replica_config=_ReplicaConfig.create(
                 lambda x: x,
                 ray_actor_options={"runtime_env": {"working_dir": "s3://A"}},
             ),
