@@ -115,11 +115,10 @@ class RayClusterOnSpark:
                 "The ray cluster has been shut down or it failed to start."
             )
         try:
-            # connect to the ray cluster.
-            self.ray_ctx = ray.init(address=self.address)
-            webui_url = self.ray_ctx.address_info.get("webui_url", None)
-            self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
-            if not webui_url:
+            self.connect()
+            if check_port_open(self.address.split(":")[0], self.ray_dashboard_port):
+                self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
+            else:
                 try:
                     __import__("ray.dashboard.optional_deps")
                 except ModuleNotFoundError:
@@ -189,7 +188,7 @@ class RayClusterOnSpark:
     def connect(self):
         if ray.is_initialized():
             raise RuntimeError("Already connected to Ray cluster.")
-        ray.init(address=self.address)
+        self.ray_ctx = ray.init(address=self.address)
 
     def disconnect(self):
         ray.shutdown()
