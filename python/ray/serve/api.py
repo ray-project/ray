@@ -124,7 +124,7 @@ def start(
         if isinstance(proxy_location, str):
             proxy_location = ProxyLocation(proxy_location)
 
-        http_options.location = proxy_location
+        http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
 
     _private_api.serve_start(
         detached=detached,
