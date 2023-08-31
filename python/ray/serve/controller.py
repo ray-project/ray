@@ -899,7 +899,7 @@ class ServeController:
             proxy_location=http_config.location,
             http_options=http_options,
             grpc_options=grpc_options,
-            http_proxies=self.http_proxy_state_manager.get_http_proxy_details()
+            proxies=self.http_proxy_state_manager.get_proxy_details()
             if self.http_proxy_state_manager
             else None,
             deploy_mode=self.deploy_mode,

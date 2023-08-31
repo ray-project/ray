@@ -67,8 +67,8 @@ export const useServeApplications = () => {
     : [];
 
   const httpProxies =
-    data && data.http_proxies
-      ? Object.values(data.http_proxies).sort(
+    data && data.proxies
+      ? Object.values(data.proxies).sort(
           (a, b) =>
             SERVE_HTTP_PROXY_STATUS_SORT_ORDER[b.status] -
             SERVE_HTTP_PROXY_STATUS_SORT_ORDER[a.status],
@@ -211,7 +211,7 @@ export const useServeHTTPProxyDetails = (httpProxyId: string | undefined) => {
     { refreshInterval: API_REFRESH_INTERVAL_MS },
   );
 
-  const httpProxy = httpProxyId ? data?.http_proxies?.[httpProxyId] : undefined;
+  const httpProxy = httpProxyId ? data?.proxies?.[httpProxyId] : undefined;
 
   // Need to expose loading because it's not clear if undefined values
   // for proxies means loading or missing data.

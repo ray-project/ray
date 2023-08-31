@@ -25,7 +25,7 @@ from ray.serve._private.constants import (
 from ray.serve.context import get_global_client
 from ray.serve.schema import ServeInstanceDetails
 from ray.serve._private.utils import get_head_node_id
-from ray.serve._private.common import HTTPProxyStatus
+from ray.serve._private.common import ProxyStatus
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
@@ -361,10 +361,8 @@ def test_autoscaler_shutdown_node_http_everynode(
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
-    assert len(serve_details.http_proxies) == 1
-    assert (
-        serve_details.http_proxies[get_head_node_id()].status == HTTPProxyStatus.HEALTHY
-    )
+    assert len(serve_details.proxies) == 1
+    assert serve_details.proxies[get_head_node_id()].status == ProxyStatus.HEALTHY
 
     # Only head node should exist now.
     wait_for_condition(
@@ -406,9 +404,7 @@ def test_drain_and_undrain_http_proxy_actors(
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
-    proxy_actor_ids = {
-        proxy.actor_id for _, proxy in serve_details.http_proxies.items()
-    }
+    proxy_actor_ids = {proxy.actor_id for _, proxy in serve_details.proxies.items()}
     assert len(proxy_actor_ids) == 3
 
     serve.run(HelloModel.options(num_replicas=1).bind())
@@ -418,37 +414,33 @@ def test_drain_and_undrain_http_proxy_actors(
         serve_details = ServeInstanceDetails(
             **ray.get(client._controller.get_serve_instance_details.remote())
         )
-        proxy_status_list = [
-            proxy.status for _, proxy in serve_details.http_proxies.items()
-        ]
+        proxy_status_list = [proxy.status for _, proxy in serve_details.proxies.items()]
         return {
             status: proxy_status_list.count(status) for status in proxy_status_list
         } == proxy_status_to_count
 
     wait_for_condition(
         condition_predictor=check_proxy_status,
-        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 2, HTTPProxyStatus.DRAINING: 1},
+        proxy_status_to_count={ProxyStatus.HEALTHY: 2, ProxyStatus.DRAINING: 1},
     )
 
     serve.run(HelloModel.options(num_replicas=2).bind())
     # The draining proxy should become healthy.
     wait_for_condition(
         condition_predictor=check_proxy_status,
-        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 3},
+        proxy_status_to_count={ProxyStatus.HEALTHY: 3},
     )
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
-    {
-        proxy.actor_id for _, proxy in serve_details.http_proxies.items()
-    } == proxy_actor_ids
+    {proxy.actor_id for _, proxy in serve_details.proxies.items()} == proxy_actor_ids
 
     serve.run(HelloModel.options(num_replicas=1).bind())
     # 1 proxy should be draining and eventually be drained.
     wait_for_condition(
         condition_predictor=check_proxy_status,
         timeout=40,
-        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 2},
+        proxy_status_to_count={ProxyStatus.HEALTHY: 2},
     )
 
     # Clean up serve.

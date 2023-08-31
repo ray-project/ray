@@ -19,7 +19,7 @@ from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentStatus,
     ReplicaState,
-    HTTPProxyStatus,
+    ProxyStatus,
 )
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
@@ -564,8 +564,8 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     )
 
     # Check HTTP Proxy statuses
-    for proxy in serve_details.http_proxies.values():
-        assert proxy.status == HTTPProxyStatus.HEALTHY
+    for proxy in serve_details.proxies.values():
+        assert proxy.status == ProxyStatus.HEALTHY
         assert os.path.exists("/tmp/ray/session_latest/logs" + proxy.log_file_path)
     print("Checked HTTP Proxy details.")
     # Check controller info

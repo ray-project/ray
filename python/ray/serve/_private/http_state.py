@@ -26,9 +26,9 @@ from ray.serve._private import http_proxy
 from ray.serve._private.utils import (
     format_actor_name,
 )
-from ray.serve._private.common import NodeId, HTTPProxyStatus
+from ray.serve._private.common import NodeId, ProxyStatus
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
-from ray.serve.schema import HTTPProxyDetails
+from ray.serve.schema import ProxyDetails
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -41,7 +41,7 @@ class HTTPProxyState:
         self._actor_name = actor_name
         self._node_id = node_id
         self._ready_obj_ref = self._actor_handle.ready.remote()
-        self._status = HTTPProxyStatus.STARTING
+        self._status = ProxyStatus.STARTING
         self._health_check_obj_ref = None
         self._last_health_check_time: float = time.time()
         self._shutting_down = False
@@ -51,7 +51,7 @@ class HTTPProxyState:
         self._is_drained_obj_ref = None
         self._last_drain_check_time: float = None
 
-        self._actor_details = HTTPProxyDetails(
+        self._actor_details = ProxyDetails(
             node_id=node_id,
             node_ip=node_ip,
             actor_id=self._actor_handle._actor_id.hex(),
@@ -68,19 +68,19 @@ class HTTPProxyState:
         return self._actor_name
 
     @property
-    def status(self) -> HTTPProxyStatus:
+    def status(self) -> ProxyStatus:
         return self._status
 
     @property
-    def actor_details(self) -> HTTPProxyDetails:
+    def actor_details(self) -> ProxyDetails:
         return self._actor_details
 
-    def set_status(self, status: HTTPProxyStatus) -> None:
+    def set_status(self, status: ProxyStatus) -> None:
         """Sets _status and updates _actor_details with the new status."""
         self._status = status
         self.update_actor_details(status=self._status)
 
-    def try_update_status(self, status: HTTPProxyStatus):
+    def try_update_status(self, status: ProxyStatus):
         """Try update with the new status and only update when the conditions are met.
 
         Status will only set to UNHEALTHY after PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
@@ -89,7 +89,7 @@ class HTTPProxyState:
         self._consecutive_health_check_failures to 0.
         """
 
-        if status == HTTPProxyStatus.UNHEALTHY:
+        if status == ProxyStatus.UNHEALTHY:
             self._consecutive_health_check_failures += 1
             # Early return to skip setting UNHEALTHY status if there are still room for
             # retry.
@@ -100,14 +100,14 @@ class HTTPProxyState:
                 return
 
         # Reset self._consecutive_health_check_failures when status is not UNHEALTHY.
-        if status != HTTPProxyStatus.UNHEALTHY:
+        if status != ProxyStatus.UNHEALTHY:
             self._consecutive_health_check_failures = 0
 
         self.set_status(status=status)
 
         # If all retries have been exhausted and setting the status to UNHEALTHY, log a
         # warning message to the user.
-        if status == HTTPProxyStatus.UNHEALTHY:
+        if status == ProxyStatus.UNHEALTHY:
             logger.warning(
                 f"HTTP proxy {self._actor_name} failed the health check "
                 f"{self._consecutive_health_check_failures} times in a row, marking it "
@@ -118,11 +118,11 @@ class HTTPProxyState:
         """Updates _actor_details with passed in kwargs."""
         details_kwargs = self._actor_details.dict()
         details_kwargs.update(kwargs)
-        self._actor_details = HTTPProxyDetails(**details_kwargs)
+        self._actor_details = ProxyDetails(**details_kwargs)
 
     def _health_check(self):
         """Perform periodic health checks."""
-        assert self._status in {HTTPProxyStatus.HEALTHY, HTTPProxyStatus.DRAINING}
+        assert self._status in {ProxyStatus.HEALTHY, ProxyStatus.DRAINING}
 
         if self._health_check_obj_ref:
             finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
@@ -135,12 +135,12 @@ class HTTPProxyState:
                     self.try_update_status(self._status)
                 except ray.exceptions.RayActorError:
                     # The proxy actor dies.
-                    self.set_status(HTTPProxyStatus.UNHEALTHY)
+                    self.set_status(ProxyStatus.UNHEALTHY)
                 except Exception as e:
                     logger.warning(
                         f"Health check for HTTP proxy {self._actor_name} failed: {e}"
                     )
-                    self.try_update_status(HTTPProxyStatus.UNHEALTHY)
+                    self.try_update_status(ProxyStatus.UNHEALTHY)
             elif (
                 time.time() - self._last_health_check_time
                 > PROXY_HEALTH_CHECK_TIMEOUT_S
@@ -152,7 +152,7 @@ class HTTPProxyState:
                     "Didn't receive health check response for HTTP proxy "
                     f"{self._node_id} after {PROXY_HEALTH_CHECK_TIMEOUT_S}s"
                 )
-                self.try_update_status(HTTPProxyStatus.UNHEALTHY)
+                self.try_update_status(ProxyStatus.UNHEALTHY)
 
         # If there's no active in-progress health check and it has been more than 10
         # seconds since the last health check, perform another health check.
@@ -165,7 +165,7 @@ class HTTPProxyState:
 
     def _drain_check(self):
         """Check whether the proxy actor is drained or not."""
-        assert self._status == HTTPProxyStatus.DRAINING
+        assert self._status == ProxyStatus.DRAINING
 
         if self._is_drained_obj_ref:
             finished, _ = ray.wait([self._is_drained_obj_ref], timeout=0)
@@ -174,7 +174,7 @@ class HTTPProxyState:
                 try:
                     is_drained = ray.get(finished[0])
                     if is_drained:
-                        self.set_status(HTTPProxyStatus.DRAINED)
+                        self.set_status(ProxyStatus.DRAINED)
                 except Exception as e:
                     logger.warning(
                         f"Drain check for HTTP proxy {self._actor_name} failed: {e}."
@@ -215,25 +215,25 @@ class HTTPProxyState:
         if self._shutting_down:
             return
 
-        if self._status == HTTPProxyStatus.STARTING:
+        if self._status == ProxyStatus.STARTING:
             finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
             if finished:
                 try:
                     worker_id, log_file_path = json.loads(ray.get(finished[0]))
-                    self.try_update_status(HTTPProxyStatus.HEALTHY)
+                    self.try_update_status(ProxyStatus.HEALTHY)
                     self.update_actor_details(
                         worker_id=worker_id,
                         log_file_path=log_file_path,
                         status=self._status,
                     )
                 except ray.exceptions.RayActorError:
-                    self.set_status(HTTPProxyStatus.UNHEALTHY)
+                    self.set_status(ProxyStatus.UNHEALTHY)
                     logger.warning(
                         "Unexpected actor death when checking readiness of HTTP "
                         f"Proxy on node {self._node_id}:\n{traceback.format_exc()}"
                     )
                 except Exception:
-                    self.try_update_status(HTTPProxyStatus.UNHEALTHY)
+                    self.try_update_status(ProxyStatus.UNHEALTHY)
                     logger.warning(
                         "Unexpected error occurred when checking readiness of HTTP "
                         f"Proxy on node {self._node_id}:\n{traceback.format_exc()}"
@@ -242,7 +242,7 @@ class HTTPProxyState:
                 time.time() - self._last_health_check_time > PROXY_READY_CHECK_TIMEOUT_S
             ):
                 # Ready check hasn't returned and the timeout is up, consider it failed.
-                self.set_status(HTTPProxyStatus.UNHEALTHY)
+                self.set_status(ProxyStatus.UNHEALTHY)
                 logger.warning(
                     "Didn't receive ready check response for HTTP proxy "
                     f"{self._node_id} after {PROXY_READY_CHECK_TIMEOUT_S}s."
@@ -250,15 +250,15 @@ class HTTPProxyState:
             return
 
         # At this point, the proxy is either in HEALTHY or DRAINING status.
-        assert self._status in {HTTPProxyStatus.HEALTHY, HTTPProxyStatus.DRAINING}
+        assert self._status in {ProxyStatus.HEALTHY, ProxyStatus.DRAINING}
 
         self._health_check()
-        if self._status == HTTPProxyStatus.UNHEALTHY:
+        if self._status == ProxyStatus.UNHEALTHY:
             return
 
-        if (self._status == HTTPProxyStatus.HEALTHY) and draining:
+        if (self._status == ProxyStatus.HEALTHY) and draining:
             logger.info(f"Start to drain the proxy actor on node {self._node_id}")
-            self.set_status(HTTPProxyStatus.DRAINING)
+            self.set_status(ProxyStatus.DRAINING)
             # All the update_draining calls are ordered via `_after`.
             self._update_draining_obj_ref = self._actor_handle.update_draining.remote(
                 True, _after=self._update_draining_obj_ref
@@ -267,16 +267,16 @@ class HTTPProxyState:
             assert self._last_drain_check_time is None
             self._last_drain_check_time = time.time()
 
-        if (self._status == HTTPProxyStatus.DRAINING) and not draining:
+        if (self._status == ProxyStatus.DRAINING) and not draining:
             logger.info(f"Stop draining the proxy actor on node {self._node_id}")
-            self.set_status(HTTPProxyStatus.HEALTHY)
+            self.set_status(ProxyStatus.HEALTHY)
             self._update_draining_obj_ref = self._actor_handle.update_draining.remote(
                 False, _after=self._update_draining_obj_ref
             )
             self._is_drained_obj_ref = None
             self._last_drain_check_time = None
 
-        if self._status == HTTPProxyStatus.DRAINING:
+        if self._status == ProxyStatus.DRAINING:
             self._drain_check()
 
     def shutdown(self):
@@ -366,7 +366,7 @@ class HTTPProxyStateManager:
             node_id: state.actor_name for node_id, state in self._proxy_states.items()
         }
 
-    def get_http_proxy_details(self) -> Dict[NodeId, HTTPProxyDetails]:
+    def get_proxy_details(self) -> Dict[NodeId, ProxyDetails]:
         return {
             node_id: state.actor_details
             for node_id, state in self._proxy_states.items()
@@ -535,13 +535,13 @@ class HTTPProxyStateManager:
             if node_id not in alive_node_ids:
                 logger.info(f"Removing HTTP proxy on removed node '{node_id}'.")
                 to_stop.append(node_id)
-            elif proxy_state.status == HTTPProxyStatus.UNHEALTHY:
+            elif proxy_state.status == ProxyStatus.UNHEALTHY:
                 logger.info(
                     f"HTTP proxy on node '{node_id}' UNHEALTHY. Shutting down "
                     "the unhealthy proxy and starting a new one."
                 )
                 to_stop.append(node_id)
-            elif proxy_state.status == HTTPProxyStatus.DRAINED:
+            elif proxy_state.status == ProxyStatus.DRAINED:
                 logger.info(f"Removing drained HTTP proxy on node '{node_id}'.")
                 to_stop.append(node_id)
 
