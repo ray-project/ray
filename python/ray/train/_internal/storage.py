@@ -39,6 +39,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
+
+
 def _use_storage_context() -> bool:
     # Whether to enable the new simple persistence mode.
     from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
@@ -418,7 +421,7 @@ class StorageContext:
 
     def __init__(
         self,
-        storage_path: Optional[str],
+        storage_path: Optional[Union[str, os.PathLike]],
         experiment_dir_name: str,
         sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
@@ -489,14 +492,18 @@ class StorageContext:
         storage path to verify that the storage path can be written to.
         This validation file is also used to check whether the storage path is
         accessible by all nodes in the cluster."""
-        valid_file = os.path.join(self.experiment_fs_path, ".validate_storage_marker")
+        valid_file = os.path.join(
+            self.experiment_fs_path, _VALIDATE_STORAGE_MARKER_FILENAME
+        )
         self.storage_filesystem.create_dir(self.experiment_fs_path)
         with self.storage_filesystem.open_output_stream(valid_file):
             pass
 
     def _check_validation_file(self):
         """Checks that the validation file exists at the storage path."""
-        valid_file = os.path.join(self.experiment_fs_path, ".validate_storage_marker")
+        valid_file = os.path.join(
+            self.experiment_fs_path, _VALIDATE_STORAGE_MARKER_FILENAME
+        )
         if not _exists_at_fs_path(fs=self.storage_filesystem, fs_path=valid_file):
             raise RuntimeError(
                 f"Unable to set up cluster storage at storage_path={self.storage_path}"
@@ -566,7 +573,7 @@ class StorageContext:
 
         Args:
             force: If True, wait for a previous sync to finish, launch a new one,
-                and wait for that one to finish. By the end of a `force=True call`, the
+                and wait for that one to finish. By the end of a `force=True` call, the
                 latest version of the trial artifacts will be persisted.
         """
         if not self.sync_config.sync_artifacts:
