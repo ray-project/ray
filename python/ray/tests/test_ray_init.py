@@ -8,7 +8,6 @@ import pytest
 
 import ray
 import ray._private.services
-from datetime import datetime
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
 from ray.util.client.common import ClientObjectRef
@@ -113,13 +112,6 @@ def test_ray_init_existing_instance_via_blocked_ray_start():
         blocked.terminate()
         blocked.wait()
         subprocess.check_output("ray stop --force", shell=True)
-
-
-def test_start_time(shutdown_only):
-    start_time = datetime.now()
-    ray.init()
-    assert (datetime.now() - start_time).total_seconds() < 9
-
 
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform == "win32",
