@@ -279,11 +279,13 @@ class TrainingIterator:
             A list of return values from calling ``train_func`` on each worker.
                 Each item corresponds to the return value from a single worker.
         """
+        # TODO(justinvyu): This code is a noop.
+        if not _use_storage_context():
+            self._backend_executor.pause_reporting()
+            # Finish up processing checkpoints. Reporting has been disabled.
+            # Results will not be processed.
+            self._finish_checkpointing()
 
-        self._backend_executor.pause_reporting()
-        # Finish up processing checkpoints. Reporting has been disabled.
-        # Results will not be processed.
-        self._finish_checkpointing()
         return self._backend_executor.finish_training()
 
     def is_finished(self) -> bool:
