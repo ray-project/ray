@@ -107,9 +107,10 @@ class RayClusterOnSpark:
             raise RuntimeError(
                 "The ray cluster has been shut down or it failed to start."
             )
+
         try:
-            # connect to the ray cluster.
-            self.connect()
+            ray.init(address=self.address)
+
             if (
                 self.ray_dashboard_port is not None and
                 check_port_open(self.address.split(":")[0], self.ray_dashboard_port)
@@ -125,11 +126,6 @@ class RayClusterOnSpark:
                         "pip install ray[default]."
                     )
 
-        except Exception:
-            self.shutdown()
-            raise
-
-        try:
             last_alive_worker_count = 0
             last_progress_move_time = time.time()
             while True:
