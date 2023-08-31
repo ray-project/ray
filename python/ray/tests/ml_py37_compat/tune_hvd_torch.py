@@ -1,15 +1,15 @@
+import os
+import tempfile
+
 import ray
 from ray import train, tune
-from ray.train import ScalingConfig
+from ray.train import Checkpoint, ScalingConfig
 from ray.data.preprocessors import Concatenator, StandardScaler
 from ray.train.horovod import HorovodTrainer
 from ray.tune import Tuner, TuneConfig
 import numpy as np
 
-
 # Torch-specific
-from ray.train.torch import LegacyTorchCheckpoint
-
 import horovod.torch as hvd
 
 import torch
@@ -63,7 +63,14 @@ def torch_train_loop(config):
             train_loss.backward()
             optimizer.step()
         loss = train_loss.item()
-        train.report({"loss": loss}, checkpoint=LegacyTorchCheckpoint.from_model(model))
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            torch.save(
+                model.state_dict(), os.path.join(temp_checkpoint_dir, "model.pt")
+            )
+            train.report(
+                {"loss": loss},
+                checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
+            )
 
 
 def tune_horovod_torch(num_workers, num_samples, use_gpu):

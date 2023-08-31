@@ -3,7 +3,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-import shutil
 import unittest
 from typing import Optional
 
@@ -23,7 +22,6 @@ from ray.train.torch import TorchTrainer
 from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.tune import Callback, CLIReporter
-from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -106,6 +104,12 @@ def gen_dataset_func_eager():
 class TunerTest(unittest.TestCase):
     """The e2e test for hparam tuning using Tuner API."""
 
+    @pytest.fixture(autouse=True)
+    def local_dir(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
+        self.local_dir = str(tmp_path / "ray_results")
+        yield self.local_dir
+
     def setUp(self):
         ray.init()
 
@@ -114,9 +118,6 @@ class TunerTest(unittest.TestCase):
 
     def test_tuner_with_xgboost_trainer(self):
         """Test a successful run."""
-        shutil.rmtree(
-            os.path.join(DEFAULT_RESULTS_DIR, "test_tuner"), ignore_errors=True
-        )
         trainer = XGBoostTrainer(
             label_column="target",
             params={},
@@ -156,10 +157,6 @@ class TunerTest(unittest.TestCase):
     def test_tuner_with_xgboost_trainer_driver_fail_and_resume(self):
         # So that we have some global checkpointing happening.
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "1"
-        shutil.rmtree(
-            os.path.join(DEFAULT_RESULTS_DIR, "test_tuner_driver_fail"),
-            ignore_errors=True,
-        )
         trainer = XGBoostTrainer(
             label_column="target",
             params={},
@@ -211,18 +208,16 @@ class TunerTest(unittest.TestCase):
             tuner.fit()
 
         # Test resume
-        restore_path = os.path.join(DEFAULT_RESULTS_DIR, "test_tuner_driver_fail")
-        tuner = Tuner.restore(restore_path, trainable=trainer)
+        restore_path = os.path.join(self.local_dir, "test_tuner_driver_fail")
+        tuner = Tuner.restore(restore_path, trainable=trainer, param_space=param_space)
         # A hack before we figure out RunConfig semantics across resumes.
         tuner._local_tuner._run_config.callbacks = None
         results = tuner.fit()
         assert len(results) == 4
+        assert not results.errors
 
     def test_tuner_with_torch_trainer(self):
         """Test a successful run using torch trainer."""
-        shutil.rmtree(
-            os.path.join(DEFAULT_RESULTS_DIR, "test_tuner_torch"), ignore_errors=True
-        )
         # The following two should be tunable.
         config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 10}
         scaling_config = ScalingConfig(num_workers=1, use_gpu=False)
@@ -387,6 +382,8 @@ def test_nonserializable_trainable():
         Tuner(lambda config: print(lock))
 
 
+# TODO(justinvyu): [chdir_to_trial_dir]
+@pytest.mark.skip("chdir_to_trial_dir is not implemented yet.")
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
 def test_tuner_no_chdir_to_trial_dir(shutdown_only, chdir_tmpdir, runtime_env):
     """Tests that setting `chdir_to_trial_dir=False` in `TuneConfig` allows for
