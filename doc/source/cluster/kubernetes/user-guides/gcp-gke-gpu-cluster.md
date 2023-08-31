@@ -36,7 +36,7 @@ The `--accelerator` flag specifies the type and number of GPUs for each node in 
 
 .. note::
 
-    GKE will automatically install the GPU drivers for you.  For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/gpus#create-gpu-pool-auto-drivers)
+    GKE automatically installs the GPU drivers for you.  For more details, see [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/gpus#create-gpu-pool-auto-drivers).
 
 .. note::
 
