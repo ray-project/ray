@@ -190,7 +190,7 @@ class _TrainSession:
 
         if _use_storage_context():
             assert storage
-            logger.info(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
+            logger.debug(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
 
         # NOTE: `reset` will initialize many properties needed to start running the
         # training_func as a thread.
@@ -260,7 +260,7 @@ class _TrainSession:
             # -> All workers on the same node share a working directory.
             os.makedirs(storage.trial_local_path, exist_ok=True)
             if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
-                logger.info(
+                logger.debug(
                     "Switching the working directory to the trial directory: "
                     f"{storage.trial_local_path}"
                 )
