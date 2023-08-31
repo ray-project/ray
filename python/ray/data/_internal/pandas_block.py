@@ -135,7 +135,11 @@ class PandasBlockAccessor(TableBlockAccessor):
     ROW_TYPE = PandasRow
 
     def __init__(self, table: "pandas.DataFrame"):
+        import pyarrow
+        if isinstance(self._table, pyarrow.lib.Table):
+            table = table.to_pandas()
         super().__init__(table)
+
 
     def column_names(self) -> List[str]:
         return self._table.columns.tolist()
