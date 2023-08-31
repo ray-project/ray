@@ -172,23 +172,42 @@ _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION = 0.8
 _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET = 0.8
 
 
-def calc_mem_ray_head_node(configured_object_store_bytes):
+def calc_mem_ray_head_node(
+    num_cpus_head_node,
+    num_gpus_head_node,
+    configured_object_store_bytes,
+):
     import psutil
 
+    num_task_slots = _get_num_local_ray_node_slots(
+        num_cpus_head_node,
+        num_gpus_head_node,
+        is_spark_driver=True,
+    )
+
     if RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES in os.environ:
-        available_physical_mem = int(
+        physical_mem_bytes = int(
             os.environ[RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES]
         )
     else:
-        available_physical_mem = psutil.virtual_memory().total
+        physical_mem_bytes = psutil.virtual_memory().total
 
     if RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES in os.environ:
-        available_shared_mem = int(os.environ[RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES])
+        shared_mem_bytes = int(os.environ[RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES])
     else:
-        available_shared_mem = psutil.virtual_memory().total
+        shared_mem_bytes = psutil.virtual_memory().total
+
+    available_physical_mem_per_node = int(
+        physical_mem_bytes / num_task_slots * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
+    )
+    available_shared_mem_per_node = int(
+        shared_mem_bytes / num_task_slots * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
+    )
 
     heap_mem_bytes, object_store_bytes, warning_msg = _calc_mem_per_ray_node(
-        available_physical_mem, available_shared_mem, configured_object_store_bytes
+        available_physical_mem_per_node,
+        available_shared_mem_per_node,
+        configured_object_store_bytes,
     )
 
     if warning_msg is not None:
@@ -272,14 +291,15 @@ RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES = "RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYT
 
 # User can manually set these environment variables on spark driver node
 # if ray on spark code accessing corresponding information failed.
+RAY_ON_SPARK_DRIVER_CPU_CORES = "RAY_ON_SPARK_DRIVER_CPU_CORES"
+RAY_ON_SPARK_DRIVER_GPU_NUM = "RAY_ON_SPARK_DRIVER_GPU_NUM"
 RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES = "RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES"
 RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES = "RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES"
 
 
-def _get_cpu_cores():
+def _get_cpu_cores(is_spark_driver):
     import multiprocessing
-
-    if RAY_ON_SPARK_WORKER_CPU_CORES in os.environ:
+    if not is_spark_driver and RAY_ON_SPARK_WORKER_CPU_CORES in os.environ:
         # In some cases, spark standalone cluster might configure virtual cpu cores
         # for spark worker that different with number of physical cpu cores,
         # but we cannot easily get the virtual cpu cores configured for spark
@@ -290,8 +310,8 @@ def _get_cpu_cores():
     return multiprocessing.cpu_count()
 
 
-def _get_num_physical_gpus():
-    if RAY_ON_SPARK_WORKER_GPU_NUM in os.environ:
+def _get_num_physical_gpus(is_spark_driver):
+    if not is_spark_driver and RAY_ON_SPARK_WORKER_GPU_NUM in os.environ:
         # In some cases, spark standalone cluster might configure part of physical
         # GPUs for spark worker,
         # but we cannot easily get related configuration,
@@ -314,18 +334,39 @@ def _get_num_physical_gpus():
     return len(completed_proc.stdout.strip().split("\n"))
 
 
+def _get_num_local_ray_node_slots(num_cpus_per_node, num_gpus_per_node, is_spark_driver):
+    num_cpus = _get_cpu_cores(is_spark_driver)
+    num_task_slots = num_cpus // num_cpus_per_node
+
+    if num_cpus_per_node > num_cpus:
+        raise ValueError(
+            f"cpu number of Ray node should be <= local machine CPU cores."
+        )
+
+    if num_gpus_per_node > 0:
+        num_gpus = _get_num_physical_gpus(is_spark_driver)
+
+        if num_gpus_per_node > num_gpus:
+            raise ValueError(
+                f"GPU number of Ray node should be <= local machine GPU number."
+            )
+
+        if num_task_slots > num_gpus // num_gpus_per_node:
+            num_task_slots = num_gpus // num_gpus_per_node
+
+    return num_task_slots
+
+
 def _get_avail_mem_per_ray_worker_node(
     num_cpus_per_node,
     num_gpus_per_node,
     object_store_memory_per_node,
 ):
-    num_cpus = _get_cpu_cores()
-    num_task_slots = num_cpus // num_cpus_per_node
-
-    if num_gpus_per_node > 0:
-        num_gpus = _get_num_physical_gpus()
-        if num_task_slots > num_gpus // num_gpus_per_node:
-            num_task_slots = num_gpus // num_gpus_per_node
+    num_task_slots = _get_num_local_ray_node_slots(
+        num_cpus_per_node,
+        num_gpus_per_node,
+        is_spark_driver=False,
+    )
 
     physical_mem_bytes = _get_spark_worker_total_physical_memory()
     shared_mem_bytes = _get_spark_worker_total_shared_memory()

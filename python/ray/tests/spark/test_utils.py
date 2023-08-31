@@ -8,6 +8,7 @@ from ray.util.spark.utils import (
     get_spark_task_assigned_physical_gpus,
     _calc_mem_per_ray_worker_node,
     _get_avail_mem_per_ray_worker_node,
+    calc_mem_ray_head_node,
 )
 from ray.util.spark.cluster_init import (
     _convert_ray_node_options,
@@ -90,6 +91,44 @@ def test_get_avail_mem_per_ray_worker_node(monkeypatch):
         num_gpus_per_node=4,
         object_store_memory_per_node=None,
     ) == (280000, 120000, None, None)
+
+
+@patch("ray._private.ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES", 1)
+@patch("ray.util.spark.utils._get_cpu_cores", return_value=4)
+@patch("ray.util.spark.utils._get_num_physical_gpus", return_value=8)
+def test_get_avail_mem_per_ray_head_node(monkeypatch):
+    monkeypatch.setenv("RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES", "1000000")
+    monkeypatch.setenv("RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES", "500000")
+
+    assert calc_mem_ray_head_node(
+        num_cpus_per_node=1,
+        num_gpus_per_node=2,
+        object_store_memory_per_node=None,
+    ) == (140000, 60000)
+
+    assert calc_mem_ray_head_node(
+        num_cpus_per_node=1,
+        num_gpus_per_node=2,
+        object_store_memory_per_node=80000,
+    ) == (120000, 80000)
+
+    assert calc_mem_ray_head_node(
+        num_cpus_per_node=1,
+        num_gpus_per_node=2,
+        object_store_memory_per_node=120000,
+    ) == (100000, 100000)
+
+    assert calc_mem_ray_head_node(
+        num_cpus_per_node=2,
+        num_gpus_per_node=2,
+        object_store_memory_per_node=None,
+    ) == (280000, 120000)
+
+    assert calc_mem_ray_head_node(
+        num_cpus_per_node=1,
+        num_gpus_per_node=4,
+        object_store_memory_per_node=None,
+    ) == (280000, 120000)
 
 
 def test_convert_ray_node_options():

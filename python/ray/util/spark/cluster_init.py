@@ -875,13 +875,14 @@ def setup_ray_cluster(
             has GPUs.
         object_store_memory_worker_node: Object store memory available to per-ray worker
             node, but it is capped by
-            "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
+            "dev_shm_available_size * 0.8 / max_num_ray_node_per_spark_worker".
             The default value equals to
             "0.3 * spark_worker_physical_memory * 0.8 / num_tasks_per_spark_worker".
         object_store_memory_head_node: Object store memory available to Ray head
-            node, but it is capped by "dev_shm_available_size * 0.8".
+            node, but it is capped by
+            "dev_shm_available_size * 0.8 / max_num_ray_node_per_spark_driver".
             The default value equals to
-            "0.3 * spark_driver_physical_memory * 0.8".
+            "0.3 * spark_driver_physical_memory * 0.8 / max_num_ray_node_per_spark_driver".
         head_node_options: A dict representing Ray head node extra options, these
             options will be passed to `ray start` script. Note you need to convert
             `ray start` options key from `--foo-bar` format to `foo_bar` format.
@@ -1151,7 +1152,9 @@ def setup_ray_cluster(
         object_store_memory_head_node = 128 * 1024 * 1024
     else:
         heap_memory_head_node, object_store_memory_head_node = calc_mem_ray_head_node(
-            object_store_memory_head_node
+            num_cpus_head_node,
+            num_gpus_head_node,
+            object_store_memory_head_node,
         )
 
     with _active_ray_cluster_rwlock:
