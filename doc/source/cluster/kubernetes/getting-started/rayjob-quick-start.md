@@ -3,7 +3,7 @@
 # RayJob Quickstart
 
 :::{warning}
-RayJob support in KubeRay is in alpha. Ongoing improvements are possible in the future releases.
+RayJob support in KubeRay v0.x is in alpha.
 :::
 
 ## Prerequisites

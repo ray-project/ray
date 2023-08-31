@@ -1402,3 +1402,10 @@ Ray Examples
         :link-type: ref
 
         Distributed Training with Hugging Face Accelelate and TorchTrainer
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item inference huggingface cv
+        :link: kuberay-batch-inference-example
+        :link-type: ref
+
+        RayJob Batch Inference Example on Kubernetes with Ray
