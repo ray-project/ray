@@ -13,6 +13,7 @@ import os
 import pytorch_lightning as pl
 from pytorch_lightning.loggers.mlflow import MLFlowLogger
 
+import ray
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
@@ -20,10 +21,12 @@ from ray.train.torch import TorchTrainer
 def train_func(config):
 
     save_dir = config["save_dir"]
-    logger = MLFlowLogger(
-        experiment_name="demo-project",
-        tracking_uri=f"file:{save_dir}",
-    )
+    logger = None
+    if ray.train.get_context().get_world_rank() == 0:
+        logger = MLFlowLogger(
+            experiment_name="demo-project",
+            tracking_uri=f"file:{save_dir}",
+        )
 
     ptl_trainer = pl.Trainer(
         max_epochs=5,
