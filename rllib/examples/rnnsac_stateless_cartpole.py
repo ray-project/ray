@@ -84,9 +84,7 @@ if __name__ == "__main__":
 
     # TEST
 
-    checkpoint_config_path = os.path.join(
-        results.get_best_result().log_dir, "params.json"
-    )
+    checkpoint_config_path = os.path.join(results.get_best_result().path, "params.json")
     with open(checkpoint_config_path, "rb") as f:
         checkpoint_config = json.load(f)
 

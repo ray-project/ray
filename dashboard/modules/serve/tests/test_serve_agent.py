@@ -490,6 +490,11 @@ def test_get_serve_instance_details_not_started(ray_start_stop):
     ],
 )
 def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
+    grpc_port = 9001
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+    ]
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
     config = {
@@ -497,6 +502,10 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
         "http_options": {
             "host": "127.0.0.1",
             "port": 8005,
+        },
+        "grpc_options": {
+            "port": grpc_port,
+            "grpc_servicer_functions": grpc_servicer_functions,
         },
         "applications": [
             {
@@ -541,11 +550,19 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     print("All applications are in a RUNNING state.")
 
     serve_details = ServeInstanceDetails(**requests.get(GET_OR_PUT_URL_V2).json())
-    # CHECK: location, host, and port
+    # CHECK: proxy location, HTTP host, and HTTP port
     assert serve_details.proxy_location == "HeadOnly"
     assert serve_details.http_options.host == "127.0.0.1"
     assert serve_details.http_options.port == 8005
-    print("Confirmed fetched proxy location, host and port metadata correct.")
+
+    # CHECK: gRPC port and grpc_servicer_functions
+    assert serve_details.grpc_options.port == grpc_port
+    assert serve_details.grpc_options.grpc_servicer_functions == grpc_servicer_functions
+    print(
+        "Confirmed fetched proxy location, HTTP host, HTTP port, gRPC port, and grpc_"
+        "servicer_functions metadata correct."
+    )
+
     # Check HTTP Proxy statuses
     for proxy in serve_details.http_proxies.values():
         assert proxy.status == HTTPProxyStatus.HEALTHY

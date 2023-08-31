@@ -11,7 +11,7 @@ from enum import Enum, auto
 import functools
 from pathlib import Path
 import shutil
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type, Union
 import warnings
 
 import ray
@@ -39,10 +39,15 @@ from ray.train.constants import (
     TIME_TOTAL_S,
     LAZY_CHECKPOINT_MARKER_FILE,
 )
-
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
+from ray.util.placement_group import _valid_resource_shape
+from ray.util.scheduling_strategies import (
+    PlacementGroupSchedulingStrategy,
+    SchedulingStrategyT,
+)
+
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
@@ -78,6 +83,36 @@ class TrainingResult:
     type: TrainingResultType
     data: Union[Dict, Checkpoint, str]
     metadata: Optional[Dict] = None
+
+
+class _FutureTrainingResult:
+    """A future that will be resolved to a `_TrainingResult`.
+
+    This is needed for specific schedulers such as PBT that schedule saves.
+
+    This wrapper should be removed after refactoring PBT to not schedule saves anymore.
+    """
+
+    def __init__(self, future: ray.ObjectRef):
+        self.future = future
+
+    def resolve(self, block: bool = True) -> Optional["_TrainingResult"]:
+        """Resolve into ``_TrainingResult``.
+
+        This will return None for function trainables if no checkpoint has been
+        saved before.
+        """
+        if block:
+            timeout = None
+        else:
+            timeout = 1e-9
+        try:
+            return ray.get(self.future, timeout=timeout)
+        except TimeoutError:
+            # Not ready, yet
+            pass
+        except Exception as exc:
+            logger.error(f"Error resolving result: {exc}")
 
 
 class _TrainingResult:
@@ -256,6 +291,10 @@ class _TrainSession:
 
         # Release the lock so that training thread can process this event.
         self.continue_lock.release()
+
+        # Force a final (blocking) sync of artifacts in the trial path to storage.
+        if _use_storage_context():
+            self.storage.persist_artifacts(force=True)
 
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
@@ -550,6 +589,7 @@ class _TrainSession:
 
         persisted_checkpoint = None
         if checkpoint:
+            # TODO(justinvyu): [code_removal]
             if not isinstance(checkpoint, NewCheckpoint):
                 raise ValueError(
                     "You must pass a `ray.train.Checkpoint` "
@@ -558,6 +598,13 @@ class _TrainSession:
 
             # Persist the reported checkpoint files to storage.
             persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
+
+        # Persist trial artifacts to storage.
+        force_artifact_sync = (
+            persisted_checkpoint
+            and self.storage.sync_config.sync_artifacts_on_checkpoint
+        )
+        self.storage.persist_artifacts(force=force_artifact_sync)
 
         metrics = self._auto_fill_metrics(metrics)
 
@@ -571,10 +618,7 @@ class _TrainSession:
                     user_metadata[k] = v
             persisted_checkpoint.set_metadata(user_metadata)
 
-        result = _TrainingResult(
-            checkpoint=persisted_checkpoint,
-            metrics=metrics,
-        )
+        result = _TrainingResult(checkpoint=persisted_checkpoint, metrics=metrics)
 
         self._report_training_result(result)
 
@@ -645,7 +689,73 @@ class _TrainSession:
         return shard
 
 
+# Cache of resource dicts that have been checked by the launch hook already.
+_checked_resources: Set[frozenset] = set()
 _session: Optional[_TrainSession] = None
+
+
+def _tune_task_and_actor_launch_hook(
+    fn, resources: Dict[str, float], strategy: Optional[SchedulingStrategyT]
+):
+    """Launch hook to catch nested tasks that can't fit in the placement group.
+
+    This gives users a nice warning in case they launch a nested task in a Tune trial
+    without reserving resources in the trial placement group to fit it.
+    """
+
+    # Already checked, skip for performance reasons.
+    key = frozenset({(k, v) for k, v in resources.items() if v > 0})
+    if not key or key in _checked_resources:
+        return
+
+    # No need to check if placement group is None.
+    if (
+        not isinstance(strategy, PlacementGroupSchedulingStrategy)
+        or strategy.placement_group is None
+    ):
+        return
+
+    # Check if the resource request is targeting the current placement group.
+    cur_pg = ray.util.get_current_placement_group()
+    if not cur_pg or strategy.placement_group.id != cur_pg.id:
+        return
+
+    _checked_resources.add(key)
+
+    # Check if the request can be fulfilled by the current placement group.
+    pgf = get_trial_resources()
+
+    if pgf.head_bundle_is_empty:
+        available_bundles = cur_pg.bundle_specs[0:]
+    else:
+        available_bundles = cur_pg.bundle_specs[1:]
+
+    # Check if the request can be fulfilled by the current placement group.
+    if _valid_resource_shape(resources, available_bundles):
+        return
+
+    if fn.class_name:
+        submitted = "actor"
+        name = fn.module_name + "." + fn.class_name + "." + fn.function_name
+    else:
+        submitted = "task"
+        name = fn.module_name + "." + fn.function_name
+
+    # Normalize the resource spec so it looks the same as the placement group bundle.
+    main_resources = cur_pg.bundle_specs[0]
+    resources = {k: float(v) for k, v in resources.items() if v > 0}
+
+    raise RuntimeError(
+        f"No trial resources are available for launching the {submitted} `{name}`. "
+        "To resolve this, specify the Tune option:\n\n"
+        ">  resources_per_trial=tune.PlacementGroupFactory(\n"
+        f">    [{main_resources}] + [{resources}] * N\n"
+        ">  )\n\n"
+        f"Where `N` is the number of slots to reserve for trial {submitted}s. "
+        "If you are using a Ray training library, there might be a utility function "
+        "to set this automatically for you. For more information, refer to "
+        "https://docs.ray.io/en/latest/tune/tutorials/tune-resources.html"
+    )
 
 
 def init_session(*args, **kwargs) -> None:
@@ -655,6 +765,14 @@ def init_session(*args, **kwargs) -> None:
             "A Train session is already in use. Do not call "
             "`init_session()` manually."
         )
+
+    # Setup hooks for generating placement group resource deadlock warnings.
+    from ray import actor, remote_function
+
+    if "TUNE_DISABLE_RESOURCE_CHECKS" not in os.environ:
+        actor._actor_launch_hook = _tune_task_and_actor_launch_hook
+        remote_function._task_launch_hook = _tune_task_and_actor_launch_hook
+
     _session = _TrainSession(*args, **kwargs)
 
 

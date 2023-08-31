@@ -551,7 +551,6 @@ class FunctionTrainable(Trainable):
         if _use_storage_context():
             # TRAIN -> SAVE remote calls get processed sequentially,
             # so `_last_training_result.checkpoint` holds onto the latest ckpt.
-            assert self._last_training_result.checkpoint
             return self._last_training_result
 
         checkpoint = self._status_reporter.get_checkpoint()
@@ -745,7 +744,7 @@ def wrap_function(
                     "To save and load checkpoint in trainable functions, "
                     "please use the `report` API:\n\n"
                     "from ray import train\n\n"
-                    "def train(config):\n"
+                    "def train_fn(config):\n"
                     "    # ...\n"
                     '    train.report({"metric": metric}, checkpoint=checkpoint)\n\n'
                     "For more information please see "

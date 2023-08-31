@@ -14,7 +14,7 @@ import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.util.client.server.proxier as proxier
 from ray._private.ray_constants import REDIS_DEFAULT_PASSWORD
-from ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
 
@@ -99,11 +99,13 @@ def test_proxy_manager_bad_startup(shutdown_only):
         client,
         JobConfig(),
     )
-    # Wait for reconcile loop
-    time.sleep(2)
-    assert pm.get_channel(client) is None
 
-    assert len(pm._free_ports) == 2
+    def verify():
+        assert pm.get_channel(client) is None
+        assert len(pm._free_ports) == 2
+        return True
+
+    wait_for_condition(verify)
 
 
 @pytest.mark.skipif(
