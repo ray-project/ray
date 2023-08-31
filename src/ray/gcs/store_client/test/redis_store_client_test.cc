@@ -70,16 +70,17 @@ class RedisStoreClientTest : public StoreClientTestBase {
                                TEST_REDIS_SERVER_PORTS.front(),
                                "",
                                /*enable_sharding_conn=*/false);
-    redis_client_ = std::make_shared<RedisClient>(options);
+    auto redis_client = std::make_unique<RedisClient>(options);
+    redis_client_ = redis_client.get();
     RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
 
-    store_client_ = std::make_shared<RedisStoreClient>(redis_client_);
+    store_client_ = std::make_shared<RedisStoreClient>(std::move(redis_client));
   }
 
   void DisconnectStoreClient() override { redis_client_->Disconnect(); }
 
  protected:
-  std::shared_ptr<RedisClient> redis_client_;
+  RedisClient *redis_client_;
   std::unique_ptr<std::thread> t_;
   std::atomic<bool> stopped_ = false;
 };

@@ -41,7 +41,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
         gcs_publisher_, gcs_table_storage_, raylet_client_pool_, ClusterID::Nil());
     gcs_actor_table_ =
-        std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
+        std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_.get());
     local_node_id_ = NodeID::FromRandom();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
         io_service_,
