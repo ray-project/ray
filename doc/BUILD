@@ -339,6 +339,7 @@ doctest(
             "source/rllib/rllib-sample-collection.rst",
         ]
     ),
+    size = "enormous",
     tags = ["team:rllib"]
 )
 
