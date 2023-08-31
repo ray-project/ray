@@ -14,7 +14,7 @@ import pyarrow.fs
 
 from ray.air._internal.filelock import TempFileLock
 from ray.train._internal.storage import _download_from_fs_path, _exists_at_fs_path
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, Deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -277,18 +277,22 @@ class Checkpoint:
         )
 
     @classmethod
+    @Deprecated
     def from_dict(cls, *args, **kwargs):
         _raise_migration_error("from_dict")
 
     @classmethod
+    @Deprecated
     def to_dict(cls, *args, **kwargs):
         _raise_migration_error("to_dict")
 
     @classmethod
+    @Deprecated
     def from_bytes(cls, *args, **kwargs):
         _raise_migration_error("from_bytes")
 
     @classmethod
+    @Deprecated
     def to_bytes(cls, *args, **kwargs):
         _raise_migration_error("to_bytes")
 
