@@ -170,7 +170,7 @@ class GenericProxy(ABC):
 
         self._node_id = node_id
 
-        # Set the controller name so that serve will connect to the
+        # Set the controller name so that serve connects to the
         # controller instance this proxy is running in.
         ray.serve.context._set_internal_replica_context(
             app_name=None,

@@ -142,12 +142,12 @@ class ProxyLocation(str, Enum):
 class HTTPOptions(pydantic.BaseModel):
     """HTTP options for the proxies. Supported fields:
 
-    - host: Host that the proxies will listen for HTTP on. Defaults to
+    - host: Host that the proxies listens for HTTP on. Defaults to
       "127.0.0.1". To expose Serve publicly, you probably want to set
       this to "0.0.0.0".
-    - port: Port that the proxies will listen for HTTP on. Defaults to 8000.
+    - port: Port that the proxies listen for HTTP on. Defaults to 8000.
     - root_path: An optional root path to mount the serve application
-      (for example, "/prefix"). All deployment routes will be prefixed
+      (for example, "/prefix"). All deployment routes are prefixed
       with this path.
     - request_timeout_s: End-to-end timeout for HTTP requests.
     - keep_alive_timeout_s: Duration to keep idle connections alive when no

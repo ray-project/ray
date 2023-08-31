@@ -54,23 +54,23 @@ class DeploymentConfig(BaseModel):
 
     Args:
         num_replicas (Optional[int]): The number of processes to start up that
-            will handle requests to this deployment. Defaults to 1.
+            handles requests to this deployment. Defaults to 1.
         max_concurrent_queries (Optional[int]): The maximum number of queries
-            that will be sent to a replica of this deployment without receiving
+            that is sent to a replica of this deployment without receiving
             a response. Defaults to 100.
         user_config (Optional[Any]): Arguments to pass to the reconfigure
             method of the deployment. The reconfigure method is called if
-            user_config is not None. Must be json-serializable.
+            user_config is not None. Must be JSON-serializable.
         graceful_shutdown_wait_loop_s (Optional[float]): Duration
-            that deployment replicas will wait until there is no more work to
+            that deployment replicas wait until there is no more work to
             be done before shutting down.
         graceful_shutdown_timeout_s (Optional[float]):
             Controller waits for this duration to forcefully kill the replica
             for shutdown.
         health_check_period_s (Optional[float]):
-            Frequency at which the controller will health check replicas.
+            Frequency at which the controller health checks replicas.
         health_check_timeout_s (Optional[float]):
-            Timeout that the controller will wait for a response from the
+            Timeout that the controller waits for a response from the
             replica's health check before marking it unhealthy.
         user_configured_option_names (Set[str]):
             The names of options manually configured by the user.
