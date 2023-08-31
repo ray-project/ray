@@ -157,8 +157,8 @@ class ExternalMultiAgentEnv(ExternalEnv):
             # if this dict is provided, assume that the user wants to set both
             # terminated and truncated dictionaries
             warnings.warn(
-                "multiagent_done_dict is deprecated. "
-                "Use multiagent_terminated_dict and/or multiagent_truncated_dict instead.",
+                "multiagent_done_dict is deprecated. Use multiagent_terminated_dict "
+                "and/or multiagent_truncated_dict instead.",
                 DeprecationWarning,
             )
             for agent, done in multiagent_done_dict.items():
