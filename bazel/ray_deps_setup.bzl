@@ -99,12 +99,6 @@ def ray_deps_setup():
         ],
         patch_args = ["-p1"],
     )
-    #http_archive(
-    #    name = "com_google_protobuf",
-    #    strip_prefix = "protobuf-3.19.4",
-    #    urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz"],
-    #    sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
-    #)
 
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
     # all of http/git_repository should add prefix for patches defined in ray directory.
@@ -223,11 +217,6 @@ def ray_deps_setup():
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
-    #auto_http_archive(
-    #    name = "com_google_absl",
-    #    url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20220623.1.tar.gz",
-    #    sha256 = "91ac87d30cc6d79f9ab974c51874a704de9c2647c40f6932597329a282217ba8",
-    #)
     auto_http_archive(
         name = "com_google_absl",
         sha256 = "5366d7e7fa7ba0d915014d387b66d0d002c03236448e1ba9ef98122c13b35c36",
