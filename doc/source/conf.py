@@ -498,8 +498,6 @@ intersphinx_mapping = {
     "sklearn": ("https://scikit-learn.org/stable/", None),
 }
 
-autodoc_type_aliases = {"ray.ObjectRef": "ray.ObjectRef"}
-
 # Ray must not be imported in conf.py because third party modules initialized by
 # `import ray` will no be mocked out correctly. Perform a check here to ensure
 # ray is not imported.
