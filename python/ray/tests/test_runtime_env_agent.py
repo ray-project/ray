@@ -110,6 +110,7 @@ def check_agent_register(raylet_proc, agent_pid):
         time.sleep(1)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="no fate sharing for windows")
 def test_raylet_and_agent_share_fate(shutdown_only):
     """Test raylet and agent share fate."""
 
@@ -154,6 +155,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     raylet_proc.wait(15)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="no fate sharing for windows")
 def test_agent_report_unexpected_raylet_death(shutdown_only):
     """Test agent reports Raylet death if it is not SIGTERM."""
 
@@ -188,6 +190,7 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="no fate sharing for windows")
 def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     """Test agent reports Raylet death if it is not SIGTERM."""
 
