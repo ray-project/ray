@@ -35,7 +35,7 @@ Runtime Environments feature is installed.
 
 Example:
 
-```{literalinclude} ../serve/doc_code/varying_deps.py
+```{literalinclude} ../doc_code/varying_deps.py
 :language: python
 ```
 
@@ -53,6 +53,6 @@ using runtime environments.
 
 Example:
 
-```{literalinclude} ../serve/doc_code/delayed_import.py
+```{literalinclude} ../doc_code/delayed_import.py
 :language: python
 ```
