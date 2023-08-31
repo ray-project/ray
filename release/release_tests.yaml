@@ -5125,6 +5125,11 @@
   python: "3.8"
   frequency: nightly
   team: core
+
+  # Marking unstable because it's not working right now beyond ~3000 runtime envs.
+  # Tracking issue: https://github.com/ray-project/ray/issues/38662
+  stable: false
+
   cluster:
     byod: {}
     cluster_compute: stress_tests/smoke_test_compute.yaml
