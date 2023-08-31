@@ -22,7 +22,7 @@ from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune.trainable.trainable import _DICT_CHECKPOINT_FILE_NAME
 
-from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
+from ray.train.tests.util import mock_s3_bucket_uri
 
 
 _SCORE_KEY = "score"
