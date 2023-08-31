@@ -48,12 +48,13 @@ _CHECKPOINT_UUID_URI_NAMESPACE = uuid.UUID("627fe696-f135-436f-bc4b-bda0306e0181
 logger = logging.getLogger(__name__)
 
 
+# TODO(justinvyu): [code_removal]
 @dataclass
 class _CheckpointMetadata:
     """Metadata about a checkpoint.
 
     Attributes:
-        checkpoint_type: The checkpoint class. For example, ``LegacyTorchCheckpoint``.
+        checkpoint_type: The checkpoint class.
         checkpoint_state: A dictionary that maps object attributes to their values. When
             you load a serialized checkpoint, restore these values.
     """
@@ -476,14 +477,7 @@ class Checkpoint:
         """Create a checkpoint from a generic :class:`ray.air.Checkpoint`.
 
         This method can be used to create a framework-specific checkpoint from a
-        generic :class:`Checkpoint` object.
-
-        Examples:
-            >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
-            >>> checkpoint = LegacyTorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP
-            >>> model = checkpoint.get_model()  # doctest: +SKIP
-            Linear(in_features=1, out_features=1, bias=True)
-        """  # noqa: E501
+        generic :class:`Checkpoint` object."""
         if type(other) is cls:
             return other
 

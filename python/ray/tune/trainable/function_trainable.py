@@ -345,7 +345,6 @@ class FunctionTrainable(Trainable):
                 dataset_shard=None,
                 checkpoint=None,
                 # Deprecated configs
-                encode_data_fn=None,
                 enable_lazy_checkpointing=False,
             )
             self._last_training_result = None

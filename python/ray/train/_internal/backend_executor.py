@@ -381,7 +381,6 @@ class BackendExecutor:
             checkpoint,
             dataset_shard,
             metadata,
-            encode_data_fn,
             checkpoint_keep_all_ranks,
             checkpoint_upload_from_workers,
             storage,
@@ -398,7 +397,6 @@ class BackendExecutor:
                     dataset_shard=dataset_shard,
                     metadata=metadata,
                     checkpoint=checkpoint,
-                    encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
                     enable_lazy_checkpointing=use_lazy_checkpointing,
                     checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
@@ -445,7 +443,6 @@ class BackendExecutor:
                     dataset_shard=self.dataset_shards[index],
                     metadata=metadata,
                     checkpoint=checkpoint,
-                    encode_data_fn=self._backend._encode_data,
                     checkpoint_keep_all_ranks=self._checkpoint_keep_all_ranks,
                     checkpoint_upload_from_workers=(
                         self._checkpoint_upload_from_workers

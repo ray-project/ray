@@ -236,9 +236,7 @@ class TrainingIterator:
                 result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoints(
-                    results, decode_checkpoint_fn=self._backend._decode_data
-                )
+                self._checkpoint_manager._process_checkpoints(results, lambda x: x)
 
                 # Note(jungong) : This is kinda funky. We update the cloud
                 # checkpoint dir on every distributed worker right after
@@ -266,9 +264,7 @@ class TrainingIterator:
             result_type = results[0].type
             # Process checkpoints and ignore other result types.
             if result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoints(
-                    results, decode_checkpoint_fn=self._backend._decode_data
-                )
+                self._checkpoint_manager._process_checkpoints(results, lambda x: x)
                 # TODO: Is this needed? I don't think this is ever called...
                 self._send_next_checkpoint_path_to_workers()
 
