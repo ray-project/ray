@@ -661,6 +661,11 @@ def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
     When the request error out, gRPC proxy should return INTERNAL status and the error
     message in the response for both unary and streaming request.
     """
+    if streaming and not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+        print(
+            "Skipping streaming condition because streaming feature flag is disabled."
+        )
+        return
 
     grpc_port = 9000
     grpc_servicer_functions = [
