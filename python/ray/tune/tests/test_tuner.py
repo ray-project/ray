@@ -51,11 +51,7 @@ class DummyTrainer(BaseTrainer):
 
     def training_loop(self) -> None:
         for i in range(5):
-            with tune.checkpoint_dir(step=i) as checkpoint_dir:
-                path = os.path.join(checkpoint_dir, "checkpoint")
-                with open(path, "w") as f:
-                    f.write(str(i))
-            tune.report(step=i)
+            train.report({"step": i})
 
 
 class FailingTrainer(DummyTrainer):
@@ -355,7 +351,7 @@ def test_tuner_trainer_checkpoint_config(shutdown_only):
 
 def test_tuner_fn_trainable_checkpoint_at_end_false(shutdown_only):
     tuner = Tuner(
-        lambda config, checkpoint_dir: 1,
+        lambda config: 1,
         run_config=RunConfig(
             checkpoint_config=CheckpointConfig(checkpoint_at_end=False)
         ),
@@ -365,7 +361,7 @@ def test_tuner_fn_trainable_checkpoint_at_end_false(shutdown_only):
 
 def test_tuner_fn_trainable_checkpoint_at_end_none(shutdown_only):
     tuner = Tuner(
-        lambda config, checkpoint_dir: 1,
+        lambda config: 1,
         run_config=RunConfig(
             checkpoint_config=CheckpointConfig(checkpoint_at_end=None)
         ),
