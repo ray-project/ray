@@ -978,8 +978,8 @@ class Node:
         raise ValueError(
             "Can't find a `node_ip_address.json` file from "
             f"{self.get_session_dir_path()}. "
-            f"for {timeout_s} seconds"
-            "It means the ray instance hasn't started. "
+            f"for {timeout_s} seconds. "
+            "A ray instance hasn't started. "
             "Did you do `ray start` or `ray.init` on this host?"
         )
 
