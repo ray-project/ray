@@ -18,7 +18,7 @@ T = TypeVar("T")
 
 # The max size of Python tuples to buffer before compacting them into a
 # table in the BlockBuilder.
-MAX_UNCOMPACTED_SIZE_BYTES = 50 * 1024 * 1024
+MAX_UNCOMPACTED_SIZE_BYTES = 512 * 1024 * 1024
 
 
 class TableBlockBuilder(BlockBuilder):
