@@ -67,7 +67,7 @@ To ignore cancellation during an `await` statement, use `asyncio.shield`:
 :language: python
 ```
 
-When the request is cancelled, a cancellation error is raised inside the `Guardian` deployment. However, the cancellation won't be raised inside `sleeper` during the `asyncio.sleep()` call.
+When the request is cancelled, a cancellation error is raised inside the `Forwarder` deployment. However, the cancellation won't be raised inside `sleeper` during the `asyncio.sleep()` call.
 
 (serve-fastapi-http)=
 ## FastAPI HTTP Deployments

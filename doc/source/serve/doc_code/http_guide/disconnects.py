@@ -66,17 +66,17 @@ from ray.serve.handle import RayServeHandle
 
 
 @serve.deployment
-class Guardian:
+class Forwarder:
     def __init__(self, sleeper_handle: RayServeHandle):
         self.sleeper_handle = sleeper_handle
 
     async def __call__(self):
         try:
-            print("Guardian received request!")
+            print("Forwarder received request!")
             await self.sleeper_handle.remote()
 
         except asyncio.CancelledError:
-            print("Guardian's request was cancelled!")
+            print("Forwarder's request was cancelled!")
 
 
 @serve.deployment
@@ -89,7 +89,7 @@ async def sleeper():
     print("Sleeper deployment finished sleeping!")
 
 
-app = Guardian.bind(sleeper.bind())
+app = Forwarder.bind(sleeper.bind())
 # __end_shielded_disconnect__
 
 serve.run(app)
