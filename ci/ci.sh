@@ -230,7 +230,7 @@ test_python() {
       --test_env=CI="1" \
       --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_output=stream \
+      --test_output=streamed \
       --runs_per_test=100 --flaky_test_attempts=1 \
       -- \
       ${test_shard_selection};
