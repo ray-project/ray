@@ -600,7 +600,7 @@ class ServeDeploySchema(BaseModel):
         default=ProxyLocation.EveryNode,
         description=(
             "Config for where to run proxies for ingress traffic to the cluster.\n"
-            '- "Disabled": disable the proxies entirely.'
+            '- "Disabled": disable the proxies entirely.\n'
             '- "HeadOnly": run only one proxy on the head node.\n'
             '- "EveryNode": run proxies on every node that has at least one replica.\n'
         ),
@@ -866,7 +866,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     proxy_location: Optional[ProxyLocation] = Field(
         description=(
             "Config for where to run proxies for ingress traffic to the cluster.\n"
-            '- "Disabled": disable the proxies entirely.'
+            '- "Disabled": disable the proxies entirely.\n'
             '- "HeadOnly": run only one proxy on the head node.\n'
             '- "EveryNode": run proxies on every node that has at least one replica.\n'
         ),
