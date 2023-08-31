@@ -6,7 +6,7 @@ See <https://cloud.google.com/kubernetes-engine/docs/how-to/gpus> for full detai
 
 ## Step 1: Create a Kubernetes cluster on GKE
 
-Run this command and all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, you will need to install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install). The following command creates a Kubernetes cluster named `kuberay-gpu-cluster` with 1 CPU node in the `us-west1-b` zone. In this example, we use the `e2-standard-4` machine type, which has 4 vCPUs and 16 GB RAM.
+Run this command and all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, you need to install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install). The following command creates a Kubernetes cluster named `kuberay-gpu-cluster` with 1 CPU node in the `us-west1-b` zone. This example uses the `e2-standard-4` machine type, which has 4 vCPUs and 16 GB RAM.
 
 ```sh
 gcloud container clusters create kuberay-gpu-cluster \
