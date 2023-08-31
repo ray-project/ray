@@ -660,11 +660,14 @@ class Node:
                 self._gcs_client = client
                 break
             except Exception:
-                if gcs_process is not None and gcs_process.poll() is not None:
-                    # GCS has exited.
-                    break
+                if gcs_process is not None:
+                    ret = gcs_process.poll()
+                    if ret is not None:
+                        # GCS has exited.
+                        logger.info(f"GCS exited: {ret}")
+                        break
                 last_ex = traceback.format_exc()
-                logger.debug(f"Connecting to GCS: {last_ex}")
+                logger.info(f"Connecting to GCS: {last_ex}")
                 time.sleep(1)
 
         if self._gcs_client is None:

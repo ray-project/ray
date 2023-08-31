@@ -453,7 +453,7 @@ ENABLE_RAY_CLUSTER = env_bool(
 
 SESSION_LATEST = "session_latest"
 NUM_PORT_RETRIES = 40
-NUM_REDIS_GET_RETRIES = int(os.environ.get("RAY_NUM_REDIS_GET_RETRIES", "20"))
+NUM_REDIS_GET_RETRIES = int(os.environ.get("RAY_NUM_REDIS_GET_RETRIES", "60"))
 
 # The allowed cached ports in Ray. Refer to Port configuration for more details:
 # https://docs.ray.io/en/latest/ray-core/configure.html#ports-configurations
