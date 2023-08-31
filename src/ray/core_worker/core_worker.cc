@@ -4005,8 +4005,8 @@ void CoreWorker::GetAsync(const ObjectID &object_id,
       object_id,
       [this,
        object_id,
-       success_callback,
        python_user_callback,
+       success_callback = std::move(success_callback),
        fallback_callback =
            std::move(fallback_callback)](std::shared_ptr<RayObject> ray_object) {
         // Post the callback to the io_service_ to avoid deadlocks.
@@ -4015,8 +4015,8 @@ void CoreWorker::GetAsync(const ObjectID &object_id,
         // cause deadlocks if the callers of `Put` is holding a lock.
         io_service_.post(
             [object_id,
-             success_callback,
              python_user_callback,
+             success_callback = std::move(success_callback),
              fallback_callback = std::move(fallback_callback),
              ray_object = std::move(ray_object)]() {
               if (ray_object->IsInPlasmaError()) {
@@ -4025,7 +4025,7 @@ void CoreWorker::GetAsync(const ObjectID &object_id,
                 success_callback(ray_object, object_id, python_user_callback);
               }
             },
-            "CoreWorker.GetAsync callback");
+            "CoreWorker.GetAsync.Callback");
       });
 }
 
