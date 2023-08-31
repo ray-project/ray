@@ -41,7 +41,7 @@ It should be scheduled on the CPU pod.
 
 Create the RayJob custom resource. The RayJob spec is defined in [ray-job.batch-inference.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.batch-inference.yaml).
 
-You can download the file via `curl` as follows:
+Download the file with `curl`:
 
 ```bash
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.batch-inference.yaml
