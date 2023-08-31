@@ -93,7 +93,11 @@ def _set_internal_replica_context(
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        deployment, replica_tag, controller_name, servable_object, app_name
+        app_name=app_name,
+        deployment=deployment,
+        replica_tag=replica_tag,
+        servable_object=servable_object,
+        _internal_controller_name=controller_name,
     )
 
 

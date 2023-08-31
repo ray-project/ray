@@ -712,7 +712,7 @@ class RayServeReplica:
         # Set request context variables for subsequent handle so that
         # handle can pass the correct request context to subsequent replicas.
         ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(
+            ray.serve.context._RequestContext(
                 request_metadata.route,
                 request_metadata.request_id,
                 self.deployment_id.app,
