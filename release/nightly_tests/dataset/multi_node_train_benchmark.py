@@ -19,6 +19,8 @@ import torchvision
 import torch
 
 from typing import Union, Literal, List, Optional, Dict
+from ray._private.internal_api import memory_summary
+import re
 
 
 # This benchmark does the following:
@@ -159,9 +161,8 @@ def benchmark_code(
     prepartition_ds=False,
 ):
     """
-    - cache_output_ds: Cache output dataset (ds.materialize()) after
-        running preprocessing fn
-    - cache_input_ds: Cache input dataset, run preprocessing fn after ds.materialize()
+    - cache_output_ds: Cache output dataset (ds.materialize()) after preprocessing fn.
+    - cache_input_ds: Cache input dataset, then apply a preprocessing fn.
     - prepartition_ds: Pre-partition and cache input dataset across workers.
     """
     assert (
@@ -235,44 +236,6 @@ def benchmark_code(
             }
         )
 
-    # def train_loop_per_worker_torch():
-    #     # s3_urls = IterableWrapper([args.data_root]).list_files_by_s3()
-    #     # torch_dataset = S3FileLoader(s3_urls)
-    #     dp = IterableWrapper([args.data_root]).list_files_by_fsspec()
-    #     # dp = dp.open_files_by_fsspec(mode="rb", anon=True)
-    #     sampler = DistributedSampler(dp)
-
-    #     data_loader = DataLoader(dp, sampler=sampler)
-    #     data_loader = ray.train.torch.prepare_data_loader(data_loader)
-
-    #     for i in range(args.num_epochs):
-    #         print(f"Epoch {i+1} of {args.num_epochs}")
-    #         num_rows = 0
-    #         start_t = time.time()
-    #         for batch in data_loader:
-    #             num_rows += args.batch_size
-    #         end_t = time.time()
-    #     # Workaround to report the final epoch time from each worker, so that we
-    #     # can sum up the times at the end when calculating throughput.
-    #     world_size = ray.train.get_context().get_world_size()
-    #     all_workers_time_list = [
-    #       torch.zeros((2), dtype=torch.double) for _ in range(world_size)
-    #       ]
-    #     curr_worker_time = torch.tensor([start_t, end_t], dtype=torch.double)
-    #     dist.all_gather(all_workers_time_list, curr_worker_time)
-
-    #     all_num_rows = [
-    #       torch.zeros((1), dtype=torch.int32) for _ in range(world_size)
-    #     ]
-    #     curr_num_rows = torch.tensor([num_rows], dtype=torch.int32)
-    #     dist.all_gather(all_num_rows, curr_num_rows)
-    #     train.report({
-    #         f"time_final_epoch": [
-    #           tensor.tolist() for tensor in all_workers_time_list
-    #         ],
-    #         "num_rows": [tensor.item() for tensor in all_num_rows]
-    #     })
-
     # 3) Train TorchTrainer on processed data
     options = DataConfig.default_ingest_options()
     options.preserve_order = args.preserve_order
@@ -339,14 +302,8 @@ def benchmark_code(
             ),
         )
 
-    # use with torch loader
-    # torch_trainer = TorchTrainer(
-    #     train_loop_per_worker_torch,
-    #     scaling_config=ScalingConfig(
-    #         num_workers=args.num_workers,
-    #     ),
-    # )
     result = torch_trainer.fit()
+
     # Report the throughput of the last epoch, sum runtime across all workers.
     time_start_last_epoch, time_end_last_epoch = zip(
         *result.metrics["time_final_epoch"]
@@ -354,7 +311,36 @@ def benchmark_code(
     runtime_last_epoch = max(time_end_last_epoch) - min(time_start_last_epoch)
     num_rows_last_epoch = sum(result.metrics["num_rows"])
     tput_last_epoch = num_rows_last_epoch / runtime_last_epoch
-    return {BenchmarkMetric.THROUGHPUT.value: tput_last_epoch}
+
+    # Get spilled/restored stats
+    mem_summary = memory_summary(
+        address=ray._private.worker._global_node.address, stats_only=True
+    )
+    memory_stats = {}
+    spill_extract = re.search(r"Spilled (\d+) MiB, (\d+) objects", mem_summary)
+    if spill_extract:
+        spilled_bytes, spilled_object_count = spill_extract.group(
+            1
+        ), spill_extract.group(2)
+        memory_stats.update(
+            {"spilled_mb": spilled_bytes, "spilled_object_count": spilled_object_count}
+        )
+    restored_extract = re.search(r"Restored (\d+) MiB, (\d+) objects", mem_summary)
+    if restored_extract:
+        restored_bytes, restored_object_count = restored_extract.group(
+            1
+        ), restored_extract.group(2)
+        memory_stats.update(
+            {
+                "restored_mb": restored_bytes,
+                "restored_object_count": restored_object_count,
+            }
+        )
+
+    return {
+        BenchmarkMetric.THROUGHPUT.value: tput_last_epoch,
+        BenchmarkMetric.MEMORY_STATS.value: memory_stats,
+    }
 
 
 if __name__ == "__main__":
@@ -369,6 +355,12 @@ if __name__ == "__main__":
 
     benchmark.run_fn("cache-none", benchmark_code, args=args)
     benchmark.run_fn("cache-output", benchmark_code, args=args, cache_output_ds=True)
+    # benchmark.run_fn(
+    #   f"cache-output-read-{args.read_task_cpus}-cpu",
+    #   benchmark_code, args=args, cache_output_ds=True
+    # )
     benchmark.run_fn("cache-input", benchmark_code, args=args, cache_input_ds=True)
-    # benchmark.run_fn("prepartition-ds", benchmark_code, args=args, prepartition_ds=True)  # noqa: E501
+    # benchmark.run_fn(
+    # "prepartition-ds", benchmark_code, args=args, prepartition_ds=True,
+    # )
     benchmark.write_result("/tmp/multi_node_train_benchmark.json")
