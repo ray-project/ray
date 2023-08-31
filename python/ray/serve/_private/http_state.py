@@ -487,7 +487,7 @@ class HTTPProxyStateManager:
             runtime_env={
                 "env_vars": {
                     "LD_PRELOAD": "/usr/lib/x86_64-linux-gnu/libjemalloc.so.2",  # noqa: E501
-                    "MALLOC_CONF": "prof:true,lg_prof_interval:39,lg_prof_sample:17,prof_final:true,prof_leak:true",  # noqa: E501
+                    "MALLOC_CONF": "prof:true,lg_prof_interval:40,lg_prof_sample:17,prof_final:true,prof_leak:true",  # noqa: E501
                 }
             },
         ).remote(

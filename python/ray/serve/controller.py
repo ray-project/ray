@@ -78,7 +78,15 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 
 
-@ray.remote(num_cpus=0)
+@ray.remote(
+    num_cpus=0,
+    runtime_env={
+        "env_vars": {
+            "LD_PRELOAD": "/usr/lib/x86_64-linux-gnu/libjemalloc.so.2",  # noqa: E501
+            "MALLOC_CONF": "prof:true,lg_prof_interval:33,lg_prof_sample:17,prof_final:true,prof_leak:true",  # noqa: E501
+        }
+    },
+)
 class ServeController:
     """Responsible for managing the state of the serving system.
 
