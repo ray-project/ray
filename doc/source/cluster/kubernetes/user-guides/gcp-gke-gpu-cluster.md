@@ -40,7 +40,7 @@ The `--accelerator` flag specifies the type and number of GPUs for each node in 
 
 .. note::
 
-    GKE will automatically configure taints and tolerations so that only GPU pods are scheduled on GPU nodes.  For more detais, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/gpus#create)
+    GKE automatically configures taints and tolerations so that only GPU pods are scheduled on GPU nodes.  For more details, see [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/gpus#create)
 
 ## Step 3: Configure `kubectl` to connect to the cluster
 
