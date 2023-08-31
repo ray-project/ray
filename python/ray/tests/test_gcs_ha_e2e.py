@@ -15,7 +15,7 @@ print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
     head, worker = docker_cluster
 
     def check_alive(n):
-        output = head.exec_run(cmd=f"python -c '{get_nodes_script}'")
+        output = worker.exec_run(cmd=f"python -c '{get_nodes_script}'")
         text = output.output.decode().strip().split("\n")[-1]
         print("Output: ", output.output.decode().strip().split("\n"))
         # print(worker.logs())
