@@ -162,7 +162,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   if (options_.worker_type != WorkerType::DRIVER) {
     periodical_runner_.RunFnPeriodically(
         [this] { ExitIfParentRayletDies(); },
-        RayConfig::instance().raylet_death_check_interval_milliseconds());
+        RayConfig::instance().raylet_death_check_interval_milliseconds(),
+        "CoreWorker.ExitIfParentRayletDies");
   }
 
   // Start the IO thread first to make sure the checker is working.
@@ -573,7 +574,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                         << "Task Event stats:\n"
                         << task_event_buffer_->DebugString() << "\n";
         },
-        event_stats_print_interval_ms);
+        event_stats_print_interval_ms,
+        "CoreWorker.PrintEventStats");
   }
 
   // Set event context for current core worker thread.
@@ -603,15 +605,18 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           }
         }
       },
-      100);
+      100,
+      "CoreWorker.RecoverObjects");
 
   periodical_runner_.RunFnPeriodically(
       [this] { InternalHeartbeat(); },
-      RayConfig::instance().core_worker_internal_heartbeat_ms());
+      RayConfig::instance().core_worker_internal_heartbeat_ms(),
+      "CoreWorker.InternalHeartbeat");
 
   periodical_runner_.RunFnPeriodically(
       [this] { RecordMetrics(); },
-      RayConfig::instance().metrics_report_interval_ms() / 2);
+      RayConfig::instance().metrics_report_interval_ms() / 2,
+      "CoreWorker.RecordMetrics");
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like

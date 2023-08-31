@@ -38,7 +38,7 @@ class PeriodicalRunner {
 
   void RunFnPeriodically(std::function<void()> fn,
                          uint64_t period_ms,
-                         const std::string name = "UNKNOWN") LOCKS_EXCLUDED(mutex_);
+                         const std::string name) LOCKS_EXCLUDED(mutex_);
 
  private:
   void DoRunFnPeriodically(const std::function<void()> &fn,
