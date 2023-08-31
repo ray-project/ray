@@ -49,17 +49,13 @@ struct GcsServerConfig {
   std::string grpc_server_name = "GcsServer";
   uint16_t grpc_server_port = 0;
   uint16_t grpc_server_thread_num = 1;
-  std::string redis_password;
-  std::string redis_address;
-  uint16_t redis_port = 6379;
-  bool enable_redis_ssl = false;
   bool retry_redis = true;
-  bool enable_sharding_conn = false;
   std::string node_ip_address;
   std::string log_dir;
   // This includes the config list of raylet.
   std::string raylet_config_list;
   std::string session_name;
+  RedisClientOptions redis_options;
 };
 
 class GcsNodeManager;
@@ -109,9 +105,6 @@ class GcsServer {
   static constexpr char kRedisStorage[] = "redis";
 
  protected:
-  /// Generate the redis client options
-  RedisClientOptions GetRedisClientOptions() const;
-
   void DoStart(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs node manager.

@@ -15,11 +15,82 @@
 #pragma once
 #include <memory>
 
-#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/store_client/store_client.h"
-
 namespace ray {
 namespace gcs {
+
+/// \class InternalKVInterface
+/// The interface for internal kv implementation. Ideally we should merge this
+/// with store client, but due to compatibility issue, we keep them separated
+/// right now.
+class InternalKVInterface {
+ public:
+  /// Get the value associated with `key`.
+  ///
+  /// \param ns The namespace of the key.
+  /// \param key The key to fetch.
+  /// \param callback Returns the value or null if the key doesn't exist.
+  virtual void Get(const std::string &ns,
+                   const std::string &key,
+                   std::function<void(std::optional<std::string>)> callback) = 0;
+
+  /// Get the values associated with `keys`.
+  ///
+  /// \param ns The namespace of the key.
+  /// \param keys The keys to fetch.
+  /// \param callback Returns the values for those keys that exist.
+  virtual void MultiGet(
+      const std::string &ns,
+      const std::vector<std::string> &keys,
+      std::function<void(std::unordered_map<std::string, std::string>)> callback) = 0;
+
+  /// Associate a key with the specified value.
+  ///
+  /// \param ns The namespace of the key.
+  /// \param key The key for the pair.
+  /// \param value The value for the pair.
+  /// \param overwrite Whether to overwrite existing values. Otherwise, the update
+  ///   will be ignored.
+  /// \param callback WARNING: it returns true if and only if A NEW ENTRY is added.
+  /// Overwritten return false.
+  virtual void Put(const std::string &ns,
+                   const std::string &key,
+                   const std::string &value,
+                   bool overwrite,
+                   std::function<void(bool)> callback) = 0;
+
+  /// Delete the key from the store.
+  ///
+  /// \param ns The namespace of the key.
+  /// \param key The key to be deleted.
+  /// \param del_by_prefix Whether to treat the key as prefix. If true, it'll
+  ///     delete all keys with `key` as the prefix.
+  /// \param callback returns the number of entries deleted.
+  virtual void Del(const std::string &ns,
+                   const std::string &key,
+                   bool del_by_prefix,
+                   std::function<void(int64_t)> callback) = 0;
+
+  /// Check whether the key exists in the store.
+  ///
+  /// \param ns The namespace of the key.
+  /// \param key The key to be checked.
+  /// \param callback Callback function.
+  virtual void Exists(const std::string &ns,
+                      const std::string &key,
+                      std::function<void(bool)> callback) = 0;
+
+  /// Get the keys for a given prefix.
+  ///
+  /// \param ns The namespace of the prefix.
+  /// \param prefix The prefix to be scaned.
+  /// \param callback return all the keys matching the prefix.
+  virtual void Keys(const std::string &ns,
+                    const std::string &prefix,
+                    std::function<void(std::vector<std::string>)> callback) = 0;
+
+  virtual ~InternalKVInterface(){};
+};
 
 /// InternalKVInterface implementation that wraps around
 /// StoreClient.

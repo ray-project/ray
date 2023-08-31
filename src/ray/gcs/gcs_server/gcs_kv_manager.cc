@@ -18,6 +18,7 @@
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
+#include "ray/gcs/store_client/store_client.h"
 
 namespace ray {
 namespace gcs {

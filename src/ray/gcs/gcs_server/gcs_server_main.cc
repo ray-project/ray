@@ -90,10 +90,13 @@ int main(int argc, char *argv[]) {
   gcs_server_config.grpc_server_port = gcs_server_port;
   gcs_server_config.grpc_server_thread_num =
       RayConfig::instance().gcs_server_rpc_server_thread_num();
-  gcs_server_config.redis_address = redis_address;
-  gcs_server_config.redis_port = redis_port;
+  gcs_server_config.redis_options = RedisOptions(redis_address,
+                                                 redis_port,
+                                                 redis_password,
+                                                 false /* enable_sharding_conn */,
+                                                 enable_redis_ssl);
+
   gcs_server_config.enable_redis_ssl = FLAGS_redis_enable_ssl;
-  gcs_server_config.redis_password = redis_password;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
   gcs_server_config.log_dir = log_dir;

@@ -356,6 +356,10 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const c_string &GetSpilledURL() const
         const CNodeID &GetSpilledNodeID() const
 
+cdef extern from "ray/gcs/cluster_config.h" nogil:
+    cdef struct ClusterConfig
+
+
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
         UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
