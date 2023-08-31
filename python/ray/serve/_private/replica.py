@@ -156,11 +156,11 @@ def create_replica_wrapper(actor_class_name: str):
             # code will connect to the instance that this deployment is running
             # in.
             ray.serve.context._set_internal_replica_context(
-                deployment_name,
-                replica_tag,
-                controller_name,
-                servable_object=None,
                 app_name=app_name,
+                deployment_name=deployment_name,
+                replica_tag=replica_tag,
+                servable_object=None,
+                controller_name=controller_name,
             )
 
             assert controller_name, "Must provide a valid controller_name"
@@ -194,11 +194,11 @@ def create_replica_wrapper(actor_class_name: str):
 
                 # Setting the context again to update the servable_object.
                 ray.serve.context._set_internal_replica_context(
-                    deployment_name,
-                    replica_tag,
-                    controller_name,
-                    servable_object=_callable,
                     app_name=app_name,
+                    deployment_name=deployment_name,
+                    replica_tag=replica_tag,
+                    servable_object=_callable,
+                    controller_name=controller_name,
                 )
 
                 self.replica = RayServeReplica(

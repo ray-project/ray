@@ -173,7 +173,11 @@ class GenericProxy(ABC):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.context._set_internal_replica_context(
-            None, None, controller_name, None, None
+            app_name=None,
+            deployment_name=None,
+            replica_tag=None,
+            servable_object=None,
+            controller_name=controller_name,
         )
 
         # Used only for displaying the route table.

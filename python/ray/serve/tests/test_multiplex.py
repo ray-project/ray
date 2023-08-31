@@ -25,7 +25,11 @@ from ray.serve._private.constants import (
 def start_serve_with_context():
     serve.start()
     ray.serve.context._set_internal_replica_context(
-        "fake_deployment", "fake_replica_tag", None, None, None
+        app_name="fake_app",
+        deployment="fake_deployment",
+        replica_tag="fake_replica_tag",
+        controller_name=None,
+        servable_object=None,
     )
     yield
     serve.shutdown()

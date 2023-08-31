@@ -85,11 +85,12 @@ def _get_internal_replica_context():
 
 
 def _set_internal_replica_context(
+    *,
+    app_name: str,
     deployment: str,
     replica_tag: ReplicaTag,
-    controller_name: str,
     servable_object: Callable,
-    app_name: str,
+    controller_name: str,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
