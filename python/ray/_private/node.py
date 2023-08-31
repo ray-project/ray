@@ -201,7 +201,11 @@ class Node:
         )
         self._node_ip_address = node_ip_address
         if not connect_only:
-            print("Writing node ip address to a session, ", node_ip_address, self._session_dir)
+            print(
+                "Writing node ip address to a session, ",
+                node_ip_address,
+                self._session_dir,
+            )
             self._write_node_ip_address(node_ip_address)
 
         if ray_params.raylet_ip_address:
@@ -955,10 +959,10 @@ class Node:
             The node_ip_address of the current session if it finds it
             within timeout_s.
         """
-        logger.error(f"Read file from {self.get_session_dir_path()}")
+        # logger.error(f"Read file from {self.get_session_dir_path()}")
         path = Path(self.get_session_dir_path())
         file_names = [f.name for f in path.iterdir() if f.is_file()]
-        logger.error(file_names)
+        # logger.error(file_names)
 
         for i in range(timeout_s):
             node_ip_address = self._get_cached_node_ip_address()
