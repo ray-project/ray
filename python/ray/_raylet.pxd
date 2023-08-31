@@ -124,6 +124,8 @@ cdef class CoreWorker:
         object eventloop_for_default_cg
         object thread_for_default_cg
         object fd_to_cgname_dict
+        object _task_id_to_future_lock
+        dict _task_id_to_future
         object thread_pool_for_async_event_loop
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,

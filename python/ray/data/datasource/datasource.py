@@ -65,12 +65,14 @@ class Datasource:
     def write(
         self,
         blocks: Iterable[Block],
+        ctx: TaskContext,
         **write_args,
     ) -> WriteResult:
         """Write blocks out to the datasource. This is used by a single write task.
 
         Args:
             blocks: List of data blocks.
+            ctx: ``TaskContext`` for the write task.
             write_args: Additional kwargs to pass to the datasource impl.
 
         Returns:
@@ -208,7 +210,6 @@ class ReadTask(Callable[[], Iterable[Block]]):
     def __init__(self, read_fn: Callable[[], Iterable[Block]], metadata: BlockMetadata):
         self._metadata = metadata
         self._read_fn = read_fn
-        self._additional_output_splits = 1
 
     def get_metadata(self) -> BlockMetadata:
         return self._metadata
@@ -221,23 +222,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
                 "Probably you need to return `[block]` instead of "
                 "`block`.".format(result)
             )
-
-        for block in result:
-            yield from self._do_additional_splits(block)
-
-    def _set_additional_split_factor(self, k: int) -> None:
-        self._additional_output_splits = k
-
-    def _do_additional_splits(self, block: Block) -> Iterable[Block]:
-        if self._additional_output_splits > 1:
-            block = BlockAccessor.for_block(block)
-            offset = 0
-            split_sizes = _splitrange(block.num_rows(), self._additional_output_splits)
-            for size in split_sizes:
-                yield block.slice(offset, offset + size, copy=True)
-                offset += size
-        else:
-            yield block
+        yield from result
 
 
 @PublicAPI
@@ -499,21 +484,3 @@ class _RandomIntRowDatasourceReader(Reader):
             i += block_size
 
         return read_tasks
-
-
-def _splitrange(n, k):
-    """Calculates array lens of np.array_split().
-
-    This is the equivalent of
-    `[len(x) for x in np.array_split(range(n), k)]`.
-    """
-    base = n // k
-    output = [base] * k
-    rem = n - sum(output)
-    for i in range(len(output)):
-        if rem > 0:
-            output[i] += 1
-            rem -= 1
-    assert rem == 0, (rem, output, n, k)
-    assert sum(output) == n, (output, n, k)
-    return output

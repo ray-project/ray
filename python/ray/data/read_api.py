@@ -30,6 +30,9 @@ from ray.data._internal.logical.operators.from_operators import (
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.planner.plan_read_op import (
+    apply_output_blocks_handling_to_read_task,
+)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
@@ -404,13 +407,18 @@ def read_datasource(
                 f"To satisfy the requested parallelism of {requested_parallelism}, "
                 f"each read task output is split into {k} smaller blocks."
             )
-            for r in read_tasks:
-                r._set_additional_split_factor(k)
             estimated_num_blocks = estimated_num_blocks * k
             additional_split_factor = k
         logger.debug("Estimated num output blocks {estimated_num_blocks}")
+
     else:
         estimated_num_blocks = 0
+
+    for read_task in read_tasks:
+        apply_output_blocks_handling_to_read_task(
+            read_task,
+            additional_split_factor,
+        )
 
     read_stage_name = f"Read{datasource.get_name()}"
     available_cpu_slots = ray.available_resources().get("CPU", 1)
@@ -556,6 +564,7 @@ def read_parquet(
     ray_remote_args: Dict[str, Any] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: Optional[ParquetMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
     **arrow_parquet_args,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from parquet files.
@@ -658,6 +667,9 @@ def read_parquet(
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
             accurately. In most cases you do not need to set this parameter.
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
+            with a custom callback to read only selected partitions of a dataset.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
@@ -681,6 +693,7 @@ def read_parquet(
         columns=columns,
         ray_remote_args=ray_remote_args,
         meta_provider=meta_provider,
+        partition_filter=partition_filter,
         **arrow_parquet_args,
     )
 
@@ -1113,7 +1126,7 @@ def read_csv(
         variety       string
 
         Convert a date column with a custom format from a CSV file. For more uses of ConvertOptions see https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html  # noqa: #501
-        
+
         >>> from pyarrow import csv
         >>> convert_options = csv.ConvertOptions(
         ...     timestamp_parsers=["%m/%d/%Y"])
@@ -1162,14 +1175,14 @@ def read_csv(
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
-                    #pyarrow.fs.FileSystem.open_input_stream>`_. 
+                    #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this 
+            accurately. In most cases, you do not need to set this. If ``None``, this
             function uses a system-chosen implementation.
-        partition_filter: A 
-            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. 
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset. By default, no files are filtered.
             To filter out all file paths except those whose file extension
@@ -1181,11 +1194,11 @@ def read_csv(
                 hive-style-partitioning/>`_.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
-        arrow_csv_args: CSV read options to pass to 
+        arrow_csv_args: CSV read options to pass to
             `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
-            pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_ 
+            pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
             when opening CSV files.
-        
+
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
@@ -1676,15 +1689,6 @@ def read_sql(
         :ref:`Reading from SQL Databases <reading_sql>`.
 
         .. testcode::
-            :hide:
-
-            import os
-            try:
-                os.remove("example.db")
-            except OSError:
-                pass
-
-        .. testcode::
 
             import sqlite3
 
@@ -1718,6 +1722,12 @@ def read_sql(
             ds = ray.data.read_sql(
                 "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
             )
+
+        .. testcode::
+            :hide:
+
+            import os
+            os.remove("example.db")
 
     Args:
         sql: The SQL query to execute.
@@ -2121,13 +2131,13 @@ def from_spark(
 
 
 @PublicAPI
-def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a
-    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_.
-
-    This function isn't parallelized, and is intended to be used
-    with Hugging Face Datasets that are loaded into memory (as opposed
-    to memory-mapped).
+def from_huggingface(
+    dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
+) -> Union[MaterializedDataset, Dataset]:
+    """Create a :class:`~ray.data.MaterializedDataset` from a
+    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
+    or a :class:`~ray.data.Dataset` from a `Hugging Face Datasets IterableDataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDataset/>`_.
+    For an `IterableDataset`, we use a streaming implementation to read data.
 
     Example:
 
@@ -2144,6 +2154,10 @@ def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
             ray_ds = ray.data.from_huggingface(hf_dataset["train"])
             print(ray_ds)
 
+            hf_dataset_stream = datasets.load_dataset("tweet_eval", "emotion", streaming=True)
+            ray_ds_stream = ray.data.from_huggingface(hf_dataset_stream["train"])
+            print(ray_ds_stream)
+
         .. testoutput::
             :options: +MOCK
 
@@ -2152,11 +2166,16 @@ def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
                 num_rows=3257,
                 schema={text: string, label: int64}
             )
+            Dataset(
+                num_blocks=...,
+                num_rows=3257,
+                schema={text: string, label: int64}
+            )
 
     Args:
-        dataset: A `Hugging Face Datasets Dataset`_.
-            ``IterableDataset`` and
+        dataset: A `Hugging Face Datasets Dataset`_ or `Hugging Face Datasets IterableDataset`_.
             `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_
+            and `IterableDatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDatasetDict/>`_
             are not supported.
 
     Returns:
@@ -2164,22 +2183,33 @@ def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
     """  # noqa: E501
     import datasets
 
+    if isinstance(dataset, datasets.IterableDataset):
+        # HuggingFaceDatasource should not be imported at top level, because
+        # we only want the Hugging Face datasets package to be imported
+        # if Hugging Face Datasets are used.
+        from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
+
+        # For an IterableDataset, we can use a streaming implementation to read data.
+        return read_datasource(
+            HuggingFaceDatasource(),
+            dataset=dataset,
+        )
     if isinstance(dataset, datasets.Dataset):
         # To get the resulting Arrow table from a Hugging Face Dataset after
-        # applying transformations (e.g. train_test_split(), shard(), select()),
+        # applying transformations (e.g., train_test_split(), shard(), select()),
         # we create a copy of the Arrow table, which applies the indices
         # mapping from the transformations.
         hf_ds_arrow = dataset.with_format("arrow")
         ray_ds = from_arrow(hf_ds_arrow[:])
         return ray_ds
-    elif isinstance(dataset, datasets.DatasetDict):
+    elif isinstance(dataset, (datasets.DatasetDict, datasets.IterableDatasetDict)):
         available_keys = list(dataset.keys())
         raise DeprecationWarning(
-            "You provided a Hugging Face DatasetDict which contains multiple "
-            "datasets, but `from_huggingface` now only accepts a single Hugging Face "
-            "Dataset. To convert just a single Hugging Face Dataset to a "
-            "Ray Dataset, specify a split. For example, "
-            "`ray.data.from_huggingface(my_dataset_dictionary"
+            "You provided a Hugging Face DatasetDict or IterableDatasetDict, "
+            "which contains multiple datasets, but `from_huggingface` now "
+            "only accepts a single Hugging Face Dataset. To convert just "
+            "a single Hugging Face Dataset to a Ray Dataset, specify a split. "
+            "For example, `ray.data.from_huggingface(my_dataset_dictionary"
             f"['{available_keys[0]}'])`. "
             f"Available splits are {available_keys}."
         )
@@ -2308,7 +2338,11 @@ def _get_reader(
         OOM, the estimated inmemory data size, and the reader generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
-    if local_uri:
+    # NOTE: `ParquetDatasource` has separate steps to fetch metadata and sample rows,
+    # so it needs `local_uri` parameter for now.
+    # TODO(chengsu): stop passing `local_uri` parameter to
+    # `ParquetDatasource.create_reader()`.
+    if local_uri and isinstance(ds, ParquetDatasource):
         kwargs["local_uri"] = local_uri
     DataContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)

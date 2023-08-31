@@ -18,7 +18,7 @@ Trainers
 
 Trainers are responsible for executing (distributed) training runs.
 The output of a Trainer run is a :ref:`Result <train-key-concepts-results>` that contains
-metrics from the training run and the latest saved :ref:`Checkpoint <checkpoint-api-ref>`.
+metrics from the training run and the latest saved :class:`~ray.train.Checkpoint`.
 You can also configured trainers with :ref:`Datasets <data-ingest-torch>` and :ref:`Preprocessors <air-preprocessors>` for scalable data ingest and preprocessing.
 
 
@@ -66,7 +66,7 @@ Train Configuration
 Trainers are configured with configuration objects. There are two main configuration classes,
 the :class:`ScalingConfig <ray.air.config.ScalingConfig>` and the :class:`RunConfig <ray.air.config.RunConfig>`.
 The latter contains subconfigurations, such as the :class:`FailureConfig <ray.air.config.FailureConfig>`,
-:class:`SyncConfig <ray.tune.syncer.SyncConfig>` and :class:`CheckpointConfig <ray.air.config.CheckpointConfig>`.
+:class:`SyncConfig <ray.train.SyncConfig>` and :class:`CheckpointConfig <ray.air.config.CheckpointConfig>`.
 
 .. _train-key-concepts-results:
 

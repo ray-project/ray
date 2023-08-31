@@ -1,5 +1,4 @@
 import collections
-import functools
 from types import GeneratorType
 from typing import Any, Callable, Iterable, Iterator, Optional
 
@@ -13,15 +12,14 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
+    BatchMapTransformFn,
+    BlocksToBatchesMapTransformFn,
+    BlocksToRowsMapTransformFn,
+    BuildOutputBlocksMapTransformFn,
     MapTransformCallable,
     MapTransformer,
-    MapTransformFn,
-    MapTransformFnDataType,
     Row,
-    batches_to_output_blocks,
-    input_blocks_to_batches,
-    input_blocks_to_rows,
-    rows_to_output_blocks,
+    RowMapTransformFn,
 )
 from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.logical.operators.map_operator import (
@@ -273,25 +271,17 @@ def _create_map_transformer_for_map_batches_op(
     init_fn: Optional[Callable[[], None]] = None,
 ) -> MapTransformer:
     """Create a MapTransformer for a map_batches operator."""
-    _input_blocks_to_batches = MapTransformFn(
-        functools.partial(
-            input_blocks_to_batches,
+    transform_fns = [
+        # Convert input blocks to batches.
+        BlocksToBatchesMapTransformFn(
             batch_size=batch_size,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
         ),
-        MapTransformFnDataType.Block,
-        MapTransformFnDataType.Batch,
-    )
-    transform_fns = [
-        # Convert input blocks to batches.
-        _input_blocks_to_batches,
         # Apply the UDF.
-        MapTransformFn(
-            batch_fn, MapTransformFnDataType.Batch, MapTransformFnDataType.Batch
-        ),
+        BatchMapTransformFn(batch_fn),
         # Convert output batches to blocks.
-        batches_to_output_blocks,
+        BuildOutputBlocksMapTransformFn.for_batches(),
     ]
     return MapTransformer(transform_fns, init_fn)
 
@@ -304,11 +294,11 @@ def _create_map_transformer_for_row_based_map_op(
     (e.g. map, flat_map, filter)."""
     transform_fns = [
         # Convert input blocks to rows.
-        input_blocks_to_rows,
+        BlocksToRowsMapTransformFn.instance(),
         # Apply the UDF.
-        MapTransformFn(row_fn, MapTransformFnDataType.Row, MapTransformFnDataType.Row),
+        RowMapTransformFn(row_fn),
         # Convert output rows to blocks.
-        rows_to_output_blocks,
+        BuildOutputBlocksMapTransformFn.for_rows(),
     ]
     return MapTransformer(transform_fns, init_fn=init_fn)
 

@@ -137,8 +137,6 @@ class MosaicTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A MosiacCheckpoint to resume training from.
     """
 

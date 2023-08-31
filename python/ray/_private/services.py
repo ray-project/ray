@@ -1034,7 +1034,7 @@ def start_log_monitor(
 
 
 def start_api_server(
-    include_dashboard: bool,
+    include_dashboard: Optional[bool],
     raise_on_failure: bool,
     host: str,
     gcs_address: str,
@@ -1055,8 +1055,10 @@ def start_api_server(
 
     Args:
         include_dashboard: If true, this will load all dashboard-related modules
-            when starting the API server. Otherwise, it will only
-            start the modules that are not relevant to the dashboard.
+            when starting the API server, or fail. If None, it will load all
+            dashboard-related modules conditioned on dependencies being present.
+            Otherwise, it will only start the modules that are not relevant to
+            the dashboard.
         raise_on_failure: If true, this will raise an exception
             if we fail to start the API server. Otherwise it will print
             a warning if we fail to start the API server.
@@ -1118,7 +1120,19 @@ def start_api_server(
                 else:
                     raise e
         # Make sure the process can start.
-        minimal = not ray._private.utils.check_dashboard_dependencies_installed()
+        minimal: bool = not ray._private.utils.check_dashboard_dependencies_installed()
+
+        # Explicitly check here that when the user explicitly specifies
+        # dashboard inclusion, the install is not minimal.
+        if include_dashboard and minimal:
+            logger.error(
+                "--include-dashboard is not supported when minimal ray is used."
+                "Download ray[default] to use the dashboard."
+            )
+            raise Exception("Cannot include dashboard with missing packages.")
+
+        include_dash: bool = True if include_dashboard is None else include_dashboard
+
         # Start the dashboard process.
         dashboard_dir = "dashboard"
         dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
@@ -1158,7 +1172,7 @@ def start_api_server(
         if minimal:
             command.append("--minimal")
 
-        if not include_dashboard:
+        if not include_dash:
             # If dashboard is not included, load modules
             # that are irrelevant to the dashboard.
             # TODO(sang): Modules like job or state APIs should be
@@ -1264,7 +1278,7 @@ def start_api_server(
                 # Is it reachable?
                 raise Exception("Failed to start a dashboard.")
 
-        if minimal or not include_dashboard:
+        if minimal or not include_dash:
             # If it is the minimal installation, the web url (dashboard url)
             # shouldn't be configured because it doesn't start a server.
             dashboard_url = ""

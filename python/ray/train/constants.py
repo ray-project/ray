@@ -1,10 +1,5 @@
+import os
 from pathlib import Path
-
-try:
-    TUNE_INSTALLED = True
-    from ray import tune  # noqa: F401
-except ImportError:
-    TUNE_INSTALLED = False
 
 from ray.air.constants import (  # noqa: F401
     EVALUATION_DATASET_KEY,
@@ -17,9 +12,24 @@ from ray.air.constants import (  # noqa: F401
     LAZY_CHECKPOINT_MARKER_FILE,
 )
 
-# Autofilled ray.train.report() metrics. Keys should be consistent with Tune.
-TIME_TOTAL_S = "_time_total_s"
 
+def _get_defaults_results_dir() -> str:
+    return (
+        # This can be overwritten by our libraries
+        os.environ.get("RAY_AIR_LOCAL_CACHE_DIR")
+        # This is a directory provided by Bazel automatically
+        or os.environ.get("TEST_TMPDIR")
+        # This is the old way to specify the results dir
+        # Deprecate: Remove in 2.6
+        or os.environ.get("TUNE_RESULT_DIR")
+        # Default
+        or Path("~/ray_results").expanduser().as_posix()
+    )
+
+
+# Autofilled ray.train.report() metrics. Keys should be consistent with Tune.
+CHECKPOINT_DIR_NAME = "checkpoint_dir_name"
+TIME_TOTAL_S = "_time_total_s"
 WORKER_HOSTNAME = "_hostname"
 WORKER_NODE_IP = "_node_ip"
 WORKER_PID = "_pid"

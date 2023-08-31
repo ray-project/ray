@@ -33,8 +33,8 @@ NodeResources ConstructNodeResources(
     absl::flat_hash_map<ResourceID, FixedPoint> available,
     absl::flat_hash_map<ResourceID, FixedPoint> total) {
   NodeResources resources;
-  resources.available = ResourceSet(available);
-  resources.total = ResourceSet(total);
+  resources.available = NodeResourceSet(available);
+  resources.total = NodeResourceSet(total);
   return resources;
 }
 

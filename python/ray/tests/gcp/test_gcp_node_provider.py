@@ -2,6 +2,7 @@ from typing import Dict
 from threading import RLock
 import pytest
 from unittest.mock import MagicMock, patch, call
+import logging
 
 from ray.autoscaler._private.gcp.node import (
     GCPCompute,
@@ -328,6 +329,32 @@ def test_get_node_type_and_has_tpu(test_case):
         },
     }
     assert _has_tpus_in_node_configs(config) == expected_is_tpu
+
+
+@pytest.mark.parametrize(
+    "accelerator_pod_tuple",
+    [
+        ({"acceleratorType": "v2-32"}, True),
+        ({"acceleratorType": "v3-32"}, True),
+        ({"acceleratorType": "v4-32"}, True),
+        ({"acceleratorConfig": {"type": "V4", "topology": "2x2x2"}}, True),
+        ({"acceleratorType": "v2-8"}, False),
+        ({"acceleratorType": "v3-8"}, False),
+        ({"acceleratorType": "v4-8"}, False),
+        ({"acceleratorConfig": {"type": "V4", "topology": "2x2x1"}}, False),
+    ],
+)
+def test_tpu_pod_emits_warning(propagate_logs, caplog, accelerator_pod_tuple):
+    accelerator, should_emit = accelerator_pod_tuple
+
+    with caplog.at_level(
+        logging.WARNING, logger="ray.autoscaler._private.gcp.config.get_node_type"
+    ):
+        get_node_type(accelerator)
+        if should_emit:
+            assert "TPU pod detected" in caplog.text
+        else:
+            assert "TPU pod detected" not in caplog.text
 
 
 if __name__ == "__main__":
