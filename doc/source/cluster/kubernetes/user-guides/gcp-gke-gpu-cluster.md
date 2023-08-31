@@ -50,4 +50,4 @@ Run the following command to download Google Cloud credentials and configure the
 gcloud container clusters get-credentials kuberay-gpu-cluster --zone us-west1-b
 ```
 
-For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
+For more details, see [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
