@@ -14,8 +14,7 @@ else
     IMAGE_SUFFIX="-aarch64"
 fi
 
-
-RAY_VERSION="3.0.0.dev0"
+: "${RAY_VERSION:=3.0.0.dev0}"
 
 if [[ "${PYTHON_VERSION_CODE}" == "py37" ]]; then
     WHEEL_FILE="ray-${RAY_VERSION}-cp37-cp37m-manylinux2014_${HOSTTYPE}.whl"
@@ -33,8 +32,7 @@ else
 fi
 
 if [[ "${PUSH_COMMIT_TAGS:-}" == "" ]]; then
-    # During branch cut, do not modify ray version in this script
-    if [[ "${BUILDKITE_BRANCH:-}" == "master" || "${RAY_VERSION}" != "3.0.0dev" ]]; then
+    if [[ "${BUILDKITE_BRANCH:-}" =~ ^(master|releases/) ]]; then
         PUSH_COMMIT_TAGS="true"
     else
         PUSH_COMMIT_TAGS="false"
@@ -46,7 +44,7 @@ mkdir -p .whl
 FULL_COMMIT="$(git rev-parse HEAD)"
 SHORT_COMMIT="${FULL_COMMIT:0:6}"  # Use 6 chars to be consistent with Ray upstream
 # During branch cut, do not modify ray version in this script
-if [[ "${RAY_VERSION:-}" != "3.0.0dev" ]]; then
+if [[ ! "${RAY_VERSION:-}" =~ dev ]]; then
     SHORT_COMMIT="${RAY_VERSION}.${SHORT_COMMIT}"
 fi
 
