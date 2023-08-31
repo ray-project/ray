@@ -208,43 +208,7 @@ test_python() {
   if [ "${OSTYPE}" = msys ]; then
     pathsep=";"
     args+=(
-      python/ray/serve/...
-      python/ray/tests/...
-      -python/ray/serve:conda_env # pip field in runtime_env not supported
-      -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
-      -python/ray/serve:test_gcs_failure # Fork not supported in windows
-      -python/ray/serve:test_standalone_2 # Multinode not supported on Windows
-      -python/ray/serve:test_gradio
-      -python/ray/serve:test_gradio_visualization
-      -python/ray/serve:test_air_integrations_gpu
-      -python/ray/serve:test_fastapi
-      -python/ray/tests:test_actor_advanced  # crashes in shutdown
-      -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
-      -python/ray/tests:test_autoscaler_aws
-      -python/ray/tests:test_cli
-      -python/ray/tests:test_client_init # timeout
-      -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
-      -python/ray/tests:test_gcp_tpu_command_runner # We don't support Autoscaler on Windows
-      -python/ray/tests:test_gcs_fault_tolerance # flaky
-      -python/ray/serve:test_get_deployment # address violation
-      -python/ray/tests:test_global_gc
-      -python/ray/tests:test_job
-      -python/ray/tests:test_memstat
-      -python/ray/tests:test_multi_node_3
-      -python/ray/tests:test_multiprocessing_client_mode # Flaky on Windows
-      -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
-      -python/ray/tests:test_resource_demand_scheduler
-      -python/ray/tests:test_stress  # timeout
-      -python/ray/tests:test_stress_sharded  # timeout
-      -python/ray/tests:test_tracing  # tracing not enabled on windows
-      -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
-      -python/ray/tests:vsphere/test_vsphere_node_provider # irrelevant on windows
-      -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/ml_py37_compat/... # Required ML dependencies, should not be run on Windows
-      -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
-      -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
+      python/ray/tests:test_autoscaler_e2e
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -266,7 +230,8 @@ test_python() {
       --test_env=CI="1" \
       --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_output=streamed \
+      --test_output=stream \
+      --runs_per_test=100 --flaky_test_attempts=1 \
       -- \
       ${test_shard_selection};
   fi
