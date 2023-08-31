@@ -49,7 +49,7 @@ For a detailed overview of the Ray dashboard, see the [dashboard documentation](
 
 (serve-in-production-inspecting)=
 
-## Inspect an application with `serve config` and `serve status`
+## Inspect applications with the Serve CLI
 
 Two Serve CLI commands help you inspect a Serve application in production: `serve config` and `serve status`.
 If you have a remote cluster, `serve config` and `serve status` also has an `--address/-a` argument to access the cluster. See [VM deployment](serve-in-production-remote-cluster) for more information on this argument.
@@ -152,6 +152,16 @@ applications:
 ```
 
 For Kubernetes deployments with KubeRay, tighter integrations of `serve status` with Kubernetes are available. See [Getting the status of Serve applications in Kubernetes](serve-getting-status-kubernetes).
+
+## Get application details in Python
+
+Call the `serve.status()` API to get Serve application details in Python. `serve.status()` returns the same information as `serve status` inside a `dataclass`. Use this method inside a deployment or a Ray driver script to obtain live information about the Serve applications on the Ray cluster. For example, this `monitoring_app` reports all the `RUNNING` Serve applications on the cluster:
+
+```{literalinclude} doc_code/monitoring/monitor_deployment.py
+:start-after: __monitor_start__
+:end-before: __monitor_end__
+:language: python
+```
 
 (serve-logging)=
 ## Ray logging
