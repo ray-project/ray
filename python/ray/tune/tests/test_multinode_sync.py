@@ -103,7 +103,7 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         def autoscaling_train(config):
             time.sleep(120)
-            tune.report(1.0)
+            train.report({"_metric": 1.0})
 
         tune.run(
             autoscaling_train,
