@@ -1,6 +1,6 @@
 import subprocess
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
-
+import time
 import pytest
 import ray
 import sys
@@ -16,6 +16,7 @@ from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 @pytest.mark.parametrize("enable_v2", [True, False])
 def test_ray_status_e2e(shutdown_only, enable_v2):
+    time.sleep(5)
     reset_autoscaler_v2_enabled_cache()
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
@@ -65,10 +66,8 @@ def test_ray_status_e2e(shutdown_only, enable_v2):
 
 
 def test_metrics(shutdown_only):
-    reset_autoscaler_v2_enabled_cache()
-    import time
-
     time.sleep(5)
+    reset_autoscaler_v2_enabled_cache()
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
