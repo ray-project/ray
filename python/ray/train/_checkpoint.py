@@ -276,6 +276,22 @@ class Checkpoint:
             "Use `Checkpoint.to_directory()` or `Checkpoint.as_directory()` instead."
         )
 
+    @classmethod
+    def from_dict(cls, *args, **kwargs):
+        _raise_migration_error("from_dict")
+
+    @classmethod
+    def to_dict(cls, *args, **kwargs):
+        _raise_migration_error("to_dict")
+
+    @classmethod
+    def from_bytes(cls, *args, **kwargs):
+        _raise_migration_error("from_bytes")
+
+    @classmethod
+    def to_bytes(cls, *args, **kwargs):
+        _raise_migration_error("to_bytes")
+
 
 def _get_del_lock_path(path: str, suffix: str = None) -> str:
     """Get the path to the deletion lock file for a file/directory at `path`.
@@ -301,3 +317,24 @@ def _list_existing_del_locks(path: str) -> List[str]:
     then this should return a list of 2 deletion lock files.
     """
     return list(glob.glob(f"{_get_del_lock_path(path, suffix='*')}"))
+
+
+def _raise_migration_error(name: str):
+    raise DeprecationWarning(
+        f"The new `ray.train.Checkpoint` class does not support `{name}()`. "
+        f"Instead, only directories are supported.\n\n"
+        f"Example to store a dictionary in a checkpoint:\n\n"
+        f"import json, os, tempfile\n"
+        f"from ray import train\n"
+        f"from ray.train import Checkpoint\n\n"
+        f"with tempfile.TemporaryDirectory() as checkpoint_dir:\n"
+        f"  with open(os.path.join(checkpoint_dir, 'data.json'), 'w') as fp:\n"
+        f"    json.dump({{'data': 'value'}}, fp)\n\n"
+        f"  checkpoint = Checkpoint.from_directory(checkpoint_dir)\n"
+        f"  train.report(..., checkpoint=checkpoint)\n\n"
+        f"Example to load a dictionary from a checkpoint:\n\n"
+        f"if train.get_checkpoint():\n"
+        f"  with train.get_checkpoint().as_directory() as checkpoint_dir:\n"
+        f"    with open(os.path.join(checkpoint_dir, 'data.json'), 'r') as fp:\n"
+        f"      data = json.load(fp)"
+    )
