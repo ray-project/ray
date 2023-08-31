@@ -256,6 +256,7 @@ class TrainingIterator:
                     f"{[type in TrainingResultType]}"
                 )
 
+    # TODO(justinvyu): [code_removal]
     def _finish_checkpointing(self):
         while True:
             results = self._backend_executor.get_next_results()
@@ -265,7 +266,6 @@ class TrainingIterator:
             # Process checkpoints and ignore other result types.
             if result_type is TrainingResultType.CHECKPOINT:
                 self._checkpoint_manager._process_checkpoints(results, lambda x: x)
-                # TODO: Is this needed? I don't think this is ever called...
                 self._send_next_checkpoint_path_to_workers()
 
     def _finish_training(self):
