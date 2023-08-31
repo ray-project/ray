@@ -105,15 +105,14 @@ def parse_args():
     if args.data_root is None:
         # use default datasets if data root is not provided
         if args.file_type == "image":
-            # args.data_root = "s3://anonymous@air-example-data-2/20G-image-data-synthetic-raw"  # noqa: E501
-            if args.read_local:
-                args.data_root = "/tmp/imagenet-1gb"
-            else:
-                args.data_root = "s3://imagenetmini-1000-1gb"  # ragged dataset
+            # 1GB ragged dataset
+            args.data_root = "s3://imagenetmini-1000-1gb"
+            # Alternative larger dataset
+            # args.data_root = "s3://air-example-data-2/20G-image-data-synthetic-raw"  # noqa: E501
 
         elif args.file_type == "parquet":
             args.data_root = (
-                "s3://anonymous@air-example-data-2/20G-image-data-synthetic-raw-parquet"
+                "s3://air-example-data-2/20G-image-data-synthetic-raw-parquet"
             )
         else:
             raise Exception(
@@ -170,8 +169,6 @@ def benchmark_code(
     ), "Can only test one caching variant at a time"
 
     # 1) Read in data with read_images() / read_parquet()
-    read_ray_remote_args = {}
-
     if args.file_type == "image":
         ray_dataset = ray.data.read_images(
             args.data_root,
@@ -180,7 +177,6 @@ def benchmark_code(
     elif args.file_type == "parquet":
         ray_dataset = ray.data.read_parquet(
             args.data_root,
-            ray_remote_args=read_ray_remote_args,
         )
     else:
         raise Exception(f"Unknown file type {args.file_type}")
@@ -203,8 +199,6 @@ def benchmark_code(
             start_t = time.time()
             for batch in it.iter_torch_batches(
                 batch_size=args.batch_size,
-                # local_shuffle_buffer_size=args.local_shuffle_buffer_size,
-                # prefetch_batches=10,
             ):
                 num_rows += args.batch_size
             end_t = time.time()
@@ -276,7 +270,7 @@ def benchmark_code(
     else:
         dataset_config_cls = ray.train.DataConfig
 
-    if args.num_workers == 1:
+    if args.num_workers == 1 or args.use_gpu:
         torch_trainer = TorchTrainer(
             train_loop_per_worker,
             datasets={"train": ray_dataset},
@@ -355,11 +349,8 @@ if __name__ == "__main__":
 
     benchmark.run_fn("cache-none", benchmark_code, args=args)
     benchmark.run_fn("cache-output", benchmark_code, args=args, cache_output_ds=True)
-    # benchmark.run_fn(
-    #   f"cache-output-read-{args.read_task_cpus}-cpu",
-    #   benchmark_code, args=args, cache_output_ds=True
-    # )
     benchmark.run_fn("cache-input", benchmark_code, args=args, cache_input_ds=True)
+    # TODO: enable after implementing prepartition case.
     # benchmark.run_fn(
     # "prepartition-ds", benchmark_code, args=args, prepartition_ds=True,
     # )
