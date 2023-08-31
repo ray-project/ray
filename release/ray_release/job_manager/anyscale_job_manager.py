@@ -290,7 +290,7 @@ class AnyscaleJobManager:
                     ]
                 )
             except Exception as e:
-                logger.log(f"Failed to download logs from anyscale {e}")
+                logger.exception(f"Failed to download logs from anyscale {e}")
                 return None
             return AnyscaleJobManager._find_job_driver_and_ray_error_logs(tmpdir)
 
