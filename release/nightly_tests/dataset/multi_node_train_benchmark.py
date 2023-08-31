@@ -1,4 +1,3 @@
-from collections import defaultdict
 import ray
 from ray import train
 from ray.actor import ActorHandle
@@ -14,8 +13,6 @@ import numpy as np
 
 from benchmark import Benchmark, BenchmarkMetric
 
-from torchdata.dataloader2 import DataLoader2
-from torch.utils.data.distributed import DistributedSampler
 
 import time
 import torchvision
@@ -23,9 +20,6 @@ import torch
 from torch.utils.data import DataLoader
 
 from typing import Union, Literal, List, Optional, Dict
-
-from torchdata.datapipes.iter import IterableWrapper, S3FileLoader
-from torchdata.datapipes.iter import FSSpecFileLister
 
 
 # This benchmark does the following:
@@ -46,6 +40,12 @@ def parse_args():
         "--data-root",
         type=str,
         help="Root of data directory"
+    )
+    parser.add_argument(
+        "--read-local",
+        action="store_true",
+        default=False,
+        help="Whether to read from local fs for default datasource (S3 otherwise)"
     )
     parser.add_argument(
         "--file-type",
@@ -86,6 +86,12 @@ def parse_args():
         help="Number of workers.",
     )
     parser.add_argument(
+        "--use-gpu",
+        action="store_true",
+        default=False,
+        help="Whether to use GPU with TorchTrainer.",
+    )
+    parser.add_argument(
         "--local-shuffle-buffer-size",
         default=200,
         type=int,
@@ -103,8 +109,10 @@ def parse_args():
         # use default datasets if data root is not provided
         if args.file_type == "image":
             # args.data_root = "s3://anonymous@air-example-data-2/20G-image-data-synthetic-raw"
-            args.data_root = "s3://imagenetmini-1000-1gb" # ragged dataset
-            # args.data_root = "s3://air-cuj-imagenet-1gb"
+            if args.read_local:
+                args.data_root = "/tmp/imagenet-1gb"
+            else:
+                args.data_root = "s3://imagenetmini-1000-1gb" # ragged dataset
 
         elif args.file_type == "parquet":
             args.data_root = "s3://anonymous@air-example-data-2/20G-image-data-synthetic-raw-parquet"
@@ -112,6 +120,8 @@ def parse_args():
             raise Exception(
                 f"Unknown file type {args.file_type}; expected one of: ['image', 'parquet']"
             )
+        if args.repeat_ds > 1:
+            args.data_root = [args.data_root] * args.repeat_ds
     return args
 
 
@@ -136,25 +146,8 @@ def get_transform(to_torch_tensor):
     )
     return transform
 
-
-# def crop_and_flip_image_batch(image_batch):
-#     transform = get_transform(False)
-#     print("===> image_batch['image'].shape", type(image_batch['image']), image_batch['image'].shape)
-#     print("===> single elem shape:", type(image_batch['image'][0]), image_batch['image'][0].shape)
-#     # batch_size, height, width, channels = image_batch["image"].shape
-    
-#     # tensor_shape = (batch_size, channels, height, width)
-#     image_batch["image"] = transform(
-#         # torch.Tensor(image_batch["image"].reshape(tensor_shape))
-#         torch.tensor(np.transpose(image_batch["image"], axes=(0, 3, 1, 2)))
-#     )
-#     return image_batch
-
 def crop_and_flip_image(row):
     transform = get_transform(False)
-    # Handle case where image has single channel 
-    # if len(row["image"].shape) == 2:
-    #     row["image"] = np.expand_dims(row["image"], axis=-1)
     # Make sure to use torch.tensor here to avoid a copy from numpy.
     row["image"] = transform(torch.tensor(np.transpose(row["image"], axes=(2, 0, 1))))
     return row
@@ -171,18 +164,13 @@ def benchmark_code(args, read_num_cpus=None, cache_output_ds=False, cache_input_
     """
     assert sum([cache_output_ds, cache_input_ds, prepartition_ds]) <= 1, "Can only test one caching variant at a time"
 
-    # start_t = time.time()
     # 1) Read in data with read_images() / read_parquet()
     read_ray_remote_args = {}
-    if read_num_cpus is not None:
-        read_ray_remote_args.update({"num_cpus": read_num_cpus})
-    
 
     if args.file_type == "image":
         ray_dataset = ray.data.read_images(
             args.data_root,
             mode="RGB",
-            ray_remote_args=read_ray_remote_args,
         )
     elif args.file_type == "parquet":
         ray_dataset = ray.data.read_parquet(
@@ -192,21 +180,19 @@ def benchmark_code(args, read_num_cpus=None, cache_output_ds=False, cache_input_
     else:
         raise Exception(f"Unknown file type {args.file_type}")
     
-    if args.repeat_ds > 1:
-        ray_dataset = ray_dataset.union(*[Dataset.copy(ray_dataset) for _ in range(args.repeat_ds-1)])
 
     if cache_input_ds:
         ray_dataset = ray_dataset.materialize()
 
-    # 2) Preprocess data by applying transformation with map_batches()
-    # ray_dataset = ray_dataset.map_batches(crop_and_flip_image_batch, batch_size=args.batch_size)
+    # 2) Preprocess data by applying transformation with map/map_batches()
     ray_dataset = ray_dataset.map(crop_and_flip_image)
     if cache_output_ds:
         ray_dataset = ray_dataset.materialize()
 
     def train_loop_per_worker():
         it = train.get_dataset_shard("train")
-
+        device = train.torch.get_device()
+    
         for i in range(args.num_epochs):
             print(f"Epoch {i+1} of {args.num_epochs}")
             num_rows = 0
@@ -214,24 +200,24 @@ def benchmark_code(args, read_num_cpus=None, cache_output_ds=False, cache_input_
             for batch in it.iter_torch_batches(
                 batch_size=args.batch_size,
                 # local_shuffle_buffer_size=args.local_shuffle_buffer_size,
-                prefetch_batches=10,
+                # prefetch_batches=10,
             ):
                 num_rows += args.batch_size
             end_t = time.time()
         # Workaround to report the final epoch time from each worker, so that we
         # can sum up the times at the end when calculating throughput.
         world_size = ray.train.get_context().get_world_size()
-        all_workers_time_list = [torch.zeros((2), dtype=torch.double) for _ in range(world_size)]
-        curr_worker_time = torch.tensor([start_t, end_t], dtype=torch.double)
+        all_workers_time_list = [torch.zeros((2), dtype=torch.double, device=device) for _ in range(world_size)]
+        curr_worker_time = torch.tensor([start_t, end_t], dtype=torch.double, device=device)
         dist.all_gather(all_workers_time_list, curr_worker_time)
 
-        all_num_rows = [torch.zeros((1), dtype=torch.int32) for _ in range(world_size)]
-        curr_num_rows = torch.tensor([num_rows], dtype=torch.int32)
+        all_num_rows = [torch.zeros((1), dtype=torch.int32, device=device) for _ in range(world_size)]
+        curr_num_rows = torch.tensor([num_rows], dtype=torch.int32, device=device)
         dist.all_gather(all_num_rows, curr_num_rows)
 
         train.report({
             f"time_final_epoch": [tensor.tolist() for tensor in all_workers_time_list],
-            "num_rows": [tensor.item() for tensor in all_num_rows]
+            "num_rows": [tensor.item() for tensor in all_num_rows],
         })
 
     # def train_loop_per_worker_torch():
@@ -304,36 +290,46 @@ def benchmark_code(args, read_num_cpus=None, cache_output_ds=False, cache_input_
         dataset_config_cls = PrepartitionCacheDataConfig
     else:
         dataset_config_cls = ray.train.DataConfig
-    torch_trainer = TorchTrainer(
-        train_loop_per_worker,
-        datasets={"train": ray_dataset},
-        scaling_config=ScalingConfig(
-            num_workers=args.num_workers,
-            # use_gpu=True,
-        ),
-        dataset_config=dataset_config_cls(
-            execution_options=options,
-        ),
-    )
+
+    if args.num_workers == 1:
+        torch_trainer = TorchTrainer(
+            train_loop_per_worker,
+            datasets={"train": ray_dataset},
+            scaling_config=ScalingConfig(
+                num_workers=args.num_workers,
+                use_gpu=args.use_gpu,
+            ),
+            dataset_config=dataset_config_cls(
+                execution_options=options,
+            ),
+        )
+    else:
+        torch_trainer = TorchTrainer(
+            train_loop_per_worker,
+            datasets={"train": ray_dataset},
+            scaling_config=ScalingConfig(
+                num_workers=args.num_workers-1,
+                use_gpu=args.use_gpu,
+                placement_strategy="STRICT_SPREAD",
+            ),
+            dataset_config=dataset_config_cls(
+                execution_options=options,
+            ),
+        )
+
+    # use with torch loader
     # torch_trainer = TorchTrainer(
     #     train_loop_per_worker_torch,
     #     scaling_config=ScalingConfig(
     #         num_workers=args.num_workers,
     #     ),
     # )
-    
     result = torch_trainer.fit()
     # Report the throughput of the last epoch, sum runtime across all workers.
-    time_last_epoch = result.metrics["time_final_epoch"]
-    
-    time_start_last_epoch = [t[0] for t in time_last_epoch]
-    time_end_last_epoch = [t[1] for t in time_last_epoch]
-    # print("===> time_start_last_epoch:", time_start_last_epoch, min(time_start_last_epoch))
-    # print("===> time_end_last_epoch:", time_end_last_epoch, max(time_end_last_epoch))
+    time_start_last_epoch, time_end_last_epoch = zip(*result.metrics["time_final_epoch"])
     runtime_last_epoch = max(time_end_last_epoch) - min(time_start_last_epoch)
     num_rows_last_epoch = sum(result.metrics["num_rows"])
-    tput_last_epoch = ray_dataset.count() / runtime_last_epoch
-    # print("===> throughput last epoch:", tput_last_epoch, runtime_last_epoch)
+    tput_last_epoch = num_rows_last_epoch / runtime_last_epoch
     return {BenchmarkMetric.THROUGHPUT.value: tput_last_epoch}
 
 if __name__ == "__main__":
@@ -345,8 +341,8 @@ if __name__ == "__main__":
     benchmark = Benchmark(benchmark_name)
 
     benchmark.run_fn("cache-none", benchmark_code, args=args)
-    # benchmark.run_fn("cache-output", benchmark_code, args=args, cache_output_ds=True)
+    benchmark.run_fn("cache-output", benchmark_code, args=args, cache_output_ds=True)
     # benchmark.run_fn(f"cache-output-read-{args.read_task_cpus}-cpu", benchmark_code, args=args, read_num_cpus=args.read_task_cpus, cache_output_ds=True)
-    # benchmark.run_fn("cache-input", benchmark_code, args=args, cache_input_ds=True)
+    benchmark.run_fn("cache-input", benchmark_code, args=args, cache_input_ds=True)
     # benchmark.run_fn("prepartition-ds", benchmark_code, args=args, prepartition_ds=True)
     benchmark.write_result("/tmp/multi_node_train_benchmark.json")
