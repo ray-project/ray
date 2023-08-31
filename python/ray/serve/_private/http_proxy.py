@@ -703,7 +703,7 @@ class gRPCProxy(GenericProxy):
             response=response_proto.SerializeToString(),
         )
 
-    def internal_error_response(
+    def _set_internal_error_response(
         self, proxy_request: ProxyRequest, error: Exception
     ) -> ProxyResponse:
         status_code = grpc.StatusCode.INTERNAL
@@ -830,7 +830,7 @@ class gRPCProxy(GenericProxy):
             except StopAsyncIteration:
                 break
             except Exception as e:
-                self.internal_error_response(proxy_request, e)
+                self._set_internal_error_response(proxy_request, e)
                 break
 
     async def _consume_generator_stream(
@@ -914,7 +914,7 @@ class gRPCProxy(GenericProxy):
 
         except Exception as e:
             logger.exception(e)
-            return self.internal_error_response(proxy_request, e)
+            return self._set_internal_error_response(proxy_request, e)
 
 
 class HTTPProxy(GenericProxy):
