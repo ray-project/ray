@@ -75,7 +75,7 @@ You can download the RayCluster YAML manifest for this tutorial with `curl` as f
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.gke-bucket.yaml
 ```
 
-The key parts here are the following lines:
+The key parts are the following lines:
 
 ```yaml
       spec:
