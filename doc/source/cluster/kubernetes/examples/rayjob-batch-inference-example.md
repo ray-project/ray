@@ -8,7 +8,7 @@ This example uses an image classification workload, which is based on <https://d
 
 ## Prerequisites
 
-You must have a Kubernetes cluster running and `kubectl` configured to use it, and GPUs available. We provide a brief tutorial for setting up the necessary GPUs on Google Kubernetes Engine (GKE), but you can use any Kubernetes cluster with GPUs.
+You must have a Kubernetes cluster running,`kubectl` configured to use it, and GPUs available. This example provides a brief tutorial for setting up the necessary GPUs on Google Kubernetes Engine (GKE), but you can use any Kubernetes cluster with GPUs.
 
 ## Step 0: Create a Kubernetes cluster on GKE (Optional)
 
