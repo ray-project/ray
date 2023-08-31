@@ -623,7 +623,7 @@ def _build(target: Application, name: str = None) -> BuiltApplication:
     return BuiltApplication(deployments, ingress)
 
 
-@Deprecated(message="Use `serve build` CLI command instead.")
+@Deprecated(message="Use the `serve build` CLI command instead.")
 def build(target: Application, name: str = None) -> BuiltApplication:
     warnings.warn(
         "The `serve.build` Python API is deprecated. Use the `serve build` CLI instead."

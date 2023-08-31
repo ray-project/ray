@@ -75,7 +75,7 @@ serve.run(driver)
 ## Ingress Deployment (HTTP handling)
 
 A Serve application can consist of multiple deployments that can be combined to perform model composition or complex business logic.
-However, there is always one "top-level" deployment, the one that will be passed to `serve.run` (or a config file) to deploy the application.
+However, there is always one "top-level" deployment, the one that will be passed to `serve.run` to deploy the application.
 This deployment is called the "ingress deployment" because it serves as the entrypoint for all traffic to the application.
 Often, it will then route to other deployments or call into them using the `ServeHandle` API and compose the results before returning to the user.
 

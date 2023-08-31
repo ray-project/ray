@@ -25,13 +25,12 @@ _global_client: ServeControllerClient = None
 @DeveloperAPI
 @dataclass
 class ReplicaContext:
-    """Stores data for Serve API calls from within deployments.
+    """Stores runtime context info for replicas.
 
     Fields:
-
-        - app_name: name of the application this is running in.
-        - deployment: name of the deployment this is running in.
-        - replica_tag: name of the replica this is running in.
+        - app_name: name of the application the replica is a part of.
+        - deployment: name of the deployment the replica is a part of.
+        - replica_tag: unique ID for the replica.
         - servable_object: instance of the user class/function this replica is running.
     """
 
