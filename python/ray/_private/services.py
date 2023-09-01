@@ -1991,8 +1991,9 @@ def start_monitor(
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
-    if gcs_address is not None:
-        command.append(f"--gcs-address={gcs_address}")
+    assert gcs_address is not None
+    command.append(f"--gcs-address={gcs_address}")
+
     if stdout_file is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.

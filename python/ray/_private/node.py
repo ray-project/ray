@@ -1051,8 +1051,6 @@ class Node:
         # TODO(mwtian): figure out a way to use 127.0.0.1 for local connection
         # when possible.
         self._gcs_address = f"{self._node_ip_address}:" f"{gcs_server_port}"
-        # Initialize gcs client, which also waits for GCS to start running.
-        self._init_gcs_client()
 
     def start_raylet(
         self,
