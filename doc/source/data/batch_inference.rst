@@ -454,10 +454,6 @@ Models that have been trained with :ref:`Ray Train <train-docs>` can then be use
     )
     result = trainer.fit()
 
-.. testoutput::
-    :hide:
-
-    ...
 
 **Step 2:** Extract the :class:`Checkpoint <ray.train.Checkpoint>` from the training :class:`Result <ray.train.Result>`.
 
