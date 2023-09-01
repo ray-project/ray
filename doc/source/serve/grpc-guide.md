@@ -158,7 +158,7 @@ Sending a gRPC request:
 :language: python
 ```
 
-Read more about gRPC client in Python: https://grpc.io/docs/languages/python/basics/#client
+Read more about gRPC client in Python: [https://grpc.io/docs/languages/python/basics/#client](https://grpc.io/docs/languages/python/basics/#client)
 
 
 (health-checks)=
@@ -278,8 +278,7 @@ accordingly.
 
 Serve handled gRPC error codes:
 - `NOT_FOUND`: When multiple application are deployed to Serve and the application is 
-not found if `application` is passed in metadata or passed but no matching application
-deployed.
+not passed in metadata or passed but no matching application.
 - `UNAVAILABLE`: Only on the health check routes when the proxy is in draining state.
 - `CANCELLED`: The request takes longer than the timeout setting and cancelled.
 - `INTERNAL`: Other unhandled errors during the request.
