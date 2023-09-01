@@ -246,7 +246,7 @@ nvidia-cuda-runtime-cu11==11.7.99
 nvidia-cudnn-cu11==8.5.0.96
 nvidia-ml-py==11.525.112
 oauthlib==3.2.2
-onnx==1.12.0
+onnx==1.13.0
 onnxruntime==1.14.1
 open-spiel==1.2
 opencensus==0.11.2
