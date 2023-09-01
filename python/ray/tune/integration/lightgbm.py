@@ -15,6 +15,7 @@ from ray.util import log_once
 
 from lightgbm.callback import CallbackEnv
 from lightgbm.basic import Booster
+from ray.util.annotations import Deprecated
 
 
 class TuneCallback:
@@ -195,6 +196,7 @@ class _TuneCheckpointCallback(TuneCallback):
         )
 
 
+@Deprecated
 class TuneReportCallback(TuneReportCheckpointCallback):
     def __init__(
         self,
@@ -203,7 +205,7 @@ class TuneReportCallback(TuneReportCheckpointCallback):
             Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
         ] = None,
     ):
-        if log_once("tune_report_deprecated"):
+        if log_once("tune_lightgbm_report_deprecated"):
             warnings.warn(
                 "`ray.tune.integration.lightgbm.TuneReportCallback` is deprecated. "
                 "Use `ray.tune.integration.lightgbm.TuneCheckpointReportCallback` "
