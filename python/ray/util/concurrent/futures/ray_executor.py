@@ -298,12 +298,6 @@ class RayExecutor(Executor):
         if self.actor_pool is None:
             raise ValueError("actor_pool is not defined")
 
-        # def wrapped_fn(inner_fn, *args, initializer=None, initargs=(), **kwargs):
-        #     if initializer is not None:
-        #         initializer(initargs)
-        #     return partial(inner_fn, *args, **kwargs)
-
-        # curried_wrapped_function = wrapped_fn(fn, *args, initializer=self.initializer, initargs=self.initargs, **kwargs)
         future = self.actor_pool.submit(partial(fn, *args, **kwargs))
         self.futures.append(future)
         return future
@@ -412,37 +406,16 @@ class RayExecutor(Executor):
         It is safe to call this method several times. No other methods can be
         called after this one.
 
-        Args:
-            wait: If True then shutdown will not return until all running
-                futures have finished executing and the resources used by the
-                executor have been reclaimed.
-            cancel_futures: If True then shutdown will cancel all pending
-                futures. Futures that are completed or running will not be
-                cancelled.
+        Parameters
+        ----------
+        wait : bool
+            If True then shutdown will not return until all running futures
+            have finished executing and the resources used by the executor have
+            been reclaimed.
+        cancel_futures : bool
+            If True then shutdown will cancel all pending futures. Futures that
+            are completed or running will not be cancelled.
         """
-
-        #    ┌───────────────┬──────────────────┬───────────────┐
-        #    │               │                  │               │
-        #    │ shutdown_ray  │ _initialised_ray │ shutdown      │
-        #    │               │                  │               │
-        #    ├───────────────┼──────────────────┼───────────────┤
-        #    │               │                  │               │
-        #    │   None        │    True          │ Yes           │
-        #    │               │                  │               │
-        #    ├───────────────┼──────────────────┼───────────────┤
-        #    │               │                  │               │
-        #    │   None        │    False         │ No            │
-        #    │               │                  │               │
-        #    ├───────────────┼──────────────────┼───────────────┤
-        #    │               │                  │               │
-        #    │   True        │    True/False    │ Yes           │
-        #    │               │                  │               │
-        #    ├───────────────┼──────────────────┼───────────────┤
-        #    │               │                  │               │
-        #    │   False       │    True/False    │ No            │
-        #    │               │                  │               │
-        #    └───────────────┴──────────────────┴───────────────┘
-
 
         if self.shutdown_ray is None:
             if self._initialised_ray:
