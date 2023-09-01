@@ -98,16 +98,19 @@ class Node:
             ray_params.external_addresses = external_redis
             ray_params.num_redis_shards = len(external_redis) - 1
             storage_namespace = os.environ.get("RAY_external_storage_namespace")
-            if head and storage_namespace is None:
-                raise ValueError(
-                    "RAY_external_storage_namespace must be provided "
-                    "when using Ray with external Redis via `RAY_REDIS_ADDRESS` "
-                    " for the fault tolerance. "
-                    "RAY_external_storage_namespace must be an unique ID "
-                    "and has to be the same across the same head node."
-                )
-            if ray_params.session_name is None:
-                ray_params.update_if_absent(session_name=f"session_{storage_namespace}")
+            if head:
+                if storage_namespace is None:
+                    raise ValueError(
+                        "RAY_external_storage_namespace must be provided "
+                        "when using Ray with external Redis via `RAY_REDIS_ADDRESS` "
+                        " for the fault tolerance. "
+                        "RAY_external_storage_namespace must be an unique ID "
+                        "and has to be the same across the same head node."
+                    )
+                # Update the session name to be RAY_external_storage_namespace.
+                if ray_params.session_name is None:
+                    ray_params.update_if_absent(
+                        session_name=f"session_{storage_namespace}")
 
         if (
             ray_params._system_config
