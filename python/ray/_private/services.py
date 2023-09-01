@@ -51,9 +51,7 @@ GCS_SERVER_EXECUTABLE = os.path.join(
     RAY_PATH, "core", "src", "ray", "gcs", "gcs_server" + EXE_SUFFIX
 )
 
-JEMALLOC_SO = os.path.join(
-    RAY_PATH, "core", "libjemalloc.so"
-)
+JEMALLOC_SO = os.path.join(RAY_PATH, "core", "libjemalloc.so")
 
 JEMALLOC_SO = JEMALLOC_SO if os.path.exists(JEMALLOC_SO) else None
 
