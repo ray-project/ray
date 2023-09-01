@@ -599,10 +599,7 @@ class ServeDeploySchema(BaseModel):
     proxy_location: ProxyLocation = Field(
         default=ProxyLocation.EveryNode,
         description=(
-            "Config for where to run proxies for ingress traffic to the cluster.\n"
-            '- "Disabled": disable the proxies entirely.\n'
-            '- "HeadOnly": run only one proxy on the head node.\n'
-            '- "EveryNode": run proxies on every node that has at least one replica.\n'
+            "Config for where to run proxies for ingress traffic to the cluster."
         ),
     )
     http_options: HTTPOptionsSchema = Field(
@@ -612,7 +609,7 @@ class ServeDeploySchema(BaseModel):
         default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
     )
     applications: List[ServeApplicationSchema] = Field(
-        ..., description=("The set of Serve applications to run on the Ray cluster.")
+        ..., description="The set of applications to run on the Ray cluster."
     )
 
     @validator("applications")

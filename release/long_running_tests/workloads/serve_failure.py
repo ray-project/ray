@@ -122,7 +122,7 @@ class RandomTest:
         self.random_killer.run.remote()
 
     def wait_for_deployments_ready(self, deployment_names: List[str]):
-        client = get_global_client()
+        client = _get_global_client()
         for deployment_name in deployment_names:
             client._wait_for_deployment_healthy(deployment_name, timeout_s=60)
 

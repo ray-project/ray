@@ -21,7 +21,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray._private.utils import import_attr
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -107,7 +107,7 @@ class DeploymentMode(str, Enum):
     FixedNumber = "FixedNumber"
 
 
-@DeveloperAPI
+@PublicAPI(stability="stable")
 class ProxyLocation(str, Enum):
     """Config for where to run proxies for ingress traffic to the cluster.
 
