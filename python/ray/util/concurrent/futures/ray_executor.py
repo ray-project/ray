@@ -11,7 +11,7 @@ from typing import (
     TYPE_CHECKING,
     TypeVar,
     Dict,
-    TypedDict
+    TypedDict,
 )
 
 import ray
@@ -27,13 +27,15 @@ if TYPE_CHECKING:
     from ray._private.worker import BaseContext
     from ray.actor import ActorHandle
 
+
 class _PoolActor(TypedDict):
     actor: "ActorHandle"
     task_count: int
 
+
 class _RoundRobinActorPool:
 
-    """ This class manages a pool of Ray actors by distributing tasks amongst
+    """This class manages a pool of Ray actors by distributing tasks amongst
     them in a simple round-robin fashion. Functions are executed remotely in
     the actor pool using submit().
 
@@ -52,12 +54,13 @@ class _RoundRobinActorPool:
 
     """
 
-    def __init__(self,
-            num_actors: int = 2,
-            initializer: Optional[Callable[..., Any]] = None,
-            initargs: tuple[Any, ...] = (),
-            max_tasks_per_actor: Optional[int] = None
-            ) -> None:
+    def __init__(
+        self,
+        num_actors: int = 2,
+        initializer: Optional[Callable[..., Any]] = None,
+        initargs: tuple[Any, ...] = (),
+        max_tasks_per_actor: Optional[int] = None,
+    ) -> None:
 
         if max_tasks_per_actor is not None:
             if max_tasks_per_actor < 1:
@@ -70,7 +73,9 @@ class _RoundRobinActorPool:
             raise ValueError("Pool must contain at least one Actor")
         self.initializer = initializer
         self.initargs = initargs
-        self.pool: Dict[int, _PoolActor] = {i: self._build_actor()  for i in range(num_actors)}
+        self.pool: Dict[int, _PoolActor] = {
+            i: self._build_actor() for i in range(num_actors)
+        }
         self.index: int = 0
 
     def next(self) -> "ActorHandle":
@@ -117,10 +122,11 @@ class _RoundRobinActorPool:
     def _build_actor(self) -> _PoolActor:
         @ray.remote
         class ExecutorActor:
-            def __init__(self,
-                    initializer: Optional[Callable[..., Any]] = None,
-                    initargs: tuple[Any, ...] = (),
-                    ) -> None:
+            def __init__(
+                self,
+                initializer: Optional[Callable[..., Any]] = None,
+                initargs: tuple[Any, ...] = (),
+            ) -> None:
                 self.initializer = initializer
                 self.initargs = initargs
 
@@ -132,7 +138,7 @@ class _RoundRobinActorPool:
             def exit(self) -> None:
                 ray.actor.exit_actor()
 
-        return {"actor": ExecutorActor.options().remote(self.initializer, self.initargs), "task_count": 0} # type: ignore[attr-defined]
+        return {"actor": ExecutorActor.options().remote(self.initializer, self.initargs), "task_count": 0}  # type: ignore[attr-defined]
 
     def _replace_actor_if_max_tasks(self) -> None:
         if self.max_tasks_per_actor is not None:
@@ -249,9 +255,11 @@ class RayExecutor(Executor):
         if initializer is not None:
             runtime_env = kwargs.get("runtime_env")
             if runtime_env is None or "working_dir" not in runtime_env:
-                raise ValueError(f"working_dir must be specified in runtime_env dictionary if \
+                raise ValueError(
+                    f"working_dir must be specified in runtime_env dictionary if \
                                  initializer function is not None so that \
-                                 it can be accessible by remote workers")
+                                 it can be accessible by remote workers"
+                )
 
         if max_workers is None:
             max_workers = int(ray._private.state.cluster_resources()["CPU"])
@@ -263,11 +271,11 @@ class RayExecutor(Executor):
         self.max_workers = max_workers
 
         self.actor_pool = _RoundRobinActorPool(
-                num_actors=max_workers,
-                initializer=initializer,
-                initargs=initargs,
-                max_tasks_per_actor=self.max_tasks_per_child
-                )
+            num_actors=max_workers,
+            initializer=initializer,
+            initargs=initargs,
+            max_tasks_per_actor=self.max_tasks_per_child,
+        )
 
     def submit(
         self, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs

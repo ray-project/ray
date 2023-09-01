@@ -20,11 +20,14 @@ from ray._private.worker import RayContext
 def f_process1(x):
     return len([i for i in range(x) if i % 2 == 0])
 
+
 class TestInitializerException(Exception):
     pass
 
+
 def unsafe(exc):
     raise exc
+
 
 def safe(_):
     pass
@@ -36,13 +39,21 @@ class TestShared:
 
     def get_actor_states(self, actor_pool):
         actor_ids = [i["actor"]._ray_actor_id.hex() for i in actor_pool.pool.values()]
-        return [actor_state["state"] for actor_state in list_actors() if actor_state.actor_id in actor_ids]
+        return [
+            actor_state["state"]
+            for actor_state in list_actors()
+            if actor_state.actor_id in actor_ids
+        ]
 
     def get_actor_state(self, actor):
-        [actor_state] = [actor_state["state"] for actor_state in list_actors() if actor_state.actor_id == actor._ray_actor_id.hex()]
+        [actor_state] = [
+            actor_state["state"]
+            for actor_state in list_actors()
+            if actor_state.actor_id == actor._ray_actor_id.hex()
+        ]
         return actor_state
 
-    def wait_actor_state(self, actor_pool, state, timeout = 20):
+    def wait_actor_state(self, actor_pool, state, timeout=20):
         while timeout > 0:
             states = self.get_actor_states(actor_pool)
             if not all(i == state for i in states):
@@ -55,7 +66,7 @@ class TestShared:
         else:
             return True
 
-    def wait_actor_state_(self, actor, expected_state, timeout = 20):
+    def wait_actor_state_(self, actor, expected_state, timeout=20):
         while timeout > 0:
             state = self.get_actor_state(actor)
             if state != expected_state:
@@ -111,7 +122,9 @@ class TestShared:
         # wait for actors to die
         assert self.wait_actor_state(pool, "DEAD") == True
 
-    def test_round_robin_actor_pool_kills_actors_and_does_not_wait_for_tasks_to_complete(self, call_ray_start):
+    def test_round_robin_actor_pool_kills_actors_and_does_not_wait_for_tasks_to_complete(
+        self, call_ray_start
+    ):
         pool = _RoundRobinActorPool(num_actors=2)
 
         def f():
@@ -123,7 +136,9 @@ class TestShared:
         with pytest.raises(RayActorError):
             future.result()
 
-    def test_round_robin_actor_pool_exits_actors_and_waits_for_tasks_to_complete(self, call_ray_start):
+    def test_round_robin_actor_pool_exits_actors_and_waits_for_tasks_to_complete(
+        self, call_ray_start
+    ):
         pool = _RoundRobinActorPool(num_actors=2)
 
         def f():
@@ -144,8 +159,9 @@ class TestShared:
         pool._replace_actor_if_max_tasks()
         assert pool.pool[0]["actor"]._ray_actor_id.hex() != actor_id0
 
-    def test_round_robin_actor_pool_replaces_actors_allowing_tasks_to_finish(self, call_ray_start):
-
+    def test_round_robin_actor_pool_replaces_actors_allowing_tasks_to_finish(
+        self, call_ray_start
+    ):
         def f():
             return 123
 
@@ -176,7 +192,9 @@ class TestShared:
         assert future0.result() == 123
         assert future1.result() == 123
 
-    def test_round_robin_actor_pool_replaces_actors_exits_gracefully(self, call_ray_start):
+    def test_round_robin_actor_pool_replaces_actors_exits_gracefully(
+        self, call_ray_start
+    ):
         def f():
             time.sleep(5)
             return 123
@@ -193,12 +211,16 @@ class TestShared:
         assert 123 == future0.result()
         assert 123 == future1.result()
 
-    def test_round_robin_actor_pool_replaces_actors_exits_gracefully_in_executor(self, call_ray_start):
+    def test_round_robin_actor_pool_replaces_actors_exits_gracefully_in_executor(
+        self, call_ray_start
+    ):
         def f():
             time.sleep(5)
             return 123
 
-        with RayExecutor(address=call_ray_start, max_workers=1, max_tasks_per_child=1) as ex:
+        with RayExecutor(
+            address=call_ray_start, max_workers=1, max_tasks_per_child=1
+        ) as ex:
             pool = ex.actor_pool
             assert pool.index == 0
             actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
@@ -211,12 +233,16 @@ class TestShared:
             assert 123 == future0.result()
             assert 123 == future1.result()
 
-    def test_round_robin_actor_pool_replaces_actors_exits_gracefully_in_executor2(self, call_ray_start):
+    def test_round_robin_actor_pool_replaces_actors_exits_gracefully_in_executor2(
+        self, call_ray_start
+    ):
         def f():
             time.sleep(5)
             return 123
 
-        with RayExecutor(address=call_ray_start, max_workers=1, max_tasks_per_child=1) as ex:
+        with RayExecutor(
+            address=call_ray_start, max_workers=1, max_tasks_per_child=1
+        ) as ex:
             pool = ex.actor_pool
             assert pool.index == 0
             actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
@@ -230,8 +256,7 @@ class TestShared:
             assert 123 == future1.result()
 
 
-#----------------------------------------------------------------------------------------------------
-
+# ----------------------------------------------------------------------------------------------------
 
 
 class TestIsolated:
@@ -317,6 +342,7 @@ class TestIsolated:
         # note: this will hang indefinitely if no timeout is specified on map()
         def f(x, y):
             return x * y
+
         with RayExecutor() as ex:
             r1 = ex.map(f, [100, 100, 100], [1, 2, 3], timeout=2)
         assert ex._shutdown_lock
@@ -567,32 +593,53 @@ class TestIsolated:
 
         assert os.path.isdir("./python/ray/tests/.")
 
-        #----------------------------
-        with ThreadPoolExecutor(max_workers=2, initializer=safe, initargs=(TestInitializerException,)) as tpe:
+        # ----------------------------
+        with ThreadPoolExecutor(
+            max_workers=2, initializer=safe, initargs=(TestInitializerException,)
+        ) as tpe:
             tpe_iter = tpe.map(f_process1, range(10))
             _ = list(tpe_iter)
-        with ThreadPoolExecutor(max_workers=2, initializer=unsafe, initargs=(TestInitializerException,)) as tpe:
+        with ThreadPoolExecutor(
+            max_workers=2, initializer=unsafe, initargs=(TestInitializerException,)
+        ) as tpe:
             tpe_iter = tpe.map(f_process1, range(10))
             with pytest.raises(BrokenThreadPool):
                 _ = list(tpe_iter)
-        #----------------------------
+        # ----------------------------
 
-        #----------------------------
-        with RayExecutor(max_workers=2, initializer=safe, initargs=(TestInitializerException,), runtime_env={"working_dir": "./python/ray/tests/."}) as ex:
+        # ----------------------------
+        with RayExecutor(
+            max_workers=2,
+            initializer=safe,
+            initargs=(TestInitializerException,),
+            runtime_env={"working_dir": "./python/ray/tests/."},
+        ) as ex:
             ray_iter = ex.map(lambda x: x, range(10))
             _ = list(ray_iter)
-        with RayExecutor(max_workers=2, initializer=unsafe, initargs=(TestInitializerException,), runtime_env={"working_dir": "./python/ray/tests/."}) as ex:
+        with RayExecutor(
+            max_workers=2,
+            initializer=unsafe,
+            initargs=(TestInitializerException,),
+            runtime_env={"working_dir": "./python/ray/tests/."},
+        ) as ex:
             ray_iter = ex.map(f_process1, range(10))
             with pytest.raises(RayTaskError):
                 _ = list(ray_iter)
-        #----------------------------
+        # ----------------------------
 
     def test_working_directory_must_be_supplied_for_initializer(self):
 
         with pytest.raises(ValueError):
-            with RayExecutor(max_workers=2, initializer=safe, initargs=(TestInitializerException,)) as _:
+            with RayExecutor(
+                max_workers=2, initializer=safe, initargs=(TestInitializerException,)
+            ) as _:
                 pass
-        with RayExecutor(max_workers=2, initializer=unsafe, initargs=(TestInitializerException,), runtime_env={"working_dir": "./python/ray/tests/."}) as _:
+        with RayExecutor(
+            max_workers=2,
+            initializer=unsafe,
+            initargs=(TestInitializerException,),
+            runtime_env={"working_dir": "./python/ray/tests/."},
+        ) as _:
             pass
 
     def test_mp_context_does_nothing(self):
