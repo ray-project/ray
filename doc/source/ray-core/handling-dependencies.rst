@@ -446,8 +446,62 @@ Runtime environment resources on each node (such as conda environments, pip pack
 
 When the cache size limit is exceeded, resources not currently used by any actor, task or job will be deleted.
 
+.. runtime-environments-job-conflict:
+
 Inheritance
 """""""""""
+
+**Job to Driver Inheritance**
+
+When both Ray Job and Driver specifies runtime environments, their runtime environments are merged if there's no conflict.
+Ray raises an exception if there's any conflicts in runtime environments. You can set an environment variable `RAY_OVERRIDE_JOB_RUNTIME_ENV=1` to override
+Job's runtime environment by Driver's runtime environment when there's a conflict. In this case, the merge behavior is equivalent to
+Driver to Tasks/Actors inheritance.
+
+* The ``runtime_env["env_vars"]`` field will be merged with the ``runtime_env["env_vars"]`` field of the parent.
+  This allows for environment variables set in the Job's runtime environment to be automatically propagated to the Driver, even if new environment variables are set in the Driver's runtime environment.
+  If there's any conflict in environment variables, Ray raises an exception.
+* If there's no conflict, every other field in the ``runtime_env`` will be merged.
+
+Example:
+
+.. testcode::
+
+  # Job's `runtime_env`
+  {"pip": ["requests", "chess"],
+  "env_vars": {"A": "a", "B": "b"}}
+
+  # Driver's specified `runtime_env`
+  {"env_vars": {"C": "c"}}
+
+  # Driver's actual `runtime_env` (merged with Job's)
+  {"pip": ["requests", "chess"],
+  "env_vars": {"A": "a", "B": "b", "C": "c"}}
+
+Conflict Example:
+
+.. testcode::
+
+  # Example 1, env_vars conflicts
+  # Job's `runtime_env`
+  {"pip": ["requests", "chess"],
+  "env_vars": {"C": "a", "B": "b"}}
+
+  # Driver's specified `runtime_env`
+  {"env_vars": {"C": "c"}}
+
+  # It will raise an exception because "C" env var conflicts.
+
+  # Example 1, other field (e.g., pip) conflicts
+  {"pip": ["requests", "chess"]}
+
+  # Driver's specified `runtime_env`
+  {"pip": ["torch"]}
+
+  # It will raise an exception because "pip" conflicts.
+
+
+**Driver to Tasks/Actors Inheritance**
 
 The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor once set, unless it is overridden.
 

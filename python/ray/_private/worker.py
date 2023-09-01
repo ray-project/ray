@@ -70,6 +70,7 @@ from ray._private.ray_logging import (
     stderr_deduplicator,
     setup_logger,
 )
+from ray.runtime_env.runtime_env import merge_runtime_env
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
@@ -1412,24 +1413,34 @@ def init(
         job_config = ray.job_config.JobConfig()
 
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
-        if runtime_env:
-            logger.warning(
-                "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
-                "are provided, only using JSON_ENV_VAR to construct "
-                "job_config. Please ensure no runtime_env is used in driver "
-                "script's ray.init() when using job submission API."
-            )
         injected_job_config_json = json.loads(
             os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR)
         )
         injected_job_config: ray.job_config.JobConfig = (
             ray.job_config.JobConfig.from_json(injected_job_config_json)
         )
-        # NOTE: We always prefer runtime_env injected via RAY_JOB_CONFIG_JSON_ENV_VAR,
-        #       as compared to via ray.init(runtime_env=...) to make sure runtime_env
-        #       specified via job submission API takes precedence
-        runtime_env = injected_job_config.runtime_env
+        driver_runtime_env = runtime_env
         print(runtime_env)
+        print(os.getenv("RAY_OVERRIDE_JOB_RUNTIME_ENV") == "1")
+        runtime_env = merge_runtime_env(
+            injected_job_config.runtime_env,
+            driver_runtime_env,
+            override=os.getenv("RAY_OVERRIDE_JOB_RUNTIME_ENV") == "1",
+        )
+        print("result", runtime_env)
+        if runtime_env is None:
+            # None means there was a conflict.
+            raise ValueError(
+                "Failed to merge the job's runtime env "
+                f"{injected_job_config.runtime_env} with "
+                f"a ray.init's runtime env {driver_runtime_env} because "
+                "of conflict. Specifying the same runtime_env fields "
+                "or the same environment variable keys is not allowed. "
+                "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 if you'd like to "
+                "combine job and driver's runtime environment when there's "
+                "a conflict."
+            )
+
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env

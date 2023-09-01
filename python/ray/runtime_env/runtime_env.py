@@ -508,3 +508,51 @@ class RuntimeEnv(dict):
             if key not in self.known_fields:
                 result.append((key, value))
         return result
+
+
+def merge_runtime_env(
+    parent: Optional[RuntimeEnv], child: Optional[RuntimeEnv], override: bool = False
+) -> Optional[RuntimeEnv]:
+    """Merge the parent and child runtime environment.
+
+    If override = True, the child's runtime env will override parent's
+    runtime env when there's a conflict.
+
+    Merge will happen per key (i.e., "conda", "pip", ...), but
+    "env_vars" will be merged per each env var key.
+
+    It returns None if it fails to merge runtime env due to
+    conflict & override = False.
+
+    Args:
+        parent: Parent runtime env.
+        child: Child runtime env.
+        override: If True, child's runtime env will override
+            conflicting fields.
+    Returns:
+        merged runtime env if it succeeds to merge.
+        None if there's a conflict. Empty dict if
+        parent & child are both None.
+    """
+    if parent is None:
+        parent = {}
+    if child is None:
+        child = {}
+
+    parent = deepcopy(parent)
+    child = deepcopy(child)
+    parent_env_vars = parent.pop("env_vars", {})
+    child_env_vars = child.pop("env_vars", {})
+
+    if not override:
+        if set(parent.keys()).intersection(set(child.keys())):
+            return None
+        if set(parent_env_vars.keys()).intersection(set(child_env_vars.keys())):  # noqa
+            return None
+
+    parent.update(child)
+    parent_env_vars.update(child_env_vars)
+    if parent_env_vars:
+        parent["env_vars"] = parent_env_vars
+
+    return parent
