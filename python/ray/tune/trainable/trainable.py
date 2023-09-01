@@ -94,18 +94,18 @@ class Trainable:
     By default, Tune will also change the current working directory of this process to
     its corresponding trial-level log directory ``self.logdir``.
     This is designed so that different trials that run on the same physical node won't
-    accidently write to the same location and overstep each other.
+    accidentally write to the same location and overstep each other.
 
     The behavior of changing the working directory can be disabled by setting the
-    flag `chdir_to_trial_dir=False` in `tune.TuneConfig`. This allows access to files
+    `RAY_CHDIR_TO_TRIAL_DIR=0` environment variable. This allows access to files
     in the original working directory, but relative paths should be used for read only
     purposes, and you must make sure that the directory is synced on all nodes if
     running on multiple machines.
 
     The `TUNE_ORIG_WORKING_DIR` environment variable was the original workaround for
     accessing paths relative to the original working directory. This environment
-    variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
-    used instead.
+    variable is deprecated, and the `RAY_CHDIR_TO_TRIAL_DIR` environment variable
+    described above should be used instead.
 
     This class supports checkpointing to and restoring from remote storage.
 
@@ -925,11 +925,18 @@ class Trainable:
 
         """
         if _use_storage_context():
-            checkpoint_result: _TrainingResult = checkpoint_path
+            if isinstance(checkpoint_path, str):
+                checkpoint_path = Checkpoint.from_directory(checkpoint_path)
+            if isinstance(checkpoint_path, Checkpoint):
+                checkpoint_result = _TrainingResult(
+                    checkpoint=checkpoint_path, metrics={}
+                )
+            else:
+                checkpoint_result: _TrainingResult = checkpoint_path
             assert isinstance(checkpoint_result, _TrainingResult), type(
                 checkpoint_result
             )
-
+            checkpoint = checkpoint_result.checkpoint
             checkpoint_metrics = checkpoint_result.metrics
             self._iteration = checkpoint_metrics.get(TRAINING_ITERATION, 0)
             self._time_total = checkpoint_metrics.get(TIME_TOTAL_S, 0)
@@ -941,7 +948,6 @@ class Trainable:
             self._timesteps_since_restore = 0
             self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
 
-            checkpoint = checkpoint_result.checkpoint
             if not _exists_at_fs_path(checkpoint.filesystem, checkpoint.path):
                 raise ValueError(
                     f"Could not recover from checkpoint as it does not exist on "
@@ -973,8 +979,7 @@ class Trainable:
             self._restored = True
 
             logger.info(
-                f"Restored on {self._local_ip} from checkpoint: "
-                f"{checkpoint_result.checkpoint}"
+                f"Restored on {self._local_ip} from checkpoint: " f"{checkpoint}"
             )
             return True
 
