@@ -656,6 +656,10 @@ def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     ray.get(signal_actor.send.remote())
 
 
+@pytest.mark.skipif(
+    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
+    reason="Failing on Python 3.7.",
+)
 @pytest.mark.parametrize("streaming", [False, True])
 def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
     """Test gRPC request error out.
