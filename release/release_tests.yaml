@@ -4841,6 +4841,8 @@
 
   frequency: nightly
   team: core
+  # https://github.com/ray-project/ray/issues/39165
+  stable: false
 
   cluster:
     byod:
