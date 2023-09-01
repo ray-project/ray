@@ -22,20 +22,21 @@ from ray.air._internal.remote_storage import (
 from ray.air._internal import usage as air_usage
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
-from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal import session
 from ray.train._internal.storage import (
     _exists_at_fs_path,
     _use_storage_context,
     get_fs_and_path,
 )
+
+from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray._private.dict import merge_dicts
+
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -51,6 +52,15 @@ GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 
 
 logger = logging.getLogger(__name__)
+
+PREPROCESSOR_DEPRECATION_MESSAGE = (
+    "The `preprocessor` argument to Trainers is deprecated as of Ray 2.7. "
+    "Instead, use the Preprocessor `fit` and `transform` APIs directly on the Ray "
+    "Dataset. For any state that needs to be saved to the trained checkpoint, pass it "
+    "in using the `metadata` argument of the `Trainer`. "
+    "For a full example, see "
+    "https://docs.ray.io/en/master/train/user-guides/data-loading-preprocessing.html#preprocessing-structured-data "  # noqa:E501
+)
 
 
 @PublicAPI(stability="beta")
@@ -216,13 +226,8 @@ class BaseTrainer(abc.ABC):
 
         air_usage.tag_air_trainer(self)
 
-        if preprocessor:
-            logger.warning(
-                "The `preprocessor` arg to Trainer is deprecated. Apply "
-                "preprocessor transformations ahead of time by calling "
-                "`preprocessor.transform(ds)`. Support for the preprocessor "
-                "arg will be dropped in a future release."
-            )
+        if preprocessor is not None:
+            raise DeprecationWarning(PREPROCESSOR_DEPRECATION_MESSAGE)
 
     @PublicAPI(stability="alpha")
     @classmethod
@@ -250,16 +255,14 @@ class BaseTrainer(abc.ABC):
             import os
             import ray
             from ray import train
-            from ray.data.preprocessors import BatchMapper
             from ray.train.trainer import BaseTrainer
 
             experiment_name = "unique_experiment_name"
-            local_dir = "~/ray_results"
-            experiment_dir = os.path.join(local_dir, experiment_name)
+            storage_path = os.path.expanduser("~/ray_results")
+            experiment_dir = os.path.join(storage_path, experiment_name)
 
             # Define some dummy inputs for demonstration purposes
             datasets = {"train": ray.data.from_items([{"a": i} for i in range(10)])}
-            preprocessor = BatchMapper(lambda x: x, batch_format="numpy")
 
             class CustomTrainer(BaseTrainer):
                 def training_loop(self):
@@ -267,16 +270,14 @@ class BaseTrainer(abc.ABC):
 
             if CustomTrainer.can_restore(experiment_dir):
                 trainer = CustomTrainer.restore(
-                    experiment_dir,
-                    datasets=datasets,
+                    experiment_dir, datasets=datasets
                 )
             else:
                 trainer = CustomTrainer(
                     datasets=datasets,
-                    preprocessor=preprocessor,
                     run_config=train.RunConfig(
                         name=experiment_name,
-                        local_dir=local_dir,
+                        storage_path=storage_path,
                         # Tip: You can also enable retries on failure for
                         # worker-level fault tolerance
                         failure_config=train.FailureConfig(max_failures=3),
@@ -297,12 +298,6 @@ class BaseTrainer(abc.ABC):
             datasets: Re-specified datasets used in the original training run.
                 This must include all the datasets that were passed in the
                 original trainer constructor.
-            preprocessor: Optionally re-specified preprocessor that was passed in
-                the original trainer constructor. This should be used to re-supply
-                the preprocessor if it is not restorable in a new Ray cluster.
-                This preprocessor will be fit at the start before resuming training.
-                If no preprocessor is passed in restore, then the old preprocessor
-                will be loaded from the latest checkpoint and will not be re-fit.
             scaling_config: Optionally re-specified scaling config. This can be
                 modified to be different from the original spec.
             **kwargs: Other optionally re-specified arguments, passed in by subclasses.
@@ -408,7 +403,6 @@ class BaseTrainer(abc.ABC):
             "scaling_config": ScalingConfig(),
             "run_config": RunConfig(),
             "datasets": {},
-            "preprocessor": None,
             "starting_checkpoint": None,
         }
 
@@ -497,11 +491,8 @@ class BaseTrainer(abc.ABC):
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
-        expected_checkpoint_type = (
-            NewCheckpoint if _use_storage_context() else ray.air.Checkpoint
-        )
         if self.starting_checkpoint is not None and not isinstance(
-            self.starting_checkpoint, expected_checkpoint_type
+            self.starting_checkpoint, Checkpoint
         ):
             raise ValueError(
                 f"`resume_from_checkpoint` should be an instance of "
@@ -860,10 +851,10 @@ class BaseTrainer(abc.ABC):
                     )
                 return scaling_config
 
-            def _trainable_func(self, config, reporter, checkpoint_dir):
+            def _trainable_func(self, config):
                 # We ignore the config passed by Tune and instead use the merged
                 # config which includes the initial Trainer args.
-                super()._trainable_func(self._merged_config, reporter, checkpoint_dir)
+                super()._trainable_func(self._merged_config)
 
             @classmethod
             def default_resource_request(cls, config):

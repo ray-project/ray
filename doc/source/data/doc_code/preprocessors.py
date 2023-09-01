@@ -72,7 +72,7 @@ result = trainer.fit()
 
 # __chain_start__
 import ray
-from ray.data.preprocessors import Chain, MinMaxScaler, SimpleImputer
+from ray.data.preprocessors import MinMaxScaler, SimpleImputer
 
 # Generate one simple dataset.
 dataset = ray.data.from_items(
@@ -81,29 +81,16 @@ dataset = ray.data.from_items(
 print(dataset.take())
 # [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': None}]
 
-preprocessor = Chain(SimpleImputer(["id"]), MinMaxScaler(["id"]))
+preprocessor_1 = SimpleImputer(["id"])
+preprocessor_2 = MinMaxScaler(["id"])
 
-dataset_transformed = preprocessor.fit_transform(dataset)
+# Apply both preprocessors in sequence on the dataset.
+dataset_transformed = preprocessor_1.fit_transform(dataset)
+dataset_transformed = preprocessor_2.fit_transform(dataset_transformed)
+
 print(dataset_transformed.take())
 # [{'id': 0.0}, {'id': 0.3333333333333333}, {'id': 0.6666666666666666}, {'id': 1.0}, {'id': 0.5}]
 # __chain_end__
-
-
-# __custom_stateless_start__
-import ray
-from ray.data.preprocessors import BatchMapper
-
-# Generate a simple dataset.
-dataset = ray.data.range(4)
-print(dataset.take())
-# [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}]
-
-# Create a stateless preprocess that multiplies ids by 2.
-preprocessor = BatchMapper(lambda df: df * 2, batch_size=2, batch_format="pandas")
-dataset_transformed = preprocessor.transform(dataset)
-print(dataset_transformed.take())
-# [{'id': 0}, {'id': 2}, {'id': 4}, {'id': 6}]
-# __custom_stateless_end__
 
 
 # __custom_stateful_start__
@@ -152,15 +139,17 @@ print(dataset_transformed.take())
 
 
 # __concatenate_start__
-from ray.data.preprocessors import Chain, Concatenator, StandardScaler
+from ray.data.preprocessors import Concatenator, StandardScaler
 
 # Generate a simple dataset.
 dataset = ray.data.from_items([{"X": 1.0, "Y": 2.0}, {"X": 4.0, "Y": 0.0}])
 print(dataset.take())
 # [{'X': 1.0, 'Y': 2.0}, {'X': 4.0, 'Y': 0.0}]
 
-preprocessor = Chain(StandardScaler(columns=["X", "Y"]), Concatenator())
-dataset_transformed = preprocessor.fit_transform(dataset)
+scaler = StandardScaler(columns=["X", "Y"])
+concatenator = Concatenator()
+dataset_transformed = scaler.fit_transform(dataset)
+dataset_transformed = concatenator.fit_transform(dataset_transformed)
 print(dataset_transformed.take())
 # [{'concat_out': array([-1.,  1.])}, {'concat_out': array([ 1., -1.])}]
 # __concatenate_end__

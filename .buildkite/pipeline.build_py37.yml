@@ -21,7 +21,7 @@
       {
         python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py37_compat/... python/ray/tests/xgboost/... &&
         python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-hdfs python/ray/air/... &&
-        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-hdfs python/ray/train/... &&
+        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-hdfs,-new_storage python/ray/train/... &&
         python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air python/ray/data/...;
       } > test_shard.txt
     - cat test_shard.txt
@@ -50,7 +50,7 @@
       {
         python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py37_compat/... python/ray/tests/xgboost/... &&
         python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-hdfs python/ray/air/... &&
-        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-hdfs python/ray/train/... &&
+        python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-hdfs,-new_storage python/ray/train/... &&
         python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air python/ray/data/...;
       } > test_shard.txt
     - cat test_shard.txt
@@ -69,7 +69,8 @@
     - pip install -r python/requirements/compat/requirements_py37_compat.txt
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=tests_dir,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+      --test_tag_filters=tests_dir,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
 
 
 - label: ":cold_face: :python: :brain: Python 3.7 RLlib: Learning tests Pytorch (With Ray Data)"

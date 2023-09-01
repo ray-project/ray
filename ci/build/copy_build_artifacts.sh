@@ -29,11 +29,14 @@ mkdir -p /artifact-mount/"$ARTIFACT_PATH"
 cp -r "$ARTIFACT_PATH" /artifact-mount/"$ARTIFACT_PATH"
 chmod -R 777 /artifact-mount/"$ARTIFACT_PATH"
 
-# Don't upload to artifacts if this is a pull request.
-if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+# Upload to the wheels S3 bucket when running on postmerge pipeline.
+readonly PIPELINE_POSTMERGE="0189e759-8c96-4302-b6b5-b4274406bf89"
+if [[ "${BUILDKITE_PIPELINE_ID:-}" == "${PIPELINE_POSTMERGE}" ]]; then
+  # Upload to branch directory.
+  python .buildkite/copy_files.py --destination "$BRANCH_DESTINATION" --path "./$ARTIFACT_PATH"
 
-# Upload to branch directory.
-python .buildkite/copy_files.py --destination "$BRANCH_DESTINATION" --path "./$ARTIFACT_PATH"
-
-# Upload to latest directory.
-if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination "$MASTER_DESTINATION" --path "./$ARTIFACT_PATH"; fi
+  # Upload to latest directory.
+  if [[ "$BUILDKITE_BRANCH" == "master" ]]; then
+    python .buildkite/copy_files.py --destination "$MASTER_DESTINATION" --path "./$ARTIFACT_PATH"
+  fi
+fi

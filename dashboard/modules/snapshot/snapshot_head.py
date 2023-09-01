@@ -3,10 +3,9 @@ import concurrent.futures
 from datetime import datetime
 import enum
 import logging
-import hashlib
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Dict, Optional
 
 import aiohttp.web
 from pydantic import BaseModel, Extra, Field, validator
@@ -15,7 +14,6 @@ import ray
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray._private import ray_constants
 from ray._private.storage import _load_class
 from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JobInfoStorageClient
@@ -128,17 +126,15 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             timeout = SNAPSHOT_API_TIMEOUT_SECONDS
 
         actor_limit = int(req.query.get("actor_limit", "1000"))
-        (job_info, job_submission_data, actor_data, serve_data,) = await asyncio.gather(
+        (job_info, job_submission_data, actor_data) = await asyncio.gather(
             self.get_job_info(timeout),
             self.get_job_submission_info(timeout),
             self.get_actor_info(actor_limit, timeout),
-            self.get_serve_info(timeout),
         )
         snapshot = {
             "jobs": job_info,
             "job_submission": job_submission_data,
             "actors": actor_data,
-            "deployments": serve_data,
             "session_name": self._dashboard_head.session_name,
             "ray_version": ray.__version__,
             "ray_commit": ray.__commit__,
@@ -364,64 +360,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             }
             actors[actor_id] = entry
 
-            deployments = await self.get_serve_info()
-            for _, deployment_info in deployments.items():
-                for replica_actor_id, actor_info in deployment_info["actors"].items():
-                    if replica_actor_id in actors:
-                        serve_metadata = dict()
-                        serve_metadata["replica_tag"] = actor_info["replica_tag"]
-                        serve_metadata["deployment_name"] = deployment_info["name"]
-                        serve_metadata["version"] = actor_info["version"]
-                        actors[replica_actor_id]["metadata"]["serve"] = serve_metadata
         return actors
-
-    async def get_serve_info(
-        self, timeout: int = SNAPSHOT_API_TIMEOUT_SECONDS
-    ) -> Dict[str, Any]:
-        # Conditionally import serve to prevent ModuleNotFoundError from serve
-        # dependencies when only ray[default] is installed (#17712)
-        try:
-            from ray.serve._private.constants import SERVE_CONTROLLER_NAME
-            from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
-        except Exception:
-            return {}
-
-        # Serve wraps Ray's internal KV store and specially formats the keys.
-        # These are the keys we are interested in:
-        # SERVE_CONTROLLER_NAME(+ optional random letters):SERVE_SNAPSHOT_KEY
-        serve_keys = await self._gcs_aio_client.internal_kv_keys(
-            SERVE_CONTROLLER_NAME.encode(),
-            namespace=ray_constants.KV_NAMESPACE_SERVE,
-            timeout=timeout,
-        )
-
-        tasks = [
-            self._gcs_aio_client.internal_kv_get(
-                key,
-                namespace=ray_constants.KV_NAMESPACE_SERVE,
-                timeout=timeout,
-            )
-            for key in serve_keys
-            if SERVE_SNAPSHOT_KEY in key.decode()
-        ]
-
-        serve_snapshot_vals = await asyncio.gather(*tasks)
-
-        deployments_per_controller: List[Dict[str, Any]] = [
-            json.loads(val.decode()) for val in serve_snapshot_vals
-        ]
-
-        # Merge the deployments dicts of all controllers.
-        deployments: Dict[str, Any] = {
-            k: v for d in deployments_per_controller for k, v in d.items()
-        }
-        # Replace the keys (deployment names) with their hashes to prevent
-        # collisions caused by the automatic conversion to camelcase by the
-        # dashboard agent.
-        return {
-            hashlib.sha1(name.encode()).hexdigest(): info
-            for name, info in deployments.items()
-        }
 
     async def run(self, server):
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(

@@ -183,6 +183,7 @@ java/**/pom.xml
 
 # python virtual env
 venv
+.venv
 
 # pyenv version file
 .python-version

@@ -308,7 +308,7 @@ class HyperBandScheduler(FIFOScheduler):
                     if t.status == Trial.PAUSED:
                         logger.debug(f"Unpausing trial {str(t)}")
                         self._unpause_trial(tune_controller, t)
-                        tune_controller._set_trial_status(t, Trial.PENDING)
+                        bracket.trials_to_unpause.add(t)
                     elif t.status == Trial.RUNNING:
                         # See the docstring: There can only be at most one RUNNING
                         # trial, which is the current trial.
@@ -356,7 +356,10 @@ class HyperBandScheduler(FIFOScheduler):
             scrubbed = [b for b in hyperband if b is not None]
             for bracket in sorted(scrubbed, key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
-                    if trial.status == Trial.PENDING:
+                    if (
+                        trial.status == Trial.PAUSED
+                        and trial in bracket.trials_to_unpause
+                    ) or trial.status == Trial.PENDING:
                         return trial
         return None
 
@@ -428,6 +431,8 @@ class _Bracket:
         self._completed_progress = 0
         self.stop_last_trials = stop_last_trials
         self.is_being_processed = False
+
+        self.trials_to_unpause = set()
 
     def add_trial(self, trial: Trial):
         """Add trial to bracket assuming bracket is not filled.
@@ -511,6 +516,7 @@ class _Bracket:
             )
         self._completed_progress += delta
         self._live_trials[trial] = result
+        self.trials_to_unpause.discard(trial)
 
     def cleanup_trial(self, trial: Trial):
         """Clean up statistics tracking for terminated trials (either by force

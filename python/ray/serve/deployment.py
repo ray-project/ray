@@ -10,24 +10,29 @@ from typing import (
     Tuple,
     Union,
 )
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
-from ray.serve.context import get_global_client
 from ray.dag.dag_node import DAGNodeBase
 from ray.dag.class_node import ClassNode
 from ray.dag.function_node import FunctionNode
+from ray.util.annotations import Deprecated, PublicAPI
+
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
     ReplicaConfig,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
+from ray.serve.context import get_global_client
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warning
-from ray.util.annotations import Deprecated, PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
+)
+from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve._private.utils import (
+    DEFAULT,
+    Default,
+    guarded_deprecation_warning,
 )
 
 
@@ -286,7 +291,7 @@ class Deployment:
             init_kwargs: kwargs to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
-        record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+        ServeUsageTag.API_VERSION.record("v1")
         self._deploy(*init_args, _blocking=_blocking, **init_kwargs)
 
     # TODO(Sihan) Promote the _deploy to deploy after we fully deprecate the API
@@ -311,6 +316,7 @@ class Deployment:
             ray_actor_options=self._replica_config.ray_actor_options,
             placement_group_bundles=self._replica_config.placement_group_bundles,
             placement_group_strategy=self._replica_config.placement_group_strategy,
+            max_replicas_per_node=self._replica_config.max_replicas_per_node,
         )
 
         return get_global_client().deploy(
@@ -391,6 +397,7 @@ class Deployment:
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
         placement_group_strategy: Optional[str] = DEFAULT.VALUE,
+        max_replicas_per_node: Optional[int] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_concurrent_queries: Default[int] = DEFAULT.VALUE,
         autoscaling_config: Default[
@@ -447,6 +454,13 @@ class Deployment:
                 "future!"
             )
 
+        if not _internal and route_prefix is not DEFAULT.VALUE:
+            logger.warning(
+                "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
+                "deprecated. To specify a route prefix for an application, pass it "
+                "into `serve.run` instead."
+            )
+
         if num_replicas not in [DEFAULT.VALUE, None]:
             new_deployment_config.num_replicas = num_replicas
         if user_config is not DEFAULT.VALUE:
@@ -482,6 +496,9 @@ class Deployment:
         if placement_group_strategy is DEFAULT.VALUE:
             placement_group_strategy = self._replica_config.placement_group_strategy
 
+        if max_replicas_per_node is DEFAULT.VALUE:
+            max_replicas_per_node = self._replica_config.max_replicas_per_node
+
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
 
@@ -511,6 +528,7 @@ class Deployment:
             ray_actor_options=ray_actor_options,
             placement_group_bundles=placement_group_bundles,
             placement_group_strategy=placement_group_strategy,
+            max_replicas_per_node=max_replicas_per_node,
         )
 
         return Deployment(
@@ -640,6 +658,7 @@ def deployment_to_schema(
         "ray_actor_options": ray_actor_options_schema,
         "placement_group_strategy": d._replica_config.placement_group_strategy,
         "placement_group_bundles": d._replica_config.placement_group_bundles,
+        "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "is_driver_deployment": d._is_driver_deployment,
     }
 
@@ -688,6 +707,11 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         placement_group_strategy = s.placement_group_strategy
 
+    if s.max_replicas_per_node is DEFAULT.VALUE:
+        max_replicas_per_node = None
+    else:
+        max_replicas_per_node = s.max_replicas_per_node
+
     if s.is_driver_deployment is DEFAULT.VALUE:
         is_driver_deployment = False
     else:
@@ -714,6 +738,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         ray_actor_options=ray_actor_options,
         placement_group_bundles=placement_group_bundles,
         placement_group_strategy=placement_group_strategy,
+        max_replicas_per_node=max_replicas_per_node,
     )
 
     return Deployment(

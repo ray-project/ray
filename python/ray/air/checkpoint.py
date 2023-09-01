@@ -1,7 +1,7 @@
 import contextlib
 import io
-import logging
 import os
+import logging
 import platform
 import shutil
 import tarfile
@@ -48,12 +48,13 @@ _CHECKPOINT_UUID_URI_NAMESPACE = uuid.UUID("627fe696-f135-436f-bc4b-bda0306e0181
 logger = logging.getLogger(__name__)
 
 
+# TODO(justinvyu): [code_removal]
 @dataclass
 class _CheckpointMetadata:
     """Metadata about a checkpoint.
 
     Attributes:
-        checkpoint_type: The checkpoint class. For example, ``LegacyTorchCheckpoint``.
+        checkpoint_type: The checkpoint class.
         checkpoint_state: A dictionary that maps object attributes to their values. When
             you load a serialized checkpoint, restore these values.
     """
@@ -83,7 +84,7 @@ class Checkpoint:
 
     .. code-block:: python
 
-        from ray.train import Checkpoint
+        from ray.air import Checkpoint
 
         # Create checkpoint data dict
         checkpoint_data = {"data": 123}
@@ -270,7 +271,7 @@ class Checkpoint:
 
         Example:
 
-            >>> from ray.train import Checkpoint
+            >>> from ray.air import Checkpoint
             >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
             >>> assert checkpoint.path == "s3://some-bucket/some-location"
             >>> checkpoint = Checkpoint.from_dict({"data": 1})
@@ -299,11 +300,11 @@ class Checkpoint:
 
         In all other cases, this will return None. Users can then choose to
         persist to cloud with
-        :meth:`Checkpoint.to_uri() <ray.train.Checkpoint.to_uri>`.
+        :meth:`Checkpoint.to_uri() <ray.air.Checkpoint.to_uri>`.
 
         Example:
 
-            >>> from ray.train import Checkpoint
+            >>> from ray.air import Checkpoint
             >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
             >>> assert checkpoint.uri == "s3://some-bucket/some-location"
             >>> checkpoint = Checkpoint.from_dict({"data": 1})
@@ -330,7 +331,7 @@ class Checkpoint:
             data: Data object containing pickled checkpoint data.
 
         Returns:
-            ray.train.Checkpoint: checkpoint object.
+            ray.air.Checkpoint: checkpoint object.
         """
         bytes_data = pickle.loads(data)
         if isinstance(bytes_data, dict):
@@ -359,7 +360,7 @@ class Checkpoint:
             data: Dictionary containing checkpoint data.
 
         Returns:
-            ray.train.Checkpoint: checkpoint object.
+            ray.air.Checkpoint: checkpoint object.
         """
         state = {}
         if _METADATA_KEY in data:
@@ -454,7 +455,7 @@ class Checkpoint:
                 Checkpoint).
 
         Returns:
-            ray.train.Checkpoint: checkpoint object.
+            ray.air.Checkpoint: checkpoint object.
         """
         state = {}
 
@@ -473,17 +474,10 @@ class Checkpoint:
     @classmethod
     @DeveloperAPI
     def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
-        """Create a checkpoint from a generic :class:`ray.train.Checkpoint`.
+        """Create a checkpoint from a generic :class:`ray.air.Checkpoint`.
 
         This method can be used to create a framework-specific checkpoint from a
-        generic :class:`Checkpoint` object.
-
-        Examples:
-            >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
-            >>> checkpoint = LegacyTorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP
-            >>> model = checkpoint.get_model()  # doctest: +SKIP
-            Linear(in_features=1, out_features=1, bias=True)
-        """  # noqa: E501
+        generic :class:`Checkpoint` object."""
         if type(other) is cls:
             return other
 
@@ -714,7 +708,7 @@ class Checkpoint:
             uri: Source location URI to read data from.
 
         Returns:
-            ray.train.Checkpoint: checkpoint object.
+            ray.air.Checkpoint: checkpoint object.
         """
         state = {}
         try:

@@ -209,10 +209,13 @@ Your preprocessed datasets can be passed into a Ray Train Trainer (e.g. :class:`
 
 The datasets passed into the Trainer's ``datasets`` can be accessed inside of the ``train_loop_per_worker`` run on each distributed training worker by calling :meth:`ray.train.get_dataset_shard`. 
 
-The default splitting behavior is as follows:
+All datasets are split (i.e. sharded) across the training workers by default. :meth:`~ray.train.get_dataset_shard` will return ``1/n`` of the dataset, where ``n`` is the number of training workers.
 
-- The ``"train"`` dataset is split (i.e. sharded) across the training workers. :meth:`~ray.train.get_dataset_shard` will return ``1/n`` of the dataset, where ``n`` is the number of training workers.
-- All other dataset are not split. :meth:`~ray.train.get_dataset_shard` will return the full dataset.
+.. note::
+
+    Please be aware that as the evaluation dataset is split, users have to aggregate the evaluation results across workers. 
+    You might consider using `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_ (:ref:`example <deepspeed_example>`) or 
+    utilities available in other frameworks that you can explore.
 
 This behavior can be overwritten by passing in the ``dataset_config`` argument. For more information on configuring splitting logic, see :ref:`Splitting datasets <train-datasets-split>`.
 
@@ -298,11 +301,11 @@ For more details, see the following sections for each framework.
 
 Splitting datasets
 ------------------
-By default, Ray Train splits the ``"train"`` dataset across workers using :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. Each worker sees a disjoint subset of the data, instead of iterating over the entire dataset. Unless randomly shuffled, the same splits are used for each iteration of the dataset. 
+By default, Ray Train splits all datasets across workers using :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. Each worker sees a disjoint subset of the data, instead of iterating over the entire dataset. Unless randomly shuffled, the same splits are used for each iteration of the dataset. 
 
-For all other datasets, Ray Train passes the entire dataset to each worker.
+If want to customize which datasets are split, pass in a :class:`DataConfig <ray.train.DataConfig>` to the Trainer constructor. 
 
-To customize this, pass in a :class:`DataConfig <ray.train.DataConfig>` to the Trainer constructor. For example, to split both the training and validation datasets, do the following:
+For example, to split only the training dataset, do the following:
 
 .. testcode::
 
@@ -317,26 +320,28 @@ To customize this, pass in a :class:`DataConfig <ray.train.DataConfig>` to the T
     train_ds, val_ds = ds.train_test_split(0.3)
 
     def train_loop_per_worker():
-        # Get an iterator to the dataset we passed in below.
-        it = train.get_dataset_shard("train")
+        # Get the sharded training dataset
+        train_ds = train.get_dataset_shard("train")
         for _ in range(2):
-            for batch in it.iter_batches(batch_size=128):
+            for batch in train_ds.iter_batches(batch_size=128):
                 print("Do some training on batch", batch)
+        
+        # Get the unsharded full validation dataset
+        val_ds = train.get_dataset_shard("val")
+        for _ in range(2):
+            for batch in val_ds.iter_batches(batch_size=128):
+                print("Do some evaluation on batch", batch)
 
     my_trainer = TorchTrainer(
         train_loop_per_worker,
         scaling_config=ScalingConfig(num_workers=2),
         datasets={"train": train_ds, "val": val_ds},
         dataset_config=ray.train.DataConfig(
-            datasets_to_split=["train", "val"],
+            datasets_to_split=["train"],
         ),
     )
     my_trainer.fit()
 
-.. testoutput::
-    :hide:
-
-    ...
 
 Full customization (advanced)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -399,10 +404,6 @@ For use cases not covered by the default config class, you can also fully custom
     )
     my_trainer.fit()
 
-.. testoutput::
-    :hide:
-
-    ... 
 
 The subclass must be serializable, since Ray Train copies it from the driver script to the driving actor of the Trainer. Ray Train calls its :meth:`configure <ray.train.DataConfig.configure>` method on the main actor of the Trainer group to create the data iterators for each worker.
 
@@ -450,11 +451,6 @@ First, randomize each :ref:`block <dataset_concept>` of your dataset via :meth:`
         datasets={"train": ds},
     )
     my_trainer.fit()
-
-.. testoutput::
-    :hide:
-
-    ...
 
 
 If your model is sensitive to shuffle quality, call :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` to perform a global shuffle.
@@ -518,21 +514,78 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
 .. testcode::
 
     import numpy as np
+    from tempfile import TemporaryDirectory
+
+    import ray
+    from ray import train
+    from ray.train import Checkpoint, ScalingConfig
+    from ray.train.torch import TorchTrainer
+    from ray.data.preprocessors import Concatenator, StandardScaler
+
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
+
+    # Create preprocessors to scale some columns and concatenate the results.
+    scaler = StandardScaler(columns=["mean radius", "mean texture"])
+    concatenator = Concatenator(exclude=["target"], dtype=np.float32)
+
+    # Compute dataset statistics and get transformed datasets. Note that the
+    # fit call is executed immediately, but the transformation is lazy.
+    dataset = scaler.fit_transform(dataset)
+    dataset = concatenator.fit_transform(dataset)
+
+    def train_loop_per_worker():
+        context = train.get_context()
+        print(context.get_metadata())  # prints {"preprocessor_pkl": ...}
+
+        # Get an iterator to the dataset we passed in below.
+        it = train.get_dataset_shard("train")
+        for _ in range(2):
+            # Prefetch 10 batches at a time.
+            for batch in it.iter_batches(batch_size=128, prefetch_batches=10):
+                print("Do some training on batch", batch)
+
+        # Save a checkpoint.
+        with TemporaryDirectory() as temp_dir:
+            train.report(
+                {"score": 2.0},
+                checkpoint=Checkpoint.from_directory(temp_dir),
+            )
+
+    my_trainer = TorchTrainer(
+        train_loop_per_worker,
+        scaling_config=ScalingConfig(num_workers=2),
+        datasets={"train": dataset},
+        metadata={"preprocessor_pkl": scaler.serialize()},
+    )
+
+    # Get the fitted preprocessor back from the result metadata.
+    metadata = my_trainer.fit().checkpoint.get_metadata()
+    print(StandardScaler.deserialize(metadata["preprocessor_pkl"]))
+
+
+In this example, we persist the fitted preprocessor using the ``Trainer(metadata={...})`` constructor argument. This arg specifies a dict that will available from ``TrainContext.get_metadata()`` and ``checkpoint.get_metadata()`` for checkpoints saved from the Trainer. This enables recreation of the fitted preprocessor for use for inference.
+
+Performance tips
+----------------
+
+Prefetching batches
+~~~~~~~~~~~~~~~~~~~
+While iterating over your dataset for training, you can increase ``prefetch_batches`` in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` to further increase performance. While training on the current batch, this launches N background threads to fetch and process the next N batches.
+
+This approach can help if training is bottlenecked on cross-node data transfer or on last-mile preprocessing such as converting batches to tensors or executing ``collate_fn``. However, increasing ``prefetch_batches`` leads to more data that needs to be held in heap memory. By default, ``prefetch_batches`` is set to 1.
+
+For example, the following code prefetches 10 batches at a time for each training worker:
+
+.. testcode::
 
     import ray
     from ray import train
     from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
-    from ray.data.preprocessors import Concatenator, Chain, StandardScaler
 
-    dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
-
-    # Create a preprocessor to scale some columns and concatenate the result.
-    preprocessor = Chain(
-        StandardScaler(columns=["mean radius", "mean texture"]),
-        Concatenator(exclude=["target"], dtype=np.float32),
+    ds = ray.data.read_text(
+        "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
     )
-    dataset = preprocessor.fit_transform(dataset)  # this will be applied lazily
 
     def train_loop_per_worker():
         # Get an iterator to the dataset we passed in below.
@@ -545,19 +598,10 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
     my_trainer = TorchTrainer(
         train_loop_per_worker,
         scaling_config=ScalingConfig(num_workers=2),
-        datasets={"train": dataset},
+        datasets={"train": ds},
     )
     my_trainer.fit()
 
-
-.. testoutput::
-    :hide:
-
-    ...
-
-
-Performance tips
-----------------
 
 .. _dataset_cache_performance:
 
@@ -603,55 +647,11 @@ Transformations that you want run per-epoch, such as randomization, should go af
 
     # Pass train_ds to the Trainer
 
-.. testoutput::
-    :hide:
-
-    ...
 
 Adding CPU-only nodes to your cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you are bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then the above tip doesn't work. In this case, since Ray supports heterogeneous clusters, you can add more CPU-only nodes to your cluster.
+If you are bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then materializing the dataset doesn't work. In this case, since Ray supports heterogeneous clusters, you can add more CPU-only nodes to your cluster.
 
 For cases where you're bottlenecked by object store memory, adding more CPU-only nodes to your cluster increases total cluster object store memory, allowing more data to be buffered in between preprocessing and training stages.
 
 For cases where you're bottlenecked by preprocessing compute time, adding more CPU-only nodes adds more CPU cores to your cluster, further parallelizing preprocessing. If your preprocessing is still not fast enough to saturate GPUs, then add enough CPU-only nodes to :ref:`cache the preprocessed dataset <dataset_cache_performance>`.
-
-Prefetching batches
-~~~~~~~~~~~~~~~~~~~
-While iterating over your dataset for training, you can increase ``prefetch_batches`` in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` to further increase performance. While training on the current batch, this launches N background threads to fetch and process the next N batches.
-
-This approach can help if training is bottlenecked on cross-node data transfer or on last-mile preprocessing such as converting batches to tensors or executing ``collate_fn``. However, increasing ``prefetch_batches`` leads to more data that needs to be held in heap memory. By default, ``prefetch_batches`` is set to 1.
-
-For example, the following code prefetches 10 batches at a time for each training worker:
-
-.. testcode::
-
-    import ray
-    from ray import train
-    from ray.train import ScalingConfig
-    from ray.train.torch import TorchTrainer
-
-    ds = ray.data.read_text(
-        "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
-    )
-
-    def train_loop_per_worker():
-        # Get an iterator to the dataset we passed in below.
-        it = train.get_dataset_shard("train")
-        for _ in range(2):
-            # Prefetch 10 batches at a time.
-            for batch in it.iter_batches(batch_size=128, prefetch_batches=10):
-                print("Do some training on batch", batch)
-
-    my_trainer = TorchTrainer(
-        train_loop_per_worker,
-        scaling_config=ScalingConfig(num_workers=2),
-        datasets={"train": ds},
-    )
-    my_trainer.fit()
-
-.. testoutput::
-    :hide:
-
-    ...
-

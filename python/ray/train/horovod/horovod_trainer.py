@@ -46,7 +46,7 @@ class HorovodTrainer(DataParallelTrainer):
     ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray AIR session methods <air-session-ref>`.
+    :ref:`Ray Train loop methods <train-loop-api>`.
 
     .. testcode::
 
@@ -168,9 +168,7 @@ class HorovodTrainer(DataParallelTrainer):
         run_config: Configuration for the execution of the training run.
         datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
-            dataset. If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be transformed
-            by the ``preprocessor`` if one is provided.
+            dataset.
         resume_from_checkpoint: A checkpoint to resume training from.
         metadata: Dict that should be made available via
             `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`

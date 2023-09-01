@@ -3,6 +3,7 @@
 import os
 import argparse
 from filelock import FileLock
+import tempfile
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,7 +12,7 @@ from torchvision import datasets, transforms
 
 import ray
 from ray import train, tune
-from ray.train.torch import LegacyTorchCheckpoint
+from ray.train import Checkpoint
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 # Change these values if you want the training to run quicker or slower.
@@ -104,11 +105,15 @@ def train_mnist(config):
     while True:
         train_func(model, optimizer, train_loader, device)
         acc = test_func(model, test_loader, device)
-        checkpoint = None
+        metrics = {"mean_accuracy": acc}
+
+        # Report metrics (and possibly a checkpoint)
         if should_checkpoint:
-            checkpoint = LegacyTorchCheckpoint.from_state_dict(model.state_dict())
-        # Report metrics (and possibly a checkpoint) to Tune
-        train.report({"mean_accuracy": acc}, checkpoint=checkpoint)
+            with tempfile.TemporaryDirectory() as tempdir:
+                torch.save(model.state_dict(), os.path.join(tempdir, "model.pt"))
+                train.report(metrics, checkpoint=Checkpoint.from_directory(tempdir))
+        else:
+            train.report(metrics)
 
 
 if __name__ == "__main__":
@@ -150,3 +155,5 @@ if __name__ == "__main__":
     results = tuner.fit()
 
     print("Best config is:", results.get_best_result().config)
+
+    assert not results.errors
