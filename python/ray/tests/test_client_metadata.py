@@ -6,17 +6,7 @@ from ray._raylet import NodeID
 from ray.runtime_context import RuntimeContext
 
 
-@pytest.fixture
-def short_gcs_client_timeout(monkeypatch):
-    monkeypatch.setenv("RAY_gcs_rpc_server_connect_timeout_s", "1")
-    monkeypatch.setenv("RAY_gcs_rpc_server_reconnect_timeout_s", "1")
-    monkeypatch.setenv("RAY_gcs_grpc_initial_reconnect_backoff_ms", "1")
-    monkeypatch.setenv("RAY_gcs_grpc_min_reconnect_backoff_ms", "1")
-    monkeypatch.setenv("RAY_gcs_grpc_max_reconnect_backoff_ms", "1")
-    yield
-
-
-def test_get_ray_metadata(short_gcs_client_timeout, ray_start_regular_shared):
+def test_get_ray_metadata(ray_start_regular_shared):
     """Test the ClusterInfo client data pathway and API surface"""
     with ray_start_client_server() as ray:
         ip_address = ray_start_regular_shared["node_ip_address"]
@@ -38,7 +28,7 @@ def test_get_ray_metadata(short_gcs_client_timeout, ray_start_regular_shared):
         assert current_node_id in available_resources
 
 
-def test_get_runtime_context(short_gcs_client_timeout, ray_start_regular_shared):
+def test_get_runtime_context(ray_start_regular_shared):
     """Test the get_runtime_context data through the metadata API"""
     with ray_start_client_server() as ray:
         rtc = ray.get_runtime_context()
