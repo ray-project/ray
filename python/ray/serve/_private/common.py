@@ -443,7 +443,7 @@ class ServeDeployMode(str, Enum):
 
 # Keep in sync with ServeSystemActorStatus in
 # python/ray/dashboard/client/src/type/serve.ts
-class HTTPProxyStatus(str, Enum):
+class ProxyStatus(str, Enum):
     STARTING = "STARTING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"

@@ -69,14 +69,14 @@ training loop.
 .. code-block:: python
 
     import ray
-    from ray import tune
+    from ray import train, tune
     from ray.rllib.algorithms.ppo import PPO
 
-    def train_fn(config, reporter):
+    def train_fn(config):
         algo = PPO(config=config, env=YourEnv)
         while True:
             result = algo.train()
-            reporter(**result)
+            train.report(result)
             if result["episode_reward_mean"] > 200:
                 task = 2
             elif result["episode_reward_mean"] > 100:
