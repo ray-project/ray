@@ -175,16 +175,22 @@ Status HandleGcsError(rpc::GcsStatus status) {
 
 }  // namespace
 
-// Make `num_retries` attempts to connect to the GCS.
+// If never connected to GCS: Make `num_retries` attempts to connect to
+// the GCS.
+//
 // Each whole attempt = (multiple connect attempts) + (1 RPC attempt).
 // - For 1 whole attempt we have `timeout_ms`, no wait between whole attempts.
 // - For 1 connect attempt we retry every 100ms,
 // - For all connect attempts we timeout in 1s (controlled by
 // `python_gcs_client_initial_connect_timeout_ms`).
 //
-// Note: `Connect` is the only method to busy wait the connection to be ready every 100ms.
-// For other methods, with the expectation that a connection had been established, we may
-// wait up to 2s (gcs_grpc_max_reconnect_backoff_ms).
+// If ever connected to GCS: waits for the connection to be ready with exponential
+// backoff.
+//
+// Note: Only the first `Connect` calls busy waits the connection to be ready every 100ms.
+// If the connection was ever connected, we may wait up to 2s
+// (gcs_grpc_max_reconnect_backoff_ms). This is becuase we are pretty confident there's a
+// GCS server running so we can put it a bit slow to reduce CPU load / net stress.
 Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                                 int64_t timeout_ms,
                                 size_t num_retries) {
@@ -193,8 +199,14 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
         << "trying to reconnect with another cluster ID. existing: " << cluster_id_
         << ", new: " << cluster_id;
   }
-  if (channel_ && channel_->GetState(/*try_to_connect=*/false) == GRPC_CHANNEL_READY) {
-    return Status::OK();
+  if (channel_) {
+    auto state = channel_->GetState(/*try_to_connect=*/false);
+    if (state == GRPC_CHANNEL_READY) {
+      return Status::OK();
+    } else {
+      RAY_CHECK(state != GRPC_CHANNEL_SHUTDOWN) << "PythonGcsClient is never shut down";
+      return WaitForChannelReady(*channel_, timeout_ms);
+    }
   }
 
   auto make_one_attempt = [this, timeout_ms](grpc::Channel &channel,
