@@ -328,10 +328,8 @@ if not MOCK:
         with open(tune_trial_dir / "write.txt", "w") as f:
             f.write("trial saved artifact")
 
-    tuner = tune.Tuner(
-        train_func,
-        tune_config=tune.TuneConfig(..., chdir_to_trial_dir=False),
-    )
+    os.environ["RAY_CHDIR_TO_TRIAL_DIR"] = "0"
+    tuner = tune.Tuner(train_func)
     tuner.fit()
     # __no_chdir_end__
 
