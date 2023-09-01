@@ -86,6 +86,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus TimedOut(const c_string &msg)
 
         @staticmethod
+        CRayStatus InvalidArgument(const c_string &msg)
+
+        @staticmethod
         CRayStatus Interrupted(const c_string &msg)
 
         @staticmethod
@@ -115,6 +118,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsOutOfDisk()
         c_bool IsRedisError()
         c_bool IsTimedOut()
+        c_bool IsInvalidArgument()
         c_bool IsInterrupted()
         c_bool ShouldExitWorker()
         c_bool IsObjectNotFound()

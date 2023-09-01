@@ -25,7 +25,7 @@ def valid_exceptions(use_force):
     if use_force:
         return (RayTaskError, TaskCancelledError, WorkerCrashedError, ObjectLostError)
     else:
-        return (RayTaskError, TaskCancelledError)
+        return TaskCancelledError
 
 
 @pytest.mark.parametrize("use_force", [True, False])
