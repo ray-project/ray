@@ -65,7 +65,6 @@ cdef extern from * namespace "ray::gcs" nogil:
       std::string config_list;
       RAY_CHECK(absl::Base64Unescape(config, &config_list));
       RayConfig::instance().initialize(config_list);
-      RayConfig::instance().redis
 
       instrumented_io_context io_service;
 
