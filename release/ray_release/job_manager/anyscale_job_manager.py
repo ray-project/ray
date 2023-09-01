@@ -277,37 +277,22 @@ class AnyscaleJobManager:
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             try:
-                # Fetch logs on the background.
-                p = subprocess.Popen(
+                subprocess.check_output(
                     [
                         "anyscale",
                         "logs",
                         "cluster",
                         "--id",
-                        # self.cluster_manager.cluster_id,
-                        "ses_23i5gdl3mnm5b94tsxa54r45js",
+                        self.cluster_manager.cluster_id,
                         "--head-only",
                         "--download",
                         "--download-dir",
                         tmpdir,
                     ]
                 )
-                # Checking whether the process is still running every 30 seconds and
-                # log message inbetween so the Buildkite agent will stay alive.
-                start_time = time.time()
-                while time.time() - start_time < 3600:
-                    poll = p.poll()
-                    if poll is None:
-                        logger.info(
-                            f"\nStill fetching... waited {time.time() - start_time}s."
-                        )
-                        time.sleep(30)
-                    else:
-                        logger.info("Fetching finished!!!")
-                        break
             except Exception as e:
                 logger.exception(f"Failed to download logs from anyscale {e}")
-                return None
+                return None, None
             return AnyscaleJobManager._find_job_driver_and_ray_error_logs(tmpdir)
 
     @staticmethod
