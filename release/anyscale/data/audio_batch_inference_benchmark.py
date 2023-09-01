@@ -33,6 +33,9 @@ def parse_args():
 
 
 def run_benchmark(args):
+    """Read in ~6GB of audio files (FLAC format) from a nested S3 bucket,
+    and perform speech to text as the batch inference task.
+    Reports the time taken and throughput in bytes."""
     ray.init()
     actor_pool_size = int(ray.cluster_resources().get("GPU"))
 

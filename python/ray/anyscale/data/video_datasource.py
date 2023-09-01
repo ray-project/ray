@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
@@ -38,5 +38,9 @@ class _VideoDatasourceReader(_FileBasedDatasourceReader):
     # (on-disk file size) = 98.81 ~= 100.
     COMPRESSION_RATIO = 100
 
-    def estimate_inmemory_data_size(self) -> int:
-        return sum(self._file_sizes) * self.COMPRESSION_RATIO
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        total_size = 0
+        for sz in self._file_sizes:
+            if sz is not None:
+                total_size += sz
+        return total_size * self.COMPRESSION_RATIO

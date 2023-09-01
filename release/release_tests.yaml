@@ -6414,6 +6414,44 @@
         wait_for_nodes:
           num_nodes: 100
 
+- name: video_batch_inference_benchmark
+  group: data-tests
+  working_dir: anyscale/data
+
+  frequency: nightly
+  team: data
+  python: "3.9"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: video_batch_inference_benchmark_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python video_batch_inference_benchmark.py
+
+  variations:
+    - __suffix__: aws
+
+- name: audio_batch_inference_benchmark
+  group: data-tests
+  working_dir: anyscale/data
+
+  frequency: nightly
+  team: data
+  python: "3.9"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: audio_batch_inference_benchmark_compute.yaml
+
+  run:
+    timeout: 1800
+    script: python audio_batch_inference_benchmark.py
+
+  variations:
+    - __suffix__: aws
+
 ##################
 # Core Chaos tests
 ##################
