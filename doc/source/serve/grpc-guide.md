@@ -17,54 +17,12 @@ This section helps you understand how to:
 To run a gRPC server it starts with first defining gRPC services, rpc methods, and 
 protobufs similar to the one below.
 
-```proto
-// user_defined_protos.proto
-
-syntax = "proto3";
-
-option java_multiple_files = true;
-option java_package = "io.ray.examples.user_defined_protos";
-option java_outer_classname = "UserDefinedProtos";
-
-package userdefinedprotos;
-
-message UserDefinedMessage {
-  string name = 1;
-  string origin = 2;
-  int64 num = 3;
-}
-
-message UserDefinedResponse {
-  string greeting = 1;
-  int64 num = 2;
-}
-
-message UserDefinedMessage2 {}
-
-message UserDefinedResponse2 {
-  string greeting = 1;
-}
-
-message FruitAmounts {
-    int64 orange = 1;
-    int64 apple = 2;
-    int64 banana = 3;
-}
-
-message FruitCosts {
-    float costs = 1;
-}
-
-service UserDefinedService {
-  rpc __call__(UserDefinedMessage) returns (UserDefinedResponse);
-  rpc Multiplexing(UserDefinedMessage2) returns (UserDefinedResponse2);
-  rpc Streaming(UserDefinedMessage) returns (stream UserDefinedResponse);
-}
-
-service FruitService {
-  rpc FruitStand(FruitAmounts) returns (FruitCosts);
-}
+```{literalinclude} doc_code/http_guide/user_defined_protos.proto
+:start-after: __begin_proto__
+:end-before: __end_proto__
+:language: proto
 ```
+
 
 In this example, we created a file named `user_defined_protos.proto`. There are two
 gRPC services, `UserDefinedService` and `FruitService`. `UserDefinedService` has three

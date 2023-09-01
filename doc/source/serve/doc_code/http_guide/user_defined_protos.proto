@@ -1,3 +1,4 @@
+// __begin_proto__
 // user_defined_protos.proto
 
 syntax = "proto3";
@@ -26,13 +27,13 @@ message UserDefinedResponse2 {
 }
 
 message FruitAmounts {
-    int64 orange = 1;
-    int64 apple = 2;
-    int64 banana = 3;
+  int64 orange = 1;
+  int64 apple = 2;
+  int64 banana = 3;
 }
 
 message FruitCosts {
-    float costs = 1;
+  float costs = 1;
 }
 
 service UserDefinedService {
@@ -44,3 +45,4 @@ service UserDefinedService {
 service FruitService {
   rpc FruitStand(FruitAmounts) returns (FruitCosts);
 }
+// __end_proto__
