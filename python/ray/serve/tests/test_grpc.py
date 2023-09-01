@@ -656,6 +656,63 @@ def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     ray.get(signal_actor.send.remote())
 
 
+@pytest.mark.skipif(
+    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
+    reason="Failing on Python 3.7.",
+)
+@pytest.mark.parametrize("streaming", [False, True])
+def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
+    """Test gRPC request error out.
+
+    When the request error out, gRPC proxy should return INTERNAL status and the error
+    message in the response for both unary and streaming request.
+    """
+    if streaming and not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+        print(
+            "Skipping streaming condition because streaming feature flag is disabled."
+        )
+        return
+
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
+    error_message = "test error case"
+
+    @serve.deployment()
+    class HelloModel:
+        def __call__(self, user_message):
+            raise RuntimeError(error_message)
+
+        def Streaming(self, user_message):
+            raise RuntimeError(error_message)
+
+    model = HelloModel.bind()
+    app_name = "app1"
+    serve.run(target=model, name=app_name)
+
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+
+    if streaming:
+        rpc_error = stub.Streaming(request=request)
+    else:
+        with pytest.raises(grpc.RpcError) as exception_info:
+            _ = stub.__call__(request=request)
+        rpc_error = exception_info.value
+
+    assert rpc_error.code() == grpc.StatusCode.INTERNAL
+    assert error_message in rpc_error.details()
+
+
 if __name__ == "__main__":
     import sys
     import pytest

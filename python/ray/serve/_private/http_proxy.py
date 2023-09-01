@@ -700,6 +700,14 @@ class gRPCProxy(GenericProxy):
             response=response_proto.SerializeToString(),
         )
 
+    def _set_internal_error_response(
+        self, proxy_request: ProxyRequest, error: Exception
+    ) -> ProxyResponse:
+        status_code = grpc.StatusCode.INTERNAL
+        proxy_request.send_status_code(status_code=status_code)
+        proxy_request.send_details(message=str(error))
+        return ProxyResponse(status_code=str(status_code))
+
     def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
@@ -818,6 +826,9 @@ class gRPCProxy(GenericProxy):
 
             except StopAsyncIteration:
                 break
+            except Exception as e:
+                self._set_internal_error_response(proxy_request, e)
+                break
 
     async def _consume_generator_stream(
         self,
@@ -905,7 +916,7 @@ class gRPCProxy(GenericProxy):
 
         except Exception as e:
             logger.exception(e)
-            return ProxyResponse(status_code=str(grpc.StatusCode.INTERNAL))
+            return self._set_internal_error_response(proxy_request, e)
 
 
 class HTTPProxy(GenericProxy):
