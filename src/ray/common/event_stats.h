@@ -148,6 +148,8 @@ class EventTracker {
   /// DebugString().
   std::string StatsString() const LOCKS_EXCLUDED(mutex_);
 
+  std::atomic<int64_t> num_grpc_clients_;
+
  private:
   using EventStatsTable =
       absl::flat_hash_map<std::string, std::shared_ptr<GuardedEventStats>>;

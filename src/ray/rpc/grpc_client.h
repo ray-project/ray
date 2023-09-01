@@ -92,6 +92,7 @@ class GrpcClient {
       : client_call_manager_(call_manager), use_tls_(use_tls) {
     channel_ = std::move(channel);
     stub_ = GrpcService::NewStub(channel_);
+    client_call_manager_.GetMainService().stats().num_grpc_clients_.fetch_add(1);
   }
 
   GrpcClient(const std::string &address,
@@ -101,6 +102,7 @@ class GrpcClient {
       : client_call_manager_(call_manager), use_tls_(use_tls) {
     channel_ = BuildChannel(address, port, CreateDefaultChannelArguments());
     stub_ = GrpcService::NewStub(channel_);
+    client_call_manager_.GetMainService().stats().num_grpc_clients_.fetch_add(1);
   }
 
   GrpcClient(const std::string &address,
@@ -120,6 +122,11 @@ class GrpcClient {
 
     channel_ = BuildChannel(address, port, argument);
     stub_ = GrpcService::NewStub(channel_);
+    client_call_manager_.GetMainService().stats().num_grpc_clients_.fetch_add(1);
+  }
+
+  ~GrpcClient() {
+    client_call_manager_.GetMainService().stats().num_grpc_clients_.fetch_add(-1);
   }
 
   /// Create a new `ClientCall` and send request.

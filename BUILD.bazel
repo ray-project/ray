@@ -122,11 +122,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":stats_metric",
-        "//src/ray/common:asio",
-        "//src/ray/common:grpc_util",
-        "//src/ray/common:id",
-        "//src/ray/common:ray_config",
-        "//src/ray/common:status",
+        ":ray_common",
         "@com_github_grpc_grpc//:grpc++",
         "@com_github_grpc_grpc//:grpc++_reflection",
         "@com_github_grpc_grpc//:grpcpp_admin",

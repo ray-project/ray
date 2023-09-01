@@ -232,5 +232,6 @@ std::string EventTracker::StatsString() const {
                << ", total = " << to_human_readable(cum_execution_time);
   stats_stream << "\nEvent stats:";
   stats_stream << event_stats_stream.rdbuf();
+  stats_stream << "\nNum grpc clients: " << num_grpc_clients_.load();
   return stats_stream.str();
 }
