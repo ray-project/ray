@@ -5,7 +5,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest_docker import *  # noqa
 
 
-# @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_ray_nodes_liveness(docker_cluster):
     get_nodes_script = """
 import ray
@@ -18,8 +18,6 @@ print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
         output = worker.exec_run(cmd=f"python -c '{get_nodes_script}'")
         text = output.output.decode().strip().split("\n")[-1]
         print("Output: ", output.output.decode().strip().split("\n"))
-        # print(worker.logs())
-        # print(head.logs())
         assert output.exit_code == 0
         return n == int(text)
 
