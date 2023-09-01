@@ -28,25 +28,29 @@ if TYPE_CHECKING:
     from ray._private.worker import BaseContext
     from ray.actor import ActorHandle
 
-class PoolActor(TypedDict):
+class _PoolActor(TypedDict):
     actor: "ActorHandle"
     task_count: int
 
-class RoundRobinActorPool:
+class _RoundRobinActorPool:
 
     """ This class manages a pool of Ray actors by distributing tasks amongst
     them in a simple round-robin fashion. Functions are executed remotely in
     the actor pool using `submit()`.
 
-    Args:
-        num_actors:
-            Specify the size of the actor pool to create.
-        initializer:
-            A function that will be called remotely in the actor context before the submitted task (for compatibility with `concurrent.futures.ThreadPoolExecutor`).
-        initargs:
-            Arguments for `initializer` (for compatibility with concurrent.futures.ThreadPoolExecutor).
-        max_tasks_per_actor:
-            The maximum number of tasks to be performed by an actor before it is gracefully killed and replaced (for compatibility with `concurrent.futures.ProcessPoolExecutor`).
+    ...
+
+    Attributes:
+    -----------
+    num_actors : int
+        Specify the size of the actor pool to create.
+    initializer : Callable
+        A function that will be called remotely in the actor context before the submitted task (for compatibility with `concurrent.futures.ThreadPoolExecutor`).
+    initargs : tuple
+        Arguments for `initializer` (for compatibility with concurrent.futures.ThreadPoolExecutor).
+    max_tasks_per_actor : int
+        The maximum number of tasks to be performed by an actor before it is gracefully killed and replaced (for compatibility with `concurrent.futures.ProcessPoolExecutor`).
+
     """
 
     def __init__(self,
@@ -67,18 +71,51 @@ class RoundRobinActorPool:
             raise ValueError("Pool must contain at least one Actor")
         self.initializer = initializer
         self.initargs = initargs
-        self.pool: Dict[int, PoolActor] = {i: self._build_actor()  for i in range(num_actors)}
+        self.pool: Dict[int, _PoolActor] = {i: self._build_actor()  for i in range(num_actors)}
         self.index: int = 0
 
     def next(self) -> "ActorHandle":
+        """
+        Get the next indexed member of the actor pool
+
+        Returns
+        -------
+        ActorHandle
+            A handle referring to the current actor in the pool
+        """
         obj = self.pool[self.index]["actor"]
         self.index += 1
         if self.index >= len(self.pool):
             self.index = 0
         return obj
 
-    def _build_actor(self) -> PoolActor:
+    def submit(self, fn: Callable[[], T]) -> Future[T]:
+        """
+        Submit a task to be executed on the actor.
 
+        Parameters
+        ----------
+        fn : Callable
+            This 0-arity function will be executed as a task on the actor.
+
+        Returns
+        -------
+        Future
+            A future representing the result of the task
+
+        """
+        self._replace_actor_if_max_tasks()
+        self._increment_task_count()
+        return self.next().actor_function.remote(fn).future()  # type: ignore
+
+    def kill(self) -> None:
+        """
+        Kill all of the actors in the pools without waiting for their tasks to complete
+        """
+        for i in self.pool:
+            self._kill_actor(i)
+
+    def _build_actor(self) -> _PoolActor:
         @ray.remote
         class ExecutorActor:
             def __init__(self,
@@ -104,17 +141,8 @@ class RoundRobinActorPool:
                 self._exit_actor(self.index)
                 self.pool[self.index] = self._build_actor()
 
-    def submit(self, fn: Callable[[], T]) -> Future[T]:
-        self._replace_actor_if_max_tasks()
-        self._increment_task_count()
-        return self.next().actor_function.remote(fn).future()  # type: ignore
-
     def _increment_task_count(self) -> None:
         self.pool[self.index]["task_count"] += 1
-
-    def kill(self) -> None:
-        for i in self.pool:
-            self._kill_actor(i)
 
     def _kill_actor(self, i: int) -> None:
         pool_actor = self.pool[i]
@@ -227,7 +255,7 @@ class RayExecutor(Executor):
             )
         self.max_workers = max_workers
 
-        self.actor_pool = RoundRobinActorPool(
+        self.actor_pool = _RoundRobinActorPool(
                 num_actors=max_workers,
                 initializer=initializer,
                 initargs=initargs,
