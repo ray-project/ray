@@ -122,13 +122,17 @@ class HTTPProxyState:
 
     def _health_check(self):
         """Perform periodic health checks."""
+        assert self._status in {HTTPProxyStatus.HEALTHY, HTTPProxyStatus.DRAINING}
+
         if self._health_check_obj_ref:
             finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
             if finished:
                 self._health_check_obj_ref = None
                 try:
                     ray.get(finished[0])
-                    self.try_update_status(HTTPProxyStatus.HEALTHY)
+                    # Call to reset _consecutive_health_check_failures
+                    # the status should be unchanged.
+                    self.try_update_status(self._status)
                 except ray.exceptions.RayActorError:
                     # The proxy actor dies.
                     self.set_status(HTTPProxyStatus.UNHEALTHY)
@@ -346,8 +350,11 @@ class HTTPProxyStateManager:
             for proxy_state in self._proxy_states.values()
         )
 
-    def get_config(self):
+    def get_config(self) -> HTTPOptions:
         return self._config
+
+    def get_grpc_config(self) -> gRPCOptions:
+        return self._grpc_options
 
     def get_http_proxy_handles(self) -> Dict[NodeId, ActorHandle]:
         return {

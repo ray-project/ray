@@ -111,6 +111,8 @@ class AccelerateTrainer(TorchTrainer):
     Example:
         .. testcode::
 
+            import os
+            import tempfile
             import torch
             import torch.nn as nn
 
@@ -184,16 +186,20 @@ class AccelerateTrainer(TorchTrainer):
                         if epoch % 20 == 0:
                             print(f"epoch: {epoch}/{num_epochs}, loss: {loss:.3f}")
 
+                    # Create checkpoint.
+                    base_model=accelerator.unwrap_model(model)
+                    checkpoint_dir = tempfile.mkdtemp()
+                    torch.save(
+                        {"model_state_dict": base_model.state_dict()},
+                        os.path.join(checkpoint_dir, "model.pt"),
+                    )
+                    checkpoint = Checkpoint.from_directory(checkpoint_dir)
+
                     # Report and record metrics, checkpoint model at end of each
                     # epoch
                     train.report(
                         {"loss": loss.item(), "epoch": epoch},
-                        checkpoint=Checkpoint.from_dict(
-                            dict(
-                                epoch=epoch,
-                                model=accelerator.unwrap_model(model).state_dict(),
-                            )
-                        ),
+                        checkpoint=checkpoint
                     )
 
 

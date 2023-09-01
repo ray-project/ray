@@ -2,6 +2,8 @@
 # isort: skip_file
 
 # __air_session_start__
+import os
+import tempfile
 
 import tensorflow as tf
 from ray import train
@@ -30,8 +32,9 @@ def train_func():
     else:
         model = build_model()
 
-    model.save("my_model", overwrite=True)
-    train.report(metrics={"iter": 1}, checkpoint=Checkpoint.from_directory("my_model"))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        model.save(tmpdir, overwrite=True)
+        train.report(metrics={"iter": 1}, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 scaling_config = ScalingConfig(num_workers=2)
@@ -45,7 +48,7 @@ trainer2 = TensorflowTrainer(
     train_loop_per_worker=train_func,
     scaling_config=scaling_config,
     # this is ultimately what is accessed through
-    # ``Session.get_checkpoint()``
+    # ``train.get_checkpoint()``
     resume_from_checkpoint=result.checkpoint,
 )
 result2 = trainer2.fit()

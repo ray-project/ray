@@ -6,9 +6,9 @@ try:
 except ImportError:
     from distutils.version import LooseVersion as Version
 
-from ray.air.checkpoint import Checkpoint
-from ray.air.constants import MODEL_KEY
+from ray.train import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
+from ray.train.lightgbm import LightGBMCheckpoint
 from ray.util.annotations import PublicAPI
 
 import lightgbm
@@ -102,7 +102,11 @@ class LightGBMTrainer(GBDTTrainer):
     def get_model(checkpoint: Checkpoint) -> lightgbm.Booster:
         """Retrieve the LightGBM model stored in this checkpoint."""
         with checkpoint.as_directory() as checkpoint_path:
-            return lightgbm.Booster(model_file=os.path.join(checkpoint_path, MODEL_KEY))
+            return lightgbm.Booster(
+                model_file=os.path.join(
+                    checkpoint_path, LightGBMCheckpoint.MODEL_FILENAME
+                )
+            )
 
     def _train(self, **kwargs):
         return lightgbm_ray.train(**kwargs)
@@ -111,7 +115,7 @@ class LightGBMTrainer(GBDTTrainer):
         return self.__class__.get_model(checkpoint)
 
     def _save_model(self, model: lightgbm.LGBMModel, path: str):
-        model.booster_.save_model(path)
+        model.booster_.save_model(os.path.join(path, LightGBMCheckpoint.MODEL_FILENAME))
 
     def _model_iteration(
         self, model: Union[lightgbm.LGBMModel, lightgbm.Booster]
