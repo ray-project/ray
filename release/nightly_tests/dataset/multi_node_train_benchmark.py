@@ -1,12 +1,7 @@
 import ray
 from ray import train
-from ray.actor import ActorHandle
 from ray.train import DataConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
-from ray.data._internal.execution.interfaces import NodeIdStr
-from ray.data._internal.execution.interfaces.execution_options import ExecutionOptions
-from ray.data.dataset import Dataset
-from ray.data.iterator import DataIterator
 
 import torch.distributed as dist
 import numpy as np
@@ -17,10 +12,6 @@ from benchmark import Benchmark, BenchmarkMetric
 import time
 import torchvision
 import torch
-
-from typing import Union, Literal, List, Optional, Dict
-from ray._private.internal_api import memory_summary
-import re
 
 
 # This benchmark does the following:
@@ -106,9 +97,10 @@ def parse_args():
         # use default datasets if data root is not provided
         if args.file_type == "image":
             # 1GB ragged dataset
-            args.data_root = "s3://imagenetmini-1000-1gb"
+            args.data_root = "s3://imagenetmini1000/1gb/train/"
+
             # Alternative larger dataset
-            # args.data_root = "s3://air-example-data-2/20G-image-data-synthetic-raw"  # noqa: E501
+            # args.data_root = "s3://air-example-data-2/10G-image-data-synthetic-raw"  # noqa: E501
 
         elif args.file_type == "parquet":
             args.data_root = (
@@ -153,19 +145,54 @@ def crop_and_flip_image(row):
     return row
 
 
+def train_loop_per_worker():
+    it = train.get_dataset_shard("train")
+    device = train.torch.get_device()
+
+    for i in range(args.num_epochs):
+        print(f"Epoch {i+1} of {args.num_epochs}")
+        num_rows = 0
+        start_t = time.time()
+        for batch in it.iter_torch_batches(
+            batch_size=args.batch_size,
+        ):
+            num_rows += args.batch_size
+        end_t = time.time()
+
+    # Workaround to report the final epoch time from each worker, so that we
+    # can sum up the times at the end when calculating throughput.
+    world_size = ray.train.get_context().get_world_size()
+    all_workers_time_list = [
+        torch.zeros((2), dtype=torch.double, device=device) for _ in range(world_size)
+    ]
+    curr_worker_time = torch.tensor([start_t, end_t], dtype=torch.double, device=device)
+    dist.all_gather(all_workers_time_list, curr_worker_time)
+
+    all_num_rows = [
+        torch.zeros((1), dtype=torch.int32, device=device) for _ in range(world_size)
+    ]
+    curr_num_rows = torch.tensor([num_rows], dtype=torch.int32, device=device)
+    dist.all_gather(all_num_rows, curr_num_rows)
+
+    train.report(
+        {
+            "time_final_epoch": [tensor.tolist() for tensor in all_workers_time_list],
+            "num_rows": [tensor.item() for tensor in all_num_rows],
+        }
+    )
+
+
 def benchmark_code(
     args,
     cache_output_ds=False,
     cache_input_ds=False,
-    prepartition_ds=False,
 ):
     """
     - cache_output_ds: Cache output dataset (ds.materialize()) after preprocessing fn.
     - cache_input_ds: Cache input dataset, then apply a preprocessing fn.
-    - prepartition_ds: Pre-partition and cache input dataset across workers.
     """
     assert (
-        sum([cache_output_ds, cache_input_ds, prepartition_ds]) <= 1
+        sum([cache_output_ds, cache_input_ds]) <= 1
     ), "Can only test one caching variant at a time"
 
     # 1) Read in data with read_images() / read_parquet()
@@ -189,86 +216,9 @@ def benchmark_code(
     if cache_output_ds:
         ray_dataset = ray_dataset.materialize()
 
-    def train_loop_per_worker():
-        it = train.get_dataset_shard("train")
-        device = train.torch.get_device()
-
-        for i in range(args.num_epochs):
-            print(f"Epoch {i+1} of {args.num_epochs}")
-            num_rows = 0
-            start_t = time.time()
-            for batch in it.iter_torch_batches(
-                batch_size=args.batch_size,
-            ):
-                num_rows += args.batch_size
-            end_t = time.time()
-        # Workaround to report the final epoch time from each worker, so that we
-        # can sum up the times at the end when calculating throughput.
-        world_size = ray.train.get_context().get_world_size()
-        all_workers_time_list = [
-            torch.zeros((2), dtype=torch.double, device=device)
-            for _ in range(world_size)
-        ]
-        curr_worker_time = torch.tensor(
-            [start_t, end_t], dtype=torch.double, device=device
-        )
-        dist.all_gather(all_workers_time_list, curr_worker_time)
-
-        all_num_rows = [
-            torch.zeros((1), dtype=torch.int32, device=device)
-            for _ in range(world_size)
-        ]
-        curr_num_rows = torch.tensor([num_rows], dtype=torch.int32, device=device)
-        dist.all_gather(all_num_rows, curr_num_rows)
-
-        train.report(
-            {
-                "time_final_epoch": [
-                    tensor.tolist() for tensor in all_workers_time_list
-                ],
-                "num_rows": [tensor.item() for tensor in all_num_rows],
-            }
-        )
-
     # 3) Train TorchTrainer on processed data
     options = DataConfig.default_ingest_options()
     options.preserve_order = args.preserve_order
-
-    if prepartition_ds:
-
-        class PrepartitionCacheDataConfig(DataConfig):
-            """Instead of using streaming_split to split the dataset amongst workers,
-            pre-partition using Dataset.split(), cache the materialized shards,
-            and assign to each worker."""
-
-            def __init__(
-                self,
-                datasets_to_split: Union[Literal["all"], List[str]] = "all",
-                execution_options: Optional[ExecutionOptions] = None,
-            ):
-                super().__init__(datasets_to_split, execution_options)
-
-            def configure(
-                self,
-                datasets: Dict[str, Dataset],
-                world_size: int,
-                worker_handles: Optional[List[ActorHandle]],
-                worker_node_ids: Optional[List[NodeIdStr]],
-                **kwargs,
-            ) -> List[Dict[str, DataIterator]]:
-                assert len(datasets) == 1, "This example only handles the simple case"
-
-                # Split the dataset into shards, materializing the results.
-                materialized_shards = datasets["train"].split(
-                    world_size, locality_hints=worker_handles
-                )
-
-                # Return the assigned shards for each worker.
-                return [{"train": s} for s in materialized_shards]
-
-        dataset_config_cls = PrepartitionCacheDataConfig
-    else:
-        dataset_config_cls = ray.train.DataConfig
 
     if args.num_workers == 1 or args.use_gpu:
         torch_trainer = TorchTrainer(
@@ -278,7 +228,7 @@ def benchmark_code(
                 num_workers=args.num_workers,
                 use_gpu=args.use_gpu,
             ),
-            dataset_config=dataset_config_cls(
+            dataset_config=ray.train.DataConfig(
                 execution_options=options,
             ),
         )
@@ -286,12 +236,15 @@ def benchmark_code(
         torch_trainer = TorchTrainer(
             train_loop_per_worker,
             datasets={"train": ray_dataset},
+            # In the multi-node case without GPUs, we use a SPREAD placement strategy
+            # to ensure that tasks are spread across nodes. We reserve one worker
+            # for the driver.
             scaling_config=ScalingConfig(
                 num_workers=args.num_workers - 1,
                 use_gpu=args.use_gpu,
                 placement_strategy="STRICT_SPREAD",
             ),
-            dataset_config=dataset_config_cls(
+            dataset_config=ray.train.DataConfig(
                 execution_options=options,
             ),
         )
@@ -306,34 +259,8 @@ def benchmark_code(
     num_rows_last_epoch = sum(result.metrics["num_rows"])
     tput_last_epoch = num_rows_last_epoch / runtime_last_epoch
 
-    # Get spilled/restored stats
-    mem_summary = memory_summary(
-        address=ray._private.worker._global_node.address, stats_only=True
-    )
-    memory_stats = {}
-    spill_extract = re.search(r"Spilled (\d+) MiB, (\d+) objects", mem_summary)
-    if spill_extract:
-        spilled_bytes, spilled_object_count = spill_extract.group(
-            1
-        ), spill_extract.group(2)
-        memory_stats.update(
-            {"spilled_mb": spilled_bytes, "spilled_object_count": spilled_object_count}
-        )
-    restored_extract = re.search(r"Restored (\d+) MiB, (\d+) objects", mem_summary)
-    if restored_extract:
-        restored_bytes, restored_object_count = restored_extract.group(
-            1
-        ), restored_extract.group(2)
-        memory_stats.update(
-            {
-                "restored_mb": restored_bytes,
-                "restored_object_count": restored_object_count,
-            }
-        )
-
     return {
         BenchmarkMetric.THROUGHPUT.value: tput_last_epoch,
-        BenchmarkMetric.MEMORY_STATS.value: memory_stats,
     }
 
 

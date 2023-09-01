@@ -14,7 +14,6 @@ from enum import Enum
 class BenchmarkMetric(Enum):
     RUNTIME = "time"
     THROUGHPUT = "tput"
-    MEMORY_STATS = "memory_stats"
 
 
 class Benchmark:
