@@ -6,7 +6,6 @@ from typing import (
     Callable,
     Iterable,
     Iterator,
-    List,
     Optional,
     ParamSpec,
     TYPE_CHECKING,
@@ -36,20 +35,20 @@ class _RoundRobinActorPool:
 
     """ This class manages a pool of Ray actors by distributing tasks amongst
     them in a simple round-robin fashion. Functions are executed remotely in
-    the actor pool using `submit()`.
+    the actor pool using submit().
 
     ...
 
-    Attributes:
+    Attributes
     -----------
     num_actors : int
         Specify the size of the actor pool to create.
     initializer : Callable
-        A function that will be called remotely in the actor context before the submitted task (for compatibility with `concurrent.futures.ThreadPoolExecutor`).
+        A function that will be called remotely in the actor context before the submitted task (for compatibility with concurrent.futures.ThreadPoolExecutor).
     initargs : tuple
-        Arguments for `initializer` (for compatibility with concurrent.futures.ThreadPoolExecutor).
+        Arguments for initializer (for compatibility with concurrent.futures.ThreadPoolExecutor).
     max_tasks_per_actor : int
-        The maximum number of tasks to be performed by an actor before it is gracefully killed and replaced (for compatibility with `concurrent.futures.ProcessPoolExecutor`).
+        The maximum number of tasks to be performed by an actor before it is gracefully killed and replaced (for compatibility with concurrent.futures.ProcessPoolExecutor).
 
     """
 
@@ -63,8 +62,8 @@ class _RoundRobinActorPool:
         if max_tasks_per_actor is not None:
             if max_tasks_per_actor < 1:
                 raise ValueError(
-                    f"`max_tasks_per_child={max_tasks_per_actor}` was given. The argument \
-                    `max_tasks_per_child` must be >= 1 or None"
+                    f"max_tasks_per_child={max_tasks_per_actor} was given. The argument \
+                    max_tasks_per_child must be >= 1 or None"
                 )
         self.max_tasks_per_actor = max_tasks_per_actor
         if num_actors < 1:
@@ -158,29 +157,49 @@ class _RoundRobinActorPool:
 
 @PublicAPI(stability="alpha")  # type: ignore
 class RayExecutor(Executor):
-    """`RayExecutor` is a drop-in replacement for `ProcessPoolExecutor` and
-    `ThreadPoolExecutor` from `concurrent.futures` but distributes and executes
-    the specified tasks over a Ray cluster instead of multiple processes or
-    threads.
 
-    Args:
-        max_workers:
-            If max_workers=None, the work is distributed over the number of
-            CPUs available in the cluster (num_cpus) , otherwise the number of
-            CPUs is limited to the value of max_workers (this does not
-            necessarily limit the number of parallel tasks, which is determined
-            by how many CPUs each task uses).
+    """RayExecutor is a drop-in replacement for ProcessPoolExecutor and
+    ThreadPoolExecutor from concurrent.futures but distributes and executes
+    the specified tasks over a pool of dedicated actors belonging to a Ray
+    cluster instead of multiple processes or threads, respectively.
 
-        All additional keyword arguments are passed to ray.init()
-        (see https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).
+    Attributes
+    ----------
+    max_workers : int | None
+        The number of actors to spawn. If max_workers=None, the work is
+        distributed over a number of actors equal to the number of CPU
+        resources observed by the Ray instance.
+    shutdown_ray : bool | None
+        Destroy the Ray cluster when self.shutdown() is called. If this is
+        None, RayExecutor will default to shutting down the Ray instance only
+        if it was initialised during instantiation of the current RayExecutor,
+        otherwise it will not be shutdown.
+    initializer : Callable[..., Any] | None
+        A function that will be called remotely in the actor context before the submitted task (for compatibility with concurrent.futures.ThreadPoolExecutor).
+    initargs : tuple[Any, ...] | None
+        Arguments for initializer (for compatibility with concurrent.futures.ThreadPoolExecutor).
+    max_tasks_per_child : int | None
+        The maximum number of tasks to be performed by an actor before it is gracefully killed and replaced (for compatibility with concurrent.futures.ProcessPoolExecutor).
+    mp_context : Any | None
+        This is only included for compatibility with concurrent.futures.ProcessPoolExecutor but is unused.
+    futures : list[Future[Any]]
+        Aggregated Futures from initiated tasks
+    actor_pool : _RoundRobinActorPool
+            An object containing a set of Actor objects over which the tasks will be distributed.
 
-        For example, this will connect to a cluster at the specified address:
-        .. code-block:: python
+    All additional keyword arguments are passed to ray.init()
+    (see https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).
 
-            RayExecutor(address='192.168.0.123:25001')
+    For example, this will connect to a cluster at the specified address:
+    .. code-block:: python
 
-        Note: excluding an address will initialise a local Ray cluster.
+        RayExecutor(address='192.168.0.123:25001')
+
+    Note: excluding an address will initialise a local Ray cluster.
     """
+
+    futures: list[Future[Any]]
+    actor_pool: _RoundRobinActorPool
 
     def __init__(
         self,
@@ -188,13 +207,12 @@ class RayExecutor(Executor):
         shutdown_ray: Optional[bool] = None,
         initializer: Optional[Callable[..., Any]] = None,
         initargs: tuple[Any, ...] = (),
-        mp_context: Optional[Any] = None,
         max_tasks_per_child: Optional[int] = None,
+        mp_context: Optional[Any] = None,
         **kwargs: Any,
     ):
 
-        """Initialise a new RayExecutor instance which distributes tasks over
-        a Ray cluster. RayExecutor handles existing Ray instances and shutting
+        """RayExecutor handles existing Ray instances and shutting
         down as follows:
 
             1. If an existing cluster is discovered in the current scope,
@@ -209,49 +227,37 @@ class RayExecutor(Executor):
 
             3. If RayExecutor.shutdown_ray is set to True or False, this will
             override the behaviour above.
-
-        self.shutdown_ray:
-            Destroy the Ray cluster when self.shutdown() is called. If this is
-            `None`, RayExecutor will default to shutting down the Ray instance
-            if it was initialised during instantiation of the RayExecutor,
-            otherwise it will not be shutdown (see above).
-
-        self.futures:
-            Futures are aggregated into this list as they are returned.
-
-        self.actor_pool:
-            An object containing a set of Actor objects over which the tasks will be distributed.
         """
         self._shutdown_lock: bool = False
         self._initialised_ray: bool = not ray.is_initialized()
         self._context: "BaseContext" = ray.init(ignore_reinit_error=True, **kwargs)
-        self.futures: List[Future[Any]] = []
+        self.futures: list[Future[Any]] = []
         self.shutdown_ray = shutdown_ray
 
-        # mp_context is included for API consistency only, it does nothing in this context
+        # mp_context is included for API compatiblity only, it does nothing in this context
         self._mp_context = mp_context
 
         if max_tasks_per_child is not None:
             if max_tasks_per_child < 1:
                 raise ValueError(
-                    f"`max_tasks_per_child={max_tasks_per_child}` was given. The argument \
-                    `max_tasks_per_child` must be >= 1 or None"
+                    f"max_tasks_per_child={max_tasks_per_child} was given. The argument \
+                    max_tasks_per_child must be >= 1 or None"
                 )
         self.max_tasks_per_child = max_tasks_per_child
 
         if initializer is not None:
             runtime_env = kwargs.get("runtime_env")
             if runtime_env is None or "working_dir" not in runtime_env:
-                raise ValueError(f"`working_dir` must be specified in `runtime_env` dictionary if \
-                                 `initializer` function is not `None` so that \
+                raise ValueError(f"working_dir must be specified in runtime_env dictionary if \
+                                 initializer function is not None so that \
                                  it can be accessible by remote workers")
 
         if max_workers is None:
             max_workers = int(ray._private.state.cluster_resources()["CPU"])
         if max_workers < 1:
             raise ValueError(
-                f"`max_workers={max_workers}` as given. The argument \
-                `max_workers` must be >= 1"
+                f"max_workers={max_workers} as given. The argument \
+                max_workers must be >= 1"
             )
         self.max_workers = max_workers
 
@@ -265,14 +271,18 @@ class RayExecutor(Executor):
     def submit(
         self, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs
     ) -> Future[T]:
-        """Submits a callable to be executed with the given arguments.
+        """
+        Submits a function to be executed in the actor pool with the given arguments.
 
-        Schedules the callable to be executed as `fn(*args, **kwargs)` and
-        returns a Future instance representing the execution of the callable.
-        Futures are also collected in self.futures.
+        Parameters
+        -----------
+        fn : Callable[]
+            A function to be executed in the actor pool as fn(*args, **kwargs)
 
-        Returns:
-            A Future representing the given call.
+        Returns
+        -------
+        Future
+            A future representing the yet-to-be-resolved result of the submitted task. Futures are also collected in self.futures.
 
         Usage example:
 
@@ -324,22 +334,29 @@ class RayExecutor(Executor):
         will be zipped together, and each zipped tuple will be treated as a
         single set of arguments.
 
-        Args:
-            fn: A callable that will take as many arguments as there are
-                passed iterables.
-            timeout: The maximum number of seconds to wait. If None, then there
-                is no limit on the wait time.
-            chunksize: chunksize has no effect and is included merely to retain
-                the same type as super().map()
+        Parameters
+        ----------
+        fn : Callable[]
+            A function to be executed in the actor pool which will take as many
+            arguments as there are iterables.
+        timeout : float | None
+            The maximum number of seconds to wait for the tasks to complete. If
+            None, then there is no limit on the wait time.
+        chunksize : int
+            This has no effect and is included merely to retain compatibility
+            with concurrent.futures.Executor.
 
-        Returns:
-            An iterator equivalent to: `map(func, *iterables)` but the calls may
+        Returns
+        -------
+        Iterator
+            An iterator equivalent to: map(func, *iterables) but the calls may
             be evaluated out-of-order.
 
-        Raises:
+        Raises
+        ------
             TimeoutError: If the entire result iterator could not be generated
                 before the given timeout.
-            Exception: If `fn(*args)` raises for any values.
+            Exception: If fn(*args) raises for any values.
 
         Usage example 1:
 
@@ -362,6 +379,9 @@ class RayExecutor(Executor):
 
         """
         self._check_shutdown_lock()
+
+        # this is unused and merely for  compatibility with concurrent.futures.Executor
+        self.chunksize = chunksize
 
         end_time = None
         if timeout is not None:
