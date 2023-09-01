@@ -28,5 +28,9 @@ def test_job_driver_inheritance(ray_start_cluster):
     pass
 
 
+def test_runtime_env_hook_triggered_job_submission(ray_start_cluster):
+    pass
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
