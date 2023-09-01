@@ -72,5 +72,7 @@ You can control where to store training results locally with the ``RAY_STORAGE``
 environment variable.
 
 For instance, if you set ``RAY_STORAGE="s3://my_bucket/train_results"``, your
-results will automatically persisted there per default (when no
-:prop:`RunConfig.storage_path <ray.train.RunConfig.storage_path>` is set).
+results will automatically persisted there per default.
+
+If you manually set a :attr:`RunConfig.storage_path <ray.train.RunConfig.storage_path>`, it
+will take precedence over the environment variable.

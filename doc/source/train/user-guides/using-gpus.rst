@@ -11,29 +11,32 @@ is the :class:`~ray.train.ScalingConfig`.
 
 Key concepts
 ------------
+To understand how to configure scale best, this sections reviews concepts that relate
+to Ray clusters and distributed training.
+
 .. figure:: ../images/train_cluster_overview.png
     :align: center
     :width: 400px
 
 - **Cluster**: This is the :ref:`Ray cluster <cluster-index>` on which the training is
   executed. There is only one Ray cluster your code interacts with.
-- **Node**: A node is one machine connected to the Ray cluster that can execute code.
-  This can e.g. be a Physical Machine, a Virtual Machine, or a Kubernetes Pod.
-  The :ref:`Head Node <cluster-head-node>` is usually your entrypoint and where you
+- **Node**: A node is one machine connected to the Ray cluster.
+  For instance, this can be a Physical Machine, a Virtual Machine, or a Kubernetes Pod.
+  The :ref:`Head Node <cluster-head-node>` is usually where you
   execute your script (but you can also execute it on any other node).
-  The cluster can comprise of many hundreds of nodes. Each node has specific
+  The cluster can comprise of one to many hundreds of nodes. Each node has specific
   :ref:`Resources <core-resources>`, such as CPUs, GPUs, memory, or
   :ref:`custom resources <custom-resources>`.
 - **Driver**: This is the script you are executing. It's called the driver as it is
   responsible for scheduling the Ray actors and tasks (it's "driving" the execution).
 - **Trainer**: The trainer object you instantiate in Ray Train. This lives in two
   places: First, you create it in the Driver script. Then, when you call
-  :meth:`Trainer.fit() <ray.train.base_trainer.BaseTrainer.fit>`, a copy will be
+  :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>`, a copy will be
   created as a :ref:`Ray Actor <actor-key-concept>`.
 - **(Train) Worker**: In the context of Ray Train, we often refer to training workers.
   Technically, these are also :ref:`Ray Actors <actor-key-concept>` that execute
-  your training loop. You can specify an arbitrary number of workers. It can be
-  more or less than the number of nodes. In the figure, we show two number
+  your training loop. You can specify an arbitrary number of workers. The number of workers
+  can be more or less than the number of nodes. In the figure, we show two
   training workers per node.
 
 Unfortunately, the term "worker" is used differently in different contexts. In Ray
@@ -248,11 +251,13 @@ There are a few questions you should ask yourself:
 
 The general recommendation is:
 
-- Use as few workers per node as possible (while still achieving **full cluster utilization**)
-- Use as few nodes as possible (while still achieving your **time/cost goals**)
+- Use **as few workers per node as possible** while still achieving **full resource utilization**
+
+Once you decided on a number of workers per node, you can increase the parallelism
+by adding more nodes and scheduling more workers.
 
 Data memory usage
-.................
+~~~~~~~~~~~~~~~~~
 How large is your data? Does it have to fit into the machine or accelerator memory,
 or can it be loaded and processed in a streaming fashion?
 
@@ -263,11 +268,11 @@ a low number of workers per node to reduce network congestion.
 If all data has to fit into memory at the same time, make sure each node has enough
 memory available.
 
-In order to reduce memory usage per node, you can increase the number of workers
-(for data parallel training). Naturally, you should then schedule less workers per node.
+In order to reduce memory usage per node, you can increase the number of workers and
+nodes (for data parallel training).
 
 Model memory usage
-..................
+~~~~~~~~~~~~~~~~~~
 How large is the model you are training? Can it fit into CPU/GPU memory?
 
 If you're training a large model on GPUs, make sure that the GPU memory can hold
@@ -277,7 +282,7 @@ backwards pass. This means the GPU memory usage scales linearly with the
 training batch size.
 
 Multi GPU training
-..................
+~~~~~~~~~~~~~~~~~~
 If you want to train your model on multiple GPUs you can choose between using
 multiple nodes with 1 GPU each, or one node with multiple GPUs (or a mix).
 
@@ -286,18 +291,24 @@ with many GPUs can be beneficial. This is because the GPUs of one machine can
 communicate directly with each other (e.g. via NCCL), and don't need to utilize the
 (slower) network.
 
+In this case, set the number of GPUs per worker to 1, the number of CPUs per worker
+to ``# CPUs per node / # GPUs per node``, and the number of workers to the number
+of total GPUs in the cluster.
+
 If data loading is an issue, or if the training also requires heavy use of CPU
 compute or memory, scheduling on multiple nodes with 1 GPU each can be a good alternative.
 
 CPU only training
-.................
+~~~~~~~~~~~~~~~~~
 When you're running CPU only training, there is little benefit of scheduling more than
 one worker per node. Most training frameworks can leverage multiple threads on one
 machine. Multi-threading is always faster than parallelization via Ray.
 
+In this case, set the number of CPUs per worker to the number of CPUs per node, and
+the number of workers to the number of nodes.
 
 Network overhead
-................
+~~~~~~~~~~~~~~~~
 In most cases, using fewer nodes with higher resources can lead to better utilization,
 as communication between nodes via network is reduced.
 
@@ -305,7 +316,7 @@ However, if your training job has high memory peaks or loads a lot of data via t
 network, it can make sense to spread the load out to more nodes.
 
 Costs
-.....
+~~~~~
 Theoretically, doubling the amount of cluster resources (and utilizing them) should cut
 your training time in half. In practice, there will be additional scheduling and
 communication overhead, so this won't always be true.
