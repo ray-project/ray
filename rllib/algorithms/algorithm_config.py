@@ -2219,6 +2219,10 @@ class AlgorithmConfig(_Config):
             This updated AlgorithmConfig object.
         """
         if policies is not NotProvided:
+            # If no policy information is provided, set self.policies to the default.
+            if not policies:
+                policies = {DEFAULT_POLICY_ID: PolicySpec()}
+
             # Make sure our Policy IDs are ok (this should work whether `policies`
             # is a dict or just any Sequence).
             for pid in policies:
