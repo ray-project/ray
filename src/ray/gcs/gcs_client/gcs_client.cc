@@ -172,11 +172,96 @@ Status HandleGcsError(rpc::GcsStatus status) {
   return Status::Invalid(status.message() +
                          " [GCS status code: " + std::to_string(status.code()) + "]");
 }
+
 }  // namespace
 
+// Make `num_retries` attempts to connect to the GCS.
+// Each whole attempt = (multiple connect attempts) + (1 RPC attempt).
+// - For 1 whole attempt we have `timeout_ms`, no wait between whole attempts.
+// - For 1 connect attempt we retry every 100ms,
+// - For all connect attempts we timeout in 1s (controlled by
+// `python_gcs_client_initial_connect_timeout_ms`).
+//
+// Note: `Connect` is the only method to busy wait the connection to be ready every 100ms.
+// For other methods, with the expectation that a connection had been established, we may
+// wait up to 2s (gcs_grpc_max_reconnect_backoff_ms).
 Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                                 int64_t timeout_ms,
                                 size_t num_retries) {
+  if ((!cluster_id.IsNil()) && (!cluster_id_.IsNil())) {
+    RAY_CHECK(cluster_id == cluster_id_)
+        << "trying to reconnect with another cluster ID. existing: " << cluster_id_
+        << ", new: " << cluster_id;
+  }
+  if (channel_ && channel_->GetState(/*try_to_connect=*/false) == GRPC_CHANNEL_READY) {
+    return Status::OK();
+  }
+
+  auto make_one_attempt = [this, timeout_ms](grpc::Channel &channel,
+                                             rpc::NodeInfoGcsService::Stub &stub,
+                                             int64_t conn_timeout_ms) -> Status {
+    // this timeout_ms includes connection wait time.
+    grpc::ClientContext context;
+    PrepareContext(context, timeout_ms);
+    RAY_RETURN_NOT_OK(WaitForChannelReady(channel, conn_timeout_ms));
+    RAY_LOG(DEBUG) << "Retrieving cluster ID from GCS server.";
+    rpc::GetClusterIdRequest request;
+    rpc::GetClusterIdReply reply;
+
+    grpc::Status status = stub.GetClusterId(&context, request, &reply);
+    if (status.ok()) {
+      if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
+        cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
+        RAY_LOG(DEBUG) << "Received cluster ID from GCS server: " << cluster_id_;
+        RAY_CHECK(!cluster_id_.IsNil());
+        return Status::OK();
+      } else {
+        return HandleGcsError(reply.status());
+      }
+    }
+    return Status::RpcError(status.error_message(), status.error_code());
+  };
+
+  auto make_attempts = [this, timeout_ms, num_retries, &make_one_attempt]() -> Status {
+    grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
+    arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 100);
+    arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 100);
+    arguments.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
+    std::shared_ptr<grpc::Channel> one_time_channel =
+        rpc::BuildChannel(options_.gcs_address_, options_.gcs_port_, arguments);
+    auto one_time_stub = rpc::NodeInfoGcsService::NewStub(one_time_channel);
+    int64_t default_conn_timeout_ms =
+        ::RayConfig::instance().python_gcs_client_initial_connect_timeout_ms();
+    int32_t conn_timeout_ms = timeout_ms > 0
+                                  ? std::min(timeout_ms, default_conn_timeout_ms)
+                                  : default_conn_timeout_ms;
+
+    Status attempt_result;
+    for (size_t i = 0; i < num_retries; ++i) {
+      RAY_LOG(DEBUG) << "GcsClient trying to get cluster id, attempt " << i;
+      attempt_result =
+          make_one_attempt(*one_time_channel, *one_time_stub, conn_timeout_ms);
+      if (attempt_result.ok()) {
+        return attempt_result;
+      } else {
+        RAY_LOG(INFO) << "GcsClient " << i
+                      << "th attempt to get cluster ID failed: " << attempt_result;
+      }
+    }
+    RAY_LOG(WARNING) << "GcsClient all " << num_retries
+                     << "attempts to get cluster ID failed, last error: "
+                     << attempt_result;
+    return attempt_result;
+  };
+
+  if (cluster_id.IsNil()) {
+    RAY_RETURN_NOT_OK(make_attempts());
+  } else {
+    cluster_id_ = cluster_id;
+    RAY_LOG(DEBUG) << "Client initialized with provided cluster ID: " << cluster_id_;
+  }
+  RAY_CHECK(!cluster_id_.IsNil()) << "Unexpected nil cluster ID.";
+
   channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
@@ -185,39 +270,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
   node_resource_info_stub_ = rpc::NodeResourceInfoGcsService::NewStub(channel_);
   autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
-  if (cluster_id.IsNil()) {
-    size_t tries = num_retries + 1;
-    RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
 
-    RAY_LOG(DEBUG) << "Retrieving cluster ID from GCS server.";
-    rpc::GetClusterIdRequest request;
-    rpc::GetClusterIdReply reply;
-
-    Status connect_status;
-    for (; tries > 0; tries--) {
-      grpc::ClientContext context;
-      PrepareContext(context, timeout_ms);
-      RAY_RETURN_NOT_OK(WaitForChannelReady(*channel_, timeout_ms));
-      connect_status =
-          GrpcStatusToRayStatus(node_info_stub_->GetClusterId(&context, request, &reply));
-
-      if (connect_status.ok()) {
-        cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
-        RAY_LOG(DEBUG) << "Received cluster ID from GCS server: " << cluster_id_;
-        RAY_CHECK(!cluster_id_.IsNil());
-        break;
-      } else if (!connect_status.IsGrpcError()) {
-        return HandleGcsError(reply.status());
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    }
-    RAY_RETURN_NOT_OK(connect_status);
-  } else {
-    cluster_id_ = cluster_id;
-    RAY_LOG(DEBUG) << "Client initialized with provided cluster ID: " << cluster_id_;
-  }
-
-  RAY_CHECK(!cluster_id_.IsNil()) << "Unexpected nil cluster ID.";
   return Status::OK();
 }
 

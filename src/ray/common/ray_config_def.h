@@ -442,6 +442,9 @@ RAY_CONFIG(int32_t, gcs_rpc_server_reconnect_timeout_s, 60)
 /// The timeout for GCS connection in seconds
 RAY_CONFIG(int32_t, gcs_rpc_server_connect_timeout_s, 5)
 
+/// The timeout for PythonGcsClient to make GCS connection in milliseconds
+RAY_CONFIG(int32_t, python_gcs_client_initial_connect_timeout_ms, 1000)
+
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
