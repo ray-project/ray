@@ -14,7 +14,7 @@ import pyarrow.fs
 
 from ray.air._internal.filelock import TempFileLock
 from ray.train._internal.storage import _download_from_fs_path, _exists_at_fs_path
-from ray.util.annotations import PublicAPI, Deprecated
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +26,18 @@ _METADATA_FILE_NAME = ".metadata.json"
 _CHECKPOINT_TEMP_DIR_PREFIX = "checkpoint_tmp_"
 
 
+class _CheckpointMetaClass(type):
+    def __getattr__(self, item):
+        try:
+            return super().__getattribute__(item)
+        except AttributeError as exc:
+            if item in ["from_dict", "to_dict", "from_bytes", "to_bytes"]:
+                raise _raise_migration_error(item) from exc
+            raise exc
+
+
 @PublicAPI(stability="beta")
-class Checkpoint:
+class Checkpoint(metaclass=_CheckpointMetaClass):
     """A reference to data persisted as a directory in local or remote storage.
 
     Access checkpoint contents locally using ``checkpoint.to_directory()``.
@@ -276,26 +286,6 @@ class Checkpoint:
             "Use `Checkpoint.to_directory()` or `Checkpoint.as_directory()` instead."
         )
 
-    @classmethod
-    @Deprecated
-    def from_dict(cls, *args, **kwargs):
-        _raise_migration_error("from_dict")
-
-    @classmethod
-    @Deprecated
-    def to_dict(cls, *args, **kwargs):
-        _raise_migration_error("to_dict")
-
-    @classmethod
-    @Deprecated
-    def from_bytes(cls, *args, **kwargs):
-        _raise_migration_error("from_bytes")
-
-    @classmethod
-    @Deprecated
-    def to_bytes(cls, *args, **kwargs):
-        _raise_migration_error("to_bytes")
-
 
 def _get_del_lock_path(path: str, suffix: str = None) -> str:
     """Get the path to the deletion lock file for a file/directory at `path`.
@@ -324,7 +314,7 @@ def _list_existing_del_locks(path: str) -> List[str]:
 
 
 def _raise_migration_error(name: str):
-    raise DeprecationWarning(
+    raise AttributeError(
         f"The new `ray.train.Checkpoint` class does not support `{name}()`. "
         f"Instead, only directories are supported.\n\n"
         f"Example to store a dictionary in a checkpoint:\n\n"
