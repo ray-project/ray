@@ -3,20 +3,20 @@
 
 # __monitor_start__
 import dataclasses
-from typing import List
+from typing import List, Dict
 
 from ray import serve
-from ray.serve.schema import ServeStatus
+from ray.serve.schema import ServeStatus, ApplicationStatusOverview
 
 
 @serve.deployment
 def get_healthy_apps() -> List[str]:
     serve_status: ServeStatus = serve.status()
-    app_statuses = dataclasses.asdict(serve_status)["applications"]
+    app_statuses: Dict[str, ApplicationStatusOverview] = serve_status.applications
 
     running_apps = []
     for app_name, app_status in app_statuses.items():
-        if app_status["status"] == "RUNNING":
+        if app_status.status == "RUNNING":
             running_apps.append(app_name)
 
     return running_apps
