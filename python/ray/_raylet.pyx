@@ -4580,7 +4580,6 @@ def get_key_from_storage(host, port, password, use_ssl, config, key):
     cdef:
         c_string data
     result = RedisGetKeySync(host, port, password, use_ssl, config, key, &data)
-    print("result is " + str(result))
     if result:
         return data
     else:

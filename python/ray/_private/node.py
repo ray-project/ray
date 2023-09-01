@@ -1207,12 +1207,6 @@ class Node:
             True,
             ray_constants.KV_NAMESPACE_SESSION,
         )
-        v = self.get_gcs_client().internal_kv_get(
-            b"session_name",
-            ray_constants.KV_NAMESPACE_SESSION,
-        )
-        print("vct gotten value ", v)
-        print("just put session name vct " + self._session_name)
         self.get_gcs_client().internal_kv_put(
             b"session_dir",
             self._session_dir.encode(),

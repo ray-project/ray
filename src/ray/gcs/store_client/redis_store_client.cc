@@ -138,7 +138,6 @@ void RedisStoreClient::MGetValues(const std::string &table_name,
 RedisStoreClient::RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
     : external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
       redis_client_(std::move(redis_client)) {
-  RAY_LOG(INFO) << "vct ext namespace " << external_storage_namespace_;
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
       << kClusterSeparator << ".";

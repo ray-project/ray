@@ -184,8 +184,6 @@ void RedisRequestContext::Run() {
       +[](struct redisAsyncContext *async_context, void *raw_reply, void *privdata) {
         auto *request_cxt = (RedisRequestContext *)privdata;
         auto redis_reply = reinterpret_cast<redisReply *>(raw_reply);
-        RAY_LOG(ERROR) << "Redis request ["
-                       << absl::StrJoin(request_cxt->redis_cmds_, " ") << "] completed.";
         // Error happened.
         if (redis_reply == nullptr || redis_reply->type == REDIS_REPLY_ERROR) {
           auto error_msg = redis_reply ? redis_reply->str : async_context->errstr;

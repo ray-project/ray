@@ -869,7 +869,6 @@ def test_cluster_id(ray_start_regular):
 
 
 def test_session_name(ray_start_cluster):
-    print("are we using redis " + str(enable_external_redis()))
     # Kill GCS and check that raylets kill themselves when not backed by Redis,
     # and stay alive when backed by Redis.
     # Raylets should kill themselves due to cluster ID mismatch in the

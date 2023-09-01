@@ -67,9 +67,6 @@ cdef extern from * namespace "ray::gcs" nogil:
       RayConfig::instance().initialize(config_list);
 
       instrumented_io_context io_service;
-      RAY_UNUSED(std::async(std::launch::async, [&]() {
-        io_service.run();
-      }));
 
       auto redis_client = std::make_shared<RedisClient>(options);
       auto status = redis_client->Connect(io_service);
@@ -84,16 +81,14 @@ cdef extern from * namespace "ray::gcs" nogil:
       bool ret_val = false;
       cli->Get("session", key, [&](std::optional<std::string> result) {
         if (result.has_value()) {
-          RAY_LOG(INFO) << "vct E";
           *data = result.value();
           ret_val = true;
         } else {
-          *data = "gggg";
           RAY_LOG(ERROR) << "Failed to get " << key;
           ret_val = false;
         }
       });
-      RAY_LOG(INFO) << "vct F";
+      io_service.run_for(std::chrono::milliseconds(1000));
 
       return ret_val;
     }
