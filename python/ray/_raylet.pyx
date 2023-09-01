@@ -156,7 +156,7 @@ from ray.includes.libcoreworker cimport (
 
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
-from ray.includes.global_state_accessor cimport RedisDelKeySync
+from ray.includes.global_state_accessor cimport RedisDelKeySync, RedisGetKeySync
 from ray.includes.optional cimport (
     optional, nullopt
 )
@@ -4574,3 +4574,13 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
 
 def del_key_from_storage(host, port, password, use_ssl, key):
     return RedisDelKeySync(host, port, password, use_ssl, key)
+
+
+def get_key_from_storage(host, port, password, use_ssl, key):
+    cdef:
+        c_string data
+    result = RedisGetKeySync(host, port, password, use_ssl, key, &data)
+    if result:
+        return data
+    else:
+        return None

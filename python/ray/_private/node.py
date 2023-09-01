@@ -24,7 +24,7 @@ import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray._private import storage
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient, get_key_from_storage
 from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
 
@@ -177,9 +177,30 @@ class Node:
 
         # Register the temp dir.
         if head:
-            # date including microsecond
-            date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
-            self._session_name = f"session_{date_str}_{os.getpid()}"
+            maybe_key = None
+            if self._redis_address:
+                parts = self._redis_address.split("://", 1)
+                enable_redis_ssl = "false"
+                if len(parts) == 1:
+                    redis_ip_address, redis_port = parts[0].rsplit(":", 1)
+                else:
+                    if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
+                        raise ValueError(f"Invalid redis address {self._redis_address}")
+                    redis_ip_address, redis_port = parts[1].rsplit(":", 1)
+                    if parts[0] == "rediss":
+                        enable_redis_ssl = "true"
+                    maybe_key = get_key_from_storage(
+                        self._redis_address,
+                        self._ray_params.redis_password,
+                        enable_redis_ssl,
+                        b"session_name",
+                    )
+            if maybe_key is None:
+                # date including microsecond
+                date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
+                self._session_name = f"session_{date_str}_{os.getpid()}"
+            else:
+                self._session_name = maybe_key
         else:
             if ray_params.session_name is None:
                 assert not self._default_worker
