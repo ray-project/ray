@@ -96,8 +96,6 @@ head_node = container(
         # ip:port is treated as a different raylet.
         "--node-manager-port",
         "9379",
-        "--session-name",
-        session_name,
     ],
     volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
     environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},

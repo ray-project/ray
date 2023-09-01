@@ -537,14 +537,6 @@ def debug(address):
     type=str,
     help="a JSON serialized dictionary mapping label name to label value.",
 )
-@click.option(
-    "--session-name",
-    required=False,
-    hidden=False,
-    default=None,
-    type=str,
-    help="The session name of the cluster.",
-)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -590,7 +582,6 @@ def start(
     ray_debugger_external,
     disable_usage_stats,
     labels,
-    session_name,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -643,9 +634,6 @@ def start(
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
-    if session_name:
-        session_name = f"session_{session_name}"
-
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -682,9 +670,7 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
-        session_name=session_name,
     )
-    print("SANG-TODO 1", ray_params.session_name)
 
     if ray_constants.RAY_START_HOOK in os.environ:
         _load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
