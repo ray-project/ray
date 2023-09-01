@@ -54,8 +54,6 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    serve.run
    serve.delete
    serve.status
-   serve.schema.ServeStatus
-      :exclude-members:
 ```
 
 ### Configuring System-level Options
