@@ -291,11 +291,13 @@ class ClientCallManager {
                                    gpr_time_from_millis(250, GPR_TIMESPAN));
       auto status = cqs_[index]->AsyncNext(&got_tag, &ok, deadline);
       if (status == grpc::CompletionQueue::SHUTDOWN) {
+        RAY_LOG(INFO) << "jjyao CQ SHUTDOWN";
         break;
       } else if (status == grpc::CompletionQueue::TIMEOUT && shutdown_) {
         // If we timed out and shutdown, then exit immediately. This should not
         // be needed, but gRPC seems to not return SHUTDOWN correctly in these
         // cases (e.g., test_wait will hang on shutdown without this check).
+        RAY_LOG(INFO) << "jjyao CQ TIMEOUT";
         break;
       } else if (status != grpc::CompletionQueue::TIMEOUT) {
         // NOTE: CompletionQueue::TIMEOUT and gRPC deadline exceeded are different.
@@ -318,6 +320,8 @@ class ClientCallManager {
         } else {
           delete tag;
         }
+      } else {
+        RAY_LOG(INFO) << "jjyao CQ TIMEOUT " << got_tag;
       }
     }
   }
