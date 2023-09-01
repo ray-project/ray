@@ -67,17 +67,13 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   PlasmaObject result = {};
 
   // Immediately fulfill it using the fallback allocator.
-  PlasmaError error = create_callback(/*fallback_allocator=*/true,
-                                      &result,
-                                      /*spilling_required=*/nullptr);
+  PlasmaError error = create_callback(/*fallback_allocator=*/true, &result);
   return {result, error};
 }
 
 Status CreateRequestQueue::ProcessRequest(bool fallback_allocator,
-                                          std::unique_ptr<CreateRequest> &request,
-                                          bool *spilling_required) {
-  request->error =
-      request->create_callback(fallback_allocator, &request->result, spilling_required);
+                                          std::unique_ptr<CreateRequest> &request) {
+  request->error = request->create_callback(fallback_allocator, &request->result);
   if (request->error == PlasmaError::OutOfMemory) {
     return Status::ObjectStoreFull("");
   } else {
@@ -90,9 +86,7 @@ Status CreateRequestQueue::ProcessRequests() {
   bool logged_oom = false;
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
-    bool spilling_required = false;
-    auto status =
-        ProcessRequest(/*fallback_allocator=*/false, *request_it, &spilling_required);
+    auto status = ProcessRequest(/*fallback_allocator=*/false, *request_it);
 
     // if allocation failed due to OOM, and fs_monitor_ indicates the local disk is full,
     // we should failed the request with out of disk error
@@ -104,9 +98,6 @@ Status CreateRequestQueue::ProcessRequests() {
       return Status::OutOfDisk("System running out of disk.");
     }
 
-    if (spilling_required) {
-      spill_objects_callback_();
-    }
     auto now = get_time_();
     if (status.ok()) {
       FinishRequest(request_it);
@@ -134,9 +125,7 @@ Status CreateRequestQueue::ProcessRequests() {
         return Status::ObjectStoreFull("Waiting for grace period.");
       } else {
         // Trigger the fallback allocator.
-        status = ProcessRequest(/*fallback_allocator=*/true,
-                                *request_it,
-                                /*spilling_required=*/nullptr);
+        status = ProcessRequest(/*fallback_allocator=*/true, *request_it);
         if (!status.ok()) {
           // This only happens when an allocation is bigger than available disk space.
           // We should throw OutOfDisk Error here.

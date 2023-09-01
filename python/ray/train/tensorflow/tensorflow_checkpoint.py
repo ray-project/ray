@@ -129,7 +129,9 @@ class TensorflowCheckpoint(FrameworkCheckpoint):
                 "Please supply a directory to `TensorflowCheckpoint.from_saved_model`"
             )
         tempdir = tempfile.mkdtemp()
-        shutil.copytree(dir_path, tempdir, dirs_exist_ok=True)
+        # TODO(ml-team): Replace this with copytree()
+        os.rmdir(tempdir)
+        shutil.copytree(dir_path, tempdir)
 
         checkpoint = cls.from_directory(tempdir)
         if preprocessor:
@@ -296,7 +298,6 @@ class LegacyTensorflowCheckpoint(Checkpoint):
     def get_model(
         self,
         model: Optional[Union[tf.keras.Model, Callable[[], tf.keras.Model]]] = None,
-        model_definition: Optional[Callable[[], tf.keras.Model]] = None,
     ) -> tf.keras.Model:
         """Retrieve the model stored in this checkpoint.
 
@@ -308,13 +309,6 @@ class LegacyTensorflowCheckpoint(Checkpoint):
         Returns:
             The Tensorflow Keras model stored in the checkpoint.
         """
-        # TODO: Remove `model_definition` in 2.6.
-        if model_definition is not None:
-            raise DeprecationWarning(
-                "The `model_definition` parameter is deprecated. Use the `model` "
-                "parameter instead."
-            )
-
         if model is not None and self._flavor is not self.Flavor.MODEL_WEIGHTS:
             warnings.warn(
                 "TensorflowCheckpoint was created from "

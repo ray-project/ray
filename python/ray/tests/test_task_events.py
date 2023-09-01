@@ -434,6 +434,7 @@ def test_parent_task_id_tune_e2e(shutdown_only):
     script = """
 import numpy as np
 import ray
+import ray.train
 from ray import tune
 import time
 
@@ -448,7 +449,7 @@ def train_function(config):
     for i in range(5):
         loss = config["mean"] * np.random.randn() + ray.get(
             train_step_1.remote())
-        tune.report(loss=loss, nodes=ray.nodes())
+        ray.train.report(dict(loss=loss, nodes=ray.nodes()))
 
 
 def tune_function():

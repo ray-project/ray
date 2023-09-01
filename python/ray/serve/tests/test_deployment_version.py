@@ -205,6 +205,40 @@ def test_ray_actor_options():
     assert hash(v1) != hash(v3)
 
 
+def test_max_replicas_per_node():
+    v1 = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.1})
+    v2 = DeploymentVersion(
+        "1",
+        DeploymentConfig(),
+        {"num_cpus": 0.1},
+        max_replicas_per_node=1,
+    )
+    v3 = DeploymentVersion(
+        "1",
+        DeploymentConfig(),
+        {"num_cpus": 0.1},
+        max_replicas_per_node=1,
+    )
+    v4 = DeploymentVersion(
+        "1",
+        DeploymentConfig(),
+        {"num_cpus": 0.1},
+        max_replicas_per_node=2,
+    )
+
+    assert v1 != v2
+    assert hash(v1) != hash(v2)
+    assert v1.requires_actor_restart(v2)
+
+    assert v2 == v3
+    assert hash(v2) == hash(v3)
+    assert not v2.requires_actor_restart(v3)
+
+    assert v3 != v4
+    assert hash(v3) != hash(v4)
+    assert v3.requires_actor_restart(v4)
+
+
 def test_placement_group_options():
     v1 = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.1})
     v2 = DeploymentVersion(
