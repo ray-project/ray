@@ -14,6 +14,7 @@ from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
+    FileExtensionFilter,
 )
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
@@ -754,6 +755,20 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         shutil.rmtree(path)
     else:
         fs.delete_dir(_unwrap_protocol(path))
+
+
+def test_parquet_partition_filter(ray_start_regular_shared, tmp_path):
+    table = pa.table({"food": ["spam", "ham", "eggs"]})
+    pq.write_table(table, tmp_path / "table.parquet")
+    # `spam` should be filtered out.
+    with open(tmp_path / "spam", "w"):
+        pass
+
+    ds = ray.data.read_parquet(
+        tmp_path, partition_filter=FileExtensionFilter("parquet")
+    )
+
+    assert ds.count() == 3
 
 
 @pytest.mark.parametrize(

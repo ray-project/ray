@@ -17,12 +17,9 @@
 #include <cmath>
 #include <sstream>
 
-#include "absl/container/flat_hash_map.h"
 #include "ray/util/logging.h"
 
 namespace ray {
-
-ResourceSet::ResourceSet() {}
 
 ResourceSet::ResourceSet(
     const absl::flat_hash_map<std::string, FixedPoint> &resource_map) {
@@ -170,5 +167,117 @@ absl::flat_hash_map<std::string, double> ResourceSet::GetResourceMap() const {
   }
   return result;
 };
+
+NodeResourceSet::NodeResourceSet(
+    const absl::flat_hash_map<std::string, double> &resource_map) {
+  for (auto const &[name, quantity] : resource_map) {
+    Set(ResourceID(name), FixedPoint(quantity));
+  }
+}
+
+NodeResourceSet::NodeResourceSet(
+    const absl::flat_hash_map<ResourceID, double> &resource_map) {
+  for (auto const &[id, quantity] : resource_map) {
+    Set(id, FixedPoint(quantity));
+  }
+}
+
+NodeResourceSet::NodeResourceSet(
+    const absl::flat_hash_map<ResourceID, FixedPoint> &resource_map) {
+  for (auto const &[id, quantity] : resource_map) {
+    Set(id, quantity);
+  }
+}
+
+NodeResourceSet &NodeResourceSet::Set(ResourceID resource_id, FixedPoint value) {
+  if (value == ResourceDefaultValue(resource_id)) {
+    resources_.erase(resource_id);
+  } else {
+    resources_[resource_id] = value;
+  }
+  return *this;
+}
+
+FixedPoint NodeResourceSet::Get(ResourceID resource_id) const {
+  auto it = resources_.find(resource_id);
+  if (it == resources_.end()) {
+    return ResourceDefaultValue(resource_id);
+  } else {
+    return it->second;
+  }
+}
+
+bool NodeResourceSet::Has(ResourceID resource_id) const { return Get(resource_id) != 0; }
+
+NodeResourceSet &NodeResourceSet::operator-=(const ResourceSet &other) {
+  for (auto &entry : other.Resources()) {
+    Set(entry.first, Get(entry.first) - entry.second);
+  }
+  return *this;
+}
+
+bool NodeResourceSet::operator>=(const ResourceSet &other) const {
+  for (auto &entry : other.Resources()) {
+    if (Get(entry.first) < entry.second) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool NodeResourceSet::operator==(const NodeResourceSet &other) const {
+  return this->resources_ == other.resources_;
+}
+
+FixedPoint NodeResourceSet::ResourceDefaultValue(ResourceID resource_id) const {
+  if (resource_id.IsImplicitResource()) {
+    return FixedPoint(1);
+  } else {
+    return FixedPoint(0);
+  }
+}
+
+absl::flat_hash_map<std::string, double> NodeResourceSet::GetResourceMap() const {
+  absl::flat_hash_map<std::string, double> result;
+  for (const auto &[id, quantity] : resources_) {
+    result[id.Binary()] = quantity.Double();
+  }
+  return result;
+};
+
+void NodeResourceSet::RemoveNegative() {
+  for (auto it = resources_.begin(); it != resources_.end();) {
+    if (it->second < 0) {
+      resources_.erase(it++);
+    } else {
+      it++;
+    }
+  }
+}
+
+std::set<ResourceID> NodeResourceSet::ExplicitResourceIds() const {
+  std::set<ResourceID> result;
+  for (const auto &[id, quantity] : resources_) {
+    if (!id.IsImplicitResource()) {
+      result.emplace(id);
+    }
+  }
+  return result;
+}
+
+std::string NodeResourceSet::DebugString() const {
+  std::stringstream buffer;
+  buffer << "{";
+  bool first = true;
+  for (const auto &[id, quantity] : resources_) {
+    if (!first) {
+      buffer << ", ";
+    }
+    first = false;
+    buffer << id.Binary() << ": " << quantity;
+  }
+  buffer << "}";
+  return buffer.str();
+}
 
 }  // namespace ray

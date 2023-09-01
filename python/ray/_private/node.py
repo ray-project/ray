@@ -973,7 +973,9 @@ class Node:
             process_info,
         ]
 
-    def start_api_server(self, *, include_dashboard: bool, raise_on_failure: bool):
+    def start_api_server(
+        self, *, include_dashboard: Optional[bool], raise_on_failure: bool
+    ):
         """Start the dashboard.
 
         Args:
@@ -1049,8 +1051,6 @@ class Node:
         # TODO(mwtian): figure out a way to use 127.0.0.1 for local connection
         # when possible.
         self._gcs_address = f"{self._node_ip_address}:" f"{gcs_server_port}"
-        # Initialize gcs client, which also waits for GCS to start running.
-        self._init_gcs_client()
 
     def start_raylet(
         self,
@@ -1232,17 +1232,12 @@ class Node:
 
         if self._ray_params.include_dashboard is None:
             # Default
-            include_dashboard = True
-            raise_on_api_server_failure = False
-        elif self._ray_params.include_dashboard is False:
-            include_dashboard = False
             raise_on_api_server_failure = False
         else:
-            include_dashboard = True
-            raise_on_api_server_failure = True
+            raise_on_api_server_failure = self._ray_params.include_dashboard
 
         self.start_api_server(
-            include_dashboard=include_dashboard,
+            include_dashboard=self._ray_params.include_dashboard,
             raise_on_failure=raise_on_api_server_failure,
         )
 

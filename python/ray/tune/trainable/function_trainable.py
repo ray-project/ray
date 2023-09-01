@@ -6,7 +6,6 @@ import sys
 import threading
 import time
 import uuid
-import warnings
 from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type
@@ -20,6 +19,7 @@ from ray.air.constants import (
     _RESULT_FETCH_TIMEOUT,
     TIME_THIS_ITER_S,
 )
+import ray.train
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import _use_storage_context
 from ray.train._internal.session import (
@@ -44,7 +44,6 @@ from ray.tune.utils import (
     _detect_reporter,
 )
 from ray.util.annotations import DeveloperAPI
-from ray.util.debug import log_once
 
 
 logger = logging.getLogger(__name__)
@@ -54,6 +53,64 @@ logger = logging.getLogger(__name__)
 
 NULL_MARKER = ".null_marker"
 TEMP_MARKER = ".temp_marker"
+
+
+_CHECKPOINT_DIR_ARG_DEPRECATION_MSG = """Accepting a `checkpoint_dir` argument in your training function is deprecated.
+Please use `ray.train.get_checkpoint()` to access your checkpoint as a
+`ray.train.Checkpoint` object instead. See below for an example:
+
+Before
+------
+
+from ray import tune
+
+def train_fn(config, checkpoint_dir=None):
+    if checkpoint_dir:
+        torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
+    ...
+
+tuner = tune.Tuner(train_fn)
+tuner.fit()
+
+After
+-----
+
+from ray import train, tune
+
+def train_fn(config):
+    checkpoint: train.Checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
+    ...
+
+tuner = tune.Tuner(train_fn)
+tuner.fit()"""  # noqa: E501
+
+_REPORTER_ARG_DEPRECATION_MSG = """Accepting a `reporter` in your training function is deprecated.
+Please use `ray.train.report()` to report results instead. See below for an example:
+
+Before
+------
+
+from ray import tune
+
+def train_fn(config, reporter):
+    reporter(metric=1)
+
+tuner = tune.Tuner(train_fn)
+tuner.fit()
+
+After
+-----
+
+from ray import train, tune
+
+def train_fn(config):
+    train.report({"metric": 1})
+
+tuner = tune.Tuner(train_fn)
+tuner.fit()"""  # noqa: E501
 
 
 @DeveloperAPI
@@ -323,9 +380,7 @@ class FunctionTrainable(Trainable):
     def setup(self, config):
         if _use_storage_context():
             init_session(
-                training_func=lambda: self._trainable_func(
-                    self.config, get_session(), get_session().loaded_checkpoint
-                ),
+                training_func=lambda: self._trainable_func(self.config),
                 trial_info=TrialInfo(
                     name=self.trial_name,
                     id=self.trial_id,
@@ -345,7 +400,6 @@ class FunctionTrainable(Trainable):
                 dataset_shard=None,
                 checkpoint=None,
                 # Deprecated configs
-                encode_data_fn=None,
                 enable_lazy_checkpointing=False,
             )
             self._last_training_result = None
@@ -387,7 +441,7 @@ class FunctionTrainable(Trainable):
         self._restore_tmpdir = None
         self.temp_checkpoint_dir = None
 
-    def _trainable_func(self, config, reporter, checkpoint_dir):
+    def _trainable_func(self, config: Dict[str, Any]):
         """Subclasses can override this to set the trainable func."""
 
         raise NotImplementedError
@@ -395,11 +449,7 @@ class FunctionTrainable(Trainable):
     def _start(self):
         def entrypoint():
             try:
-                return self._trainable_func(
-                    self.config,
-                    self._status_reporter,
-                    self._status_reporter.get_checkpoint(),
-                )
+                return self._trainable_func(self.config)
             except Exception as e:
                 raise StartTraceback from e
 
@@ -551,7 +601,6 @@ class FunctionTrainable(Trainable):
         if _use_storage_context():
             # TRAIN -> SAVE remote calls get processed sequentially,
             # so `_last_training_result.checkpoint` holds onto the latest ckpt.
-            assert self._last_training_result.checkpoint
             return self._last_training_result
 
         checkpoint = self._status_reporter.get_checkpoint()
@@ -587,11 +636,6 @@ class FunctionTrainable(Trainable):
     ) -> Optional[str]:
         return None
 
-    def save_to_object(self):
-        checkpoint_path = self.save()
-        checkpoint = Checkpoint.from_directory(checkpoint_path)
-        return checkpoint.to_bytes()
-
     def load_checkpoint(self, checkpoint):
         if _use_storage_context():
             checkpoint_result = checkpoint
@@ -617,15 +661,6 @@ class FunctionTrainable(Trainable):
             self.logdir
         )
         checkpoint.to_directory(self.temp_checkpoint_dir)
-        self.restore(self.temp_checkpoint_dir)
-
-    def restore_from_object(self, obj):
-        self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
-            self.logdir
-        )
-        checkpoint = Checkpoint.from_bytes(obj)
-        checkpoint.to_directory(self.temp_checkpoint_dir)
-
         self.restore(self.temp_checkpoint_dir)
 
     def cleanup(self):
@@ -678,9 +713,7 @@ class FunctionTrainable(Trainable):
                 return False
 
             session.reset(
-                training_func=lambda: self._trainable_func(
-                    self.config, get_session(), get_session().loaded_checkpoint
-                ),
+                training_func=lambda: self._trainable_func(self.config),
                 trial_info=TrialInfo(
                     name=self.trial_name,
                     id=self.trial_id,
@@ -740,35 +773,19 @@ def wrap_function(
     use_config_single = _detect_config_single(train_func)
     use_reporter = _detect_reporter(train_func)
 
-    if not any([use_checkpoint, use_config_single, use_reporter]):
+    if use_checkpoint:
+        raise DeprecationWarning(_CHECKPOINT_DIR_ARG_DEPRECATION_MSG)
+
+    if use_reporter:
+        raise DeprecationWarning(_REPORTER_ARG_DEPRECATION_MSG)
+
+    if not use_config_single:
         # use_reporter is hidden
         raise ValueError(
             "Unknown argument found in the Trainable function. "
-            "The function args must include a 'config' positional "
-            "parameter. Any other args must be 'checkpoint_dir'. "
+            "The function args must include a 'config' positional parameter."
             "Found: {}".format(func_args)
         )
-
-    if use_checkpoint:
-        if log_once("tune_checkpoint_dir_deprecation") and warn:
-            with warnings.catch_warnings():
-                warnings.simplefilter("always")
-                warning_msg = (
-                    "`checkpoint_dir` in `func(config, checkpoint_dir)` is "
-                    "being deprecated. "
-                    "To save and load checkpoint in trainable functions, "
-                    "please use the `report` API:\n\n"
-                    "from ray import train\n\n"
-                    "def train(config):\n"
-                    "    # ...\n"
-                    '    train.report({"metric": metric}, checkpoint=checkpoint)\n\n'
-                    "For more information please see "
-                    "https://docs.ray.io/en/latest/tune/api/trainable.html\n"
-                )
-                warnings.warn(
-                    warning_msg,
-                    DeprecationWarning,
-                )
 
     resources = getattr(train_func, "_resources", None)
 
@@ -780,27 +797,16 @@ def wrap_function(
         def __repr__(self):
             return self._name
 
-        def _trainable_func(self, config, session, checkpoint_dir):
-            if not use_checkpoint and not use_reporter:
-                fn = partial(train_func, config)
-            elif use_checkpoint:
-                fn = partial(train_func, config, checkpoint_dir=checkpoint_dir)
-            else:
-                fn = partial(train_func, config, session)
+        def _trainable_func(self, config):
+            fn = partial(train_func, config)
 
             def handle_output(output):
                 if not output:
                     return
                 elif isinstance(output, dict):
-                    if _use_storage_context():
-                        session.report(output)
-                    else:
-                        session(**output)
+                    ray.train.report(output)
                 elif isinstance(output, Number):
-                    if _use_storage_context():
-                        session.report({DEFAULT_METRIC: output})
-                    else:
-                        session(_metric=output)
+                    ray.train.report({DEFAULT_METRIC: output})
                 else:
                     raise ValueError(
                         "Invalid return or yield value. Either return/yield "
@@ -819,11 +825,7 @@ def wrap_function(
             # If train_func returns, we need to notify the main event loop
             # of the last result while avoiding double logging. This is done
             # with the keyword RESULT_DUPLICATE -- see tune/tune_controller.py.
-            if _use_storage_context():
-                session.report({RESULT_DUPLICATE: True})
-            else:
-                legacy_status_reporter: _StatusReporter = session
-                legacy_status_reporter(**{RESULT_DUPLICATE: True})
+            ray.train.report({RESULT_DUPLICATE: True})
             return output
 
         @classmethod

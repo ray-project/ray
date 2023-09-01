@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import time
+from typing import Dict, Optional
 
 import yaml
 
@@ -58,7 +59,7 @@ class AutoscalingCluster:
         custom_config.update(config_kwargs)
         return custom_config
 
-    def start(self, _system_config=None):
+    def start(self, _system_config=None, override_env: Optional[Dict] = None):
         """Start the cluster.
 
         After this call returns, you can connect to the cluster with
@@ -88,6 +89,8 @@ class AutoscalingCluster:
             )
         env = os.environ.copy()
         env.update({"AUTOSCALER_UPDATE_INTERVAL_S": "1", "RAY_FAKE_CLUSTER": "1"})
+        if override_env:
+            env.update(override_env)
         subprocess.check_call(cmd, env=env)
 
     def shutdown(self):

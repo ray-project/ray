@@ -41,6 +41,7 @@
 namespace ray {
 using raylet::ClusterTaskManager;
 using raylet::NoopLocalTaskManager;
+
 namespace gcs {
 
 struct GcsServerConfig {
@@ -95,6 +96,9 @@ class GcsServer {
 
   /// Check if gcs server is stopped.
   bool IsStopped() const { return is_stopped_; }
+
+  /// Retrieve cluster ID
+  const ClusterID &GetClusterId() const { return rpc_server_.GetClusterId(); }
 
   // TODO(vitsai): string <=> enum generator macro
   enum class StorageType {

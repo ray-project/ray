@@ -21,7 +21,7 @@ serve.run(driver.bind(), name="app")
     run_string_as_driver(script)
 
     handle = serve.get_app_handle("app")
-    assert ray.get(handle.remote()) == "OK!"
+    assert handle.remote().result() == "OK!"
 
 
 if __name__ == "__main__":

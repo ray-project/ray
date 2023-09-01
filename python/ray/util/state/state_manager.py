@@ -266,6 +266,8 @@ class StateDataSourceClient:
             if key == "actor_id":
                 req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
             elif key == "state":
+                # Convert to uppercase.
+                value = value.upper()
                 if value not in ActorTableData.ActorState.keys():
                     raise ValueError(f"Invalid actor state for filtering: {value}")
                 req_filters.state = ActorTableData.ActorState.Value(value)
@@ -309,10 +311,6 @@ class StateDataSourceClient:
                 req_filters.task_ids.append(TaskID(hex_to_binary(value)).binary())
             else:
                 continue
-
-            # Remove the filter from the list so that we don't have to
-            # filter it again later.
-            filters.remove(filter)
 
         req_filters.exclude_driver = exclude_driver
 
