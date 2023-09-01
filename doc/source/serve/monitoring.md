@@ -155,7 +155,7 @@ For Kubernetes deployments with KubeRay, tighter integrations of `serve status` 
 
 ## Get application details in Python
 
-Call the `serve.status()` API to get Serve application details in Python. `serve.status()` returns the same information as the `serve status` CLI inside a `dataclass`. Use this method inside a deployment or a Ray driver script to obtain live information about the Serve applications on the Ray cluster. For example, this `monitoring_app` reports all the `RUNNING` Serve applications on the cluster:
+Call the `serve.status()` API to get Serve application details in Python. `serve.status()` returns the same information as the `serve status` CLI command inside a `dataclass`. Use this method inside a deployment or a Ray driver script to obtain live information about the Serve applications on the Ray cluster. For example, this `monitoring_app` reports all the `RUNNING` Serve applications on the cluster:
 
 ```{literalinclude} doc_code/monitoring/monitor_deployment.py
 :start-after: __monitor_start__
