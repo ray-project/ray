@@ -81,18 +81,23 @@ async def test_async_handle_serializable(serve_instance):
     f.deploy()
 
     @ray.remote
-    class TaskActor:
-        async def task(self, handle):
+    class DelegateActor:
+        async def call_handle(self, handle):
             ref = await handle.remote()
-            output = await ref
-            return output
+            return await ref
 
-    # Test pickling via ray.remote()
-    handle = f.get_handle(sync=False)
+    @serve.deployment
+    class Ingress:
+        def __init__(self, handle):
+            self._handle = handle
 
-    task_actor = TaskActor.remote()
-    result = await task_actor.task.remote(handle)
-    assert result == "hello"
+        async def __call__(self):
+            # Test pickling handle via `actor.method.remote()`.
+            a = DelegateActor.remote()
+            return await a.call_handle.remote(self._handle)
+
+    app_handle = serve.run(Ingress.bind(f.bind()))
+    assert ray.get(app_handle.remote()) == "hello"
 
 
 def test_sync_handle_serializable(serve_instance):
