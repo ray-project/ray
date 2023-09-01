@@ -11,7 +11,7 @@ is the :class:`~ray.train.ScalingConfig`.
 
 Key concepts
 ------------
-.. figure:: ../images/train_cluster_Overview.png
+.. figure:: ../images/train_cluster_overview.png
     :align: center
     :width: 400px
 
