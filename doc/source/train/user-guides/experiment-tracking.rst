@@ -286,14 +286,14 @@ PyTorch
 .. dropdown:: Log to Wandb (online) 
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking//torch_exp_tracking_wandb.py
-            :emphasize-lines: 12, 13, 14, 17, 18, 47, 48, 50, 51
+            :emphasize-lines: 13, 14, 18, 19, 48, 49, 51, 52
             :language: python
             :start-after: __start__
 
 .. dropdown:: Log to file based MLflow (offline)         
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/torch_exp_tracking_mlflow.py
-        :emphasize-lines: 22, 23, 54, 55, 57, 58, 63
+        :emphasize-lines: 22, 23, 54, 55, 57, 58, 64
         :language: python
         :start-after: __start__
         :end-before: __end__
@@ -342,21 +342,23 @@ just for demonstration purposes.
 Common Errors
 =============
 
-- Missing Credentials
+Missing Credentials
+-------------------
 
-    **I have already called `wandb login` cli, but still getting 
-    "wandb: ERROR api_key not configured (no-tty). 
-    call wandb.login(key=[your_api_key])."**
+**I have already called `wandb login` cli, but still getting 
+"wandb: ERROR api_key not configured (no-tty). 
+call wandb.login(key=[your_api_key])."**
 
-    This is probably due to wandb credentials are not set up correctly
-    on worker nodes. Make sure that you run ``wandb.login`` inside each
-    training function. You can take a look at the example above.
+This is probably due to wandb credentials are not set up correctly
+on worker nodes. Make sure that you run ``wandb.login`` inside each
+training function. You can take a look at the example above.
 
-- Missing Configurations
+Missing Configurations
+----------------------
 
-    **"databricks_cli.utils.InvalidConfigurationError: 
-    You haven't configured the CLI yet!"**
+**"databricks_cli.utils.InvalidConfigurationError: 
+You haven't configured the CLI yet!"**
 
-    This is usually caused by running ``databricks configure`` which 
-    generates ``~/.databrickscfg`` only on head node. Move this file to a shared
-    location that can be accessed by all nodes.
+This is usually caused by running ``databricks configure`` which 
+generates ``~/.databrickscfg`` only on head node. Move this file to a shared
+location that can be accessed by all nodes.
