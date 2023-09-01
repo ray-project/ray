@@ -120,12 +120,7 @@ metadata. One drawback of this approach is that the head node loses the metadata
 Ray can also write this metadata to an external Redis for reliability and high availability.
 With this setup, the static Ray cluster can recover from head node crashes and tolerate GCS failures without losing connections to worker nodes.
 
-To use this feature, we need to pass in the `RAY_REDIS_ADDRESS` env var, `RAY_external_storage_namespace`, and `--redis-password` in the Ray head node section of [the Kubernetes deployment config file](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.with-fault-tolerance.yaml).
-
-`RAY_external_storage_namespace` is used to isolate the data stored in Redis.
-This makes sure that there is no data conflicts if multiple Ray clusters share the same Redis instance. 
-`RAY_external_storage_namespace` must be an unique ID, and whenever you restart a head node,
-it should be the same.
+To use this feature, we need to pass in the `RAY_REDIS_ADDRESS` env var and `--redis-password` in the Ray head node section of [the Kubernetes deployment config file](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.with-fault-tolerance.yaml).
 
 ## Running Applications on the static Ray Cluster
 

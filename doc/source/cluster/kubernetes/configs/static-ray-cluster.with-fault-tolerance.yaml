@@ -148,9 +148,6 @@ spec:
             # This is used in the ray start command so that Ray can spawn the
             # correct number of processes. Omitting this may lead to degraded
             # performance.
-            - name: RAY_external_storage_namespace
-              value: # <Unique ID>. RAY_external_storage_namespace is used to isolate
-              # the data stored in Redis.
             - name: MY_CPU_REQUEST
               valueFrom:
                 resourceFieldRef:

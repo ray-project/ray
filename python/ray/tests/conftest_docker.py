@@ -1,5 +1,6 @@
 import time
-import uuid
+import os
+import datetime
 import pytest
 from pytest_docker_tools import container, fetch, network, volume
 from pytest_docker_tools import wrappers
@@ -77,7 +78,8 @@ redis = container(
 head_node_vol = volume()
 worker_node_vol = volume()
 head_node_container_name = "gcs" + str(int(time.time()))
-external_storage_namespace = str(uuid.uuid4())
+date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
+session_name = f"session_{date_str}_{os.getpid()}"
 
 head_node = container(
     image="ray_ci:v1",
@@ -96,10 +98,7 @@ head_node = container(
         "9379",
     ],
     volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
-    environment={
-        "RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379",
-        "RAY_external_storage_namespace": external_storage_namespace,
-    },
+    environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
     wrapper_class=Container,
     ports={
         "8000/tcp": None,

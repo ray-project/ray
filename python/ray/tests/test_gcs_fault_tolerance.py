@@ -917,32 +917,6 @@ def test_redis_data_loss_no_leak(ray_start_regular_with_external_redis):
     wait_for_condition(lambda: not check_raylet_healthy())
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    [
-        generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=20,
-            gcs_rpc_server_reconnect_timeout_s=60,
-            gcs_server_request_timeout_seconds=10,
-            raylet_liveness_self_check_interval_ms=3000,
-        )
-    ],
-    indirect=True,
-)
-def test_session_dir_preserved(ray_start_regular_with_external_redis):
-    storage_namespace = os.getenv("RAY_external_storage_namespace")
-    session_name = ray._private.worker._global_node.session_name
-    assert session_name == f"session_{storage_namespace}"
-    ray._private.worker._global_node.kill_gcs_server()
-    # Start GCS
-    ray._private.worker._global_node.start_gcs_server()
-    ray.shutdown()
-    ray.init()
-    storage_namespace = os.getenv("RAY_external_storage_namespace")
-    session_name = ray._private.worker._global_node.session_name
-    assert session_name == f"session_{storage_namespace}"
-
-
 if __name__ == "__main__":
 
     import pytest
