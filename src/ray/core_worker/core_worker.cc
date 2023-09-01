@@ -2296,7 +2296,7 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
 
   if (task_spec->IsActorTask()) {
     if (force_kill) {
-      return Status::Invalid("force=True is not supported for actor tasks.");
+      return Status::InvalidArgument("force=True is not supported for actor tasks.");
     }
 
     return direct_actor_submitter_->CancelTask(task_spec.value(), recursive);
