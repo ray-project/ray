@@ -231,7 +231,8 @@ def decode_image_crop_and_flip(row):
     row["image"] = Image.frombytes("RGB", (row["height"], row["width"]), row["image"]) 
     del row["width"]
     del row["height"]
-    row["image"] = transform(row["image"])
+    # Convert back np to avoid storing a np.object array.
+    row["image"] = np.array(transform(row["image"]))
     return row
 
 

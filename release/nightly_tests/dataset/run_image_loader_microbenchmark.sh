@@ -17,12 +17,6 @@ rm -rf "$PARQUET_DIR"
 # Download 1GB dataset from S3 to local disk.
 aws s3 sync s3://imagenetmini1000/1gb "$DIR"
 
-# Download image batch files.
-mkdir -p "$DIR"
-mkdir -p "$MOSAIC_DIR"
-mkdir -p "$TFRECORDS_DIR"
-mkdir -p "$PARQUET_DIR"
-
 # Download 1GB dataset from S3 to local disk so we can preprocess with mosaic.
 aws s3 sync s3://imagenetmini1000/1gb $DIR
 # Generated with 
