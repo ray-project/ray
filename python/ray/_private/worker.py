@@ -2848,8 +2848,8 @@ def cancel(
     Task:
         If the specified Task is pending execution, it is cancelled and not
         executed. If the Task is currently executing, the behavior depends
-        on the `force flag. When `force=False, a KeyboardInterrupt is
-        raised in Python and when `force=True, the executing Task
+        on the `force` flag. When `force=False`, a KeyboardInterrupt is
+        raised in Python and when `force=True`, the executing Task
         immediately exits. If the Task is already finished, nothing happens.
 
         Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
