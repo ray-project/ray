@@ -2,7 +2,6 @@
 # fmt: off
 
 # __monitor_start__
-import dataclasses
 from typing import List, Dict
 
 from ray import serve
