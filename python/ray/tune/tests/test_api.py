@@ -989,7 +989,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self._testDurableTrainable(TestTrain)
 
     def testDurableTrainableFunction(self):
-        def test_train(config, checkpoint_dir=None):
+        def test_train(config):
             state = {"hi": 1, "iter": 0}
             if train.get_checkpoint():
                 state = load_dict_checkpoint(train.get_checkpoint())

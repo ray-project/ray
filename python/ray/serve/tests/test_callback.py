@@ -12,7 +12,7 @@ import ray
 from ray.exceptions import RayActorError
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.common import HTTPProxyStatus
+from ray.serve._private.common import ProxyStatus
 from ray.serve._private.utils import call_function_from_import_path
 from ray.serve.context import get_global_client
 from ray.serve.schema import ServeInstanceDetails
@@ -233,8 +233,8 @@ def test_http_proxy_calllback_failures(ray_instance, capsys):
         prev_actor_id = None
         while True:
             serve_details = ServeInstanceDetails(**client.get_serve_details())
-            for _, proxy_info in serve_details.http_proxies.items():
-                if proxy_info.status != HTTPProxyStatus.STARTING:
+            for _, proxy_info in serve_details.proxies.items():
+                if proxy_info.status != ProxyStatus.STARTING:
                     return False
                 if prev_actor_id is None:
                     prev_actor_id = proxy_info.actor_id
