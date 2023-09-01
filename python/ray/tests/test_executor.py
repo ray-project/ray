@@ -11,7 +11,7 @@ from concurrent.futures import (
     TimeoutError as ConTimeoutError,
 )
 from concurrent.futures.thread import BrokenThreadPool
-from ray.exceptions import RayTaskError
+from ray.exceptions import RayTaskError, RayActorError
 
 from ray._private.worker import RayContext
 
@@ -29,9 +29,44 @@ def unsafe(exc):
 def safe(_):
     pass
 
+
 class TestShared:
 
     # This class is for tests that do not need to be run with isolated ray instances
+
+    def get_actor_states(self, actor_pool):
+        actor_ids = [i["actor"]._ray_actor_id.hex() for i in actor_pool.pool.values()]
+        return [actor_state["state"] for actor_state in list_actors() if actor_state.actor_id in actor_ids]
+
+    def get_actor_state(self, actor):
+        [actor_state] = [actor_state["state"] for actor_state in list_actors() if actor_state.actor_id == actor._ray_actor_id.hex()]
+        return actor_state
+
+    def wait_actor_state(self, actor_pool, state, timeout = 20):
+        while timeout > 0:
+            states = self.get_actor_states(actor_pool)
+            if not all(i == state for i in states):
+                time.sleep(1)
+                timeout -= 1
+            else:
+                break
+        if timeout == 0:
+            return False
+        else:
+            return True
+
+    def wait_actor_state_(self, actor, expected_state, timeout = 20):
+        while timeout > 0:
+            state = self.get_actor_state(actor)
+            if state != expected_state:
+                time.sleep(1)
+                timeout -= 1
+            else:
+                break
+        if timeout == 0:
+            return False
+        else:
+            return True
 
     def test_remote_function_runs_on_specified_instance(self, call_ray_start):
         with RayExecutor(address=call_ray_start) as ex:
@@ -70,28 +105,34 @@ class TestShared:
         assert len(pool.pool) == 2
         assert pool.index == 0
 
-        def wait_actor_state(actor_pool, state, timeout = 20):
-            actor_ids = [i["actor"]._ray_actor_id.hex() for i in actor_pool.pool.values()]
-            while timeout > 0:
-                states = [actor_state for actor_state in list_actors() if actor_state.actor_id in actor_ids]
-                if not all(i.state == state for i in states):
-                    time.sleep(1)
-                    timeout -= 1
-                else:
-                    break
-            if timeout == 0:
-                return False
-            else:
-                return True
-
         # wait for actors to live
-        assert wait_actor_state(pool, "ALIVE") == True
+        assert self.wait_actor_state(pool, "ALIVE") == True
         pool.kill()
         # wait for actors to die
-        assert wait_actor_state(pool, "DEAD") == True
+        assert self.wait_actor_state(pool, "DEAD") == True
 
     def test_round_robin_actor_pool_kills_actors_and_does_not_wait_for_tasks_to_complete(self, call_ray_start):
-        raise NotImplementedError
+        pool = _RoundRobinActorPool(num_actors=2)
+
+        def f():
+            return 123
+
+        future = pool.submit(f)
+        pool.kill()
+        assert self.wait_actor_state(pool, "DEAD") == True
+        with pytest.raises(RayActorError):
+            future.result()
+
+    def test_round_robin_actor_pool_exits_actors_and_waits_for_tasks_to_complete(self, call_ray_start):
+        pool = _RoundRobinActorPool(num_actors=2)
+
+        def f():
+            return 123
+
+        future = pool.submit(f)
+        actor = pool._exit_actor(0)
+        assert self.wait_actor_state_(actor, "DEAD") == True
+        assert future.result() == 123
 
     def test_round_robin_actor_pool_replaces_expired_actors(self, call_ray_start):
         pool = _RoundRobinActorPool(num_actors=2, max_tasks_per_actor=2)
@@ -104,17 +145,18 @@ class TestShared:
         assert pool.pool[0]["actor"]._ray_actor_id.hex() != actor_id0
 
     def test_round_robin_actor_pool_replaces_actors_allowing_tasks_to_finish(self, call_ray_start):
+
         def f():
-            time.sleep(5)
+            return 123
 
         pool = _RoundRobinActorPool(num_actors=2, max_tasks_per_actor=2)
         assert pool.index == 0
 
         actor_id00 = pool.pool[0]["actor"]._ray_actor_id.hex()
-        pool.submit(f)
+        future0 = pool.submit(f)
 
         assert pool.index == 1
-        pool.submit(f)
+        future1 = pool.submit(f)
 
         assert pool.index == 0
         pool.submit(f)
@@ -130,6 +172,9 @@ class TestShared:
         assert pool.index == 1
         assert actor_id00 == actor_id01
         assert actor_id01 != actor_id02
+
+        assert future0.result() == 123
+        assert future1.result() == 123
 
     def test_round_robin_actor_pool_replaces_actors_exits_gracefully(self, call_ray_start):
         def f():

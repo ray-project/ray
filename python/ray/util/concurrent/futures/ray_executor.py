@@ -147,12 +147,13 @@ class _RoundRobinActorPool:
         pool_actor = self.pool[i]
         ray.kill(pool_actor["actor"])
 
-    def _exit_actor(self, i: int) -> None:
+    def _exit_actor(self, i: int) -> "ActorHandle":
         """
         Gracefully exit the actor and allow running jobs to finish.
         """
         pool_actor = self.pool.pop(i)
         pool_actor["actor"].exit.remote()
+        return pool_actor["actor"]
 
 
 @PublicAPI(stability="alpha")  # type: ignore
