@@ -812,7 +812,7 @@ def get_multiplexed_model_id() -> str:
 
 @PublicAPI(stability="alpha")
 def status() -> ServeStatus:
-    """Get status of Serve on the cluster.
+    """Get the status of Serve on the cluster.
 
     Includes status of all HTTP Proxies, all active applications, and
     their deployments.
