@@ -259,7 +259,7 @@ class ScalingConfig:
     ) -> "ScalingConfig":
         """Create a ScalingConfig from a Tune's PlacementGroupFactory"""
         if pgf.head_bundle_is_empty:
-            trainer_resources = {}
+            trainer_resources = None
             worker_bundles = pgf.bundles
         else:
             trainer_resources = pgf.bundles[0]
