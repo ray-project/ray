@@ -113,6 +113,7 @@ def test_ray_init_existing_instance_via_blocked_ray_start():
         blocked.wait()
         subprocess.check_output("ray stop --force", shell=True)
 
+
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform == "win32",
     reason="Flaky when run on windows CI",
