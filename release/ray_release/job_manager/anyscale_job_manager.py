@@ -45,6 +45,7 @@ class AnyscaleJobManager:
         self._last_job_result = None
         self._last_logs = None
         self.cluster_startup_timeout = 600
+        self._duration = None
 
     def _run_job(
         self,
@@ -248,8 +249,8 @@ class AnyscaleJobManager:
             retcode = -4
         else:
             retcode = job_status_to_return_code[status]
-        duration = time.time() - self.start_time
-        return retcode, duration
+        self._duration = time.time() - self.start_time
+        return retcode, self._duration
 
     def run_and_wait(
         self,
@@ -351,6 +352,10 @@ class AnyscaleJobManager:
 
         if self._last_logs:
             return self._last_logs
+
+        # Skip loading logs when the job ran for too long and collected too much logs.
+        if self._duration is not None and self._duration > 4 * 3_600:
+            return None
 
         def _get_logs():
             job_driver_log, ray_error_log = self._get_ray_logs()
