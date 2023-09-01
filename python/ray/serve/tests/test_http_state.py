@@ -571,7 +571,7 @@ def test_http_proxy_state_update_healthy_check_health_sometimes_fails():
         state: HTTPProxyState, num_health_checks: int
     ):
         # state.update should not be called in the terminal states.
-        if state.status in {HTTPProxyStatus.UNHEALTHY, HTTPProxyStatus.DRAINED}:
+        if state.status in {ProxyStatus.UNHEALTHY, ProxyStatus.DRAINED}:
             return True
 
         state.update()
