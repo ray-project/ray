@@ -2,7 +2,7 @@ import inspect
 import logging
 import os
 from types import FunctionType
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 from pydantic.main import ModelMetaclass
 
@@ -27,7 +27,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.controller import ServeController
 from ray.serve.context import (
-    get_global_client,
+    _get_global_client,
     _set_global_client,
 )
 from ray.actor import ActorHandle
@@ -54,7 +54,7 @@ def get_deployment(name: str, app_name: str = ""):
         (
             deployment_info,
             route_prefix,
-        ) = get_global_client().get_deployment_info(name, app_name)
+        ) = _get_global_client().get_deployment_info(name, app_name)
     except KeyError:
         if len(app_name) == 0:
             msg = (
@@ -83,7 +83,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = get_global_client().list_deployments_v1()
+    infos = _get_global_client().list_deployments_v1()
 
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
@@ -125,9 +125,9 @@ def _check_http_options(
 
 def _start_controller(
     detached: bool = False,
-    http_options: Optional[Union[dict, HTTPOptions]] = None,
+    http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
-    grpc_options: Optional[Union[dict, gRPCOptions]] = None,
+    grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> Tuple[ActorHandle, str]:
     """Start Ray Serve controller.
@@ -209,9 +209,9 @@ def _start_controller(
 
 async def serve_start_async(
     detached: bool = False,
-    http_options: Optional[Union[dict, HTTPOptions]] = None,
+    http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
-    grpc_options: Optional[Union[dict, gRPCOptions]] = None,
+    grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -227,7 +227,7 @@ async def serve_start_async(
     usage_lib.record_library_usage("serve")
 
     try:
-        client = get_global_client(_health_check_controller=True)
+        client = _get_global_client(_health_check_controller=True)
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
             " New http options will not be applied."
@@ -259,9 +259,9 @@ async def serve_start_async(
 
 def serve_start(
     detached: bool = False,
-    http_options: Optional[Union[dict, HTTPOptions]] = None,
+    http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
-    grpc_options: Optional[Union[dict, gRPCOptions]] = None,
+    grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -301,18 +301,19 @@ def serve_start(
               internal Serve HTTP proxy actor.  Defaults to 0.
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
-        grpc_options (Optional[Union[dict, gRPCOptions]]): [Experimental] Configuration
-            options for gRPC proxy. You can pass in a gRPCOptions object with fields:
-                - port(int): Port for gRPC server. Defaults to 9000.
-                - grpc_servicer_functions(list): List of import paths for gRPC
-                    `add_servicer_to_server` functions to add to Serve's gRPC proxy.
-                    Default empty list, meaning not to start the gRPC server.
+        grpc_options: [Experimental] Configuration options for gRPC proxy.
+          You can pass in a gRPCOptions object with fields:
+
+            - port(int): Port for gRPC server. Defaults to 9000.
+            - grpc_servicer_functions(list): List of import paths for gRPC
+                `add_servicer_to_server` functions to add to Serve's gRPC proxy.
+                Default empty list, meaning not to start the gRPC server.
     """
 
     usage_lib.record_library_usage("serve")
 
     try:
-        client = get_global_client(_health_check_controller=True)
+        client = _get_global_client(_health_check_controller=True)
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
             " New http options will not be applied."
