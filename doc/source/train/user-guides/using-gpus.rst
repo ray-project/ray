@@ -226,7 +226,8 @@ resources to use 0 CPUs:
         }
     )
 
-.. _train-resource-guide
+
+.. _train-resource-guide:
 
 How many nodes, workers, and resources should I use?
 ----------------------------------------------------

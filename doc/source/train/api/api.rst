@@ -176,6 +176,7 @@ Ray Train Loop
     :toctree: doc/
 
     ~train.context.TrainContext
+    ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
     ~train.report
