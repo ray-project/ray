@@ -4,6 +4,9 @@
 import ray
 from typing import List
 
+from ray._private.test_utils import wait_for_condition
+
+
 # Overwrite print statement to make doc code testable
 @ray.remote
 class PrintStorage:
@@ -29,6 +32,7 @@ print = lambda s: ray.get(print_storage_handle.add.remote(s)) or original_print(
 import asyncio
 from ray import serve
 
+
 @serve.deployment
 async def startled():
     try:
@@ -45,19 +49,30 @@ serve.run(startled.bind())
 import requests
 from requests.exceptions import Timeout
 
-# Intentionally timeout request to test cancellation behavior
+# Intentionally time out request to test cancellation behavior
 try:
     requests.get("http://localhost:8000", timeout=0.5)
 except Timeout:
     pass
 
-print_statements = ray.get(print_storage_handle.get.remote())
+wait_for_condition(
+    lambda: {"Replica received request!", "Request got cancelled!"} == set(
+        ray.get(print_storage_handle.get.remote())
+    ),
+    timeout=5,
+)
 
-original_print(print_statements)
-
-assert {"Replica received request!", "Request got cancelled!"} == set(print_statements)
+original_print(ray.get(print_storage_handle.get.remote()))
 
 ray.get(print_storage_handle.clear.remote())
+
+
+# Refresh print: when Ray pickles print in the previous Serve app, it changes
+# print somehow. Without refreshing print by re-importing it, Ray fails to
+# pickle any new deployments that use print.
+from builtins import print as print2
+original_print = print2
+
 
 # __start_shielded_disconnect__
 import asyncio
@@ -73,7 +88,7 @@ class Forwarder:
     async def __call__(self):
         try:
             print("Forwarder received request!")
-            await self.sleeper_handle.remote()
+            await (await self.sleeper_handle.remote())
 
         except asyncio.CancelledError:
             print("Forwarder's request was cancelled!")
@@ -94,19 +109,25 @@ app = Forwarder.bind(sleeper.bind())
 
 serve.run(app)
 
-# Intentionally timeout request to test cancellation behavior
+import requests
+from requests.exceptions import Timeout
+
+# Intentionally time out request to test cancellation behavior
 try:
     requests.get("http://localhost:8000", timeout=0.5)
 except Timeout:
     pass
 
-print_statements = ray.get(print_storage_handle.get.remote())
+wait_for_condition(
+    lambda: {
+        "Forwarder received request!",
+        "Forwarder's request was cancelled!",
+        "Sleeper received request!",
+        "Sleeper deployment finished sleeping!",
+    } == ray.get(print_storage_handle.get.remote()),
+    timeout=5,
+)
 
-assert {
-    "Guardian received request!",
-    "Guardian's request was cancelled!",
-    "Sleeper received request!",
-    "Sleeper deployment finished sleeping!",
-} == set(print_statements)
+original_print(ray.get(print_storage_handle.get.remote()))
 
 ray.get(print_storage_handle.clear.remote())
