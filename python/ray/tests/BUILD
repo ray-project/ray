@@ -224,6 +224,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
+    "test_gcs_ha_e2e_2.py",
     "test_memory_pressure.py",
     "test_node_labels.py",
   ],
