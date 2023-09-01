@@ -39,8 +39,11 @@ Persistent storage
 Ray Train saves results and checkpoints at a persistent storage location.
 Per default, this is a local directory in ``~/ray_results``.
 
-This default setup is sufficient for single-node setups or distributed
-training without :ref:`fault tolerance <train-fault-tolerance>`.
+This directory will also contain logs generated on the driver, such as CSV
+and JSON logs of the result, and logs that can be read using TensorBoard.
+
+The default setup with a local directory is sufficient for single-node setups
+or distributed training without :ref:`fault tolerance <train-fault-tolerance>`.
 When you want to utilize fault tolerance, require access to shared data,
 or are training on spot instances, it is recommended to set up
 a remote persistent storage location.
@@ -60,3 +63,14 @@ network device, such as NFS.
 
 When configuring a persistent storage path, it is important that all nodes have
 access to the location.
+
+.. _train-ray-storage:
+
+Automatically setting up persistent storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+You can control where to store training results locally with the ``RAY_STORAGE``
+environment variable.
+
+For instance, if you set ``RAY_STORAGE="s3://my_bucket/train_results"``, your
+results will automatically persisted there per default (when no
+:prop:`RunConfig.storage_path <ray.train.RunConfig.storage_path>` is set).
