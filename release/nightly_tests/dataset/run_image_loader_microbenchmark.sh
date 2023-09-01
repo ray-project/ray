@@ -31,4 +31,4 @@ aws s3 sync s3://imagenetmini1000/1gb-tfrecords $TFRECORDS_DIR
 # Preprocess parquet and mosaic files.
 python preprocess_images.py --data-root "$DIR" --mosaic-data-root "$MOSAIC_DIR" --parquet-data-root "$PARQUET_DIR"
 
-python image_loader_microbenchmark.py --data-root "$DIR" --mosaic-data-root "$MOSAIC_DIR" --parquet-data-root "$PARQUET_DIR" --tf-data-root "$TFRECORDS_DIR"
+python image_loader_microbenchmark.py --data-root "$DIR" --mosaic-data-root "$MOSAIC_DIR" --parquet-data-root "$PARQUET_DIR" --tf-data-root "$TFRECORDS_DIR"/train
