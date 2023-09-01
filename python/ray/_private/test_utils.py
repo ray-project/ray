@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+import inspect
 import fnmatch
 import functools
 import io
@@ -579,8 +580,12 @@ async def async_wait_for_condition(
     last_ex = None
     while time.time() - start <= timeout:
         try:
-            if condition_predictor(**kwargs):
-                return
+            if inspect.iscoroutinefunction(condition_predictor):
+                if await condition_predictor(**kwargs):
+                    return
+            else:
+                if condition_predictor(**kwargs):
+                    return
         except Exception as ex:
             last_ex = ex
         await asyncio.sleep(retry_interval_ms / 1000.0)
