@@ -16,6 +16,7 @@ import unittest
 from unittest import mock
 
 import ray
+import ray.train
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
 from ray.train import CheckpointConfig, Checkpoint
@@ -108,7 +109,7 @@ class SteppingCallback(Callback):
 def _run(local_dir, driver_semaphore, trainer_semaphore):
     def _train(config):
         for i in range(7):
-            tune.report(val=i)
+            ray.train.report(dict(val=i))
 
     tune.run(
         _train,
@@ -176,11 +177,9 @@ class TuneInterruptionTest(unittest.TestCase):
         def run_in_thread():
             def _train(config):
                 for i in range(7):
-                    tune.report(val=i)
+                    ray.train.report(dict(val=i))
 
-            tune.run(
-                _train,
-            )
+            tune.run(_train)
             event.set()
 
         thread = threading.Thread(target=run_in_thread)
@@ -617,7 +616,7 @@ class TrainableCrashWithFailFast(unittest.TestCase):
         should bubble up."""
 
         def f(config):
-            tune.report({"a": 1})
+            ray.train.report({"a": 1})
             time.sleep(0.1)
             raise RuntimeError("Error happens in trainable!!")
 
@@ -677,10 +676,10 @@ def test_stacktrace():
     CMD = """
 from ray import tune
 
-def train(config):
+def train_fn(config):
     raise Exception("Inducing exception for testing purposes.")
 
-tune.run(train, num_samples=1)
+tune.run(train_fn, num_samples=1)
     """
     with pytest.raises(subprocess.CalledProcessError) as exc_info:
         run_string_as_driver(CMD)
