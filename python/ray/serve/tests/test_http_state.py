@@ -10,7 +10,7 @@ import ray
 from ray._raylet import GcsClient
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.config import DeploymentMode, HTTPOptions
-from ray.serve._private.common import HTTPProxyStatus
+from ray.serve._private.common import ProxyStatus
 from ray.serve._private.http_state import HTTPProxyStateManager, HTTPProxyState
 from ray.serve._private.http_proxy import HTTPProxyActor
 from ray.serve._private.constants import (
@@ -108,7 +108,7 @@ class MockHTTPProxyActor:
 
 def _create_http_proxy_state(
     proxy_actor_class: Any = MockHTTPProxyActor,
-    status: HTTPProxyStatus = HTTPProxyStatus.STARTING,
+    status: ProxyStatus = ProxyStatus.STARTING,
     node_id: str = "mock_node_id",
     **kwargs,
 ) -> HTTPProxyState:
@@ -121,7 +121,7 @@ def _create_http_proxy_state(
     return state
 
 
-def _update_and_check_proxy_status(state: HTTPProxyState, status: HTTPProxyStatus):
+def _update_and_check_proxy_status(state: HTTPProxyState, status: ProxyStatus):
     state.update()
     return state.status == status
 
@@ -129,7 +129,7 @@ def _update_and_check_proxy_status(state: HTTPProxyState, status: HTTPProxyStatu
 def _update_and_check_http_proxy_state_manager(
     http_proxy_state_manager: HTTPProxyStateManager,
     node_ids: List[str],
-    statuses: List[HTTPProxyStatus],
+    statuses: List[ProxyStatus],
     **kwargs,
 ):
     http_proxy_state_manager.update(**kwargs)
@@ -223,7 +223,7 @@ def test_http_state_update_restarts_unhealthy_proxies(ray_shutdown):
     )
     cluster_node_info_cache.update()
     manager._proxy_states[head_node_id] = _create_http_proxy_state(
-        status=HTTPProxyStatus.STARTING
+        status=ProxyStatus.STARTING
     )
 
     old_proxy_state = manager._proxy_states[head_node_id]
@@ -234,7 +234,7 @@ def test_http_state_update_restarts_unhealthy_proxies(ray_shutdown):
 
     def _update_state_and_check_proxy_status(
         _manager: HTTPProxyStateManager,
-        _status: HTTPProxyStatus,
+        _status: ProxyStatus,
     ):
         _manager.update()
         return _manager._proxy_states[head_node_id].status == _status
@@ -243,7 +243,7 @@ def test_http_state_update_restarts_unhealthy_proxies(ray_shutdown):
     wait_for_condition(
         condition_predictor=_update_state_and_check_proxy_status,
         _manager=manager,
-        _status=HTTPProxyStatus.HEALTHY,
+        _status=ProxyStatus.HEALTHY,
     )
 
     new_proxy = manager._proxy_states[head_node_id].actor_handle
@@ -284,13 +284,13 @@ def test_http_proxy_state_update_starting_ready_succeed():
     proxy_state = _create_http_proxy_state()
 
     # Ensure the proxy status before update is STARTING.
-    assert proxy_state.status == HTTPProxyStatus.STARTING
+    assert proxy_state.status == ProxyStatus.STARTING
 
     # Continuously trigger update and wait for status to be changed.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
 
 
@@ -317,13 +317,13 @@ def test_http_proxy_state_update_starting_ready_failed_once():
     proxy_state = _create_http_proxy_state(proxy_actor_class=NewMockHTTPProxyActor)
 
     # Ensure the proxy status before update is STARTING.
-    assert proxy_state.status == HTTPProxyStatus.STARTING
+    assert proxy_state.status == ProxyStatus.STARTING
 
     # Trigger update. The status do not change even when ready call is blocked.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.STARTING,
+        status=ProxyStatus.STARTING,
     )
 
     # Unblock ready call, trigger update, and wait for status change to HEALTHY.
@@ -331,7 +331,7 @@ def test_http_proxy_state_update_starting_ready_failed_once():
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
 
 
@@ -355,13 +355,13 @@ def test_http_proxy_state_update_starting_ready_always_fails():
     proxy_state = _create_http_proxy_state(proxy_actor_class=NewMockHTTPProxyActor)
 
     # Ensure the proxy status before update is STARTING.
-    assert proxy_state.status == HTTPProxyStatus.STARTING
+    assert proxy_state.status == ProxyStatus.STARTING
 
     # Continuously trigger update and wait for status to be changed.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.UNHEALTHY,
+        status=ProxyStatus.UNHEALTHY,
     )
 
     # Ensure the _consecutive_health_check_failures is correct
@@ -389,13 +389,13 @@ def test_http_proxy_state_update_starting_ready_always_timeout():
     proxy_state = _create_http_proxy_state(proxy_actor_class=NewMockHTTPProxyActor)
 
     # Ensure the proxy status before update is STARTING.
-    assert proxy_state.status == HTTPProxyStatus.STARTING
+    assert proxy_state.status == ProxyStatus.STARTING
 
     # Continuously trigger update and wait for status to be changed.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.UNHEALTHY,
+        status=ProxyStatus.UNHEALTHY,
     )
 
 
@@ -415,7 +415,7 @@ def test_http_proxy_state_update_healthy_check_health_succeed():
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
     first_check_time = proxy_state._last_health_check_time
 
@@ -423,7 +423,7 @@ def test_http_proxy_state_update_healthy_check_health_succeed():
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
 
     # Ensure the check time have changed since the last update
@@ -458,7 +458,7 @@ def test_http_proxy_state_update_healthy_check_health_failed_once():
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
     first_check_time = proxy_state._last_health_check_time
 
@@ -466,7 +466,7 @@ def test_http_proxy_state_update_healthy_check_health_failed_once():
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
 
     # Ensure the check time have changed since the last update
@@ -477,7 +477,7 @@ def test_http_proxy_state_update_healthy_check_health_failed_once():
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
 
 
@@ -507,7 +507,7 @@ def test_http_proxy_state_update_healthy_check_health_always_fails():
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
     first_check_time = proxy_state._last_health_check_time
 
@@ -515,7 +515,7 @@ def test_http_proxy_state_update_healthy_check_health_always_fails():
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.UNHEALTHY,
+        status=ProxyStatus.UNHEALTHY,
     )
 
     # Ensure the check time have changed since the last update
@@ -564,7 +564,7 @@ def test_http_proxy_state_update_healthy_check_health_sometimes_fails():
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
 
     def _update_until_num_health_checks_received(
@@ -577,7 +577,7 @@ def test_http_proxy_state_update_healthy_check_health_sometimes_fails():
         return True
 
     def incur_health_checks(
-        pass_checks: bool, num_checks: int, expected_final_status: HTTPProxyStatus
+        pass_checks: bool, num_checks: int, expected_final_status: ProxyStatus
     ):
         """Waits for num_checks health checks to occur.
 
@@ -611,17 +611,17 @@ def test_http_proxy_state_update_healthy_check_health_sometimes_fails():
         incur_health_checks(
             pass_checks=True,
             num_checks=1,
-            expected_final_status=HTTPProxyStatus.HEALTHY,
+            expected_final_status=ProxyStatus.HEALTHY,
         )
         incur_health_checks(
             pass_checks=False,
             num_checks=PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1,
-            expected_final_status=HTTPProxyStatus.HEALTHY,
+            expected_final_status=ProxyStatus.HEALTHY,
         )
 
     # Have health check succeed one more time.
     incur_health_checks(
-        pass_checks=True, num_checks=1, expected_final_status=HTTPProxyStatus.HEALTHY
+        pass_checks=True, num_checks=1, expected_final_status=ProxyStatus.HEALTHY
     )
 
     # Check failing the health check PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD + 1
@@ -633,7 +633,7 @@ def test_http_proxy_state_update_healthy_check_health_sometimes_fails():
     incur_health_checks(
         pass_checks=False,
         num_checks=PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD + 1,
-        expected_final_status=HTTPProxyStatus.UNHEALTHY,
+        expected_final_status=ProxyStatus.UNHEALTHY,
     )
 
 
@@ -664,7 +664,7 @@ def test_http_proxy_state_check_health_always_timeout_timeout_eq_period():
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
     first_check_time = proxy_state._last_health_check_time
 
@@ -672,7 +672,7 @@ def test_http_proxy_state_check_health_always_timeout_timeout_eq_period():
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.UNHEALTHY,
+        status=ProxyStatus.UNHEALTHY,
     )
 
     # Ensure the check time have changed since the last update
@@ -709,7 +709,7 @@ def test_http_proxy_state_check_health_always_timeout_timeout_greater_than_perio
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
     first_check_time = proxy_state._last_health_check_time
 
@@ -717,7 +717,7 @@ def test_http_proxy_state_check_health_always_timeout_timeout_greater_than_perio
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.UNHEALTHY,
+        status=ProxyStatus.UNHEALTHY,
     )
 
     # Ensure the check time have changed since the last update
@@ -738,13 +738,13 @@ def test_http_proxy_state_update_unhealthy_check_health_succeed():
     proxy_state = _create_http_proxy_state()
     proxy_state._consecutive_health_check_failures = 1
 
-    assert proxy_state.status == HTTPProxyStatus.STARTING
+    assert proxy_state.status == ProxyStatus.STARTING
 
     # Continuously trigger update and status should change to HEALTHY.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
 
     # Ensure _consecutive_health_check_failures has been reset
@@ -775,7 +775,7 @@ def test_unhealthy_retry_correct_number_of_times():
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
 
     # Ensure _health_check_obj_ref is set again
@@ -789,7 +789,7 @@ def test_unhealthy_retry_correct_number_of_times():
     for _ in range(3):
         time.sleep(0.1)
         proxy_state.update()
-    assert proxy_state.status == HTTPProxyStatus.UNHEALTHY
+    assert proxy_state.status == ProxyStatus.UNHEALTHY
 
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
@@ -810,7 +810,7 @@ def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
     for node_id, node_ip_address in all_nodes:
         manager._proxy_states[node_id] = _create_http_proxy_state(
             proxy_actor_class=HTTPProxyActor,
-            status=HTTPProxyStatus.HEALTHY,
+            status=ProxyStatus.HEALTHY,
             node_id=node_id,
             host="localhost",
             port=8000,
@@ -830,8 +830,8 @@ def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
         timeout=20,
         http_proxy_state_manager=manager,
         node_ids=node_ids,
-        statuses=[HTTPProxyStatus.HEALTHY]
-        + [HTTPProxyStatus.DRAINING] * number_of_worker_nodes,
+        statuses=[ProxyStatus.HEALTHY]
+        + [ProxyStatus.DRAINING] * number_of_worker_nodes,
         http_proxy_nodes=http_proxy_nodes,
     )
 
@@ -845,7 +845,7 @@ def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
         timeout=20,
         http_proxy_state_manager=manager,
         node_ids=node_ids,
-        statuses=[HTTPProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
+        statuses=[ProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
         http_proxy_nodes=http_proxy_nodes,
     )
 
@@ -881,12 +881,12 @@ def test_proxy_actor_healthy_during_draining():
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
-        status=HTTPProxyStatus.HEALTHY,
+        status=ProxyStatus.HEALTHY,
     )
 
     # Drain the proxy.
     proxy_state.update(draining=True)
-    assert proxy_state.status == HTTPProxyStatus.DRAINING
+    assert proxy_state.status == ProxyStatus.DRAINING
 
     cur_num_health_checks = ray.get(
         proxy_state.actor_handle.get_num_health_checks.remote()
@@ -904,7 +904,7 @@ def test_proxy_actor_healthy_during_draining():
     wait_for_condition(_update_until_two_more_health_checks)
 
     # Make sure the status is still DRAINING not HEALTHY
-    assert proxy_state.status == HTTPProxyStatus.DRAINING
+    assert proxy_state.status == ProxyStatus.DRAINING
 
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 1)
@@ -923,7 +923,7 @@ def test_proxy_actor_unhealthy_during_draining(
     for node_id, node_ip_address in all_nodes:
         manager._proxy_states[node_id] = _create_http_proxy_state(
             proxy_actor_class=HTTPProxyActor,
-            status=HTTPProxyStatus.STARTING,
+            status=ProxyStatus.STARTING,
             node_id=node_id,
             host="localhost",
             port=8000,
@@ -943,7 +943,7 @@ def test_proxy_actor_unhealthy_during_draining(
         timeout=20,
         http_proxy_state_manager=manager,
         node_ids=node_ids,
-        statuses=[HTTPProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
+        statuses=[ProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
         http_proxy_nodes=http_proxy_nodes,
     )
 
@@ -957,8 +957,8 @@ def test_proxy_actor_unhealthy_during_draining(
         timeout=20,
         http_proxy_state_manager=manager,
         node_ids=node_ids,
-        statuses=[HTTPProxyStatus.HEALTHY]
-        + [HTTPProxyStatus.DRAINING] * number_of_worker_nodes,
+        statuses=[ProxyStatus.HEALTHY]
+        + [ProxyStatus.DRAINING] * number_of_worker_nodes,
         http_proxy_nodes=http_proxy_nodes,
     )
 
@@ -972,7 +972,7 @@ def test_proxy_actor_unhealthy_during_draining(
     wait_for_condition(
         condition_predictor=check_worker_node_proxy_actor_is_removed, timeout=5
     )
-    assert manager._proxy_states[HEAD_NODE_ID].status == HTTPProxyStatus.HEALTHY
+    assert manager._proxy_states[HEAD_NODE_ID].status == ProxyStatus.HEALTHY
 
 
 def test_is_ready_for_shutdown(all_nodes):
@@ -990,7 +990,7 @@ def test_is_ready_for_shutdown(all_nodes):
     for node_id, node_ip_address in all_nodes:
         manager._proxy_states[node_id] = _create_http_proxy_state(
             proxy_actor_class=HTTPProxyActor,
-            status=HTTPProxyStatus.HEALTHY,
+            status=ProxyStatus.HEALTHY,
             node_id=node_id,
             host="localhost",
             port=8000,
