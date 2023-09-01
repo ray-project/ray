@@ -1,3 +1,6 @@
+```{include} /_includes/overview/announcement.md
+```
+
 (gentle-intro)=
 
 # Getting Started
@@ -687,4 +690,7 @@ Learn more about Ray State APIs
 `````
 
 ```{include} learn-more.md
+```
+
+```{include} /_includes/overview/announcement_bottom.md
 ```

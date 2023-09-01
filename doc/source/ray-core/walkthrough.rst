@@ -1,3 +1,5 @@
+.. include:: /_includes/core/announcement.rst
+
 .. _core-walkthrough:
 
 What is Ray Core?
@@ -91,3 +93,6 @@ Learn more about Ray's :ref:`key concepts <core-key-concepts>` with the followin
         .. button-ref:: objects-in-ray
 
             Working with Ray Objects
+
+
+.. include:: /_includes/core/announcement_bottom.rst

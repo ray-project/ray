@@ -1,3 +1,5 @@
+.. include:: /_includes/rllib/announcement.rst
+
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 How To Contribute to RLlib
@@ -152,3 +154,5 @@ It returns three values:
 *  ``tfv``: A version integer, whose value is either 1 or 2.
 
 `See here <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__ for a detailed example script.
+
+.. include:: /_includes/rllib/announcement_bottom.rst
