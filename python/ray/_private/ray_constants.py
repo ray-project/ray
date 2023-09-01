@@ -380,7 +380,6 @@ GLOBAL_GRPC_OPTIONS = (("grpc.enable_http_proxy", GRPC_ENABLE_HTTP_PROXY),)
 
 # Internal kv namespaces
 KV_NAMESPACE_DASHBOARD = b"dashboard"
-KV_NAMESPACE_SESSION = b"session"
 KV_NAMESPACE_TRACING = b"tracing"
 KV_NAMESPACE_PDB = b"ray_pdb"
 KV_NAMESPACE_HEALTHCHECK = b"healthcheck"

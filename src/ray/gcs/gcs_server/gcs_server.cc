@@ -129,14 +129,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 
 GcsServer::~GcsServer() { Stop(); }
 
-RedisClientOptions GcsServer::GetRedisClientOptions() const {
-  return RedisClientOptions(config_.redis_address,
-                            config_.redis_port,
-                            config_.redis_password,
-                            config_.enable_sharding_conn,
-                            config_.enable_redis_ssl);
-}
-
 void GcsServer::Start() {
   // Load gcs tables data asynchronously.
   auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
@@ -823,7 +815,7 @@ std::string GcsServer::GetDebugState() const {
 
 std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
   if (redis_client_ == nullptr) {
-    redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
+    redis_client_ = std::make_shared<RedisClient>(config_.redis_options);
     auto status = redis_client_->Connect(main_service_);
     RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
 

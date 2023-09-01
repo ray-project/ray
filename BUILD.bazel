@@ -178,6 +178,23 @@ cc_grpc_library(
     deps = ["//src/ray/protobuf:test_service_cc_proto"],
 )
 
+cc_library(
+    name = "store_client_kv",
+    hdrs = [
+        "src/ray/gcs/gcs_server/store_client_kv.h",
+    ],
+    srcs = [
+        "src/ray/gcs/gcs_server/store_client_kv.cc",
+    ],
+    copts = COPTS,
+    strip_include_prefix = "src",
+    deps = [
+        ":gcs_service_rpc",
+        ":redis_store_client",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
 # gcs rpc server and client.
 cc_library(
     name = "gcs_service_rpc",
@@ -532,6 +549,18 @@ cc_library(
         ":pubsub_lib",
         ":ray_common",
         ":redis_client",
+    ],
+)
+
+cc_library(
+    name = "cluster_config",
+    hdrs = [ "src/ray/gcs/cluster_config.h" ],
+    copts = COPTS,
+    strip_include_prefix = "src",
+    deps = [
+        ":observable_store_client",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util",
     ],
 )
 
@@ -2083,6 +2112,30 @@ cc_test(
         ":gcs_server_lib",
         ":gcs_test_util_lib",
         ":global_state_accessor_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+   
+cc_test(
+    name = "cluster_config_test",
+    size = "medium",
+    srcs = [
+        "src/ray/gcs/test/cluster_config_test.cc",
+    ],
+    args = [
+        "$(location redis-server)",
+        "$(location redis-cli)",
+    ],
+    copts = COPTS,
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":store_client_kv",
+        ":cluster_config",
+        ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

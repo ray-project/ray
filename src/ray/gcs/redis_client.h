@@ -30,8 +30,8 @@ namespace gcs {
 class RedisClientOptions {
  public:
   RedisClientOptions(const std::string &ip,
-                     int port,
                      const std::string &password,
+                     int port = 6379,
                      bool enable_sharding_conn = false,
                      bool enable_ssl = false)
       : server_ip_(ip),
