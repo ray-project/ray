@@ -601,10 +601,6 @@ def test_http_proxy_state_update_healthy_check_health_sometimes_fails():
             state=proxy_state,
             num_health_checks=cur_num_health_checks + num_checks,
         )
-        assert (
-            ray.get(proxy_state.actor_handle.get_num_health_checks.remote())
-            == cur_num_health_checks + num_checks
-        )
 
         if expected_final_status:
             assert proxy_state.status == expected_final_status
