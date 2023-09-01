@@ -12,5 +12,4 @@ Use these advanced guides for more options and configurations:
 - [Ray Serve Dashboard](dash-serve-view)
 - [Experimental Java API](serve-java-api)
 - [Migrate from 1.x to 2.x](serve-migration)
-- [Experimental gRPC Support](serve-direct-ingress)
-- [Experimental gRPC Proxy](serve-set-up-grpc-service)
+- [gRPC Support](serve-set-up-grpc-service)
