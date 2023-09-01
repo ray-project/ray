@@ -6,7 +6,7 @@ In this section, we explore Serve's key architectural concepts and components. I
 - the role of each component in Serve and how they work
 - the different types of actors that make up a Serve application
 
-% Figure source: https://docs.google.com/drawings/d/e/2PACX-1vQhOx-2rT_aq6qeOlt3apEFvW6ZRDT3sUa6EFS-4pSLdDUTb0M8jplWbI1OCJWKg90xl03eBcxkLGI5/pub?w=1443&h=730
+% Figure source: https://docs.google.com/drawings/d/1jSuBN5dkSj2s9-0eGzlU_ldsRa3TsswQUZM-cMQ29a0/edit
 
 ```{image} architecture-2.0.svg
 :align: center
@@ -28,13 +28,14 @@ There are three kinds of actors that are created to make up a Serve instance:
   server that accepts incoming requests, forwards them to replicas, and
   responds once they are completed.  For scalability and high availability,
   you can also run a proxy on each node in the cluster via the `location` field of [`http_options`](core-apis).
-- **gRPC Proxy**: If Serve is started with valid `` This actor runs a [Uvicorn](https://www.uvicorn.org/) HTTP
-  server that accepts incoming requests, forwards them to replicas, and
-  responds once they are completed.  For scalability and high availability,
-  you can also run a proxy on each node in the cluster via the `location` field of [`http_options`](core-apis).
+- **gRPC Proxy**: If Serve is started with valid `port` and `grpc_servicer_functions`,
+  then gRPC proxy will be started alongside with the HTTP proxy. This actor runs a
+  [grpcio](https://grpc.github.io/grpc/python/) server. gRPC server that accepts 
+  incoming requests, forwards them to replicas, and responds once they are completed.
+  For scalability and high availability.
 - **Replicas**: Actors that actually execute the code in response to a
   request. For example, they may contain an instantiation of an ML model. Each
-  replica processes individual requests from the HTTP proxy (these may be batched
+  replica processes individual requests from the proxy (these may be batched
   by the replica using `@serve.batch`, see the [batching](serve-performance-batching-requests) docs).
 
 ## Lifetime of a Request
