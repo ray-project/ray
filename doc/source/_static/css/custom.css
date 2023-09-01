@@ -646,6 +646,17 @@ padding: 20px;
     font-weight: 500;
 }
 
+.mantine-Modal-root {
+  z-index: 10000;
+  position: absolute;
+}
+
+#kapa-widget-container {
+  z-index: 10000 !important;
+  position: absolute !important;
+}
+
+
 .searchDiv {
     width: 100%;
     position: relative;
