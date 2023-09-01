@@ -6,3 +6,5 @@ python-snappy
 tensorflow-datasets
 datasets
 pytest-repeat
+decord
+openai-whisper
