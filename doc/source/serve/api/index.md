@@ -53,11 +53,9 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 
    serve.run
    serve.delete
-   serve.start
-   serve.shutdown
    serve.status
    serve.schema.ServeStatus
-      :noindex:
+      :exclude-members:
 ```
 
 ### Configuring System-level Options
@@ -70,6 +68,7 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    serve.start
    serve.config.ProxyLocation
    serve.config.HTTPOptions
+   serve.shutdown
 ```
 
 #### Advanced APIs
