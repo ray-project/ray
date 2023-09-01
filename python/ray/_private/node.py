@@ -101,8 +101,7 @@ class Node:
             if head and storage_namespace is None:
                 raise ValueError(
                     "RAY_external_storage_namespace must be provided "
-                    "when using Ray with external Redis via `RAY_REDIS_ADDRESS` "
-                    " for the fault tolerance. "
+                    "when using Ray with external Redis for the fault tolerance. "
                     "RAY_external_storage_namespace must be an unique ID "
                     "and has to be the same across the same head node."
                 )

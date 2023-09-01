@@ -1,6 +1,5 @@
 import sys
 import time
-import uuid
 
 import pytest
 
@@ -358,7 +357,6 @@ print(ray.get([use_gpu.remote(), use_gpu.remote()]))
 def test_redis_not_available(monkeypatch, call_ray_stop_only):
     monkeypatch.setenv("RAY_NUM_REDIS_GET_RETRIES", "2")
     monkeypatch.setenv("RAY_REDIS_ADDRESS", "localhost:12345")
-    monkeypatch.setenv("RAY_external_storage_namespace", str(uuid.uuid4()))
     p = subprocess.run(
         "ray start --head",
         shell=True,

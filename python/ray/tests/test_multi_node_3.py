@@ -2,7 +2,6 @@ import asyncio
 import os
 import subprocess
 import sys
-import uuid
 from pathlib import Path
 
 import psutil
@@ -136,12 +135,10 @@ def test_calling_start_ray_head(call_ray_stop_only):
         temp_dir, 8888, password=ray_constants.REDIS_DEFAULT_PASSWORD
     )
     os.environ["RAY_REDIS_ADDRESS"] = "127.0.0.1:8888"
-    os.environ["RAY_external_storage_namespace"] = str(uuid.uuid4())
     check_call_ray(["start", "--head"])
     check_call_ray(["stop"])
     proc.process.terminate()
     del os.environ["RAY_REDIS_ADDRESS"]
-    del os.environ["RAY_external_storage_namespace"]
 
     # Test --block. Killing a child process should cause the command to exit.
     blocked = subprocess.Popen(["ray", "start", "--head", "--block", "--port", "0"])
