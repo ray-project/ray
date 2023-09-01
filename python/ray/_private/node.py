@@ -178,6 +178,8 @@ class Node:
 
         # Register the temp dir.
         if head:
+            # We expect this the first time we initialize a cluster, but not during
+            # subsequent restarts of the head node.
             maybe_key = self.check_persisted_session_name()
             if maybe_key is None:
                 # date including microsecond
@@ -332,6 +334,7 @@ class Node:
         if len(parts) == 1:
             redis_ip_address, redis_port = parts[0].rsplit(":", 1)
         else:
+            # rediss for SSL
             if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
                 raise ValueError(
                     f"Invalid redis address {self._redis_address}."
@@ -342,7 +345,10 @@ class Node:
             if parts[0] == "rediss":
                 enable_redis_ssl = True
         if int(redis_port) < 0:
-            raise ValueError(f"Invalid port: {redis_port}")
+            raise ValueError(
+                f"Invalid Redis port provided: {redis_port}."
+                "The port must be a non-negative integer."
+            )
 
         return get_session_key_from_storage(
             redis_ip_address,

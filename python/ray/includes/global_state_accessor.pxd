@@ -65,6 +65,7 @@ cdef extern from * namespace "ray::gcs" nogil:
       std::string config_list;
       RAY_CHECK(absl::Base64Unescape(config, &config_list));
       RayConfig::instance().initialize(config_list);
+      RayConfig::instance().redis
 
       instrumented_io_context io_service;
 
@@ -75,6 +76,7 @@ cdef extern from * namespace "ray::gcs" nogil:
         RAY_LOG(ERROR) << "Failed to connect to redis: " << status.ToString();
         return false;
       }
+
       auto cli = std::make_unique<StoreClientInternalKV>(
         std::make_unique<RedisStoreClient>(std::move(redis_client)));
 
@@ -84,7 +86,8 @@ cdef extern from * namespace "ray::gcs" nogil:
           *data = result.value();
           ret_val = true;
         } else {
-          RAY_LOG(ERROR) << "Failed to get " << key;
+          RAY_LOG(INFO) << "Failed to retrieve the key " << key
+                        << "from persistent storage.";
           ret_val = false;
         }
       });

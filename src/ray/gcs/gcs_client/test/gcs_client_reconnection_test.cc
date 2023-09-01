@@ -211,6 +211,30 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   ASSERT_EQ(f1.get(), "B");
 }
 
+TEST_F(GcsClientReconnectionTest, TestRayConfig) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "gcs_rpc_server_reconnect_timeout_s": 60,
+  "gcs_storage": "redis",
+  "gcs_grpc_initial_reconnect_backoff_ms": 2000,
+  "gcs_grpc_max_reconnect_backoff_ms": 2000
+}
+  )");
+  StartGCS();
+  RayConfig::instance().initialize(
+      R"(
+{
+  "gcs_rpc_server_reconnect_timeout_s": 60,
+  "gcs_storage": "redis",
+  "gcs_grpc_initial_reconnect_backoff_ms": 2000,
+  "gcs_grpc_max_reconnect_backoff_ms": 3000
+}
+  )");
+
+  ASSERT_EQ(RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms, 3000);
+}
+
 TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
   // This test is to ensure that during reconnection, we got the right status
   // of the channel and also very basic test to verify gRPC's backoff is working.
