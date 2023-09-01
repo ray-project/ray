@@ -13,7 +13,7 @@ from ray.util.scheduling_strategies import (
 from ray._private.test_utils import wait_for_condition
 
 from ray import serve
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.serve._private.utils import get_all_live_placement_group_names
 
 
@@ -176,7 +176,7 @@ def test_pg_removed_after_controller_crash(serve_instance):
     serve.run(D.bind(), name="pg_test")
     assert len(get_all_live_placement_group_names()) == 1
 
-    ray.kill(get_global_client()._controller, no_restart=False)
+    ray.kill(_get_global_client()._controller, no_restart=False)
 
     serve.delete("pg_test")
     assert len(get_all_live_placement_group_names()) == 0
@@ -212,7 +212,7 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
     # Kill the controller and the replica immediately after.
     # This will cause the controller to *not* detect the replica on recovery, but it
     # should still detect the leaked placement group and clean it up.
-    ray.kill(get_global_client()._controller, no_restart=False)
+    ray.kill(_get_global_client()._controller, no_restart=False)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(h.die.remote())
 

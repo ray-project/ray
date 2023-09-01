@@ -35,7 +35,7 @@ from ray.serve.schema import (
     ReplicaDetails,
     _deployment_info_to_schema,
 )
-from ray.serve.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,

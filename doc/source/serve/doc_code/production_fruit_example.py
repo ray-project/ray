@@ -108,7 +108,7 @@ import requests  # noqa: E402
 from ray._private.test_utils import wait_for_condition  # noqa: E402
 
 from ray.serve.api import build  # noqa: E402
-from ray.serve.context import get_global_client  # noqa: E402
+from ray.serve.context import _get_global_client  # noqa: E402
 from ray.serve.schema import ServeApplicationSchema  # noqa: E402
 
 
@@ -149,7 +149,7 @@ print("Deployments have been torn down.")
 
 # Check for regression in remote repository
 serve.start()
-client = get_global_client()
+client = _get_global_client()
 config1 = {
     "import_path": "fruit.deployment_graph",
     "runtime_env": {

@@ -14,7 +14,7 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import ProxyStatus
 from ray.serve._private.utils import call_function_from_import_path
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeInstanceDetails
 
 
@@ -226,7 +226,7 @@ def test_http_proxy_calllback_failures(ray_instance, capsys):
         # RayActorError.
         pass
 
-    client = get_global_client()
+    client = _get_global_client()
 
     def check_http_proxy_keep_restarting():
         # The proxy will be under "STARTING" status and keep restarting.

@@ -11,7 +11,7 @@ from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P
 
 from ray import serve
 from ray.serve.config import AutoscalingConfig
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.serve.deployment import (
     deployment_to_schema,
     schema_to_deployment,
@@ -22,7 +22,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeStatusSchema,
     ServeDeploySchema,
-    serve_status_to_schema,
+    _serve_status_to_schema,
 )
 from ray.serve._private.common import (
     StatusOverview,
@@ -709,7 +709,7 @@ class TestServeStatusSchema:
         # Ensure a valid ServeStatusSchema can be generated
 
         serve_status_schema = self.get_valid_serve_status_schema()
-        serve_status_to_schema(serve_status_schema)
+        _serve_status_to_schema(serve_status_schema)
 
     def test_extra_fields_invalid_serve_status_schema(self):
         # Undefined fields should be forbidden in the schema
@@ -717,7 +717,7 @@ class TestServeStatusSchema:
         serve_status_schema = self.get_valid_serve_status_schema()
 
         # Schema should be createable with valid fields
-        serve_status_to_schema(serve_status_schema)
+        _serve_status_to_schema(serve_status_schema)
 
         # Schema should raise error when a nonspecified field is included
         with pytest.raises(ValidationError):
@@ -816,15 +816,15 @@ def test_status_schema_helpers():
         pass
 
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
     serve.run(f1.bind(), name="app1")
     serve.run(f2.bind(), name="app2")
 
     # Check statuses
-    f1_statuses = serve_status_to_schema(
+    f1_statuses = _serve_status_to_schema(
         client.get_serve_status("app1")
     ).deployment_statuses
-    f2_statuses = serve_status_to_schema(
+    f2_statuses = _serve_status_to_schema(
         client.get_serve_status("app2")
     ).deployment_statuses
     assert len(f1_statuses) == 1

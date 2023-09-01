@@ -2,7 +2,7 @@ import pytest
 
 import ray
 from ray.serve._private.deployment_state import DeploymentVersion
-from ray.serve.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig
 
 
 def test_validation():

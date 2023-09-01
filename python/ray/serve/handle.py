@@ -5,6 +5,8 @@ import threading
 from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tuple, Union
 
 import ray
+from ray.util import metrics
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator, GcsClient
 
@@ -20,8 +22,6 @@ from ray.serve._private.utils import (
     DEFAULT,
 )
 from ray.serve._private.router import Router, RequestMetadata
-from ray.util import metrics
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 _global_async_loop = None
 
@@ -163,7 +163,7 @@ class _DeploymentHandleBase:
                 availability_zone = None
 
             self._router = Router(
-                serve.context.get_global_client()._controller,
+                serve.context._get_global_client()._controller,
                 self.deployment_id,
                 node_id,
                 availability_zone,
@@ -774,7 +774,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class DeploymentHandle(_DeploymentHandleBase):
     """A handle used to make requests to a deployment at runtime.
 

@@ -4,7 +4,7 @@ import json
 import logging
 import time
 
-from ray.serve.config import ReplicaConfig, DeploymentConfig
+from ray.serve._private.config import ReplicaConfig, DeploymentConfig
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.common import DeploymentInfo, DeploymentID

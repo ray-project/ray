@@ -12,7 +12,7 @@ from ray.exceptions import RayActorError
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 from ray import serve
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.serve.handle import RayServeHandle
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_NAMESPACE, RAY_SERVE_ENABLE_NEW_ROUTING
@@ -147,7 +147,7 @@ def test_replica_startup_status_transitions(ray_cluster):
     cluster.add_node(num_cpus=1)
     cluster.connect(namespace=SERVE_NAMESPACE)
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
 
     signal = SignalActor.remote()
 
@@ -248,7 +248,7 @@ def test_replica_spread(ray_cluster):
     serve.run(D.bind())
 
     def get_num_nodes():
-        client = get_global_client()
+        client = _get_global_client()
         details = client.get_serve_details()
         dep = details["applications"]["default"]["deployments"]["D"]
         nodes = {r["node_id"] for r in dep["replicas"]}

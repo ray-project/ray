@@ -19,7 +19,7 @@ from ray._private.test_utils import (
 )
 
 from ray import serve
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -81,7 +81,7 @@ def client(start_and_shutdown_ray_cli_module, shutdown_ray_and_serve):
     )
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
     serve.start()
-    yield get_global_client()
+    yield _get_global_client()
 
 
 def check_running(_client: ServeControllerClient):
@@ -757,7 +757,7 @@ def test_controller_recover_and_deploy(client: ServeControllerClient):
 
     serve.shutdown()
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
 
     # Ensure config checkpoint has been deleted
     assert SERVE_DEFAULT_APP_NAME not in serve.status().applications

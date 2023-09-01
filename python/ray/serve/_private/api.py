@@ -27,7 +27,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.controller import ServeController
 from ray.serve.context import (
-    get_global_client,
+    _get_global_client,
     _set_global_client,
 )
 from ray.actor import ActorHandle
@@ -54,7 +54,7 @@ def get_deployment(name: str, app_name: str = ""):
         (
             deployment_info,
             route_prefix,
-        ) = get_global_client().get_deployment_info(name, app_name)
+        ) = _get_global_client().get_deployment_info(name, app_name)
     except KeyError:
         if len(app_name) == 0:
             msg = (
@@ -83,7 +83,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = get_global_client().list_deployments_v1()
+    infos = _get_global_client().list_deployments_v1()
 
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
@@ -227,7 +227,7 @@ async def serve_start_async(
     usage_lib.record_library_usage("serve")
 
     try:
-        client = get_global_client(_health_check_controller=True)
+        client = _get_global_client(_health_check_controller=True)
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
             " New http options will not be applied."
@@ -313,7 +313,7 @@ def serve_start(
     usage_lib.record_library_usage("serve")
 
     try:
-        client = get_global_client(_health_check_controller=True)
+        client = _get_global_client(_health_check_controller=True)
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
             " New http options will not be applied."
