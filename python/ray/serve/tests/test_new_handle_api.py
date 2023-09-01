@@ -1,12 +1,10 @@
-import asyncio
-import concurrent.futures
 import sys
 from typing import Any
 
 import pytest
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import SignalActor
 
 from ray import serve
 from ray.serve.handle import (
@@ -63,65 +61,6 @@ def test_result_timeout(serve_instance):
 
     ray.get(signal_actor.send.remote())
     assert ref.result() == "hi"
-
-
-# TODO(edoakes): expand this test to cancel ongoing requests once actor cancellation
-# is supported.
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="`max_concurrent_queries` not properly enforced in old codepath.",
-)
-def test_cancel(serve_instance):
-    """Test `.cancel()` from inside and outside a deployment."""
-
-    signal_actor = SignalActor.remote()
-
-    # Set max_concurrent_queries=1 and block so subsequent calls won't be scheduled.
-    @serve.deployment(max_concurrent_queries=1)
-    def downstream():
-        ray.get(signal_actor.wait.remote())
-        return "hi"
-
-    @serve.deployment
-    class Deployment:
-        def __init__(self, handle: RayServeHandle):
-            self._handle = handle.options(use_new_handle_api=True)
-
-        async def check_cancel(self):
-            ref = self._handle.remote()
-            with pytest.raises(asyncio.TimeoutError):
-                await asyncio.wait_for(ref, timeout=0.1)
-
-            ref.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await ref
-
-            return "Cancelled successfully."
-
-    app_handle = serve.run(Deployment.bind(downstream.bind())).options(
-        use_new_handle_api=True
-    )
-
-    # Send first blocking request so subsequent requests will be pending replica
-    # assignment.
-    deployment_handle = serve.get_deployment_handle("downstream", app_name="default")
-    blocking_ref = deployment_handle.remote()
-    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
-    with pytest.raises(TimeoutError):
-        blocking_ref.result(timeout_s=0.001)
-
-    # Check cancellation behavior from outside deployment.
-    cancelled_ref = deployment_handle.remote()
-    cancelled_ref.cancel()
-    with pytest.raises(concurrent.futures.CancelledError):
-        cancelled_ref.result()
-
-    # Check cancellation behavior from inside deployment.
-    assert app_handle.check_cancel.remote().result() == "Cancelled successfully."
-
-    # Unblock blocking request.
-    ray.get(signal_actor.send.remote())
-    assert blocking_ref.result() == "hi"
 
 
 def test_get_app_and_deployment_handle(serve_instance):

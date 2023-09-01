@@ -270,7 +270,7 @@ class ServeControllerClient:
         self,
         name: str,
         replica_config: ReplicaConfig,
-        deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
+        deployment_config: Union[None, DeploymentConfig, Dict[str, Any]] = None,
         version: Optional[str] = None,
         route_prefix: Optional[str] = None,
         url: Optional[str] = None,
