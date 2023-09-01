@@ -302,7 +302,7 @@ numpy==1.21.6 ; python_version < "3.9"
 nvidia-ml-py==12.535.77
 oauth2client==4.1.3
 oauthlib==3.2.2
-onnx==1.13.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+onnx==1.12.0 ; sys_platform != "darwin" or platform_machine != "arm64"
 onnxruntime==1.14.1 ; sys_platform != "darwin" or platform_machine != "arm64"
 open-spiel==1.2
 openapi-schema-validator==0.4.4
@@ -352,7 +352,7 @@ prometheus-client==0.17.1
 prometheus-flask-exporter==0.22.4
 promise==2.3
 prompt-toolkit==3.0.39
-protobuf==3.20.3
+protobuf==3.19.6
 proxy-py==2.4.3
 psutil==5.9.5
 ptyprocess==0.7.0
