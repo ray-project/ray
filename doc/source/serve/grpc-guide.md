@@ -2,17 +2,17 @@
 # Set Up gRPC Service
 
 This section helps you understand how to:
-- [build a user defined gRPC service and protobuf](custom-grpc-service)
-- [start Serve with gRPC proxy](start-serve-with-grpc-proxy)
-- [deploy gRPC applications](deploy-grpc-applications)
-- [send gRPC requests to Serve deployments](send-grpc-request)
-- [health checks proxies](health-checks)
-- [gRPC request metadata](metadata) 
-- [more examples](more-examples)
-- [error handling](error-handling)
+- build a user defined gRPC service and protobuf
+- start Serve with gRPC proxy
+- deploy gRPC applications
+- send gRPC requests to Serve deployments
+- health checks proxies
+- gRPC request metadata 
+- more examples
+- error handling
 
 
-(custom-grpc-service)=
+(custom-serve-grpc-service)=
 ## Define a gRPC Service
 To run a gRPC server it starts with first defining gRPC services, rpc methods, and 
 protobufs similar to the one below.
@@ -75,7 +75,7 @@ To start gRPC proxy with Python API
 ```
 
 
-(deploy-grpc-applications)=
+(deploy-serve-grpc-applications)=
 ## Deploy gRPC Applications
 gRPC applications in Serve works similarly to HTTP applications. The only difference is
 the input and output of the methods need to match with what's defined in the `.proto`
@@ -106,7 +106,7 @@ HTTP. We will make it optional for gRPC in the future release.
 :::
 
 
-(send-grpc-request)=
+(send-serve-grpc-proxy-request)=
 ## Send gRPC Requests to Serve deployments
 Sending a gRPC request to a Serve deployment is similar to sending a gRPC request to
 any other gRPC server. You would create a gRPC channel and stub, then call the method
@@ -123,7 +123,7 @@ Sending a gRPC request:
 Read more about gRPC client in Python: [https://grpc.io/docs/languages/python/basics/#client](https://grpc.io/docs/languages/python/basics/#client)
 
 
-(health-checks)=
+(serve-grpc-proxy-health-checks)=
 ## Health Checks Proxies
 Similar to HTTP's `/-/routes` and `/-/healthz` endpoints, Serve also provides gRPC
 service method to be used in health check. 
@@ -160,7 +160,7 @@ You can call the service method with the following code:
 ```
 
 
-(metadata)=
+(serve-grpc-metadata)=
 ## gRPC Request Metadata
 Just like HTTP's headers, gRPC also supports metadata to pass request related info.
 You can pass metadata to Serve's gRPC proxy and Serve will know how to parse and use
@@ -182,7 +182,7 @@ Example of using metadata:
 :language: python
 ```
 
-(more-examples)=
+(serve-grpc-proxy-more-examples)=
 ## More Examples
 gRPC proxy will remain feature parity with HTTP Proxy. Here are more examples of using
 gRPC proxy for getting streaming response as well as doing model composition.
@@ -228,7 +228,7 @@ metadata so Serve knows which application to route to.
 :::
 
 
-(error-handling)=
+(serve-grpc-proxy-error-handling)=
 ## Error Handling
 Similar to any other gRPC server, request will throw `grpc.RpcError` when the response
 code is not "OK". It's advised to put your request code in a try-except block and handle
