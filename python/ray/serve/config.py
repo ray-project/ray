@@ -109,7 +109,7 @@ class DeploymentMode(str, Enum):
 
 @PublicAPI(stability="stable")
 class ProxyLocation(str, Enum):
-    """Config for where to run proxies for ingress traffic to the cluster.
+    """Config for where to run proxies to receive ingress traffic to the cluster.
 
     Options:
 

@@ -18,7 +18,7 @@ from ray.serve._private.common import (
 )
 from ray.serve.config import ProxyLocation
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import PublicAPI
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
@@ -998,9 +998,7 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
         }
 
 
-@DeveloperAPI
-def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
-
+def _serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
     return ServeStatusSchema(
         name=serve_status.name,
         app_status=serve_status.app_status,
