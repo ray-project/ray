@@ -26,6 +26,7 @@ import ray._private.utils
 from ray._private import storage
 from ray._raylet import GcsClient, get_key_from_storage
 from ray._private.resource_spec import ResourceSpec
+from ray._private.services import serialize_config
 from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
 
 # Logger for this module. It should be configured at the entry point
@@ -178,9 +179,10 @@ class Node:
         # Register the temp dir.
         if head:
             maybe_key = None
-            if self._redis_address:
+            if self._ray_params.external_addresses is not None:
+                self._redis_address = self._ray_params.external_addresses[0]
                 parts = self._redis_address.split("://", 1)
-                enable_redis_ssl = "false"
+                enable_redis_ssl = False
                 if len(parts) == 1:
                     redis_ip_address, redis_port = parts[0].rsplit(":", 1)
                 else:
@@ -188,19 +190,22 @@ class Node:
                         raise ValueError(f"Invalid redis address {self._redis_address}")
                     redis_ip_address, redis_port = parts[1].rsplit(":", 1)
                     if parts[0] == "rediss":
-                        enable_redis_ssl = "true"
-                    maybe_key = get_key_from_storage(
-                        self._redis_address,
-                        self._ray_params.redis_password,
-                        enable_redis_ssl,
-                        b"session_name",
-                    )
+                        enable_redis_ssl = True
+                maybe_key = get_key_from_storage(
+                    redis_ip_address,
+                    int(redis_port),
+                    self._ray_params.redis_password,
+                    enable_redis_ssl,
+                    serialize_config(self._config),
+                    b"session_name",
+                )
+
             if maybe_key is None:
                 # date including microsecond
                 date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
                 self._session_name = f"session_{date_str}_{os.getpid()}"
             else:
-                self._session_name = maybe_key
+                self._session_name = ray._private.utils.decode(maybe_key)
         else:
             if ray_params.session_name is None:
                 assert not self._default_worker
@@ -1202,6 +1207,12 @@ class Node:
             True,
             ray_constants.KV_NAMESPACE_SESSION,
         )
+        v = self.get_gcs_client().internal_kv_get(
+            b"session_name",
+            ray_constants.KV_NAMESPACE_SESSION,
+        )
+        print("vct gotten value ", v)
+        print("just put session name vct " + self._session_name)
         self.get_gcs_client().internal_kv_put(
             b"session_dir",
             self._session_dir.encode(),
@@ -1236,12 +1247,8 @@ class Node:
         logger.debug(
             f"Process STDOUT and STDERR is being " f"redirected to {self._logs_dir}."
         )
-        assert self._redis_address is None
         assert self._gcs_address is None
         assert self._gcs_client is None
-
-        if self._ray_params.external_addresses is not None:
-            self._redis_address = self._ray_params.external_addresses[0]
 
         self.start_gcs_server()
         assert self.get_gcs_client() is not None

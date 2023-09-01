@@ -290,6 +290,7 @@ def _setup_redis(request):
         import uuid
 
         ns = str(uuid.uuid4())
+        print("vct @@@@ ", ns)
         old_ns = os.environ.get("RAY_external_storage_namespace")
         os.environ["RAY_external_storage_namespace"] = ns
 

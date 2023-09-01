@@ -4576,10 +4576,11 @@ def del_key_from_storage(host, port, password, use_ssl, key):
     return RedisDelKeySync(host, port, password, use_ssl, key)
 
 
-def get_key_from_storage(host, port, password, use_ssl, key):
+def get_key_from_storage(host, port, password, use_ssl, config, key):
     cdef:
         c_string data
-    result = RedisGetKeySync(host, port, password, use_ssl, key, &data)
+    result = RedisGetKeySync(host, port, password, use_ssl, config, key, &data)
+    print("result is " + str(result))
     if result:
         return data
     else:

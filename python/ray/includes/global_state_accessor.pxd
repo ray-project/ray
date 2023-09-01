@@ -57,11 +57,19 @@ cdef extern from * namespace "ray::gcs" nogil:
                          int32_t port,
                          const std::string& password,
                          bool use_ssl,
+                         const std::string& config,
                          const std::string& key,
                          std::string* data) {
       RedisClientOptions options(host, port, password, false, use_ssl);
 
+      std::string config_list;
+      RAY_CHECK(absl::Base64Unescape(config, &config_list));
+      RayConfig::instance().initialize(config_list);
+
       instrumented_io_context io_service;
+      RAY_UNUSED(std::async(std::launch::async, [&]() {
+        io_service.run();
+      }));
 
       auto redis_client = std::make_shared<RedisClient>(options);
       auto status = redis_client->Connect(io_service);
@@ -76,15 +84,17 @@ cdef extern from * namespace "ray::gcs" nogil:
       bool ret_val = false;
       cli->Get("session", key, [&](std::optional<std::string> result) {
         if (result.has_value()) {
+          RAY_LOG(INFO) << "vct E";
           *data = result.value();
           ret_val = true;
         } else {
+          *data = "gggg";
           RAY_LOG(ERROR) << "Failed to get " << key;
           ret_val = false;
         }
       });
+      RAY_LOG(INFO) << "vct F";
 
-      io_service.run();
       return ret_val;
     }
 
@@ -95,6 +105,7 @@ cdef extern from * namespace "ray::gcs" nogil:
                            c_int32_t port,
                            const c_string& password,
                            c_bool use_ssl,
+                           const c_string& config,
                            const c_string& key,
                            c_string* data)
 
