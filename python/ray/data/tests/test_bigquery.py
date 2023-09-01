@@ -209,7 +209,7 @@ class TestReadBigQuery:
 class TestWriteBigQuery:
     """Tests for BigQuery Write."""
 
-    def test_do_write(self):
+    def test_write(self):
         bq_ds = BigQueryDatasource()
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
@@ -221,7 +221,7 @@ class TestWriteBigQuery:
         )
         assert status == "ok"
 
-    def test_do_write_dataset_exists(self, ray_remote_function_mock):
+    def test_write_dataset_exists(self, ray_remote_function_mock):
         bq_ds = BigQueryDatasource()
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])

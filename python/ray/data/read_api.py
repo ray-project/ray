@@ -582,7 +582,7 @@ def read_bigquery(
     or automatically chosen if unspecified (see the ``parallelism`` arg below).
 
     Examples:
-     .. testcode::
+        .. testcode::
             :skipif: True
 
             import ray

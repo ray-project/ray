@@ -3280,6 +3280,7 @@ class Dataset:
             sql=sql,
         )
 
+    @PublicAPI(stability="alpha")
     @ConsumptionAPI
     def write_mongo(
         self,

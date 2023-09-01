@@ -17,6 +17,8 @@ from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
+MAX_RETRY_CNT = 10
+RATE_LIMIT_EXCEEDED_SLEEP_TIME = 11
 
 class _BigQueryDatasourceReader(Reader):
     def __init__(
@@ -34,8 +36,7 @@ class _BigQueryDatasourceReader(Reader):
 
         if query is not None and dataset is not None:
             raise ValueError(
-                "Query and dataset kwargs cannot both be provided"
-                + " (must be mutually exclusive)."
+                "Query and dataset kwargs cannot both be provided (must be mutually exclusive)."
             )
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
@@ -149,7 +150,7 @@ class BigQueryDatasource(Datasource):
                 pq.write_table(block, fp, compression="SNAPPY")
 
                 retry_cnt = 0
-                while retry_cnt < 10:
+                while retry_cnt < MAX_RETRY_CNT:
                     with open(fp, "rb") as source_file:
                         job = client.load_table_from_file(
                             source_file, dataset, job_config=job_config
@@ -161,7 +162,7 @@ class BigQueryDatasource(Datasource):
                     except exceptions.Forbidden as e:
                         logger.info("Rate limit exceeded... Sleeping to try again")
                         logger.debug(e)
-                        time.sleep(11)
+                        time.sleep(RATE_LIMIT_EXCEEDED_SLEEP_TIME)
 
         # Set up datasets to write
         client = bigquery.Client(project=project_id)
@@ -171,10 +172,8 @@ class BigQueryDatasource(Datasource):
             logger.info("Created dataset " + dataset_id)
         except exceptions.Conflict:
             logger.info(
-                "Dataset "
-                + dataset_id
-                + " already exists. The table will be overwritten"
-                + " if it already exists."
+                f"Dataset {dataset_id} already exists. "
+                "The table will be overwritten if it already exists."
             )
 
         # Delete table if it already exists
