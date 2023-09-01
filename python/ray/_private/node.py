@@ -98,7 +98,7 @@ class Node:
             ray_params.external_addresses = external_redis
             ray_params.num_redis_shards = len(external_redis) - 1
             storage_namespace = os.environ.get("RAY_external_storage_namespace")
-            if storage_namespace is None:
+            if head and storage_namespace is None:
                 raise ValueError(
                     "RAY_external_storage_namespace must be provided "
                     "when using Ray with external Redis for the fault tolerance. "
