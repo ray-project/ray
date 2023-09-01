@@ -10,7 +10,7 @@ from ray.tune.examples.mnist_pytorch import test_func, ConvNet, get_data_loaders
 
 import ray
 from ray import train, tune
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
 
 # __tutorial_imports_end__

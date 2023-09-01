@@ -10,7 +10,6 @@ import shutil
 import torch
 import tempfile
 from ray.train import Checkpoint
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal.storage import _use_storage_context
 from ray.train.lightning.lightning_checkpoint import (
     LightningCheckpoint,
@@ -222,10 +221,7 @@ class RayTrainReportCallback(Callback):
         trainer.save_checkpoint(ckpt_path, weights_only=False)
 
         # Report to train session
-        if _use_storage_context():
-            checkpoint = NewCheckpoint.from_directory(tmpdir)
-        else:
-            checkpoint = Checkpoint.from_directory(tmpdir)
+        checkpoint = Checkpoint.from_directory(tmpdir)
         train.report(metrics=metrics, checkpoint=checkpoint)
 
         if self.local_rank == 0:

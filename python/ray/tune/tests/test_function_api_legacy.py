@@ -1,31 +1,36 @@
+import pytest
 import sys
-import warnings
 
 from ray import tune
 
 
 def test_checkpoint_dir_deprecation():
-    warnings.filterwarnings("always")
+    def train_fn(config, checkpoint_dir=None):
+        pass
 
-    def train(config, checkpoint_dir=None):
-        for i in range(10):
-            tune.report({"foo": "bar"})
+    with pytest.raises(DeprecationWarning, match=r".*checkpoint_dir.*"):
+        tune.run(train_fn)
 
-    with warnings.catch_warnings(record=True) as w:
-        tune.run(train, num_samples=1)
-        found_pattern = False
-        for _w in w:
-            if issubclass(
-                _w.category, DeprecationWarning
-            ) and "To save and load checkpoint in trainable function" in str(
-                _w.message
-            ):
-                found_pattern = True
-                break
-        assert found_pattern
+    def train_fn(config, reporter):
+        pass
+
+    with pytest.raises(DeprecationWarning, match=r".*reporter.*"):
+        tune.run(train_fn)
+
+    def train_fn(config):
+        tune.report(test=1)
+
+    with pytest.raises(DeprecationWarning, match=r".*tune\.report.*"):
+        tune.run(train_fn, fail_fast="raise")
+
+    def train_fn(config):
+        with tune.checkpoint_dir(step=1) as _:
+            pass
+
+    with pytest.raises(DeprecationWarning, match=r".*tune\.checkpoint_dir.*"):
+        tune.run(train_fn, fail_fast="raise")
 
 
 if __name__ == "__main__":
-    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
