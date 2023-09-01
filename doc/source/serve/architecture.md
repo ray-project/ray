@@ -6,7 +6,7 @@ In this section, we explore Serve's key architectural concepts and components. I
 - the role of each component in Serve and how they work
 - the different types of actors that make up a Serve application
 
-% Figure source: https://docs.google.com/drawings/d/1jSuBN5dkSj2s9-0eGzlU_ldsRa3TsswQUZM-cMQ29a0/edit?usp=sharing
+% Figure source: https://docs.google.com/drawings/d/e/2PACX-1vQhOx-2rT_aq6qeOlt3apEFvW6ZRDT3sUa6EFS-4pSLdDUTb0M8jplWbI1OCJWKg90xl03eBcxkLGI5/pub?w=1443&h=730
 
 ```{image} architecture-2.0.svg
 :align: center
@@ -25,6 +25,10 @@ There are three kinds of actors that are created to make up a Serve instance:
   destroying other actors. Serve API calls like creating or getting a deployment
   make remote calls to the Controller.
 - **HTTP Proxy**: By default there is one HTTP proxy actor on the head node. This actor runs a [Uvicorn](https://www.uvicorn.org/) HTTP
+  server that accepts incoming requests, forwards them to replicas, and
+  responds once they are completed.  For scalability and high availability,
+  you can also run a proxy on each node in the cluster via the `location` field of [`http_options`](core-apis).
+- **gRPC Proxy**: If Serve is started with valid `` This actor runs a [Uvicorn](https://www.uvicorn.org/) HTTP
   server that accepts incoming requests, forwards them to replicas, and
   responds once they are completed.  For scalability and high availability,
   you can also run a proxy on each node in the cluster via the `location` field of [`http_options`](core-apis).
