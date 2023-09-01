@@ -46,7 +46,7 @@ Serve provides a library of HTTP adapters to help you avoid boilerplate code. Th
 
 When processing a request takes longer than the [end-to-end timeout](serve-performance-e2e-timeout) or an HTTP client disconnects before receiving a response, Serve cancels the in-flight request:
 
-- If the proxy hasn't yet sent the request to a replica, the request is simply dropped.
+- If the proxy hasn't yet sent the request to a replica, Serve simply drops the request.
 - If the request has been sent to a replica, Serve attempts to interrupt the replica and cancel the request. The `asyncio.Task` running the handler on the replica is cancelled, raising an `asyncio.CancelledError` the next time it enters an `await` statement. See [the asyncio docs](https://docs.python.org/3/library/asyncio-task.html#task-cancellation) for more info. Handle this exception in a try-except block to customize your deployment's behavior when a request is cancelled:
 
 ```{literalinclude} doc_code/http_guide/http_guide.py
