@@ -229,12 +229,22 @@ class Searcher:
         # lazy imports to avoid circular dependencies
         from ray.tune.experiment import Trial
         from ray.tune.analysis import ExperimentAnalysis
+        from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
         from ray.tune.result import DONE
 
-        if isinstance(trials_or_analysis, Trial):
-            trials_or_analysis = [trials_or_analysis]
-        elif isinstance(trials_or_analysis, ExperimentAnalysis):
-            trials_or_analysis = trials_or_analysis.trials
+        if isinstance(trials_or_analysis, (list, tuple)):
+            trials = trials_or_analysis
+        elif isinstance(trials_or_analysis, Trial):
+            trials = [trials_or_analysis]
+        elif isinstance(
+            trials_or_analysis, (ExperimentAnalysis, NewExperimentAnalysis)
+        ):
+            trials = trials_or_analysis.trials
+        else:
+            raise NotImplementedError(
+                "Expected input to be a `Trial`, a list of `Trial`s, or "
+                f"`ExperimentAnalysis`, got: {trials_or_analysis}"
+            )
 
         any_trial_had_metric = False
 
@@ -261,7 +271,7 @@ class Searcher:
                 intermediate_values=None,  # we do not save those
             )
 
-        for trial in trials_or_analysis:
+        for trial in trials:
             kwargs = trial_to_points(trial)
             if kwargs:
                 self.add_evaluated_point(**kwargs)

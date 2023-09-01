@@ -31,10 +31,22 @@ public class RunManager {
     command.add(rayConfig.redisPassword);
     command.addAll(rayConfig.headArgs);
 
+    String numCpus = System.getProperty("num-cpus");
+    if (numCpus != null) {
+      command.add("--num-cpus");
+      command.add(numCpus);
+    }
+
     String numGpus = System.getProperty("num-gpus");
     if (numGpus != null) {
       command.add("--num-gpus");
       command.add(numGpus);
+    }
+
+    String memory = System.getProperty("memory");
+    if (memory != null) {
+      command.add("--memory");
+      command.add(memory);
     }
 
     // Set node labels.
