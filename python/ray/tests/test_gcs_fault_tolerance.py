@@ -868,6 +868,36 @@ def test_cluster_id(ray_start_regular):
             sleep(1)
 
 
+def test_session_name(ray_start_cluster):
+    # Kill GCS and check that raylets kill themselves when not backed by Redis,
+    # and stay alive when backed by Redis.
+    # Raylets should kill themselves due to cluster ID mismatch in the
+    # non-persisted case.
+    cluster = ray_start_cluster
+    cluster.add_node()
+    cluster.wait_for_nodes()
+
+    head_node = cluster.head_node
+    session_dir = head_node.get_session_dir_path()
+
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+    cluster.remove_node(head_node, allow_graceful=False)
+    # Wait to prevent the gcs server process becoming zombie.
+    gcs_server_process.wait()
+    wait_for_pid_to_exit(gcs_server_pid, 1000)
+
+    # Add head node back
+    cluster.add_node()
+    head_node = cluster.head_node
+    new_session_dir = head_node.get_session_dir_path()
+
+    if not enable_external_redis():
+        assert session_dir != new_session_dir
+    else:
+        assert session_dir == new_session_dir
+
+
 @pytest.mark.parametrize(
     "ray_start_regular_with_external_redis",
     [
