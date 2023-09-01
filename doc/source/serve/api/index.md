@@ -57,6 +57,7 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    serve.shutdown
    serve.status
    serve.schema.ServeStatus
+      :noindex:
 ```
 
 ### Configuring System-level Options
