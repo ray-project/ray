@@ -15,7 +15,6 @@ grpc_servicer_functions = [
     "user_defined_protos_pb2_grpc.add_FruitServiceServicer_to_server",
 ]
 serve.start(
-    http_options={"location": "EveryNode"},
     grpc_options=gRPCOptions(
         port=grpc_port,
         grpc_servicer_functions=grpc_servicer_functions,
@@ -258,7 +257,7 @@ from user_defined_protos_pb2 import FruitAmounts
 channel = grpc.insecure_channel("localhost:9000")
 stub = FruitServiceStub(channel)
 request = FruitAmounts(orange=4, apple=8)
-metadata = (("application", "app2"),)
+metadata = (("application", "app2"),)  # Make sure application metadata is passed.
 
 response, call = stub.FruitStand.with_call(request=request, metadata=metadata)
 print(f"status code: {call.code()}")  # grpc.StatusCode.OK
@@ -281,6 +280,6 @@ try:
     response = stub.__call__(request=request)
 except grpc.RpcError as rpc_error:
     print(f"status code {rpc_error.code()}")  # StatusCode.NOT_FOUND
-    print(f"details {rpc_error.details()}")
+    print(f"details {rpc_error.details()}")  # Application metadata not set...
 
 # __end_error_handle__

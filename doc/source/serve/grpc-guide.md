@@ -1,15 +1,15 @@
-(serve-set-up-grpc-proxy)=
-# Set Up gRPC Proxy
+(serve-set-up-grpc-service)=
+# Set Up gRPC Service
 
 This section helps you understand how to:
-- build a user defined gRPC service and protobuf
-- start Serve with gRPC proxy
-- deploy gRPC applications
-- send gRPC requests to Serve deployments
-- Health Checks
-- gRPC request metadata 
-- more examples
-- error handling
+- [build a user defined gRPC service and protobuf](custom-grpc-service)
+- [start Serve with gRPC proxy](start-serve-with-grpc-proxy)
+- [deploy gRPC applications](deploy-grpc-applications)
+- [send gRPC requests to Serve deployments](send-grpc-request)
+- [health checks proxies](health-checks)
+- [gRPC request metadata](metadata) 
+- [more examples](more-examples)
+- [error handling](error-handling)
 
 
 (custom-grpc-service)=
@@ -67,13 +67,13 @@ service FruitService {
 ```
 
 In this example, we created a file named `user_defined_protos.proto`. There are two
-gRPC services, `UserDefinedService` and `FruitService`. `UserDefinedService` has four
-rpc methods, `__call__`, `Multiplexing`, and `Streaming`. `FruitService` has one 
-rpc method, `FruitStand`. Their corresponding input and output types are also defined
-specifically for each rpc method.
+gRPC services, `UserDefinedService` and `FruitService`. `UserDefinedService` has three
+RPC methods, `__call__`, `Multiplexing`, and `Streaming`. `FruitService` has one
+RPC method, `FruitStand`. Their corresponding input and output types are also defined
+specifically for each RPC method.
 
 Once the `.proto` services are defined, we can use `grpcio-tools` to compile python 
-code for those services. With the following command
+code for those services. Example command looks like the following:
 ```bash
 python -m grpc_tools.protoc -I=. --python_out=. --grpc_python_out=. ./user_defined_protos.proto
 ```
@@ -83,6 +83,10 @@ It will generate two files, `user_defined_protos_pb2.py` and
 
 For more details on `grpcio-tools` see: [https://grpc.io/docs/languages/python/basics/#generating-client-and-server-code](https://grpc.io/docs/languages/python/basics/#generating-client-and-server-code)
 
+:::{note}
+Please make sure the generated files are in the same directory as where the Ray cluster
+is running so it can be importable by Serve when starting the proxies.
+:::
 
 (start-serve-with-grpc-proxy)=
 ## Start Serve with gRPC Proxy
@@ -90,7 +94,7 @@ For more details on `grpcio-tools` see: [https://grpc.io/docs/languages/python/b
 and [`ray.serve.start`](https://docs.ray.io/en/releases-2.7.0/serve/api/doc/ray.serve.start.html#ray.serve.start) API 
 both support starting Serve with gRPC proxy. There are two options related to Serve's 
 gRPC proxy, `grpc_port` and `grpc_servicer_functions`. `grpc_port` is the port for gRPC 
-proxies to listen on. It defaults to 9000. `grpc_servicer_functions` is a list of import 
+proxies to listen. It defaults to 9000. `grpc_servicer_functions` is a list of import 
 paths for gRPC `add_servicer_to_server` functions to add to Serve’s gRPC proxy. It also 
 serves as the flag to determine whether to start gRPC server. Default empty list, 
 meaning no gRPC server will be started. 
@@ -115,10 +119,10 @@ To start gRPC proxy with Python API
 
 (deploy-grpc-applications)=
 ## Deploy gRPC Applications
-gRPC application in Serve works similarly to HTTP application. The only difference is
-the input and output of the methods need to match with what's defined in your `.proto`
+gRPC applications in Serve works similarly to HTTP applications. The only difference is
+the input and output of the methods need to match with what's defined in the `.proto`
 file and that the method of the application needs to be an exact match (case sensitive)
-with the predefined rpc method. For example, if we want to deploy `UserDefinedService`
+with the predefined RPC method. For example, if we want to deploy `UserDefinedService`
 with `__call__` method, the method name needs to be `__call__`, the input type needs to
 be `UserDefinedMessage`, and the output type needs to be `UserDefinedResponse`. Serve
 will pass the protobuf object into the method and expecting the protobuf object back
@@ -162,7 +166,7 @@ Read more about gRPC client in Python: [https://grpc.io/docs/languages/python/ba
 
 
 (health-checks)=
-## Health Checks
+## Health Checks Proxies
 Similar to HTTP's `/-/routes` and `/-/healthz` endpoints, Serve also provides gRPC
 service method to be used in health check. 
 - `/ray.serve.RayServeAPIService/ListApplications` is used to list all applications
@@ -206,7 +210,7 @@ them. Serve will also pass trailing metadata back to the client.
 
 List of Serve accepted metadata keys:
 - `application`: The name of the Serve application to route to. If not passed and only
-one application is deployed, serve will route to the only app automatically.
+one application is deployed, serve will route to the only deployed app automatically.
 - `request_id`: The request id to track the request.
 - `multiplexed_model_id`: The model id to do model multiplexing.
 
@@ -236,8 +240,9 @@ to get a streaming response.
 
 ### Model Composition
 Assuming we have the below deployments. `OrangeStand` and `AppleStand` are two models
-to determine the price. And there is a `FruitStand` model to call `OrangeStand` and 
-`AppleStand` to get each fruit's price and combine them into a total costs. 
+to determine the price for each fruit. And there is a `FruitStand` model to call both
+`OrangeStand` and`AppleStand` to get each fruit's price and combine them into a final
+total costs. 
 ```{literalinclude} doc_code/http_guide/grpc_guide.py
 :start-after: __begin_model_composition_deployment__   
 :end-before: __end_model_composition_deployment__
@@ -267,18 +272,18 @@ metadata so Serve knows which application to route to.
 
 (error-handling)=
 ## Error Handling
-Similar to any other gRPC server, request will throw error when the response code is not
-"OK". It's advised to put your request code in a try-except block and handle the error
-accordingly.
+Similar to any other gRPC server, request will throw `grpc.RpcError` when the response
+code is not "OK". It's advised to put your request code in a try-except block and handle
+the error accordingly.
 ```{literalinclude} doc_code/http_guide/grpc_guide.py
 :start-after: __begin_error_handle__   
 :end-before: __end_error_handle__
 :language: python
 ```
 
-Serve handled gRPC error codes:
+Serve uses gRPC error codes like below:
 - `NOT_FOUND`: When multiple application are deployed to Serve and the application is 
 not passed in metadata or passed but no matching application.
-- `UNAVAILABLE`: Only on the health check routes when the proxy is in draining state.
-- `CANCELLED`: The request takes longer than the timeout setting and cancelled.
+- `UNAVAILABLE`: Only on the health check methods when the proxy is in draining state.
+- `CANCELLED`: The request takes longer than the timeout setting and got cancelled.
 - `INTERNAL`: Other unhandled errors during the request.
