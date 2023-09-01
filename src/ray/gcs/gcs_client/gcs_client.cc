@@ -175,8 +175,8 @@ Status HandleGcsError(rpc::GcsStatus status) {
 
 }  // namespace
 
-// If never connected to GCS: Make `num_retries` attempts to connect to
-// the GCS.
+// If never connected to GCS: Make `num_retries + 1` attempts to connect to
+// the GCS. At least connect once to make sure we can get a cluster ID.
 //
 // Each whole attempt = (multiple connect attempts) + (1 RPC attempt).
 // - For 1 whole attempt we have `timeout_ms`, no wait between whole attempts.
@@ -234,7 +234,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
     return Status::RpcError(status.error_message(), status.error_code());
   };
 
-  auto make_attempts = [this, timeout_ms, num_retries, &make_one_attempt]() -> Status {
+  auto make_attempts = [this, timeout_ms, &make_one_attempt](size_t num_tries) -> Status {
     grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
     arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 100);
     arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 100);
@@ -249,7 +249,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                                   : default_conn_timeout_ms;
 
     Status attempt_result;
-    for (size_t i = 0; i < num_retries; ++i) {
+    for (size_t i = 0; i < num_tries; ++i) {
       RAY_LOG(DEBUG) << "GcsClient trying to get cluster id, attempt " << i;
       attempt_result =
           make_one_attempt(*one_time_channel, *one_time_stub, conn_timeout_ms);
@@ -260,14 +260,14 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                       << "th attempt to get cluster ID failed: " << attempt_result;
       }
     }
-    RAY_LOG(WARNING) << "GcsClient all " << num_retries
+    RAY_LOG(WARNING) << "GcsClient all " << num_tries
                      << "attempts to get cluster ID failed, last error: "
                      << attempt_result;
     return attempt_result;
   };
 
   if (cluster_id.IsNil()) {
-    RAY_RETURN_NOT_OK(make_attempts());
+    RAY_RETURN_NOT_OK(make_attempts(num_retries + 1));
   } else {
     cluster_id_ = cluster_id;
     RAY_LOG(DEBUG) << "Client initialized with provided cluster ID: " << cluster_id_;
