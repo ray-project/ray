@@ -49,7 +49,7 @@ When processing a request takes longer than the [end-to-end timeout](serve-perfo
 - If the proxy hasn't yet sent the request to a replica, Serve simply drops the request.
 - If the request has been sent to a replica, Serve attempts to interrupt the replica and cancel the request. The `asyncio.Task` running the handler on the replica is cancelled, raising an `asyncio.CancelledError` the next time it enters an `await` statement. See [the asyncio docs](https://docs.python.org/3/library/asyncio-task.html#task-cancellation) for more info. Handle this exception in a try-except block to customize your deployment's behavior when a request is cancelled:
 
-```{literalinclude} doc_code/http_guide/http_guide.py
+```{literalinclude} doc_code/http_guide/disconnects.py
 :start-after: __start_basic_disconnect__
 :end-before: __end_basic_disconnect__
 :language: python
@@ -61,7 +61,7 @@ Cancellation cascades to any downstream deployment handle, task, or actor calls 
 
 To ignore cancellation during an `await` statement, use `asyncio.shield`:
 
-```{literalinclude} doc_code/http_guide/http_guide.py
+```{literalinclude} doc_code/http_guide/disconnects.py
 :start-after: __start_shielded_disconnect__
 :end-before: __end_shielded_disconnect__
 :language: python
