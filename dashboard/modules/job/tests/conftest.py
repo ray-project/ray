@@ -5,6 +5,7 @@ from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.modules.job.job_manager import (
     JobManager,
 )
+import pytest
 
 
 TEST_NAMESPACE = "jobs_test_namespace"

@@ -1429,12 +1429,11 @@ def init(
         #       as compared to via ray.init(runtime_env=...) to make sure runtime_env
         #       specified via job submission API takes precedence
         runtime_env = injected_job_config.runtime_env
-
+        print(runtime_env)
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
             )
-
         job_config.set_runtime_env(runtime_env)
         # Similarly, we prefer metadata provided via job submission API
         for key, value in injected_job_config.metadata.items():
