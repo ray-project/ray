@@ -180,6 +180,7 @@ def ray_cc_library(name, strip_include_prefix = "/src", copts = [], **kwargs):
         **kwargs
     )
 
+
 def ray_cc_test(name, linkopts = [], copts = [], **kwargs):
     cc_test(
         name = name,
