@@ -193,7 +193,6 @@ parts:
               - file: serve/deploy-many-models/multi-app
               - file: serve/deploy-many-models/model-multiplexing
           - file: serve/configure-serve-deployment
-          - file: serve/grpc-guide
           - file: serve/http-guide
           - file: serve/production-guide/index
             title: Production Guide
@@ -218,6 +217,7 @@ parts:
               - file: serve/advanced-guides/managing-java-deployments
               - file: serve/advanced-guides/migration
               - file: serve/advanced-guides/deploy-vm
+              - file: serve/advanced-guides/grpc-guide
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:
