@@ -63,6 +63,9 @@ def train_func(config):
             if ray.train.get_context().get_world_rank() == 0:
                 mlflow.log_metrics({"loss": loss.item(), "epoch": epoch})
 
+    if ray.train.get_context().get_world_rank() == 0:
+        mlflow.end_run()
+
 
 trainer = TorchTrainer(
     train_func,

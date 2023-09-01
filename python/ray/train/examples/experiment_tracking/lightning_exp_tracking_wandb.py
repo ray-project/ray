@@ -11,9 +11,6 @@ import wandb
 
 
 def train_func(config):
-
-    # Note this is equivalent to calling `wandb.login` with API key.
-    os.environ["WANDB_API_KEY"] = config["wandb_api_key"]
     logger = None
     if ray.train.get_context().get_world_rank() == 0:
         logger = WandbLogger(name="demo-run", project="demo-project")
@@ -35,9 +32,11 @@ scaling_config = ScalingConfig(num_workers=4, use_gpu=False)
 assert (
     "WANDB_API_KEY" in os.environ
 ), 'Please do WANDB_API_KEY="abcde" when running this script.'
+
+# This makes sure that all workers will have this env var set.
+ray.init(runtime_env={"env_vars": {"WANDB_API_KEY": os.environ["WANDB_API_KEY"]}})
 trainer = TorchTrainer(
     train_func,
-    train_loop_config={"wandb_api_key": os.environ["WANDB_API_KEY"]},
     scaling_config=scaling_config,
 )
 

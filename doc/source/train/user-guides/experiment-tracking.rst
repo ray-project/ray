@@ -23,7 +23,7 @@ inside of Ray Train.
     from ray.train import ScalingConfig
 
     def train_func(config):
-        # Training code and native lexperiment tracking library calls go here.
+        # Training code and native experiment tracking library calls go here.
 
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
@@ -46,15 +46,16 @@ The following session uses Wandb and MLflow but it is adaptable to other framewo
 
         .. code-block:: python
             
+            import ray
             from ray import train
             import wandb
 
-            # Assumes you are passing API key through config
+            # This ensures that all ray worker processes have `WANDB_API_KEY` set.
+            ray.init(runtime_env={"env_vars": {"WANDB_API_KEY": "your_api_key"}})
+
             def train_func(config):
                 # Step 1 and 2
                 if train.get_context().get_world_rank() == 0:
-                    wandb.login(key=config["wandb_api_key"])
-
                     wandb.init(
                         name=...,
                         project=...,
@@ -148,45 +149,45 @@ ensure that there is a shared file system where all nodes can write to.
 
     .. tab:: Wandb
 
-        - online
+        **online**
 
-            Ensure that credentials are set inside of ``train_func``.
+        Ensure that credentials are set inside of ``train_func``.
 
-            .. code-block:: python
-                
-                # This is equivalent to `os.environ["WANDB_API_KEY"] = "your_api_key"`
-                wandb.login(key="your_api_key")
+        .. code-block:: python
+            
+            # This is equivalent to `os.environ["WANDB_API_KEY"] = "your_api_key"`
+            wandb.login(key="your_api_key")
 
-        - offline
+        **offline**
 
-            Ensure that offline directory points to a shared storage path.
+        Ensure that offline directory points to a shared storage path.
 
-            .. code-block:: python
+        .. code-block:: python
 
-                os.environ["WANDB_MODE"] = "offline"
-                wandb.init(dir="some_shared_storage_path/wandb") 
+            os.environ["WANDB_MODE"] = "offline"
+            wandb.init(dir="some_shared_storage_path/wandb") 
 
     .. tab:: MLflow
         
-        - online (hosted by Databricks)
+        **online (hosted by Databricks)**
             
-            Ensure that all nodes have access to the Databricks config file.
+        Ensure that all nodes have access to the Databricks config file.
 
-            .. code-block:: python
+        .. code-block:: python
 
-                # MLflow client will look for a Databricks config file 
-                # at the location specified by os.environ["DATABRICKS_CONFIG_FILE"].
-                os.environ["DATABRICKS_CONFIG_FILE"] = config["databricks_config_file"]
-                mlflow.set_tracking_uri("databricks")
-                mlflow.start_run()
+            # MLflow client will look for a Databricks config file 
+            # at the location specified by `os.environ["DATABRICKS_CONFIG_FILE"]`.
+            os.environ["DATABRICKS_CONFIG_FILE"] = config["databricks_config_file"]
+            mlflow.set_tracking_uri("databricks")
+            mlflow.start_run()
 
-        - offline
+        **offline**
 
-            Ensure that offline directory points to a shared storage path.
+        Ensure that offline directory points to a shared storage path.
 
-            .. code-block:: python
+        .. code-block:: python
 
-                mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")
+            mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")
 
 Setting up credentials
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -198,6 +199,7 @@ For setting environment variable, one may pass the value of environment variable
 argument of ``train_func`` and set the corresponding environment variable in the ``train_func``.
 
 For accessing config file, one needs to ensure that the config file is accessible to all nodes.
+One way to do this is by setting up a shared storage. Another way is to save a copy in each node.
 
 Setting up shared file system
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -215,20 +217,65 @@ Please refer to tracking libraries' own documentation for semantics.
     
     When performing **fault-tolerant training** with auto-restoration, make sure that you use a 
     consistent id to configure all tracking runs that logically belong to the same training run.
+    One way to acquire an unique id is through 
+    :meth:`ray.train.get_context().get_trial_id() <ray.train.TrainContext.get_trial_id>`.
+
+    .. code-block:: python
+
+        import ray
+        from ray.train import ScalingConfig, RunConfig, FailureConfig
+        from ray.train.torch import TorchTrainer
+
+        def train_func(config):
+            if ray.train.get_context().get_world_rank() == 0:
+                wandb.init(id=ray.train.get_context().get_trial_id())
+            ...
+
+        trainer = TorchTrainer(
+            train_func, 
+            run_config=RunConfig(failure_config=FailureConfig(max_failures=3))
+        )
+
+        trainer.fit()
+            
 
 Step 3: Log
 -----------
 
-You can customize when and where to log parameters, metrics, models, or media contents. 
-You can also use some native integrations that these tracking frameworks have with 
+You can customize within ``train_func`` how to log parameters, metrics, models, or media contents 
+just as you would with a single process training script. 
+You can also use native integrations that a particular tracking framework has with 
 specific training frameworks, for example ``mlflow.pytorch.autolog()``, 
 ``lightning.pytorch.loggers.MLFlowLogger`` etc. 
 
 Step 4: Finish the run
 ----------------------
 
-For frameworks that require a call to mark a run as finished, include the appropriate call.
-For example, ``wandb.finish()`` ensures that all logs are flushed to the Wandb backend.
+This step ensures that all logs are synced to the tracking service. Depending on the implementation of 
+various tracking libraries, sometimes logs are first stored locally before they are synced to the tracking 
+service. When training is finished, the node that the training worker resided on could be turned down by 
+ray autoscaler. Finishing the run makes sure that all logs are synced by the time training workers exit. 
+
+**Wandb**
+
+.. code-block:: python
+
+    # https://docs.wandb.ai/ref/python/finish
+    wandb.finish()
+
+**MLflow**
+
+.. code-block:: python
+
+    # https://mlflow.org/docs/1.2.0/python_api/mlflow.html
+    mlflow.end_run()
+
+**Comet**
+
+.. code-block:: python
+
+    # https://www.comet.com/docs/v2/api-and-sdk/python-sdk/reference/Experiment/#experimentend
+    Experiment.end()
 
 Runnable Code
 =============
@@ -239,14 +286,14 @@ PyTorch
 .. dropdown:: Log to Wandb (online) 
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking//torch_exp_tracking_wandb.py
-            :emphasize-lines: 17, 18, 19, 48, 49, 51, 52, 57
+            :emphasize-lines: 12, 13, 14, 17, 18, 47, 48, 50, 51
             :language: python
             :start-after: __start__
 
 .. dropdown:: Log to file based MLflow (offline)         
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/torch_exp_tracking_mlflow.py
-        :emphasize-lines: 21, 22, 54, 55, 61
+        :emphasize-lines: 22, 23, 54, 55, 57, 58, 63
         :language: python
         :start-after: __start__
         :end-before: __end__

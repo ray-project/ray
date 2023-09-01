@@ -11,12 +11,12 @@ from torch.utils.data import DataLoader
 import wandb
 
 assert os.environ.get("WANDB_API_KEY", None), "Please set WANDB_API_KEY env var."
+# This makes sure that all workers will have this env var set.
+ray.init(runtime_env={"env_vars": {"WANDB_API_KEY": os.environ["WANDB_API_KEY"]}})
 
 
-# Assumes you are passing a `wandb_api_key` in `config`
 def train_func(config):
     if ray.train.get_context().get_world_rank() == 0:
-        wandb.login(key=config.get("wandb_api_key", None))
         wandb.init()
 
     # Model, Loss, Optimizer
@@ -55,7 +55,6 @@ def train_func(config):
 
 trainer = TorchTrainer(
     train_func,
-    train_loop_config={"wandb_api_key": os.environ["WANDB_API_KEY"]},
     scaling_config=ScalingConfig(num_workers=4),
 )
 trainer.fit()

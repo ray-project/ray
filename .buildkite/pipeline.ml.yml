@@ -62,8 +62,9 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TRAIN_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - python ./ci/env/setup_credentials.py wandb comet_ml
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials python/ray/train/...
+    - credentials=$(python ./ci/env/setup_credentials.py)
+    - if [ $? -eq 0 ]; then echo "Credentials are fetched successfully"; bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials 
+      python/ray/train/... $credentials; else echo "Credentials cannot be fetched"; exit 1; fi
 
 - label: ":brain: RLlib: Benchmarks (Torch 2.x)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
