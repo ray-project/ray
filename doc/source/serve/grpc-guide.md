@@ -80,24 +80,8 @@ python -m grpc_tools.protoc -I=. --python_out=. --grpc_python_out=. ./user_defin
 
 It will generate two files, `user_defined_protos_pb2.py` and 
 `user_defined_protos_pb2_grpc.py`.
-```{literalinclude} doc_code/http_guide/user_defined_protos_pb2.py
-:start-after: __begin__
-:end-before: __end__
-:language: python
-```
 
-```{literalinclude} doc_code/http_guide/user_defined_protos_pb2_grpc.py
-:start-after: __begin__
-:end-before: __end__
-:language: python
-```
-
-:::{note}
-Depending on the version of `grpcio-tools` you are using, the generated code may be
-slightly different. But all the class and functions should be importable.
-:::
-
-For more details on `grpcio-tools` see: https://grpc.io/docs/languages/python/basics/#generating-client-and-server-code
+For more details on `grpcio-tools` see: [https://grpc.io/docs/languages/python/basics/#generating-client-and-server-code](https://grpc.io/docs/languages/python/basics/#generating-client-and-server-code)
 
 
 (start-serve-with-grpc-proxy)=
