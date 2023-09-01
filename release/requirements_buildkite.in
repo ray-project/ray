@@ -7,7 +7,7 @@ click
 freezegun
 google-cloud-storage
 jinja2
-protobuf >= 3.15.3, != 3.19.5
+protobuf >= 3.20.0,
 pydantic < 1.10.0
 pytest
 pyyaml
@@ -15,4 +15,3 @@ pybuildkite
 PyGithub
 requests
 retry
-

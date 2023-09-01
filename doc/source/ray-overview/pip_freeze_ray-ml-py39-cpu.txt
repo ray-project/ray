@@ -288,7 +288,7 @@ prettytable==3.8.0
 prometheus-client==0.17.0
 promise==2.3
 prompt-toolkit==3.0.38
-protobuf==3.19.6
+protobuf==4.23.3
 psutil==5.9.5
 ptyprocess==0.7.0
 pure-eval==0.2.2
