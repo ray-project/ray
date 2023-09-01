@@ -365,7 +365,7 @@ portalocker==2.7.0
 prometheus-client==0.17.1
 promise==2.3
 prompt-toolkit==3.0.39
-protobuf==3.20.0
+protobuf==3.20.3
 proxy-py==2.4.3
 psutil==5.9.5
 ptyprocess==0.7.0
