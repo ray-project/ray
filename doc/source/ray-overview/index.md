@@ -1,8 +1,5 @@
 (overview-overview)=
 
-```{include} /_includes/overview/announcement.md
-```
-
 # Overview
 
 Ray is an open-source unified framework for scaling AI and Python applications like machine learning. It provides the compute layer for parallel processing so that you don’t need to be a distributed systems expert. Ray minimizes the complexity of running your distributed individual and end-to-end machine learning workflows with these components:

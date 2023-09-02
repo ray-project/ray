@@ -1,5 +1,3 @@
-.. include:: /_includes/clusters/announcement.rst
-
 .. _vm-cluster-quick-start:
 
 Getting Started
