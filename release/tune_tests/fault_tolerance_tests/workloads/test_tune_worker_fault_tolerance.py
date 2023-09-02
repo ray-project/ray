@@ -86,7 +86,8 @@ def main(bucket_uri: str):
     results = tuner.fit()
     print("Fitted:", results)
 
-    if not any(item["terminated_successfully"] for item in instance_killer.history):
+    history = ray.get(instance_killer.history.remote())
+    if not any(item["terminated_successfully"] for item in history):
         raise RuntimeError("Node termination is not working...")
 
     del instance_killer
