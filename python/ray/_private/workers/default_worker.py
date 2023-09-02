@@ -185,7 +185,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray._private.ray_logging.setup_logger(args.logging_level, args.logging_format)
     worker_launched_time_ms = time.time_ns() // 1e6
-
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
     elif args.worker_type == "SPILL_WORKER":
