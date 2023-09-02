@@ -233,6 +233,7 @@ def test_ray_init_using_hostname(ray_start_cluster):
     assert len(node_table) == 1
     assert node_table[0].get("NodeManagerHostname", "") == hostname
 
+
 if __name__ == "__main__":
     import sys
 
