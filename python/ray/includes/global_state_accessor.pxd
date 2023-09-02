@@ -60,6 +60,12 @@ cdef extern from * namespace "ray::gcs" nogil:
                          const std::string& config,
                          const std::string& key,
                          std::string* data) {
+      InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                             ray::RayLog::ShutDownRayLog,
+                                             "ray_init",
+                                             ray::RayLogLevel::WARNING,
+                                             "" /* log_dir */);
+
       RedisClientOptions options(host, port, password, false, use_ssl);
 
       std::string config_list;
