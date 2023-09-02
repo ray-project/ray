@@ -137,17 +137,18 @@ Step 1: Set up necessary components to connect to the tracking backend of your c
 -------------------------------------------------------------------------------------
 
 First, you should choose which tracking backend to use: W&B, MLflow, TensorBoard etc.
-
-Some of them operate under either online or offline mode, each with different considerations when
-being set up.
-For online mode, you log towards a tracking service that is running. Usually you need credentials to access the service.
-Under this mode, you need to ensure that all nodes and worker processes have access to credentials.
-For offline mode, you log towards the local file directory. Usually no credentials are needed. You need to instead
-ensure that there is a shared file system where all nodes can write to.
+If applicable, you need to make sure that credentials are set up properly on each training worker.
 
 .. tabs::
 
     .. tab:: Wandb
+        
+        Wandb offers both *online* and *offline* modes. For online mode, you log towards Wandb's
+        tracking service and correct credentials should be set up on each training worker 
+        (See next section). 
+        For offline mode, you log towards a local file system. In distributed training, 
+        you need to make sure that it is a shared storage path that all nodes can write to 
+        (See next section).
 
         **online**
 
@@ -169,6 +170,20 @@ ensure that there is a shared file system where all nodes can write to.
 
     .. tab:: MLflow
         
+        MLflow offers both *local* and *remote* modes. For local mode, you log towards a local file 
+        system. In distributed training, this should be a shared storage path that all nodes can write 
+        to (See next section). 
+        For remote mode, people usually choose to log to Databrick's MLflow service. Proper credentials 
+        need to be set up for each training worker (See next section).
+
+        **offline**
+
+        Ensure that offline directory points to a shared storage path.
+
+        .. code-block:: python
+
+            mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")
+
         **online (hosted by Databricks)**
             
         Ensure that all nodes have access to the Databricks config file.
@@ -181,13 +196,7 @@ ensure that there is a shared file system where all nodes can write to.
             mlflow.set_tracking_uri("databricks")
             mlflow.start_run()
 
-        **offline**
-
-        Ensure that offline directory points to a shared storage path.
-
-        .. code-block:: python
-
-            mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")
+.. setting-up-credentials
 
 Setting up credentials
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -195,8 +204,14 @@ Setting up credentials
 Please refer to each tracking library's API documentation on this.
 This usually involves setting some environment variable or accessing some config file.
 
-For setting environment variable, one may pass the value of environment variable through the ``config`` 
-argument of ``train_func`` and set the corresponding environment variable in the ``train_func``.
+The easiest way to pass an environment variable credential to training workers is through 
+`Runtime Environments <runtime-environments>`, where you initialize with 
+
+.. code-block:: python
+
+    import ray
+    # This makes sure that training workers have the same env var set
+    ray.init(runtime_env={"env_vars": {"SOME_API_KEY": "your_api_key"}})
 
 For accessing config file, one needs to ensure that the config file is accessible to all nodes.
 One way to do this is by setting up a shared storage. Another way is to save a copy in each node.
@@ -213,12 +228,21 @@ Step 2: Configure and start the run
 This usually concerns picking an identifier for the run and associating it with a project.
 Please refer to tracking libraries' own documentation for semantics. 
 
+.. To conveniently link back to Ray Train run, you may want to log the persistent storage path 
+.. of the run as a config.
+
+.. .. code-block:: python
+
+..     def train_func(config):
+..       if ray.train.get_context().get_world_rank() == 0:
+..                 wandb.init(..., config={"ray_train_persistent_storage_path": "TODO: fill in when API stablizes"})
+
 .. tip::
     
     When performing **fault-tolerant training** with auto-restoration, make sure that you use a 
     consistent id to configure all tracking runs that logically belong to the same training run.
     One way to acquire an unique id is through 
-    :meth:`ray.train.get_context().get_trial_id() <ray.train.TrainContext.get_trial_id>`.
+    :meth:`ray.train.get_context().get_trial_id() <ray.train.context.TrainContext.get_trial_id>`.
 
     .. code-block:: python
 
@@ -252,9 +276,9 @@ Step 4: Finish the run
 ----------------------
 
 This step ensures that all logs are synced to the tracking service. Depending on the implementation of 
-various tracking libraries, sometimes logs are first stored locally before they are synced to the tracking 
-service. When training is finished, the node that the training worker resided on could be turned down by 
-ray autoscaler. Finishing the run makes sure that all logs are synced by the time training workers exit. 
+various tracking libraries, sometimes logs are first cached locally and only synced to the tracking 
+service in an asynchronous fashion. 
+Finishing the run makes sure that all logs are synced by the time training workers exit. 
 
 **Wandb**
 
@@ -277,20 +301,20 @@ ray autoscaler. Finishing the run makes sure that all logs are synced by the tim
     # https://www.comet.com/docs/v2/api-and-sdk/python-sdk/reference/Experiment/#experimentend
     Experiment.end()
 
-Runnable Code
-=============
+Examples
+========
 
 PyTorch
 -------
 
-.. dropdown:: Log to Wandb (online) 
+.. dropdown:: Log to Wandb
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking//torch_exp_tracking_wandb.py
             :emphasize-lines: 13, 14, 18, 19, 48, 49, 51, 52
             :language: python
             :start-after: __start__
 
-.. dropdown:: Log to file based MLflow (offline)         
+.. dropdown:: Log to file based MLflow
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/torch_exp_tracking_mlflow.py
         :emphasize-lines: 22, 23, 54, 55, 57, 58, 64
@@ -307,19 +331,20 @@ and Tensorboard can still be used seamlessly with Ray Train TorchTrainer.
 The following example will walk you through how. The code here is runnable. 
 There is a common shared piece of setting up a dummy model and dataloader
 just for demonstration purposes.
-        
-.. dropdown:: Define your model and dataloader (Dummy ones for demonestration purposes)
+
+.. dropdown:: Wandb
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_model_dl.py
         :language: python
-
-.. dropdown:: Wandb
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_wandb.py
             :language: python
             :start-after: __lightning_experiment_tracking_wandb_start__
 
 .. dropdown:: MLflow
+
+    .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_model_dl.py
+        :language: python
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_mlflow.py
             :language: python
@@ -328,11 +353,17 @@ just for demonstration purposes.
 
 .. dropdown:: Comet
 
+    .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_model_dl.py
+        :language: python
+
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_comet.py
             :language: python
             :start-after: __lightning_experiment_tracking_comet_start__
 
 .. dropdown:: TensorBoard
+  
+    .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_model_dl.py
+        :language: python
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_tensorboard.py
             :language: python
@@ -350,8 +381,9 @@ Missing Credentials
 call wandb.login(key=[your_api_key])."**
 
 This is probably due to wandb credentials are not set up correctly
-on worker nodes. Make sure that you run ``wandb.login`` inside each
-training function. You can take a look at the example above.
+on worker nodes. Make sure that you run ``wandb.login`` 
+or pass ``WANDB_API_KEY`` to each training function. 
+See {ref}`"setting up credentials" section <setting-up-credentials> for more details`.
 
 Missing Configurations
 ----------------------
@@ -361,4 +393,5 @@ You haven't configured the CLI yet!"**
 
 This is usually caused by running ``databricks configure`` which 
 generates ``~/.databrickscfg`` only on head node. Move this file to a shared
-location that can be accessed by all nodes.
+location or copy it to each node.
+See {ref}`"setting up credentials" section <setting-up-credentials> for more details`.
