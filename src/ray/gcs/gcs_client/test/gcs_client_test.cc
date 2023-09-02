@@ -116,7 +116,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   void ReconnectClient() {
-    ClusterID cluster_id = gcs_server_->rpc_server_.GetClusterId();
+    ClusterID cluster_id = gcs_server_->GetClusterId();
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_, cluster_id));
   }
 

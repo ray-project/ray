@@ -224,10 +224,6 @@ class ServerCallImpl : public ServerCall {
                            << "but got: " << it->second;
           auth_success = false;
         }
-      } else {
-        if (!cluster_id_.IsNil()) {
-          RAY_LOG_EVERY_MS(WARNING, 5000) << "Unexpected cluster ID in server call!";
-        }
       }
     }
 
