@@ -947,6 +947,30 @@ def test_redis_data_loss_no_leak(ray_start_regular_with_external_redis):
     wait_for_condition(lambda: not check_raylet_healthy())
 
 
+def test_redis_logs(external_redis):
+    try:
+        import subprocess
+
+        process = subprocess.Popen(
+            ["ray", "start", "--head"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        stdout, stderr = process.communicate(timeout=30)
+        assert "redis_context.cc" not in stderr.decode()
+        assert "Resolve Redis address" not in stderr.decode()
+        # assert "redis_context.cc" not in result.output
+    finally:
+        from click.testing import CliRunner
+        import ray.scripts.scripts as scripts
+
+        runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+        runner.invoke(
+            scripts.stop,
+            [
+                "--force",
+            ],
+        )
+
+
 if __name__ == "__main__":
 
     import pytest

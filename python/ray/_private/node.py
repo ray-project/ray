@@ -26,7 +26,7 @@ import ray._private.utils
 from ray._private import storage
 from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
-from ray._private.services import serialize_config
+from ray._private.services import serialize_config, get_address
 from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
 
 # Logger for this module. It should be configured at the entry point
@@ -328,22 +328,10 @@ class Node:
         if self._ray_params.external_addresses is None:
             return None
         self._redis_address = self._ray_params.external_addresses[0]
+        redis_ip_address, redis_port, enable_redis_ssl = get_address(
+            self._redis_address,
+        )
         # Address is ip:port or redis://ip:port
-        parts = self._redis_address.split("://", 1)
-        enable_redis_ssl = False
-        if len(parts) == 1:
-            redis_ip_address, redis_port = parts[0].rsplit(":", 1)
-        else:
-            # rediss for SSL
-            if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
-                raise ValueError(
-                    f"Invalid redis address {self._redis_address}."
-                    "Expected format is ip:port or redis://ip:port, "
-                    "or rediss://ip:port for SSL."
-                )
-            redis_ip_address, redis_port = parts[1].rsplit(":", 1)
-            if parts[0] == "rediss":
-                enable_redis_ssl = True
         if int(redis_port) < 0:
             raise ValueError(
                 f"Invalid Redis port provided: {redis_port}."

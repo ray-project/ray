@@ -15,16 +15,6 @@ from ray._private.test_utils import (
 )
 
 
-def test_ray_init_no_redis_logs():
-    script = """
-import ray
-
-ray.init()
-    """
-    out_str = run_string_as_driver(script)
-    assert "redis" not in out_str, out_str
-
-
 def test_dedup_logs():
     script = """
 import ray
