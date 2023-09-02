@@ -85,6 +85,10 @@ def main(bucket_uri: str):
     )
     results = tuner.fit()
     print("Fitted:", results)
+
+    if not any(item["terminated_successfully"] for item in instance_killer.history):
+        raise RuntimeError("Node termination is not working...")
+
     del instance_killer
     print("Deleted instance killer")
     gc.collect()
