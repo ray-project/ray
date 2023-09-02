@@ -75,7 +75,7 @@ class Gauge(View):
 Record = namedtuple("Record", ["gauge", "value", "tags"])
 
 
-def fix_metric(metric: Metric):
+def fix_grpc_metric(metric: Metric):
     """
     Fix the inbound `opencensus.proto.metrics.v1.Metric` protos to make it acceptable
     by opencensus.stats.DistributionAggregationData.
@@ -212,7 +212,7 @@ class Component:
         """
         self._last_reported_time = time.monotonic()
         for metric in metrics:
-            fix_metric(metric)
+            fix_grpc_metric(metric)
             descriptor = metric.metric_descriptor
             name = descriptor.name
             label_keys = [label_key.key for label_key in descriptor.label_keys]

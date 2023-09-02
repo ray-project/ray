@@ -14,9 +14,11 @@
 
 #include "ray/stats/metric.h"
 
+#include "grpcpp/opencensus.h"
 #include "opencensus/stats/internal/aggregation_window.h"
 #include "opencensus/stats/internal/set_aggregation_window.h"
 #include "opencensus/stats/measure_registry.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 
@@ -40,6 +42,17 @@ void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
   opencensus::stats::View view(view_descriptor);
   view_descriptor.RegisterForExport();
 }
+
+inline const static bool _static_init_grpc_metrics_collection_enabled = []() -> bool {
+  if (RayConfig::instance().enable_grpc_metrics_collection()) {
+    RAY_LOG(INFO) << "enabled grpc metrics collection";
+    grpc::RegisterOpenCensusPlugin();
+    grpc::RegisterOpenCensusViewsForExport();
+    return true;
+  }
+  RAY_LOG(INFO) << "disabled grpc metrics collection";
+  return false;
+}();
 
 }  // namespace internal
 ///

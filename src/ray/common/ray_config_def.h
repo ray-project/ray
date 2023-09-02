@@ -518,6 +518,8 @@ RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */
 RAY_CONFIG(bool, enable_metrics_collection, true)
 
 /// Whether or not we enable gRPC metrics collection.
+/// Note: this field is used at program start time and cannot be switched by config
+/// changes. If you want to reset this value, re-start your program.
 RAY_CONFIG(bool, enable_grpc_metrics_collection, false)
 
 // Max number bytes of inlined objects in a task rpc request/response.

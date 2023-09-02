@@ -109,10 +109,6 @@ static inline void Init(const TagsType &global_tags,
   for (auto &f : StatsConfig::instance().PopInitializers()) {
     f();
   }
-  if (RayConfig::instance().enable_grpc_metrics_collection()) {
-    grpc::RegisterOpenCensusPlugin();
-    grpc::RegisterOpenCensusViewsForExport();
-  }
   StatsConfig::instance().SetIsInitialized(true);
 }
 
