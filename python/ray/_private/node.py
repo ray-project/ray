@@ -350,7 +350,11 @@ class Node:
                 "The port must be a non-negative integer."
             )
 
-        return get_session_key_from_storage(
+        # Redis context spews logs
+        old_debug_level = os.environ.get("RAY_BACKEND_DEBUG_LEVEL")
+        os.environ["RAY_BACKEND_DEBUG_LEVEL"] = "warning"
+
+        ret_val = get_session_key_from_storage(
             redis_ip_address,
             int(redis_port),
             self._ray_params.redis_password,
@@ -358,6 +362,13 @@ class Node:
             serialize_config(self._config),
             b"session_name",
         )
+
+        if old_debug_level is None:
+            os.environ.pop("RAY_BACKEND_DEBUG_LEVEL", None)
+        else:
+            os.environ["RAY_BACKEND_DEBUG_LEVEL"] = old_debug_level
+
+        return ret_val
 
     @staticmethod
     def validate_ip_port(ip_port):
