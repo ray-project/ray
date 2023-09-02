@@ -86,7 +86,7 @@ cdef extern from * namespace "ray::gcs" nogil:
           ret_val = true;
         } else {
           RAY_LOG(INFO) << "Failed to retrieve the key " << key
-                        << "from persistent storage.";
+                        << " from persistent storage.";
           ret_val = false;
         }
       });

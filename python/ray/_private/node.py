@@ -1228,12 +1228,22 @@ class Node:
 
         ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
         # Make sure GCS is up.
-        self.get_gcs_client().internal_kv_put(
+        added = self.get_gcs_client().internal_kv_put(
             b"session_name",
             self._session_name.encode(),
-            True,
+            False,
             ray_constants.KV_NAMESPACE_SESSION,
         )
+        if not added:
+            curr_val = self.get_gcs_client().internal_kv_get(
+                b"session_name", ray_constants.KV_NAMESPACE_SESSION
+            )
+            assert curr_val != self._session_name, (
+                f"Session name {self._session_name} does not match "
+                f"persisted value {curr_val}. Perhaps there was an "
+                f"error connecting to Redis."
+            )
+
         self.get_gcs_client().internal_kv_put(
             b"session_dir",
             self._session_dir.encode(),
