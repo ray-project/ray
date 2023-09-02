@@ -12,6 +12,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
+import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_pid_to_exit,
@@ -359,6 +360,48 @@ def test_head_node_resource_ray_start(call_ray_start):
     ray.init(address=call_ray_start)
 
     assert ray.cluster_resources()[HEAD_NODE_RESOURCE_NAME] == 1
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="jemalloc is only prebuilt on linux"
+)
+def test_jemalloc_ray_start(monkeypatch, ray_start_cluster):
+    def check_jemalloc_enabled(pid=None):
+        if pid is None:
+            pid = os.getpid()
+        pmap = subprocess.run(
+            ["pmap", str(pid)], check=True, text=True, stdout=subprocess.PIPE
+        )
+        return "libjemalloc.so" in pmap.stdout
+
+    # Firstly, remove the LD_PRELOAD and make sure
+    # jemalloc is loaded.
+    monkeypatch.delenv("LD_PRELOAD", False)
+    cluster = ray_start_cluster
+    node = cluster.add_node(num_cpus=1)
+
+    # Make sure raylet/gcs/worker all have jemalloc
+    assert check_jemalloc_enabled(
+        node.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0].process.pid
+    )
+    assert check_jemalloc_enabled(
+        node.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.pid
+    )
+    assert ray.get(ray.remote(check_jemalloc_enabled).remote())
+
+    ray.shutdown()
+    cluster.shutdown()
+
+    monkeypatch.setenv("LD_PRELOAD", "")
+    node = cluster.add_node(num_cpus=1)
+    # Make sure raylet/gcs/worker all have jemalloc
+    assert not check_jemalloc_enabled(
+        node.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0].process.pid
+    )
+    assert not check_jemalloc_enabled(
+        node.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.pid
+    )
+    assert not ray.get(ray.remote(check_jemalloc_enabled).remote())
 
 
 if __name__ == "__main__":
