@@ -597,7 +597,6 @@ def main():
         "ANYSCALE_ARTIFACT_STORAGE" in os.environ
     ), "ANYSCALE_ARTIFACT_STORAGE env var must be set!"
     artifact_storage = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
-    print(f"============ANYSCALE_ARTIFACT_STORAGE={artifact_storage}=================")
     user_name = re.sub(r"\s+", "__", os.environ.get("ANYSCALE_USERNAME", "user"))
     storage_path = (
         f"{artifact_storage}/{user_name}/ft_llms_with_deepspeed/{args.model_name}"
