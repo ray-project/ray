@@ -290,10 +290,13 @@ class Session : public std::enable_shared_from_this<Session> {
     boost::ignore_unused(bytes_transferred);
     RAY_CHECK(state_ == State::kRequestSent);
 
+    bool keep_alive = resp_.keep_alive();
+
     if (ec) {
       current_work_->fail_callback(ray::Status::IOError("on_read " + ec.what()));
       current_work_ = nullptr;
       state_ = State::kNotConnected;
+      stream_.close();
 
       RAY_LOG(INFO) << "failed to read: " << ec.what();
       reconnect();
@@ -302,10 +305,18 @@ class Session : public std::enable_shared_from_this<Session> {
     }
     current_work_->succ_callback(std::move(resp_));
     current_work_ = nullptr;
-    state_ = State::kConnected;
 
-    if (!queue_.empty()) {
-      do_work();
+    if (keep_alive) {
+      state_ = State::kConnected;
+      if (!queue_.empty()) {
+        do_work();
+      }
+    } else {
+      state_ = State::kNotConnected;
+      stream_.close();
+      RAY_LOG(DEBUG) << "closed stream";
+      // This close is requested by server so there's no need to wait and reconnect.
+      connect();
     }
   }
 

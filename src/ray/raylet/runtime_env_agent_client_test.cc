@@ -322,16 +322,19 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
 
   instrumented_io_context ioc;
 
-  auto client = raylet::RuntimeEnvAgentClient::Create(
-      ioc,
-      "127.0.0.1",
-      port,
-      [&](std::function<void()> task, uint32_t delay_ms) {
-        http_server_thread.start();
-        return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
-      },
-      /*agent_register_timeout_ms=*/10000,
-      /*agent_manager_retry_interval_ms=*/100);
+  boost::asio::steady_timer timer(ioc, boost::asio::chrono::milliseconds(200));
+  timer.async_wait([&](const boost::system::error_code &error) {
+    ASSERT_FALSE(error);
+    http_server_thread.start();
+  });
+
+  auto client =
+      raylet::RuntimeEnvAgentClient::Create(ioc,
+                                            "127.0.0.1",
+                                            port,
+                                            delay_after(ioc),
+                                            /*agent_register_timeout_ms=*/10000,
+                                            /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
   std::string serialized_runtime_env = "serialized_runtime_env";
   ray::rpc::RuntimeEnvConfig runtime_env_config;
@@ -469,16 +472,19 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
 
   instrumented_io_context ioc;
 
-  auto client = raylet::RuntimeEnvAgentClient::Create(
-      ioc,
-      "127.0.0.1",
-      port,
-      [&](std::function<void()> task, uint32_t delay_ms) {
-        http_server_thread.start();
-        return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
-      },
-      /*agent_register_timeout_ms=*/10000,
-      /*agent_manager_retry_interval_ms=*/100);
+  boost::asio::steady_timer timer(ioc, boost::asio::chrono::milliseconds(200));
+  timer.async_wait([&](const boost::system::error_code &error) {
+    ASSERT_FALSE(error);
+    http_server_thread.start();
+  });
+
+  auto client =
+      raylet::RuntimeEnvAgentClient::Create(ioc,
+                                            "127.0.0.1",
+                                            port,
+                                            delay_after(ioc),
+                                            /*agent_register_timeout_ms=*/10000,
+                                            /*agent_manager_retry_interval_ms=*/100);
 
   size_t called_times = 0;
   auto callback = [&](bool successful) {
