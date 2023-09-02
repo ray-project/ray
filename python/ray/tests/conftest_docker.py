@@ -96,7 +96,7 @@ head_node = container(
     environment={
         "RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379",
         "RAY_raylet_client_num_connect_attempts": "10",
-        "RAY_raylet_client_connect_timeout_milliseconds": "1000",
+        "RAY_raylet_client_connect_timeout_milliseconds": "100",
     },
     wrapper_class=Container,
     ports={
@@ -125,7 +125,7 @@ worker_node = container(
     environment={
         "RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379",
         "RAY_raylet_client_num_connect_attempts": "10",
-        "RAY_raylet_client_connect_timeout_milliseconds": "1000",
+        "RAY_raylet_client_connect_timeout_milliseconds": "100",
     },
     wrapper_class=Container,
     ports={
