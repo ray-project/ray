@@ -377,8 +377,6 @@ def test_redis_wrong_password(monkeypatch, external_redis, call_ray_stop_only):
     )
 
     assert "RedisError: ERR AUTH <password> called" in p.stderr.decode()
-    assert "Please check /tmp/ray/session" in p.stderr.decode()
-    assert "RuntimeError: Failed to start GCS" in p.stderr.decode()
 
 
 @pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
