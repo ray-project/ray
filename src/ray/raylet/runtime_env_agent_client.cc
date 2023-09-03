@@ -413,7 +413,7 @@ class SessionPool {
     Session::Work *raw = work.release();
     strand_.post([this, raw]() {
       std::unique_ptr<Session::Work> work(raw);
-      for (int i = 0; i < sessions_availability_.size(); ++i) {
+      for (size_t i = 0; i < sessions_availability_.size(); ++i) {
         if (sessions_availability_[i]) {
           sessions_[i]->post_request_on_available(std::move(work));
           sessions_availability_[i] = false;
