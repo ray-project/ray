@@ -2696,8 +2696,7 @@ copy_to_workspace(
 genrule(
     name = "install_py_proto",
     srcs = [
-        ":cp_all_py_proto",
-        ":cp_serve_py_proto",
+        ":compile_py_proto",
     ],
     outs = ["install_py_proto.out"],
     cmd = """
@@ -2716,9 +2715,9 @@ genrule(
         # https://github.com/ray-project/ray/issues/31358
         sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
-        # TODO(rickyx): Remove this experimental path rewrite once we move autoscaler proto out
+        # TODO(rickyx): Remove this experimental path rewrite once we move instance manager proto out
         # of experimental.
-        autoscale_files=(`ls python/ray/core/generated/autoscaler_pb2*.py`)
+        autoscale_files=(`ls python/ray/core/generated/instance_manager_pb2*.py`)
         sed -i -E 's/from ..experimental/from ./' "$${autoscale_files[@]}"
         echo "$${PWD}" > $@
     """,
@@ -2742,5 +2741,34 @@ genrule(
         fi
         echo "$${PWD}" > $@
     """,
+    local = 1,
+)
+
+genrule(
+    name = "compile_py_proto",
+    srcs = [
+        "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto",
+        "@io_opencensus_proto//opencensus/proto/resource/v1:resource.proto",
+    ] + glob([
+        "src/ray/protobuf/**/*.proto",
+    ]),
+    cmd = """
+        pip install grpcio-tools==1.46.5
+        python -m grpc_tools.protoc --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated src/ray/protobuf/*.proto src/ray/protobuf/**/*.proto --proto_path=. --proto_path=$$(dirname $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto))/../../../..
+        mkdir -p opencensus/proto/metrics/v1
+        mkdir -p opencensus/proto/resource/v1
+        cp $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto) opencensus/proto/metrics/v1/metrics.proto
+        cp $(locations @io_opencensus_proto//opencensus/proto/resource/v1:resource.proto) opencensus/proto/resource/v1/resource.proto
+        python -m grpc_tools.protoc --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated opencensus/proto/metrics/v1/metrics.proto opencensus/proto/resource/v1/resource.proto --proto_path=.
+        mv python/ray/core/generated/src/ray/protobuf/*.py python/ray/core/generated/
+        mv python/ray/core/generated/src/ray/protobuf/**/*.py python/ray/core/generated/
+        mv python/ray/core/generated/opencensus/proto/**/v1/*.py python/ray/core/generated/
+        rm -rf opencensus
+        rm -rf python/ray/core/generated/src/
+        rm -rf python/ray/core/generated/opencensus/
+        pip uninstall -y grpcio-tools
+        echo "$${PWD}" > $@
+    """,
+    outs = ["compile_py_proto.out"],
     local = 1,
 )
