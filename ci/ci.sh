@@ -373,9 +373,7 @@ check_sphinx_links() {
 _bazel_build_before_install() {
   local target
   if [ "${OSTYPE}" = msys ]; then
-    # On Windows, we perform as full of a build as possible, to ensure the repository always remains buildable on Windows.
-    # (Pip install will not perform a full build.)
-    target="//:*"
+    target="//:ray_pkg"
   else
     # Just build Python on other platforms.
     # This because pip install captures & suppresses the build output, which causes a timeout on CI.
