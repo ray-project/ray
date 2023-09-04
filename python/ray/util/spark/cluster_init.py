@@ -16,7 +16,7 @@ from ray._private.storage import _load_class
 
 from .utils import (
     exec_cmd,
-    check_port_open,
+    is_port_in_use,
     get_random_unused_port,
     get_spark_session,
     get_spark_application_driver_host,
@@ -113,7 +113,7 @@ class RayClusterOnSpark:
 
             if (
                 self.ray_dashboard_port is not None and
-                check_port_open(self.address.split(":")[0], self.ray_dashboard_port)
+                is_port_in_use(self.address.split(":")[0], self.ray_dashboard_port)
             ):
                 self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
             else:
@@ -523,7 +523,7 @@ def _setup_ray_cluster(
     # wait ray head node spin up.
     time.sleep(_RAY_HEAD_STARTUP_TIMEOUT)
 
-    if not check_port_open(ray_head_ip, ray_head_port):
+    if not is_port_in_use(ray_head_ip, ray_head_port):
         if ray_head_proc.poll() is None:
             # Ray head GCS service is down. Kill ray head node.
             ray_head_proc.terminate()
