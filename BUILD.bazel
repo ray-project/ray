@@ -2763,6 +2763,8 @@ genrule(
         mv python/ray/core/generated/src/ray/protobuf/*.py python/ray/core/generated/
         mv python/ray/core/generated/src/ray/protobuf/**/*.py python/ray/core/generated/
         mv python/ray/core/generated/opencensus/proto/**/v1/*.py python/ray/core/generated/
+        mkdir -p python/ray/serve/generated
+        mv python/ray/core/generated/serve_*.py python/ray/serve/generated/
         rm -rf opencensus
         rm -rf python/ray/core/generated/src/
         rm -rf python/ray/core/generated/opencensus/
