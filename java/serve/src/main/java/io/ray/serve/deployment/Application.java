@@ -2,7 +2,6 @@ package io.ray.serve.deployment;
 
 import io.ray.serve.api.Serve;
 import io.ray.serve.handle.RayServeHandle;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;

@@ -12,7 +12,6 @@ import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.router.Router;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.w3c.dom.ls.LSOutput;
 
 /** A handle to a service deployment. */
 public class RayServeHandle {

@@ -16,17 +16,18 @@ public class DeploymentDemo {
   public String call() {
     return msg;
   }
+
   public String calc() {
     return msg + "Hello";
   }
 
   public static void main(String[] args) {
     Deployment deployment =
-      Serve.deployment()
-        .setName("xyz")
-        .setDeploymentDef(DeploymentDemo.class.getName())
-        .setInitArgs(new Object[] {"echo_"})
-        .create();
+        Serve.deployment()
+            .setName("xyz")
+            .setDeploymentDef(DeploymentDemo.class.getName())
+            .setInitArgs(new Object[] {"echo_"})
+            .create();
     Application strategyApp = deployment.bind();
     RayServeHandle handle = Serve.run(strategyApp);
     System.out.println(handle.method("calc").remote().get());

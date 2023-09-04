@@ -2,11 +2,8 @@ package io.ray.serve.deployment;
 
 import com.google.common.base.Preconditions;
 import io.ray.serve.api.Serve;
-import io.ray.serve.api.ServeControllerClient;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.handle.RayServeHandle;
-import io.ray.serve.router.Router;
-
 import java.util.Map;
 
 /**
