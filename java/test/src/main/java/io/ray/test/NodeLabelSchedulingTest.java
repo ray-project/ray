@@ -24,7 +24,7 @@ public class NodeLabelSchedulingTest {
   }
 
   public void testSetNodeLabels() {
-    System.setProperty("ray.labels", "{\"gpu_type\":\"A100\",\"azone\":\"azone-1\"}");
+    System.setProperty("ray.head-args.0", "--labels={\"gpu_type\":\"A100\",\"azone\":\"azone-1\"}");
     try {
       Ray.init();
       List<NodeInfo> nodeInfos = Ray.getRuntimeContext().getAllNodeInfo();
@@ -35,7 +35,7 @@ public class NodeLabelSchedulingTest {
       labels.put("azone", "azone-1");
       Assert.assertEquals(nodeInfos.get(0).labels, labels);
     } finally {
-      System.clearProperty("ray.labels");
+      System.clearProperty("ray.head-args.0");
       Ray.shutdown();
     }
   }
