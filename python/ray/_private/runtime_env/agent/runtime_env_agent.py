@@ -58,9 +58,9 @@ class CreatedEnvResult:
 UriType = str
 
 
-def summarize_dict_str(dict_str: str) -> str:
+def truncate_dict_str(dict_str: str) -> str:
     """
-    If `dict_str` is too long, returns a summary to avoid overloading the logs.
+    If `dict_str` is too long, returns a truncated string to avoid overloading the logs.
     Omits the last chars except for the last char which should be "}".
     """
     if len(dict_str) > 120:
@@ -140,7 +140,7 @@ class ReferenceTable:
             default_logger.warn(f"Runtime env {serialized_env} does not exist.")
         if unused:
             default_logger.info(
-                f"Unused runtime env {summarize_dict_str(serialized_env)}."
+                f"Unused runtime env {truncate_dict_str(serialized_env)}."
             )
             log_debug_runtime_env_if_too_long(default_logger, serialized_env)
             self._unused_runtime_env_callback(serialized_env)
@@ -272,7 +272,7 @@ class RuntimeEnvAgent:
             del self._env_cache[unused_runtime_env]
             self._logger.info(
                 "Runtime env %s removed from env-level cache.",
-                summarize_dict_str(unused_runtime_env),
+                truncate_dict_str(unused_runtime_env),
             )
             log_debug_runtime_env_if_too_long(self._logger, unused_runtime_env)
 
@@ -300,7 +300,7 @@ class RuntimeEnvAgent:
 
     async def GetOrCreateRuntimeEnv(self, request):
 
-        runtime_env_summary = summarize_dict_str(request.serialized_runtime_env)
+        runtime_env_truncated = truncate_dict_str(request.serialized_runtime_env)
 
         self._logger.debug(
             f"Got request from {request.source_process} to increase "
@@ -367,7 +367,7 @@ class RuntimeEnvAgent:
 
             """
             self._logger.info(
-                f"Creating runtime env: {runtime_env_summary} with timeout "
+                f"Creating runtime env: {runtime_env_truncated} with timeout "
                 f"{setup_timeout_seconds} seconds."
             )
             log_debug_runtime_env_if_too_long(self._logger, serialized_env)
@@ -415,8 +415,8 @@ class RuntimeEnvAgent:
             else:
                 self._logger.info(
                     "Successfully created runtime env: %s, the context: %s",
-                    runtime_env_summary,
-                    summarize_dict_str(serialized_context),
+                    runtime_env_truncated,
+                    truncate_dict_str(serialized_context),
                 )
                 log_debug_runtime_env_if_too_long(self._logger, serialized_env)
                 return True, serialized_context, None
@@ -452,7 +452,7 @@ class RuntimeEnvAgent:
                     context = result.result
                     self._logger.info(
                         "Runtime env already created "
-                        f"successfully. Env: {runtime_env_summary}, "
+                        f"successfully. Env: {runtime_env_truncated}, "
                         f"context: {context}"
                     )
                     log_debug_runtime_env_if_too_long(self._logger, serialized_env)
@@ -464,7 +464,7 @@ class RuntimeEnvAgent:
                     error_message = result.result
                     self._logger.info(
                         "Runtime env already failed. "
-                        f"Env: {runtime_env_summary}, "
+                        f"Env: {runtime_env_truncated}, "
                         f"err: {error_message}"
                     )
                     log_debug_runtime_env_if_too_long(self._logger, serialized_env)
@@ -522,12 +522,12 @@ class RuntimeEnvAgent:
 
     async def DeleteRuntimeEnvIfPossible(self, request):
 
-        runtime_env_summary = summarize_dict_str(request.serialized_runtime_env)
+        runtime_env_truncated = truncate_dict_str(request.serialized_runtime_env)
 
         self._logger.info(
             f"Got request from {request.source_process} to decrease "
             "reference for runtime env: "
-            f"{runtime_env_summary}."
+            f"{runtime_env_truncated}."
         )
         log_debug_runtime_env_if_too_long(self._logger, request.serialized_runtime_env)
 
