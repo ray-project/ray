@@ -113,6 +113,52 @@ class TestCalculateDesiredNumReplicas:
         )
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
 
+    def test_upscale_smoothing_factor(self):
+        config = AutoscalingConfig(
+            min_replicas=0,
+            max_replicas=100,
+            target_num_ongoing_requests_per_replica=1,
+            upscale_smoothing_factor=0.5,
+        )
+        num_replicas = 10
+
+        # Should use upscale smoothing factor of 0.5
+        num_ongoing_requests = [4.0] * num_replicas
+        desired_num_replicas = calculate_desired_num_replicas(
+            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
+        )
+        assert 24 <= desired_num_replicas <= 26  # 10 + 0.5 * (40 - 10) = 25
+
+        # Should use downscale smoothing factor of 1 (default)
+        num_ongoing_requests = [0.25] * num_replicas
+        desired_num_replicas = calculate_desired_num_replicas(
+            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
+        )
+        assert 1 <= desired_num_replicas <= 4  # 10 + (2.5 - 10) = 2.5
+
+    def test_downscale_smoothing_factor(self):
+        config = AutoscalingConfig(
+            min_replicas=0,
+            max_replicas=100,
+            target_num_ongoing_requests_per_replica=1,
+            downscale_smoothing_factor=0.5,
+        )
+        num_replicas = 10
+
+        # Should use upscale smoothing factor of 1 (default)
+        num_ongoing_requests = [4.0] * num_replicas
+        desired_num_replicas = calculate_desired_num_replicas(
+            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
+        )
+        assert 39 <= desired_num_replicas <= 41  # 10 + (40 - 10) = 40
+
+        # Should use downscale smoothing factor of 0.5
+        num_ongoing_requests = [0.25] * num_replicas
+        desired_num_replicas = calculate_desired_num_replicas(
+            autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
+        )
+        assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
+
 
 def get_deployment_status(controller, name) -> DeploymentStatus:
     ref = ray.get(controller.get_deployment_status.remote(name, SERVE_DEFAULT_APP_NAME))
@@ -241,22 +287,31 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("smoothing_factor", [1, 0.2])
-def test_e2e_scale_up_down_with_0_replica(serve_instance, smoothing_factor):
+@pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
+def test_e2e_scale_up_down_with_0_replica(
+    serve_instance, smoothing_factor, use_upscale_downscale_config
+):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
     controller = serve_instance._controller
     signal = SignalActor.remote()
 
+    autoscaling_config = {
+        "metrics_interval_s": 0.1,
+        "min_replicas": 0,
+        "max_replicas": 2,
+        "look_back_period_s": 0.2,
+        "downscale_delay_s": 0,
+        "upscale_delay_s": 0,
+    }
+    if use_upscale_downscale_config:
+        autoscaling_config["upscale_smoothing_factor"] = smoothing_factor
+        autoscaling_config["downscale_smoothing_factor"] = smoothing_factor
+    else:
+        autoscaling_config["smoothing_factor"] = smoothing_factor
+
     @serve.deployment(
-        autoscaling_config={
-            "metrics_interval_s": 0.1,
-            "min_replicas": 0,
-            "max_replicas": 2,
-            "look_back_period_s": 0.2,
-            "downscale_delay_s": 0,
-            "upscale_delay_s": 0,
-            "smoothing_factor": smoothing_factor,
-        },
+        autoscaling_config=autoscaling_config,
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,

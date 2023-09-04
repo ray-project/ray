@@ -177,6 +177,9 @@ py_test_module_list(
     "test_draining.py",
     "test_streaming_generator.py",
     "test_streaming_generator_2.py",
+    "test_streaming_generator_3.py",
+    "test_scheduling_performance.py",
+    "test_implicit_resource.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
@@ -206,10 +209,8 @@ py_test_module_list(
     "test_mini.py",
     "test_minimal_install.py",
     "test_numba.py",
-    "test_runtime_env_agent.py",
     "test_redis_tls.py",
     "test_raylet_output.py",
-    "test_scheduling_performance.py",
     "test_top_level_api.py",
     "test_unhandled_error.py",
     "test_utils.py",
@@ -401,6 +402,14 @@ py_test(
     name = "test_actor_group",
     size = "medium",
     srcs = ["test_actor_group.py"],
+    tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
+    deps = ["//:ray_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_runtime_env_agent",
+    size = "medium",
+    srcs = ["test_runtime_env_agent.py"],
     tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
     deps = ["//:ray_lib", ":conftest"]
 )

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ray.tune.schedulers import TrialScheduler
     from ray.tune.search import BasicVariantGenerator, Searcher
     from ray.tune import Callback
-    from ray.tune import SyncConfig
+    from ray.train import SyncConfig
 
 
 AIR_TRAINERS = {

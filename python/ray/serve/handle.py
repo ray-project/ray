@@ -5,22 +5,23 @@ import threading
 from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tuple, Union
 
 import ray
+from ray.util import metrics
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray._private.utils import get_or_create_event_loop
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import StreamingObjectRefGenerator, GcsClient
 
 from ray import serve
 from ray.serve._private.common import DeploymentID, RequestProtocol
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
 )
+from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     get_random_letters,
     DEFAULT,
 )
 from ray.serve._private.router import Router, RequestMetadata
-from ray.util import metrics
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 _global_async_loop = None
 
@@ -47,6 +48,7 @@ class _HandleOptions:
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
     stream: bool = False
+    _prefer_local_routing: bool = False
     _router_cls: str = ""
     _request_protocol: str = RequestProtocol.UNDEFINED
 
@@ -55,6 +57,7 @@ class _HandleOptions:
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
         _request_protocol: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "_HandleOptions":
@@ -68,6 +71,9 @@ class _HandleOptions:
                 else multiplexed_model_id
             ),
             stream=self.stream if stream == DEFAULT.VALUE else stream,
+            _prefer_local_routing=self._prefer_local_routing
+            if _prefer_local_routing == DEFAULT.VALUE
+            else _prefer_local_routing,
             _router_cls=self._router_cls
             if _router_cls == DEFAULT.VALUE
             else _router_cls,
@@ -111,7 +117,7 @@ class _DeploymentHandleBase:
         self.request_counter.set_default_tags(
             {
                 "handle": handle_tag,
-                "deployment": str(self.deployment_id),
+                "deployment": self.deployment_id.name,
                 "application": self.deployment_id.app,
             }
         )
@@ -146,11 +152,24 @@ class _DeploymentHandleBase:
             else:
                 event_loop = get_or_create_event_loop()
 
+            node_id = ray.get_runtime_context().get_node_id()
+            try:
+                cluster_node_info_cache = create_cluster_node_info_cache(
+                    GcsClient(address=ray.get_runtime_context().gcs_address)
+                )
+                cluster_node_info_cache.update()
+                availability_zone = cluster_node_info_cache.get_node_az(node_id)
+            except Exception:
+                availability_zone = None
+
             self._router = Router(
-                serve.context.get_global_client()._controller,
+                serve.context._get_global_client()._controller,
                 self.deployment_id,
+                node_id,
+                availability_zone,
                 event_loop=event_loop,
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
+                _prefer_local_node_routing=self.handle_options._prefer_local_routing,
                 _router_cls=self.handle_options._router_cls,
             )
 
@@ -182,16 +201,22 @@ class _DeploymentHandleBase:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
         new_handle_options = self.handle_options.copy_and_update(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            _prefer_local_routing=_prefer_local_routing,
             _router_cls=_router_cls,
         )
 
-        if self._router is None and _router_cls == DEFAULT.VALUE:
+        if (
+            self._router is None
+            and _router_cls == DEFAULT.VALUE
+            and _prefer_local_routing == DEFAULT.VALUE
+        ):
             self._get_or_create_router()
 
         if use_new_handle_api is True:
@@ -305,6 +330,7 @@ class RayServeHandle(_DeploymentHandleBase):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
@@ -323,6 +349,7 @@ class RayServeHandle(_DeploymentHandleBase):
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            _prefer_local_routing=_prefer_local_routing,
             use_new_handle_api=use_new_handle_api,
             _router_cls=_router_cls,
         )
@@ -381,6 +408,7 @@ class RayServeSyncHandle(_DeploymentHandleBase):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
@@ -400,6 +428,7 @@ class RayServeSyncHandle(_DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             use_new_handle_api=use_new_handle_api,
+            _prefer_local_routing=_prefer_local_routing,
             _router_cls=_router_cls,
         )
 
@@ -468,8 +497,9 @@ class _DeploymentResponseBase:
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
         if self._object_ref_future is None:
             raise RuntimeError(
-                "Sync methods should not be called from within an `asyncio` event loop."
-                "Use `await response` or `await response._to_object_ref()` instead."
+                "Sync methods should not be called from within an `asyncio` event "
+                "loop. Use `await response` or `await response._to_object_ref()` "
+                "instead."
             )
 
         if _record_telemetry:
@@ -480,15 +510,27 @@ class _DeploymentResponseBase:
     def cancel(self):
         """Attempt to cancel the `DeploymentHandle` call.
 
-        This is best effort and will only successfully cancel the call if it has not yet
-        been assigned to a replica actor. If the call is successfully cancelled,
-        subsequent operations on the ref will raise an `asyncio.CancelledError` (or a
-        `concurrent.futures.CancelledError` if using synchronous methods like
-        `.result()`).
+        This is best effort.
+
+        - If the request hasn't been assigned to a replica actor, the assignment will be
+          cancelled.
+        - If the request has been assigned to a replica actor, `ray.cancel` will be
+          called on the object ref, attempting to cancel the request and any downstream
+          requests it makes.
+
+        If the request is successfully cancelled, subsequent operations on the ref will
+        raise an exception:
+
+            - If the request was cancelled before assignment, they'll raise
+              `asyncio.CancelledError` (or a `concurrent.futures.CancelledError` for
+              synchronous methods like `.result()`.).
+            - If the request was cancelled after assignment, they'll raise
+              `ray.exceptions.TaskCancelledError`.
         """
-        # TODO(edoakes): when actor task cancellation is supported, we should cancel
-        # the scheduled actor task here if the assign request task is done.
-        self._assign_request_task.cancel()
+        if not self._assign_request_task.done():
+            self._assign_request_task.cancel()
+        elif self._assign_request_task.exception() is None:
+            ray.cancel(self._assign_request_task.result())
 
 
 @PublicAPI(stability="alpha")
@@ -678,6 +720,12 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         )
         self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
 
+    def __await__(self):
+        raise TypeError(
+            "`DeploymentResponseGenerator` cannot be awaited directly. Use `async for` "
+            "or `_to_object_ref_gen` instead."
+        )
+
     def __aiter__(self) -> AsyncIterator[Any]:
         return self
 
@@ -726,7 +774,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class DeploymentHandle(_DeploymentHandleBase):
     """A handle used to make requests to a deployment at runtime.
 
@@ -771,6 +819,7 @@ class DeploymentHandle(_DeploymentHandleBase):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
@@ -789,6 +838,7 @@ class DeploymentHandle(_DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             use_new_handle_api=use_new_handle_api,
+            _prefer_local_routing=_prefer_local_routing,
             _router_cls=_router_cls,
         )
 
