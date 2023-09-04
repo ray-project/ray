@@ -287,7 +287,7 @@ class TestgRPCProxy:
             multiplexed_model_id=multiplexed_model_id,
             method_name=method_name,
         )
-        expected_request_context = ray.serve.context.RequestContext(
+        expected_request_context = ray.serve.context._RequestContext(
             route=route_path,
             request_id=request_id,
             app_name=app_name,
@@ -605,7 +605,7 @@ class TestHTTPProxy:
         handle.options.assert_called_with(
             multiplexed_model_id=multiplexed_model_id,
         )
-        expected_request_context = ray.serve.context.RequestContext(
+        expected_request_context = ray.serve.context._RequestContext(
             route=route_path,
             request_id=request_id,
             app_name=app_name,
