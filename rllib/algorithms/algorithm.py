@@ -2696,14 +2696,16 @@ class Algorithm(Trainable, AlgorithmBase):
 
             # Retrieve the set of all required policy IDs.
             policy_ids = set(
-                policy_ids if policy_ids is not None else worker_state["policy_ids"]
+                policy_ids
+                if policy_ids is not None
+                else worker_state.get("policy_ids", [])
             )
 
             # Remove those policies entirely from filters that are not in
             # `policy_ids`.
             worker_state["filters"] = {
                 pid: filter
-                for pid, filter in worker_state["filters"].items()
+                for pid, filter in worker_state.get("filters", {}).items()
                 if pid in policy_ids
             }
 
@@ -2775,7 +2777,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 policies_to_train is not None
                 # `policies_to_train` might be left None in case all policies should be
                 # trained.
-                or worker_state["is_policy_to_train"] == NOT_SERIALIZABLE
+                or worker_state.get("is_policy_to_train") == NOT_SERIALIZABLE
             ):
                 worker_state["is_policy_to_train"] = policies_to_train
 
