@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/announcement.rst
-
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 .. include:: /_includes/rllib/rlm_learner_migration_banner.rst
@@ -227,6 +225,3 @@ Community Examples
    Example of training in StarCraft2 maps with RLlib / multi-agent.
 - `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
-   
-
-.. include:: /_includes/rllib/announcement_bottom.rst
