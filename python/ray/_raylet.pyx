@@ -2362,6 +2362,7 @@ def _auto_reconnect(f):
                 if e.rpc_code in [
                     GRPC_STATUS_CODE_UNAVAILABLE,
                     GRPC_STATUS_CODE_UNKNOWN,
+                    GRPC_STATUS_CODE_DEADLINE_EXCEEDED,
                 ]:
                     if remaining_retry <= 0:
                         logger.error(
