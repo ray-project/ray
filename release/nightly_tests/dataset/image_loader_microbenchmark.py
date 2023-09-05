@@ -1,4 +1,3 @@
-from collections import defaultdict
 import ray
 import torch
 import torchvision
@@ -7,13 +6,17 @@ import time
 import tensorflow as tf
 import numpy as np
 from PIL import Image
-from typing import Iterator, Callable, Any
+from typing import TYPE_CHECKING, Iterator, Callable, Any
 import pandas as pd
 import json
 
-from streaming import LocalDataset
+import streaming
+from streaming import LocalDataset, StreamingDataset
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+
+if TYPE_CHECKING:
+    import pyarrow
 
 DEFAULT_IMAGE_SIZE = 224
 
@@ -26,11 +29,15 @@ def iterate(dataset, label, batch_size, metrics, output_file=None):
     start = time.time()
     it = iter(dataset)
     num_rows = 0
+    print_at = 1000
     for batch in it:
-        # NOTE(swang): This will be slightly off if batch_size does not divide
+        # note(swang): this will be slightly off if batch_size does not divide
         # evenly into number of images but should be okay for large enough
         # datasets.
         num_rows += batch_size
+        if num_rows >= print_at:
+            print(f"Read {num_rows} rows")
+            print_at = ((num_rows // 1000) + 1) * 1000
     end = time.time()
     print(label, end - start, "epoch", i)
 
@@ -43,6 +50,7 @@ def iterate(dataset, label, batch_size, metrics, output_file=None):
     with open(output_file, "a+") as f:
         for label, tput in metrics.items():
             f.write(f"{label},{tput}\n")
+
 
 def build_torch_dataset(
     root_dir, batch_size, shuffle=False, num_workers=None, transform=None
@@ -196,8 +204,10 @@ def get_transform(to_torch_tensor):
     )
     return transform
 
+
 # Capture `transform`` in the map UDFs.
 transform = get_transform(False)
+
 
 def crop_and_flip_image(row):
     # Make sure to use torch.tensor here to avoid a copy from numpy.
@@ -215,13 +225,9 @@ def crop_and_flip_image_batch(image_batch):
 
 
 def decode_image_crop_and_flip(row):
-    # NUM_CHANNELS = 3
-    # row["image"] = np.frombuffer(row["image"], dtype=np.uint8).reshape((NUM_CHANNELS, row["height"], row["width"])) #
-    row["image"] = Image.frombytes("RGB", (row["height"], row["width"]), row["image"]) 
+    row["image"] = Image.frombytes("RGB", (row["height"], row["width"]), row["image"])
     # Convert back np to avoid storing a np.object array.
-    return {
-        "image": np.array(transform(row["image"]))
-    }
+    return {"image": np.array(transform(row["image"]))}
 
 
 class MdsDatasource(ray.data.datasource.FileBasedDatasource):
@@ -230,13 +236,9 @@ class MdsDatasource(ray.data.datasource.FileBasedDatasource):
     def _read_stream(
         self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[ray.data.block.Block]:
-        import pyarrow as pa
-        import streaming
-
         file_info = streaming.base.format.base.reader.FileInfo(
-            basename=os.path.basename(path),
-            bytes=os.stat(path).st_size,
-            hashes={})
+            basename=os.path.basename(path), bytes=os.stat(path).st_size, hashes={}
+        )
         reader = streaming.base.format.mds.MDSReader(
             dirname=os.path.dirname(path),
             split=None,
@@ -278,6 +280,20 @@ class MosaicDataset(LocalDataset):
         return self.transforms(image), label
 
 
+class S3MosaicDataset(StreamingDataset):
+    def __init__(
+        self, s3_bucket: str, cache_dir: str, transforms: Callable, cache_limit=None
+    ) -> None:
+        super().__init__(remote=s3_bucket, local=cache_dir, cache_limit=cache_limit)
+        self.transforms = transforms
+
+    def __getitem__(self, idx: int) -> Any:
+        obj = super().__getitem__(idx)
+        image = obj["image"]
+        label = obj["label"]
+        return self.transforms(image), label
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -293,19 +309,19 @@ if __name__ == "__main__":
         "--parquet-data-root",
         default=None,
         type=str,
-        help='Directory path with Parquet files.',
+        help="Directory path with Parquet files.",
     )
     parser.add_argument(
         "--mosaic-data-root",
         default=None,
         type=str,
-        help='Directory path with MDS files.',
+        help="Directory path with MDS files.",
     )
     parser.add_argument(
         "--tf-data-root",
         default=None,
         type=str,
-        help='Directory path with TFRecords.',
+        help="Directory path with TFRecords.",
     )
     parser.add_argument(
         "--batch-size",
@@ -332,7 +348,9 @@ if __name__ == "__main__":
     if args.data_root is not None:
         # tf.data, load images.
         tf_dataset = tf.keras.preprocessing.image_dataset_from_directory(
-            args.data_root, batch_size=args.batch_size, image_size=(DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE),
+            args.data_root,
+            batch_size=args.batch_size,
+            image_size=(DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE),
         )
         for i in range(args.num_epochs):
             iterate(tf_dataset, "tf_data", args.batch_size, metrics, args.output_file)
@@ -342,14 +360,27 @@ if __name__ == "__main__":
         tf_dataset = tf_dataset.map(lambda img, label: (tf_crop_and_flip(img), label))
         tf_dataset.unbatch().batch(args.batch_size)
         for i in range(args.num_epochs):
-            iterate(tf_dataset, "tf_data+transform", args.batch_size, metrics, args.output_file)
+            iterate(
+                tf_dataset,
+                "tf_data+transform",
+                args.batch_size,
+                metrics,
+                args.output_file,
+            )
 
         # torch, load images.
         torch_dataset = build_torch_dataset(
-            args.data_root, args.batch_size, transform=torchvision.transforms.Compose([
-                torchvision.transforms.Resize((DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE)),
-                torchvision.transforms.ToTensor(),
-                ]))
+            args.data_root,
+            args.batch_size,
+            transform=torchvision.transforms.Compose(
+                [
+                    torchvision.transforms.Resize(
+                        (DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE)
+                    ),
+                    torchvision.transforms.ToTensor(),
+                ]
+            ),
+        )
         for i in range(args.num_epochs):
             iterate(torch_dataset, "torch", args.batch_size, metrics, args.output_file)
 
@@ -358,10 +389,18 @@ if __name__ == "__main__":
             args.data_root, args.batch_size, transform=get_transform(True)
         )
         for i in range(args.num_epochs):
-            iterate(torch_dataset, "torch+transform", args.batch_size, metrics, args.output_file)
+            iterate(
+                torch_dataset,
+                "torch+transform",
+                args.batch_size,
+                metrics,
+                args.output_file,
+            )
 
         # ray.data, load images.
-        ray_dataset = ray.data.read_images(args.data_root, mode="RGB", size=(DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE))
+        ray_dataset = ray.data.read_images(
+            args.data_root, mode="RGB", size=(DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE)
+        )
         for i in range(args.num_epochs):
             iterate(
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
@@ -372,7 +411,9 @@ if __name__ == "__main__":
             )
 
         # ray.data, with transform.
-        ray_dataset = ray.data.read_images(args.data_root, mode="RGB").map(crop_and_flip_image)
+        ray_dataset = ray.data.read_images(args.data_root, mode="RGB").map(
+            crop_and_flip_image
+        )
         for i in range(args.num_epochs):
             iterate(
                 ray_dataset.iter_batches(batch_size=args.batch_size),
@@ -384,9 +425,9 @@ if __name__ == "__main__":
 
         # Pass size to read_images when using map_batches to make sure that all
         # batches have rows with the same dimensions.
-        ray_dataset = ray.data.read_images(args.data_root, mode="RGB", size=(256, 256)).map_batches(
-            crop_and_flip_image_batch
-        )
+        ray_dataset = ray.data.read_images(
+            args.data_root, mode="RGB", size=(256, 256)
+        ).map_batches(crop_and_flip_image_batch)
         for i in range(args.num_epochs):
             iterate(
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
@@ -396,9 +437,9 @@ if __name__ == "__main__":
                 args.output_file,
             )
 
-        ray_dataset = ray.data.read_images(args.data_root, mode="RGB", size=(256, 256)).map_batches(
-            crop_and_flip_image_batch, zero_copy_batch=True
-        )
+        ray_dataset = ray.data.read_images(
+            args.data_root, mode="RGB", size=(256, 256)
+        ).map_batches(crop_and_flip_image_batch, zero_copy_batch=True)
         for i in range(args.num_epochs):
             iterate(
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
@@ -408,54 +449,95 @@ if __name__ == "__main__":
                 args.output_file,
             )
 
-
     if args.tf_data_root is not None:
         tf_dataset = build_tfrecords_tf_dataset(args.tf_data_root, args.batch_size)
         for i in range(args.num_epochs):
-            iterate(tf_dataset, "tf_data_tfrecords+transform", args.batch_size, metrics, args.output_file)
+            iterate(
+                tf_dataset,
+                "tf_data_tfrecords+transform",
+                args.batch_size,
+                metrics,
+                args.output_file,
+            )
 
         ray_dataset = ray.data.read_tfrecords(args.tf_data_root)
-        ray_dataset = ray_dataset.map_batches(decode_crop_and_flip_tf_record_batch,
-                                     batch_size=args.batch_size,
-                                     batch_format="pandas")
+        ray_dataset = ray_dataset.map_batches(
+            decode_crop_and_flip_tf_record_batch,
+            batch_size=args.batch_size,
+            batch_format="pandas",
+        )
         for i in range(args.num_epochs):
-            iterate(ray_dataset.to_tf(batch_size=args.batch_size, feature_columns="image", label_columns="label"),
-                    "ray_data_tfrecords+transform", args.batch_size, metrics, args.output_file)
+            iterate(
+                ray_dataset.to_tf(
+                    batch_size=args.batch_size,
+                    feature_columns="image",
+                    label_columns="label",
+                ),
+                "ray_data_tfrecords+transform",
+                args.batch_size,
+                metrics,
+                args.output_file,
+            )
 
     if args.parquet_data_root is not None:
-        ray_dataset = ray.data.read_parquet(args.parquet_data_root, parallelism=128).map(decode_image_crop_and_flip)
+        ray_dataset = ray.data.read_parquet(
+            args.parquet_data_root, parallelism=128
+        ).map(decode_image_crop_and_flip)
         for i in range(args.num_epochs):
             iterate(
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
                 "ray_data_parquet+map_transform",
                 args.batch_size,
-                metrics, args.output_file,
+                metrics,
+                args.output_file,
             )
         print(ray_dataset.stats())
 
     if args.mosaic_data_root is not None:
         # MosaicML StreamingDataset.
-        mosaic_ds = MosaicDataset(args.mosaic_data_root, transforms=get_transform(True))
-        num_workers = os.cpu_count()
+        use_s3 = args.mosaic_data_root.startswith("s3://")
+
+        if use_s3:
+            MOSAIC_CACHE = "/tmp/mosaic_cache"
+            try:
+                import shutil
+
+                shutil.rmtree(MOSAIC_CACHE)
+            except FileNotFoundError:
+                pass
+            mosaic_ds = S3MosaicDataset(
+                s3_bucket=args.mosaic_data_root,
+                cache_dir=MOSAIC_CACHE,
+                cache_limit="1000mb",
+                transforms=get_transform(True),
+            )
+        else:
+            mosaic_ds = MosaicDataset(
+                args.mosaic_data_root, transforms=get_transform(True)
+            )
+        num_workers = 64
         mosaic_dl = torch.utils.data.DataLoader(
             mosaic_ds, batch_size=args.batch_size, num_workers=num_workers
         )
         for i in range(args.num_epochs):
-            iterate(mosaic_dl, "mosaicml_mds", args.batch_size, metrics, args.output_file)
+            iterate(
+                mosaic_dl, "mosaicml_mds", args.batch_size, metrics, args.output_file
+            )
 
         # ray.data.
-        mds_source = MdsDatasource()
-        paths = [os.path.join(args.mosaic_data_root, path) for path in os.listdir(args.mosaic_data_root)]
-        ray_dataset = ray.data.read_datasource(mds_source,
-                                            paths=args.mosaic_data_root,
-                                            parallelism=len(paths) if len(paths) < 200 else None).map(crop_and_flip_image)
-        for i in range(args.num_epochs):
-            iterate(
-                ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-                "ray_data_mds+map_transform",
-                args.batch_size,
-                metrics, args.output_file,
+        if not use_s3:
+            mds_source = MdsDatasource()
+            ray_dataset = ray.data.read_datasource(
+                mds_source, paths=args.mosaic_data_root
             )
+            for i in range(args.num_epochs):
+                iterate(
+                    ray_dataset.iter_torch_batches(batch_size=args.batch_size),
+                    "ray_data_mds+map_transform",
+                    args.batch_size,
+                    metrics,
+                    args.output_file,
+                )
 
     metrics_dict = {}
     for label, tput in metrics.items():

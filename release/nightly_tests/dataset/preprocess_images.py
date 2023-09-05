@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import Union, Iterable, Tuple
 import os
-import sys
 import PIL
 
 import streaming
@@ -32,8 +30,10 @@ def preprocess_mosaic(input_dir, output_dir):
             if i % 10 == 0:
                 print(f"Wrote {i} images.")
 
+
 def preprocess_parquet(input_dir, output_dir, target_partition_size=None):
     print("Writing to parquet...")
+
     def to_bytes(row):
         row["height"] = row["image"].shape[0]
         row["width"] = row["image"].shape[1]
@@ -52,26 +52,24 @@ def preprocess_parquet(input_dir, output_dir, target_partition_size=None):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Preprocess images."  # noqa: E501
-    )
+    parser = argparse.ArgumentParser(description="Preprocess images.")  # noqa: E501
     parser.add_argument(
         "--data-root",
         default="/tmp/imagenet-1gb-data",
         type=str,
-        help='Raw images directory.',
+        help="Raw images directory.",
     )
     parser.add_argument(
         "--mosaic-data-root",
         default=None,
         type=str,
-        help='Output directory path for mosaic.',
+        help="Output directory path for mosaic.",
     )
     parser.add_argument(
         "--parquet-data-root",
         default=None,
         type=str,
-        help='Output directory path for parquet.',
+        help="Output directory path for parquet.",
     )
     parser.add_argument(
         "--max-mb-per-file",
@@ -88,6 +86,8 @@ if __name__ == "__main__":
         preprocess_mosaic(args.data_root, args.mosaic_data_root)
     if args.parquet_data_root is not None:
         os.makedirs(args.parquet_data_root)
-        preprocess_parquet(args.data_root,
-                            args.parquet_data_root,
-                            target_partition_size=args.max_mb_per_file * 1024 * 1024)
+        preprocess_parquet(
+            args.data_root,
+            args.parquet_data_root,
+            target_partition_size=args.max_mb_per_file * 1024 * 1024,
+        )
