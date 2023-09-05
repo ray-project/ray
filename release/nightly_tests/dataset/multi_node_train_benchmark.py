@@ -178,6 +178,7 @@ def train_loop_per_worker():
 
     # Workaround to report the final epoch time from each worker, so that we
     # can sum up the times at the end when calculating throughput.
+    # See: https://github.com/ray-project/ray/issues/39277
     world_size = ray.train.get_context().get_world_size()
     all_workers_time_list = [
         torch.zeros((2), dtype=torch.double, device=device) for _ in range(world_size)
