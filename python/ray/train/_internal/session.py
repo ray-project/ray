@@ -78,6 +78,7 @@ class TrialInfo:
     experiment_name: Optional[str] = None
 
 
+# TODO(justinvyu): [code_removal]
 @dataclass
 class TrainingResult:
     type: TrainingResultType

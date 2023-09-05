@@ -54,7 +54,7 @@ from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoi
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ DEFAULT_FILE_TYPE = "csv"
 
 
 @PublicAPI(stability="beta")
-class NewExperimentAnalysis:
+class ExperimentAnalysis:
     """Analyze results from a Ray Train/Tune experiment.
 
     To use this class, the run must store the history of reported metrics
@@ -116,7 +116,7 @@ class NewExperimentAnalysis:
             self._experiment_fs_path = experiment_checkpoint_path
 
             experiment_json_filename = (
-                NewExperimentAnalysis._find_newest_experiment_checkpoint(
+                ExperimentAnalysis._find_newest_experiment_checkpoint(
                     self._fs, self._experiment_fs_path
                 )
             )
@@ -743,8 +743,8 @@ class NewExperimentAnalysis:
         )
 
 
-@PublicAPI(stability="beta")
-class ExperimentAnalysis:
+@Deprecated
+class LegacyExperimentAnalysis:
     """Analyze results from a Tune experiment.
 
     To use this class, the experiment must be executed with the JsonLogger.
@@ -768,7 +768,7 @@ class ExperimentAnalysis:
         >>> from ray import tune
         >>> tune.run( # doctest: +SKIP
         ...     my_trainable, name="my_exp", local_dir="~/tune_results")
-        >>> analysis = ExperimentAnalysis( # doctest: +SKIP
+        >>> analysis = LegacyExperimentAnalysis( # doctest: +SKIP
         ...     experiment_checkpoint_path="~/tune_results/my_exp/state.json")
     """
 
