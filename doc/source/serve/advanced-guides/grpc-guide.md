@@ -17,7 +17,7 @@ This section helps you understand how to:
 To run a gRPC server it starts with first defining gRPC services, rpc methods, and 
 protobufs similar to the one below.
 
-```{literalinclude} ../doc_code/grpc_guide/user_defined_protos.proto
+```{literalinclude} ../doc_code/grpc_proxy/user_defined_protos.proto
 :start-after: __begin_proto__
 :end-before: __end_proto__
 :language: proto
@@ -71,7 +71,7 @@ serve start \
 :::
 
 :::{tab-item} To start gRPC proxy with Python API
-```{literalinclude} ../doc_code/grpc_guide/grpc_guide.py
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_start_grpc_proxy__
 :end-before: __end_start_grpc_proxy__
 :language: python
@@ -121,14 +121,14 @@ will pass the protobuf object into the method and expecting the protobuf object 
 from the method. 
 
 Example deployment:
-```{literalinclude} ../doc_code/grpc_guide/grpc_guide.py
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_grpc_deployment__
 :end-before: __end_grpc_deployment__
 :language: python
 ```
 
 Deploy the application:
-```{literalinclude} ../doc_code/grpc_guide/grpc_guide.py
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_deploy_grpc_app__
 :end-before: __end_deploy_grpc_app__
 :language: python
@@ -148,7 +148,7 @@ on the stub with the appropriate input. The output will be the protobuf object r
 from your Serve application. 
 
 Sending a gRPC request:
-```{literalinclude} ../doc_code/grpc_guide/grpc_guide.py
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_send_grpc_requests__
 :end-before: __end_send_grpc_requests__
 :language: python
@@ -187,7 +187,7 @@ service RayServeAPIService {
 ```
 
 You can call the service method with the following code:
-```{literalinclude} ../doc_code/grpc_guide/grpc_guide.py
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_health_check__
 :end-before: __end_health_check__
 :language: python
@@ -210,7 +210,7 @@ List of Serve returned trailing metadata keys:
 - `request_id`: The request id to track the request.
 
 Example of using metadata:
-```{literalinclude} ../doc_code/grpc_guide/grpc_guide.py
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_metadata__   
 :end-before: __end_metadata__
 :language: python
@@ -224,7 +224,7 @@ gRPC proxy for getting streaming response as well as doing model composition.
 ### Streaming
 `Steaming` method is deployed with app name "app1" above. We can use the following code
 to get a streaming response.
-```{literalinclude} ../doc_code/grpc_guide/grpc_guide.py
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_streaming__   
 :end-before: __end_streaming__
 :language: python
@@ -235,21 +235,21 @@ Assuming we have the below deployments. `OrangeStand` and `AppleStand` are two m
 to determine the price for each fruit. And there is a `FruitStand` model to call both
 `OrangeStand` and`AppleStand` to get each fruit's price and combine them into a final
 total costs. 
-```{literalinclude} ../doc_code/grpc_guide/grpc_guide.py
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_model_composition_deployment__   
 :end-before: __end_model_composition_deployment__
 :language: python
 ```
 
 We can deploy the `FruitStand` model with the following code:
-```{literalinclude} ../doc_code/grpc_guide/grpc_guide.py
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_model_composition_deploy__   
 :end-before: __end_model_composition_deploy__
 :language: python
 ```
 
 The client code to call `FruitStand` will look like the following:
-```{literalinclude} ../doc_code/grpc_guide/grpc_guide.py
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_model_composition_client__   
 :end-before: __end_model_composition_client__
 :language: python
@@ -267,7 +267,7 @@ metadata so Serve knows which application to route to.
 Similar to any other gRPC server, request will throw `grpc.RpcError` when the response
 code is not "OK". It's advised to put your request code in a try-except block and handle
 the error accordingly.
-```{literalinclude} ../doc_code/grpc_guide/grpc_guide.py
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_error_handle__   
 :end-before: __end_error_handle__
 :language: python
