@@ -453,6 +453,10 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ValueError(message)
     elif status.IsRpcError():
         raise RpcError(message, rpc_code=status.rpc_code())
+    elif status.IsGrpcUnavailable():
+        raise RpcError(message, rpc_code=GRPC_STATUS_CODE_UNAVAILABLE)
+    elif status.IsGrpcUnknown():
+        raise RpcError(message, rpc_code=GRPC_STATUS_CODE_UNKNOWN)
     else:
         raise RaySystemError(message)
 
@@ -2356,8 +2360,8 @@ def _auto_reconnect(f):
             except RpcError as e:
                 import grpc
                 if e.rpc_code in [
-                    grpc.StatusCode.UNAVAILABLE.value[0],
-                    grpc.StatusCode.UNKNOWN.value[0],
+                    GRPC_STATUS_CODE_UNAVAILABLE,
+                    GRPC_STATUS_CODE_UNKNOWN,
                 ]:
                     if remaining_retry <= 0:
                         logger.error(

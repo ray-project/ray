@@ -178,12 +178,15 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
           GrpcStatusToRayStatus(node_info_stub_->GetClusterId(&context, request, &reply));
 
       if (connect_status.ok()) {
+        if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
+          return HandleGcsError(reply.status());
+        }
         cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
         RAY_LOG(DEBUG) << "Received cluster ID from GCS server: " << cluster_id_;
         RAY_CHECK(!cluster_id_.IsNil());
         break;
-      } else if (!connect_status.IsGrpcError()) {
-        return HandleGcsError(reply.status());
+      } else if ((!connect_status.IsGrpcError()) && !connect_status.IsTimedOut()) {
+        return connect_status;
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
       channel_ =
