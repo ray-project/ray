@@ -4,6 +4,9 @@ region: us-west-2
 head_node_type:
     name: head_node
     instance_type: g4dn.8xlarge
+    resources:
+      custom_resources: 
+        large_cpu_mem: 1
 
 worker_node_types:
     - name: worker_node
