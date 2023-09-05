@@ -355,8 +355,9 @@ print(ray.get([use_gpu.remote(), use_gpu.remote()]))
 
 @pytest.mark.skipif(enable_external_redis(), reason="Only valid in non redis env")
 def test_redis_not_available(monkeypatch, call_ray_stop_only):
-    monkeypatch.setenv("RAY_NUM_REDIS_GET_RETRIES", "2")
+    monkeypatch.setenv("RAY_redis_db_connect_retries", "5")
     monkeypatch.setenv("RAY_REDIS_ADDRESS", "localhost:12345")
+
     p = subprocess.run(
         "ray start --head",
         shell=True,
@@ -369,7 +370,7 @@ def test_redis_not_available(monkeypatch, call_ray_stop_only):
 
 @pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
 def test_redis_wrong_password(monkeypatch, external_redis, call_ray_stop_only):
-    monkeypatch.setenv("RAY_NUM_REDIS_GET_RETRIES", "2")
+    monkeypatch.setenv("RAY_redis_db_connect_retries", "5")
     p = subprocess.run(
         "ray start --head  --redis-password=1234",
         shell=True,

@@ -955,8 +955,12 @@ def test_redis_logs(external_redis):
             ["ray", "start", "--head"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
         stdout, stderr = process.communicate(timeout=30)
+        print(stdout.decode())
+        print(stderr.decode())
         assert "redis_context.cc" not in stderr.decode()
+        assert "redis_context.cc" not in stdout.decode()
         assert "Resolve Redis address" not in stderr.decode()
+        assert "Resolve Redis address" not in stdout.decode()
         # assert "redis_context.cc" not in result.output
     finally:
         from click.testing import CliRunner

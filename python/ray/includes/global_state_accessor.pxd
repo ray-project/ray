@@ -75,14 +75,9 @@ cdef extern from * namespace "ray::gcs" nogil:
       instrumented_io_context io_service;
 
       auto redis_client = std::make_shared<RedisClient>(options);
-      try {
-        auto status = redis_client->Connect(io_service);
-        if(!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to connect to redis: " << status.ToString();
-          return false;
-        }
-      } catch (std::exception& e) {
-        RAY_LOG(ERROR) << "Failed to connect to redis: " << e.what();
+      auto status = redis_client->Connect(io_service);
+      if(!status.ok()) {
+        RAY_LOG(ERROR) << "Failed to connect to redis: " << status.ToString();
         return false;
       }
 
