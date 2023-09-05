@@ -222,7 +222,7 @@ def test_proxy_metrics(serve_start_shutdown):
         async def __init__(self):
             pass
 
-        async def __call__(self):
+        async def __call__(self, *args):
             # Trigger RayActorError
             os._exit(0)
 
@@ -230,7 +230,7 @@ def test_proxy_metrics(serve_start_shutdown):
     serve.run(A.bind(), name=app_name)
     requests.get("http://127.0.0.1:8000/A/")
     requests.get("http://127.0.0.1:8000/A/")
-    with pytest.raises(AssertionError):
+    with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=app_name)
     try:
         wait_for_condition(
@@ -339,7 +339,7 @@ def test_proxy_metrics_fields(serve_start_shutdown):
     print("Sent requests to correct URL.")
 
     # Ping gPRC proxy for broken app
-    with pytest.raises(AssertionError):
+    with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=real_app_name)
 
     num_deployment_errors = get_metric_dictionaries(
@@ -679,7 +679,7 @@ class TestRequestContextMetrics:
         channel = grpc.insecure_channel("localhost:9000")
         ping_grpc_call_method(channel, app_name1)
         ping_fruit_stand(channel, app_name2)
-        with pytest.raises(AssertionError):
+        with pytest.raises(grpc.RpcError):
             ping_grpc_call_method(channel, app_name3)
 
         # app1 has 1 deployment, app2 has 3 deployments, and app3 has 1 deployment.
@@ -1140,10 +1140,9 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     )
     print("ray_serve_deployment_queued_queries updated successfully.")
 
-    # TODO (shrekris-anyscale): This should be 0 once async task cancellation
-    # is implemented.
+    # Task should get cancelled.
     wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 0, timeout=15
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
 

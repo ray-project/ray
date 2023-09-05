@@ -14,11 +14,11 @@ from ray.serve._private.common import (
     StatusOverview,
     ReplicaState,
     ServeDeployMode,
-    HTTPProxyStatus,
+    ProxyStatus,
 )
-from ray.serve.config import DeploymentMode
+from ray.serve.config import ProxyLocation
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import PublicAPI
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
@@ -57,7 +57,7 @@ def _route_prefix_format(cls, v):
     return v
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class RayActorOptionsSchema(BaseModel):
     """Options with which to start a replica actor."""
 
@@ -137,7 +137,7 @@ class RayActorOptionsSchema(BaseModel):
         return v
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     """
     Specifies options for one deployment within a Serve application. For each deployment
@@ -322,12 +322,11 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
     return schema
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class ServeApplicationSchema(BaseModel):
     """
     Describes one Serve application, and currently can also be used as a standalone
     config to deploy a single application to a Ray cluster.
-
 
     This is the request JSON schema for the v1 REST API `PUT "/api/serve/deployments/"`.
     """
@@ -538,13 +537,13 @@ class gRPCOptionsSchema(BaseModel):
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class HTTPOptionsSchema(BaseModel):
     """Options to start the HTTP Proxy with.
 
     NOTE: This config allows extra parameters to make it forward-compatible (ie
           older versions of Serve are able to accept configs from a newer versions,
-          simply ignoring new parameters)
+          simply ignoring new parameters).
     """
 
     host: str = Field(
@@ -583,7 +582,7 @@ class HTTPOptionsSchema(BaseModel):
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class ServeDeploySchema(BaseModel):
     """
     Multi-application config for deploying a list of Serve applications to the Ray
@@ -597,23 +596,20 @@ class ServeDeploySchema(BaseModel):
           simply ignoring new parameters)
     """
 
-    proxy_location: DeploymentMode = Field(
-        default=DeploymentMode.EveryNode,
+    proxy_location: ProxyLocation = Field(
+        default=ProxyLocation.EveryNode,
         description=(
-            "The location of HTTP servers.\n"
-            '- "EveryNode" (default): start one HTTP server per node.\n'
-            '- "HeadOnly": start one HTTP server on the head node.\n'
-            '- "NoServer": disable HTTP server.'
+            "Config for where to run proxies for ingress traffic to the cluster."
         ),
     )
     http_options: HTTPOptionsSchema = Field(
         default=HTTPOptionsSchema(), description="Options to start the HTTP Proxy with."
     )
-    applications: List[ServeApplicationSchema] = Field(
-        ..., description=("The set of Serve applications to run on the Ray cluster.")
-    )
     grpc_options: gRPCOptionsSchema = Field(
         default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
+    )
+    applications: List[ServeApplicationSchema] = Field(
+        ..., description="The set of applications to run on the Ray cluster."
     )
 
     @validator("applications")
@@ -686,6 +682,16 @@ class ServeDeploySchema(BaseModel):
 @PublicAPI(stability="alpha")
 @dataclass
 class DeploymentStatusOverview:
+    """Describes the status of a deployment.
+
+    Attributes:
+        status: The current status of the deployment.
+        replica_states: A map indicating how many replicas there are of
+            each replica state.
+        message: A message describing the deployment status in more
+            detail.
+    """
+
     status: DeploymentStatus
     replica_states: Dict[ReplicaState, int]
     message: str
@@ -694,6 +700,17 @@ class DeploymentStatusOverview:
 @PublicAPI(stability="alpha")
 @dataclass
 class ApplicationStatusOverview:
+    """Describes the status of an application and all its deployments.
+
+    Attributes:
+        status: The current status of the application.
+        message: A message describing the application status in more
+            detail.
+        last_deployed_time_s: The time at which the application was
+            deployed. A Unix timestamp in seconds.
+        deployments: The deployments in this application.
+    """
+
     status: ApplicationStatus
     message: str
     last_deployed_time_s: float
@@ -703,11 +720,19 @@ class ApplicationStatusOverview:
 @PublicAPI(stability="alpha")
 @dataclass(eq=True)
 class ServeStatus:
-    proxies: Dict[str, HTTPProxyStatus] = field(default_factory=dict)
+    """Describes the status of Serve.
+
+    Attributes:
+        proxies: The proxy actors running on each node in the cluster.
+            A map from node ID to proxy status.
+        applications: The live applications in the cluster.
+    """
+
+    proxies: Dict[str, ProxyStatus] = field(default_factory=dict)
     applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class ServeActorDetails(BaseModel, frozen=True):
     node_id: Optional[str] = Field(
         description="ID of the node that the actor is running on."
@@ -726,7 +751,7 @@ class ServeActorDetails(BaseModel, frozen=True):
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class ReplicaDetails(ServeActorDetails, frozen=True):
     """Detailed info about a single deployment replica."""
 
@@ -748,7 +773,7 @@ class ReplicaDetails(ServeActorDetails, frozen=True):
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     """
     Detailed info about a deployment within a Serve application.
@@ -789,7 +814,7 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
         return v
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     """Detailed info about a Serve application."""
 
@@ -847,12 +872,12 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     )(_route_prefix_format)
 
 
-@PublicAPI(stability="alpha")
-class HTTPProxyDetails(ServeActorDetails, frozen=True):
-    status: HTTPProxyStatus = Field(description="Current status of the HTTP Proxy.")
+@PublicAPI(stability="stable")
+class ProxyDetails(ServeActorDetails, frozen=True):
+    status: ProxyStatus = Field(description="Current status of the proxy.")
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     """
     Serve metadata with system-level info and details on all applications deployed to
@@ -864,17 +889,17 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     controller_info: ServeActorDetails = Field(
         description="Details about the Serve controller actor."
     )
-    proxy_location: Optional[DeploymentMode] = Field(
+    proxy_location: Optional[ProxyLocation] = Field(
         description=(
-            "The location of HTTP servers.\n"
-            '- "EveryNode": start one HTTP server per node.\n'
-            '- "HeadOnly": start one HTTP server on the head node.\n'
-            '- "NoServer": disable HTTP server.'
+            "Config for where to run proxies for ingress traffic to the cluster.\n"
+            '- "Disabled": disable the proxies entirely.\n'
+            '- "HeadOnly": run only one proxy on the head node.\n'
+            '- "EveryNode": run proxies on every node that has at least one replica.\n'
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
     grpc_options: Optional[gRPCOptionsSchema] = Field(description="gRPC Proxy options.")
-    http_proxies: Dict[str, HTTPProxyDetails] = Field(
+    proxies: Dict[str, ProxyDetails] = Field(
         description=(
             "Mapping from node_id to details about the HTTP Proxy running on that node."
         )
@@ -899,15 +924,13 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         return {
             "deploy_mode": "UNSET",
             "controller_info": {},
-            "http_proxies": {},
+            "proxies": {},
             "applications": {},
         }
 
     def _get_status(self) -> ServeStatus:
         return ServeStatus(
-            proxies={
-                node_id: proxy.status for node_id, proxy in self.http_proxies.items()
-            },
+            proxies={node_id: proxy.status for node_id, proxy in self.proxies.items()},
             applications={
                 app_name: ApplicationStatusOverview(
                     status=app.status,
@@ -975,9 +998,7 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
         }
 
 
-@DeveloperAPI
-def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
-
+def _serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
     return ServeStatusSchema(
         name=serve_status.name,
         app_status=serve_status.app_status,
