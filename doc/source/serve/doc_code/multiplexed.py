@@ -40,5 +40,5 @@ resp = requests.get(
 # __serve_request_send_example_end__
 
 # __serve_handle_send_example_begin__
-obj_ref = handle.options(multiplexed_model_id="1").remote("<your_request>")
+obj_ref = handle.options(multiplexed_model_id="1").remote("<your param>")
 # __serve_handle_send_example_end__
