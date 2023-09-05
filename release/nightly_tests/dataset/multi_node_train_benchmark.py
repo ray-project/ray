@@ -218,10 +218,12 @@ def benchmark_code(
         ray_dataset = ray.data.read_images(
             args.data_root,
             mode="RGB",
+            ray_remote_args={"num_cpus": args.read_task_cpus},
         )
     elif args.file_type == "parquet":
         ray_dataset = ray.data.read_parquet(
             args.data_root,
+            ray_remote_args={"num_cpus": args.read_task_cpus},
         )
     else:
         raise Exception(f"Unknown file type {args.file_type}")
@@ -231,7 +233,7 @@ def benchmark_code(
 
     # 2) Preprocess data by applying transformation with map/map_batches()
     if args.file_type == "image":
-        ray_dataset = ray_dataset.map(crop_and_flip_image)
+        ray_dataset = ray_dataset.map(crop_and_flip_image, num_cpus=args.read_task_cpus)
     elif args.file_type == "parquet":
         ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
     if cache_output_ds:
