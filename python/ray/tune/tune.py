@@ -684,7 +684,7 @@ def run(
         # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
         # For now, keep accepting both options.
         if local_dir is not None:
-            os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
+            os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_dir
     else:
         (
             storage_path,
