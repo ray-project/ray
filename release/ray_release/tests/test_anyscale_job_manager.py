@@ -23,5 +23,16 @@ def test_get_ray_error_logs():
         assert job_driver_log == "w00t"
 
 
+def test_get_last_logs_long_running_job():
+    """Test calling get_last_logs() on long-running jobs.
+
+    When the job is running longer than 4 hours, get_last_logs() should skip
+    downloading the logs and return None.
+    """
+    anyscale_job_manager = AnyscaleJobManager(cluster_manager=None)
+    anyscale_job_manager.duration = 4 * 3_600 + 1
+    assert anyscale_job_manager.get_last_logs() is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
