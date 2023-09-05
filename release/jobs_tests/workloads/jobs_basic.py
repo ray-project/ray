@@ -60,7 +60,6 @@ if __name__ == "__main__":
     job_id = client.submit_job(
         entrypoint="python run_simple_tune_job.py",
         runtime_env={
-            "pip": ["ray[tune]"],
             "working_dir": args.working_dir,
             "env_vars": {RAY_AIR_NEW_PERSISTENCE_MODE: "1"},
         },
