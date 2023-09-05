@@ -166,6 +166,16 @@ class Checkpoint:
         data_dict: Optional[dict] = None,
         uri: Optional[str] = None,
     ):
+        from ray.train._internal.storage import _use_storage_context
+
+        if _use_storage_context():
+            raise DeprecationWarning(
+                "`ray.air.Checkpoint` is deprecated. "
+                "Please use `ray.train.Checkpoint` instead. "
+                "See the `Checkpoint: New API` section in "
+                "https://github.com/ray-project/ray/issues/37868 for a migration guide."
+            )
+
         # First, resolve file:// URIs to local paths
         if uri:
             local_path = _get_local_path(uri)
