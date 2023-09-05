@@ -246,7 +246,7 @@ nvidia-cuda-runtime-cu11==11.7.99
 nvidia-cudnn-cu11==8.5.0.96
 nvidia-ml-py==11.525.112
 oauthlib==3.2.2
-onnx==1.12.0
+onnx==1.13.0
 onnxruntime==1.14.1
 open-spiel==1.2
 opencensus==0.11.2
@@ -383,9 +383,9 @@ tensorboard==2.11.2
 tensorboard-data-server==0.6.1
 tensorboard-plugin-wit==1.8.1
 tensorboardX==2.4.1
-tensorflow==2.11.0
+tensorflow==2.12.0
 tensorflow-datasets==4.9.0
-tensorflow-estimator==2.11.0
+tensorflow-estimator==2.12.0
 tensorflow-io-gcs-filesystem==0.32.0
 tensorflow-metadata==1.13.0
 tensorflow-probability==0.19.0
