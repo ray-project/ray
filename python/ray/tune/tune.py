@@ -679,7 +679,6 @@ def run(
     if _use_storage_context():
         local_path, remote_path = None, None
         sync_config = sync_config or SyncConfig()
-        # TODO(justinvyu): Fix telemetry for the new persistence.
     else:
         (
             storage_path,
@@ -965,6 +964,9 @@ def run(
         )
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
+
+    if _use_storage_context():
+        air_usage.tag_storage_type(experiments[0].storage)
 
     # NOTE: Report callback telemetry before populating the list with default callbacks.
     # This tracks user-specified callback usage.
