@@ -2754,9 +2754,8 @@ genrule(
     ]),
     cmd = """
         conda init bash
-        ls ~/.bash*
+        touch ~/.bash_profile
         [ -f ~/.bash_profile ] && source ~/.bash_profile
-        [ -f ~/.bashrc ] && source ~/.bashrc
         conda create -y -n compile_by_proto python=3.7
         conda activate compile_by_proto
         pip install grpcio-tools==1.46.5
