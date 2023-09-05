@@ -31,7 +31,14 @@ class _CheckpointMetaClass(type):
         try:
             return super().__getattribute__(item)
         except AttributeError as exc:
-            if item in ["from_dict", "to_dict", "from_bytes", "to_bytes"]:
+            if item in [
+                "from_dict",
+                "to_dict",
+                "from_bytes",
+                "to_bytes",
+                "from_uri",
+                "to_uri",
+            ]:
                 raise _raise_migration_error(item) from exc
             raise exc
 
