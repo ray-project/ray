@@ -8,13 +8,15 @@
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
+load("@rules_python//python:defs.bzl", "py_library", "py_binary", "py_runtime", "py_runtime_pair")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
 load("@python3_9//:defs.bzl", python39 = "interpreter")
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
+load("@py_deps_compile_py_proto//:requirements.bzl", "requirement")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -2744,6 +2746,26 @@ genrule(
     local = 1,
 )
 
+compile_pip_requirements(
+    name = "requirements_compile_py_proto",
+    requirements_in = "ci/requirements_compile_py_proto.in",
+    requirements_txt = "ci/requirements_compile_py_proto.txt",
+    extra_args = ["--allow-unsafe"],
+    tags = ["team:ci"],
+    visibility = ["//visibility:private"],
+)
+
+py_binary(
+    name = "grpc_tools_protoc",
+    srcs = ["ci/grpc_tools_protoc.py"],
+    deps = [
+        requirement("grpcio-tools"),
+    ],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = ["team:ci"],
+    visibility = ["//visibility:public"],
+)
+
 genrule(
     name = "compile_py_proto",
     srcs = [
@@ -2753,15 +2775,12 @@ genrule(
         "src/ray/protobuf/**/*.proto",
     ]),
     cmd = """
-        conda create -y -n compile_by_proto python=3.7
-        source activate compile_by_proto
-        pip install grpcio-tools==1.46.5
-        python -m grpc_tools.protoc --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated src/ray/protobuf/*.proto src/ray/protobuf/**/*.proto --proto_path=. --proto_path=$$(dirname $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto))/../../../..
+        $(location :grpc_tools_protoc) --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated src/ray/protobuf/*.proto src/ray/protobuf/**/*.proto --proto_path=. --proto_path=$$(dirname $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto))/../../../..
         mkdir -p opencensus/proto/metrics/v1
         mkdir -p opencensus/proto/resource/v1
         cp $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto) opencensus/proto/metrics/v1/metrics.proto
         cp $(locations @io_opencensus_proto//opencensus/proto/resource/v1:resource.proto) opencensus/proto/resource/v1/resource.proto
-        python -m grpc_tools.protoc --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated opencensus/proto/metrics/v1/metrics.proto opencensus/proto/resource/v1/resource.proto --proto_path=.
+        $(location :grpc_tools_protoc) --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated opencensus/proto/metrics/v1/metrics.proto opencensus/proto/resource/v1/resource.proto --proto_path=.
         mv python/ray/core/generated/src/ray/protobuf/*.py python/ray/core/generated/
         mv python/ray/core/generated/src/ray/protobuf/**/*.py python/ray/core/generated/
         mv python/ray/core/generated/opencensus/proto/**/v1/*.py python/ray/core/generated/
@@ -2770,10 +2789,11 @@ genrule(
         rm -rf opencensus
         rm -rf python/ray/core/generated/src/
         rm -rf python/ray/core/generated/opencensus/
-        conda deactivate
-        conda env remove -y -n compile_by_proto
         echo "$${PWD}" > $@
     """,
+    tools = [
+        ":grpc_tools_protoc",
+    ],
     outs = ["compile_py_proto.out"],
     local = 1,
 )
