@@ -294,6 +294,10 @@ RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 /// starting_worker_timeout_callback() is called.
 RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 
+/// The maximum workers raylet can start at the same time.
+/// 0 means it will use the default (number of CPUs).
+RAY_CONFIG(int64_t, worker_maximum_startup_concurrency, 0)
+
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128)
 
