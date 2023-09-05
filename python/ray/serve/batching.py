@@ -347,7 +347,7 @@ def batch(
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def batch(
     _func: Optional[Callable] = None,
     max_batch_size: int = 10,
