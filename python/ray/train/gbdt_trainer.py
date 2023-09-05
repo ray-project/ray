@@ -128,8 +128,7 @@ class GBDTTrainer(BaseTrainer):
         **train_kwargs: Additional kwargs passed to framework ``train()`` function.
     """
 
-    _scaling_config_allowed_keys = [
-        "_max_cpu_fraction_per_node",
+    _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
         "resources_per_worker",
         "use_gpu",
@@ -189,6 +188,17 @@ class GBDTTrainer(BaseTrainer):
     def _validate_attributes(self):
         super()._validate_attributes()
         self._validate_config_and_datasets()
+
+        # Todo: `trainer_resources` should be configurable. Currently it is silently
+        # ignored. We catch the error here rather than in
+        # `_scaling_config_allowed_keys` because the default of `None` is updated to
+        # `{}` from XGBoost-Ray.
+        if self.scaling_config.trainer_resources not in [None, {}]:
+            raise ValueError(
+                f"The `trainer_resources` attribute for {self.__class__.__name__} "
+                f"is currently ignored and defaults to `{{}}`. Remove the "
+                f"`trainer_resources` key from your `ScalingConfig` to resolve."
+            )
 
     def _validate_config_and_datasets(self) -> None:
         if TRAIN_DATASET_KEY not in self.datasets:
