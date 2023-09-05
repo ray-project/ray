@@ -55,11 +55,11 @@ When processing a request takes longer than the [end-to-end timeout](serve-perfo
 :language: python
 ```
 
-If no `await` statements are remaining in the deployment's code before the request completes, the replica processes the request as usual, sends the response back to the proxy, and the proxy discards the response. Use `await` statements for blocking operations in a deployment, so Serve can cancel in-flight requests in the deployment without waiting for the blocking operation to complete.
+If no `await` statements are left in the deployment's code before the request completes, the replica processes the request as usual, sends the response back to the proxy, and the proxy discards the response. Use `await` statements for blocking operations in a deployment, so Serve can cancel in-flight requests without waiting for the blocking operation to complete.
 
 Cancellation cascades to any downstream deployment handle, task, or actor calls that were spawned in the deployment's request-handling method. These can handle the `asyncio.CancelledError` in the same way as the ingress deployment.
 
-To ignore cancellation during an `await` statement, use `asyncio.shield`:
+To prevent an async call from being interrupted by `asyncio.CancelledError`, use `asyncio.shield()`:
 
 ```{literalinclude} doc_code/http_guide/disconnects.py
 :start-after: __start_shielded_disconnect__
@@ -67,7 +67,7 @@ To ignore cancellation during an `await` statement, use `asyncio.shield`:
 :language: python
 ```
 
-When the request is cancelled, a cancellation error is raised inside the `Forwarder` deployment. However, the cancellation won't be raised inside `sleeper` during the `asyncio.sleep()` call.
+When the request is cancelled, a cancellation error is raised inside the `SnoringSleeper` deployment's `__call__()` method. However, the cancellation is not raised inside the `snore()` call, so `ZZZ` is printed even if the request is cancelled. Note that `asyncio.shield` cannot be used on a `ServeHandle` call.
 
 (serve-fastapi-http)=
 ## FastAPI HTTP Deployments

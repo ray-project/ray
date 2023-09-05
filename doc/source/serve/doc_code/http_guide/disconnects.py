@@ -81,30 +81,24 @@ from ray.serve.handle import RayServeHandle
 
 
 @serve.deployment
-class Forwarder:
+class SnoringSleeper:
     def __init__(self, sleeper_handle: RayServeHandle):
         self.sleeper_handle = sleeper_handle
+    
+    async def snore(self):
+        await asyncio.sleep(3)
+        print("ZZZ")
 
     async def __call__(self):
         try:
-            print("Forwarder received request!")
-            await (await self.sleeper_handle.remote())
+            print("SnoringSleeper received request!")
+            await self.snore()
 
         except asyncio.CancelledError:
-            print("Forwarder's request was cancelled!")
+            print("SnoringSleeper's request was cancelled!")
 
 
-@serve.deployment
-async def sleeper():
-    print("Sleeper received request!")
-
-    # Shield sleep call from cancellation
-    await asyncio.shield(asyncio.sleep(3))
-
-    print("Sleeper deployment finished sleeping!")
-
-
-app = Forwarder.bind(sleeper.bind())
+app = SnoringSleeper.bind()
 # __end_shielded_disconnect__
 
 serve.run(app)
@@ -120,10 +114,9 @@ except Timeout:
 
 wait_for_condition(
     lambda: {
-        "Forwarder received request!",
-        "Forwarder's request was cancelled!",
-        "Sleeper received request!",
-        "Sleeper deployment finished sleeping!",
+        "SnoringSleeper received request!",
+        "SnoringSleeper's request was cancelled!",
+        "ZZZ",
     } == ray.get(print_storage_handle.get.remote()),
     timeout=5,
 )
