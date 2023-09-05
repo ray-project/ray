@@ -67,7 +67,7 @@ To prevent an async call from being interrupted by `asyncio.CancelledError`, use
 :language: python
 ```
 
-When the request is cancelled, a cancellation error is raised inside the `SnoringSleeper` deployment's `__call__()` method. However, the cancellation is not raised inside the `snore()` call, so `ZZZ` is printed even if the request is cancelled. Note that `asyncio.shield` cannot be used on a `ServeHandle` call.
+When the request is cancelled, a cancellation error is raised inside the `SnoringSleeper` deployment's `__call__()` method. However, the cancellation is not raised inside the `snore()` call, so `ZZZ` is printed even if the request is cancelled. Note that `asyncio.shield` cannot be used on a `ServeHandle` call to prevent the downstream handler from being cancelled. You need to explicitly handle the cancellation error in that handle as well.
 
 (serve-fastapi-http)=
 ## FastAPI HTTP Deployments
