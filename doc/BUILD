@@ -134,8 +134,8 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
-        "source/serve/doc_code/proxy_guide/streaming_example.py",
-        "source/serve/doc_code/proxy_guide/websockets_example.py",
+        "source/serve/doc_code/http_guide/streaming_example.py",
+        "source/serve/doc_code/http_guide/websockets_example.py",
         "source/serve/doc_code/vllm_example.py",
     ],
     extra_srcs = [],
@@ -145,8 +145,8 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "medium",
     include = [
-        "source/serve/doc_code/proxy_guide/streaming_example.py",
-        "source/serve/doc_code/proxy_guide/websockets_example.py",
+        "source/serve/doc_code/http_guide/streaming_example.py",
+        "source/serve/doc_code/http_guide/websockets_example.py",
     ],
     exclude = [],
     extra_srcs = [],
