@@ -2753,6 +2753,7 @@ genrule(
         "src/ray/protobuf/**/*.proto",
     ]),
     cmd = """
+        pip install grpcio-tools==1.46.5
         python -m grpc_tools.protoc --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated src/ray/protobuf/*.proto src/ray/protobuf/**/*.proto --proto_path=. --proto_path=$$(dirname $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto))/../../../..
         mkdir -p opencensus/proto/metrics/v1
         mkdir -p opencensus/proto/resource/v1
@@ -2767,6 +2768,7 @@ genrule(
         rm -rf opencensus
         rm -rf python/ray/core/generated/src/
         rm -rf python/ray/core/generated/opencensus/
+        pip uninstall -y grpcio-tools
         echo "$${PWD}" > $@
     """,
     outs = ["compile_py_proto.out"],
