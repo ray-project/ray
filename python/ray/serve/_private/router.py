@@ -98,6 +98,67 @@ class Query:
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
 
+    async def replace_known_types_in_args(self):
+        """TODO."""
+        from ray.serve.handle import (
+            _DeploymentResponseBase,
+            DeploymentResponse,
+            DeploymentResponseGenerator,
+        )
+
+        scanner = _PyObjScanner(
+            source_type=(asyncio.Task, _DeploymentResponseBase, Request)
+        )
+
+        try:
+            tasks = []
+            responses = []
+            replacement_table = {}
+            objs = scanner.find_nodes((self.args, self.kwargs))
+            for obj in objs:
+                if isinstance(obj, asyncio.Task):
+                    tasks.append(obj)
+                elif isinstance(obj, DeploymentResponseGenerator):
+                    raise RuntimeError(
+                        "Streaming deployment handle results cannot be passed to "
+                        "downstream handle calls. If you have a use case requiring "
+                        "this feature, please file a feature request on GitHub."
+                    )
+                elif isinstance(obj, DeploymentResponse):
+                    responses.append(obj)
+                elif isinstance(obj, Request):
+                    global WARNED_ABOUT_STARLETTE_REQUESTS_ONCE
+                    if not WARNED_ABOUT_STARLETTE_REQUESTS_ONCE:
+                        # TODO(edoakes): fully disallow this in the future.
+                        warnings.warn(
+                            "`starlette.Request` objects should not be directly passed via "
+                            "`ServeHandle` calls. Not all functionality is guaranteed to work "
+                            "(e.g., detecting disconnects) and this may be disallowed in a "
+                            "future release."
+                        )
+                        WARNED_ABOUT_STARLETTE_REQUESTS_ONCE = True
+
+                    async def empty_send():
+                        pass
+
+                    obj._send = empty_send
+                    obj._receive = make_buffered_asgi_receive(await obj.body())
+                    replacement_table[obj] = obj
+
+            if len(tasks) > 0:
+                resolved = await asyncio.gather(*tasks)
+                replacement_table.update(zip(tasks, resolved))
+            if len(responses) > 0:
+                obj_refs = await asyncio.gather(
+                    *[r._to_object_ref() for r in responses]
+                )
+                replacement_table.update((zip(responses, obj_refs)))
+
+            self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+        finally:
+            # Make the scanner GC-able to avoid memory leaks.
+            scanner.clear()
+
     async def resolve_async_tasks(self):
         """Find all unresolved asyncio.Task and gather them all at once.
 
@@ -114,7 +175,6 @@ class Query:
                 replacement_table = dict(zip(tasks, resolved))
                 self.args, self.kwargs = scanner.replace_nodes(replacement_table)
         finally:
-            # Make the scanner GC-able to avoid memory leaks.
             scanner.clear()
 
     async def resolve_deployment_handle_results_to_object_refs(self):
@@ -1219,10 +1279,7 @@ class Router:
                 kwargs=request_kwargs,
                 metadata=request_meta,
             )
-            await query.resolve_deployment_handle_results_to_object_refs()
-            await query.buffer_starlette_requests_and_warn()
-            await query.resolve_async_tasks()
-
+            await query.replace_known_types_in_args()
             return await self._replica_scheduler.assign_replica(query)
         finally:
             # If the query is disconnected before assignment, this coroutine

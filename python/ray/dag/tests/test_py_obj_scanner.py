@@ -17,6 +17,22 @@ def test_simple_replace():
     assert replaced == [1, [1, {"key": 1}]]
 
 
+def test_replace_multiple_types():
+    class OtherSource:
+        pass
+
+    scanner = _PyObjScanner(source_type=(Source, OtherSource))
+    my_objs = [Source(), [Source(), {"key": Source(), "key2": OtherSource()}]]
+
+    found = scanner.find_nodes(my_objs)
+    assert len(found) == 4
+
+    replaced = scanner.replace_nodes({
+        obj: 1 if isinstance(obj, Source) else 2 for obj in found
+    })
+    assert replaced == [1, [1, {"key": 1, "key2": 2}]]
+
+
 def test_replace_nested_in_obj():
     scanner = _PyObjScanner(source_type=Source)
 

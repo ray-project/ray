@@ -1,6 +1,6 @@
 import io
 import sys
-from typing import Generic, List, Dict, Any, Type, TypeVar
+from typing import Any, Dict, Generic, List, Tuple, Type, TypeVar, Union
 
 # For python < 3.8 we need to explicitly use pickle5 to support protocol 5
 if sys.version_info < (3, 8):
@@ -35,15 +35,19 @@ def _get_node(instance_id: int, node_index: int) -> SourceType:
 class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, TransformedType]):
     """Utility to find and replace the `source_type` in Python objects.
 
-    This uses pickle to walk the PyObj graph and find first-level DAGNode
-    instances on ``find_nodes()``. The caller can then compute a replacement
-    table and then replace the nodes via ``replace_nodes()``.
+    `source_type` can either be a single type or a tuple of multiple types.
+
+    The caller must first call `find_nodes()`, then compute a replacement table and
+    pass it to `replace_nodes`.
+
+    This uses cloudpickle under the hood, so all sub-objects that are not `source_type`
+    must be serializable.
 
     Args:
-        source_type: the type of object to find and replace. Default to DAGNodeBase.
+        source_type: the type(s) of object to find and replace. Default to DAGNodeBase.
     """
 
-    def __init__(self, source_type: Type = DAGNodeBase):
+    def __init__(self, source_type: Union[Type, Tuple] = DAGNodeBase):
         self.source_type = source_type
         # Buffer to keep intermediate serialized state.
         self._buf = io.BytesIO()
@@ -69,8 +73,8 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transforme
             index = len(self._found)
             self._found.append(obj)
             return _get_node, (id(self), index)
-        else:
-            return super().reducer_override(obj)
+
+        return super().reducer_override(obj)
 
     def find_nodes(self, obj: Any) -> List[SourceType]:
         """Find top-level DAGNodes."""
