@@ -742,6 +742,12 @@ class ExperimentAnalysis:
             "`ResultGrid` and use `Result.best_checkpoints` instead."
         )
 
+    def fetch_trial_dataframes(self) -> Dict[str, DataFrame]:
+        raise DeprecationWarning(
+            "`fetch_trial_dataframes` is deprecated. "
+            "Access the `trial_dataframes` property instead."
+        )
+
 
 @Deprecated
 class LegacyExperimentAnalysis:
