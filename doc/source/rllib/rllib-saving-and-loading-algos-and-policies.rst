@@ -8,7 +8,7 @@ Saving and Loading your RL Algorithms and Policies
 ##################################################
 
 
-You can use :py:class:`~ray.air.checkpoint.Checkpoint` objects to store
+You can use :py:class:`~ray.train.Checkpoint` objects to store
 and load the current state of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
 or :py:class:`~ray.rllib.policy.policy.Policy` and the neural networks (weights)
 within these structures. In the following, we will cover how you can create these
