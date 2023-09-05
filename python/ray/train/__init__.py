@@ -13,14 +13,8 @@ except ImportError as exc:
 
 from ray._private.usage import usage_lib
 
-from ray.train._internal.storage import _use_storage_context
-
 # Import this first so it can be used in other modules
-if not _use_storage_context():
-    from ray.air import Checkpoint
-else:
-    from ray.train._checkpoint import Checkpoint
-
+from ray.train._checkpoint import Checkpoint
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import get_checkpoint, get_dataset_shard, report
 from ray.train._internal.syncer import SyncConfig
