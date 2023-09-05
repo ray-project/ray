@@ -38,7 +38,9 @@ public class RayServeWrappedReplica implements RayServeReplica {
       byte[] initArgsbytes,
       byte[] deploymentConfigBytes,
       byte[] deploymentVersionBytes,
-      String controllerName) {
+      String controllerName,
+      Boolean detached,
+      String appName) {
 
     // Parse DeploymentConfig.
     DeploymentConfig deploymentConfig = DeploymentConfig.fromProtoBytes(deploymentConfigBytes);
@@ -65,6 +67,8 @@ public class RayServeWrappedReplica implements RayServeReplica {
     deploymentWrapper.setDeploymentConfig(deploymentConfig);
     deploymentWrapper.setInitArgs(initArgs);
     deploymentWrapper.setDeploymentVersion(version);
+    deploymentWrapper.setDetached(detached);
+    deploymentWrapper.setAppName(appName);
 
     // Init replica.
     init(deploymentWrapper, replicaTag, controllerName);
@@ -85,7 +89,8 @@ public class RayServeWrappedReplica implements RayServeReplica {
           replicaTag,
           controllerName,
           null,
-          deploymentWrapper.getConfig());
+          deploymentWrapper.getConfig(),
+          deploymentWrapper.getAppName());
 
       // Instantiate the object defined by deploymentDef.
       Class deploymentClass =
@@ -114,7 +119,8 @@ public class RayServeWrappedReplica implements RayServeReplica {
               callable,
               deploymentWrapper.getDeploymentConfig(),
               deploymentWrapper.getDeploymentVersion(),
-              optional.get());
+              optional.get(),
+              deploymentWrapper.getAppName());
       this.deploymentInfo = deploymentWrapper;
     } catch (Throwable e) {
       String errMsg =

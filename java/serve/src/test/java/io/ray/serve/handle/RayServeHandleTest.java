@@ -44,7 +44,7 @@ public class RayServeHandleTest {
           Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Set ReplicaContext
-      Serve.setInternalReplicaContext(null, null, controllerName, null, config);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, config,null);
 
       // Replica
       DeploymentConfig deploymentConfig =
