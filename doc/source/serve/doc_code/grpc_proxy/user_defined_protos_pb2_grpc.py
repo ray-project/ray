@@ -170,7 +170,7 @@ class UserDefinedService(object):
         )
 
 
-class FruitServiceStub(object):
+class ImageClassificationServiceStub(object):
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -179,43 +179,43 @@ class FruitServiceStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.FruitStand = channel.unary_unary(
-            "/userdefinedprotos.FruitService/FruitStand",
-            request_serializer=user__defined__protos__pb2.FruitAmounts.SerializeToString,  # noqa: E501
-            response_deserializer=user__defined__protos__pb2.FruitCosts.FromString,
+        self.Predict = channel.unary_unary(
+            "/userdefinedprotos.ImageClassificationService/Predict",
+            request_serializer=user__defined__protos__pb2.ImageData.SerializeToString,
+            response_deserializer=user__defined__protos__pb2.ImageClass.FromString,
         )
 
 
-class FruitServiceServicer(object):
+class ImageClassificationServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
-    def FruitStand(self, request, context):
+    def Predict(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
 
 
-def add_FruitServiceServicer_to_server(servicer, server):
+def add_ImageClassificationServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-        "FruitStand": grpc.unary_unary_rpc_method_handler(
-            servicer.FruitStand,
-            request_deserializer=user__defined__protos__pb2.FruitAmounts.FromString,
-            response_serializer=user__defined__protos__pb2.FruitCosts.SerializeToString,
+        "Predict": grpc.unary_unary_rpc_method_handler(
+            servicer.Predict,
+            request_deserializer=user__defined__protos__pb2.ImageData.FromString,
+            response_serializer=user__defined__protos__pb2.ImageClass.SerializeToString,
         ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-        "userdefinedprotos.FruitService", rpc_method_handlers
+        "userdefinedprotos.ImageClassificationService", rpc_method_handlers
     )
     server.add_generic_rpc_handlers((generic_handler,))
 
 
 # This class is part of an EXPERIMENTAL API.
-class FruitService(object):
+class ImageClassificationService(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
-    def FruitStand(
+    def Predict(
         request,
         target,
         options=(),
@@ -230,9 +230,9 @@ class FruitService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/userdefinedprotos.FruitService/FruitStand",
-            user__defined__protos__pb2.FruitAmounts.SerializeToString,
-            user__defined__protos__pb2.FruitCosts.FromString,
+            "/userdefinedprotos.ImageClassificationService/Predict",
+            user__defined__protos__pb2.ImageData.SerializeToString,
+            user__defined__protos__pb2.ImageClass.FromString,
             options,
             channel_credentials,
             insecure,

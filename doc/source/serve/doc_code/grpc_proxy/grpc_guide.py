@@ -12,7 +12,7 @@ from ray.serve.config import gRPCOptions
 grpc_port = 9000
 grpc_servicer_functions = [
     "user_defined_protos_pb2_grpc.add_UserDefinedServiceServicer_to_server",
-    "user_defined_protos_pb2_grpc.add_FruitServiceServicer_to_server",
+    "user_defined_protos_pb2_grpc.add_ImageClassificationServiceServicer_to_server",
 ]
 serve.start(
     grpc_options=gRPCOptions(
@@ -169,74 +169,101 @@ for response in responses:
 
 
 # __begin_model_composition_deployment__
-from typing import Dict
+import torch
+from urllib.request import urlretrieve
+from PIL import Image
+from torchvision import transforms
 from user_defined_protos_pb2 import (
-    FruitAmounts,
-    FruitCosts,
+    ImageClass,
+    ImageData,
 )
 
-import ray
 from ray import serve
 from ray.serve.handle import RayServeDeploymentHandle
 
 
 @serve.deployment
-class FruitMarket:
+class ImageClassifier:
     def __init__(
         self,
-        _orange_stand: RayServeDeploymentHandle,
-        _apple_stand: RayServeDeploymentHandle,
+        _image_downloader: RayServeDeploymentHandle,
+        _data_preprocessor: RayServeDeploymentHandle,
     ):
-        self.directory = {
-            "ORANGE": _orange_stand,
-            "APPLE": _apple_stand,
-        }
+        self._image_downloader = _image_downloader
+        self._data_preprocessor = _data_preprocessor
+        self.model = torch.hub.load(
+            "pytorch/vision:v0.10.0", "resnet18", pretrained=True
+        )
+        self.model.eval()
+        self.image_label_filename = "imagenet_classes.txt"
+        self.download_image_labels()
 
-    async def FruitStand(self, fruit_amounts_proto: FruitAmounts) -> FruitCosts:
-        fruit_amounts = {}
-        if fruit_amounts_proto.orange:
-            fruit_amounts["ORANGE"] = fruit_amounts_proto.orange
-        if fruit_amounts_proto.apple:
-            fruit_amounts["APPLE"] = fruit_amounts_proto.apple
-        if fruit_amounts_proto.banana:
-            fruit_amounts["BANANA"] = fruit_amounts_proto.banana
+    def download_image_labels(self):
+        url = (
+            "https://raw.githubusercontent.com/pytorch/hub/master/imagenet_classes.txt"
+        )
+        urlretrieve(url, self.image_label_filename)
 
-        costs = await self.check_price(fruit_amounts)
-        return FruitCosts(costs=costs)
+    async def Predict(self, image_data: ImageData) -> ImageClass:
+        # Download image
+        await self._image_downloader.remote(image_data.url, image_data.filename)
 
-    async def check_price(self, inputs: Dict[str, int]) -> float:
-        costs = 0
-        for fruit, amount in inputs.items():
-            if fruit not in self.directory:
-                return
-            fruit_stand = self.directory[fruit]
-            ref: ray.ObjectRef = await fruit_stand.remote(int(amount))
-            result = await ref
-            costs += result
-        return costs
+        # Preprocess image
+        input_batch = await self._data_preprocessor.remote(image_data.filename)
+
+        # Predict image
+        with torch.no_grad():
+            output = self.model(await input_batch)
+        probabilities = torch.nn.functional.softmax(output[0], dim=0)
+
+        return self.process_model_outputs(probabilities)
+
+    def process_model_outputs(self, probabilities: torch.Tensor) -> ImageClass:
+        image_classes = []
+        image_probabilities = []
+        with open(self.image_label_filename, "r") as f:
+            categories = [s.strip() for s in f.readlines()]
+            # Show top categories per image
+            top5_prob, top5_catid = torch.topk(probabilities, 5)
+            for i in range(top5_prob.size(0)):
+                image_classes.append(categories[top5_catid[i]])
+                image_probabilities.append(top5_prob[i].item())
+
+        return ImageClass(
+            classes=image_classes,
+            probabilities=image_probabilities,
+        )
 
 
 @serve.deployment
-class OrangeStand:
-    def __init__(self):
-        self.price = 2.49
-
-    def __call__(self, num_oranges: int):
-        return num_oranges * self.price
+class ImageDownloader:
+    def __call__(self, image_url: str, filename: str):
+        urlretrieve(image_url, filename)
 
 
 @serve.deployment
-class AppleStand:
-    def __init__(self):
-        self.price = 3.89
+class DataPreprocessor:
+    def __call__(self, filename: str):
+        input_image = Image.open(filename)
+        preprocess = transforms.Compose(
+            [
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+        input_tensor = preprocess(input_image)
+        return input_tensor.unsqueeze(0)  # create a mini-batch as expected by the model
 
-    def __call__(self, num_oranges: int):
-        return num_oranges * self.price
 
-
-orange_stand = OrangeStand.bind()
-apple_stand = AppleStand.bind()
-g2 = FruitMarket.bind(orange_stand, apple_stand)
+image_downloader = ImageDownloader.bind()
+data_preprocessor = DataPreprocessor.bind()
+g2 = ImageClassifier.options(name="grpc-image-classifier").bind(
+    image_downloader, data_preprocessor
+)
 
 # __end_model_composition_deployment__
 
@@ -250,18 +277,22 @@ serve.run(target=g2, name=app2, route_prefix=f"/{app2}")
 
 # __begin_model_composition_client__
 import grpc
-from user_defined_protos_pb2_grpc import FruitServiceStub
-from user_defined_protos_pb2 import FruitAmounts
+from user_defined_protos_pb2_grpc import ImageClassificationServiceStub
+from user_defined_protos_pb2 import ImageData
 
 
 channel = grpc.insecure_channel("localhost:9000")
-stub = FruitServiceStub(channel)
-request = FruitAmounts(orange=4, apple=8)
+stub = ImageClassificationServiceStub(channel)
+request = ImageData(
+    url="https://github.com/pytorch/hub/raw/master/images/dog.jpg",
+    filename="dog.jpg",
+)
 metadata = (("application", "app2"),)  # Make sure application metadata is passed.
 
-response, call = stub.FruitStand.with_call(request=request, metadata=metadata)
+response, call = stub.Predict.with_call(request=request, metadata=metadata)
 print(f"status code: {call.code()}")  # grpc.StatusCode.OK
-print(f"costs: {response.costs}")  # 41.08
+print(f"Classes: {response.classes}")  #
+print(f"Probabilities: {response.probabilities}")  #
 
 # __end_model_composition_client__
 

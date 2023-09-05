@@ -25,10 +25,10 @@ protobufs similar to the one below.
 
 
 In this example, we created a file named `user_defined_protos.proto`. There are two
-gRPC services, `UserDefinedService` and `FruitService`. `UserDefinedService` has three
-RPC methods, `__call__`, `Multiplexing`, and `Streaming`. `FruitService` has one
-RPC method, `FruitStand`. Their corresponding input and output types are also defined
-specifically for each RPC method.
+gRPC services, `UserDefinedService` and `ImageClassificationService`.
+`UserDefinedService` has three RPC methods, `__call__`, `Multiplexing`, and `Streaming`.
+`ImageClassificationService` has one RPC method, `Predict`. Their corresponding input
+and output types are also defined specifically for each RPC method.
 
 Once the `.proto` services are defined, we can use `grpcio-tools` to compile python 
 code for those services. Example command looks like the following:
@@ -66,7 +66,7 @@ ray start --head
 serve start \
   --grpc-port 9000 \
   --grpc-servicer-functions user_defined_protos_pb2_grpc.add_UserDefinedServiceServicer_to_server \
-  --grpc-servicer-functions user_defined_protos_pb2_grpc.add_FruitServiceServicer_to_server
+  --grpc-servicer-functions user_defined_protos_pb2_grpc.add_ImageClassificationServiceServicer_to_server
 
 ```
 :::
@@ -86,7 +86,7 @@ grpc_options:
   port: 9000
   grpc_servicer_functions:
     - user_defined_protos_pb2_grpc.add_UserDefinedServiceServicer_to_server
-    - user_defined_protos_pb2_grpc.add_FruitServiceServicer_to_server
+    - user_defined_protos_pb2_grpc.add_ImageClassificationServiceServicer_to_server
 
 applications:
   - name: app1
@@ -233,24 +233,26 @@ to get a streaming response.
 ```
 
 ### Model Composition
-Assuming we have the below deployments. `OrangeStand` and `AppleStand` are two models
-to determine the price for each fruit. And there is a `FruitStand` model to call both
-`OrangeStand` and`AppleStand` to get each fruit's price and combine them into a final
-total costs. 
+Assuming we have the below deployments. `ImageDownloader` and `DataPreprocessor` are two
+steps to process the image data before the pytorch resnet can run inference. And there
+is a `ImageClassifier` deployment to initialize model, call both `ImageDownloader` and
+`DataPreprocessor`, and feed into the model to get the classes and probabilities for the
+given image.
+
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_model_composition_deployment__   
 :end-before: __end_model_composition_deployment__
 :language: python
 ```
 
-We can deploy the `FruitStand` model with the following code:
+We can deploy the `ImageClassifier` with the following code:
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_model_composition_deploy__   
 :end-before: __end_model_composition_deploy__
 :language: python
 ```
 
-The client code to call `FruitStand` will look like the following:
+The client code to call `ImageClassifier` will look like the following:
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_model_composition_client__   
 :end-before: __end_model_composition_client__
