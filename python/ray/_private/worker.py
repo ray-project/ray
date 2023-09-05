@@ -59,6 +59,7 @@ import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._raylet import StreamingObjectRefGenerator
+from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -70,7 +71,6 @@ from ray._private.ray_logging import (
     stderr_deduplicator,
     setup_logger,
 )
-from ray.runtime_env.runtime_env import merge_runtime_env
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
@@ -1420,24 +1420,21 @@ def init(
             ray.job_config.JobConfig.from_json(injected_job_config_json)
         )
         driver_runtime_env = runtime_env
-        print(runtime_env)
-        print(os.getenv("RAY_OVERRIDE_JOB_RUNTIME_ENV") == "1")
-        runtime_env = merge_runtime_env(
+        runtime_env = _merge_runtime_env(
             injected_job_config.runtime_env,
             driver_runtime_env,
             override=os.getenv("RAY_OVERRIDE_JOB_RUNTIME_ENV") == "1",
         )
-        print("result", runtime_env)
         if runtime_env is None:
             # None means there was a conflict.
             raise ValueError(
-                "Failed to merge the job's runtime env "
+                "Failed to merge the Job's runtime env "
                 f"{injected_job_config.runtime_env} with "
                 f"a ray.init's runtime env {driver_runtime_env} because "
-                "of conflict. Specifying the same runtime_env fields "
+                "of a conflict. Specifying the same runtime_env fields "
                 "or the same environment variable keys is not allowed. "
-                "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 if you'd like to "
-                "combine job and driver's runtime environment when there's "
+                "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 to instruct Ray to "
+                "combine Job and Driver's runtime environment in the event of "
                 "a conflict."
             )
 

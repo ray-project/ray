@@ -510,29 +510,31 @@ class RuntimeEnv(dict):
         return result
 
 
-def merge_runtime_env(
-    parent: Optional[RuntimeEnv], child: Optional[RuntimeEnv], override: bool = False
+def _merge_runtime_env(
+    parent: Optional[RuntimeEnv],
+    child: Optional[RuntimeEnv],
+    override: bool = False,
 ) -> Optional[RuntimeEnv]:
-    """Merge the parent and child runtime environment.
+    """Merge the parent and child runtime environments.
 
-    If override = True, the child's runtime env will override parent's
-    runtime env when there's a conflict.
+    If override = True, the child's runtime env overrides the parent's
+    runtime env in the event of a conflict.
 
-    Merge will happen per key (i.e., "conda", "pip", ...), but
-    "env_vars" will be merged per each env var key.
+    Merging happens per key (i.e., "conda", "pip", ...), but
+    "env_vars" are merged per env var key.
 
-    It returns None if it fails to merge runtime env due to
-    conflict & override = False.
+    It returns None if Ray fails to merge runtime environments because
+    of a conflict and `override = False`.
 
     Args:
         parent: Parent runtime env.
         child: Child runtime env.
-        override: If True, child's runtime env will override
+        override: If True, the child's runtime env overrides
             conflicting fields.
     Returns:
-        merged runtime env if it succeeds to merge.
-        None if there's a conflict. Empty dict if
-        parent & child are both None.
+        The merged runtime env's if Ray successfully merges them.
+        None if the runtime env's conflict. Empty dict if
+        parent and child are both None.
     """
     if parent is None:
         parent = {}

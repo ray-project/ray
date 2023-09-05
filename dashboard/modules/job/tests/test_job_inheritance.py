@@ -17,8 +17,9 @@ def wait_until_status(client, job_id, status_to_wait_for, timeout_seconds=20):
         status = client.get_job_status(job_id)
         print(f"status: {status}")
         if status in status_to_wait_for:
-            break
+            return
         time.sleep(1)
+    raise Exception
 
 
 def test_job_driver_inheritance():
@@ -41,6 +42,7 @@ def test_job_driver_inheritance():
                 client,
                 job_id,
                 {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED},
+                timeout_seconds=60,
             )
 
         def get_runtime_env_from_logs(client, job_id):
@@ -82,7 +84,7 @@ def test_job_driver_inheritance():
         status = client.get_job_status(job_id)
         logs = client.get_job_logs(job_id)
         assert status == JobStatus.FAILED
-        assert "Failed to merge the job's runtime env" in logs
+        assert "Failed to merge the Job's runtime env" in logs
 
         # Test raise an exception upon env var conflict
         print("Test conflicting env vars")
@@ -96,7 +98,7 @@ def test_job_driver_inheritance():
         status = client.get_job_status(job_id)
         logs = client.get_job_logs(job_id)
         assert status == JobStatus.FAILED
-        assert "Failed to merge the job's runtime env" in logs
+        assert "Failed to merge the Job's runtime env" in logs
     finally:
         c.shutdown()
 
@@ -123,6 +125,7 @@ def test_job_driver_inheritance_override(monkeypatch):
                 client,
                 job_id,
                 {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED},
+                timeout_seconds=60,
             )
 
         def get_runtime_env_from_logs(client, job_id):

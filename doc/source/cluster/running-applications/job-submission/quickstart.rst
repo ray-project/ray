@@ -298,7 +298,7 @@ Now let's try it with a runtime environment that pins the version of the ``reque
 
 .. note::
 
-    If both driver and job specifies a runtime environment, Ray tries to merge them and raises an exception if there's a conflict.
+    If both the Driver and Job specify a runtime environment, Ray tries to merge them and raises an exception if they conflict.
     See :ref:`runtime environments <runtime-environments-job-conflict>` for more details.
 
 - The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-cli-ref>`. 

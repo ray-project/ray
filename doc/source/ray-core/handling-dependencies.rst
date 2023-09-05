@@ -444,34 +444,32 @@ Caching and Garbage Collection
 """"""""""""""""""""""""""""""
 Runtime environment resources on each node (such as conda environments, pip packages, or downloaded ``working_dir`` or ``py_modules`` directories) will be cached on the cluster to enable quick reuse across different runtime environments within a job.  Each field (``working_dir``, ``py_modules``, etc.) has its own cache whose size defaults to 10 GB.  To change this default, you may set the environment variable ``RAY_RUNTIME_ENV_<field>_CACHE_SIZE_GB`` on each node in your cluster before starting Ray e.g. ``export RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB=1.5``.
 
-When the cache size limit is exceeded, resources not currently used by any actor, task or job will be deleted.
+When the cache size limit is exceeded, resources not currently used by any Actor, Task or Job are deleted.
 
 .. runtime-environments-job-conflict:
 
-Inheritance
-"""""""""""
+Runtime Environment Specified by Both Job and Driver
+""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-**Job to Driver Inheritance**
+You can specify Ray driver's runtime environment via `ray.init(runtime_env=...)` or `ray job submit --runtime-env`.
 
-When both Ray Job and Driver specifies runtime environments, their runtime environments are merged if there's no conflict.
-Ray raises an exception if there's any conflicts in runtime environments. You can set an environment variable `RAY_OVERRIDE_JOB_RUNTIME_ENV=1` to override
-Job's runtime environment by Driver's runtime environment when there's a conflict. In this case, the merge behavior is equivalent to
-Driver to Tasks/Actors inheritance.
+When both the Ray Job and Driver specify runtime environments, their runtime environments are merged if there's no conflict.
+Ray raises an exception if the runtime environments conflict.
 
-* The ``runtime_env["env_vars"]`` field will be merged with the ``runtime_env["env_vars"]`` field of the parent.
-  This allows for environment variables set in the Job's runtime environment to be automatically propagated to the Driver, even if new environment variables are set in the Driver's runtime environment.
-  If there's any conflict in environment variables, Ray raises an exception.
-* If there's no conflict, every other field in the ``runtime_env`` will be merged.
+* The ``runtime_env["env_vars"]`` of `ray job submit --runtime-env=...` is merged with the ``runtime_env["env_vars"]`` of `ray.init(runtime_env=...)`.
+  Note that each individual env_var keys are merged.
+  If the environment variables conflict, Ray raises an exception.
+* Every other field in the ``runtime_env`` will be merged. If any key conflicts, it raises an exception.
 
 Example:
 
 .. testcode::
 
-  # Job's `runtime_env`
+  # `ray job submit --runtime_env=...`
   {"pip": ["requests", "chess"],
   "env_vars": {"A": "a", "B": "b"}}
 
-  # Driver's specified `runtime_env`
+  # ray.init(runtime_env=...)
   {"env_vars": {"C": "c"}}
 
   # Driver's actual `runtime_env` (merged with Job's)
@@ -483,29 +481,58 @@ Conflict Example:
 .. testcode::
 
   # Example 1, env_vars conflicts
-  # Job's `runtime_env`
+  # `ray job submit --runtime_env=...`
   {"pip": ["requests", "chess"],
   "env_vars": {"C": "a", "B": "b"}}
 
-  # Driver's specified `runtime_env`
+  # ray.init(runtime_env=...)
   {"env_vars": {"C": "c"}}
 
-  # It will raise an exception because "C" env var conflicts.
+  # Ray raises an exception because the "C" env var conflicts.
 
-  # Example 1, other field (e.g., pip) conflicts
+  # Example 2, other field (e.g., pip) conflicts
+  # `ray job submit --runtime_env=...`
   {"pip": ["requests", "chess"]}
 
-  # Driver's specified `runtime_env`
+  # ray.init(runtime_env=...)
   {"pip": ["torch"]}
 
-  # It will raise an exception because "pip" conflicts.
+  # Ray raises an exception because "pip" conflicts.
 
+You can set an environment variable `RAY_OVERRIDE_JOB_RUNTIME_ENV=1`
+to avoid raising an exception upon a conflict. In this case, the conflicting runtime environments specified by
+`ray job submit --runtime-env=...` will be overwritten by `ray.init(runtime_env=...)`.
 
-**Driver to Tasks/Actors Inheritance**
+* The ``runtime_env["env_vars"]`` of `ray job submit --runtime-env=...` is merged with the ``runtime_env["env_vars"]`` of `ray.init(runtime_env=...)`.
+  Note that each individual env_var keys are merged.
+  If there's a conflict, `ray.init(runtime_env=...)`'s runtime environment is prioritized.
+* Every other field in the ``runtime_env`` will be merged. If any key conflicts, `ray.init(runtime_env=...)` will be prioritized.
 
-The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor once set, unless it is overridden.
+Note that the behavior is equivalent to :ref:`Driver to Tasks/Actors inheritance <runtime-env-driver-to-task-inheritance>`.
 
-If an actor or task specifies a new ``runtime_env``, it will override the parent’s ``runtime_env`` (i.e., the parent actor/task's ``runtime_env``, or the job's ``runtime_env`` if there is no parent actor or task) as follows:
+.. testcode::
+
+  # Example 1, env_vars conflicts
+  # `ray job submit --runtime_env=...`
+  {"pip": ["requests", "chess"],
+  "env_vars": {"C": "a", "B": "b"}}
+
+  # ray.init(runtime_env=...)
+  {"pip": ["torch"],
+   "env_vars": {"C": "c"}}
+
+  # Driver's runtime environment
+  {"pip": ["torch"],
+   "env_vars": {"C": "c", "B": "b"}}
+
+Inheritance
+"""""""""""
+
+.. _runtime-env-driver-to-task-inheritance:
+
+The runtime environment is inheritable, so it applies to all Tasks and Actors within a Job and all child Tasks and Actors of a Task or Actor once set, unless it is overridden.
+
+If an Actor or Task specifies a new ``runtime_env``, it overrides the parent’s ``runtime_env`` (i.e., the parent Actor's or Task's ``runtime_env``, or the Job's ``runtime_env`` if Actor or Task doesn't have a parent) as follows:
 
 * The ``runtime_env["env_vars"]`` field will be merged with the ``runtime_env["env_vars"]`` field of the parent.
   This allows for environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
