@@ -59,7 +59,7 @@ meaning no gRPC server will be started.
 
 ::::{tab-set}
 
-:::{tab-item} To start gRPC proxy with the CLI
+:::{tab-item} CLI
 ```bash
 ray start --head
 serve start \
@@ -70,7 +70,7 @@ serve start \
 ```
 :::
 
-:::{tab-item} To start gRPC proxy with Python API
+:::{tab-item} Python API
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_start_grpc_proxy__
 :end-before: __end_start_grpc_proxy__
@@ -78,7 +78,7 @@ serve start \
 ```
 :::
 
-:::{tab-item} To start gRPC proxy with config file
+:::{tab-item} Serve config file
 ```yaml
 # config.yaml
 grpc_options:
@@ -101,6 +101,7 @@ applications:
 ```
 
 ```bash
+# start Serve with above config file
 serve run config.yaml
 
 ```
