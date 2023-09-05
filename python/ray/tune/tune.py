@@ -680,6 +680,11 @@ def run(
         local_path, remote_path = None, None
         sync_config = sync_config or SyncConfig()
         # TODO(justinvyu): Fix telemetry for the new persistence.
+
+        # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
+        # For now, keep accepting both options.
+        if local_dir is not None:
+            os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
     else:
         (
             storage_path,
