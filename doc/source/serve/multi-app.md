@@ -82,7 +82,7 @@ $ serve deploy config.yaml
 ```
 
 Query the applications at their respective endpoints, `/classify` and `/translate`.
-```pycon
+```python
 >>> import requests
 >>> requests.post("http://localhost:8000/classify", json={"image_url": "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"}).text
 'brown bear, bruin, Ursus arctos'
@@ -151,7 +151,7 @@ You can also make calls between applications without going through HTTP by using
 ```
 
 Then, sending requests to the classifier application with the `should_translate` flag set to True:
-```pycon
+```python
 >>> import requests
 >>> requests.post("http://localhost:8000/classify", json={"image_url": "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg", "should_translate": False}).text
 'Braunbär, Bruin, Ursus arctos'
