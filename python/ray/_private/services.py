@@ -51,6 +51,10 @@ GCS_SERVER_EXECUTABLE = os.path.join(
     RAY_PATH, "core", "src", "ray", "gcs", "gcs_server" + EXE_SUFFIX
 )
 
+JEMALLOC_SO = os.path.join(RAY_PATH, "core", "libjemalloc.so")
+
+JEMALLOC_SO = JEMALLOC_SO if os.path.exists(JEMALLOC_SO) else None
+
 # Location of the cpp default worker executables.
 DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp", "default_worker" + EXE_SUFFIX)
 
@@ -211,13 +215,13 @@ def propagate_jemalloc_env_var(
     assert isinstance(jemalloc_comps, list)
     assert process_type is not None
     process_type = process_type.lower()
-    if not jemalloc_path or process_type not in jemalloc_comps:
+    if not jemalloc_path:
         return {}
 
     env_vars = {
         "LD_PRELOAD": jemalloc_path,
     }
-    if jemalloc_conf:
+    if process_type in jemalloc_comps and jemalloc_conf:
         env_vars.update({"MALLOC_CONF": jemalloc_conf})
     return env_vars
 
@@ -771,17 +775,21 @@ def start_ray_process(
         logger.info("Detected environment variable '%s'.", gdb_env_var)
         use_gdb = True
     # Jemalloc memory profiling.
-    jemalloc_lib_path = os.environ.get(RAY_JEMALLOC_LIB_PATH)
-    jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF)
-    jemalloc_comps = os.environ.get(RAY_JEMALLOC_PROFILE)
-    jemalloc_comps = [] if not jemalloc_comps else jemalloc_comps.split(",")
-    jemalloc_env_vars = propagate_jemalloc_env_var(
-        jemalloc_path=jemalloc_lib_path,
-        jemalloc_conf=jemalloc_conf,
-        jemalloc_comps=jemalloc_comps,
-        process_type=process_type,
-    )
-    use_jemalloc_mem_profiler = len(jemalloc_env_vars) > 0
+    if os.environ.get("LD_PRELOAD") is None:
+        jemalloc_lib_path = os.environ.get(RAY_JEMALLOC_LIB_PATH, JEMALLOC_SO)
+        jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF)
+        jemalloc_comps = os.environ.get(RAY_JEMALLOC_PROFILE)
+        jemalloc_comps = [] if not jemalloc_comps else jemalloc_comps.split(",")
+        jemalloc_env_vars = propagate_jemalloc_env_var(
+            jemalloc_path=jemalloc_lib_path,
+            jemalloc_conf=jemalloc_conf,
+            jemalloc_comps=jemalloc_comps,
+            process_type=process_type,
+        )
+    else:
+        jemalloc_env_vars = {}
+
+    use_jemalloc_mem_profiler = "MALLOC_CONF" in jemalloc_env_vars
 
     if (
         sum(
@@ -844,12 +852,7 @@ def start_ray_process(
         modified_env["LD_PRELOAD"] = os.environ["PERFTOOLS_PATH"]
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
 
-    if use_jemalloc_mem_profiler:
-        logger.info(
-            f"Jemalloc profiling will be used for {process_type}. "
-            f"env vars: {jemalloc_env_vars}"
-        )
-        modified_env.update(jemalloc_env_vars)
+    modified_env.update(jemalloc_env_vars)
 
     if use_tmux:
         # The command has to be created exactly as below to ensure that it
@@ -1991,8 +1994,9 @@ def start_monitor(
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
-    if gcs_address is not None:
-        command.append(f"--gcs-address={gcs_address}")
+    assert gcs_address is not None
+    command.append(f"--gcs-address={gcs_address}")
+
     if stdout_file is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
