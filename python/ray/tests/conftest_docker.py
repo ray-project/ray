@@ -93,7 +93,11 @@ head_node = container(
         "9379",
     ],
     volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
-    environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
+    environment={
+        "RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379",
+        "RAY_raylet_client_num_connect_attempts": "10",
+        "RAY_raylet_client_connect_timeout_milliseconds": "100",
+    },
     wrapper_class=Container,
     ports={
         "8000/tcp": None,
@@ -118,7 +122,11 @@ worker_node = container(
         "9379",
     ],
     volumes={"{worker_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
-    environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
+    environment={
+        "RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379",
+        "RAY_raylet_client_num_connect_attempts": "10",
+        "RAY_raylet_client_connect_timeout_milliseconds": "100",
+    },
     wrapper_class=Container,
     ports={
         "8000/tcp": None,
