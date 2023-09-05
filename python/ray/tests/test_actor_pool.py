@@ -199,7 +199,10 @@ def test_get_next_unordered_timeout(init):
 
     pool.submit(lambda a, v: a.f.remote(v), 0)
     with pytest.raises(TimeoutError):
-        pool.get_next_unordered(timeout=0.1)
+        pool.get_next_unordered(timeout=0.1, ignore_if_timeout=False)
+
+    pool.submit(lambda a, v: a.f.remote(v), 0)
+    assert pool.get_next_unordered(timeout=0.1, ignore_if_timeout=True) is None
 
 
 def test_multiple_returns(init):
@@ -215,6 +218,9 @@ def test_multiple_returns(init):
 
     while pool.has_next():
         assert pool.get_next(timeout=None) == [1, 2]
+
+    pool.submit(lambda a, v: a.bar.remote(), None)
+    pool.get_next(timeout=1, ignore_if_timeout=True)
 
 
 def test_pop_idle(init):
