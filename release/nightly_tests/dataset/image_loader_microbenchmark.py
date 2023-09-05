@@ -104,7 +104,7 @@ def tf_crop_and_flip(image_buffer, num_channels=3):
     # bounding box. If no box is supplied, then we assume the bounding box is
     # the entire image.
     shape = tf.shape(image_buffer)
-    if len(shape) == 4:
+    if len(shape) == num_channels + 1:
         shape = shape[1:]
 
     bbox = tf.constant(
@@ -196,18 +196,7 @@ def get_transform(to_torch_tensor):
     )
     return transform
 
-transform = torchvision.transforms.Compose(
-        [
-            torchvision.transforms.RandomResizedCrop(
-                size=DEFAULT_IMAGE_SIZE,
-                scale=(0.05, 1.0),
-                ratio=(0.75, 1.33),
-            ),
-            torchvision.transforms.RandomHorizontalFlip(),
-            # torchvision.transforms.ToTensor(),
-        ]
-    )
-
+# Capture `transform`` in the map UDFs.
 transform = get_transform(False)
 
 def crop_and_flip_image(row):
@@ -229,11 +218,10 @@ def decode_image_crop_and_flip(row):
     # NUM_CHANNELS = 3
     # row["image"] = np.frombuffer(row["image"], dtype=np.uint8).reshape((NUM_CHANNELS, row["height"], row["width"])) #
     row["image"] = Image.frombytes("RGB", (row["height"], row["width"]), row["image"]) 
-    del row["width"]
-    del row["height"]
     # Convert back np to avoid storing a np.object array.
-    row["image"] = np.array(transform(row["image"]))
-    return row
+    return {
+        "image": np.array(transform(row["image"]))
+    }
 
 
 class MdsDatasource(ray.data.datasource.FileBasedDatasource):
