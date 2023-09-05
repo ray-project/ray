@@ -2,21 +2,25 @@ import ray
 from ray import train
 from ray.train import DataConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
+from ray.data.datasource import file_based_datasource
 
 import torch.distributed as dist
 import numpy as np
 
 from benchmark import Benchmark, BenchmarkMetric
 
+from PIL import Image
 
 import time
 import torchvision
 import torch
 
+from dataset_benchmark_util import get_prop_parquet_paths, get_prop_raw_image_paths
+
 
 # This benchmark does the following:
 # 1) Read files (images or parquet) with ray.data
-# 2) Apply preprocessing with map_batches()
+# 2) Apply preprocessing with map()
 # 3) Train TorchTrainer on processed data
 # Metrics recorded to the output file are:
 # - ray.torchtrainer.fit: Throughput of the final epoch in
@@ -46,6 +50,12 @@ def parse_args():
         default=1,
         type=int,
         help="Read the input dataset n times, used to increase the total data size.",
+    )
+    parser.add_argument(
+        "--target-worker-gb",
+        default=4,
+        type=int,
+        help="Number of GB per worker for selecting a subset from default dataset",
     )
     parser.add_argument(
         "--read-task-cpus",
@@ -96,15 +106,12 @@ def parse_args():
     if args.data_root is None:
         # use default datasets if data root is not provided
         if args.file_type == "image":
-            # 1GB ragged dataset
-            args.data_root = "s3://imagenetmini1000/1gb/train/"
-
-            # Alternative larger dataset
-            # args.data_root = "s3://air-example-data-2/10G-image-data-synthetic-raw"  # noqa: E501
-
+            args.data_root = get_prop_raw_image_paths(
+                num_workers=args.num_workers, target_worker_gb=args.target_worker_gb
+            )
         elif args.file_type == "parquet":
-            args.data_root = (
-                "s3://air-example-data-2/20G-image-data-synthetic-raw-parquet"
+            args.data_root = get_prop_parquet_paths(
+                num_workers=args.num_workers, target_worker_gb=args.target_worker_gb
             )
         else:
             raise Exception(
@@ -142,6 +149,16 @@ def crop_and_flip_image(row):
     transform = get_transform(False)
     # Make sure to use torch.tensor here to avoid a copy from numpy.
     row["image"] = transform(torch.tensor(np.transpose(row["image"], axes=(2, 0, 1))))
+    return row
+
+
+def decode_image_crop_and_flip(row):
+    transform = get_transform(False)
+    row["image"] = Image.frombytes("RGB", (row["height"], row["width"]), row["image"])
+    del row["width"]
+    del row["height"]
+    # Convert back np to avoid storing a np.object array.
+    row["image"] = np.array(transform(row["image"]))
     return row
 
 
@@ -212,7 +229,10 @@ def benchmark_code(
         ray_dataset = ray_dataset.materialize()
 
     # 2) Preprocess data by applying transformation with map/map_batches()
-    ray_dataset = ray_dataset.map(crop_and_flip_image)
+    if args.file_type == "image":
+        ray_dataset = ray_dataset.map(crop_and_flip_image)
+    elif args.file_type == "parquet":
+        ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
     if cache_output_ds:
         ray_dataset = ray_dataset.materialize()
 
@@ -265,6 +285,8 @@ def benchmark_code(
 
 
 if __name__ == "__main__":
+    # Workaround for FileBasedDatasource parallel read issue when reading many sources.
+    file_based_datasource.FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 1000
     args = parse_args()
     benchmark_name = (
         f"read_{args.file_type}_repeat{args.repeat_ds}_train_{args.num_workers}workers"
