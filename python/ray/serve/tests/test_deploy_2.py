@@ -364,16 +364,10 @@ def test_nonserializable_deployment(serve_instance):
         def __init__(self, arg):
             self.arg = arg
 
-    with pytest.raises(
-        TypeError,
-        match="cannot pickle",
-    ):
+    with pytest.raises(TypeError, match="cannot pickle"):
         serve.run(E.bind(lock))
 
-    with pytest.raises(
-        TypeError,
-        match="cannot pickle",
-    ):
+    with pytest.raises(TypeError, match="cannot pickle"):
         serve.run(E.bind(arg=lock))
 
 
