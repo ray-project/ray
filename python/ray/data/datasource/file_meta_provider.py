@@ -220,7 +220,7 @@ class ParquetMetadataProvider(FileMetadataProvider):
         paths: List[str],
         schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
+        num_pieces: int,
         prefetched_metadata: Optional[List[Any]],
     ) -> BlockMetadata:
         """Resolves and returns block metadata for files of a single dataset block.
@@ -229,7 +229,8 @@ class ParquetMetadataProvider(FileMetadataProvider):
             paths: The file paths for a single dataset block.
             schema: The user-provided or inferred schema for the given file
                 paths, if any.
-            pieces: The Parquet file fragments derived from the input file paths.
+            num_pieces: The number of Parquet file fragments derived from the input
+                file paths.
             prefetched_metadata: Metadata previously returned from
                 `prefetch_file_metadata()` for each file fragment, where
                 `prefetched_metadata[i]` contains the metadata for `pieces[i]`.
@@ -277,10 +278,10 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         paths: List[str],
         schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
+        num_pieces: int,
         prefetched_metadata: Optional[List["pyarrow.parquet.FileMetaData"]],
     ) -> BlockMetadata:
-        if prefetched_metadata is not None and len(prefetched_metadata) == len(pieces):
+        if prefetched_metadata is not None and len(prefetched_metadata) == num_pieces:
             # Piece metadata was available, construct a normal
             # BlockMetadata.
             block_metadata = BlockMetadata(

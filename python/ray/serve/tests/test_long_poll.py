@@ -225,6 +225,8 @@ def test_listen_for_change_java(serve_instance):
         RunningReplicaInfo(
             deployment_name="deployment_name",
             replica_tag=str(i),
+            node_id="node_id",
+            availability_zone="some-az",
             actor_handle=host,
             max_concurrent_queries=1,
         )

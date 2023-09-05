@@ -3012,6 +3012,47 @@ def test_filter(shutdown_only):
     assert dead_actor_id not in result.output
     assert alive_actor_id in result.output
 
+    """
+    Test case insensitive match on string fields.
+    """
+
+    @ray.remote
+    def task():
+        pass
+
+    ray.get(task.remote())
+
+    def verify():
+        result_1 = list_tasks(filters=[("name", "=", "task")])
+        result_2 = list_tasks(filters=[("name", "=", "TASK")])
+        assert result_1 == result_2
+
+        result_1 = list_tasks(filters=[("state", "=", "FINISHED")])
+        result_2 = list_tasks(filters=[("state", "=", "finished")])
+        assert result_1 == result_2
+
+        result_1 = list_objects(
+            filters=[("pid", "=", pid), ("reference_type", "=", "LOCAL_REFERENCE")]
+        )
+
+        result_2 = list_objects(
+            filters=[("pid", "=", pid), ("reference_type", "=", "local_reference")]
+        )
+        assert result_1 == result_2
+
+        result_1 = list_actors(filters=[("state", "=", "DEAD")])
+        result_2 = list_actors(filters=[("state", "=", "dead")])
+
+        assert result_1 == result_2
+
+        result_1 = list_actors(filters=[("state", "!=", "DEAD")])
+        result_2 = list_actors(filters=[("state", "!=", "dead")])
+
+        assert result_1 == result_2
+        return True
+
+    wait_for_condition(verify)
+
 
 def test_data_truncate(shutdown_only, monkeypatch):
     """

@@ -77,6 +77,8 @@ result_grid = tuner.fit()
 # __xgboost_end__
 
 # __torch_start__
+import os
+
 from ray import tune
 from ray.tune import Tuner
 from ray.train.examples.pytorch.torch_linear_example import (
@@ -104,7 +106,9 @@ param_space = {
 
 tuner = Tuner(
     trainable=trainer,
-    run_config=RunConfig(name="test_tuner", storage_path="~/ray_results"),
+    run_config=RunConfig(
+        name="test_tuner", storage_path=os.path.expanduser("~/ray_results")
+    ),
     param_space=param_space,
     tune_config=tune.TuneConfig(
         mode="min", metric="loss", num_samples=2, max_concurrent_trials=2
@@ -229,7 +233,9 @@ tune_config = TuneConfig(
 
 # __tune_restore_start__
 tuner = Tuner.restore(
-    path="~/ray_results/test_tuner", trainable=trainer, restart_errored=True
+    path=os.path.expanduser("~/ray_results/test_tuner"),
+    trainable=trainer,
+    restart_errored=True,
 )
 tuner.fit()
 # __tune_restore_end__
