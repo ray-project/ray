@@ -325,8 +325,8 @@ PyTorch
 PyTorch Lightning
 -----------------
 
-The native Logger integration in PyTorch Lightning with W&B, CometML, MLFlow, 
-and Tensorboard can still be used seamlessly with Ray Train TorchTrainer.
+The native Logger integration in PyTorch Lightning with **W&B**, **CometML**, **MLFlow**, 
+and **Tensorboard** can still be used seamlessly with Ray Train TorchTrainer.
 
 The following example will walk you through how. The code here is runnable. 
 There is a common shared piece of setting up a dummy model and dataloader
