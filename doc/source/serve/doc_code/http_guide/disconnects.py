@@ -3,6 +3,7 @@
 
 import ray
 from typing import List
+from builtins import print
 
 from ray._private.test_utils import wait_for_condition
 
@@ -77,22 +78,21 @@ original_print = print2
 # __start_shielded_disconnect__
 import asyncio
 from ray import serve
-from ray.serve.handle import RayServeHandle
 
 
 @serve.deployment
 class SnoringSleeper:
-    def __init__(self, sleeper_handle: RayServeHandle):
-        self.sleeper_handle = sleeper_handle
     
     async def snore(self):
-        await asyncio.sleep(3)
+        await asyncio.sleep(1)
         print("ZZZ")
 
     async def __call__(self):
         try:
             print("SnoringSleeper received request!")
-            await self.snore()
+
+            # Prevent the snore() method from being cancelled
+            await asyncio.shield(self.snore())
 
         except asyncio.CancelledError:
             print("SnoringSleeper's request was cancelled!")
@@ -117,7 +117,7 @@ wait_for_condition(
         "SnoringSleeper received request!",
         "SnoringSleeper's request was cancelled!",
         "ZZZ",
-    } == ray.get(print_storage_handle.get.remote()),
+    } == set(ray.get(print_storage_handle.get.remote())),
     timeout=5,
 )
 
