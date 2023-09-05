@@ -68,9 +68,15 @@ class TestRayClient(unittest.TestCase):
 
             from ray.rllib.examples.custom_experiment import experiment
 
+            # Ray client does not seem to propagate the `fn._resources` property
+            # correctly for imported functions. As a workaround, we can wrap the
+            # imported function which forces a full transfer.
+            def wrapped_experiment(config):
+                experiment(config)
+
             tune.Tuner(
                 tune.with_resources(
-                    experiment, ppo.PPO.default_resource_request(config)
+                    wrapped_experiment, ppo.PPO.default_resource_request(config)
                 ),
                 param_space=config,
             ).fit()

@@ -3,6 +3,7 @@ import yaml
 import pytest
 import requests
 import subprocess
+import time
 from typing import Dict
 from fastapi import FastAPI
 
@@ -11,7 +12,7 @@ from ray.dag.input_node import InputNode
 from ray._private.test_utils import wait_for_condition
 
 from ray import serve
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.serve.drivers import DefaultgRPCDriver, DAGDriver
 from ray.serve.http_adapters import json_request
 from ray.serve.schema import ServeDeploySchema
@@ -23,6 +24,7 @@ from ray.serve._private.constants import (
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.tests.utils import (
+    receiver_app,
     check_ray_started,
     start_telemetry_app,
     TelemetryStorage,
@@ -37,6 +39,20 @@ def test_fastapi_detected(manage_ray_with_telemetry):
 
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(check_ray_started, timeout=5)
+
+    storage_handle = start_telemetry_app()
+
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+
+    # Check that telemetry related to FastAPI app is not set
+    report = ray.get(storage_handle.get_report.remote())
+    assert ServeUsageTag.FASTAPI_USED.get_value_from_report(report) is None
+    assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
+    assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 1
+    assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 1
+    assert int(ServeUsageTag.NUM_GPU_DEPLOYMENTS.get_value_from_report(report)) == 0
 
     app = FastAPI()
 
@@ -54,16 +70,18 @@ def test_fastapi_detected(manage_ray_with_telemetry):
     fastapi_app = FastAPIDeployment.bind()
     serve.run(fastapi_app, name="fastapi_app", route_prefix="/fastapi")
 
-    storage_handle = start_telemetry_app()
-
     wait_for_condition(
         lambda: serve.status().applications["fastapi_app"].status
         == ApplicationStatus.RUNNING,
         timeout=15,
     )
 
+    current_num_reports = ray.get(storage_handle.get_reports_received.remote())
+
     wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+        lambda: ray.get(storage_handle.get_reports_received.remote())
+        > current_num_reports,
+        timeout=5,
     )
     report = ray.get(storage_handle.get_report.remote())
 
@@ -89,6 +107,16 @@ def test_grpc_detected(manage_ray_with_telemetry):
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(check_ray_started, timeout=5)
 
+    storage_handle = start_telemetry_app()
+
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+
+    # Check that telemetry related to gRPC ingress app is not set
+    report = ray.get(storage_handle.get_report.remote())
+    assert ServeUsageTag.GRPC_INGRESS_USED.get_value_from_report(report) is None
+
     @serve.deployment(ray_actor_options={"num_cpus": 0})
     def greeter(inputs: Dict[str, bytes]):
         return "Hello!"
@@ -99,16 +127,18 @@ def test_grpc_detected(manage_ray_with_telemetry):
 
     serve.run(grpc_app, name="grpc_app", route_prefix="/grpc")
 
-    storage_handle = start_telemetry_app()
-
     wait_for_condition(
         lambda: serve.status().applications["grpc_app"].status
         == ApplicationStatus.RUNNING,
         timeout=15,
     )
 
+    current_num_reports = ray.get(storage_handle.get_reports_received.remote())
+
     wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+        lambda: ray.get(storage_handle.get_reports_received.remote())
+        > current_num_reports,
+        timeout=5,
     )
     report = ray.get(storage_handle.get_report.remote())
 
@@ -135,6 +165,17 @@ def test_graph_detected(manage_ray_with_telemetry, use_adapter):
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(check_ray_started, timeout=5)
 
+    storage_handle = start_telemetry_app()
+
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+
+    # Check that telemetry related to DAGDriver app is not set
+    report = ray.get(storage_handle.get_report.remote())
+    assert ServeUsageTag.DAG_DRIVER_USED.get_value_from_report(report) is None
+    assert ServeUsageTag.HTTP_ADAPTER_USED.get_value_from_report(report) is None
+
     @serve.deployment(ray_actor_options={"num_cpus": 0})
     def greeter(input):
         return "Hello!"
@@ -155,10 +196,12 @@ def test_graph_detected(manage_ray_with_telemetry, use_adapter):
         timeout=15,
     )
 
-    storage_handle = start_telemetry_app()
+    current_num_reports = ray.get(storage_handle.get_reports_received.remote())
 
     wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+        lambda: ray.get(storage_handle.get_reports_received.remote())
+        > current_num_reports,
+        timeout=5,
     )
     report = ray.get(storage_handle.get_report.remote())
 
@@ -199,6 +242,23 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
 
     storage = TelemetryStorage.remote()
 
+    serve.run(
+        receiver_app,
+        host="0.0.0.0",
+        name="telemetry",
+        route_prefix=TELEMETRY_ROUTE_PREFIX,
+    )
+
+    wait_for_condition(
+        lambda: ray.get(storage.get_reports_received.remote()) > 1, timeout=15
+    )
+
+    # Check that REST API telemetry is not set
+    report = ray.get(storage.get_report.remote())
+    assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) is None
+
+    serve.delete(name="telemetry", _blocking=True)
+
     if version == "v1":
         config = {"import_path": "ray.serve.tests.utils.receiver_app"}
     elif version == "v2":
@@ -222,7 +282,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
 
     subprocess.check_output(["serve", "deploy", config_file_path])
 
-    client = get_global_client()
+    client = _get_global_client()
     if version == "v2":
         # Make sure the applications are RUNNING.
         wait_for_condition(
@@ -242,8 +302,11 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
             timeout=15,
         )
 
+    current_num_reports = ray.get(storage.get_reports_received.remote())
+
     wait_for_condition(
-        lambda: ray.get(storage.get_reports_received.remote()) > 10, timeout=15
+        lambda: ray.get(storage.get_reports_received.remote()) > current_num_reports,
+        timeout=5,
     )
     report = ray.get(storage.get_report.remote())
 
@@ -334,6 +397,23 @@ def test_lightweight_config_options(
     wait_for_condition(check_ray_started, timeout=5)
     storage = TelemetryStorage.remote()
 
+    serve.run(
+        receiver_app,
+        host="0.0.0.0",
+        name="telemetry",
+        route_prefix=TELEMETRY_ROUTE_PREFIX,
+    )
+
+    wait_for_condition(
+        lambda: ray.get(storage.get_reports_received.remote()) > 1, timeout=15
+    )
+
+    # Check that REST API telemetry is not set
+    report = ray.get(storage.get_report.remote())
+    assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) is None
+
+    serve.delete(name="telemetry", _blocking=True)
+
     config = {
         "applications": [
             {
@@ -350,7 +430,8 @@ def test_lightweight_config_options(
     }
 
     # Deploy first config
-    client = serve.start(detached=True)
+    serve.start()
+    client = _get_global_client()
     client.deploy_apps(ServeDeploySchema(**config))
     wait_for_condition(
         lambda: serve.status().applications["receiver_app"].status
@@ -362,8 +443,12 @@ def test_lightweight_config_options(
         == ApplicationStatus.RUNNING,
         timeout=15,
     )
+
+    current_num_reports = ray.get(storage.get_reports_received.remote())
+
     wait_for_condition(
-        lambda: ray.get(storage.get_reports_received.remote()) > 0, timeout=5
+        lambda: ray.get(storage.get_reports_received.remote()) > current_num_reports,
+        timeout=10,
     )
     report = ray.get(storage.get_report.remote())
 
@@ -515,10 +600,13 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
         def __init__(self, h):
             self._h = h.options(use_new_handle_api=True)
 
-        async def __call__(self, call_downstream=False):
+        async def get(self, call_downstream=False):
             if call_downstream:
                 await self._h.remote()._to_object_ref()
             return "ok"
+
+        async def __call__(self):
+            return await self.get()
 
     handle = serve.run(Caller.bind(Downstream.bind()))
 
@@ -526,14 +614,14 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
         result = requests.get("http://localhost:8000").text
     elif mode == "outside_deployment":
         result = ray.get(
-            handle.options(use_new_handle_api=True).remote()._to_object_ref_sync()
+            handle.options(use_new_handle_api=True).get.remote()._to_object_ref_sync()
         )
     else:
         result = (
             handle.options(
                 use_new_handle_api=True,
             )
-            .remote(call_downstream=True)
+            .get.remote(call_downstream=True)
             .result()
         )
 
@@ -553,6 +641,7 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
     if mode == "http":
         for _ in range(20):
             check_telemetry(tag_should_be_set=False)
+            time.sleep(0.1)
     else:
         wait_for_condition(check_telemetry, tag_should_be_set=True)
 
@@ -583,7 +672,7 @@ def test_multiplexed_detect(manage_ray_with_telemetry):
     report = ray.get(storage_handle.get_report.remote())
     assert ServeUsageTag.MULTIPLEXED_API_USED.get_value_from_report(report) is None
 
-    client = get_global_client()
+    client = _get_global_client()
     wait_for_condition(
         lambda: client.get_serve_status("app").app_status.status
         == ApplicationStatus.RUNNING,

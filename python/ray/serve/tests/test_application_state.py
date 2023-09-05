@@ -11,13 +11,12 @@ from ray.serve._private.application_state import (
     ApplicationStateManager,
     override_deployment_info,
 )
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.common import (
     DeploymentID,
     ApplicationStatus,
-    DeploymentConfig,
     DeploymentStatus,
     DeploymentStatusInfo,
-    ReplicaConfig,
     DeploymentInfo,
 )
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info

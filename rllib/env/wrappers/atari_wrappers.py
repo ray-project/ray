@@ -4,7 +4,7 @@ from gymnasium import spaces
 import numpy as np
 from typing import Union
 
-from ray.rllib.utils.annotations import Deprecated, PublicAPI
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.images import rgb2gray, resize
 
 
@@ -257,7 +257,7 @@ class WarpFrame(gym.ObservationWrapper):
         return frame[:, :, None]
 
 
-@Deprecated(error=False)
+@PublicAPI
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames."""

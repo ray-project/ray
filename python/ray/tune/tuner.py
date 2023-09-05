@@ -294,22 +294,22 @@ class Tuner:
                 pass
 
             name = "exp_name"
-            local_dir = "~/ray_results"
-            exp_dir = os.path.join(local_dir, name)
+            storage_path = os.path.expanduser("~/ray_results")
+            exp_dir = os.path.join(storage_path, name)
 
             if Tuner.can_restore(exp_dir):
                 tuner = Tuner.restore(exp_dir, trainable=train_fn, resume_errored=True)
             else:
                 tuner = Tuner(
                     train_fn,
-                    run_config=RunConfig(name=name, local_dir=local_dir),
+                    run_config=RunConfig(name=name, storage_path=storage_path),
                 )
             tuner.fit()
 
         Args:
             path: The path to the experiment directory of the Tune experiment.
-                This can be either a local directory (e.g. ~/ray_results/exp_name)
-                or a remote URI (e.g. s3://bucket/exp_name).
+                This can be either a local directory or a remote URI
+                (e.g. s3://bucket/exp_name).
 
         Returns:
             bool: True if this path exists and contains the Tuner state to resume from
@@ -351,7 +351,15 @@ class Tuner:
 
         .. code-block:: python
 
-            tuner = Tuner.restore("~/ray_results/tuner_resume", trainable=trainable)
+            import os
+            from ray.tune import Tuner
+
+            trainable = ...
+
+            tuner = Tuner.restore(
+                os.path.expanduser("~/ray_results/tuner_resume"),
+                trainable=trainable
+            )
             tuner.fit()
 
         Raises:

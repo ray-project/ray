@@ -2,6 +2,7 @@ import pytest
 import sys
 
 from ray.tune import PlacementGroupFactory
+
 from ray.tune.tests.execution.utils import create_execution_test_objects, TestingTrial
 
 

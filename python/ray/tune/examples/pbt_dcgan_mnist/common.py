@@ -1,5 +1,4 @@
 import ray
-from ray.train import Checkpoint
 
 import os
 import torch
@@ -269,7 +268,8 @@ def demo_gan(checkpoint_paths):
     img_list = []
     fixed_noise = torch.randn(64, nz, 1, 1)
     for path in checkpoint_paths:
-        checkpoint_dict = Checkpoint.from_directory(path).to_dict()
+        checkpoint_dict = torch.load(os.path.join(path, "checkpoint.pt"))
+
         loadedG = Generator()
         loadedG.load_state_dict(checkpoint_dict["netGmodel"])
         with torch.no_grad():

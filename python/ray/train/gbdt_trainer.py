@@ -3,19 +3,14 @@ import logging
 import tempfile
 import warnings
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
 from ray import train, tune
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
-from ray.air.checkpoint import Checkpoint as LegacyCheckpoint
-from ray.train._checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig
-from ray.train._internal.storage import _use_storage_context
+from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
 from ray._private.dict import flatten_dict
 
@@ -116,10 +111,8 @@ class GBDTTrainer(BaseTrainer):
 
     Args:
         datasets: Datasets to use for training and validation. Must include a
-            "train" key denoting the training dataset. If a ``preprocessor``
-            is provided and has not already been fit, it will be fit on the training
-            dataset. All datasets will be transformed by the ``preprocessor`` if
-            one is provided. All non-training datasets will be used as separate
+            "train" key denoting the training dataset.
+            All non-training datasets will be used as separate
             validation sets, each reporting a separate metric.
         label_column: Name of the label column. A column with this name
             must be present in the training dataset.
@@ -165,8 +158,8 @@ class GBDTTrainer(BaseTrainer):
         num_boost_round: int = _DEFAULT_NUM_ITERATIONS,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        preprocessor: Optional["Preprocessor"] = None,
-        resume_from_checkpoint: Optional[LegacyCheckpoint] = None,
+        preprocessor: Optional["Preprocessor"] = None,  # Deprecated
+        resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
         **train_kwargs,
     ):
@@ -222,8 +215,8 @@ class GBDTTrainer(BaseTrainer):
 
     def _load_checkpoint(
         self,
-        checkpoint: LegacyCheckpoint,
-    ) -> Tuple[Any, Optional["Preprocessor"]]:
+        checkpoint: Checkpoint,
+    ) -> Any:
         raise NotImplementedError
 
     def _train(self, **kwargs):
@@ -279,13 +272,8 @@ class GBDTTrainer(BaseTrainer):
             tune.report(**result_dict)
         else:
             with tempfile.TemporaryDirectory() as checkpoint_dir:
-                self._save_model(model, path=os.path.join(checkpoint_dir, MODEL_KEY))
-
-                if _use_storage_context():
-                    checkpoint = Checkpoint.from_directory(checkpoint_dir)
-                else:
-                    checkpoint = LegacyCheckpoint.from_directory(checkpoint_dir)
-
+                self._save_model(model, path=checkpoint_dir)
+                checkpoint = Checkpoint.from_directory(checkpoint_dir)
                 train.report(result_dict, checkpoint=checkpoint)
 
     def training_loop(self) -> None:
@@ -300,7 +288,7 @@ class GBDTTrainer(BaseTrainer):
 
         init_model = None
         if self.starting_checkpoint:
-            init_model, _ = self._load_checkpoint(self.starting_checkpoint)
+            init_model = self._load_checkpoint(self.starting_checkpoint)
 
         config.setdefault("verbose_eval", False)
         config.setdefault("callbacks", [])
@@ -361,15 +349,6 @@ class GBDTTrainer(BaseTrainer):
         default_ray_params = self._default_ray_params
 
         class GBDTTrainable(trainable_cls):
-            def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
-                checkpoint_path = super().save_checkpoint()
-                parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-
-                preprocessor = self._merged_config.get("preprocessor", None)
-                if parent_dir and preprocessor:
-                    save_preprocessor_to_dir(preprocessor, parent_dir)
-                return checkpoint_path
-
             @classmethod
             def default_resource_request(cls, config):
                 # `config["scaling_config"] is a dataclass when passed via the
