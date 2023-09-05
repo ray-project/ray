@@ -55,7 +55,6 @@ def test_replace_nested_in_obj():
     assert replaced == [Outer(1), Outer(Outer(1)), Outer((1,))]
 
 
-
 def test_scanner_clear():
     """Test scanner clear to make the scanner GCable"""
     prev_len = len(_instances)
