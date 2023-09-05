@@ -65,9 +65,10 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transforme
     def reducer_override(self, obj):
         """Hook for reducing objects.
 
-        The function intercepts serialization of all objects and store them
-        to internal data structures, preventing actually writing them to
-        the buffer.
+        Objects of `self.source_type` are saved to `self._found` and a global map so
+        they can later be replaced.
+
+        All other objects fall back to the default `CloudPickler` serialization.
         """
         if isinstance(obj, self.source_type):
             index = len(self._found)
