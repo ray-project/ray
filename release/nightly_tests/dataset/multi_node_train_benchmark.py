@@ -101,6 +101,12 @@ def parse_args():
         default=False,
         help="Whether to configure Train with preserve_order flag.",
     )
+    parser.add_argument(
+        "--use-torch",
+        action="store_true",
+        default=False,
+        help="Whether to use PyTorch DataLoader.",
+    )
     args = parser.parse_args()
 
     if args.data_root is None:
@@ -165,14 +171,25 @@ def decode_image_crop_and_flip(row):
 def train_loop_per_worker():
     it = train.get_dataset_shard("train")
     device = train.torch.get_device()
+    worker_rank = train.get_context().get_world_rank()
 
     for i in range(args.num_epochs):
         print(f"Epoch {i+1} of {args.num_epochs}")
         num_rows = 0
         start_t = time.time()
-        for batch in it.iter_torch_batches(
-            batch_size=args.batch_size,
-        ):
+        if args.use_torch:
+            batch_iter = get_torch_data_loader(
+                worker_rank=worker_rank,
+                batch_size=args.batch_size,
+                num_workers=256,
+                transform=get_transform(True),
+            )
+        else:
+            batch_iter = it.iter_torch_batches(
+                batch_size=args.batch_size,
+            )
+
+        for batch in batch_iter:
             num_rows += args.batch_size
         end_t = time.time()
 
@@ -198,6 +215,88 @@ def train_loop_per_worker():
             "num_rows": [tensor.item() for tensor in all_num_rows],
         }
     )
+
+
+# The input files URLs per training worker.
+# This is used by PyTorch DataLoader only.
+INPUT_FILES_PER_WORKER = []
+
+
+def split_input_files_per_worker(args):
+    """Set the input files per each trianing worker.
+
+    This is used by PyTorch DataLoader workers to load input files in parallel.
+    """
+    global INPUT_FILES_PER_WORKER
+    import numpy as np
+    from torchdata.datapipes.iter import IterableWrapper
+
+    file_url_dp = IterableWrapper(args.data_root).list_files_by_s3()
+    all_files = list(file_url_dp)
+    INPUT_FILES_PER_WORKER = [
+        f.tolist() for f in np.array_split(all_files, args.num_workers)
+    ]
+
+
+def get_torch_data_loader(worker_rank, batch_size, num_workers, transform=None):
+    """Get PyTorch DataLoader for the specified training worker.
+
+    The input files are split across all workers, and this PyTorch DataLoader
+    would only read the portion of files for itself.
+    """
+    import os
+    import numpy as np
+    from torchdata.datapipes.iter import IterableWrapper, S3FileLoader
+
+    # NOTE: these two variables need to be set to read from S3 successfully.
+    os.environ["S3_VERIFY_SSL"] = "0"
+    os.environ["AWS_REGION"] = "us-west-2"
+
+    def load_image(inputs):
+        import io
+        from PIL import Image
+
+        url, fd = inputs
+        data = fd.file_obj.read()
+        image = Image.open(io.BytesIO(data))
+        image = image.convert("RGB")
+        if transform is not None:
+            image = transform(image)
+        return image
+
+    class FileURLDataset:
+        """The PyTorch Dataset to split input files URLs among workers."""
+
+        def __init__(self, file_urls):
+            self._file_urls = file_urls
+
+        def __iter__(self):
+            worker_info = torch.utils.data.get_worker_info()
+            assert worker_info is not None
+
+            torch_worker_id = worker_info.id
+            return iter(self._file_urls[torch_worker_id])
+
+    file_urls = INPUT_FILES_PER_WORKER[worker_rank]
+    file_urls = [f.tolist() for f in np.array_split(file_urls, num_workers)]
+    file_url_dp = IterableWrapper(FileURLDataset(file_urls))
+    file_dp = S3FileLoader(file_url_dp)
+    image_dp = file_dp.map(load_image)
+
+    # NOTE: the separate implementation for using fsspec.
+    # Comment out by default. Leave it here as reference.
+    #
+    # subdir_url_dp = IterableWrapper([root_dir]).list_files_by_fsspec()
+    # file_url_dp = subdir_url_dp.list_files_by_fsspec()
+    # file_dp = file_url_dp.open_files_by_fsspec(mode="rb")
+    # image_dp = file_dp.map(load_image)
+
+    data_loader = torch.utils.data.DataLoader(
+        image_dp,
+        batch_size=batch_size,
+        num_workers=num_workers,
+    )
+    return data_loader
 
 
 def benchmark_code(
@@ -242,6 +341,9 @@ def benchmark_code(
     # 3) Train TorchTrainer on processed data
     options = DataConfig.default_ingest_options()
     options.preserve_order = args.preserve_order
+
+    if args.use_torch:
+        split_input_files_per_worker(args)
 
     if args.num_workers == 1 or args.use_gpu:
         torch_trainer = TorchTrainer(
