@@ -162,6 +162,8 @@ message ActorTableData {
   string repr_name = 31;
   // Whether the actor was on a preempted node
   bool preempted = 32;
+  // Strategy about how to schedule this actor.
+  SchedulingStrategy scheduling_strategy = 33;
 }
 
 message ErrorTableData {

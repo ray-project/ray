@@ -36,6 +36,17 @@ class PlacementGroupSchedulingStrategy:
         self.placement_group_bundle_index = placement_group_bundle_index
         self.placement_group_capture_child_tasks = placement_group_capture_child_tasks
 
+    def __eq__(self, other):
+        if isinstance(other, PlacementGroupSchedulingStrategy):
+            return (
+                self.placement_group == other.placement_group
+                and self.placement_group_bundle_index
+                == other.placement_group_bundle_index
+                and self.placement_group_capture_child_tasks
+                == other.placement_group_capture_child_tasks
+            )
+        return False
+
 
 @PublicAPI(stability="beta")
 class NodeAffinitySchedulingStrategy:
@@ -71,6 +82,16 @@ class NodeAffinitySchedulingStrategy:
         self._spill_on_unavailable = _spill_on_unavailable
         self._fail_on_unavailable = _fail_on_unavailable
 
+    def __eq__(self, other):
+        if isinstance(other, NodeAffinitySchedulingStrategy):
+            return (
+                self.node_id == other.node_id
+                and self.soft == other.soft
+                and self._spill_on_unavailable == other._spill_on_unavailable
+                and self._fail_on_unavailable == other._fail_on_unavailable
+            )
+        return False
+
 
 def _validate_label_match_operator_values(values, operator):
     if not values:
@@ -96,6 +117,11 @@ class In:
         _validate_label_match_operator_values(values, "In")
         self.values = list(values)
 
+    def __eq__(self, other):
+        if isinstance(other, In):
+            return self.values == other.values
+        return False
+
 
 @PublicAPI(stability="alpha")
 class NotIn:
@@ -103,17 +129,32 @@ class NotIn:
         _validate_label_match_operator_values(values, "NotIn")
         self.values = list(values)
 
+    def __eq__(self, other):
+        if isinstance(other, NotIn):
+            return self.values == other.values
+        return False
+
 
 @PublicAPI(stability="alpha")
 class Exists:
     def __init__(self):
         pass
 
+    def __eq__(self, other):
+        if isinstance(other, Exists):
+            return True
+        return False
+
 
 @PublicAPI(stability="alpha")
 class DoesNotExist:
     def __init__(self):
         pass
+
+    def __eq__(self, other):
+        if isinstance(other, DoesNotExist):
+            return True
+        return False
 
 
 class _LabelMatchExpression:
@@ -126,6 +167,11 @@ class _LabelMatchExpression:
     def __init__(self, key: str, operator: Union[In, NotIn, Exists, DoesNotExist]):
         self.key = key
         self.operator = operator
+
+    def __eq__(self, other):
+        if isinstance(other, _LabelMatchExpression):
+            return self.key == other.key and self.operator == other.operator
+        return False
 
 
 LabelMatchExpressionsT = Dict[str, Union[In, NotIn, Exists, DoesNotExist]]
@@ -154,6 +200,11 @@ class NodeLabelSchedulingStrategy:
                 "The `hard` and `soft` parameter "
                 "of NodeLabelSchedulingStrategy cannot both be empty."
             )
+
+    def __eq__(self, other):
+        if isinstance(other, NodeLabelSchedulingStrategy):
+            return self.hard == other.hard and self.soft == other.soft
+        return False
 
 
 def _convert_map_to_expressions(map_expressions: LabelMatchExpressionsT, param: str):

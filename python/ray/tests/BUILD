@@ -266,6 +266,7 @@ py_test_module_list(
     "test_mini.py",
     "test_numba.py",
     "test_raylet_output.py",
+    "test_scheduling_strategy_pb.py",
     "test_top_level_api.py",
     "test_unhandled_error.py",
     "test_widgets.py",
