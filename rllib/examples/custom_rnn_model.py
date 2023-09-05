@@ -4,7 +4,7 @@ import argparse
 import os
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.tune.registry import register_env
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
@@ -118,7 +118,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         args.run,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=1),
+        run_config=train.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()
 

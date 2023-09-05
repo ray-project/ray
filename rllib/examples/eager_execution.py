@@ -11,7 +11,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import air, tune
+from ray import train, tune
 
 # Always import tensorflow using this utility function:
 tf1, tf, tfv = try_import_tf()
@@ -124,7 +124,7 @@ if __name__ == "__main__":
     results = tune.Tuner(
         MyAlgo,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=1),
+        run_config=train.RunConfig(stop=stop, verbose=1),
     ).fit()
 
     if args.as_test:

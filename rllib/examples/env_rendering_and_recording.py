@@ -4,7 +4,7 @@ import numpy as np
 import ray
 from gymnasium.spaces import Box, Discrete
 
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent
 
@@ -129,5 +129,5 @@ if __name__ == "__main__":
     tune.Tuner(
         "PPO",
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop),
+        run_config=train.RunConfig(stop=stop),
     ).fit()

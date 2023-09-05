@@ -25,7 +25,7 @@ import sys
 import numpy as np
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
@@ -278,10 +278,10 @@ if __name__ == "__main__":
         results = tune.Tuner(
             "PPO",
             param_space=config,
-            run_config=air.RunConfig(
+            run_config=train.RunConfig(
                 stop=stop,
                 verbose=2,
-                failure_config=air.FailureConfig(fail_fast="raise"),
+                failure_config=train.FailureConfig(fail_fast="raise"),
                 progress_reporter=CLIReporter(
                     metric_columns={
                         "training_iteration": "iter",
@@ -294,7 +294,7 @@ if __name__ == "__main__":
                     },
                     sort_by_metric=True,
                 ),
-                checkpoint_config=air.CheckpointConfig(
+                checkpoint_config=train.CheckpointConfig(
                     checkpoint_at_end=create_checkpoints,
                     checkpoint_frequency=10 if create_checkpoints else 0,
                 ),

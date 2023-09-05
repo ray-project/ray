@@ -8,7 +8,7 @@ import pandas as pd
 import time
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms.bandit import BanditLinUCBConfig
 from ray.tune import register_env
 from ray.rllib.env.wrappers.recsim import (
@@ -78,9 +78,9 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         "BanditLinUCB",
         param_space=config.to_dict(),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop={"training_iteration": training_iterations},
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_at_end=False,
             ),
         ),

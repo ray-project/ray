@@ -13,7 +13,7 @@ from pettingzoo.classic import rps_v2
 import random
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.pg import (
     PG,
@@ -75,7 +75,7 @@ def run_same_policy(args, stop):
     config = PGConfig().environment("RockPaperScissors").framework(args.framework)
 
     results = tune.Tuner(
-        "PG", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+        "PG", param_space=config, run_config=train.RunConfig(stop=stop, verbose=1)
     ).fit()
 
     if args.as_test:

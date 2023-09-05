@@ -27,7 +27,7 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import PettingZooEnv
 from ray.tune.registry import register_env
 from ray import tune
-from ray import air
+from ray import train
 
 
 parser = argparse.ArgumentParser()
@@ -109,7 +109,7 @@ config = (
 tune.Tuner(
     "PPO",
     param_space=config.to_dict(),
-    run_config=air.RunConfig(
+    run_config=train.RunConfig(
         stop={
             "training_iteration": args.stop_iters,
             "timesteps_total": args.stop_timesteps,

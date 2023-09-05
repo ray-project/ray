@@ -15,7 +15,7 @@ import numpy as np
 import os
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.tune.registry import get_trainable_cls
 
 
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     }
 
     tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+        args.run, param_space=config, run_config=train.RunConfig(stop=stop, verbose=2)
     ).fit()
 
     ray.shutdown()

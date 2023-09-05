@@ -2,7 +2,7 @@ import argparse
 import os
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
@@ -55,8 +55,8 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         args.run,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(
-            stop=stop, checkpoint_config=air.CheckpointConfig(checkpoint_frequency=1)
+        run_config=train.RunConfig(
+            stop=stop, checkpoint_config=train.CheckpointConfig(checkpoint_frequency=1)
         ),
     )
     results = tuner.fit()

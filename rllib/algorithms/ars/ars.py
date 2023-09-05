@@ -62,7 +62,7 @@ class ARSConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ars import ARSConfig
-        >>> from ray import air
+        >>> from ray import train
         >>> from ray import tune
         >>> config = ARSConfig()
         >>> # Print out some default values.
@@ -76,7 +76,7 @@ class ARSConfig(AlgorithmConfig):
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP
         ...     "ARS",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     run_config=train.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
         ... ).fit()
     """

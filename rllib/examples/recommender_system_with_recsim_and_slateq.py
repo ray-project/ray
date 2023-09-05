@@ -13,7 +13,7 @@ import numpy as np
 from scipy.stats import sem
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
@@ -178,7 +178,7 @@ def main():
 
         results = tune.Tuner(
             args.run,
-            run_config=air.RunConfig(
+            run_config=train.RunConfig(
                 stop=stop,
                 verbose=2,
             ),

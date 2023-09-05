@@ -78,7 +78,7 @@ class ApexDQNConfig(DQNConfig):
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
-        >>> from ray import air
+        >>> from ray import train
         >>> from ray import tune
         >>> config = ApexDQNConfig()
         >>> config.training(  # doctest: +SKIP
@@ -86,7 +86,7 @@ class ApexDQNConfig(DQNConfig):
         >>> config.environment(env="CartPole-v1")  # doctest: +SKIP
         >>> tune.Tuner( # doctest: +SKIP
         ...     "APEX",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        ...     run_config=train.RunConfig(stop={"episode_reward_mean":200}),
         ...     param_space=config.to_dict()
         ... ).fit()
 

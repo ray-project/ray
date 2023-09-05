@@ -4,7 +4,7 @@ import shutil
 import tempfile
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
@@ -67,9 +67,9 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         "PPO",
         param_space=config.to_dict(),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop={"training_iteration": 1},
-            failure_config=air.FailureConfig(fail_fast="raise"),
+            failure_config=train.FailureConfig(fail_fast="raise"),
         ),
     )
     tuner.fit()

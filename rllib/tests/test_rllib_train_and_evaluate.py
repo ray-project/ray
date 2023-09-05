@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
@@ -214,13 +214,13 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
             results = tune.Tuner(
                 algo,
                 param_space=config,
-                run_config=air.RunConfig(
+                run_config=train.RunConfig(
                     stop=stop,
                     verbose=1,
-                    checkpoint_config=air.CheckpointConfig(
+                    checkpoint_config=train.CheckpointConfig(
                         checkpoint_frequency=1, checkpoint_at_end=True
                     ),
-                    failure_config=air.FailureConfig(fail_fast="raise"),
+                    failure_config=train.FailureConfig(fail_fast="raise"),
                 ),
             ).fit()
 

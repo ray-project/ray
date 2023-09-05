@@ -2,7 +2,7 @@ import argparse
 import os
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
     tuner = tune.Tuner(
         MyAlgorithm,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop={"training_iteration": args.stop_iters},
         ),
         param_space={

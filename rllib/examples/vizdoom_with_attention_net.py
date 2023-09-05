@@ -33,7 +33,7 @@ parser.add_argument("--stop-reward", type=float, default=1000.0)
 
 if __name__ == "__main__":
     import ray
-    from ray import air, tune
+    from ray import train, tune
 
     args = parser.parse_args()
 
@@ -75,10 +75,10 @@ if __name__ == "__main__":
     results = tune.Tuner(
         args.run,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop=stop,
             verbose=2,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_frequency=5,
                 checkpoint_at_end=True,
             ),

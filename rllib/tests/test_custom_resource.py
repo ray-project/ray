@@ -1,7 +1,7 @@
 import pytest
 
 import ray
-from ray import air
+from ray import train
 from ray import tune
 from ray.tune.registry import get_trainable_cls
 
@@ -32,7 +32,7 @@ def test_custom_resource(algorithm):
     tune.Tuner(
         algorithm,
         param_space=config,
-        run_config=air.RunConfig(stop=stop, verbose=0),
+        run_config=train.RunConfig(stop=stop, verbose=0),
         tune_config=tune.TuneConfig(num_samples=1),
     ).fit()
 

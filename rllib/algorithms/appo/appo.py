@@ -53,7 +53,7 @@ class APPOConfig(ImpalaConfig):
 
     Example:
         >>> from ray.rllib.algorithms.appo import APPOConfig
-        >>> from ray import air
+        >>> from ray import train
         >>> from ray import tune
         >>> config = APPOConfig()
         >>> # Print out some default values.
@@ -66,7 +66,7 @@ class APPOConfig(ImpalaConfig):
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP
         ...     "APPO",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     run_config=train.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
         ... ).fit()
     """

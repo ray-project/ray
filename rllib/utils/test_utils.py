@@ -26,7 +26,7 @@ from typing import (
 import yaml
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
@@ -1122,14 +1122,14 @@ def check_reproducibilty(
             results1 = tune.Tuner(
                 algo_class,
                 param_space=algo_config.to_dict(),
-                run_config=air.RunConfig(stop=stop_dict, verbose=1),
+                run_config=train.RunConfig(stop=stop_dict, verbose=1),
             ).fit()
             results1 = results1.get_best_result().metrics
 
             results2 = tune.Tuner(
                 algo_class,
                 param_space=algo_config.to_dict(),
-                run_config=air.RunConfig(stop=stop_dict, verbose=1),
+                run_config=train.RunConfig(stop=stop_dict, verbose=1),
             ).fit()
             results2 = results2.get_best_result().metrics
 

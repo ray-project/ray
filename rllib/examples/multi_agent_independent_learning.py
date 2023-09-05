@@ -1,6 +1,6 @@
 import argparse
 
-from ray import air, tune
+from ray import train, tune
 from ray.tune.registry import register_env
 from ray.rllib.algorithms.apex_ddpg import ApexDDPGConfig
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
@@ -50,9 +50,9 @@ if __name__ == "__main__":
 
     tune.Tuner(
         "APEX_DDPG",
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop=stop,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_frequency=10,
             ),
         ),

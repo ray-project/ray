@@ -34,7 +34,7 @@ import os
 import numpy as np
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms import ppo
 from ray.rllib.examples.env.look_and_push import LookAndPush, OneHot
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
@@ -215,7 +215,7 @@ if __name__ == "__main__":
         tuner = tune.Tuner(
             args.run,
             param_space=config.to_dict(),
-            run_config=air.RunConfig(stop=stop, verbose=2),
+            run_config=train.RunConfig(stop=stop, verbose=2),
         )
         results = tuner.fit()
 

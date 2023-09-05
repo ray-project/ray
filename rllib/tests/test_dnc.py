@@ -2,7 +2,7 @@ import gymnasium as gym
 import unittest
 
 import ray
-from ray import air
+from ray import train
 from ray import tune
 from ray.rllib.algorithms.a2c import A2CConfig
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
@@ -72,7 +72,7 @@ class TestDNC(unittest.TestCase):
         tune.Tuner(
             "A2C",
             param_space=config,
-            run_config=air.RunConfig(stop=self.stop, verbose=1),
+            run_config=train.RunConfig(stop=self.stop, verbose=1),
         ).fit()
 
 

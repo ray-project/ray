@@ -5,7 +5,7 @@ the "seed" config key.
 import argparse
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.examples.env.env_using_remote_actor import (
     CartPoleWithRemoteParamServer,
     ParameterStorage,
@@ -68,15 +68,15 @@ if __name__ == "__main__":
     results1 = tune.Tuner(
         args.run,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(
-            stop=stop, verbose=1, failure_config=air.FailureConfig(fail_fast="raise")
+        run_config=train.RunConfig(
+            stop=stop, verbose=1, failure_config=train.FailureConfig(fail_fast="raise")
         ),
     ).fit()
     results2 = tune.Tuner(
         args.run,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(
-            stop=stop, verbose=1, failure_config=air.FailureConfig(fail_fast="raise")
+        run_config=train.RunConfig(
+            stop=stop, verbose=1, failure_config=train.FailureConfig(fail_fast="raise")
         ),
     ).fit()
 

@@ -2,7 +2,7 @@ import argparse
 import os
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.examples.env.mock_env import MockVectorEnv
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         args.run,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=1),
+        run_config=train.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()
 

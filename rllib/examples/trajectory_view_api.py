@@ -2,7 +2,7 @@ import argparse
 import numpy as np
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.models.trajectory_view_utilizing_models import (
@@ -96,10 +96,10 @@ if __name__ == "__main__":
     results = tune.Tuner(
         args.run,
         param_space=config,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop=stop,
             verbose=2,
-            checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
+            checkpoint_config=train.CheckpointConfig(checkpoint_at_end=True),
         ),
     ).fit()
 

@@ -2,7 +2,7 @@ import argparse
 
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
@@ -76,10 +76,10 @@ if __name__ == "__main__":
     results = tune.Tuner(
         "PPO",
         param_space=config.to_dict(),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop=stop,
             verbose=2,
-            checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
+            checkpoint_config=train.CheckpointConfig(checkpoint_at_end=True),
         ),
     ).fit()
 

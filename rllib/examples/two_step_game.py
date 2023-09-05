@@ -14,7 +14,7 @@ import logging
 import os
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.tune import register_env
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -161,7 +161,7 @@ if __name__ == "__main__":
 
     results = tune.Tuner(
         args.run,
-        run_config=air.RunConfig(stop=stop, verbose=2),
+        run_config=train.RunConfig(stop=stop, verbose=2),
         param_space=config,
     ).fit()
 

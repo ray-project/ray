@@ -19,7 +19,7 @@ from gymnasium.spaces import Discrete
 import os
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.ppo_tf_policy import (
     PPOTF1Policy,
@@ -299,7 +299,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         CentralizedCritic,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=1),
+        run_config=train.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()
 

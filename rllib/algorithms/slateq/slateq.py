@@ -43,7 +43,7 @@ class SlateQConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.slateq import SlateQConfig
-        >>> from ray import air
+        >>> from ray import train
         >>> from ray import tune
         >>> config = SlateQConfig()
         >>> # Print out some default values.
@@ -57,7 +57,7 @@ class SlateQConfig(AlgorithmConfig):
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP
         ...     "SlateQ",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 160.0}),
+        ...     run_config=train.RunConfig(stop={"episode_reward_mean": 160.0}),
         ...     param_space=config.to_dict(),
         ... ).fit()
     """

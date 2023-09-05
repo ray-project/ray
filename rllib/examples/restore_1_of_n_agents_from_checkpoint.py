@@ -10,7 +10,7 @@ import os
 import random
 
 import ray
-from ray import air
+from ray import train
 from ray import tune
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -85,10 +85,10 @@ if __name__ == "__main__":
     results = tune.Tuner(
         "PPO",
         param_space=config.to_dict(),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop={"training_iteration": args.pre_training_iters},
             verbose=1,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_frequency=1, checkpoint_at_end=True
             ),
         ),

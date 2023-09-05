@@ -2,7 +2,7 @@ from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import unittest
 
 import ray
-from ray import air
+from ray import train
 from ray import tune
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
@@ -74,7 +74,7 @@ class TestAttentionNets(unittest.TestCase):
             tune.Tuner(
                 "PPO",
                 param_space=config,
-                run_config=air.RunConfig(stop={"training_iteration": 1}, verbose=1),
+                run_config=train.RunConfig(stop={"training_iteration": 1}, verbose=1),
             ).fit()
 
     def test_ppo_attention_net_learning(self):
@@ -104,7 +104,7 @@ class TestAttentionNets(unittest.TestCase):
         tune.Tuner(
             "PPO",
             param_space=config,
-            run_config=air.RunConfig(stop=self.stop, verbose=1),
+            run_config=train.RunConfig(stop=self.stop, verbose=1),
         ).fit()
 
     # TODO: (sven) causes memory failures/timeouts on Travis.
@@ -136,7 +136,7 @@ class TestAttentionNets(unittest.TestCase):
         # tune.Tuner(
         #     "IMPALA",
         #     param_space=config,
-        #     run_config=air.RunConfig(stop=self.stop, verbose=1),
+        #     run_config=train.RunConfig(stop=self.stop, verbose=1),
         # ).fit()
 
 

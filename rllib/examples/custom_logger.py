@@ -69,7 +69,7 @@ class MyPrintLogger(Logger):
 
 if __name__ == "__main__":
     import ray
-    from ray import air, tune
+    from ray import train, tune
 
     args = parser.parse_args()
 
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         args.run,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop=stop,
             verbose=2,
             callbacks=[LegacyLoggerCallback(MyPrintLogger)],

@@ -15,7 +15,7 @@ import numpy as np
 import os
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv, TaskType
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.examples.env.curriculum_capable_env import CurriculumCapableEnv
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         args.run,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=2),
+        run_config=train.RunConfig(stop=stop, verbose=2),
     )
     results = tuner.fit()
 

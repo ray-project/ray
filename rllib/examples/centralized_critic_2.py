@@ -14,7 +14,7 @@ from gymnasium.spaces import Dict, Discrete
 import argparse
 import os
 
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.models.centralized_critic_models import (
@@ -152,7 +152,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         "PPO",
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=1),
+        run_config=train.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()
 

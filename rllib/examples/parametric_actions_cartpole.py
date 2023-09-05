@@ -18,7 +18,7 @@ import argparse
 import os
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.examples.env.parametric_actions_cartpole import ParametricActionsCartPole
 from ray.rllib.examples.models.parametric_actions_model import (
     ParametricActionsModel,
@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
     results = tune.Tuner(
         args.run,
-        run_config=air.RunConfig(stop=stop, verbose=1),
+        run_config=train.RunConfig(stop=stop, verbose=1),
         param_space=config,
     ).fit()
 

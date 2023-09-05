@@ -70,7 +70,7 @@ import argparse
 import os
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.examples.env.simple_corridor import SimpleCorridor
@@ -193,7 +193,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         "PG",
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=1),
+        run_config=train.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()
 

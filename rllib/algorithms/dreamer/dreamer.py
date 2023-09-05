@@ -48,7 +48,7 @@ class DreamerConfig(AlgorithmConfig):
         >>> algo.train()  # doctest: +SKIP
 
     Example:
-        >>> from ray import air
+        >>> from ray import train
         >>> from ray import tune
         >>> from ray.rllib.algorithms.dreamer import DreamerConfig
         >>> config = DreamerConfig()
@@ -63,7 +63,7 @@ class DreamerConfig(AlgorithmConfig):
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP
         ...     "Dreamer",
-        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     run_config=train.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
         ... ).fit()
     """
