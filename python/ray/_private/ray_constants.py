@@ -486,6 +486,11 @@ RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
 
 RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONNECTIONS"
 RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
+
+# Constants for accessing the `accelerator-type` from TPU VM
+# instance metadata.
+# See https://cloud.google.com/compute/docs/metadata/overview
+# for more details about VM instance metadata.
 RAY_GCE_TPU_ACCELERATOR_ENDPOINT = (
     "http://metadata.google.internal/computeMetadata/"
     "v1/instance/attributes/accelerator-type"

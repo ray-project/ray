@@ -7,6 +7,7 @@ import requests
 import logging
 import ray._private.ray_constants as ray_constants
 import ray._private.utils as utils
+import re
 from typing import Iterable, Optional
 
 
@@ -82,8 +83,8 @@ def _detect_and_configure_custom_accelerator(
             to specify which devices are visible.
 
     Raises:
-        ValueError: If the number of NeuronCore is greater than the number of
-            visible NeuronCore.
+        ValueError: If the number of requested accelerator chips is greater
+            than the number of visible accelerator chips.
     """
     # Custom accelerator detection and configuration
     # 1. Check if the user specified accelerator_count in resources
@@ -166,8 +167,8 @@ def _autodetect_num_tpus() -> int:
         vfio_entries = os.listdir("/dev/vfio")
         numeric_entries = [int(entry) for entry in vfio_entries if entry.isdigit()]
         return len(numeric_entries)
-    except Exception:
-        logging.info("Failed to detect number of TPUs.")
+    except FileNotFoundError as e:
+        logging.info("Failed to detect number of TPUs: %s", e)
         return 0
 
 
@@ -188,11 +189,12 @@ def _autodetect_tpu_version() -> Optional[str]:
 
     Returns:
         A string representing the TPU version,
-        e.g. "V2", "V3", "V4" if applicable, else None.
+        e.g. "TPU-V2", "TPU-V3", "TPU-V4" if applicable, else None.
 
     """
 
     def accelerator_type_to_version(accelerator_type: str) -> str:
+        assert_tpu_accelerator_type(accelerator_type)
         return "TPU-" + str(accelerator_type.split("-")[0]).upper()
 
     # GKE-based check
@@ -214,3 +216,27 @@ def _autodetect_tpu_version() -> Optional[str]:
         logging.info("Unable to poll TPU GCE metadata: %s", e)
 
     return None
+
+
+def assert_tpu_accelerator_type(accelerator_type: str):
+    """Assert that the inputed accelerator_type is formatted correctly.
+
+    The accelerator_type field follows a form of v{generation}-{cores/chips}.
+
+    See the following for more information:
+    https://cloud.google.com/sdk/gcloud/reference/compute/tpus/tpu-vm/accelerator-types/describe
+
+    Args:
+        accelerator_type: The string representation of the accelerator type
+            to be asserted for validity.
+
+    Raises:
+        ValueError: If the provided accelerator_type is malformed.
+
+    """
+    expected_pattern = re.compile(r"^v\d+[a-zA-Z]*-\d+$")
+    if not expected_pattern.match(accelerator_type):
+        raise ValueError(
+            "`acceleratorType` should match v(generation)-(cores/chips). "
+            f"Got {accelerator_type}."
+        )

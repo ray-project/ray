@@ -123,40 +123,60 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
 @pytest.mark.parametrize(
     "accelerator_type_version_tuple",
     [
-        ("v2-8", "TPU-V2"),
-        ("v2-32", "TPU-V2"),
-        ("v3-8", "TPU-V3"),
-        ("v3-128", "TPU-V3"),
-        ("v4-8", "TPU-V4"),
-        ("v4-2048", "TPU-V4"),
+        ("gce", "v2-8", "TPU-V2"),
+        ("gce", "v2-32", "TPU-V2"),
+        ("gce", "v3-8", "TPU-V3"),
+        ("gce", "v3-128", "TPU-V3"),
+        ("gce", "v4-8", "TPU-V4"),
+        ("gce", "v4-2048", "TPU-V4"),
+        ("gke", "v2-8", "TPU-V2"),
+        ("gke", "v2-32", "TPU-V2"),
+        ("gke", "v3-8", "TPU-V3"),
+        ("gke", "v3-128", "TPU-V3"),
+        ("gke", "v4-8", "TPU-V4"),
+        ("gke", "v4-2048", "TPU-V4"),
     ],
 )
 @patch("requests.get")
-def test_autodetect_tpu_version_gce(mock_request, accelerator_type_version_tuple):
-    accelerator_type, expected_version = accelerator_type_version_tuple
-    mock_response = mock.MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = accelerator_type
-    mock_request.return_value = mock_response
+@patch("os.getenv")
+def test_autodetect_tpu_version(mock_os, mock_request, accelerator_type_version_tuple):
+    gce_or_gke, accelerator_type, expected_version = accelerator_type_version_tuple
+    if gce_or_gke == "gce":
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = accelerator_type
+        mock_request.return_value = mock_response
+        mock_os.return_value = None
+    else:
+        mock_os.return_value = accelerator_type
     assert accelerator._autodetect_tpu_version() == expected_version
 
 
 @pytest.mark.parametrize(
-    "accelerator_type_version_tuple",
+    "test_case",
     [
-        ("v2-8", "TPU-V2"),
-        ("v2-32", "TPU-V2"),
-        ("v3-8", "TPU-V3"),
-        ("v3-128", "TPU-V3"),
-        ("v4-8", "TPU-V4"),
-        ("v4-2048", "TPU-V4"),
+        ("gce", "not-a-valid-version"),
+        ("gce", "vNOTVALID-8"),
+        ("gce", "230498230948230948"),
+        ("gke", "not-a-valid-version"),
+        ("gke", "vNOTVALID-8"),
+        ("gke", "230498230948230948"),
     ],
 )
+@patch("requests.get")
 @patch("os.getenv")
-def test_autodetect_tpu_version_gke_v2(mock_os, accelerator_type_version_tuple):
-    accelerator_type, expected_version = accelerator_type_version_tuple
-    mock_os.return_value = accelerator_type
-    assert accelerator._autodetect_tpu_version() == expected_version
+def test_autodetect_invalid_type(mock_os, mock_request, test_case):
+    gce_or_gke, accelerator_type = test_case
+    if gce_or_gke == "gce":
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = accelerator_type
+        mock_request.return_value = mock_response
+        mock_os.return_value = None
+    else:
+        mock_os.return_value = accelerator_type
+    with pytest.raises(ValueError):
+        accelerator._autodetect_tpu_version()
 
 
 def test_autodetect_tpu_fails_gracefully():

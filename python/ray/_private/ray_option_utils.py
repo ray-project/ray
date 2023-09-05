@@ -183,11 +183,19 @@ def _validate_accelerators(options: Dict[str, Any]):
         [non_zero_gpus, non_zero_tpus, non_zero_neuron_cores]
     )
     if num_configured_accelerators > 1:
+        hardware_requested = []
+        if non_zero_gpus:
+            hardware_requested.append("GPU")
+        if non_zero_neuron_cores:
+            hardware_requested.append("neuron_cores")
+        if non_zero_tpus:
+            hardware_requested.append("TPU")
+        hardware_str = ",".join(hardware_requested)
         raise ValueError(
             "Only one of 'num_gpus', 'neuron_cores/accelerator_type:aws-neuron-core' "
             "and 'TPU/accelerator_type:TPU-V*' can be set. "
             f"Detected {num_configured_accelerators} "
-            "options were configured."
+            f"options were configured: {hardware_str}."
         )
 
 
