@@ -4841,6 +4841,8 @@
 
   frequency: nightly
   team: core
+  # https://github.com/ray-project/ray/issues/39165
+  stable: false
 
   cluster:
     byod:
@@ -5125,6 +5127,11 @@
   python: "3.8"
   frequency: nightly
   team: core
+
+  # Marking unstable because it's not working right now beyond ~3000 runtime envs.
+  # Tracking issue: https://github.com/ray-project/ray/issues/38662
+  stable: false
+
   cluster:
     byod: {}
     cluster_compute: stress_tests/smoke_test_compute.yaml
@@ -5931,7 +5938,7 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
+    cluster_compute: multi_node_train_4_workers.yaml
 
   run:
     timeout: 1800

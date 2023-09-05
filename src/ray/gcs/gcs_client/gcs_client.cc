@@ -161,12 +161,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                                 size_t num_retries) {
   channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
-  kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
-  runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
-  job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
-  node_resource_info_stub_ = rpc::NodeResourceInfoGcsService::NewStub(channel_);
-  autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
   if (cluster_id.IsNil()) {
     size_t tries = num_retries + 1;
     RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
@@ -191,6 +186,9 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
         return HandleGcsError(reply.status());
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      channel_ =
+          rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
+      node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
     }
     RAY_RETURN_NOT_OK(connect_status);
   } else {
@@ -199,6 +197,11 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
   }
 
   RAY_CHECK(!cluster_id_.IsNil()) << "Unexpected nil cluster ID.";
+  kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
+  runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
+  job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
+  node_resource_info_stub_ = rpc::NodeResourceInfoGcsService::NewStub(channel_);
+  autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
   return Status::OK();
 }
 

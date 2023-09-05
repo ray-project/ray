@@ -306,8 +306,9 @@ class StreamingObjectRefGenerator:
         return await self._next_async()
 
     def _next_sync(
-            self,
-            timeout_s: Optional[float] = None) -> ObjectRef:
+        self,
+        timeout_s: Optional[float] = None
+    ) -> ObjectRef:
         """Waits for timeout_s and returns the object ref if available.
 
         If an object is not available within the given timeout, it
@@ -315,8 +316,7 @@ class StreamingObjectRefGenerator:
 
         If -1 timeout is provided, it means it waits infinitely.
 
-        Waiting is implemented as busy waiting. You can control
-        the busy waiting interval via sleep_interval_s.
+        Waiting is implemented as busy waiting.
 
         Raises StopIteration if there's no more objects
         to generate.
@@ -375,8 +375,8 @@ class StreamingObjectRefGenerator:
 
     async def _next_async(
             self,
-            timeout_s: Optional[float] = None,
-            sleep_interval_s: float = 0.0001):
+            timeout_s: Optional[float] = None
+    ):
         """Same API as _next_sync, but it is for async context."""
         self.worker.check_connected()
         core_worker = self.worker.core_worker
@@ -435,6 +435,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
+    if status.IsInvalidArgument():
+        raise ValueError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
     elif status.IsObjectRefEndOfStream():
@@ -3796,6 +3798,9 @@ cdef class CoreWorker:
             status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
                                             c_object_id, force_kill, recursive)
 
+        if status.IsInvalidArgument():
+            raise ValueError(status.message().decode())
+
         if not status.ok():
             raise TypeError(status.message().decode())
 
@@ -4393,16 +4398,16 @@ cdef class CoreWorker:
             postincrement(it)
         return tasks_count
 
-    def set_get_async_callback(self, ObjectRef object_ref, callback):
+    def set_get_async_callback(self, ObjectRef object_ref, user_callback: Callable):
         # NOTE: we need to manually increment the Python reference count to avoid the
         # callback object being garbage collected before it's called by the core worker.
         # This means we *must* guarantee that the ref is manually decremented to avoid
         # a leak.
-        cpython.Py_INCREF(callback)
+        cpython.Py_INCREF(user_callback)
         CCoreWorkerProcess.GetCoreWorker().GetAsync(
             object_ref.native(),
             async_callback,
-            <void*>callback
+            <void*>user_callback
         )
 
     def push_error(self, JobID job_id, error_type, error_message,
@@ -4550,7 +4555,7 @@ cdef class CoreWorker:
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
-                         void *user_callback) with gil:
+                         void *user_callback_ptr) with gil:
     cdef:
         c_vector[shared_ptr[CRayObject]] objects_to_deserialize
 
@@ -4564,12 +4569,12 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         result = ray._private.worker.global_worker.deserialize_objects(
             data_metadata_pairs, ids_to_deserialize)[0]
 
-        py_callback = <object>user_callback
-        py_callback(result)
+        user_callback = <object>user_callback_ptr
+        user_callback(result)
     finally:
         # NOTE: we manually increment the Python reference count of the callback when
         # registering it in the core worker, so we must decrement here to avoid a leak.
-        cpython.Py_DECREF(py_callback)
+        cpython.Py_DECREF(user_callback)
 
 
 def del_key_from_storage(host, port, password, use_ssl, key):

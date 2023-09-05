@@ -12,7 +12,7 @@ from ray._private.test_utils import (
     SignalActor,
 )
 from ray._private.utils import get_or_create_event_loop
-from ray.serve.context import get_internal_replica_context
+from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import RayServeHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve._private.constants import (
@@ -25,7 +25,11 @@ from ray.serve._private.constants import (
 def start_serve_with_context():
     serve.start()
     ray.serve.context._set_internal_replica_context(
-        "fake_deployment", "fake_replica_tag", None, None, None
+        app_name="fake_app",
+        deployment="fake_deployment",
+        replica_tag="fake_replica_tag",
+        controller_name=None,
+        servable_object=None,
     )
     yield
     serve.shutdown()
@@ -301,7 +305,7 @@ class TestBasicAPI:
         """Test get_multiplexed_model_id() API"""
         assert serve.get_multiplexed_model_id() == ""
         ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(multiplexed_model_id="1")
+            ray.serve.context._RequestContext(multiplexed_model_id="1")
         )
         assert serve.get_multiplexed_model_id() == "1"
 
@@ -317,8 +321,7 @@ def test_multiplexed_replica_info(serve_instance):
 
         async def __call__(self, model_id: str):
             _ = await self.get_model(model_id)
-            context = get_internal_replica_context()
-            return context.replica_tag
+            return _get_internal_replica_context().replica_tag
 
     handle = serve.run(MyModel.bind())
     replica_tag = ray.get(handle.remote("model1"))

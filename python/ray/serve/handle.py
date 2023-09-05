@@ -5,6 +5,8 @@ import threading
 from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tuple, Union
 
 import ray
+from ray.util import metrics
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator, GcsClient
 
@@ -20,8 +22,6 @@ from ray.serve._private.utils import (
     DEFAULT,
 )
 from ray.serve._private.router import Router, RequestMetadata
-from ray.util import metrics
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 _global_async_loop = None
 
@@ -163,7 +163,7 @@ class _DeploymentHandleBase:
                 availability_zone = None
 
             self._router = Router(
-                serve.context.get_global_client()._controller,
+                serve.context._get_global_client()._controller,
                 self.deployment_id,
                 node_id,
                 availability_zone,
@@ -497,8 +497,9 @@ class _DeploymentResponseBase:
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
         if self._object_ref_future is None:
             raise RuntimeError(
-                "Sync methods should not be called from within an `asyncio` event loop."
-                "Use `await response` or `await response._to_object_ref()` instead."
+                "Sync methods should not be called from within an `asyncio` event "
+                "loop. Use `await response` or `await response._to_object_ref()` "
+                "instead."
             )
 
         if _record_telemetry:
@@ -509,15 +510,27 @@ class _DeploymentResponseBase:
     def cancel(self):
         """Attempt to cancel the `DeploymentHandle` call.
 
-        This is best effort and will only successfully cancel the call if it has not yet
-        been assigned to a replica actor. If the call is successfully cancelled,
-        subsequent operations on the ref will raise an `asyncio.CancelledError` (or a
-        `concurrent.futures.CancelledError` if using synchronous methods like
-        `.result()`).
+        This is best effort.
+
+        - If the request hasn't been assigned to a replica actor, the assignment will be
+          cancelled.
+        - If the request has been assigned to a replica actor, `ray.cancel` will be
+          called on the object ref, attempting to cancel the request and any downstream
+          requests it makes.
+
+        If the request is successfully cancelled, subsequent operations on the ref will
+        raise an exception:
+
+            - If the request was cancelled before assignment, they'll raise
+              `asyncio.CancelledError` (or a `concurrent.futures.CancelledError` for
+              synchronous methods like `.result()`.).
+            - If the request was cancelled after assignment, they'll raise
+              `ray.exceptions.TaskCancelledError`.
         """
-        # TODO(edoakes): when actor task cancellation is supported, we should cancel
-        # the scheduled actor task here if the assign request task is done.
-        self._assign_request_task.cancel()
+        if not self._assign_request_task.done():
+            self._assign_request_task.cancel()
+        elif self._assign_request_task.exception() is None:
+            ray.cancel(self._assign_request_task.result())
 
 
 @PublicAPI(stability="alpha")
@@ -707,6 +720,12 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         )
         self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
 
+    def __await__(self):
+        raise TypeError(
+            "`DeploymentResponseGenerator` cannot be awaited directly. Use `async for` "
+            "or `_to_object_ref_gen` instead."
+        )
+
     def __aiter__(self) -> AsyncIterator[Any]:
         return self
 
@@ -755,7 +774,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class DeploymentHandle(_DeploymentHandleBase):
     """A handle used to make requests to a deployment at runtime.
 
