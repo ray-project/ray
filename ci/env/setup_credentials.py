@@ -1,5 +1,5 @@
 """
-This script is used to set up credentials for some services in the
+This script sets up credentials for some services in the
 CI environment.
 This prints out credentials in the following format, to be ingested
 by as bazel test envs.

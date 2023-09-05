@@ -31,9 +31,9 @@ scaling_config = ScalingConfig(num_workers=4, use_gpu=False)
 
 assert (
     "WANDB_API_KEY" in os.environ
-), 'Please do WANDB_API_KEY="abcde" when running this script.'
+), 'Please set WANDB_API_KEY="abcde" when running this script.'
 
-# This makes sure that all workers will have this env var set.
+# This ensures that all workers have this env var set.
 ray.init(runtime_env={"env_vars": {"WANDB_API_KEY": os.environ["WANDB_API_KEY"]}})
 trainer = TorchTrainer(
     train_func,

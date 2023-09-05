@@ -29,7 +29,7 @@ scaling_config = ScalingConfig(num_workers=4, use_gpu=False)
 assert (
     "COMET_API_KEY" in os.environ
 ), 'Please do COMET_API_KEY="abcde" when running this script.'
-# This makes sure that all workers will have this env var set.
+# This makes sure that all workers have this env var set.
 ray.init(runtime_env={"env_vars": {"COMET_API_KEY": os.environ["COMET_API_KEY"]}})
 trainer = TorchTrainer(
     train_func,

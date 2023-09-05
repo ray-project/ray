@@ -8,7 +8,7 @@ os.environ["SHARED_STORAGE_PATH"] = tempdir.name
 
 # __start__
 # Run the following script with the SHARED_STORAGE_PATH env var set.
-# The MLflow offline logs will be saved to SHARED_STORAGE_PATH/mlruns.
+# The MLflow offline logs are saved to SHARED_STORAGE_PATH/mlruns.
 
 import mlflow
 import os
