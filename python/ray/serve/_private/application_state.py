@@ -10,7 +10,7 @@ import ray
 from ray import cloudpickle
 from ray.exceptions import RuntimeEnvSetupError
 from ray._private.utils import import_attr
-from ray.serve.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig
 from ray.serve.exceptions import RayServeException
 
 from ray.serve._private.common import (
@@ -901,13 +901,13 @@ def build_serve_application(
         Error message: a string if an error was raised, otherwise None.
     """
     try:
-        from ray.serve.api import build
+        from ray.serve.api import _build
         from ray.serve._private.api import call_app_builder_with_args_if_necessary
         from ray.serve.built_application import _get_deploy_args_from_built_app
 
         # Import and build the application.
         app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
-        app = build(app, name)
+        app = _build(app, name)
 
         # Check that all deployments specified in config are valid
         for deployment_name in config_deployments:
