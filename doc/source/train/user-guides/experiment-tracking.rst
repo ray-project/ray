@@ -7,7 +7,7 @@ Experiment Tracking
 .. note::
     This guide is relevant for all trainers in which a custom training loop is defined. 
     This includes :class:`TorchTrainer <ray.train.torch.TorchTrainer>` and 
-    :class:`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>`
+    :class:`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>`.
 
 Most experiment tracking libraries work out-of-the-box with Ray Train. 
 This guide provides instructions on how to set up the code so that your favorite experiment tracking libraries 
@@ -110,7 +110,7 @@ The following session uses Wandb and MLflow but it is adaptable to other framewo
 
     A major difference between distributed and non-distributed training is that in distributed training, 
     multiple processes are running in parallel and under certain setups they have the same results. If all 
-    of them are reported to the tracking backend, there may be duplicated results. To address that,  
+    of them report results to the tracking backend, there may be duplicated results. To address that,  
     Ray Train lets you apply logging logic to only the rank 0 worker with the following method:
     :meth:`context.get_world_rank() <ray.train.context.TrainContext.get_world_rank>`.
 
@@ -143,12 +143,12 @@ If applicable, you need to make sure that credentials are set up properly on eac
 
     .. tab:: Wandb
         
-        Wandb offers both *online* and *offline* modes. For online mode, you log towards Wandb's
+        Wandb offers both *online* and *offline* modes. For *online* mode, you log towards Wandb's
         tracking service and correct credentials should be set up on each training worker 
-        (See next section). 
-        For offline mode, you log towards a local file system. In distributed training, 
+        (More information `here<setting-up-credentials>`). 
+        For *offline* mode, you log towards a local file system. In distributed training, 
         you need to make sure that it is a shared storage path that all nodes can write to 
-        (See next section).
+        (More information `here<setting-up-shared-file-system>`).
 
         **online**
 
@@ -170,11 +170,11 @@ If applicable, you need to make sure that credentials are set up properly on eac
 
     .. tab:: MLflow
         
-        MLflow offers both *local* and *remote* modes. For local mode, you log towards a local file 
+        MLflow offers both *local* and *remote* modes. For *local* mode, you log towards a local file 
         system. In distributed training, this should be a shared storage path that all nodes can write 
-        to (See next section). 
-        For remote mode, people usually choose to log to Databrick's MLflow service. Proper credentials 
-        need to be set up for each training worker (See next section).
+        to (More information `here<setting-up-shared-file-system>`). 
+        For *remote* mode, people usually choose to log to Databrick's MLflow service. Proper credentials 
+        need to be set for each training worker (More information `here<setting-up-credentials>`).
 
         **offline**
 
@@ -215,6 +215,8 @@ The easiest way to pass an environment variable credential to training workers i
 
 For accessing config file, one needs to ensure that the config file is accessible to all nodes.
 One way to do this is by setting up a shared storage. Another way is to save a copy in each node.
+
+.. setting-up-shared-file-system
 
 Setting up shared file system
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -383,7 +385,7 @@ call wandb.login(key=[your_api_key])."**
 This is probably due to wandb credentials are not set up correctly
 on worker nodes. Make sure that you run ``wandb.login`` 
 or pass ``WANDB_API_KEY`` to each training function. 
-See {ref}`"setting up credentials" section <setting-up-credentials> for more details`.
+See `"setting up credentials" section <setting-up-credentials>` for more details.
 
 Missing Configurations
 ----------------------
@@ -394,4 +396,4 @@ You haven't configured the CLI yet!"**
 This is usually caused by running ``databricks configure`` which 
 generates ``~/.databrickscfg`` only on head node. Move this file to a shared
 location or copy it to each node.
-See {ref}`"setting up credentials" section <setting-up-credentials> for more details`.
+See `"setting up credentials" section <setting-up-credentials>` for more details.
