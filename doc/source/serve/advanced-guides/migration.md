@@ -87,7 +87,7 @@ Sometimes, you have a customized route prefix for each deployment:
 :language: python
 ```
 
-With the 2.0 deployment API, you can use the following code to update the above one.
+With the 2.0 deployment API, use the following code to update the above one.
 
 ```{literalinclude} ../doc_code/migration_example.py
 :start-after: __customized_route_old_api_1_start__
@@ -95,7 +95,7 @@ With the 2.0 deployment API, you can use the following code to update the above 
 :language: python
 ```
 
-Or if you have multiple deployments and want to customize the HTTP route prefix for each model, you can use the following code:
+Or to customize the route prefix for multiple deployments, split the deployments into separate apps with the following code:
 
 ```{literalinclude} ../doc_code/migration_example.py
 :start-after: __customized_route_old_api_2_start__

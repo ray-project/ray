@@ -162,8 +162,8 @@ class Model:
         return "done"
 
 
-d = DAGDriver.options(route_prefix="/my_model1").bind(Model.bind())
-handle = serve.run(d)
+d = DAGDriver.bind(Model.bind())
+handle = serve.run(d, route_prefix="/my_model1")
 resp = requests.get("http://localhost:8000/my_model1", data="321")
 # __customized_route_old_api_1_end__
 
@@ -185,8 +185,10 @@ class Model2:
         return "done"
 
 
-d = DAGDriver.bind({"/my_model1": Model.bind(), "/my_model2": Model2.bind()})
-handle = serve.run(d)
+app1 = DAGDriver.bind(Model.bind())
+app2 = DAGDriver.bind(Model2.bind())
+handle1 = serve.run(app1, name="app1", route_prefix="/my_model1")
+handle2 = serve.run(app1, name="app2", route_prefix="/my_model2")
 resp = requests.get("http://localhost:8000/my_model1", data="321")
 resp = requests.get("http://localhost:8000/my_model2", data="321")
 # __customized_route_old_api_2_end__
