@@ -7,6 +7,11 @@ from ray_release.util import ERROR_LOG_PATTERNS
 from ray_release.job_manager.anyscale_job_manager import AnyscaleJobManager
 
 
+class FakeJobResult:
+    def __init__(self, _id: str):
+        self.id = _id
+
+
 def test_get_ray_error_logs():
     with tempfile.TemporaryDirectory() as tmpdir:
         with open(os.path.join(tmpdir, "log01"), "w") as f:
@@ -31,6 +36,7 @@ def test_get_last_logs_long_running_job():
     """
     anyscale_job_manager = AnyscaleJobManager(cluster_manager=None)
     anyscale_job_manager.duration = 4 * 3_600 + 1
+    anyscale_job_manager._last_job_result = FakeJobResult(_id="foo")
     assert anyscale_job_manager.get_last_logs() is None
 
 
