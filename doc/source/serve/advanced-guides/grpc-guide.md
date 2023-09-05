@@ -48,9 +48,10 @@ is running so it can be importable by Serve when starting the proxies.
 
 (start-serve-with-grpc-proxy)=
 ## Start Serve with gRPC Enabled
-[Serve start](https://docs.ray.io/en/releases-2.7.0/serve/api/index.html#serve-start) CLI 
-and [`ray.serve.start`](https://docs.ray.io/en/releases-2.7.0/serve/api/doc/ray.serve.start.html#ray.serve.start) API 
-both support starting Serve with gRPC proxy. There are two options related to Serve's 
+[Serve start](https://docs.ray.io/en/releases-2.7.0/serve/api/index.html#serve-start) CLI,
+[`ray.serve.start`](https://docs.ray.io/en/releases-2.7.0/serve/api/doc/ray.serve.start.html#ray.serve.start) API,
+and [Serve Config Files](https://docs.ray.io/en/releases-2.7.0/serve/production-guide/config.html#serve-config-files-serve-build)
+all support starting Serve with gRPC proxy. There are two options related to Serve's
 gRPC proxy, `grpc_port` and `grpc_servicer_functions`. `grpc_port` is the port for gRPC 
 proxies to listen. It defaults to 9000. `grpc_servicer_functions` is a list of import 
 paths for gRPC `add_servicer_to_server` functions to add to Serve’s gRPC proxy. It also 
