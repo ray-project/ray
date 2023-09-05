@@ -10,7 +10,7 @@ from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2
 from ray.serve._private.common import ReplicaState
 from ray.serve._private.default_impl import create_cluster_node_info_cache
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeInstanceDetails
 from ray.tests.conftest import *  # noqa
 
@@ -53,7 +53,7 @@ def test_draining_with_traffic(monkeypatch, ray_start_cluster):
         name="app",
     )
 
-    client = get_global_client()
+    client = _get_global_client()
 
     def get_replicas_of_state(client, replica_state):
         serve_details = ServeInstanceDetails(
@@ -172,7 +172,7 @@ def test_draining_without_traffic(monkeypatch, ray_start_cluster):
     # We should have 2 replicas on 2 worker nodes
     serve.run(Deployment.options(name="deployment", num_replicas=2).bind(), name="app")
 
-    client = get_global_client()
+    client = _get_global_client()
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
