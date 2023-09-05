@@ -1,3 +1,4 @@
+from ray.air.checkpoint import Checkpoint
 from ray.air.config import (
     DatasetConfig,
     RunConfig,
@@ -12,6 +13,7 @@ from ray.air.execution.resources.request import AcquiredResources, ResourceReque
 
 
 __all__ = [
+    "Checkpoint",
     "DataBatchType",
     "RunConfig",
     "Result",

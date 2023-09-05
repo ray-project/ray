@@ -14,14 +14,13 @@ import logging
 import os
 
 import ray
-from ray.air import ResourceRequest
+from ray.air import Checkpoint, ResourceRequest
 from ray.air._internal.uri_utils import URI
 from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
-from ray.train import Checkpoint
 from ray.train._internal.session import _FutureTrainingResult
 from ray.train._internal.storage import StorageContext, _use_storage_context
 from ray.train.constants import CHECKPOINT_DIR_NAME
