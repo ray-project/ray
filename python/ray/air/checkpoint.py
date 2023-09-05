@@ -65,7 +65,7 @@ class _CheckpointMetadata:
 
 @Deprecated
 class Checkpoint:
-    """Ray AIR Checkpoint.
+    """[Deprecated] Ray AIR Checkpoint.
 
     An AIR Checkpoint are a common interface for accessing models across
     different AIR components and libraries. A Checkpoint can have its data
