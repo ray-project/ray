@@ -134,7 +134,7 @@ def train_func(config):
 
         # Report Checkpoint and metrics to Ray Train
         # ==========================================
-        if accelerator.is_main_process: 
+        if accelerator.is_main_process:
             with TemporaryDirectory() as tmpdir:
                 unwrapped_model = accelerator.unwrap_model(model)
                 accelerator.save(unwrapped_model, f"{tmpdir}/ckpt_{epoch}.bin")
