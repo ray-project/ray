@@ -83,6 +83,7 @@ $ serve deploy config.yaml
 
 Query the applications at their respective endpoints, `/classify` and `/translate`.
 ```pycon
+>>> import requests
 >>> requests.post("http://localhost:8000/classify", json={"image_url": "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"}).text
 'brown bear, bruin, Ursus arctos'
 
@@ -102,7 +103,7 @@ $ serve run config.yaml
 The command `serve run` blocks the terminal, which allows logs from Serve to stream to the console. This helps you test and debug your applications easily. If you want to change your code, you can hit Ctrl-C to interrupt the command and shutdown Serve and all its applications, then rerun `serve run`.
 
 :::{note}
-`serve run` only has support for running multi-application config files. If you want to run applications directly without a config file `serve run` can only run one application at a time.
+`serve run` only has support for running multi-application config files. If you want to run applications by directly passing in an import path, `serve run` can only run one application import path at a time.
 :::
 
 ### Check Status
@@ -151,6 +152,7 @@ You can also make calls between applications without going through HTTP by using
 
 Then, sending requests to the classifier application with the `should_translate` flag set to True:
 ```pycon
+>>> import requests
 >>> requests.post("http://localhost:8000/classify", json={"image_url": "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg", "should_translate": False}).text
 'Braunbär, Bruin, Ursus arctos'
 ```
@@ -179,7 +181,7 @@ For more details on the Ray Serve dashboard, see the [Serve dashboard documentat
 You can add, remove or update entries under the `applications` field to add, remove or update applications in the cluster. This will not affect other applications on the cluster. To update an application, modify the config options in the corresponding entry under the `applications` field.
 
 :::{note}
-The in-place update behavior for an application when a config is resubmitted is the same as the old single-application behavior. For how an application reacts to different config changes, see [Updating a Serve Application](serve-inplace-updates).
+The in-place update behavior for an application when a config is resubmitted is the same as the single-application behavior. For how an application reacts to different config changes, see [Updating a Serve Application](serve-inplace-updates).
 :::
 
 
