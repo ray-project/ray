@@ -22,10 +22,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_DEFAULT_APP_NAME,
 )
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeInstanceDetails
 from ray.serve._private.utils import get_head_node_id
-from ray.serve._private.common import HTTPProxyStatus
+from ray.serve._private.common import ProxyStatus
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
@@ -290,7 +290,7 @@ def test_handle_early_detect_failure(shutdown_ray):
     pids = ray.get([handle.remote() for _ in range(2)])
     assert len(set(pids)) == 2
 
-    client = get_global_client()
+    client = _get_global_client()
     # Kill the controller so that the replicas membership won't be updated
     # through controller health check + long polling.
     ray.kill(client._controller, no_restart=True)
@@ -357,14 +357,12 @@ def test_autoscaler_shutdown_node_http_everynode(
         )
         == 2
     )
-    client = get_global_client()
+    client = _get_global_client()
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
-    assert len(serve_details.http_proxies) == 1
-    assert (
-        serve_details.http_proxies[get_head_node_id()].status == HTTPProxyStatus.HEALTHY
-    )
+    assert len(serve_details.proxies) == 1
+    assert serve_details.proxies[get_head_node_id()].status == ProxyStatus.HEALTHY
 
     # Only head node should exist now.
     wait_for_condition(
@@ -402,13 +400,11 @@ def test_drain_and_undrain_http_proxy_actors(
     wait_for_condition(lambda: len(ray._private.state.actors()) == 6)
     assert len(ray.nodes()) == 3
 
-    client = get_global_client()
+    client = _get_global_client()
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
-    proxy_actor_ids = {
-        proxy.actor_id for _, proxy in serve_details.http_proxies.items()
-    }
+    proxy_actor_ids = {proxy.actor_id for _, proxy in serve_details.proxies.items()}
     assert len(proxy_actor_ids) == 3
 
     serve.run(HelloModel.options(num_replicas=1).bind())
@@ -418,37 +414,33 @@ def test_drain_and_undrain_http_proxy_actors(
         serve_details = ServeInstanceDetails(
             **ray.get(client._controller.get_serve_instance_details.remote())
         )
-        proxy_status_list = [
-            proxy.status for _, proxy in serve_details.http_proxies.items()
-        ]
+        proxy_status_list = [proxy.status for _, proxy in serve_details.proxies.items()]
         return {
             status: proxy_status_list.count(status) for status in proxy_status_list
         } == proxy_status_to_count
 
     wait_for_condition(
         condition_predictor=check_proxy_status,
-        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 2, HTTPProxyStatus.DRAINING: 1},
+        proxy_status_to_count={ProxyStatus.HEALTHY: 2, ProxyStatus.DRAINING: 1},
     )
 
     serve.run(HelloModel.options(num_replicas=2).bind())
     # The draining proxy should become healthy.
     wait_for_condition(
         condition_predictor=check_proxy_status,
-        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 3},
+        proxy_status_to_count={ProxyStatus.HEALTHY: 3},
     )
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
-    {
-        proxy.actor_id for _, proxy in serve_details.http_proxies.items()
-    } == proxy_actor_ids
+    {proxy.actor_id for _, proxy in serve_details.proxies.items()} == proxy_actor_ids
 
     serve.run(HelloModel.options(num_replicas=1).bind())
     # 1 proxy should be draining and eventually be drained.
     wait_for_condition(
         condition_predictor=check_proxy_status,
         timeout=40,
-        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 2},
+        proxy_status_to_count={ProxyStatus.HEALTHY: 2},
     )
 
     # Clean up serve.
@@ -604,7 +596,7 @@ def test_controller_shutdown_gracefully(
     assert len(ray.nodes()) == 2
 
     # Call `graceful_shutdown()` on the controller, so it will start shutdown.
-    client = get_global_client()
+    client = _get_global_client()
     if wait_for_controller_shutdown:
         # Waiting for controller shutdown will throw RayActorError when the controller
         # killed itself.
@@ -655,7 +647,7 @@ def test_client_shutdown_gracefully_when_timeout(
 
     # Ensure client times out if the controller does not shutdown within timeout.
     timeout_s = 0.0
-    client = get_global_client()
+    client = _get_global_client()
     client.shutdown(timeout_s=timeout_s)
     assert (
         f"Controller failed to shut down within {timeout_s}s. "

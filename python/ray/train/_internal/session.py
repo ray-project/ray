@@ -38,6 +38,7 @@ from ray.train.constants import (
     WORKER_PID,
     TIME_TOTAL_S,
     LAZY_CHECKPOINT_MARKER_FILE,
+    RAY_CHDIR_TO_TRIAL_DIR,
 )
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -187,6 +188,10 @@ class _TrainSession:
         # Only used if checkpoint_upload_from_workers is True.
         self.legacy_checkpoint_uri = None
 
+        if _use_storage_context():
+            assert storage
+            logger.debug(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
+
         # NOTE: `reset` will initialize many properties needed to start running the
         # training_func as a thread.
         self.reset(
@@ -195,21 +200,6 @@ class _TrainSession:
             storage=storage,
             loaded_checkpoint=checkpoint,
         )
-
-        if _use_storage_context():
-            assert storage
-            logger.info(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
-
-            # Change the working directory to the local trial directory.
-            # -> All workers on the same node share a working directory.
-            os.makedirs(storage.trial_local_path, exist_ok=True)
-            os.chdir(storage.trial_local_path)
-        else:
-            if trial_info:
-                # Change the working directory to `logdir`.
-                logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
-                os.makedirs(logdir, exist_ok=True)
-                os.chdir(logdir)
 
         # Autofilled metrics attributes.
         self.detailed_autofilled_metrics = detailed_autofilled_metrics
@@ -264,6 +254,23 @@ class _TrainSession:
         self.ignore_report = False
         self.training_started = False
         self._first_report = True
+
+        if _use_storage_context():
+            # Change the working directory to the local trial directory.
+            # -> All workers on the same node share a working directory.
+            os.makedirs(storage.trial_local_path, exist_ok=True)
+            if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
+                logger.debug(
+                    "Switching the working directory to the trial directory: "
+                    f"{storage.trial_local_path}"
+                )
+                os.chdir(storage.trial_local_path)
+        else:
+            if trial_info:
+                # Change the working directory to `logdir`.
+                logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
+                os.makedirs(logdir, exist_ok=True)
+                os.chdir(logdir)
 
     def pause_reporting(self):
         """Ignore all future ``session.report()`` calls."""
