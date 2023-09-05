@@ -28,7 +28,7 @@ from ray.air._internal.remote_storage import (
 )
 from ray.air._internal.util import _copy_dir_ignore_conflicts
 from ray.air.constants import PREPROCESSOR_KEY, CHECKPOINT_ID_ATTR
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -63,7 +63,7 @@ class _CheckpointMetadata:
     checkpoint_state: Dict[str, Any]
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class Checkpoint:
     """Ray AIR Checkpoint.
 
