@@ -29,7 +29,7 @@ entry = ModelInferencer.bind()
 
 # __serve_deployment_example_end__
 
-serve.run(entry)
+handle = serve.run(entry)
 
 # __serve_request_send_example_begin__
 import requests  # noqa: E402
@@ -38,3 +38,7 @@ resp = requests.get(
     "http://localhost:8000", headers={"serve_multiplexed_model_id": str("1")}
 )
 # __serve_request_send_example_end__
+
+# __serve_handle_send_example_begin__
+obj_ref = handle.options(multiplexed_model_id="1").remote("<your_request>")
+# __serve_handle_send_example_end__

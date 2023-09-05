@@ -54,6 +54,13 @@ To send a request to a specific model, include the field `serve_multiplexed_mode
 :end-before: __serve_request_send_example_end__
 ```
 
+You can also send a request to a specific model by using handle `options` API.
+```{literalinclude} ../doc_code/multiplexed.py
+:language: python
+:start-after: __serve_handle_send_example_begin__
+:end-before: __serve_handle_send_example_end__
+```
+
 :::{note}
 `serve_multiplexed_model_id` is required in the request header, and the value should be the model id you want to send the request to.
 :::
