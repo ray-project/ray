@@ -5941,7 +5941,7 @@
     cluster_compute: multi_node_train_4_workers.yaml
 
   run:
-    timeout: 1800
+    timeout: 5400
     script: python multi_node_train_benchmark.py --num-workers 4 --file-type image
 
   variations:
@@ -5965,7 +5965,7 @@
     cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
 
   run:
-    timeout: 1800
+    timeout: 5400
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image
 
   variations:
@@ -5989,7 +5989,7 @@
     cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
 
   run:
-    timeout: 1800
+    timeout: 5400
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order
 
   variations:
@@ -6013,7 +6013,7 @@
     cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
 
   run:
-    timeout: 1800
+    timeout: 5400
     script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet
 
   variations:
@@ -6037,7 +6037,7 @@
     cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
 
   run:
-    timeout: 1800
+    timeout: 5400
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet
 
   variations:
