@@ -99,7 +99,16 @@ class Query:
     metadata: RequestMetadata
 
     async def replace_known_types_in_args(self):
-        """TODO."""
+        """Uses the `_PyObjScanner` to find and replace known types.
+
+        1) Replaces `asyncio.Task` objects with their results. This is used for the old
+           serve handle API and should be removed once that API is deprecated & removed.
+        2) Replaces `DeploymentResponse` objects with their resolved object refs. This
+           enables composition without explicitly calling `_to_object_ref`.
+        3) Buffers the bodies of `starlette.requests.Request` objects to avoid them
+           being unserializable. This is a temporary compatibility measure and passing
+           the objects should be fully disallowed in a future release.
+        """
         from ray.serve.handle import (
             _DeploymentResponseBase,
             DeploymentResponse,
@@ -131,10 +140,10 @@ class Query:
                     if not WARNED_ABOUT_STARLETTE_REQUESTS_ONCE:
                         # TODO(edoakes): fully disallow this in the future.
                         warnings.warn(
-                            "`starlette.Request` objects should not be directly passed via "
-                            "`ServeHandle` calls. Not all functionality is guaranteed to work "
-                            "(e.g., detecting disconnects) and this may be disallowed in a "
-                            "future release."
+                            "`starlette.Request` objects should not be directly passed "
+                            "via `ServeHandle` calls. Not all functionality is "
+                            "guaranteed to work (e.g., detecting disconnects) and this "
+                            "may be disallowed in a future release."
                         )
                         WARNED_ABOUT_STARLETTE_REQUESTS_ONCE = True
 
@@ -145,9 +154,12 @@ class Query:
                     obj._receive = make_buffered_asgi_receive(await obj.body())
                     replacement_table[obj] = obj
 
+            # Gather `asyncio.Task` results concurrently.
             if len(tasks) > 0:
                 resolved = await asyncio.gather(*tasks)
                 replacement_table.update(zip(tasks, resolved))
+
+            # Gather `DeploymentResponse` object refs concurrently.
             if len(responses) > 0:
                 obj_refs = await asyncio.gather(
                     *[r._to_object_ref() for r in responses]

@@ -27,9 +27,9 @@ def test_replace_multiple_types():
     found = scanner.find_nodes(my_objs)
     assert len(found) == 4
 
-    replaced = scanner.replace_nodes({
-        obj: 1 if isinstance(obj, Source) else 2 for obj in found
-    })
+    replaced = scanner.replace_nodes(
+        {obj: 1 if isinstance(obj, Source) else 2 for obj in found}
+    )
     assert replaced == [1, [1, {"key": 1, "key2": 2}]]
 
 
