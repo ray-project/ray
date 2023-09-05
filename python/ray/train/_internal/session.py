@@ -38,6 +38,7 @@ from ray.train.constants import (
     WORKER_PID,
     TIME_TOTAL_S,
     LAZY_CHECKPOINT_MARKER_FILE,
+    RAY_CHDIR_TO_TRIAL_DIR,
 )
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -145,9 +146,8 @@ class _TrainSession:
         metadata: Dict[str, Any] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Checkpoint] = None,
-        # Deprecated
-        encode_data_fn: Optional[Callable] = None,
         detailed_autofilled_metrics: bool = False,
+        # Deprecated
         # If True and the worker is on the same node as driver,
         # will send over checkpoint path and metadata instead of
         # the whole checkpoint to avoid unnecessary serialization.
@@ -188,15 +188,9 @@ class _TrainSession:
         # Only used if checkpoint_upload_from_workers is True.
         self.legacy_checkpoint_uri = None
 
-        # TODO(justinvyu): Encode data fn to be removed.
-        # Function to encode checkpoint dict before sending to the driver.
-        if not encode_data_fn:
-
-            def noop(x):
-                return x
-
-            encode_data_fn = noop
-        self._encode_data_fn = encode_data_fn
+        if _use_storage_context():
+            assert storage
+            logger.debug(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
 
         # NOTE: `reset` will initialize many properties needed to start running the
         # training_func as a thread.
@@ -206,21 +200,6 @@ class _TrainSession:
             storage=storage,
             loaded_checkpoint=checkpoint,
         )
-
-        if _use_storage_context():
-            assert storage
-            logger.info(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
-
-            # Change the working directory to the local trial directory.
-            # -> All workers on the same node share a working directory.
-            os.makedirs(storage.trial_local_path, exist_ok=True)
-            os.chdir(storage.trial_local_path)
-        else:
-            if trial_info:
-                # Change the working directory to `logdir`.
-                logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
-                os.makedirs(logdir, exist_ok=True)
-                os.chdir(logdir)
 
         # Autofilled metrics attributes.
         self.detailed_autofilled_metrics = detailed_autofilled_metrics
@@ -275,6 +254,23 @@ class _TrainSession:
         self.ignore_report = False
         self.training_started = False
         self._first_report = True
+
+        if _use_storage_context():
+            # Change the working directory to the local trial directory.
+            # -> All workers on the same node share a working directory.
+            os.makedirs(storage.trial_local_path, exist_ok=True)
+            if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
+                logger.debug(
+                    "Switching the working directory to the trial directory: "
+                    f"{storage.trial_local_path}"
+                )
+                os.chdir(storage.trial_local_path)
+        else:
+            if trial_info:
+                # Change the working directory to `logdir`.
+                logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
+                os.makedirs(logdir, exist_ok=True)
+                os.chdir(logdir)
 
     def pause_reporting(self):
         """Ignore all future ``session.report()`` calls."""
@@ -511,8 +507,6 @@ class _TrainSession:
         # Only store checkpoints on worker with rank 0.
         if self.world_rank != 0 and not self.checkpoint_keep_all_ranks:
             checkpoint = None
-        elif checkpoint:
-            checkpoint = self._encode_data_fn(checkpoint)
 
         metadata = self._auto_fill_checkpoint_metrics({})
 
@@ -634,9 +628,8 @@ class _TrainSession:
                     "Passing objects containg Torch tensors as metrics "
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
-                    "to Python objects or use a `LegacyTorchCheckpoint` as the "
-                    "`checkpoint` argument of `ray.train.report` to "
-                    "store your Torch objects."
+                    "to Python objects or report a `train.Checkpoint` "
+                    "with `ray.train.report` to store your Torch objects."
                 )
 
         if _use_storage_context():
