@@ -1,0 +1,46 @@
+load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
+load("@py_deps_lonnie_ci//:requirements.bzl", "requirement")
+
+compile_pip_requirements(
+    name = "requirements",
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements.txt",
+    extra_args = ["--allow-unsafe"],
+    tags = ["team:ci"],
+    visibility = ["//visibility:private"],
+)
+
+py_binary(
+    name = "grpc_tools_protoc",
+    srcs = ["grpc_tools_protoc.py"],
+    deps = [
+        requirement("grpcio-tools"),
+    ],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = ["team:ci"],
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "compile_py_proto",
+    srcs = [
+        "my.proto",
+    ],
+    outs = [
+        "my_pb2.py",
+    ],
+    cmd = """
+        TMP=$$(mktemp -d)
+        PROTO_FILE=$(location :my.proto)
+        $(location :grpc_tools_protoc) \
+            $$PROTO_FILE \
+            --proto_path=$$(dirname $$PROTO_FILE) \
+            --python_out=$$TMP \
+            --grpc_python_out=$$TMP
+        cp $$TMP/my_pb2.py $(location :my_pb2.py)
+    """,
+    tools = [
+        ":grpc_tools_protoc",
+    ],
+)

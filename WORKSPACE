@@ -64,12 +64,21 @@ pip_parse(
     requirements_lock = "//release:requirements_buildkite.txt",
 )
 
+pip_parse(
+    name = "py_deps_lonnie_ci",
+    python_interpreter_target = python39,
+    requirements_lock = "//lonnie:requirements.txt",
+)
+
 load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")
 load("@py_deps_ray_ci//:requirements.bzl", install_py_deps_ray_ci = "install_deps")
+load("@py_deps_lonnie_ci//:requirements.bzl", install_py_deps_lonnie_ci = "install_deps")
 
 install_py_deps_buildkite()
 
 install_py_deps_ray_ci()
+
+install_py_deps_lonnie_ci()
 
 register_toolchains("//:python_toolchain")
 
