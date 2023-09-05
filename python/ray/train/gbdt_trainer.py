@@ -189,17 +189,6 @@ class GBDTTrainer(BaseTrainer):
         super()._validate_attributes()
         self._validate_config_and_datasets()
 
-        # Todo: `trainer_resources` should be configurable. Currently it is silently
-        # ignored. We catch the error here rather than in
-        # `_scaling_config_allowed_keys` because the default of `None` is updated to
-        # `{}` from XGBoost-Ray.
-        if self.scaling_config.trainer_resources not in [None, {}]:
-            raise ValueError(
-                f"The `trainer_resources` attribute for {self.__class__.__name__} "
-                f"is currently ignored and defaults to `{{}}`. Remove the "
-                f"`trainer_resources` key from your `ScalingConfig` to resolve."
-            )
-
     def _validate_config_and_datasets(self) -> None:
         if TRAIN_DATASET_KEY not in self.datasets:
             raise KeyError(
@@ -213,6 +202,20 @@ class GBDTTrainer(BaseTrainer):
                         f"`dmatrix_params` dict contains key '{key}' "
                         f"which is not present in `datasets`."
                     )
+
+    @classmethod
+    def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
+        # Todo: `trainer_resources` should be configurable. Currently it is silently
+        # ignored. We catch the error here rather than in
+        # `_scaling_config_allowed_keys` because the default of `None` is updated to
+        # `{}` from XGBoost-Ray.
+        if scaling_config.trainer_resources not in [None, {}]:
+            raise ValueError(
+                f"The `trainer_resources` attribute for {cls.__name__} "
+                f"is currently ignored and defaults to `{{}}`. Remove the "
+                f"`trainer_resources` key from your `ScalingConfig` to resolve."
+            )
+        return BaseTrainer._validate_scaling_config(scaling_config=scaling_config)
 
     def _get_dmatrices(
         self, dmatrix_params: Dict[str, Any]
