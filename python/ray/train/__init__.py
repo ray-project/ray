@@ -28,6 +28,7 @@ from ray.air.result import Result
 
 usage_lib.record_library_usage("train")
 
+Checkpoint.__module__ = "ray.train"
 
 __all__ = [
     "get_checkpoint",
