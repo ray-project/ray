@@ -2352,6 +2352,7 @@ pyx_library(
     deps = [
         "//:core_worker_lib",
         "//:global_state_accessor_lib",
+        "//:gcs_server_lib",
         "//:raylet_lib",
         "//:redis_client",
         "//:src/ray/ray_exported_symbols.lds",

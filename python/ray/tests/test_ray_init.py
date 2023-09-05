@@ -13,7 +13,7 @@ from ray.cluster_utils import Cluster
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, enable_external_redis
 
 
 @pytest.mark.skipif(
@@ -232,6 +232,34 @@ def test_ray_init_using_hostname(ray_start_cluster):
     node_table = cluster.global_state.node_table()
     assert len(node_table) == 1
     assert node_table[0].get("NodeManagerHostname", "") == hostname
+
+
+def test_new_ray_instance_new_session_dir(shutdown_only):
+    ray.init()
+    session_dir = ray._private.worker._global_node.get_session_dir_path()
+    ray.shutdown()
+    ray.init()
+    if enable_external_redis():
+        assert ray._private.worker._global_node.get_session_dir_path() == session_dir
+    else:
+        assert ray._private.worker._global_node.get_session_dir_path() != session_dir
+
+
+def test_new_cluster_new_session_dir(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node()
+    ray.init(address=cluster.address)
+    session_dir = ray._private.worker._global_node.get_session_dir_path()
+    ray.shutdown()
+    cluster.shutdown()
+    cluster.add_node()
+    ray.init(address=cluster.address)
+    if enable_external_redis():
+        assert ray._private.worker._global_node.get_session_dir_path() == session_dir
+    else:
+        assert ray._private.worker._global_node.get_session_dir_path() != session_dir
+    ray.shutdown()
+    cluster.shutdown()
 
 
 if __name__ == "__main__":

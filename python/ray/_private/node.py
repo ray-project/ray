@@ -24,8 +24,9 @@ import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray._private import storage
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
+from ray._private.services import serialize_config, get_address
 from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
 
 # Logger for this module. It should be configured at the entry point
@@ -177,9 +178,15 @@ class Node:
 
         # Register the temp dir.
         if head:
-            # date including microsecond
-            date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
-            self._session_name = f"session_{date_str}_{os.getpid()}"
+            # We expect this the first time we initialize a cluster, but not during
+            # subsequent restarts of the head node.
+            maybe_key = self.check_persisted_session_name()
+            if maybe_key is None:
+                # date including microsecond
+                date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
+                self._session_name = f"session_{date_str}_{os.getpid()}"
+            else:
+                self._session_name = ray._private.utils.decode(maybe_key)
         else:
             if ray_params.session_name is None:
                 assert not self._default_worker
@@ -316,6 +323,29 @@ class Node:
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
         self._record_stats()
+
+    def check_persisted_session_name(self):
+        if self._ray_params.external_addresses is None:
+            return None
+        self._redis_address = self._ray_params.external_addresses[0]
+        redis_ip_address, redis_port, enable_redis_ssl = get_address(
+            self._redis_address,
+        )
+        # Address is ip:port or redis://ip:port
+        if int(redis_port) < 0:
+            raise ValueError(
+                f"Invalid Redis port provided: {redis_port}."
+                "The port must be a non-negative integer."
+            )
+
+        return get_session_key_from_storage(
+            redis_ip_address,
+            int(redis_port),
+            self._ray_params.redis_password,
+            enable_redis_ssl,
+            serialize_config(self._config),
+            b"session_name",
+        )
 
     @staticmethod
     def validate_ip_port(ip_port):
@@ -1173,12 +1203,22 @@ class Node:
 
         ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
         # Make sure GCS is up.
-        self.get_gcs_client().internal_kv_put(
+        added = self.get_gcs_client().internal_kv_put(
             b"session_name",
             self._session_name.encode(),
-            True,
+            False,
             ray_constants.KV_NAMESPACE_SESSION,
         )
+        if not added:
+            curr_val = self.get_gcs_client().internal_kv_get(
+                b"session_name", ray_constants.KV_NAMESPACE_SESSION
+            )
+            assert curr_val != self._session_name, (
+                f"Session name {self._session_name} does not match "
+                f"persisted value {curr_val}. Perhaps there was an "
+                f"error connecting to Redis."
+            )
+
         self.get_gcs_client().internal_kv_put(
             b"session_dir",
             self._session_dir.encode(),
@@ -1213,12 +1253,8 @@ class Node:
         logger.debug(
             f"Process STDOUT and STDERR is being " f"redirected to {self._logs_dir}."
         )
-        assert self._redis_address is None
         assert self._gcs_address is None
         assert self._gcs_client is None
-
-        if self._ray_params.external_addresses is not None:
-            self._redis_address = self._ray_params.external_addresses[0]
 
         self.start_gcs_server()
         assert self.get_gcs_client() is not None

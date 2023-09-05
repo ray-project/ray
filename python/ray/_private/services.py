@@ -1294,6 +1294,25 @@ def start_api_server(
             return None, None
 
 
+def get_address(redis_address):
+    parts = redis_address.split("://", 1)
+    enable_redis_ssl = False
+    if len(parts) == 1:
+        redis_ip_address, redis_port = parts[0].rsplit(":", 1)
+    else:
+        # rediss for SSL
+        if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
+            raise ValueError(
+                f"Invalid redis address {redis_address}."
+                "Expected format is ip:port or redis://ip:port, "
+                "or rediss://ip:port for SSL."
+            )
+        redis_ip_address, redis_port = parts[1].rsplit(":", 1)
+        if parts[0] == "rediss":
+            enable_redis_ssl = True
+    return redis_ip_address, redis_port, enable_redis_ssl
+
+
 def start_gcs_server(
     redis_address: str,
     log_dir: str,
@@ -1339,21 +1358,12 @@ def start_gcs_server(
         f"--session-name={session_name}",
     ]
     if redis_address:
-        parts = redis_address.split("://", 1)
-        enable_redis_ssl = "false"
-        if len(parts) == 1:
-            redis_ip_address, redis_port = parts[0].rsplit(":", 1)
-        else:
-            if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
-                raise ValueError(f"Invalid redis address {redis_address}")
-            redis_ip_address, redis_port = parts[1].rsplit(":", 1)
-            if parts[0] == "rediss":
-                enable_redis_ssl = "true"
+        redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
 
         command += [
             f"--redis_address={redis_ip_address}",
             f"--redis_port={redis_port}",
-            f"--redis_enable_ssl={enable_redis_ssl}",
+            f"--redis_enable_ssl={'true' if enable_redis_ssl else 'false'}",
         ]
     if redis_password:
         command += [f"--redis_password={redis_password}"]
