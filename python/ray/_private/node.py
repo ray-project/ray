@@ -164,7 +164,9 @@ class Node:
                 maybe_key = self.check_persisted_session_name()
                 if maybe_key is None:
                     # date including microsecond
-                    date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
+                    date_str = datetime.datetime.today().strftime(
+                        "%Y-%m-%d_%H-%M-%S_%f"
+                    )
                     self._session_name = f"session_{date_str}_{os.getpid()}"
                 else:
                     self._session_name = ray._private.utils.decode(maybe_key)
