@@ -6,7 +6,7 @@ In this section, we explore Serve's key architectural concepts and components. I
 - the role of each component in Serve and how they work
 - the different types of actors that make up a Serve application
 
-% Figure source: https://docs.google.com/drawings/d/1jSuBN5dkSj2s9-0eGzlU_ldsRa3TsswQUZM-cMQ29a0/edit
+% Figure source: https://docs.google.com/drawings/d/1jSuBN5dkSj2s9-0eGzlU_ldsRa3TsswQUZM-cMQ29a0/edit?usp=sharing
 
 ```{image} architecture-2.0.svg
 :align: center
