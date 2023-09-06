@@ -5,7 +5,7 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 
 import math
 import time
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Deque, Dict, List, Optional, Tuple, Union
 
@@ -30,9 +30,6 @@ from ray.data._internal.progress_bar import ProgressBar
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
-
-# A RefBundle or an exception / end of stream indicator.
-MaybeRefBundle = Union[RefBundle, Exception, None]
 
 # The fraction of the object store capacity that will be used as the default object
 # store memory limit for the streaming executor.
@@ -108,17 +105,18 @@ class OpState:
     operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[Deque[MaybeRefBundle]]):
+    def __init__(self, op: PhysicalOperator, inqueues: List[Deque[RefBundle]]):
         # Each inqueue is connected to another operator's outqueue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
-        self.inqueues: List[Deque[MaybeRefBundle]] = inqueues
+        self.inqueues: List[Deque[RefBundle]] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
         #
         # Note: this queue is also accessed concurrently from the consumer thread.
         # (in addition to the streaming executor thread). Hence, it must be a
         # thread-safe type such as `deque`.
-        self.outqueue: Deque[MaybeRefBundle] = deque()
+        self.outqueue: Deque[RefBundle] = deque()
+        self.outqueue_by_idx = defaultdict(lambda: deque())
         self.op = op
         self.progress_bar = None
         self.num_completed_tasks = 0
@@ -126,6 +124,9 @@ class OpState:
         # Tracks whether `input_done` is called for each input op.
         self.input_done_called = [False] * len(op.input_dependencies)
         self.dependents_completed_called = False
+
+        self._finished = False
+        self._exception = None
 
     def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
         """Create progress bars at the given index (line offset in console).
@@ -167,10 +168,26 @@ class OpState:
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
-        self.outqueue.append(ref)
+        if ref.output_split_idx is not None:
+            self.outqueue_by_idx[ref.output_split_idx].append(ref)
+        else:
+            self.outqueue.append(ref)
         self.num_completed_tasks += 1
         if self.progress_bar:
             self.progress_bar.update(1)
+
+    def mark_finished(self, exception: Optional[Exception] = None) -> None:
+        self._finished = True
+        self._exception = exception
+
+    def finished(self) -> bool:
+        return self._finished
+
+    def get_exception(self) -> Optional[Exception]:
+        return self._exception
+
+    def outqueue_size(self) -> int:
+        return len(self.outqueue) + sum(len(q) for q in self.outqueue_by_idx.values())
 
     def refresh_progress_bar(self) -> None:
         """Update the console with the latest operator progress."""
@@ -199,7 +216,13 @@ class OpState:
                 return
         assert False, "Nothing to dispatch"
 
-    def get_output_blocking(self, output_split_idx: Optional[int]) -> MaybeRefBundle:
+    def next_available(self, output_split_idx: Optional[int]) -> bool:
+        if output_split_idx is None:
+            return len(self.outqueue) > 0
+        else:
+            return len(self.outqueue_by_idx[output_split_idx]) > 0
+
+    def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:
         """Get an item from this node's output queue, blocking as needed.
 
         Returns:
@@ -210,24 +233,12 @@ class OpState:
                 # Non-split output case.
                 if output_split_idx is None:
                     return self.outqueue.popleft()
-
-                # Scan the queue and look for outputs tagged for the given index.
-                for i in range(len(self.outqueue)):
-                    bundle = self.outqueue[i]
-                    if bundle is None or isinstance(bundle, Exception):
-                        # End of stream for this index! Note that we
-                        # do not remove the None, so that it can act
-                        # as the termination signal for all indices.
-                        return bundle
-                    elif bundle.output_split_idx == output_split_idx:
-                        self.outqueue.remove(bundle)
-                        return bundle
-
-                # Didn't find any outputs matching this index, repeat the loop until
-                # we find one or hit a None.
+                else:
+                    return self.outqueue_by_idx[output_split_idx].popleft()
             except IndexError:
                 pass
             time.sleep(0.01)
+
 
     def inqueue_memory_usage(self) -> int:
         """Return the object store memory of this operator's inqueue."""

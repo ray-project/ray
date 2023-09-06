@@ -110,28 +110,35 @@ class StreamingExecutor(Executor, threading.Thread):
         self.start()
 
         class StreamIterator(OutputIterator):
-            def __init__(self, outer: Executor):
+            def __init__(self, outer: StreamingExecutor):
                 self._outer = outer
+
+            def next_available(self, output_split_idx: Optional[int] = None) -> bool:
+                return self._outer._output_node.next_available(output_split_idx)
 
             def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
                 try:
+                    if (
+                        self._outer._output_node.finished()
+                        and not self._outer._output_node.next_available(
+                            output_split_idx
+                        )
+                    ):
+                        ex = self._outer._output_node.get_exception()
+                        if ex:
+                            raise ex
+                        else:
+                            if self._outer._shutdown:
+                                raise StopIteration(f"{self._outer} is shutdown.")
+                            else:
+                                raise StopIteration
+
                     item = self._outer._output_node.get_output_blocking(
                         output_split_idx
                     )
-                    # Translate the special sentinel values for MaybeRefBundle into
-                    # exceptions.
-                    if item is None:
-                        if self._outer._shutdown:
-                            raise StopIteration(f"{self._outer} is shutdown.")
-                        else:
-                            raise StopIteration
-                    elif isinstance(item, Exception):
-                        raise item
-                    else:
-                        # Otherwise return a concrete RefBundle.
-                        if self._outer._global_info:
-                            self._outer._global_info.update(1)
-                        return item
+                    if self._outer._global_info:
+                        self._outer._global_info.update(1)
+                    return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
                 except BaseException:
@@ -188,10 +195,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 pass
         except Exception as e:
             # Propagate it to the result iterator.
-            self._output_node.outqueue.append(e)
+            self._output_node.mark_finished(e)
         finally:
             # Signal end of results.
-            self._output_node.outqueue.append(None)
+            self._output_node.mark_finished()
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -275,7 +282,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _consumer_idling(self) -> bool:
         """Returns whether the user thread is blocked on topology execution."""
-        return len(self._output_node.outqueue) == 0
+        return self._output_node.outqueue_size() > 0
 
     def _get_or_refresh_resource_limits(self) -> ExecutionResources:
         """Return concrete limits for use at the current time.

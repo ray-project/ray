@@ -37,6 +37,8 @@ from ray.data.context import DataContext
 from ray.data.datasource import ReadTask
 from ray.types import ObjectRef
 
+from ray.data._internal.execution.interfaces.executor import OutputIterator
+
 # Warn about tasks larger than this.
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 
@@ -62,7 +64,7 @@ def execute_to_legacy_bundle_iterator(
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
     dag_rewrite=None,
-) -> Iterator[RefBundle]:
+    ) -> OutputIterator:
     """Execute a plan with the new executor and return a bundle iterator.
 
     Args:

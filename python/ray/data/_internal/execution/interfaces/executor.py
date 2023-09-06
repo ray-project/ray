@@ -16,6 +16,9 @@ class OutputIterator(Iterator[RefBundle]):
     def __init__(self, base: Iterable[RefBundle]):
         self._it = iter(base)
 
+    def next_available(self, output_split_idx: int) -> bool:
+        raise NotImplementedError()
+
     def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
         """Can be used to pull outputs by a specified output index.
 

@@ -79,19 +79,20 @@ class StreamSplitDataIterator(DataIterator):
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
             )
             future: ObjectRef[
-                Optional[ObjectRef[Block]]
+                List[ObjectRef[Tuple[ObjectRef[Block], BlockMetadata]]]
             ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
             while True:
-                block_ref: Optional[Tuple[ObjectRef[Block], BlockMetadata]] = ray.get(
+                block_refs: List[Tuple[ObjectRef[Block], BlockMetadata]] = ray.get(
                     future
                 )
-                if not block_ref:
+                if not block_refs:
                     break
                 else:
                     future = self._coord_actor.get.remote(
                         cur_epoch, self._output_split_idx
                     )
-                    yield block_ref
+                    for ref in block_refs:
+                        yield ref
 
         return gen_blocks(), self._iter_stats, False
 
@@ -185,7 +186,7 @@ class SplitCoordinator:
 
     def get(
         self, epoch_id: int, output_split_idx: int
-    ) -> Optional[Tuple[ObjectRef[Block], BlockMetadata]]:
+    ) -> List[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
@@ -196,31 +197,15 @@ class SplitCoordinator:
                 "Invalid iterator: the dataset has moved on to another epoch."
             )
 
+        res = []
         try:
-            # Ensure there is at least one bundle.
-            with self._lock:
-                if output_split_idx in self._next_bundle:
-                    next_bundle = self._next_bundle[output_split_idx]
-                else:
-                    next_bundle = None
-
-            # Fetch next bundle if needed.
-            while next_bundle is None or not next_bundle.blocks:
-                # This is a BLOCKING call, so do it outside the lock.
-                next_bundle = self._output_iterator.get_next(output_split_idx)
-
-            block = next_bundle.blocks[-1]
-            next_bundle = replace(next_bundle, blocks=next_bundle.blocks[:-1])
-
-            # Accumulate any remaining blocks in next_bundle map as needed.
-            with self._lock:
-                self._next_bundle[output_split_idx] = next_bundle
-                if not next_bundle.blocks:
-                    del self._next_bundle[output_split_idx]
-
-            return block
+            res.extend(self._output_iterator.get_next(output_split_idx).blocks)
         except StopIteration:
-            return None
+            return []
+        else:
+            while self._output_iterator.next_available(output_split_idx):
+                res.extend(self._output_iterator.get_next(output_split_idx).blocks)
+            return res
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""
