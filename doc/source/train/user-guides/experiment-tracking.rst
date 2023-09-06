@@ -5,7 +5,7 @@ Experiment Tracking
 ===================
 
 .. note::
-    This guide is relevant for all trainers in which a custom training loop is defined. 
+    This guide is relevant for all trainers in which you define a custom training loop. 
     This includes :class:`TorchTrainer <ray.train.torch.TorchTrainer>` and 
     :class:`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>`.
 
@@ -14,7 +14,7 @@ This guide provides instructions on how to set up the code so that your favorite
 can work for distributed training with Ray Train. The end of the guide has common errors to aid in debugging 
 the setup.
 
-The following psudo code demonstrates how to use the native experiment tracking library calls 
+The following pseudo code demonstrates how to use the native experiment tracking library calls 
 inside of Ray Train: 
 
 .. code-block:: python
@@ -38,7 +38,7 @@ Getting Started
 
 Let's start by looking at some code snippets.
 
-The following session uses Weights & Biases (W&B) and MLflow but it is adaptable to other frameworks.
+The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable to other frameworks.
 
 .. tabs::
 
@@ -74,7 +74,7 @@ The following session uses Weights & Biases (W&B) and MLflow but it is adaptable
                 # ...
 
                 # Step 4
-                # Make sure that all loggings are uploaded to W&B backend.
+                # Make sure that all loggings are uploaded to the W&B backend.
                 if train.get_context().get_world_rank() == 0:
                     wandb.finish()
 
@@ -101,7 +101,8 @@ The following session uses Weights & Biases (W&B) and MLflow but it is adaptable
                 loss = optimize()
 
                 metrics = {"loss": loss}
-                # Only report the results from the first worker to MLflow to avoid duplication
+                # Only report the results from the first worker to MLflow 
+                to avoid duplication
 
                 # Step 3
                 if train.get_context().get_world_rank() == 0:
@@ -121,7 +122,7 @@ The following session uses Weights & Biases (W&B) and MLflow but it is adaptable
         def train_func(config):
             ...
             if train.get_context().get_world_rank() == 0:
-                # do your logging logic only for rank0 worker.
+                # Add your logging logic only for rank0 worker.
             ...
 
 The interaction with the experiment tracking backend within the :ref:`train_func<train-overview-training-function>` 
@@ -149,8 +150,8 @@ If applicable, make sure that you properly set up credentials on each training w
         **Online**
 
         For *online* mode, because you log to W&B's tracking service, ensure that you set the credentials 
-        inside of :ref:`train_func<train-overview-training-function>` (See :ref:`Set up credentials<set-up-credentials>` 
-        for more information).
+        inside of :ref:`train_func<train-overview-training-function>`. See :ref:`Set up credentials<set-up-credentials>` 
+        for more information.
 
         .. code-block:: python
             
@@ -160,8 +161,8 @@ If applicable, make sure that you properly set up credentials on each training w
         **Offline**
 
         For *offline* mode, because you log towards a local file system, 
-        point the offline directory to a shared storage path that all nodes can write to 
-        (See :ref:`Set up a shared file system<set-up-shared-file-system>` for more information).
+        point the offline directory to a shared storage path that all nodes can write to. 
+        See :ref:`Set up a shared file system<set-up-shared-file-system>` for more information.
         
         .. code-block:: python
 
@@ -176,16 +177,16 @@ If applicable, make sure that you properly set up credentials on each training w
 
         For *local* mode, because you log to a local file 
         system, point offline directory to a shared storage path. that all nodes can write 
-        to (See :ref:`Set up a shared file system<set-up-shared-file-system>` for more information). 
+        to. See :ref:`Set up a shared file system<set-up-shared-file-system>` for more information. 
         
         .. code-block:: python
 
             mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")
 
-        **Remote (hosted by Databricks)**
+        **Remote, hosted by Databricks**
             
-        Ensure that all nodes have access to the Databricks config file 
-        (See :ref:`Set up credentials<set-up-credentials>` for more information).
+        Ensure that all nodes have access to the Databricks config file. 
+        See :ref:`Set up credentials<set-up-credentials>` for more information.
         
         .. code-block:: python
 
@@ -204,7 +205,7 @@ Refer to each tracking library's API documentation on setting up credentials.
 This step usually involves setting an environment variable or accessing a config file.
 
 The easiest way to pass an environment variable credential to training workers is through 
-:ref:`Runtime environments <runtime-environments>`, where you initialize with the following code:
+:ref:`runtime environments <runtime-environments>`, where you initialize with the following code:
 
 .. code-block:: python
 
@@ -220,7 +221,7 @@ One way to do this is by setting up a shared storage. Another way is to save a c
 Set up a shared file system
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This involves setting up a network filesystem accessible to all nodes in the cluster. 
+Set up a network filesystem accessible to all nodes in the cluster. 
 For example, AWS EFS or Google Cloud Filestore.
 
 Step 2: Configure and start the run 
@@ -270,7 +271,7 @@ Step 3: Log metrics
 You can customize how to log parameters, metrics, models, or media contents, within 
 :ref:`train_func<train-overview-training-function>`, just as in a non-distributed training script. 
 You can also use native integrations that a particular tracking framework has with 
-specific training frameworks. For example ``mlflow.pytorch.autolog()``, 
+specific training frameworks. For example, ``mlflow.pytorch.autolog()``, 
 ``lightning.pytorch.loggers.MLFlowLogger``, etc. 
 
 Step 4: Finish the run
@@ -319,7 +320,7 @@ PyTorch
             :language: python
             :start-after: __start__
 
-.. dropdown:: Log to file based MLflow
+.. dropdown:: Log to file-based MLflow
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/torch_exp_tracking_mlflow.py
         :emphasize-lines: 22, 23, 24, 25, 54, 55, 57, 58, 64
@@ -330,12 +331,10 @@ PyTorch
 PyTorch Lightning
 -----------------
 
-You can use the native Logger integration in PyTorch Lightning with **W&B**, **CometML**, **MLFlow**, 
-and **Tensorboard**, while using Ray Train's TorchTrainer.
+You can use the native Logger integration in PyTorch Lightning with W&B, CometML, MLFlow, 
+and Tensorboard, while using Ray Train's TorchTrainer.
 
 The following example walks you through the process. The code here is runnable. 
-There is a common shared piece of setting up a dummy model and dataloader
-just for demonstration purposes.
 
 .. dropdown:: W&B
 
@@ -381,7 +380,7 @@ Common Errors
 Missing Credentials
 -------------------
 
-**I have already called `wandb login` cli, but still getting** 
+**I have already called `wandb login` cli, but am still getting** 
 
 .. code-block:: none
 
@@ -395,7 +394,7 @@ See :ref:`Set up credentials <set-up-credentials>` for more details.
 Missing Configurations
 ----------------------
 
-**I have already run `databricks configure`, but still getting**
+**I have already run `databricks configure`, but am still getting**
 
 .. code-block:: none
 

@@ -3,14 +3,14 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from torch.utils.data import TensorDataset, DataLoader
 
-# create dummy data
+# Create dummy data
 X = torch.randn(128, 3)  # 128 samples, 3 features
 y = torch.randint(0, 2, (128,))  # 128 binary labels
 
-# create a TensorDataset to wrap the data
+# Create a TensorDataset to wrap the data
 dataset = TensorDataset(X, y)
 
-# create a DataLoader to iterate over the dataset
+# Create a DataLoader to iterate over the dataset
 batch_size = 8
 dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
