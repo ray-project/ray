@@ -601,6 +601,29 @@ def test_trainer(
     )
 
 
+def test_local_dir(tmp_path):
+    """Test that local_dir can do the same job as `RAY_AIR_LOCAL_CACHE_DIR`."""
+
+    def train_fn(config):
+        from ray.train._internal.session import get_session
+
+        assert get_session().storage.storage_local_path == str(tmp_path)
+
+    tune.run(train_fn, local_dir=str(tmp_path))
+
+    results = tune.Tuner(
+        train_fn, run_config=train.RunConfig(local_dir=str(tmp_path))
+    ).fit()
+    assert not results.errors
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=train.ScalingConfig(num_workers=2),
+        run_config=train.RunConfig(local_dir=str(tmp_path)),
+    )
+    trainer.fit()
+
+
 if __name__ == "__main__":
     import sys
 
