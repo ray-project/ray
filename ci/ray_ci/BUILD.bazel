@@ -35,6 +35,20 @@ py_binary(
 )
 
 py_test(
+    name = "test_container",
+    size = "small",
+    srcs = ["test_container.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_tester",
     size = "small",
     srcs = ["test_tester.py"],
@@ -64,9 +78,9 @@ py_test(
 )
 
 py_test(
-    name = "test_container",
+    name = "test_tester_container",
     size = "small",
-    srcs = ["test_container.py"],
+    srcs = ["test_tester_container.py"],
     tags = [
         "ci_unit",
         "team:ci",
