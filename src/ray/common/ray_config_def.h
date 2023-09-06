@@ -520,6 +520,7 @@ RAY_CONFIG(bool, enable_metrics_collection, true)
 /// Whether or not we enable gRPC metrics collection.
 /// Note: this field is used at program start time and cannot be switched by config
 /// changes. If you want to reset this value, re-start your program.
+/// TODO: it only works for gcs now.
 RAY_CONFIG(bool, enable_grpc_metrics_collection, false)
 
 // Max number bytes of inlined objects in a task rpc request/response.

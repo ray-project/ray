@@ -544,6 +544,7 @@ ray_cc_binary(
         ":gcs_server_lib",
         ":stats_lib",
         "@com_github_gflags_gflags//:gflags",
+        "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
 )
 
@@ -578,10 +579,8 @@ ray_cc_library(
         "src/ray/stats/tag_defs.h",
     ],
     deps = [
-        "//src/ray/common:ray_config",
         "//src/ray/util",
         "@com_github_jupp0r_prometheus_cpp//pull",
-        "@com_github_grpc_grpc//:grpc_opencensus_plugin",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
