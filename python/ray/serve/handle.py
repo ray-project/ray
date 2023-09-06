@@ -828,7 +828,7 @@ class DeploymentHandle(_DeploymentHandleBase):
 
         .. code-block:: python
 
-            response = handle.options(
+            response: DeploymentResponse = handle.options(
                 method_name="other_method",
                 multiplexed_model_id="model:v1",
             ).remote()

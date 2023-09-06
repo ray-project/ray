@@ -16,6 +16,16 @@ NOTE: `serve.deployment` and `serve.Deployment` have an autosummary-generated fi
 This is fixed by added custom filename mappings in `source/conf.py` (look for "autosummary_filename_map").
 --->
 
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_init_args.rst
+
+   serve.Deployment
+   serve.Application
+```
+
 #### Deployment Decorators
 
 ```{eval-rst}
@@ -30,7 +40,7 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    serve.multiplexed
 ```
 
-#### Object Types
+#### Deployment Handles
 
 ```{eval-rst}
 .. autosummary::
@@ -38,8 +48,6 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    :toctree: doc/
    :template: autosummary/class_without_init_args.rst
 
-   serve.Deployment
-   serve.Application
    serve.handle.DeploymentHandle
    serve.handle.DeploymentResponse
    serve.handle.DeploymentResponseGenerator
