@@ -427,7 +427,39 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   return direct_return;
 }
 
-void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
+void TaskManager::MarkObjectRefStreamLineageReleased(const TaskSpecification &spec) {
+  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  // absl::flat_hash_set<ObjectID> object_ids_unconsumed;
+
+  if (spec.IsStreamingGenerator()) {
+    auto generator_id = spec.ReturnId(0);
+    auto it = object_ref_streams_.find(generator_id);
+    if (it == object_ref_streams_.end()) {
+      return;
+    }
+
+    auto &stream = it->second;
+    stream.MarkStreamLineageReleased();
+    // object_ids_unconsumed = stream.GetItemsUnconsumed();
+    if (stream.ShouldDelete()) {
+      object_ref_streams_.erase(generator_id);
+    }
+  }
+
+  // for (const auto &object_id : object_ids_unconsumed) {
+  //   std::vector<ObjectID> deleted;
+  //   RAY_LOG(DEBUG) << "Removing unconsume streaming ref " << object_id;
+  //   reference_counter_->RemoveLocalReference(object_id, &deleted);
+  //   // TODO(sang): This is required because the reference counter
+  //   // cannot remove objects from the in memory store.
+  //   // Instead of doing this manually here, we should modify
+  //   // reference_count.h to automatically remove objects
+  //   // when the ref goes to 0.
+  //   in_memory_store_->Delete(deleted);
+  // }
+}
+
+void TaskManager::MarkObjectRefStreamDeleted(const ObjectID &generator_id) {
   absl::MutexLock lock(&objet_ref_stream_ops_mu_);
 
   RAY_LOG(DEBUG) << "Deleting an object ref stream of an id " << generator_id;
@@ -438,11 +470,18 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
     return;
   }
 
-  const auto &stream = it->second;
-  object_ids_unconsumed = stream.GetItemsUnconsumed();
-  object_ref_streams_.erase(generator_id);
+  auto &stream = it->second;
 
-  // When calling RemoveLocalReference, we shouldn't hold a lock.
+  if (stream.IsStreamDeletedByLangFrontend()) {
+    return;
+  }
+
+  object_ids_unconsumed = stream.GetItemsUnconsumed();
+  stream.MarkStreamDeletedByLangFrontend();
+  if (stream.ShouldDelete()) {
+    object_ref_streams_.erase(generator_id);
+  }
+
   for (const auto &object_id : object_ids_unconsumed) {
     std::vector<ObjectID> deleted;
     RAY_LOG(DEBUG) << "Removing unconsume streaming ref " << object_id;
@@ -529,6 +568,9 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
       if (it->second.spec.AttemptNumber() > attempt_number) {
+        RAY_LOG(DEBUG)
+            << "Ignore intermediate result because the attempt number is wrong "
+            << generator_id;
         // Generator task reports can arrive at any time. If the first attempt
         // fails, we may receive a report from the first executor after the
         // second attempt has started. In this case, we should ignore the first
@@ -546,6 +588,9 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     // Stream has been already deleted. Do not handle it.
+    RAY_LOG(DEBUG) << "Ignore the intermdeiate result because the ObjectRefStream is "
+                      "already deleted "
+                   << generator_id;
     return false;
   }
 
@@ -734,6 +779,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
             total_lineage_footprint_bytes_ - (max_lineage_bytes_ / 2);
       }
     } else {
+      MarkObjectRefStreamLineageReleased(it->second.spec);
       submissible_tasks_.erase(it);
     }
   }
@@ -886,6 +932,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                ? gcs::GetRayErrorInfo(error_type, (status ? status->ToString() : ""))
                : *ray_error_info));
     }
+    MarkObjectRefStreamLineageReleased(it->second.spec);
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
@@ -1063,6 +1110,7 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
     total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
+    MarkObjectRefStreamLineageReleased(it->second.spec);
     submissible_tasks_.erase(it);
   }
 

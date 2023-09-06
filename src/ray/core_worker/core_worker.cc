@@ -2790,8 +2790,8 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
   return status;
 }
 
-void CoreWorker::DelObjectRefStream(const ObjectID &generator_id) {
-  task_manager_->DelObjectRefStream(generator_id);
+void CoreWorker::MarkObjectRefStreamDeleted(const ObjectID &generator_id) {
+  task_manager_->MarkObjectRefStreamDeleted(generator_id);
 }
 
 Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
