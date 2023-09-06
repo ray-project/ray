@@ -8,14 +8,13 @@ import pytest
 import ray
 from ray.serve._private.common import (
     DeploymentID,
-    DeploymentConfig,
     DeploymentInfo,
     DeploymentStatus,
-    ReplicaConfig,
     ReplicaTag,
     ReplicaName,
     ReplicaState,
 )
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deployment_scheduler import (
     ReplicaSchedulingRequest,
 )

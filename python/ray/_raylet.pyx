@@ -156,7 +156,7 @@ from ray.includes.libcoreworker cimport (
 
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
-from ray.includes.global_state_accessor cimport RedisDelKeySync
+from ray.includes.global_state_accessor cimport RedisDelKeySync, RedisGetKeySync
 from ray.includes.optional cimport (
     optional, nullopt
 )
@@ -306,8 +306,9 @@ class StreamingObjectRefGenerator:
         return await self._next_async()
 
     def _next_sync(
-            self,
-            timeout_s: Optional[float] = None) -> ObjectRef:
+        self,
+        timeout_s: Optional[float] = None
+    ) -> ObjectRef:
         """Waits for timeout_s and returns the object ref if available.
 
         If an object is not available within the given timeout, it
@@ -315,8 +316,7 @@ class StreamingObjectRefGenerator:
 
         If -1 timeout is provided, it means it waits infinitely.
 
-        Waiting is implemented as busy waiting. You can control
-        the busy waiting interval via sleep_interval_s.
+        Waiting is implemented as busy waiting.
 
         Raises StopIteration if there's no more objects
         to generate.
@@ -375,8 +375,8 @@ class StreamingObjectRefGenerator:
 
     async def _next_async(
             self,
-            timeout_s: Optional[float] = None,
-            sleep_interval_s: float = 0.0001):
+            timeout_s: Optional[float] = None
+    ):
         """Same API as _next_sync, but it is for async context."""
         self.worker.check_connected()
         core_worker = self.worker.core_worker
@@ -435,6 +435,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
+    if status.IsInvalidArgument():
+        raise ValueError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
     elif status.IsObjectRefEndOfStream():
@@ -3796,6 +3798,9 @@ cdef class CoreWorker:
             status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
                                             c_object_id, force_kill, recursive)
 
+        if status.IsInvalidArgument():
+            raise ValueError(status.message().decode())
+
         if not status.ok():
             raise TypeError(status.message().decode())
 
@@ -4574,3 +4579,25 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
 
 def del_key_from_storage(host, port, password, use_ssl, key):
     return RedisDelKeySync(host, port, password, use_ssl, key)
+
+
+def get_session_key_from_storage(host, port, password, use_ssl, config, key):
+    """
+    Get the session key from the storage.
+    Intended to be used for session_name only.
+    Args:
+        host: The address of the owner (caller) of the
+            generator task.
+        port: The task ID of the generator task.
+        password: The redis password.
+        use_ssl: Whether to use SSL.
+        config: The Ray config. Used to get storage namespace.
+        key: The key to retrieve.
+    """
+    cdef:
+        c_string data
+    result = RedisGetKeySync(host, port, password, use_ssl, config, key, &data)
+    if result:
+        return data
+    else:
+        return None

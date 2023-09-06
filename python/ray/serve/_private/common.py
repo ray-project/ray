@@ -5,7 +5,7 @@ from typing import Any, List, Dict, Optional, NamedTuple
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.generated.serve_pb2 import (
     DeploymentInfo as DeploymentInfoProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -443,7 +443,7 @@ class ServeDeployMode(str, Enum):
 
 # Keep in sync with ServeSystemActorStatus in
 # python/ray/dashboard/client/src/type/serve.ts
-class HTTPProxyStatus(str, Enum):
+class ProxyStatus(str, Enum):
     STARTING = "STARTING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
