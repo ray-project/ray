@@ -50,6 +50,10 @@ http_options:
   host: 0.0.0.0
   port: 8000
 
+grpc_options:
+  port: 9000
+  grpc_servicer_functions: []
+
 applications:
 - name: app1
   route_prefix: /classify
