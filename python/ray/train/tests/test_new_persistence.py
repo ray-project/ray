@@ -25,14 +25,16 @@ from ray.tune.trainable.trainable import _DICT_CHECKPOINT_FILE_NAME
 from ray.train.tests.util import mock_s3_bucket_uri
 
 
-_SCORE_KEY = "score"
-NUM_ITERATIONS = 6  # == num_checkpoints == num_artifacts
-NUM_TRIALS = 2
-NUM_WORKERS = 3
+class TestConstants:
+    NUM_ITERATIONS = 6  # == num_checkpoints == num_artifacts
+    NUM_TRIALS = 2
+    NUM_WORKERS = 3
+
+    SCORE_KEY = "score"
 
 
 @contextmanager
-def dummy_context_manager():
+def dummy_context_manager(*args, **kwargs):
     yield "dummy value"
 
 
@@ -164,16 +166,20 @@ def train_fn(config):
 
     checkpoint = train.get_checkpoint()
     if checkpoint:
-        with checkpoint.as_directory() as checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, "checkpoint.pkl"), "rb") as f:
-                state = pickle.load(f)
+        custom_restore_fn = config.get("custom_restore_fn")
+        if custom_restore_fn:
+            state = custom_restore_fn(checkpoint)
+        else:
+            with checkpoint.as_directory() as checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "checkpoint.pkl"), "rb") as f:
+                    state = pickle.load(f)
         print("Loaded back state from checkpoint:", state)
         start = state["iter"] + 1
 
     for i in range(start, config.get("num_iterations", 5)):
-        time.sleep(0.25)
+        time.sleep(config.get("time_per_iter", 0.25))
 
-        metrics = {"iter": i, _SCORE_KEY: i}
+        metrics = {"iter": i, TestConstants.SCORE_KEY: i}
 
         # Save an artifact in the local trial dir.
         rank = train.get_context().get_world_rank()
@@ -199,7 +205,10 @@ def train_fn(config):
                     with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
                         pickle.dump({"iter": i}, f)
 
-                train.report(metrics, checkpoint=Checkpoint.from_directory(temp_dir))
+                with config.get("custom_save_fn", dummy_context_manager)(temp_dir):
+                    train.report(
+                        metrics, checkpoint=Checkpoint.from_directory(temp_dir)
+                    )
                 # `train.report` should not have deleted this!
                 assert os.path.exists(temp_dir)
 
@@ -299,6 +308,7 @@ def _assert_storage_contents(
     trainable_name: str,
     test_trainer: bool,
     no_checkpoint_ranks: List[int] = None,
+    constants: type = TestConstants,
 ):
     # Second, inspect the contents of the storage path
     storage_path_ls = list(local_inspect_dir.glob("*"))
@@ -319,11 +329,13 @@ def _assert_storage_contents(
     assert (
         len(list(exp_dir.glob(f"{trainable_name}*"))) == 1
         if test_trainer
-        else NUM_TRIALS
+        else constants.NUM_TRIALS
     )
     for trial_dir in exp_dir.glob(f"{trainable_name}*"):
         # If set, expect num_to_keep. Otherwise, expect to see all of them.
-        expected_num_checkpoints = checkpoint_config.num_to_keep or NUM_ITERATIONS
+        expected_num_checkpoints = (
+            checkpoint_config.num_to_keep or constants.NUM_ITERATIONS
+        )
 
         assert len(list(trial_dir.glob("checkpoint_*"))) == expected_num_checkpoints
         checkpoint_idxs = sorted(
@@ -335,7 +347,10 @@ def _assert_storage_contents(
         # Ex: If num_to_keep=2 out of 6 total checkpoints,
         # expect checkpoint_004 and checkpoint_005.
         assert checkpoint_idxs == list(
-            range(NUM_ITERATIONS - expected_num_checkpoints, NUM_ITERATIONS)
+            range(
+                constants.NUM_ITERATIONS - expected_num_checkpoints,
+                constants.NUM_ITERATIONS,
+            )
         )
 
         for checkpoint_dir in trial_dir.glob("checkpoint_*"):
@@ -353,12 +368,16 @@ def _assert_storage_contents(
                     for checkpoint_shard in checkpoint_dir.glob(
                         "checkpoint_shard-*.pkl"
                     )
-                } == {i for i in range(NUM_WORKERS) if i not in no_checkpoint_ranks}
+                } == {
+                    i
+                    for i in range(constants.NUM_WORKERS)
+                    if i not in no_checkpoint_ranks
+                }
 
         if test_trainer:
-            expected_num_artifacts = NUM_ITERATIONS * NUM_WORKERS
+            expected_num_artifacts = constants.NUM_ITERATIONS * constants.NUM_WORKERS
         else:
-            expected_num_artifacts = NUM_ITERATIONS
+            expected_num_artifacts = constants.NUM_ITERATIONS
         assert len(list(trial_dir.glob("artifact-*"))) == expected_num_artifacts
 
         # NOTE: This result file is synced by the driver.
@@ -419,7 +438,7 @@ def test_tuner(
         tuner = tune.Tuner(
             trainable,
             param_space={
-                "num_iterations": NUM_ITERATIONS,
+                "num_iterations": TestConstants.NUM_ITERATIONS,
                 "fail_iters": [2, 4],
                 # NOTE: This param is only used in the ClassTrainable.
                 "save_checkpoint_as_dict": tune.grid_search([True, False]),
@@ -464,7 +483,7 @@ def test_tuner(
     experiment_fs_path = result_grid.experiment_path
     assert isinstance(result_grid.filesystem, pyarrow.fs.FileSystem), result_grid
     assert experiment_fs_path == os.path.join(storage_fs_path, exp_name)
-    assert len(result_grid) == NUM_TRIALS
+    assert len(result_grid) == TestConstants.NUM_TRIALS
     for result in result_grid:
         trial_fs_path = result.path
         assert isinstance(result.filesystem, pyarrow.fs.FileSystem), result
@@ -489,7 +508,7 @@ def test_tuner(
         train.CheckpointConfig(),
         train.CheckpointConfig(
             num_to_keep=1,
-            checkpoint_score_attribute=_SCORE_KEY,
+            checkpoint_score_attribute=TestConstants.SCORE_KEY,
             checkpoint_score_order="max",
         ),
     ],
@@ -538,14 +557,14 @@ def test_trainer(
             train_fn,
             train_loop_config={
                 "in_trainer": True,
-                "num_iterations": NUM_ITERATIONS,
+                "num_iterations": TestConstants.NUM_ITERATIONS,
                 "fail_iters": [2, 4],
                 # TODO(justinvyu): This should be separated into its own test once
                 # CI has been fully migrated.
                 # Test that global rank 0 is not required to checkpoint.
                 "no_checkpoint_ranks": no_checkpoint_ranks,
             },
-            scaling_config=train.ScalingConfig(num_workers=NUM_WORKERS),
+            scaling_config=train.ScalingConfig(num_workers=TestConstants.NUM_WORKERS),
             run_config=train.RunConfig(
                 storage_path=storage_path,
                 storage_filesystem=storage_filesystem,
@@ -574,7 +593,8 @@ def test_trainer(
                 "RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "resume_from_checkpoint")
             )
             _resume_from_checkpoint(
-                result.checkpoint, expected_state={"iter": NUM_ITERATIONS - 1}
+                result.checkpoint,
+                expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
             )
 
         local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
