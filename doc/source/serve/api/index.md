@@ -40,6 +40,9 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 
    serve.Deployment
    serve.Application
+   serve.handle.DeploymentHandle
+   serve.handle.DeploymentResponse
+   serve.handle.DeploymentResponseGenerator
    serve.handle.RayServeHandle
    serve.handle.RayServeSyncHandle
 ```
