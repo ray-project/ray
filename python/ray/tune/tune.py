@@ -677,7 +677,6 @@ def run(
     if _use_storage_context():
         local_path, remote_path = None, None
         sync_config = sync_config or SyncConfig()
-        # TODO(justinvyu): Fix telemetry for the new persistence.
 
         # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
         # For now, keep accepting both options.
@@ -952,6 +951,9 @@ def run(
         )
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
+
+    if _use_storage_context():
+        air_usage.tag_storage_type(experiments[0].storage)
 
     # NOTE: Report callback telemetry before populating the list with default callbacks.
     # This tracks user-specified callback usage.
