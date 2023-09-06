@@ -195,7 +195,7 @@ If applicable, make sure that you properly set up credentials on each training w
             mlflow.set_tracking_uri("databricks")
             mlflow.start_run()
 
-.. set-up-credentials
+.. _set-up-credentials:
 
 Set up credentials
 ~~~~~~~~~~~~~~~~~~
@@ -215,7 +215,7 @@ The easiest way to pass an environment variable credential to training workers i
 For accessing the config file, ensure that the config file is accessible to all nodes.
 One way to do this is by setting up a shared storage. Another way is to save a copy in each node.
 
-.. set-up-shared-file-system
+.. _set-up-shared-file-system:
 
 Set up a shared file system
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
