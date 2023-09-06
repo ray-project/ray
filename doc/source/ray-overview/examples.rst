@@ -82,7 +82,7 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training
-        :link: /ray-air/examples/lightgbm_example
+        :link: /train/examples/lightgbm/lightgbm_example
         :link-type: doc
 
         Distributed training with LightGBM

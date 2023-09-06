@@ -6,7 +6,6 @@ Examples
 Framework-specific Examples
 ---------------------------
 
-- :doc:`/ray-air/examples/lightgbm_example`: Distributed training with LightGBM
 - :doc:`/ray-air/examples/xgboost_example`: Distributed training with XGBoost
 
 Text/NLP
