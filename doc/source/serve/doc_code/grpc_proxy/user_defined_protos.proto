@@ -27,13 +27,13 @@ message UserDefinedResponse2 {
 }
 
 message ImageData {
-    string url = 1;
-    string filename = 2;
+  string url = 1;
+  string filename = 2;
 }
 
 message ImageClass {
-    repeated string classes = 1;
-    repeated float probabilities = 2;
+  repeated string classes = 1;
+  repeated float probabilities = 2;
 }
 
 service UserDefinedService {
