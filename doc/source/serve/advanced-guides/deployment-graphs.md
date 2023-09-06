@@ -16,7 +16,7 @@ The basic building block for all deployment graphs is the `DeploymentNode`. One 
 
 As another example:
 
-```{literalinclude} ../doc_code/model_composition/class_nodes.py
+```{literalinclude} ../doc_code/model_composition/language_example.py
 :start-after: __echo_class_start__
 :end-before: __echo_class_end__
 :language: python
@@ -46,7 +46,7 @@ $ serve run echo:foo_node
 
 Here's a client script that can send requests to your node:
 
-```{literalinclude} ../doc_code/model_composition/class_nodes.py
+```{literalinclude} ../doc_code/model_composition/language_example.py
 :start-after: __echo_client_start__
 :end-before: __echo_client_end__
 :language: python
