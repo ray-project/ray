@@ -173,7 +173,6 @@ kubectl wait --namespace ingress-nginx \
 
 # Step 3: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm repo
 helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0-rc.0
 
 # Step 4: Install RayCluster and create an ingress separately.
