@@ -27,11 +27,11 @@ genrule(
     srcs = [
         "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto",
         "@io_opencensus_proto//opencensus/proto/resource/v1:resource.proto",
-        "//src/ray/protobuf:all_proto",
+        "//src/ray/protobuf:all_protos",
     ],
     cmd = """
         TMP=$$(mktemp -d)
-        $(location :grpc_tools_protoc) --python_out=$${TMP} --grpc_python_out=$${TMP} $(locations //src/ray/protobuf:all_proto) --proto_path=. --proto_path=$$(dirname $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto))/../../../..
+        $(location :grpc_tools_protoc) --python_out=$${TMP} --grpc_python_out=$${TMP} $(locations //src/ray/protobuf:all_protos) --proto_path=. --proto_path=$$(dirname $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto))/../../../..
         mkdir -p opencensus/proto/metrics/v1
         mkdir -p opencensus/proto/resource/v1
         cp $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto) opencensus/proto/metrics/v1/metrics.proto

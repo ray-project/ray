@@ -383,7 +383,7 @@ cc_proto_library(
 
 
 filegroup(
-    name = "all_proto",
+    name = "all_protos",
     srcs = glob([
         "**/*.proto",
     ]),
