@@ -479,7 +479,7 @@ class RpcError(RayError):
         self.rpc_code = rpc_code
 
     def __str__(self):
-        return self.message
+        return self.message + f", rpc_code={self.rpc_code}"
 
 
 @DeveloperAPI

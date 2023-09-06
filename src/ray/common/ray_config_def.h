@@ -448,8 +448,8 @@ RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 /// gRPC channel reconnection related configs to GCS.
 /// Check https://grpc.github.io/grpc/core/group__grpc__arg__keys.html for details
 RAY_CONFIG(int32_t, gcs_grpc_max_reconnect_backoff_ms, 2000)
-RAY_CONFIG(int32_t, gcs_grpc_min_reconnect_backoff_ms, 100)
-RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 100)
+RAY_CONFIG(int32_t, gcs_grpc_min_reconnect_backoff_ms, 500)
+RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 500)
 
 /// Maximum bytes of request queued when RPC failed due to GCS is down.
 /// If reach the limit, the core worker will hang until GCS is reconnected.
