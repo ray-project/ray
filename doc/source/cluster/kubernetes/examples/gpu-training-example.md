@@ -1,7 +1,7 @@
 (kuberay-gpu-training-example)=
 
-# ML training with GPUs on Kubernetes
-In this guide, we show you how to run a sample Ray machine learning training workload with GPU on Kubernetes infrastructure. We will run Ray's {ref}`PyTorch image training benchmark <pytorch_gpu_training_benchmark>` with a 1 gigabyte training set.
+# Train PyTorch ResNet model with GPUs on Kubernetes
+This guide runs a sample Ray machine learning training workload with GPU on Kubernetes infrastructure. It runs Ray's {ref}`PyTorch image training benchmark <pytorch_gpu_training_benchmark>` with a 1 gigabyte training set.
 
 :::{note}
 To learn the basics of Ray on Kubernetes, we recommend taking a look
@@ -42,6 +42,7 @@ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container
 
 # Install both CRDs and KubeRay operator v0.6.0.
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update
 helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
 
 # Create a Ray cluster
@@ -114,6 +115,7 @@ It is optional.
 # Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
 # Create the KubeRay operator
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update
 helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
 
 # Create a Ray cluster

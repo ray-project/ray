@@ -58,7 +58,7 @@ describe("ServeSystemDetails", () => {
       { wrapper: TEST_APP_WRAPPER },
     );
     await screen.findByText("STARTING");
-    // Controller and HTTP Proxy
+    // Controller and Proxy
     expect(screen.getAllByText("HEALTHY")).toHaveLength(2);
     expect(screen.getByText("STARTING")).toBeInTheDocument();
     // Applications

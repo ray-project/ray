@@ -12,5 +12,7 @@ Ray Train User Guides
     user-guides/monitoring-logging
     user-guides/checkpoints
     user-guides/experiment-tracking
+    user-guides/results
     user-guides/fault-tolerance
-    user-guides/advanced
+    user-guides/reproducibility
+    Hyperparameter Optimization <user-guides/hyperparameter-optimization>

@@ -61,7 +61,7 @@ using rpc::ResourceUsageBatchData;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
-  ResourceRequest resource_config;
+  ResourceSet resource_config;
   /// The IP address this node manager is running on.
   std::string node_manager_address;
   /// The port to use for listening to incoming connections. If this is 0 then
@@ -224,6 +224,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::function<void()> &on_all_replied);
 
  private:
+  /// If the primary objects' usage is over the threshold
+  /// specified in RayConfig, spill objects up to the max
+  /// throughput.
+  void SpillIfOverPrimaryObjectsThreshold();
+
   /// Methods for handling nodes.
 
   /// Handle an unexpected failure notification from GCS pubsub.
@@ -263,10 +268,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Fill out the normal task resource report.
   void FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data);
-
-  /// Fill out the resource report. This can be called by either method to transport the
-  /// report to GCS.
-  void FillResourceReport(rpc::ResourcesData &resources_data);
 
   /// Write out debug state to a file.
   void DumpDebugState() const;
@@ -484,15 +485,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return void.
   void ProcessSubscribePlasmaReady(const std::shared_ptr<ClientConnection> &client,
                                    const uint8_t *message_data);
-
-  void HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest request,
-                                 rpc::UpdateResourceUsageReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `RequestResourceReport` request.
-  void HandleRequestResourceReport(rpc::RequestResourceReportRequest request,
-                                   rpc::RequestResourceReportReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetResourceLoad` request.
   void HandleGetResourceLoad(rpc::GetResourceLoadRequest request,

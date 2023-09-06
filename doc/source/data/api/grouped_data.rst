@@ -5,7 +5,8 @@ GroupedData API
 
 .. currentmodule:: ray.data
 
-GroupedData objects are returned by groupby call: Dataset.groupby().
+GroupedData objects are returned by groupby call: 
+:meth:`Dataset.groupby() <ray.data.Dataset.groupby>`.
 
 Constructor
 -----------

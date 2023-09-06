@@ -167,9 +167,6 @@ class ResourceTrackingInterface {
       std::string &serialized_resource_usage_batch,
       const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) = 0;
 
-  virtual void RequestResourceReport(
-      const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) = 0;
-
   virtual void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) = 0;
 
@@ -483,9 +480,6 @@ class RayletClient : public RayletClientInterface {
   void UpdateResourceUsage(
       std::string &serialized_resource_usage_batch,
       const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override;
-
-  void RequestResourceReport(
-      const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override;
 
   void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;

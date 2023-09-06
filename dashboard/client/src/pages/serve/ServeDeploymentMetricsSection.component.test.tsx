@@ -20,6 +20,7 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
         nodeMap: {},
         nodeMapByIp: {},
         namespaceMap: {},
+        dashboardDatasource: "Prometheus",
       }}
     >
       {children}
@@ -44,6 +45,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
         nodeMap: {},
         nodeMapByIp: {},
         namespaceMap: {},
+        dashboardDatasource: "Prometheus",
       }}
     >
       {children}

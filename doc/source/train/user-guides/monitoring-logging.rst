@@ -1,7 +1,7 @@
 .. _train-monitoring-and-logging:
 
-Monitoring and Logging
-======================
+Monitoring and Logging Metrics
+==============================
 
 Ray Train provides an API for reporting intermediate
 results and checkpoints from the training function (run on distributed workers) up to the

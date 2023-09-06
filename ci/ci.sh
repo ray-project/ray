@@ -210,7 +210,6 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
-      -python/ray/serve:conda_env # pip field in runtime_env not supported
       -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
       -python/ray/serve:test_gcs_failure # Fork not supported in windows
       -python/ray/serve:test_standalone_2 # Multinode not supported on Windows
@@ -224,6 +223,7 @@ test_python() {
       -python/ray/tests:test_cli
       -python/ray/tests:test_client_init # timeout
       -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
+      -python/ray/tests:test_gcp_tpu_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_gcs_fault_tolerance # flaky
       -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc
@@ -237,6 +237,7 @@ test_python() {
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
+      -python/ray/tests:vsphere/test_vsphere_node_provider # irrelevant on windows
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
@@ -371,9 +372,7 @@ check_sphinx_links() {
 _bazel_build_before_install() {
   local target
   if [ "${OSTYPE}" = msys ]; then
-    # On Windows, we perform as full of a build as possible, to ensure the repository always remains buildable on Windows.
-    # (Pip install will not perform a full build.)
-    target="//:*"
+    target="//:ray_pkg"
   else
     # Just build Python on other platforms.
     # This because pip install captures & suppresses the build output, which causes a timeout on CI.

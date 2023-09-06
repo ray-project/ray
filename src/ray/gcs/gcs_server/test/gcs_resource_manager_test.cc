@@ -36,7 +36,6 @@ class GcsResourceManagerTest : public ::testing::Test {
       const NodeID &node_id,
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
-      bool available_resources_changed,
       int64_t idle_ms = 0,
       bool is_draining = false) {
     rpc::ResourcesData resources_data;
@@ -44,7 +43,6 @@ class GcsResourceManagerTest : public ::testing::Test {
                               node_id,
                               available_resources,
                               total_resources,
-                              available_resources_changed,
                               idle_ms,
                               is_draining);
     gcs_resource_manager_->UpdateFromResourceReport(resources_data);
@@ -87,8 +85,8 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
       /*ignore_object_store_memory_requirement=*/true));
 
   // Test `ReleaseResources`.
-  ASSERT_TRUE(cluster_resource_manager_.AddNodeAvailableResources(scheduling_node_id,
-                                                                  resource_request));
+  ASSERT_TRUE(cluster_resource_manager_.AddNodeAvailableResources(
+      scheduling_node_id, resource_request.GetResourceSet()));
 }
 
 TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
@@ -143,7 +141,6 @@ TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
   resources_data.set_node_id(node->node_id());
   resources_data.mutable_resources_total()->insert({"CPU", 5});
   resources_data.mutable_resources_available()->insert({"CPU", 5});
-  resources_data.set_resources_available_changed(true);
   gcs_resource_manager_->UpdateFromResourceReport(resources_data);
   ASSERT_EQ(cluster_resource_manager_.GetResourceView().size(), 0);
 }
@@ -175,7 +172,6 @@ TEST_F(GcsResourceManagerTest, TestGetDrainingNodes) {
   UpdateFromResourceReportSync(NodeID::FromBinary(node1->node_id()),
                                {/* available */ {"CPU", 10}},
                                /* total*/ {{"CPU", 10}},
-                               /* available_changed*/ true,
                                /* idle_duration_ms */ 8,
                                /* is_draining */ true);
 
@@ -185,7 +181,6 @@ TEST_F(GcsResourceManagerTest, TestGetDrainingNodes) {
   UpdateFromResourceReportSync(NodeID::FromBinary(node2->node_id()),
                                {/* available */ {"CPU", 1}},
                                /* total*/ {{"CPU", 1}},
-                               /* available_changed*/ true,
                                /* idle_duration_ms */ 5,
                                /* is_draining */ false);
 

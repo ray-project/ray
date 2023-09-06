@@ -1,48 +1,7 @@
 # Production requirements. This is what readthedocs.com picks up
 
-# Python / ML libraries
-accelerate>=0.17.0
-click
-colorama
-colorful
-# Newer versions of fairscale do not support Python 3.6 even though they still have wheels for it.
-# Have to manually pin it: https://github.com/facebookresearch/fairscale/issues/962
-fairscale; python_version >= '3.7'
-fairscale<=0.4.0; python_version < '3.7'
-filelock
-flask
-flatbuffers
-fastapi==0.99.1
-jsonschema
-mock
-numpy
-scikit-image
-pandas
-pickle5
-pillow
-pyarrow
-pydantic < 1.10.0
-# Note: more recent typing-extensions does not work well with pinned pydantic <1.10.0
-typing-extensions < 4.6.0
-pyyaml
-pytorch-lightning==1.6.5
-scikit-optimize
-redis
-starlette
-uvicorn==0.22.0
-werkzeug
-wandb
-tensorflow; sys_platform != 'darwin' or platform_machine != 'arm64'
-tensorflow-macos; sys_platform == 'darwin' and platform_machine == 'arm64'
-tensorflow-datasets
-torch
-torchvision
-transformers
-
-# Ray libraries
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
-git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray
-git+https://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
+watchfiles # Required because sphinx-click doesn't support mocking
 
 # Syntax highlighting
 Pygments==2.13.0
@@ -62,6 +21,8 @@ sphinx-tabs==3.4.0
 sphinx-remove-toctrees==0.0.3
 autodoc_pydantic==1.6.1
 sphinx_design==0.4.1
+
+pydantic<2 # Pydantic is required by autodoc_pydantic, but must be <2 for ray
 
 # MyST
 myst-parser==0.15.2

@@ -6,13 +6,12 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Un
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
-from ray import tune
-from ray.air.checkpoint import Checkpoint
+from ray import air, tune
 from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY, LAZY_CHECKPOINT_MARKER_FILE
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
-from ray.train import BackendConfig, TrainingIterator
+from ray.train import BackendConfig, Checkpoint, TrainingIterator
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
@@ -47,7 +46,7 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         )
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        air_checkpoint: Checkpoint = checkpoint.dir_or_data
+        air_checkpoint: air.Checkpoint = checkpoint.dir_or_data
         checkpoint.dir_or_data = add_preprocessor_to_checkpoint(
             air_checkpoint, self.preprocessor
         )
@@ -91,7 +90,7 @@ class DataParallelTrainer(BaseTrainer):
     ``train.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray AIR session methods <air-session-ref>`.
+    :ref:`Ray Train loop methods <train-loop-api>`.
 
     .. testcode::
 
@@ -231,8 +230,9 @@ class DataParallelTrainer(BaseTrainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
+        metadata: Dict that should be made available via
+            `train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
@@ -269,6 +269,7 @@ class DataParallelTrainer(BaseTrainer):
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
         # Deprecated.
         preprocessor: Optional["Preprocessor"] = None,
@@ -327,6 +328,7 @@ class DataParallelTrainer(BaseTrainer):
             scaling_config=scaling_config,
             run_config=run_config,
             datasets=datasets,
+            metadata=metadata,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
@@ -428,15 +430,53 @@ class DataParallelTrainer(BaseTrainer):
             # TODO(ml-team): add ability to report results from multiple workers.
             first_worker_result = results[0]
             if _use_storage_context():
-                assert isinstance(first_worker_result, _TrainingResult)
+                assert all(isinstance(result, _TrainingResult) for result in results)
+
+                tune_session = get_session()
+
+                # Check if any workers reported a checkpoint.
+                # If so, report a checkpoint pointing to the persisted location
+                # to Tune for book-keeping.
+                # NOTE: This removes the restriction for any individual worker
+                # (ex: global rank 0 worker) from needing to report a checkpoint.
+                # All workers reported a checkpoint to the same fs path, so there's
+                # no need to report multiple checkpoints to Tune.
+                worker_checkpoints = [
+                    result.checkpoint
+                    for result in results
+                    if result.checkpoint is not None
+                ]
+                at_least_one_reported_checkpoint = len(worker_checkpoints) > 0
+                # Make sure that all workers uploaded to the same location.
+                assert all(
+                    checkpoint.path == tune_session.storage.checkpoint_fs_path
+                    for checkpoint in worker_checkpoints
+                )
+
+                checkpoint = (
+                    Checkpoint(
+                        filesystem=tune_session.storage.storage_filesystem,
+                        # NOTE: The checkpoint index has not been incremented yet
+                        # at this point, which is why `checkpoint_fs_path` points
+                        # to the most recent checkpoint.
+                        path=tune_session.storage.checkpoint_fs_path,
+                    )
+                    if at_least_one_reported_checkpoint
+                    else None
+                )
+                tracked_training_result = _TrainingResult(
+                    checkpoint=checkpoint,
+                    metrics=first_worker_result.metrics,
+                )
+
                 logger.debug(
                     "Report (metrics, checkpoint) to the Tune session:\n"
-                    f"  metrics={first_worker_result.metrics}\n"
-                    f"  checkpoint={first_worker_result.checkpoint}"
+                    f"  metrics={tracked_training_result.metrics}\n"
+                    f"  checkpoint={tracked_training_result.checkpoint}"
                 )
+
                 # Report the metrics and checkpoint to Tune.
-                tune_session = get_session()
-                tune_session._report_training_result(first_worker_result)
+                tune_session._report_training_result(tracked_training_result)
             else:
                 tune.report(**first_worker_result)
 
@@ -521,6 +561,7 @@ class DataParallelTrainer(BaseTrainer):
             backend_config=self._backend_config,
             train_func=train_loop_per_worker,
             datasets=self.datasets,
+            metadata=self.metadata,
             data_config=self._data_config,
             checkpoint_manager=checkpoint_manager,
             checkpoint=self.starting_checkpoint,
@@ -650,7 +691,7 @@ class DataParallelTrainer(BaseTrainer):
 
 
 def _load_checkpoint_dict(
-    checkpoint: Checkpoint, trainer_name: str
+    checkpoint: air.Checkpoint, trainer_name: str
 ) -> Tuple[Any, Optional["Preprocessor"]]:
     """Loads a Ray Train Checkpoint (dict based).
 

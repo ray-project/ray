@@ -6,10 +6,7 @@ from ray._private.test_utils import wait_for_condition
 from ray import serve
 from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.constants import REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
-from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
 class Counter:
@@ -221,11 +218,9 @@ def test_health_check_failure_makes_deployment_unhealthy(serve_instance):
     with pytest.raises(RuntimeError):
         serve.run(AlwaysUnhealthy.bind())
 
-    app_status = serve_instance.get_serve_status()
+    app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
     assert (
-        app_status.deployment_statuses[0].name
-        == f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}AlwaysUnhealthy"
-        and app_status.deployment_statuses[0].status == DeploymentStatus.UNHEALTHY
+        app_status.deployments["AlwaysUnhealthy"].status == DeploymentStatus.UNHEALTHY
     )
 
 
@@ -258,12 +253,9 @@ def test_health_check_failure_makes_deployment_unhealthy_transition(serve_instan
             return ray.get_runtime_context().current_actor
 
     def check_status(expected_status: DeploymentStatus):
-        app_status = serve_instance.get_serve_status()
-        return (
-            app_status.deployment_statuses[0].name == f"{SERVE_DEFAULT_APP_NAME}"
-            f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}WillBeUnhealthy"
-            and app_status.deployment_statuses[0].status == expected_status
-        )
+        app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        assert app_status.deployments["WillBeUnhealthy"].status == expected_status
+        return True
 
     toggle = ray.remote(Toggle).remote()
     serve.run(WillBeUnhealthy.bind(toggle))

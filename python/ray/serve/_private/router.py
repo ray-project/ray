@@ -2,6 +2,7 @@ from abc import ABC
 import asyncio
 from collections import defaultdict, deque
 from dataclasses import dataclass
+import enum
 import itertools
 import logging
 import math
@@ -31,11 +32,17 @@ from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 from ray._private.utils import make_asyncio_event_version_compat, load_class
 
-from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
+from ray.serve._private.common import (
+    DeploymentID,
+    DeploymentInfo,
+    RequestProtocol,
+    RunningReplicaInfo,
+)
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
+    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
 )
 from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -62,9 +69,6 @@ class RequestMetadata:
     endpoint: str
     call_method: str = "__call__"
 
-    # This flag is set if the request is made from the HTTP proxy to a replica.
-    is_http_request: bool = False
-
     # HTTP route path of the request.
     route: str = ""
 
@@ -77,6 +81,17 @@ class RequestMetadata:
     # If this request expects a streaming response.
     is_streaming: bool = False
 
+    # The protocol to serve this request
+    _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
+
+    @property
+    def is_http_request(self) -> bool:
+        return self._request_protocol == RequestProtocol.HTTP
+
+    @property
+    def is_grpc_request(self) -> bool:
+        return self._request_protocol == RequestProtocol.GRPC
+
 
 @dataclass
 class Query:
@@ -84,49 +99,75 @@ class Query:
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
 
-    async def resolve_async_tasks(self):
-        """Find all unresolved asyncio.Task and gather them all at once."""
-        scanner = _PyObjScanner(source_type=asyncio.Task)
+    async def replace_known_types_in_args(self):
+        """Uses the `_PyObjScanner` to find and replace known types.
+
+        1) Replaces `asyncio.Task` objects with their results. This is used for the old
+           serve handle API and should be removed once that API is deprecated & removed.
+        2) Replaces `DeploymentResponse` objects with their resolved object refs. This
+           enables composition without explicitly calling `_to_object_ref`.
+        3) Buffers the bodies of `starlette.requests.Request` objects to avoid them
+           being unserializable. This is a temporary compatibility measure and passing
+           the objects should be fully disallowed in a future release.
+        """
+        from ray.serve.handle import (
+            _DeploymentResponseBase,
+            DeploymentResponse,
+            DeploymentResponseGenerator,
+        )
+
+        scanner = _PyObjScanner(
+            source_type=(asyncio.Task, _DeploymentResponseBase, Request)
+        )
 
         try:
-            tasks = scanner.find_nodes((self.args, self.kwargs))
+            tasks = []
+            responses = []
+            replacement_table = {}
+            objs = scanner.find_nodes((self.args, self.kwargs))
+            for obj in objs:
+                if isinstance(obj, asyncio.Task):
+                    tasks.append(obj)
+                elif isinstance(obj, DeploymentResponseGenerator):
+                    raise RuntimeError(
+                        "Streaming deployment handle results cannot be passed to "
+                        "downstream handle calls. If you have a use case requiring "
+                        "this feature, please file a feature request on GitHub."
+                    )
+                elif isinstance(obj, DeploymentResponse):
+                    responses.append(obj)
+                elif isinstance(obj, Request):
+                    global WARNED_ABOUT_STARLETTE_REQUESTS_ONCE
+                    if not WARNED_ABOUT_STARLETTE_REQUESTS_ONCE:
+                        # TODO(edoakes): fully disallow this in the future.
+                        warnings.warn(
+                            "`starlette.Request` objects should not be directly passed "
+                            "via `ServeHandle` calls. Not all functionality is "
+                            "guaranteed to work (e.g., detecting disconnects) and this "
+                            "may be disallowed in a future release."
+                        )
+                        WARNED_ABOUT_STARLETTE_REQUESTS_ONCE = True
 
+                    async def empty_send():
+                        pass
+
+                    obj._send = empty_send
+                    obj._receive = make_buffered_asgi_receive(await obj.body())
+                    replacement_table[obj] = obj
+
+            # Gather `asyncio.Task` results concurrently.
             if len(tasks) > 0:
                 resolved = await asyncio.gather(*tasks)
-                replacement_table = dict(zip(tasks, resolved))
-                self.args, self.kwargs = scanner.replace_nodes(replacement_table)
-        finally:
-            # Make the scanner GC-able to avoid memory leaks.
-            scanner.clear()
+                replacement_table.update(zip(tasks, resolved))
 
-    async def buffer_starlette_requests_and_warn(self):
-        """Buffer any `starlette.request.Requests` objects to make them serializable.
-
-        This is an anti-pattern because the requests will not be fully functional, so
-        warn the user. We may fully disallow it in the future.
-        """
-        global WARNED_ABOUT_STARLETTE_REQUESTS_ONCE
-        scanner = _PyObjScanner(source_type=Request)
-
-        try:
-            requests = scanner.find_nodes((self.args, self.kwargs))
-            if len(requests) > 0 and not WARNED_ABOUT_STARLETTE_REQUESTS_ONCE:
-                WARNED_ABOUT_STARLETTE_REQUESTS_ONCE = True
-                # TODO(edoakes): fully disallow this in the future.
-                warnings.warn(
-                    "`starlette.Request` objects should not be directly passed via "
-                    "`ServeHandle` calls. Not all functionality is guaranteed to work "
-                    "(e.g., detecting disconnects) and this may be disallowed in a "
-                    "future release."
+            # Gather `DeploymentResponse` object refs concurrently.
+            if len(responses) > 0:
+                obj_refs = await asyncio.gather(
+                    *[r._to_object_ref() for r in responses]
                 )
+                replacement_table.update((zip(responses, obj_refs)))
 
-            for request in requests:
-
-                async def empty_send():
-                    pass
-
-                request._send = empty_send
-                request._receive = make_buffered_asgi_receive(await request.body())
+            self.args, self.kwargs = scanner.replace_nodes(replacement_table)
         finally:
             # Make the scanner GC-able to avoid memory leaks.
             scanner.clear()
@@ -172,6 +213,14 @@ class ActorReplicaWrapper:
     @property
     def replica_id(self) -> str:
         return self._replica_info.replica_tag
+
+    @property
+    def node_id(self) -> str:
+        return self._replica_info.node_id
+
+    @property
+    def availability_zone(self) -> Optional[str]:
+        return self._replica_info.availability_zone
 
     @property
     def multiplexed_model_ids(self) -> Set[str]:
@@ -255,11 +304,20 @@ class ReplicaScheduler(ABC):
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         pass
 
+    @property
+    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+        pass
+
 
 @dataclass
 class PendingRequest:
     future: asyncio.Future
     metadata: RequestMetadata
+
+
+class LocalityScope(str, enum.Enum):
+    NODE = "NODE"
+    AVAILABILITY_ZONE = "AVAILABILITY_ZONE"
 
 
 class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
@@ -296,19 +354,32 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     def __init__(
         self,
         event_loop: asyncio.AbstractEventLoop,
-        deployment_name: str,
+        deployment_id: DeploymentID,
+        prefer_local_node_routing: bool = False,
+        prefer_local_az_routing: bool = False,
+        self_node_id: Optional[str] = None,
+        self_availability_zone: Optional[str] = None,
     ):
         self._loop = event_loop
-        self._deployment_name = deployment_name
+        self._deployment_id = deployment_id
+        self._prefer_local_node_routing = prefer_local_node_routing
+        self._prefer_local_az_routing = prefer_local_az_routing
+        self._self_node_id = self_node_id
+        self._self_availability_zone = self_availability_zone
 
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
         self._replicas_updated_event = make_asyncio_event_version_compat(event_loop)
+        # Colocated replicas (e.g. wrt node, AZ)
+        self._colocated_replica_ids: DefaultDict[LocalityScope, Set[str]] = defaultdict(
+            set
+        )
         self._multiplexed_model_id_to_replica_ids: DefaultDict[Set[str]] = defaultdict(
             set
         )
+
         # When there is no match for a multiplexed model id, we will try to fallback
         # to all replicas immediately. This set is used to make sure we only fallback
         # once for concurrent requests for the same model id.
@@ -419,6 +490,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 logger.exception("Got exception while attempting to get actor name.")
                 return ""
 
+    @property
+    def app_name(self) -> str:
+        return self._deployment_id.app
+
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
 
@@ -427,22 +502,34 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         new_replicas = {}
         new_replica_id_set = set()
+        new_colocated_replica_ids = defaultdict(set)
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
         for r in replicas:
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
+            if self._self_node_id is not None and r.node_id == self._self_node_id:
+                new_colocated_replica_ids[LocalityScope.NODE].add(r.replica_id)
+            if (
+                self._self_availability_zone is not None
+                and r.availability_zone == self._self_availability_zone
+            ):
+                new_colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE].add(
+                    r.replica_id
+                )
             for model_id in r.multiplexed_model_ids:
                 new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
 
         if self._replica_id_set != new_replica_id_set:
+            app_msg = f" in application '{self.app_name}'" if self.app_name else ""
             logger.info(
-                "Got updated replicas for deployment "
-                f"{self._deployment_name}: {new_replica_id_set}.",
+                f"Got updated replicas for deployment '{self._deployment_id.name}'"
+                f"{app_msg}: {new_replica_id_set}.",
                 extra={"log_to_stderr": False},
             )
 
         self._replicas = new_replicas
         self._replica_id_set = new_replica_id_set
+        self._colocated_replica_ids = new_colocated_replica_ids
         self._multiplexed_model_id_to_replica_ids = (
             new_multiplexed_model_id_to_replica_ids
         )
@@ -497,12 +584,16 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
-        """Generator that repeatedly chooses (at most) two random replicas
-        from `self._replicas`.
+        """Generator that repeatedly chooses (at most) two random available replicas.
 
-        For multiplexing, this will choose replicas that have the requested model ID.
-        If there are no replicas with the requested model ID, it will choose from all
-        replicas.
+        In the first iteration, only replicas colocated on the same node as this router
+        will be considered. If those are occupied, the full set of replicas will be
+        considered on subsequent iterations.
+
+        For multiplexing, this will first attempt to choose replicas that have the
+        requested model ID for a configured timeout. If no replicas with the matching
+        model ID are available after that timeout, it will fall back to the regular
+        procedure.
 
         After each iteration, there will be an increasing backoff sleep time (dictated
         by `self.backoff_sequence_s`). The caller should exit the generator to reset the
@@ -510,58 +601,58 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
 
         try:
-            backoff_index = 0
             entered_backoff = False
+            backoff_index = 0
             multiplexed_start_matching_time = None
             multiplexed_matching_timeout = random.uniform(
                 RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
                 RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
             )
+            tried_same_node = False
+            tried_same_az = False
 
             while True:
                 # If no replicas are available, wait until `update_replicas` is called.
                 while len(self._replicas) == 0:
+                    app_msg = f" in application '{self.app_name}'" if self.app_name else ""
                     logger.info(
                         "Tried to assign replica for deployment "
-                        f"{self._deployment_name} but none are available. "
+                        f"'{self._deployment_id.name}'{app_msg} but none are available. "
                         "Waiting for new replicas to be added.",
                         extra={"log_to_stderr": False},
                     )
                     self._replicas_updated_event.clear()
                     await self._replicas_updated_event.wait()
                     logger.info(
-                        f"Got replicas for deployment {self._deployment_name}, "
-                        "waking up.",
+                        f"Got replicas for deployment '{self._deployment_id.name}'"
+                        f"{app_msg}, waking up.",
                         extra={"log_to_stderr": False},
                     )
 
                 if multiplexed_start_matching_time is None:
                     multiplexed_start_matching_time = time.time()
 
-                candidate_replica_ids = set()
-                if (
-                    request_metadata is not None
-                    and request_metadata.multiplexed_model_id
-                ):
+                candidate_replica_ids = None
+                if request_metadata is not None and request_metadata.multiplexed_model_id:
                     # Get candidates for multiplexed model ID.
                     if (
                         time.time() - multiplexed_start_matching_time
                         < multiplexed_matching_timeout
                     ):
                         candidate_replica_ids = (
-                            self._get_candidate_multiplexed_replica_ids(
+                            self._get_candidate_replica_ids_for_multiplexed_model_id(
                                 request_metadata.multiplexed_model_id
                             )
                         )
-                        # When there is no match for a multiplexed model id,
-                        # we will try to fallback to all replicas immediately.
+                        # When there is no match for a multiplexed model id, we will try to
+                        # fallback to all replicas immediately.
                         if (
                             len(candidate_replica_ids) == 0
                             and request_metadata.multiplexed_model_id
                             not in self._multiplexed_model_id_fallback_match
                         ):
                             candidate_replica_ids = (
-                                self._get_candidate_multiplexed_replica_ids(
+                                self._get_candidate_replica_ids_for_multiplexed_model_id(
                                     request_metadata.multiplexed_model_id,
                                     get_from_all_replicas=True,
                                 )
@@ -575,22 +666,41 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                             )
                     else:
                         candidate_replica_ids = (
-                            self._get_candidate_multiplexed_replica_ids(
+                            self._get_candidate_replica_ids_for_multiplexed_model_id(
                                 request_metadata.multiplexed_model_id,
                                 get_from_all_replicas=True,
                             )
                         )
+                elif (
+                    self._prefer_local_node_routing
+                    and not tried_same_node
+                    and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
+                ):
+                    # Attempt to schedule requests to replicas on the same node at most once
+                    candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
+                    tried_same_node = True
+                elif (
+                    self._prefer_local_az_routing
+                    and not tried_same_az
+                    and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE])
+                    > 0
+                ):
+                    # Attempt to schedule requests to replicas in the same AZ at most once
+                    candidate_replica_ids = self._colocated_replica_ids[
+                        LocalityScope.AVAILABILITY_ZONE
+                    ]
+                    tried_same_az = True
                 else:
-                    # non-multiplexed use case
+                    # On subsequent iterations or when there are no replicas on the same
+                    # node or AZ, consider all available replicas.
                     candidate_replica_ids = self._replica_id_set
 
                 if candidate_replica_ids:
                     chosen_ids = random.sample(
-                        list(candidate_replica_ids),
-                        k=min(2, len(candidate_replica_ids)),
+                        list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
                     )
                     yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
-
+                
                 if not entered_backoff:
                     entered_backoff = True
                     self.num_scheduling_tasks_in_backoff += 1
@@ -606,6 +716,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 self.num_scheduling_tasks_in_backoff_gauge.set(
                     self.num_scheduling_tasks_in_backoff
                 )
+
 
     async def select_from_candidate_replicas(
         self, candidates: List[ReplicaWrapper]
@@ -649,6 +760,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 if isinstance(t.exception(), RayActorError):
                     self._replicas.pop(t.replica_id, None)
                     self._replica_id_set.discard(t.replica_id)
+                    for id_set in self._colocated_replica_ids.values():
+                        id_set.discard(t.replica_id)
                     msg += " This replica will no longer be considered for requests."
 
                 logger.warning(msg)
@@ -833,6 +946,12 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
         self.multiplexed_replicas_table: Dict[
             str, List[RunningReplicaInfo]
         ] = defaultdict(list)
+
+    @property
+    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+        return {
+            r.replica_tag: ActorReplicaWrapper(r) for r in self.in_flight_queries.keys()
+        }
 
     def _reset_replica_iterator(self):
         """Reset the iterator used to load balance replicas.
@@ -1045,9 +1164,12 @@ class Router:
     def __init__(
         self,
         controller_handle: ActorHandle,
-        deployment_name: str,
+        deployment_id: DeploymentID,
+        self_node_id: str,
+        self_availability_zone: Optional[str],
         event_loop: asyncio.BaseEventLoop = None,
         _use_new_routing: bool = False,
+        _prefer_local_node_routing: bool = False,
         _router_cls: Optional[str] = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
@@ -1056,14 +1178,20 @@ class Router:
         wrapper that adds metrics and logging.
         """
         self._event_loop = event_loop
+        self.deployment_id = deployment_id
 
         if _router_cls:
             self._replica_scheduler = load_class(_router_cls)(
-                event_loop=event_loop, deployment_name=deployment_name
+                event_loop=event_loop, deployment_id=deployment_id
             )
         elif _use_new_routing:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-                event_loop, deployment_name
+                event_loop,
+                deployment_id,
+                _prefer_local_node_routing,
+                RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+                self_node_id,
+                self_availability_zone,
             )
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
@@ -1078,7 +1206,10 @@ class Router:
             description="The number of requests processed by the router.",
             tag_keys=("deployment", "route", "application"),
         )
-        self.num_router_requests.set_default_tags({"deployment": deployment_name})
+        # TODO(zcin): use deployment name and application name instead of deployment id
+        self.num_router_requests.set_default_tags(
+            {"deployment": deployment_id.name, "application": deployment_id.app}
+        )
 
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(
@@ -1089,38 +1220,46 @@ class Router:
             ),
             tag_keys=("deployment", "application"),
         )
-        self.num_queued_queries_gauge.set_default_tags({"deployment": deployment_name})
+        # TODO(zcin): use deployment name and application name instead of deployment id
+        self.num_queued_queries_gauge.set_default_tags(
+            {"deployment": deployment_id.name, "application": deployment_id.app}
+        )
 
         self.long_poll_client = LongPollClient(
             controller_handle,
             {
                 (
                     LongPollNamespace.RUNNING_REPLICAS,
-                    deployment_name,
+                    deployment_id,
                 ): self._replica_scheduler.update_running_replicas,
             },
             call_in_event_loop=event_loop,
         )
 
         # Start the metrics pusher if autoscaling is enabled.
-        self.deployment_name = deployment_name
         deployment_route = DeploymentRoute.FromString(
-            ray.get(controller_handle.get_deployment_info.remote(self.deployment_name))
+            ray.get(controller_handle.get_deployment_info.remote(*deployment_id))
         )
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
         self.metrics_pusher = None
         if deployment_info.deployment_config.autoscaling_config:
+            self.autoscaling_enabled = True
+            self.push_metrics_to_controller = (
+                controller_handle.record_handle_metrics.remote
+            )
             self.metrics_pusher = MetricsPusher()
             self.metrics_pusher.register_task(
                 self._collect_handle_queue_metrics,
                 HANDLE_METRIC_PUSH_INTERVAL_S,
-                controller_handle.record_handle_metrics.remote,
+                self.push_metrics_to_controller,
             )
 
             self.metrics_pusher.start()
+        else:
+            self.autoscaling_enabled = False
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
-        return {self.deployment_name: self.num_queued_queries}
+        return {self.deployment_id: self.num_queued_queries}
 
     async def assign_request(
         self,
@@ -1130,16 +1269,19 @@ class Router:
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
         """Assign a query to a replica and return the resulting object_ref."""
 
-        self.num_router_requests.inc(
-            tags={"route": request_meta.route, "application": request_meta.app_name}
-        )
+        self.num_router_requests.inc(tags={"route": request_meta.route})
         self.num_queued_queries += 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "application": request_meta.app_name,
-            },
-        )
+        self.num_queued_queries_gauge.set(self.num_queued_queries)
+
+        # Optimization: if there are currently zero replicas for a deployment,
+        # push handle metric to controller to allow for fast cold start time.
+        # Only do it for the first query to arrive on the router.
+        if (
+            self.autoscaling_enabled
+            and len(self._replica_scheduler.curr_replicas) == 0
+            and self.num_queued_queries == 1
+        ):
+            self.push_metrics_to_controller({self.deployment_id: 1}, time.time())
 
         try:
             query = Query(
@@ -1147,23 +1289,15 @@ class Router:
                 kwargs=request_kwargs,
                 metadata=request_meta,
             )
-            await query.resolve_async_tasks()
-            await query.buffer_starlette_requests_and_warn()
-            result = await self._replica_scheduler.assign_replica(query)
-
-            return result
+            await query.replace_known_types_in_args()
+            return await self._replica_scheduler.assign_replica(query)
         finally:
             # If the query is disconnected before assignment, this coroutine
             # gets cancelled by the caller and an asyncio.CancelledError is
             # raised. The finally block ensures that num_queued_queries
             # is correctly decremented in this case.
             self.num_queued_queries -= 1
-            self.num_queued_queries_gauge.set(
-                self.num_queued_queries,
-                tags={
-                    "application": request_meta.app_name,
-                },
-            )
+            self.num_queued_queries_gauge.set(self.num_queued_queries)
 
     def shutdown(self):
         """Shutdown router gracefully.

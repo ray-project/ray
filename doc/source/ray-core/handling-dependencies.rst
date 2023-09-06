@@ -266,6 +266,7 @@ However, using runtime environments you can dynamically specify packages to be a
 
 
 You may also specify your ``pip`` dependencies either via a Python list or a local ``requirements.txt`` file.
+Consider specifying a ``requirements.txt`` file when your ``pip install`` command requires options such as ``--extra-index-url`` or ``--find-links``; see `<https://pip.pypa.io/en/stable/reference/requirements-file-format/#>`_ for details.
 Alternatively, you can specify a ``conda`` environment, either as a Python dictionary or via a local ``environment.yml`` file.  This conda environment can include ``pip`` packages.
 For details, head to the :ref:`API Reference <runtime-environments-api-ref>`.
 
@@ -406,11 +407,13 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   no need to include ``os.environ`` or similar in the ``env_vars`` field.
   By default, these environment variables override the same name environment variables on the cluster.
   You can also reference existing environment variables using ${ENV_VAR} to achieve the appending behavior.
-  Only PATH, LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, and LD_PRELOAD are supported. See below for an example:
+  If the environment variable doesn't exist, it becomes an empty string `""`.
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
 
   - Example: ``{"LD_LIBRARY_PATH": "${LD_LIBRARY_PATH}:/home/admin/my_lib"}``
+
+  - Non-existant variable example: ``{"ENV_VAR_NOT_EXIST": "${ENV_VAR_NOT_EXIST}:/home/admin/my_lib"}`` -> ``ENV_VAR_NOT_EXIST=":/home/admin/my_lib"``.
 
 - ``container`` (dict): Require a given (Docker) image, and the worker process will run in a container with this image.
   The `worker_path` is the default_worker.py path. It is required only if ray installation directory in the container is different from raylet host.

@@ -8,14 +8,16 @@ from tempfile import TemporaryDirectory
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 import ray
-from ray.air import session
+from ray import train
 from ray.data import DataIterator
 from ray.data.iterator import _IterableFromIterator
 from ray.data.dataset import MaterializedDataset
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.train import Checkpoint
+from ray.train._internal.storage import _use_storage_context
 from ray.train.huggingface.transformers.transformers_checkpoint import (
     TransformersCheckpoint,
+    LegacyTransformersCheckpoint,
 )
 from ray.util import PublicAPI
 
@@ -195,14 +197,17 @@ class TrainReportCallback(TrainerCallback):
             transformers.trainer.get_last_checkpoint(args.output_dir)
         ).absolute()
         if checkpoint_path:
-            # Use TransformersCheckpoint here to avoid a warning in _TrainSession
-            self.delayed_report["checkpoint"] = TransformersCheckpoint.from_directory(
-                str(checkpoint_path)
-            )
+            if _use_storage_context():
+                checkpoint = TransformersCheckpoint.from_directory(str(checkpoint_path))
+            else:
+                checkpoint = LegacyTransformersCheckpoint.from_directory(
+                    str(checkpoint_path)
+                )
+            self.delayed_report["checkpoint"] = checkpoint
 
     def _report(self):
         if self.delayed_report["metrics"]:
-            session.report(**self.delayed_report)
+            train.report(**self.delayed_report)
             self.last_metrics = self.delayed_report["metrics"]
             self.delayed_report = {"metrics": {}, "checkpoint": None}
 

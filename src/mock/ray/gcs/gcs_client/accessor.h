@@ -183,7 +183,6 @@ class MockNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
               (const std::shared_ptr<rpc::ResourcesData> &data_ptr,
                const StatusCallback &callback),
               (override));
-  MOCK_METHOD(void, AsyncReReportResourceUsage, (), (override));
   MOCK_METHOD(Status,
               AsyncGetAllResourceUsage,
               (const ItemCallback<rpc::ResourceUsageBatchData> &callback),

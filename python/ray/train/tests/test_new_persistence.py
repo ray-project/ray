@@ -3,9 +3,11 @@ import os
 from pathlib import Path
 import pickle
 import pytest
+import re
+import shutil
 import tempfile
 import time
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import pyarrow.fs
 
@@ -14,19 +16,19 @@ from ray import train, tune
 from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_RESULT_FILE
 from ray.train._internal.storage import _download_from_fs_path, StorageContext
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train._checkpoint import Checkpoint
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune.trainable.trainable import _DICT_CHECKPOINT_FILE_NAME
 
-from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
+from ray.train.tests.util import mock_s3_bucket_uri
 
 
 _SCORE_KEY = "score"
 NUM_ITERATIONS = 6  # == num_checkpoints == num_artifacts
 NUM_TRIALS = 2
-NUM_WORKERS = 2
+NUM_WORKERS = 3
 
 
 @contextmanager
@@ -40,6 +42,17 @@ def enable_new_persistence_mode():
         mp.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "1")
         yield
         mp.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "0")
+
+
+@pytest.fixture(autouse=True)
+def disable_driver_artifact_sync():
+    # NOTE: Hack to make sure that the driver doesn't sync the artifacts.
+    from ray.tune import execution
+
+    execution.experiment_state._DRIVER_SYNC_EXCLUDE_PATTERNS = [
+        "*/checkpoint_*",
+        "*/artifact-*.txt",
+    ]
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -115,26 +128,21 @@ def _get_local_inspect_dir(
     return local_inspect_dir, storage_fs_path
 
 
-def _convert_path_to_fs_path(
-    path: str, storage_filesystem: Optional[pyarrow.fs.FileSystem]
-) -> str:
-    """Converts a path to a (prefix-stripped) filesystem path.
-
-    Ex: "s3://bucket/path/to/file" -> "bucket/path/to/file"
-    Ex: "/mnt/nfs/path/to/file" -> "/mnt/nfs/bucket/path/to/file"
-    """
-    if not storage_filesystem:
-        _, fs_path = pyarrow.fs.FileSystem.from_uri(path)
-        return fs_path
-
-    # Otherwise, we're using a custom filesystem,
-    # and the provided path is already the fs path.
-    return path
-
-
 def _get_checkpoint_index(checkpoint_dir_name: str) -> int:
     """Gets the checkpoint index from the checkpoint directory name."""
     return int(checkpoint_dir_name.split("_")[-1])
+
+
+def _create_checkpoint_shard_filename(rank_str: str) -> str:
+    return f"checkpoint_shard-rank={rank_str}.pkl"
+
+
+def _get_checkpoint_shard_rank(checkpoint_shard_filename: str) -> int:
+    """Get the checkpoint shard rank from the filename."""
+    pattern = _create_checkpoint_shard_filename(r"(\d+)")
+    match = re.search(pattern, checkpoint_shard_filename)
+    assert match
+    return int(match.group(1))
 
 
 def train_fn(config):
@@ -165,26 +173,36 @@ def train_fn(config):
     for i in range(start, config.get("num_iterations", 5)):
         time.sleep(0.25)
 
-        temp_dir = tempfile.mkdtemp()
-        with open(os.path.join(temp_dir, "checkpoint.pkl"), "wb") as f:
-            pickle.dump({"iter": i}, f)
+        metrics = {"iter": i, _SCORE_KEY: i}
 
-        artifact_file_name = f"artifact-iter={i}.txt"
-        if in_trainer:
-            rank = train.get_context().get_world_rank()
-            artifact_file_name = f"artifact-rank={rank}-iter={i}.txt"
-
-            checkpoint_file_name = f"checkpoint_shard-rank={rank}.pkl"
-            with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
-                pickle.dump({"iter": i}, f)
-
+        # Save an artifact in the local trial dir.
+        rank = train.get_context().get_world_rank()
+        artifact_file_name = (
+            f"artifact-rank={rank}-iter={i}.txt"
+            if in_trainer
+            else f"artifact-iter={i}.txt"
+        )
         with open(artifact_file_name, "w") as f:
             f.write(f"{i}")
 
-        train.report(
-            {"iter": i, _SCORE_KEY: i},
-            checkpoint=NewCheckpoint.from_directory(temp_dir),
-        )
+        if in_trainer and train.get_context().get_world_rank() in config.get(
+            "no_checkpoint_ranks", []
+        ):
+            train.report(metrics)
+        else:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                with open(os.path.join(temp_dir, "checkpoint.pkl"), "wb") as f:
+                    pickle.dump({"iter": i}, f)
+
+                if in_trainer:
+                    checkpoint_file_name = _create_checkpoint_shard_filename(str(rank))
+                    with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
+                        pickle.dump({"iter": i}, f)
+
+                train.report(metrics, checkpoint=Checkpoint.from_directory(temp_dir))
+                # `train.report` should not have deleted this!
+                assert os.path.exists(temp_dir)
+
         if i in config.get("fail_iters", []):
             raise RuntimeError(f"Failing on iter={i}!!")
 
@@ -213,6 +231,12 @@ class ClassTrainable(tune.Trainable):
             if marker.exists():
                 marker.unlink()
                 raise RuntimeError(f"Failing on iter={self.iteration}")
+
+        # Save an artifact in the local trial dir.
+        artifact_file_name = f"artifact-iter={self.iteration}.txt"
+        with open(artifact_file_name, "w") as f:
+            f.write(f"{self.iteration}")
+
         return {
             "score": 1,
             "done": self.iteration >= self.config.get("num_iterations") - 1,
@@ -236,7 +260,7 @@ class ClassTrainable(tune.Trainable):
             ).read_text() == "dummy"
 
 
-def _resume_from_checkpoint(checkpoint: NewCheckpoint, expected_state: dict):
+def _resume_from_checkpoint(checkpoint: Checkpoint, expected_state: dict):
     print(f"\nStarting run with `resume_from_checkpoint`: {checkpoint}\n")
 
     def assert_fn(config):
@@ -252,7 +276,7 @@ def _resume_from_checkpoint(checkpoint: NewCheckpoint, expected_state: dict):
         dummy_ckpt = tempfile.mkdtemp()
         with open(os.path.join(dummy_ckpt, "dummy.txt"), "w") as f:
             f.write("data")
-        train.report({"dummy": 1}, checkpoint=NewCheckpoint.from_directory(dummy_ckpt))
+        train.report({"dummy": 1}, checkpoint=Checkpoint.from_directory(dummy_ckpt))
 
     trainer = DataParallelTrainer(
         assert_fn,
@@ -274,6 +298,7 @@ def _assert_storage_contents(
     checkpoint_config: train.CheckpointConfig,
     trainable_name: str,
     test_trainer: bool,
+    no_checkpoint_ranks: List[int] = None,
 ):
     # Second, inspect the contents of the storage path
     storage_path_ls = list(local_inspect_dir.glob("*"))
@@ -322,15 +347,22 @@ def _assert_storage_contents(
             )
             if test_trainer:
                 # 1 checkpoint shard per worker.
-                assert (
-                    len(list(checkpoint_dir.glob("checkpoint_shard-*.pkl")))
-                    == NUM_WORKERS
-                )
+                # Unless the worker did not report a checkpoint (no_checkpoint_ranks).
+                assert {
+                    _get_checkpoint_shard_rank(checkpoint_shard.name)
+                    for checkpoint_shard in checkpoint_dir.glob(
+                        "checkpoint_shard-*.pkl"
+                    )
+                } == {i for i in range(NUM_WORKERS) if i not in no_checkpoint_ranks}
 
-        # NOTE: These next 2 are technically synced by the driver.
+        if test_trainer:
+            expected_num_artifacts = NUM_ITERATIONS * NUM_WORKERS
+        else:
+            expected_num_artifacts = NUM_ITERATIONS
+        assert len(list(trial_dir.glob("artifact-*"))) == expected_num_artifacts
+
+        # NOTE: This result file is synced by the driver.
         assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
-        # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
-        # assert len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS * NUM_WORKER
 
 
 @pytest.mark.parametrize("trainable", [train_fn, ClassTrainable])
@@ -400,12 +432,16 @@ def test_tuner(
                 verbose=0,
                 failure_config=train.FailureConfig(max_failures=1),
                 checkpoint_config=checkpoint_config,
+                sync_config=train.SyncConfig(sync_artifacts=True),
             ),
             # 2 samples (from the grid search). Run 1 at at time to test actor reuse
             tune_config=tune.TuneConfig(num_samples=1, max_concurrent_trials=1),
         )
         result_grid = tuner.fit()
         assert result_grid.errors
+
+        if storage_path:
+            shutil.rmtree(LOCAL_CACHE_DIR, ignore_errors=True)
 
         restored_tuner = tune.Tuner.restore(
             path=str(URI(storage_path or str(LOCAL_CACHE_DIR)) / exp_name),
@@ -424,13 +460,14 @@ def test_tuner(
         )
 
     # First, check that the ResultGrid returns the correct paths.
-    experiment_fs_path = _convert_path_to_fs_path(
-        result_grid.experiment_path, storage_filesystem
-    )
+    print(result_grid)
+    experiment_fs_path = result_grid.experiment_path
+    assert isinstance(result_grid.filesystem, pyarrow.fs.FileSystem), result_grid
     assert experiment_fs_path == os.path.join(storage_fs_path, exp_name)
     assert len(result_grid) == NUM_TRIALS
     for result in result_grid:
-        trial_fs_path = _convert_path_to_fs_path(result.path, storage_filesystem)
+        trial_fs_path = result.path
+        assert isinstance(result.filesystem, pyarrow.fs.FileSystem), result
         assert trial_fs_path.startswith(experiment_fs_path)
         for checkpoint, _ in result.best_checkpoints:
             assert checkpoint.path.startswith(trial_fs_path)
@@ -460,9 +497,8 @@ def test_tuner(
 def test_trainer(
     tmp_path, monkeypatch, storage_path_type, checkpoint_config: train.CheckpointConfig
 ):
-    """
-    TODO(justinvyu): Test for these once implemented:
-    - artifacts
+    """Same end-to-end test as `test_tuner`, but also includes a
+    `DataParallelTrainer(resume_from_checkpoint)` test at the end.
 
     {storage_path}/{exp_name}
     ├── experiment_state-2023-07-28_10-00-38.json       <- Initial exp state
@@ -492,6 +528,7 @@ def test_trainer(
     LOCAL_CACHE_DIR = tmp_path / "ray_results"
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
     exp_name = "trainer_new_persistence"
+    no_checkpoint_ranks = [0]
 
     with _resolve_storage_type(storage_path_type, tmp_path) as (
         storage_path,
@@ -503,8 +540,12 @@ def test_trainer(
                 "in_trainer": True,
                 "num_iterations": NUM_ITERATIONS,
                 "fail_iters": [2, 4],
+                # TODO(justinvyu): This should be separated into its own test once
+                # CI has been fully migrated.
+                # Test that global rank 0 is not required to checkpoint.
+                "no_checkpoint_ranks": no_checkpoint_ranks,
             },
-            scaling_config=train.ScalingConfig(num_workers=2),
+            scaling_config=train.ScalingConfig(num_workers=NUM_WORKERS),
             run_config=train.RunConfig(
                 storage_path=storage_path,
                 storage_filesystem=storage_filesystem,
@@ -512,6 +553,7 @@ def test_trainer(
                 verbose=0,
                 checkpoint_config=checkpoint_config,
                 failure_config=train.FailureConfig(max_failures=1),
+                sync_config=train.SyncConfig(sync_artifacts=True),
             ),
         )
         print("\nStarting initial run.\n")
@@ -543,7 +585,8 @@ def test_trainer(
         )
 
     # First, inspect that the result object returns the correct paths.
-    trial_fs_path = _convert_path_to_fs_path(result.path, storage_filesystem)
+    print(result)
+    trial_fs_path = result.path
     assert trial_fs_path.startswith(storage_fs_path)
     for checkpoint, _ in result.best_checkpoints:
         assert checkpoint.path.startswith(trial_fs_path)
@@ -554,7 +597,31 @@ def test_trainer(
         checkpoint_config,
         trainable_name="DataParallelTrainer",
         test_trainer=True,
+        no_checkpoint_ranks=no_checkpoint_ranks,
     )
+
+
+def test_local_dir(tmp_path):
+    """Test that local_dir can do the same job as `RAY_AIR_LOCAL_CACHE_DIR`."""
+
+    def train_fn(config):
+        from ray.train._internal.session import get_session
+
+        assert get_session().storage.storage_local_path == str(tmp_path)
+
+    tune.run(train_fn, local_dir=str(tmp_path))
+
+    results = tune.Tuner(
+        train_fn, run_config=train.RunConfig(local_dir=str(tmp_path))
+    ).fit()
+    assert not results.errors
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=train.ScalingConfig(num_workers=2),
+        run_config=train.RunConfig(local_dir=str(tmp_path)),
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":

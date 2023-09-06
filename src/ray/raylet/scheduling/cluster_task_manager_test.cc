@@ -2022,7 +2022,7 @@ TEST_F(ClusterTaskManagerTest, TestResourceDiff) {
   ASSERT_FALSE(resource_data.resource_load_changed());
   // Resource changed.
   resource_data.set_resource_load_changed(false);
-  ResourceRequest res;
+  ResourceSet res;
   res.Set(ResourceID::CPU(), 100);
   node_resources->load = std::move(res);
   task_manager_.FillResourceUsage(resource_data, node_resources);

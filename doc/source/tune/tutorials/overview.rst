@@ -104,7 +104,7 @@ Tune Feature Guides
         :img-top: /images/tune.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: ../examples/tune_analyze_results
+        .. button-ref:: tune-analysis-guide
 
             Analyzing Tune Experiment Results
 

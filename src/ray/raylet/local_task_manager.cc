@@ -977,12 +977,8 @@ bool LocalTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
   if (worker->GetAllocatedInstances() != nullptr) {
     if (worker->GetAllocatedInstances()->Has(ResourceID::CPU())) {
       auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
-      std::vector<double> overflow_cpu_instances =
-          cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
-              ResourceID::CPU(), cpu_instances);
-      for (unsigned int i = 0; i < overflow_cpu_instances.size(); i++) {
-        RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
-      }
+      cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
+          ResourceID::CPU(), cpu_instances);
       worker->MarkBlocked();
       return true;
     }
@@ -1011,8 +1007,8 @@ bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
   return false;
 }
 
-ResourceRequest LocalTaskManager::CalcNormalTaskResources() const {
-  ResourceRequest total_normal_task_resources;
+ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
+  ResourceSet total_normal_task_resources;
   for (auto &entry : leased_workers_) {
     std::shared_ptr<WorkerInterface> worker = entry.second;
     auto &task_spec = worker->GetAssignedTask().GetTaskSpecification();
@@ -1028,12 +1024,12 @@ ResourceRequest LocalTaskManager::CalcNormalTaskResources() const {
     }
 
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      auto resource_request = allocated_instances->ToResourceRequest();
+      auto resource_set = allocated_instances->ToResourceSet();
       // Blocked normal task workers have temporarily released its allocated CPU.
       if (worker->IsBlocked()) {
-        resource_request.Set(ResourceID::CPU(), 0);
+        resource_set.Set(ResourceID::CPU(), 0);
       }
-      total_normal_task_resources += resource_request;
+      total_normal_task_resources += resource_set;
     }
   }
   return total_normal_task_resources;

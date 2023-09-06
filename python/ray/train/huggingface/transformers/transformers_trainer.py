@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
 from torch.utils.data import Dataset as TorchDataset
 
+from ray import train
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
@@ -237,12 +238,9 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             dataset and key "evaluation" to denote the evaluation
             dataset. Can only contain a training dataset
             and up to one extra dataset to be used for evaluation.
-            If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be
-            transformed by the ``preprocessor`` if one is provided.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -258,8 +256,10 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
     ):
 
         if TRANSFORMERS_IMPORT_ERROR is not None:
@@ -290,6 +290,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )
 
     @classmethod
@@ -474,7 +475,7 @@ def _huggingface_train_loop_per_worker(config):
 
     trainer.add_callback(TrainReportCallback)
 
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_path:
             trainer.train(resume_from_checkpoint=checkpoint_path)

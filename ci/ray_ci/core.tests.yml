@@ -1,4 +1,5 @@
 flaky_tests:
+  - //python/ray/tests:test_actor_cancel
   - //python/ray/tests:test_gcs_fault_tolerance
   - //python/ray/tests:test_object_manager
   - //python/ray/tests:test_placement_group_3

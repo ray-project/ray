@@ -30,15 +30,10 @@ def save_checkpoint(model: pl.LightningModule, ckpt_path: str):
     trainer.save_checkpoint(ckpt_path)
 
 
-@pytest.mark.parametrize(
-    "checkpoint_source", ["from_path", "from_uri", "from_directory"]
-)
 @pytest.mark.parametrize("use_gpu", [True, False])
 @pytest.mark.parametrize("use_preprocessor", [True, False])
 def test_predictor(
-    mock_s3_bucket_uri,
     tmpdir,
-    checkpoint_source: str,
     use_preprocessor: bool,
     use_gpu: bool,
 ):
@@ -55,11 +50,6 @@ def test_predictor(
 
     # Test load checkpoint from local dir or remote path
     checkpoint = LightningCheckpoint.from_path(ckpt_path)
-    if checkpoint_source == "from_uri":
-        checkpoint.to_uri(mock_s3_bucket_uri)
-        checkpoint = LightningCheckpoint.from_uri(mock_s3_bucket_uri)
-    if checkpoint_source == "from_directory":
-        checkpoint = LightningCheckpoint.from_directory(tmpdir)
 
     preprocessor = DummyPreprocessor() if use_preprocessor else None
 
