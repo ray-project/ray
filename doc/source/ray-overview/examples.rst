@@ -89,7 +89,7 @@ Ray Examples
 
     .. grid-item-card:: :bdg-success:`Tutorial`
         :class-item: gallery-item training
-        :link: /ray-air/examples/xgboost_example
+        :link: /train/examples/xgboost/xgboost_example
         :link-type: doc
 
         Distributed training with XGBoost
