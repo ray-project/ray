@@ -93,7 +93,7 @@ Because of this variability, Serve offers two types of handles to ensure the buf
 - `RayServeSyncHandle` directly returns a `ray.ObjectRef`. It blocks the current thread until the request is matched to a replica.
 - `RayServeHandle` returns an `asyncio.Task` upon submission. The `asyncio.Task` can be awaited to resolve to a `ray.ObjectRef`. While the current request is buffered, other requests can be processed concurrently.
 
-`serve.run` deploys a deployment graph and returns the entrypoint node’s handle (the node you passed as argument to `serve.run`). The return type is a `RayServeSyncHandle`. This is useful for interacting with and testing the newly created deployment graph.
+`serve.run` deploys a deployment graph and returns the ingress deployment’s handle (the node you passed as argument to `serve.run`). The return type is a `RayServeSyncHandle`. This is useful for interacting with and testing the newly created deployment graph.
 
 ```{literalinclude} doc_code/handle_guide.py
 :start-after: __begin_sync_handle__

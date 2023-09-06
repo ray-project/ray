@@ -1,7 +1,5 @@
 from ray import serve
 
-serve.start()
-
 
 @serve.deployment
 class MyDeployment:
@@ -9,6 +7,3 @@ class MyDeployment:
         from my_module import my_model
 
         self.model = my_model.load(model_path)
-
-
-MyDeployment.deploy("/model_path.pkl")

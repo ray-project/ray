@@ -35,7 +35,8 @@ Runtime Environments feature is installed.
 
 Example:
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/conda_env.py
+```{literalinclude} ../doc_code/varying_deps.py
+:language: python
 ```
 
 :::{tip}
@@ -52,5 +53,6 @@ using runtime environments.
 
 Example:
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/delayed_import.py
+```{literalinclude} ../doc_code/delayed_import.py
+:language: python
 ```

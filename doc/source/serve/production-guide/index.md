@@ -40,30 +40,31 @@ The generated version of this file contains an `import_path`, `runtime_env`, and
 A minimal version of the config looks as follows (save this config locally in `fruit_config.yaml` to follow along):
 
 ```yaml
-import_path: fruit:deployment_graph
+proxy_location: EveryNode
 
-runtime_env: {}
+http_options:
+  host: 0.0.0.0
+  port: 8000
 
-host: 0.0.0.0
+applications:
 
-port: 8000
-
-deployments:
-
-- name: MangoStand
-  num_replicas: 2
-
-- name: OrangeStand
-  num_replicas: 1
-
-- name: PearStand
-  num_replicas: 1
-
-- name: FruitMarket
-  num_replicas: 2
-
-- name: DAGDriver
-  num_replicas: 1
+- name: app1
+  route_prefix: /
+  import_path: fruit:deployment_graph
+  runtime_env: {}
+  deployments:
+  - name: MangoStand
+    user_config:
+      price: 3
+  - name: OrangeStand
+    user_config:
+      price: 2
+  - name: PearStand
+    user_config:
+      price: 4
+  - name: FruitMarket
+    num_replicas: 2
+  - name: DAGDriver
 ```
 
 You can use `serve deploy` to deploy the application to a local Ray cluster and `serve status` to get the status at runtime:
@@ -80,26 +81,39 @@ Sent deploy request successfully!
  * Use `serve config` to see the running app's config.
 
 $ serve status
-app_status:
-  status: RUNNING
-  message: ''
-  deployment_timestamp: 1660672282.0406542
-deployment_statuses:
-- name: MangoStand
-  status: HEALTHY
-  message: ''
-- name: OrangeStand
-  status: HEALTHY
-  message: ''
-- name: PearStand
-  status: HEALTHY
-  message: ''
-- name: FruitMarket
-  status: HEALTHY
-  message: ''
-- name: DAGDriver
-  status: HEALTHY
-  message: ''
+proxies:
+  df28936ee5d5235a01250da8344118dfc8a45d834c5978bc97d56463: HEALTHY
+applications:
+  app1:
+    status: RUNNING
+    message: ''
+    last_deployed_time_s: 1693431420.8891141
+    deployments:
+      MangoStand:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      OrangeStand:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      PearStand:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      FruitMarket:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 2
+        message: ''
+      DAGDriver:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
 ```
 
 You can test the application using `curl`:

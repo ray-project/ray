@@ -39,9 +39,14 @@ serve build --multi-app calculator:app greet:app -o config.yaml
 This generates the following config:
 ```yaml
 proxy_location: EveryNode
+
 http_options:
   host: 0.0.0.0
   port: 8000
+
+grpc_options:
+  port: 9000
+  grpc_servicer_functions: []
 
 applications:
 
@@ -50,8 +55,8 @@ applications:
   import_path: calculator:app
   runtime_env: {}
   deployments:
-  - name: Multiplier
   - name: Adder
+  - name: Multiplier
   - name: Router
   - name: DAGDriver
 
@@ -100,44 +105,50 @@ Check the status of the applications by running `serve status`.
 
 ```console
 $ serve status
-name: app1
-app_status:
-  status: RUNNING
-  message: ''
-  deployment_timestamp: 1679969226.923282
-deployment_statuses:
-- name: app1_Multiplier
-  status: HEALTHY
-  message: ''
-- name: app1_Adder
-  status: HEALTHY
-  message: ''
-- name: app1_Router
-  status: HEALTHY
-  message: ''
-- name: app1_DAGDriver
-  status: HEALTHY
-  message: ''
-
----
-
-name: app2
-app_status:
-  status: RUNNING
-  message: ''
-  deployment_timestamp: 1679969226.923282
-deployment_statuses:
-- name: app2_greet
-  status: HEALTHY
-  message: ''
-- name: app2_DAGDriver
-  status: HEALTHY
-  message: ''
+proxies:
+  59e6321aa1699fa09ed1094e1f0b3c37afd47fc208802db3c07328d0: HEALTHY
+applications:
+  app1:
+    status: RUNNING
+    message: ''
+    last_deployed_time_s: 1693428138.3633459
+    deployments:
+      Adder:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      Multiplier:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      Router:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      DAGDriver:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+  app2:
+    status: RUNNING
+    message: ''
+    last_deployed_time_s: 1693428138.3633459
+    deployments:
+      greet:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      DAGDriver:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
 ```
-
-:::{note} 
-Notice that in the output of `serve status`, the prefix of each deployment name is the application name. At runtime, all deployments will have their corresponding application prepended to their names.
-:::
 
 ### Inspect Deeper
 

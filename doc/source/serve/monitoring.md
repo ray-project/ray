@@ -5,6 +5,7 @@
 This section helps you debug and monitor your Serve applications by:
 
 * viewing the Ray dashboard
+* viewing the `serve status` output
 * using Ray logging and Loki
 * inspecting built-in Ray Serve metrics
 * exporting metrics into Arize platform
@@ -45,6 +46,122 @@ To learn more about the Serve controller actor, the HTTP proxy actor(s), the dep
 :::
 
 For a detailed overview of the Ray dashboard, see the [dashboard documentation](observability-getting-started).
+
+(serve-in-production-inspecting)=
+
+## Inspect applications with the Serve CLI
+
+Two Serve CLI commands help you inspect a Serve application in production: `serve config` and `serve status`.
+If you have a remote cluster, `serve config` and `serve status` also has an `--address/-a` argument to access the cluster. See [VM deployment](serve-in-production-remote-cluster) for more information on this argument.
+
+`serve config` gets the latest config file that the Ray Cluster received. This config file represents the Serve application's goal state. The Ray Cluster constantly strives to reach and maintain this state by deploying deployments, and recovering failed replicas, and performing other relevant actions.
+
+Using the `fruit_config.yaml` example from [the production guide](fruit-config-yaml):
+
+```console
+$ ray start --head
+$ serve deploy fruit_config.yaml
+...
+
+$ serve config
+
+name: app1
+route_prefix: /
+import_path: fruit:deployment_graph
+runtime_env: {}
+deployments:
+- name: MangoStand
+  user_config:
+    price: 3
+...
+```
+
+`serve status` gets your Serve application's current status. This command reports the status of the `proxies` and the `applications` running on the Ray cluster.
+
+`proxies` lists each proxy's status. Each proxy is identified by the node ID of the node that it runs on. A proxy has three possible statuses:
+* `STARTING`: The proxy is starting up and is not yet ready to serve requests.
+* `HEALTHY`: The proxy is capable of serving requests. It is behaving normally.
+* `UNHEALTHY`: The proxy has failed its health-checks. It will be killed, and a new proxy will be started on that node.
+* `DRAINING`: The proxy is healthy but is closed to new requests. It may contain pending requests that are still being processed.
+* `DRAINED`: The proxy is closed to new requests. There are no pending requests.
+
+`applications` contains a list of applications, their overall statuses, and their deployments' statuses. Each entry in `applications` maps an application's name to four fields:
+* `status`: A Serve application has four possible overall statuses:
+    * `"NOT_STARTED"`: No application has been deployed on this cluster.
+    * `"DEPLOYING"`: The application is currently carrying out a `serve deploy` request. It is deploying new deployments or updating existing ones.
+    * `"RUNNING"`: The application is at steady-state. It has finished executing any previous `serve deploy` requests, and is attempting to maintain the goal state set by the latest `serve deploy` request.
+    * `"DEPLOY_FAILED"`: The latest `serve deploy` request has failed.
+* `message`: Provides context on the current status.
+* `deployment_timestamp`: A UNIX timestamp of when Serve received the last `serve deploy` request. The timestamp is calculated using the `ServeController`'s local clock.
+* `deployments`: A list of entries representing each deployment's status. Each entry maps a deployment's name to three fields:
+    * `status`: A Serve deployment has three possible statuses:
+        * `"UPDATING"`: The deployment is updating to meet the goal state set by a previous `deploy` request.
+        * `"HEALTHY"`: The deployment achieved the latest requests goal state.
+        * `"UNHEALTHY"`: The deployment has either failed to update, or has updated and has become unhealthy afterwards. This condition may be due to an error in the deployment's constructor, a crashed replica, or a general system or machine error.
+    * `replica_states`: A list of the replicas' states and the number of replicas in that state. Each replica has five possible states:
+        * `STARTING`: The replica is starting and not yet ready to serve requests.
+        * `UPDATING`: The replica is undergoing a `reconfigure` update.
+        * `RECOVERING`: The replica is recovering its state.
+        * `RUNNING`: The replica is running normally and able to serve requests.
+        * `STOPPING`: The replica is being stopped.
+    * `message`: Provides context on the current status.
+
+Use the `serve status` command to inspect your deployments after they are deployed and throughout their lifetime.
+
+Using the `fruit_config.yaml` example from [an earlier section](fruit-config-yaml):
+
+```console
+$ ray start --head
+$ serve deploy fruit_config.yaml
+...
+
+$ serve status
+proxies:
+  0eeaadc5f16b64b8cd55aae184254406f0609370cbc79716800cb6f2: HEALTHY
+applications:
+  app1:
+    status: RUNNING
+    message: ''
+    last_deployed_time_s: 1693430845.863128
+    deployments:
+      MangoStand:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      OrangeStand:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      PearStand:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      FruitMarket:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 2
+        message: ''
+      DAGDriver:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+```
+
+For Kubernetes deployments with KubeRay, tighter integrations of `serve status` with Kubernetes are available. See [Getting the status of Serve applications in Kubernetes](serve-getting-status-kubernetes).
+
+## Get application details in Python
+
+Call the `serve.status()` API to get Serve application details in Python. `serve.status()` returns the same information as the `serve status` CLI command inside a `dataclass`. Use this method inside a deployment or a Ray driver script to obtain live information about the Serve applications on the Ray cluster. For example, this `monitoring_app` reports all the `RUNNING` Serve applications on the cluster:
+
+```{literalinclude} doc_code/monitoring/monitor_deployment.py
+:start-after: __monitor_start__
+:end-before: __monitor_end__
+:language: python
+```
 
 (serve-logging)=
 ## Ray logging

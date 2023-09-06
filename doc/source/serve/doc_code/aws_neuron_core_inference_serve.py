@@ -38,7 +38,7 @@ hf_model = "j-hartmann/emotion-english-distilroberta-base"
 neuron_model = "./sentiment_neuron.pt"
 
 
-@serve.deployment(num_replicas=1, route_prefix="/")
+@serve.deployment(num_replicas=1)
 @serve.ingress(app)
 class APIIngress:
     def __init__(self, bert_base_model_handle) -> None:

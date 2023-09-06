@@ -37,25 +37,19 @@ $ python
 Now, let's update the price of mangos in our deployment. We can change the `price` attribute in the `MangoStand` deployment to `5` in our config file:
 
 ```yaml
-import_path: fruit:deployment_graph
+...
 
-runtime_env: {}
+applications:
 
-deployments:
-
-- name: MangoStand
-  num_replicas: 2
-  route_prefix: null
-  max_concurrent_queries: 100
-  user_config:
-    # price: 3 (Outdated price)
-    price: 5
-  autoscaling_config: null
-  graceful_shutdown_wait_loop_s: 2.0
-  graceful_shutdown_timeout_s: 20.0
-  health_check_period_s: 10.0
-  health_check_timeout_s: 30.0
-  ray_actor_options: null
+- name: app1
+  route_prefix: /
+  import_path: fruit:deployment_graph
+  runtime_env: {}
+  deployments:
+  - name: MangoStand
+    user_config:
+      # price: 3 (outdated price)
+      price: 5
 
 ...
 ```
@@ -71,26 +65,39 @@ We can inspect our deployments with `serve status`. Once the `app_status`'s `sta
 
 ```console
 $ serve status
-app_status:
-  status: RUNNING
-  message: ''
-  deployment_timestamp: 1655776483.457707
-deployment_statuses:
-- name: MangoStand
-  status: HEALTHY
-  message: ''
-- name: OrangeStand
-  status: HEALTHY
-  message: ''
-- name: PearStand
-  status: HEALTHY
-  message: ''
-- name: FruitMarket
-  status: HEALTHY
-  message: ''
-- name: DAGDriver
-  status: HEALTHY
-  message: ''
+proxies:
+  0eeaadc5f16b64b8cd55aae184254406f0609370cbc79716800cb6f2: HEALTHY
+applications:
+  app1:
+    status: RUNNING
+    message: ''
+    last_deployed_time_s: 1693430845.863128
+    deployments:
+      MangoStand:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      OrangeStand:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      PearStand:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      FruitMarket:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 2
+        message: ''
+      DAGDriver:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
 
 $ python
 
