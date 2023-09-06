@@ -17,10 +17,10 @@ Ray Train also works with vanilla Tensorflow.
 
 Quickstart
 -----------
-.. literalinclude:: /ray-air/doc_code/tf_starter.py
+.. literalinclude:: ./doc_code/tf_starter.py
   :language: python
-  :start-after: __air_tf_train_start__
-  :end-before: __air_tf_train_end__
+  :start-after: __tf_train_start__
+  :end-before: __tf_train_end__
 
 
 Updating your training function
