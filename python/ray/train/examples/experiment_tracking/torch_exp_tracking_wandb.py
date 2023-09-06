@@ -1,4 +1,5 @@
 # flake8: noqa
+# fmt: off
 
 # __start__
 # Run the following script with the WANDB_API_KEY env var set.

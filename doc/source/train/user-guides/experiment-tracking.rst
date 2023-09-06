@@ -316,7 +316,7 @@ PyTorch
 .. dropdown:: Log to W&B
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking//torch_exp_tracking_wandb.py
-            :emphasize-lines: 13, 14, 18, 19, 48, 49, 51, 52
+            :emphasize-lines: 15, 16, 17, 21, 22, 51, 52, 54, 55
             :language: python
             :start-after: __start__
 

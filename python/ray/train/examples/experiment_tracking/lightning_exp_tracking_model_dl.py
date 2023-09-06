@@ -1,4 +1,5 @@
 # flake8: noqa
+# fmt: off
 
 # __model_dl_start__
 import torch
