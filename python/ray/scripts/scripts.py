@@ -847,6 +847,15 @@ def start(
                         "network configuration."
                     )
                 )
+
+            cli_logger.newline()
+            cli_logger.print(
+                cf.bold(
+                    "--address='{}'"
+                ),
+                bootstrap_address,
+            )
+
         ray_params.gcs_address = bootstrap_address
     else:
         # Start worker node.
