@@ -3,19 +3,23 @@ from ray import train
 from ray.train import DataConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 from ray.data.datasource import file_based_datasource
+import os
 
 import torch.distributed as dist
 import numpy as np
+import math
 
 from benchmark import Benchmark, BenchmarkMetric
 
 from PIL import Image
+from image_loader_microbenchmark import get_mosaic_dataloader
+
 
 import time
 import torchvision
 import torch
 
-from dataset_benchmark_util import get_prop_parquet_paths, get_prop_raw_image_paths
+from dataset_benchmark_util import get_prop_parquet_paths, get_prop_raw_image_paths, get_mosaic_epoch_size
 
 
 # This benchmark does the following:
@@ -25,6 +29,7 @@ from dataset_benchmark_util import get_prop_parquet_paths, get_prop_raw_image_pa
 # Metrics recorded to the output file are:
 # - ray.torchtrainer.fit: Throughput of the final epoch in
 #   TorchTrainer.fit() (step 3 above)
+
 
 
 def parse_args():
@@ -55,7 +60,7 @@ def parse_args():
         "--target-worker-gb",
         default=4,
         type=int,
-        help="Number of GB per worker for selecting a subset from default dataset",
+        help="Number of GB per worker for selecting a subset from default dataset. -1 means the whole dataset",
     )
     parser.add_argument(
         "--read-task-cpus",
@@ -107,9 +112,20 @@ def parse_args():
         default=False,
         help="Whether to use PyTorch DataLoader.",
     )
+    parser.add_argument(
+        "--use-mosaic",
+        action="store_true",
+        default=False,
+        help="",
+    )
+    parser.add_argument(
+        "--torch-num-workers",
+        default=None,
+        type=int,
+    )
     args = parser.parse_args()
 
-    if args.data_root is None:
+    if args.data_root is None and not args.use_mosaic:
         # use default datasets if data root is not provided
         if args.file_type == "image":
             args.data_root = get_prop_raw_image_paths(
@@ -173,25 +189,56 @@ def train_loop_per_worker():
     device = train.torch.get_device()
     worker_rank = train.get_context().get_world_rank()
 
+    batch_iter = None
+    if args.use_torch:
+        torch_num_workers = args.torch_num_workers
+        if torch_num_workers is None:
+            torch_num_workers = 256
+        batch_iter = get_torch_data_loader(
+            worker_rank=worker_rank,
+            batch_size=args.batch_size,
+            num_workers=torch_num_workers,
+            transform=get_transform(True),
+        )
+    elif args.use_mosaic:
+        target_epoch_size = get_mosaic_epoch_size(args.num_workers, target_worker_gb=args.target_worker_gb)
+        print("Epoch size:", target_epoch_size if target_epoch_size is not None else "all", "images")
+
+        num_physical_nodes = ray.train.get_context().get_world_size() // ray.train.get_context().get_local_world_size()
+        torch_num_workers = args.torch_num_workers
+        if torch_num_workers is None:
+            torch_num_workers = os.cpu_count()
+        # Divide by the number of Train workers because each has its own dataloader.
+        torch_num_workers //= ray.train.get_context().get_local_world_size()
+
+        batch_iter = get_mosaic_dataloader(
+            args.data_root,
+            batch_size=args.batch_size,
+            num_physical_nodes=num_physical_nodes,
+            epoch_size=target_epoch_size,
+            num_workers=torch_num_workers,
+            )
+
     for i in range(args.num_epochs):
         print(f"Epoch {i+1} of {args.num_epochs}")
         num_rows = 0
         start_t = time.time()
-        if args.use_torch:
-            batch_iter = get_torch_data_loader(
-                worker_rank=worker_rank,
-                batch_size=args.batch_size,
-                num_workers=256,
-                transform=get_transform(True),
-            )
-        else:
+
+        # Ray Data needs to call iter_torch_batches on each epoch.
+        if isinstance(it, ray.data.iterator.DataIterator):
             batch_iter = it.iter_torch_batches(
                 batch_size=args.batch_size,
             )
 
+        print_at_interval = 1000
+        print_at = print_at_interval
         for batch in batch_iter:
             num_rows += args.batch_size
+            if num_rows >= print_at:
+                print(f"Read {num_rows} rows on rank {train.get_context().get_world_rank()}, tput so far: {num_rows / (time.time()  - start_t)}")
+                print_at = ((num_rows // print_at_interval) + 1) * print_at_interval
         end_t = time.time()
+        print(f"Epoch {i+1} of {args.num_epochs}, tput: {num_rows / (end_t - start_t)}, run time: {end_t - start_t}")
 
     # Workaround to report the final epoch time from each worker, so that we
     # can sum up the times at the end when calculating throughput.
@@ -312,31 +359,33 @@ def benchmark_code(
         sum([cache_output_ds, cache_input_ds]) <= 1
     ), "Can only test one caching variant at a time"
 
-    # 1) Read in data with read_images() / read_parquet()
-    if args.file_type == "image":
-        ray_dataset = ray.data.read_images(
-            args.data_root,
-            mode="RGB",
-            ray_remote_args={"num_cpus": args.read_task_cpus},
-        )
-    elif args.file_type == "parquet":
-        ray_dataset = ray.data.read_parquet(
-            args.data_root,
-            ray_remote_args={"num_cpus": args.read_task_cpus},
-        )
-    else:
-        raise Exception(f"Unknown file type {args.file_type}")
+    ray_dataset = None
+    if not args.use_mosaic:
+        # 1) Read in data with read_images() / read_parquet()
+        if args.file_type == "image":
+            ray_dataset = ray.data.read_images(
+                args.data_root,
+                mode="RGB",
+                ray_remote_args={"num_cpus": args.read_task_cpus},
+            )
+        elif args.file_type == "parquet":
+            ray_dataset = ray.data.read_parquet(
+                args.data_root,
+                ray_remote_args={"num_cpus": args.read_task_cpus},
+            )
+        else:
+            raise Exception(f"Unknown file type {args.file_type}")
 
-    if cache_input_ds:
-        ray_dataset = ray_dataset.materialize()
+        if cache_input_ds:
+            ray_dataset = ray_dataset.materialize()
 
-    # 2) Preprocess data by applying transformation with map/map_batches()
-    if args.file_type == "image":
-        ray_dataset = ray_dataset.map(crop_and_flip_image, num_cpus=args.read_task_cpus)
-    elif args.file_type == "parquet":
-        ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
-    if cache_output_ds:
-        ray_dataset = ray_dataset.materialize()
+        # 2) Preprocess data by applying transformation with map/map_batches()
+        if args.file_type == "image":
+            ray_dataset = ray_dataset.map(crop_and_flip_image, num_cpus=args.read_task_cpus)
+        elif args.file_type == "parquet":
+            ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
+        if cache_output_ds:
+            ray_dataset = ray_dataset.materialize()
 
     # 3) Train TorchTrainer on processed data
     options = DataConfig.default_ingest_options()
@@ -348,7 +397,7 @@ def benchmark_code(
     if args.num_workers == 1 or args.use_gpu:
         torch_trainer = TorchTrainer(
             train_loop_per_worker,
-            datasets={"train": ray_dataset},
+            datasets={"train": ray_dataset} if ray_dataset is not None else {},
             scaling_config=ScalingConfig(
                 num_workers=args.num_workers,
                 use_gpu=args.use_gpu,
@@ -360,7 +409,7 @@ def benchmark_code(
     else:
         torch_trainer = TorchTrainer(
             train_loop_per_worker,
-            datasets={"train": ray_dataset},
+            datasets={"train": ray_dataset} if ray_dataset is not None else {},
             # In the multi-node case without GPUs, we use a SPREAD placement strategy
             # to ensure that tasks are spread across nodes. We reserve one worker
             # for the driver.
@@ -382,6 +431,8 @@ def benchmark_code(
     )
     runtime_last_epoch = max(time_end_last_epoch) - min(time_start_last_epoch)
     num_rows_last_epoch = sum(result.metrics["num_rows"])
+    print("Total num rows read in last epoch:", num_rows_last_epoch, "images")
+    print("Runtime last epoch:", runtime_last_epoch, "seconds")
     tput_last_epoch = num_rows_last_epoch / runtime_last_epoch
 
     return {
@@ -394,7 +445,7 @@ if __name__ == "__main__":
     file_based_datasource.FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 1000
     args = parse_args()
     benchmark_name = (
-        f"read_{args.file_type}_repeat{args.repeat_ds}_train_{args.num_workers}workers"
+        f"read_{args.file_type}_repeat{args.repeat_ds}_train_{args.num_workers}workers_{args.target_worker_gb}gb_per_worker"
     )
     if args.preserve_order:
         benchmark_name = f"{benchmark_name}_preserve_order"
@@ -402,10 +453,10 @@ if __name__ == "__main__":
     benchmark = Benchmark(benchmark_name)
 
     benchmark.run_fn("cache-none", benchmark_code, args=args)
-    benchmark.run_fn("cache-output", benchmark_code, args=args, cache_output_ds=True)
-    benchmark.run_fn("cache-input", benchmark_code, args=args, cache_input_ds=True)
-    # TODO: enable after implementing prepartition case.
-    # benchmark.run_fn(
-    # "prepartition-ds", benchmark_code, args=args, prepartition_ds=True,
-    # )
+    # benchmark.run_fn("cache-output", benchmark_code, args=args, cache_output_ds=True)
+    # benchmark.run_fn("cache-input", benchmark_code, args=args, cache_input_ds=True)
+    # # TODO: enable after implementing prepartition case.
+    # # benchmark.run_fn(
+    # # "prepartition-ds", benchmark_code, args=args, prepartition_ds=True,
+    # # )
     benchmark.write_result("/tmp/multi_node_train_benchmark.json")
