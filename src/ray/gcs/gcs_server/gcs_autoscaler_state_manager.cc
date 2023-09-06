@@ -139,10 +139,10 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     auto pg_id = PlacementGroupID::FromBinary(pg_data.placement_group_id());
     // For each placement group, if it's not pending/rescheduling, skip it since.
     // it's not part of the load.
-    RAY_CHECK(pg_state == rpc::PlacementGroupTableData::PENDING ||
-              pg_state == rpc::PlacementGroupTableData::RESCHEDULING)
-        << "Placement group load should only include pending/rescheduling PGs. "
-        << "PG id: " << pg_id << ", state: " << pg_state;
+    if (pg_state != rpc::PlacementGroupTableData::PENDING &&
+        pg_state != rpc::PlacementGroupTableData::RESCHEDULING) {
+      continue;
+    }
 
     const auto pg_constraint =
         GenPlacementConstraintForPlacementGroup(pg_id.Hex(), pg_data.strategy());
