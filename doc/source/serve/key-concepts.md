@@ -12,8 +12,8 @@ At runtime, a deployment consists of a number of *replicas*, which are individua
 The number of replicas can be scaled up or down (or even autoscaled) to match the incoming request load.
 
 To define a deployment, use the {mod}`@serve.deployment <ray.serve.api.deployment>` decorator on a Python class (or function for simple use cases).
-Then, `bind` the deployment with optional arguments to the constructor (see below).
-Finally, deploy the resulting "bound deployment" using `serve.run` (or the equivalent `serve run` CLI command, see [Development Workflow](serve-dev-workflow) for details).
+Then, `bind` the deployment with optional arguments to the constructor to define an [application](serve-key-concepts-application).
+Finally, deploy the resulting application using `serve.run` (or the equivalent `serve run` CLI command, see [Development Workflow](serve-dev-workflow) for details).
 
 ```python
 from ray import serve
@@ -46,8 +46,6 @@ Applications can be called via HTTP at the specified `route_prefix` or in Python
 (serve-key-concepts-query-deployment)=
 
 ## DeploymentHandle (composing deployments)
-
-XXX: LINK TO THE COMPOSITION SECTION!!!
 
 Ray Serve enables flexible model composition and scaling by allowing multiple independent deployments to call into each other.
 When binding a deployment, you can include references to _other bound deployments_.
