@@ -99,7 +99,7 @@ If the experiment has been interrupted due to one of the reasons listed above, u
 
 
 Auto-resume
-+++++++++++
+~~~~~~~~~~~
 
 Adding the branching logic below will allow you to run the same script after the interrupt,
 picking up training from where you left on the previous run. Notice that we use the
