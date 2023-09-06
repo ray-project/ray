@@ -397,9 +397,9 @@ class RuntimeContext(object):
         Get the current worker's GPU, accelerator and TPU ids.
 
         Returns:
-            A dictionary keyed by the resource name. The values are list
-            of ids `{'GPU': ['0', '1'], 'neuron_cores': ['0', '1'],
-                     'TPU': ['0', '1']}`.
+            A dictionary keyed by the resource name. The values are lists of ids.
+            Example:
+                {'GPU': ['0', '1'], 'neuron_cores': ['0', '1'], 'TPU': ['0', '1']}.
         """
         worker = self.worker
         worker.check_connected()
