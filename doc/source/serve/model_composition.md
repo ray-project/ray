@@ -115,12 +115,12 @@ Note how the response from the `Adder` handle is passed directly to the `Multipl
 
 ### Streaming DeploymentHandle Calls
 
-`DeploymentHandle`s can also be used to make streaming method calls that return multiple outputs.
+`DeploymentHandles` can also be used to make streaming method calls that return multiple outputs.
 To make a streaming call, the method being called must be a generator and `handle.options(stream=True)` must be set.
 Then, the handle call will return a {mod}`DeploymentResponseGenerator <ray.serve.handle.DeploymentResponseGenerator>` instead of a unary `DeploymentResponse`.
-`DeploymentResponseGenerator`s can be used as a sync or async generator (e.g., in an `async for` code block).
+`DeploymentResponseGenerators` can be used as a sync or async generator (e.g., in an `async for` code block).
 Similar to `DeploymentResponse.result()`, it's an anti-pattern to use a `DeploymentResponseGenerator` as a sync generator within a deployment, as that will block other requests from executing concurrently on that replica.
-`DeploymentResponseGenerator`s cannot currently be passed to other handle calls.
+`DeploymentResponseGenerators` cannot currently be passed to other handle calls.
 
 Example:
 
