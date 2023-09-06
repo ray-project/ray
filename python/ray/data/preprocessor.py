@@ -66,7 +66,10 @@ class Preprocessor(abc.ABC):
     def _check_has_fitted_state(self):
         """Checks if the Preprocessor has fitted state.
 
-        This is also used as an indiciation if the Preprocessor has been fit.
+        This is also used as an indiciation if the Preprocessor has been fit, following
+        convention from Ray versions prior to 2.6.
+        This allows preprocessors that have been fit in older versions of Ray to be
+        used to transform data in newer versions.
         """
 
         fitted_vars = [v for v in vars(self) if v.endswith("_")]
