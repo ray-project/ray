@@ -411,7 +411,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             description="The number of request scheduling tasks in the router.",
             tag_keys=("deployment", "actor_name"),
         ).set_default_tags(
-            {"deployment": self._deployment_name, "actor_name": self._actor_name}
+            {
+                "app": self._deployment_id.app,
+                "deployment": self._deployment_id.name,
+                "actor_name": self._actor_name,
+            }
         )
         self.num_scheduling_tasks_gauge.set(0)
 
@@ -424,7 +428,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             ),
             tag_keys=("deployment", "actor_name"),
         ).set_default_tags(
-            {"deployment": self._deployment_name, "actor_name": self._actor_name}
+            {
+                "app": self._deployment_id.app,
+                "deployment": self._deployment_id.name,
+                "actor_name": self._actor_name,
+            }
         )
         self.num_scheduling_tasks_in_backoff_gauge.set(
             self.num_scheduling_tasks_in_backoff
@@ -614,11 +622,13 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             while True:
                 # If no replicas are available, wait until `update_replicas` is called.
                 while len(self._replicas) == 0:
-                    app_msg = f" in application '{self.app_name}'" if self.app_name else ""
+                    app_msg = (
+                        f" in application '{self.app_name}'" if self.app_name else ""
+                    )
                     logger.info(
                         "Tried to assign replica for deployment "
-                        f"'{self._deployment_id.name}'{app_msg} but none are available. "
-                        "Waiting for new replicas to be added.",
+                        f"'{self._deployment_id.name}'{app_msg} but none are "
+                        "available. Waiting for new replicas to be added.",
                         extra={"log_to_stderr": False},
                     )
                     self._replicas_updated_event.clear()
@@ -633,26 +643,29 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     multiplexed_start_matching_time = time.time()
 
                 candidate_replica_ids = None
-                if request_metadata is not None and request_metadata.multiplexed_model_id:
+                if (
+                    request_metadata is not None
+                    and request_metadata.multiplexed_model_id
+                ):
                     # Get candidates for multiplexed model ID.
                     if (
                         time.time() - multiplexed_start_matching_time
                         < multiplexed_matching_timeout
                     ):
                         candidate_replica_ids = (
-                            self._get_candidate_replica_ids_for_multiplexed_model_id(
+                            self._get_candidate_multiplexed_replica_ids(
                                 request_metadata.multiplexed_model_id
                             )
                         )
-                        # When there is no match for a multiplexed model id, we will try to
-                        # fallback to all replicas immediately.
+                        # When there is no match for a multiplexed model id,
+                        # we will try to fallback to all replicas immediately.
                         if (
                             len(candidate_replica_ids) == 0
                             and request_metadata.multiplexed_model_id
                             not in self._multiplexed_model_id_fallback_match
                         ):
                             candidate_replica_ids = (
-                                self._get_candidate_replica_ids_for_multiplexed_model_id(
+                                self._get_candidate_multiplexed_replica_ids(
                                     request_metadata.multiplexed_model_id,
                                     get_from_all_replicas=True,
                                 )
@@ -666,7 +679,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                             )
                     else:
                         candidate_replica_ids = (
-                            self._get_candidate_replica_ids_for_multiplexed_model_id(
+                            self._get_candidate_multiplexed_replica_ids(
                                 request_metadata.multiplexed_model_id,
                                 get_from_all_replicas=True,
                             )
@@ -676,16 +689,22 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     and not tried_same_node
                     and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
                 ):
-                    # Attempt to schedule requests to replicas on the same node at most once
-                    candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
+                    # Attempt to schedule requests to replicas on the
+                    # same node at most once
+                    candidate_replica_ids = self._colocated_replica_ids[
+                        LocalityScope.NODE
+                    ]
                     tried_same_node = True
                 elif (
                     self._prefer_local_az_routing
                     and not tried_same_az
-                    and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE])
+                    and len(
+                        self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]
+                    )
                     > 0
                 ):
-                    # Attempt to schedule requests to replicas in the same AZ at most once
+                    # Attempt to schedule requests to replicas in the same
+                    # AZ at most once
                     candidate_replica_ids = self._colocated_replica_ids[
                         LocalityScope.AVAILABILITY_ZONE
                     ]
@@ -697,10 +716,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
                 if candidate_replica_ids:
                     chosen_ids = random.sample(
-                        list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
+                        list(candidate_replica_ids),
+                        k=min(2, len(candidate_replica_ids)),
                     )
                     yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
-                
+
                 if not entered_backoff:
                     entered_backoff = True
                     self.num_scheduling_tasks_in_backoff += 1
@@ -716,7 +736,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 self.num_scheduling_tasks_in_backoff_gauge.set(
                     self.num_scheduling_tasks_in_backoff
                 )
-
 
     async def select_from_candidate_replicas(
         self, candidates: List[ReplicaWrapper]
