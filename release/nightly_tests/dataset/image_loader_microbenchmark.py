@@ -341,6 +341,7 @@ def get_mosaic_dataloader(mosaic_data_root, batch_size,
     if num_workers is None:
         num_workers = os.cpu_count()
 
+    print(f"Initializing torch DataLoader with {num_workers} workers.")
     mosaic_dl = torch.utils.data.DataLoader(
         mosaic_ds, batch_size=batch_size, num_workers=num_workers,
         drop_last=True,
@@ -571,14 +572,12 @@ if __name__ == "__main__":
     if args.mosaic_data_root is not None:
         use_s3 = args.mosaic_data_root.startswith("s3://")
         num_workers = None
-        # if use_s3:
-        #     num_workers = 64
         mosaic_dl = get_mosaic_dataloader(
             args.mosaic_data_root,
             batch_size=args.batch_size,
             num_physical_nodes=1,
             num_workers=num_workers,
-            cache_limit="1000mb",
+            cache_limit="2gb",
         )
 
         for i in range(args.num_epochs):

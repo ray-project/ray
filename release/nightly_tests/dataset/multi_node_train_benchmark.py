@@ -126,6 +126,11 @@ def parse_args():
         help="",
     )
     parser.add_argument(
+        "--torch-num-workers",
+        default=None,
+        type=int,
+    )
+    parser.add_argument(
         "--target-worker-gb",
         default=10,
         type=int,
@@ -133,7 +138,7 @@ def parse_args():
     )
     args = parser.parse_args()
 
-    if args.data_root is None:
+    if args.data_root is None and not args.use_mosaic:
         # use default datasets if data root is not provided
         if args.file_type == "image":
             # 1GB ragged dataset
@@ -191,14 +196,21 @@ def train_loop_per_worker():
 
     if args.use_mosaic:
         target_epoch_size = get_mosaic_epoch_size(args.num_workers, target_worker_gb=args.target_worker_gb)
-        print("Epoch size:", target_epoch_size, "images")
+        print("Epoch size:", target_epoch_size if target_epoch_size is not None else "all", "images")
+
+        num_physical_nodes = ray.train.get_context().get_world_size() // ray.train.get_context().get_local_world_size()
+        torch_num_workers = args.torch_num_workers
+        if torch_num_workers is None:
+            torch_num_workers = os.cpu_count()
+        # Divide by the number of Train workers because each has its own dataloader.
+        torch_num_workers //= ray.train.get_context().get_local_world_size()
 
         torch_iter = get_mosaic_dataloader(
             args.data_root,
             batch_size=args.batch_size,
-            num_physical_nodes=args.num_workers,
+            num_physical_nodes=num_physical_nodes,
             epoch_size=target_epoch_size,
-            cache_limit="100gb",
+            num_workers=torch_num_workers,
             )
     else:
         torch_iter = None
@@ -213,14 +225,15 @@ def train_loop_per_worker():
                 batch_size=args.batch_size,
             )
 
-        print_at_interval = 100
+        print_at_interval = 1000
         print_at = print_at_interval
         for batch in torch_iter:
             num_rows += args.batch_size
             if num_rows >= print_at:
-                print(f"Read {num_rows} rows on rank {train.get_context().get_world_rank()}")
+                print(f"Read {num_rows} rows on rank {train.get_context().get_world_rank()}, tput so far: {num_rows / (time.time()  - start_t)}")
                 print_at = ((num_rows // print_at_interval) + 1) * print_at_interval
         end_t = time.time()
+        print(f"Epoch {i+1} of {args.num_epochs}, tput: {num_rows / (end_t - start_t)}, run time: {end_t - start_t}")
 
     # Workaround to report the final epoch time from each worker, so that we
     # can sum up the times at the end when calculating throughput.
@@ -260,19 +273,19 @@ def benchmark_code(
 
     ray_dataset = None
     # 1) Read in data with read_images() / read_parquet()
-    if args.file_type == "image":
-        ray_dataset = ray.data.read_images(
-            args.data_root,
-            mode="RGB",
-        )
-    elif args.file_type == "parquet":
-        # ray_dataset = ray.data.read_parquet(
-        #     args.data_root,
-        # )
-        args.data_root = get_prop_parquet_paths(num_workers=args.num_workers)
-        ray_dataset = get_ray_parquet_dataset(args.data_root)
-    else:
-        if not args.use_mosaic:
+    if not args.use_mosaic:
+        if args.file_type == "image":
+            ray_dataset = ray.data.read_images(
+                args.data_root,
+                mode="RGB",
+            )
+        elif args.file_type == "parquet":
+            # ray_dataset = ray.data.read_parquet(
+            #     args.data_root,
+            # )
+            args.data_root = get_prop_parquet_paths(num_workers=args.num_workers)
+            ray_dataset = get_ray_parquet_dataset(args.data_root)
+        else:
             raise Exception(f"Unknown file type {args.file_type}")
 
     # if cache_input_ds:
@@ -335,7 +348,7 @@ def benchmark_code(
 if __name__ == "__main__":
     args = parse_args()
     benchmark_name = (
-        f"read_{args.file_type}_repeat{args.repeat_ds}_train_{args.num_workers}workers_{args.target_worker_gb}worker_gb"
+        f"read_{args.file_type}_repeat{args.repeat_ds}_train_{args.num_workers}workers_{args.target_worker_gb}gb_per_worker"
     )
     if args.preserve_order:
         benchmark_name = f"{benchmark_name}_preserve_order"
