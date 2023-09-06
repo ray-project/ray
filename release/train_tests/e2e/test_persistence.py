@@ -1,3 +1,18 @@
+"""Train multi-node persistence/checkpoint release test.
+
+This test is a multi-node version of `test_new_persistence.py` and is meant to
+be run on a cluster with NFS or S3 storage configured.
+
+This test also records timing metrics on checkpoint save (to disk), save (to storage),
+and load (from storage) operations and outputs them as release test metrics.
+
+Setup:
+- 4x 16CPU instances
+- 8 workers, each allocated 8 CPUs
+
+Test owner: justinvyu
+"""
+
 import collections
 from contextlib import contextmanager
 import json
@@ -15,6 +30,7 @@ import torch.distributed as dist
 
 from ray import train
 from ray._private.dict import flatten_dict
+from ray.air.constants import TRAINING_ITERATION
 from ray.air._internal.uri_utils import URI
 from ray.train import Checkpoint
 from ray.train.base_trainer import TrainingFailedError
@@ -57,7 +73,10 @@ def update_output_json(metrics: Dict[str, Any]):
         json.dump(data, f)
 
 
-def create_checkpoint(checkpoint_dir) -> float:
+def create_checkpoint(checkpoint_dir: str) -> float:
+    """Create a somewhat realistic checkpoint of a given size.
+
+    Returns the time it takes to dump this checkpoint to disk."""
     start = time.perf_counter()
     # 10 small (1kb) files
     for i in range(TestConstants.NUM_KB):
@@ -138,6 +157,22 @@ def get_custom_cloud_fs() -> pyarrow.fs.FileSystem:
     ],
 )
 def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
+    """Tests that a data parallel trainer can save and restore checkpoints to
+    various storage types properly. Also records checkpoint save/restore timing.
+
+    Here's the rundown of what this test does:
+    1. Passes in a `custom_save_fn` and `custom_restore_fn` to the trainer to
+       record how long the operations take, as well as save a large checkpoint.
+       See `create_checkpoint` for details on the checkpoint contents.
+    2. Configures the training loop to fail 3 times.
+    3. Runs the trainer, which will fail 2 times and recover via FailureConfig.
+       This first run will exit on the 3rd failure.
+    4. Manually restores the trainer, which will restore from the 3rd failure and
+       run to completion.
+    5. Downloads the results from the storage path and asserts that the contents
+       are all correct. See `ray.train.test_new_persistence` for the expected filetree.
+    6. Tests a new run with `resume_from_checkpoint`.
+    """
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
 
     storage_path, storage_filesystem, label = storage_path_storage_filesystem_label
@@ -249,8 +284,59 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
     update_output_json(flatten_dict({label: aggregated_metrics}))
 
 
-def test_no_persistence(tmp_path):
-    ...
+def test_no_storage_error(tmp_path, monkeypatch):
+    """Tests that an error is raised if you do multi-node checkpointing
+    w/ no persistent storage configured."""
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
+
+    trainer = TorchTrainer(
+        train_fn,
+        train_loop_config={
+            "in_trainer": True,
+            "time_per_iter": 1.0,
+            "num_iterations": TestConstants.NUM_ITERATIONS,
+        },
+        scaling_config=train.ScalingConfig(
+            num_workers=TestConstants.NUM_WORKERS,
+            trainer_resources={"CPU": 0},
+            resources_per_worker={"CPU": 8},
+        ),
+        run_config=train.RunConfig(name="test_trainer", storage_path=None),
+    )
+    with pytest.raises(TrainingFailedError):
+        trainer.fit()
+
+
+def test_no_storage_no_checkpoints(tmp_path, monkeypatch):
+    """Tests that it's ok to run multi-node with no persistent storage
+    if you never report checkpoints."""
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
+
+    trainer = TorchTrainer(
+        train_fn,
+        train_loop_config={
+            "in_trainer": True,
+            "time_per_iter": 1.0,
+            "num_iterations": TestConstants.NUM_ITERATIONS,
+            # Don't report any checkpoints
+            "no_checkpoint_ranks": list(range(TestConstants.NUM_WORKERS)),
+        },
+        scaling_config=train.ScalingConfig(
+            num_workers=TestConstants.NUM_WORKERS,
+            trainer_resources={"CPU": 0},
+            resources_per_worker={"CPU": 8},
+        ),
+        run_config=train.RunConfig(
+            failure_config=train.FailureConfig(max_failures=2),
+            name="test_trainer",
+            storage_path=None,
+            sync_config=train.SyncConfig(sync_artifacts=True),
+        ),
+    )
+    result = trainer.fit()
+
+    assert result.metrics[TRAINING_ITERATION] == TestConstants.NUM_ITERATIONS - 1
+    assert len(result.metrics_dataframe) == TestConstants.NUM_ITERATIONS
 
 
 if __name__ == "__main__":
