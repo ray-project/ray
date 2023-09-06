@@ -12,6 +12,7 @@ py_test_run_all_notebooks(
     include=["*.ipynb"],
     exclude=[
         "lightning_exp_tracking.ipynb", # CPU test
+        "dolly_lightning_fsdp_finetuning.ipynb", # Release Test
         "vicuna_13b_lightning_deepspeed_finetune.ipynb", # Release Test
     ],
     data=["//doc/source/train/examples/lightning:lightning_examples"],

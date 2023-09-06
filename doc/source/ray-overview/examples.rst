@@ -117,10 +117,10 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training train llm nlp gen-ai
-        :link: /ray-air/examples/dolly_lightning_fsdp_finetuning
+        :link: /train/examples/lightning/dolly_lightning_fsdp_finetuning
         :link-type: doc
 
-        How to fine-tune a dolly-v2-7b model with Ray AIR LightningTrainer and FSDP
+        How to fine-tune a dolly-v2-7b model with Ray Train and FSDP
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch cv
