@@ -18,7 +18,6 @@ from ray.air._internal.remote_storage import (
     list_at_uri,
 )
 from ray.air._internal.uri_utils import _join_path_or_uri, URI
-from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
     EXPR_PROGRESS_FILE,
     EXPR_RESULT_FILE,
@@ -31,9 +30,8 @@ from ray.train._internal.storage import (
     _exists_at_fs_path,
     get_fs_and_path,
 )
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.tune.execution.tune_controller import TuneController
-from ray.train import SyncConfig
+from ray.train import Checkpoint, SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
 from ray.tune.utils.util import is_nan_or_inf, is_nan
@@ -445,7 +443,7 @@ class NewExperimentAnalysis:
 
     def _get_trial_checkpoints_with_metric(
         self, trial: Trial, metric: Optional[str] = None
-    ) -> List[Tuple[NewCheckpoint, Number]]:
+    ) -> List[Tuple[Checkpoint, Number]]:
         """Get all checkpoints and a specified metric of a trial.
 
         Args:
@@ -478,7 +476,7 @@ class NewExperimentAnalysis:
         trial: Trial,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
-    ) -> Optional[NewCheckpoint]:
+    ) -> Optional[Checkpoint]:
         """Gets best persistent checkpoint path of provided trial.
 
         Any checkpoints with an associated metric value of ``nan`` will be filtered out.
@@ -635,7 +633,7 @@ class NewExperimentAnalysis:
 
     def get_last_checkpoint(
         self, trial=None, metric="training_iteration", mode="max"
-    ) -> Optional[NewCheckpoint]:
+    ) -> Optional[Checkpoint]:
         """Gets the last checkpoint of the provided trial,
         i.e., with the highest "training_iteration".
 
@@ -680,7 +678,11 @@ class NewExperimentAnalysis:
         assert not mode or metric
         rows = {}
         for path, df in self.trial_dataframes.items():
-            if mode == "max":
+            if df.empty:
+                continue
+            if metric not in df:
+                idx = -1
+            elif mode == "max":
                 idx = df[metric].idxmax()
             elif mode == "min":
                 idx = df[metric].idxmin()
@@ -1321,6 +1323,7 @@ class ExperimentAnalysis:
         best_path, best_metric = best_path_metrics[0]
         cloud_path = self._convert_local_to_cloud_path(best_path)
 
+        # TODO(matthewdeng): Figure out what to do here.
         if cloud_path:
             # Prefer cloud path over local path for downsteam processing
             if return_path:

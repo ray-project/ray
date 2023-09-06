@@ -138,7 +138,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @optional_utils.init_ray_and_catch_exceptions()
     @gracefully_handle_missing_serve_dependencies
     async def get_all_deployment_statuses(self, req: Request) -> Response:
-        from ray.serve.schema import serve_status_to_schema, ServeStatusSchema
+        from ray.serve.schema import _serve_status_to_schema, ServeStatusSchema
 
         controller = await self.get_serve_controller()
 
@@ -154,7 +154,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             serve_status = await controller.get_serve_status.remote()
             proto = StatusOverviewProto.FromString(serve_status)
             status = StatusOverview.from_proto(proto)
-            status_json_str = serve_status_to_schema(status).json()
+            status_json_str = _serve_status_to_schema(status).json()
 
         return Response(
             text=status_json_str,
@@ -270,6 +270,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @optional_utils.init_ray_and_catch_exceptions()
     @gracefully_handle_missing_serve_dependencies
     async def put_all_applications(self, req: Request) -> Response:
+        from ray.serve.config import ProxyLocation
         from ray.serve._private.api import serve_start_async
         from ray.serve.schema import ServeDeploySchema
         from pydantic import ValidationError
@@ -284,9 +285,8 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             )
 
         config_http_options = config.http_options.dict()
-        full_http_options = dict(
-            {"location": config.proxy_location}, **config_http_options
-        )
+        location = ProxyLocation._to_deployment_mode(config.proxy_location)
+        full_http_options = dict({"location": location}, **config_http_options)
         grpc_options = config.grpc_options.dict()
 
         async with self._controller_start_lock:

@@ -72,8 +72,7 @@ def get_train_dataset(args, image_resolution=512):
     def transform_image(
         batch: Dict[str, np.ndarray], output_column_name: str
     ) -> Dict[str, np.ndarray]:
-        image_tensors = [torch.as_tensor(array) for array in batch["image"]]
-        transformed_tensors = [transform(tensor).numpy() for tensor in image_tensors]
+        transformed_tensors = [transform(image).numpy() for image in batch["image"]]
         batch[output_column_name] = transformed_tensors
         return batch
 
