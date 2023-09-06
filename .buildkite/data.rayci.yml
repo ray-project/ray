@@ -12,3 +12,12 @@ steps:
         --except-tags data_integration,doctest
     depends_on: data12build
     job_env: data12build
+
+  - label: ":database: data: arrow 12 flaky tests"
+    instance_type: medium
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests --parallelism-per-worker 3
+        --build-name data12build
+    depends_on: data12build
+    job_env: data12build
