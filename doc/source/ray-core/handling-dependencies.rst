@@ -144,9 +144,11 @@ You can specify a runtime environment for your whole job, whether running a scri
 
 .. warning::
 
-    If using the Ray Jobs API (either the Python SDK or the CLI), specify the ``runtime_env`` argument in the ``submit_job`` call or the ``ray job submit``, not in the ``ray.init()`` call in the entrypoint script (in this example, ``my_ray_script.py``).
+    Specify the ``runtime_env`` argument in the ``submit_job`` call or the ``ray job submit`` ensures ensures the runtime environment is installed on the cluster before the entrypoint script is run.
 
-    This ensures the runtime environment is installed on the cluster before the entrypoint script is run.
+    If ``runtime_env`` is specified from ``ray.init(runtime_env=...)``, the runtime env is only applied to all children Tasks and Actors, not the entrypoint script (Driver) itself.
+
+    If ``runtime_env`` is specified by both ``ray job submit`` and ``ray.init``, the runtime environments are merged. See :ref:`Runtime Environment Specified by Both Job and Driver <runtime-environments-job-conflict>` for more details.
 
 .. note::
 
@@ -451,9 +453,12 @@ When the cache size limit is exceeded, resources not currently used by any Actor
 Runtime Environment Specified by Both Job and Driver
 """"""""""""""""""""""""""""""""""""""""""""""""""""
 
-You can specify Ray driver's runtime environment via `ray.init(runtime_env=...)` or `ray job submit --runtime-env`.
+When running an entrypoint script (Driver), runtime environment can be specified via `ray.init(runtime_env=...)` or `ray job submit --runtime-env` (See :ref:`Specifying a Runtime Environment Per-Job <rte-per-job>` for more details).
 
-When both the Ray Job and Driver specify runtime environments, their runtime environments are merged if there's no conflict.
+- If runtime env is specified by ``ray job submit --runtime-env=...``, the runtime environments are applied to the entrypoint script (Driver) and all the tasks and actors created from it.
+- If runtime env is specified by ``ray.init(runtime_env=...)``, the runtime environments are applied to all the tasks and actors, but not the entrypoint script (Driver) itself.
+
+Since ``ray job submit`` submits a Driver (that calls ``ray.init``), sometimes runtime environments are specified by both of them. When both the Ray Job and Driver specify runtime environments, their runtime environments are merged if there's no conflict.
 Ray raises an exception if the runtime environments conflict.
 
 * The ``runtime_env["env_vars"]`` of `ray job submit --runtime-env=...` is merged with the ``runtime_env["env_vars"]`` of `ray.init(runtime_env=...)`.
@@ -500,30 +505,12 @@ Conflict Example:
   # Ray raises an exception because "pip" conflicts.
 
 You can set an environment variable `RAY_OVERRIDE_JOB_RUNTIME_ENV=1`
-to avoid raising an exception upon a conflict. In this case, the conflicting runtime environments specified by
-`ray job submit --runtime-env=...` will be overwritten by `ray.init(runtime_env=...)`.
+to avoid raising an exception upon a conflict. In this case, the runtime environments
+are inherited in the same way as :ref:`Driver and Task and Actor both specify
+runtime environments <runtime-environments-inheritance>`, where ``ray job submit``
+is a parent and ``ray.init`` is a driver.. 
 
-* The ``runtime_env["env_vars"]`` of `ray job submit --runtime-env=...` is merged with the ``runtime_env["env_vars"]`` of `ray.init(runtime_env=...)`.
-  Note that each individual env_var keys are merged.
-  If there's a conflict, `ray.init(runtime_env=...)`'s runtime environment is prioritized.
-* Every other field in the ``runtime_env`` will be merged. If any key conflicts, `ray.init(runtime_env=...)` will be prioritized.
-
-Note that the behavior is equivalent to :ref:`Driver to Tasks/Actors inheritance <runtime-env-driver-to-task-inheritance>`.
-
-.. testcode::
-
-  # Example 1, env_vars conflicts
-  # `ray job submit --runtime_env=...`
-  {"pip": ["requests", "chess"],
-  "env_vars": {"C": "a", "B": "b"}}
-
-  # ray.init(runtime_env=...)
-  {"pip": ["torch"],
-   "env_vars": {"C": "c"}}
-
-  # Driver's runtime environment
-  {"pip": ["torch"],
-   "env_vars": {"C": "c", "B": "b"}}
+.. _runtime-environments-inheritance:
 
 Inheritance
 """""""""""
