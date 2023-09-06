@@ -19,7 +19,7 @@ import ray
 from ray import serve
 from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeInstanceDetails
 from ray.serve._private.common import ReplicaState
 from ray._private.test_utils import wait_for_condition
@@ -34,7 +34,7 @@ class NodeDrainerActor:
         self._app_name = app_name
         self._deployment_name = deployment_name
         self._num_replicas = num_replicas
-        self._serve_client = get_global_client()
+        self._serve_client = _get_global_client()
         self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         self._cluster_node_info_cache = create_cluster_node_info_cache(self._gcs_client)
         self._drained_nodes = set()
