@@ -1,3 +1,5 @@
+# flake8: noqa
+
 # __start__
 # Run the following script with the WANDB_API_KEY env var set.
 import os
@@ -11,8 +13,11 @@ from torch.utils.data import DataLoader
 import wandb
 
 assert os.environ.get("WANDB_API_KEY", None), "Please set WANDB_API_KEY env var."
+
 # This makes sure that all workers have this env var set.
-ray.init(runtime_env={"env_vars": {"WANDB_API_KEY": os.environ["WANDB_API_KEY"]}})
+ray.init(
+    runtime_env={"env_vars": {"WANDB_API_KEY": os.environ["WANDB_API_KEY"]}}
+)
 
 
 def train_func(config):

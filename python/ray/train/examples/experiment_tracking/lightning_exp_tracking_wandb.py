@@ -1,3 +1,4 @@
+# flake8: noqa
 from lightning_exp_tracking_model_dl import DummyModel, dataloader
 
 # __lightning_experiment_tracking_wandb_start__
@@ -34,7 +35,9 @@ assert (
 ), 'Please set WANDB_API_KEY="abcde" when running this script.'
 
 # This ensures that all workers have this env var set.
-ray.init(runtime_env={"env_vars": {"WANDB_API_KEY": os.environ["WANDB_API_KEY"]}})
+ray.init(
+    runtime_env={"env_vars": {"WANDB_API_KEY": os.environ["WANDB_API_KEY"]}}
+)
 trainer = TorchTrainer(
     train_func,
     scaling_config=scaling_config,

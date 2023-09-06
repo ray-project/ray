@@ -340,39 +340,43 @@ The following example walks you through the process. The code here is runnable.
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_model_dl.py
         :language: python
+        :start-after: __model_dl_start__
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_wandb.py
-            :language: python
-            :start-after: __lightning_experiment_tracking_wandb_start__
+        :language: python
+        :start-after: __lightning_experiment_tracking_wandb_start__
 
 .. dropdown:: MLflow
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_model_dl.py
         :language: python
+        :start-after: __model_dl_start__
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_mlflow.py
-            :language: python
-            :start-after: __lightning_experiment_tracking_mlflow_start__
-            :end-before: __lightning_experiment_tracking_mlflow_end__
+        :language: python
+        :start-after: __lightning_experiment_tracking_mlflow_start__
+        :end-before: __lightning_experiment_tracking_mlflow_end__
 
 .. dropdown:: Comet
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_model_dl.py
         :language: python
+        :start-after: __model_dl_start__
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_comet.py
-            :language: python
-            :start-after: __lightning_experiment_tracking_comet_start__
+        :language: python
+        :start-after: __lightning_experiment_tracking_comet_start__
 
 .. dropdown:: TensorBoard
   
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_model_dl.py
         :language: python
+        :start-after: __model_dl_start__
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_tensorboard.py
-            :language: python
-            :start-after: __lightning_experiment_tracking_tensorboard_start__
-            :end-before: __lightning_experiment_tracking_tensorboard_end__
+        :language: python
+        :start-after: __lightning_experiment_tracking_tensorboard_start__
+        :end-before: __lightning_experiment_tracking_tensorboard_end__
 
 Common Errors
 =============

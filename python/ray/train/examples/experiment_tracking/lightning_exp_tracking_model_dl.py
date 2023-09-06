@@ -1,3 +1,6 @@
+# flake8: noqa
+
+# __model_dl_start__
 import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
@@ -31,7 +34,9 @@ class DummyModel(pl.LightningModule):
 
         # The metrics below will be reported to Loggers
         self.log("train_loss", loss)
-        self.log_dict({"metric_1": 1 / (batch_idx + 1), "metric_2": batch_idx * 100})
+        self.log_dict({
+            "metric_1": 1 / (batch_idx + 1), "metric_2": batch_idx * 100
+        })
         return loss
 
     def configure_optimizers(self):
