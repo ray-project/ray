@@ -877,7 +877,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             logger.exception("Unexpected error in fulfill_pending_requests.")
         finally:
             self._scheduling_tasks.remove(asyncio.current_task(loop=self._loop))
-            self.num_scheduling_tasks_gauge.set(len(self._scheduling_tasks))
+            self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
 
     def maybe_start_scheduling_tasks(self):
         """Start scheduling tasks to fulfill pending requests if necessary.
@@ -897,7 +897,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 self._loop.create_task(self.fulfill_pending_requests())
             )
         if tasks_to_start > 0:
-            self.num_scheduling_tasks_gauge.set(len(self._scheduling_tasks))
+            self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
 
     async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
         """Chooses a replica to send the provided request to.
