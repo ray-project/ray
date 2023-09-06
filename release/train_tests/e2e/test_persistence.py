@@ -146,6 +146,7 @@ def get_custom_cloud_fs() -> pyarrow.fs.FileSystem:
 def strip_prefix(path: str) -> str:
     return path.replace("s3://", "").replace("gs://", "")
 
+
 @pytest.mark.parametrize(
     "storage_path_storage_filesystem_label",
     [
