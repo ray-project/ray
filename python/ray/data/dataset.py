@@ -226,18 +226,18 @@ class Dataset:
         >>> # Transform batches (Dict[str, np.ndarray]) with map_batches().
         >>> ds.map_batches(lambda batch: {"id": batch["id"] * 2})  # doctest: +ELLIPSIS
         MapBatches(<lambda>)
-        +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
+        +- <Dataset num_blocks=..., num_rows=1000, schema={id: int64}>
         >>> # Compute the maximum.
         >>> ds.max("id")
         999
         >>> # Shuffle this dataset randomly.
         >>> ds.random_shuffle()  # doctest: +ELLIPSIS
         RandomShuffle
-        +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
+        +- <Dataset num_blocks=..., num_rows=1000, schema={id: int64}>
         >>> # Sort it back in order.
         >>> ds.sort("id")  # doctest: +ELLIPSIS
         Sort
-        +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
+        +- <Dataset num_blocks=..., num_rows=1000, schema={id: int64}>
 
     Both unexecuted and materialized Datasets can be passed between Ray tasks and
     actors without incurring a copy. Dataset supports conversion to/from several
@@ -3951,7 +3951,7 @@ class Dataset:
             >>> ds = preprocessor.transform(ds)
             >>> ds
             Concatenator
-            +- Dataset(
+            +- <Dataset
                   num_blocks=...,
                   num_rows=150,
                   schema={
@@ -3961,7 +3961,7 @@ class Dataset:
                      petal width (cm): double,
                      target: int64
                   }
-               )
+               >
             >>> ds.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 

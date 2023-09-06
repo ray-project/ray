@@ -115,11 +115,11 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs, column="data")
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=2,\n"
-        "   num_rows=?,\n"
+        "<Dataset\n"
+        "   num_blocks=2\n"
+        "   num_rows=?\n"
         "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
-        ")"
+        ">"
     )
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
@@ -132,11 +132,11 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path, parallelism=1)
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=1,\n"
-        "   num_rows=10,\n"
+        "<Dataset\n"
+        "   num_blocks=1\n"
+        "   num_rows=10\n"
         "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
-        ")"
+        ">"
     )
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
@@ -150,11 +150,11 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert ds.num_blocks() == 1
     assert ds.count() == 10
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=1,\n"
-        "   num_rows=10,\n"
+        "<Dataset\n"
+        "   num_blocks=1\n"
+        "   num_rows=10\n"
         "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
-        ")"
+        ">"
     )
     assert [v["data"].item() for v in ds.take(2)] == [0, 1]
 
@@ -190,11 +190,11 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
         path, meta_provider=FastFileMetadataProvider(), parallelism=1
     )
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=1,\n"
-        "   num_rows=10,\n"
+        "<Dataset\n"
+        "   num_blocks=1\n"
+        "   num_rows=10\n"
         "   schema={data: numpy.ndarray(shape=(1,), dtype=int64)}\n"
-        ")"
+        ">"
     )
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]

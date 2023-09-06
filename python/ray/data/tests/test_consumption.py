@@ -157,7 +157,7 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ds.materialize()
     assert (
         str(ds)
-        == "MaterializedDataset(num_blocks=2, num_rows=0, schema=Unknown schema)"
+        == "<MaterializedDataset num_blocks=2 num_rows=0 schema=Unknown schema>"
     )
 
     # Test map on empty dataset.
@@ -218,13 +218,13 @@ def test_schema(ray_start_regular_shared):
     ds3 = ds3.materialize()
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
     ds4 = ds4.materialize()
-    assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+    assert str(ds2) == "<Dataset num_blocks=10 num_rows=10 schema={id: int64}>"
     assert (
-        str(ds3) == "MaterializedDataset(num_blocks=5, num_rows=10, schema={id: int64})"
+        str(ds3) == "<MaterializedDataset num_blocks=5 num_rows=10 schema={id: int64}>"
     )
     assert (
-        str(ds4) == "MaterializedDataset(num_blocks=1, num_rows=5, "
-        "schema={a: string, b: double})"
+        str(ds4) == "<MaterializedDataset num_blocks=1 num_rows=5 "
+        "schema={a: string, b: double}>"
     )
 
 
@@ -325,48 +325,48 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
 
 def test_dataset_repr(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
-    assert repr(ds) == "Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+    assert repr(ds) == "<Dataset num_blocks=10 num_rows=10 schema={id: int64}>"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
         "MapBatches(<lambda>)\n"
-        "+- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "+- <Dataset num_blocks=10 num_rows=10 schema={id: int64}>"
     )
     ds = ds.filter(lambda x: x["id"] > 0)
     assert repr(ds) == (
         "Filter\n"
         "+- MapBatches(<lambda>)\n"
-        "   +- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "   +- <Dataset num_blocks=10 num_rows=10 schema={id: int64}>"
     )
     ds = ds.random_shuffle()
     assert repr(ds) == (
         "RandomShuffle\n"
         "+- Filter\n"
         "   +- MapBatches(<lambda>)\n"
-        "      +- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "      +- <Dataset num_blocks=10 num_rows=10 schema={id: int64}>"
     )
     ds = ds.materialize()
     assert (
-        repr(ds) == "MaterializedDataset(num_blocks=10, num_rows=9, schema={id: int64})"
+        repr(ds) == "<MaterializedDataset num_blocks=10 num_rows=9 schema={id: int64}>"
     )
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
         "MapBatches(<lambda>)\n"
-        "+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+        "+- <Dataset num_blocks=10 num_rows=9 schema={id: int64}>"
     )
     ds1, ds2 = ds.split(2)
     assert (
-        repr(ds1) == f"MaterializedDataset(num_blocks=5, num_rows={ds1.count()}, "
-        "schema={id: int64})"
+        repr(ds1) == f"<MaterializedDataset num_blocks=5 num_rows={ds1.count()} "
+        "schema={id: int64}>"
     )
     assert (
-        repr(ds2) == f"MaterializedDataset(num_blocks=5, num_rows={ds2.count()}, "
-        "schema={id: int64})"
+        repr(ds2) == f"<MaterializedDataset num_blocks=5 num_rows={ds2.count()} "
+        "schema={id: int64}>"
     )
     ds3 = ds1.union(ds2)
-    assert repr(ds3) == "Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+    assert repr(ds3) == "<Dataset num_blocks=10 num_rows=9 schema={id: int64}>"
     ds = ds.zip(ds3)
     assert repr(ds) == (
-        "Zip\n" "+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
+        "Zip\n" "+- <Dataset num_blocks=10 num_rows=9 schema={id: int64}>"
     )
 
     def my_dummy_fn(x):
@@ -376,7 +376,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ds.map_batches(my_dummy_fn)
     assert repr(ds) == (
         "MapBatches(my_dummy_fn)\n"
-        "+- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
+        "+- <Dataset num_blocks=10 num_rows=10 schema={id: int64}>"
     )
 
 
@@ -1328,8 +1328,8 @@ def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
     expected_str = (
-        "MaterializedDataset(num_blocks=1, num_rows=10, "
-        "schema={1: float64, a: float64})"
+        "<MaterializedDataset num_blocks=1 num_rows=10 "
+        "schema={1: float64, a: float64}>"
     )
     assert str(ds) == expected_str, str(ds)
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
@@ -1679,9 +1679,9 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
 def test_dataset_plan_as_string(ray_start_cluster):
     ds = ray.data.read_parquet("example://iris.parquet", parallelism=8)
     assert ds._plan.get_plan_as_string("Dataset") == (
-        "Dataset(\n"
-        "   num_blocks=8,\n"
-        "   num_rows=150,\n"
+        "<Dataset\n"
+        "   num_blocks=8\n"
+        "   num_rows=150\n"
         "   schema={\n"
         "      sepal.length: double,\n"
         "      sepal.width: double,\n"
@@ -1689,7 +1689,7 @@ def test_dataset_plan_as_string(ray_start_cluster):
         "      petal.width: double,\n"
         "      variety: string\n"
         "   }\n"
-        ")"
+        ">"
     )
     for _ in range(5):
         ds = ds.map_batches(lambda x: x)
@@ -1699,9 +1699,9 @@ def test_dataset_plan_as_string(ray_start_cluster):
         "   +- MapBatches(<lambda>)\n"
         "      +- MapBatches(<lambda>)\n"
         "         +- MapBatches(<lambda>)\n"
-        "            +- Dataset(\n"
-        "                  num_blocks=8,\n"
-        "                  num_rows=150,\n"
+        "            +- <Dataset\n"
+        "                  num_blocks=8\n"
+        "                  num_rows=150\n"
         "                  schema={\n"
         "                     sepal.length: double,\n"
         "                     sepal.width: double,\n"
@@ -1709,7 +1709,7 @@ def test_dataset_plan_as_string(ray_start_cluster):
         "                     petal.width: double,\n"
         "                     variety: string\n"
         "                  }\n"
-        "               )"
+        "               >"
     )
 
 

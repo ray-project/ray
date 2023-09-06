@@ -143,12 +143,12 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        str(ds) == "<Datasetnum_blocks=2 num_rows=6 "
+        "schema={one: int64, two: string}>"
     ), ds
     assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        repr(ds) == "<Dataset num_blocks=2 num_rows=6 "
+        "schema={one: int64, two: string}>"
     ), ds
     check_num_computed(ds, 0, 0)
 
@@ -221,12 +221,12 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        str(ds) == "<Dataset num_blocks=2 num_rows=6 "
+        "schema={one: int64, two: string}>"
     ), ds
     assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        repr(ds) == "<Dataset num_blocks=2 num_rows=6 "
+        "schema={one: int64, two: string}>"
     ), ds
     check_num_computed(ds, 2, 2)
 
@@ -298,12 +298,12 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        str(ds) == "<Dataset num_blocks=2 num_rows=6 "
+        "schema={one: int64, two: string}>"
     ), ds
     assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        repr(ds) == "<Dataset num_blocks=2 num_rows=6 "
+        "schema={one: int64, two: string}>"
     ), ds
     check_num_computed(ds, 2, 2)
 
@@ -388,12 +388,12 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        str(ds) == "<Dataset num_blocks=2 num_rows=6 "
+        "schema={one: int64, two: string}>"
     ), ds
     assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={one: int64, two: string})"
+        repr(ds) == "<Dataset num_blocks=2 num_rows=6 "
+        "schema={one: int64, two: string}>"
     ), ds
     check_num_computed(ds, 2, 2)
 
@@ -449,20 +449,20 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert len(input_files) == 2, input_files
     check_num_computed(ds, 0, 0)
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=2,\n"
-        "   num_rows=6,\n"
+        "<Dataset\n"
+        "   num_blocks=2\n"
+        "   num_rows=6\n"
         "   schema={two: string, "
         "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
-        ")"
+        ">"
     ), ds
     assert repr(ds) == (
-        "Dataset(\n"
-        "   num_blocks=2,\n"
-        "   num_rows=6,\n"
+        "<Dataset\n"
+        "   num_blocks=2\n"
+        "   num_rows=6\n"
         "   schema={two: string, "
         "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
-        ")"
+        ">"
     ), ds
     check_num_computed(ds, 0, 0)
 
@@ -547,12 +547,12 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert (
-        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, one: int32})"
+        str(ds) == "<Dataset num_blocks=2 num_rows=6 "
+        "schema={two: string, one: int32}>"
     ), ds
     assert (
-        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, one: int32})"
+        repr(ds) == "<Dataset num_blocks=2 num_rows=6 "
+        "schema={two: string, one: int32}>"
     ), ds
     check_num_computed(ds, 0, 0)
 
