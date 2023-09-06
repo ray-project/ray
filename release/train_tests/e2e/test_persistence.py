@@ -143,14 +143,16 @@ def get_custom_cloud_fs() -> pyarrow.fs.FileSystem:
     return pyarrow.fs.PyFileSystem(pyarrow.fs.FSSpecHandler(fsspec_fs))
 
 
+def strip_prefix(path: str) -> str:
+    return path.replace("s3://", "").replace("gs://", "")
+
 @pytest.mark.parametrize(
     "storage_path_storage_filesystem_label",
     [
         (os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence", None, "cloud"),
         ("/mnt/cluster_storage/test-persistence", None, "nfs"),
         (
-            os.environ["ANYSCALE_ARTIFACT_STORAGE"].replace("s3://", "")
-            + "/test-persistence",
+            strip_prefix(os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence"),
             get_custom_cloud_fs(),
             "cloud+custom_fs",
         ),
