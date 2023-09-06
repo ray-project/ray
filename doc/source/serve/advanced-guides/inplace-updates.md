@@ -115,10 +115,14 @@ The price has updated! The same request now returns `10` instead of `6`, reflect
 
 ## Code Updates
 
-Changing the following values in a config is considered a code update, and the deployment replicas will be restarted:
-- `ray_actor_options` (per deployment)
-- `import_path` (per application, so all deployments will be restarted)
-- `runtime_env` (per application, so all deployments will be restarted)
+Changing the following values in a deployment's config is considered a code update, and the deployment replicas will be restarted.
+- `ray_actor_options`
+- `placement_group_bundles`
+- `placement_group_strategy`
+
+Changing the following application-level config values is also considered a code update, and all deployments in the application will be restarted.
+- `import_path`
+- `runtime_env`
 
 Note that the following modifications are all considered "changes", and will trigger tear down of replicas:
 * changing an existing setting
