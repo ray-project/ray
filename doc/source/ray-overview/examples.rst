@@ -95,11 +95,11 @@ Ray Examples
         Distributed training with XGBoost
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item llm nlp gen-ai
-        :link: /ray-air/examples/gptj_batch_prediction
+        :class-item: gallery-item llm nlp gen-ai inference
+        :link: /data/examples/gptj_batch_prediction
         :link-type: doc
 
-        How to use Ray AIR to do batch prediction with the Hugging Face Transformers GPT-J model
+        How to use Ray Data to do batch prediction with the Hugging Face Transformers GPT-J model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item serving llm gen-ai
@@ -137,11 +137,11 @@ Ray Examples
         Image Classification Batch Inference with PyTorch ResNet152
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item cv gen-ai
-        :link: /ray-air/examples/stablediffusion_batch_prediction
+        :class-item: gallery-item cv gen-ai inference
+        :link: /data/examples/stablediffusion_batch_prediction
         :link-type: doc
 
-        How to use Ray AIR to do batch prediction with the Stable Diffusion text-to-image model
+        How to use Ray Data to do batch prediction with the Stable Diffusion text-to-image model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item cv pytorch inference
