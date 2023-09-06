@@ -49,7 +49,7 @@ Each replica maintains a queue of requests and executes requests one at a time, 
 using `asyncio` to process them concurrently. If the handler (the deployment function or the `__call__` method of the deployment class) is declared with `async def`, the replica will not wait for the
 handler to run.  Otherwise, the replica will block until the handler returns.
 
-When making a request via [ServeHandle](serve-handle-explainer) instead of HTTP, the request is placed on a queue in the ServeHandle, and we skip to step 3 above.
+When making a request via a [DeploymentHandle](deployment-handle-explainer) instead of HTTP, the request is placed on a queue in the `DeploymentHandle`, and we skip to step 3 above.
 
 (serve-ft-detail)=
 
@@ -82,12 +82,12 @@ Ray Serve's autoscaling feature automatically increases or decreases a deploymen
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling.svg)
 
 - The Serve Autoscaler runs in the Serve Controller actor.
-- Each ServeHandle and each replica periodically pushes its metrics to the autoscaler.
-- For each deployment, the autoscaler periodically checks ServeHandle queues and in-flight queries on replicas to decide whether or not to scale the number of replicas.
-- Each ServeHandle continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it will send any buffered or new queries to the replica until `max_concurrent_queries` is reached.  Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_concurrent_queries` requests at a time.
+- Each `DeploymentHandle` and each replica periodically pushes its metrics to the autoscaler.
+- For each deployment, the autoscaler periodically checks `DeploymentHandle` queues and in-flight queries on replicas to decide whether or not to scale the number of replicas.
+- Each `DeploymentHandle` continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it will send any buffered or new queries to the replica until `max_concurrent_queries` is reached.  Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_concurrent_queries` requests at a time.
 
 :::{note}
-When the controller dies, requests can still be sent via HTTP and ServeHandles, but autoscaling will be paused. When the controller recovers, the autoscaling will resume, but all previous metrics collected will be lost.
+When the controller dies, requests can still be sent via HTTP and `DeploymentHandle`, but autoscaling will be paused. When the controller recovers, the autoscaling will resume, but all previous metrics collected will be lost.
 :::
 
 ## Ray Serve API Server
@@ -106,13 +106,13 @@ servers.  You can use your own load balancer on top of Ray Serve.
 This architecture ensures horizontal scalability for Serve. You can scale your HTTP ingress by adding more nodes and scale your model inference by increasing the number
 of replicas via the `num_replicas` option of your deployment.
 
-### How do ServeHandles work?
+### How do seployment handles work?
 
-{mod}`ServeHandles <ray.serve.handle.RayServeHandle>` wrap a handle to a "router" on the
-same node which routes requests to replicas for a deployment. When a
-request is sent from one replica to another via the handle, the
+The {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` object wraps a handle to a
+"router" that implements client-side load balancing of requests to replicas for a deployment.
+When a request is sent from one replica to another via the handle, the
 requests go through the same data path as incoming HTTP requests. This enables
-the same deployment selection and batching procedures to happen. ServeHandles are
+the same deployment selection and batching procedures to happen. Deployment handles are
 often used to implement [model composition](serve-model-composition).
 
 ### What happens to large requests?

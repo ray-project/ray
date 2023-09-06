@@ -9,7 +9,7 @@ This section helps you:
 
 Check out a [new experimental API](serve-deployment-graphs) under development for connecting Ray Serve deployments together with the **deployment graph** API.
 
-(serve-handle-explainer)=
+(deployment-handle-explainer)=
 
 ## Composing Deployments using ServeHandles
 
@@ -18,7 +18,7 @@ You can call deployment methods from within other deployments using the [ServeHa
 To use the `ServeHandle`, use {mod}`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests to a deployment.
 These requests can be ordinary Python args and kwargs that are passed directly to the method. This method call returns a Ray `ObjectRef` whose result can be waited for or retrieved using `await` or `ray.get`.
 
-(serve-model-composition-serve-handles)=
+(serve-model-composition-deployment-handles)=
 ### Model Composition Example
 
 Here's an example:
