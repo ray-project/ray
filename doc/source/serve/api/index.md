@@ -42,6 +42,12 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 
 #### Deployment Handles
 
+:::{note}
+Ray 2.7 introduces a new {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API that will replace the existing `RayServeHandle` and `RayServeSyncHandle` APIs.
+Existing code will continue to work, but you are encouraged to opt-in to the new API to avoid breakages in the future.
+To opt into the new API, you can either use `handle.options(use_new_handle_api=True)` on each handle or set it globally via environment variable: `export RAY_SERVE_ENABLE_NEW_HANDLE_API=1`.
+:::
+
 ```{eval-rst}
 .. autosummary::
    :nosignatures:
