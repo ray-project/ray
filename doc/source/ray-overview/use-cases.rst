@@ -183,7 +183,7 @@ The following highlights examples utilizing Ray AI libraries to implement end-to
 
 - `[Example] Text classification with Ray </ray-air/examples/huggingface_text_classification>`_
 - `[Example] Image classification with Ray </ray-air/examples/torch_image_example>`_
-- `[Example] Object detection with Ray </ray-air/examples/torch_detection>`_
+- `[Example] Object detection with Ray </train/examples/pytorch/torch_detection>`_
 - `[Example] Machine learning on tabular data </train/examples/xgboost/xgboost_example>`_
 - `[Example] AutoML for Time Series with Ray </ray-core/examples/automl_for_time_series>`_
 - `[Gallery] Full Ray AIR Examples Gallery </ray-air/examples/index>`_

@@ -124,10 +124,10 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch cv
-        :link: /ray-air/examples/torch_detection
+        :link: /train/examples/pytorch/torch_detection
         :link-type: doc
 
-        Torch Object Detection Example with Ray AIR
+        Torch Object Detection Example with Ray Train
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch
