@@ -162,7 +162,7 @@ metadata = (("application", "app1"),)
 responses = stub.Streaming(request=request, metadata=metadata)
 for response in responses:
     print(f"greeting: {response.greeting}")  # greeting: n: Hello foo from bar
-    print(f"num: {response.num}")   # num: 60 + n
+    print(f"num: {response.num}")  # num: 60 + n
 # __end_streaming__
 
 

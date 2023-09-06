@@ -32,7 +32,6 @@ There are three kinds of actors that are created to make up a Serve instance:
   then gRPC proxy will be started alongside with the HTTP proxy. This actor runs a
   [grpcio](https://grpc.github.io/grpc/python/) server. gRPC server that accepts 
   incoming requests, forwards them to replicas, and responds once they are completed.
-  For scalability and high availability.
 - **Replicas**: Actors that actually execute the code in response to a
   request. For example, they may contain an instantiation of an ML model. Each
   replica processes individual requests from the proxy (these may be batched
@@ -40,11 +39,11 @@ There are three kinds of actors that are created to make up a Serve instance:
 
 ## Lifetime of a Request
 
-When an HTTP request is sent to the HTTP proxy, the following happens:
+When an HTTP/ gRPC request is sent to the HTTP/ gRPC proxy, the following happens:
 
-1. The HTTP request is received and parsed.
-2. The correct deployment associated with the HTTP URL path is looked up. The
-  request is placed on a queue.
+1. The request is received and parsed.
+2. The correct deployment associated with the HTTP URL path/ application name metadata
+  is looked up. The request is placed on a queue.
 3. For each request in a deployment's queue, an available replica is looked up in round-robin fashion
   and the request is sent to it. If there are no available replicas (i.e. there
   are more than `max_concurrent_queries` requests outstanding at each replica), the request
@@ -54,7 +53,7 @@ Each replica maintains a queue of requests and executes requests one at a time, 
 using `asyncio` to process them concurrently. If the handler (the deployment function or the `__call__` method of the deployment class) is declared with `async def`, the replica will not wait for the
 handler to run.  Otherwise, the replica will block until the handler returns.
 
-When making a request via [ServeHandle](serve-handle-explainer) instead of HTTP, the request is placed on a queue in the ServeHandle, and we skip to step 3 above.
+When making a request via [ServeHandle](serve-handle-explainer) instead of HTTP/ gRPC, the request is placed on a queue in the ServeHandle, and we skip to step 3 above.
 
 (serve-ft-detail)=
 
@@ -67,7 +66,7 @@ replica will be able to continue to handle requests.
 Machine errors and faults will be handled by Ray Serve as follows:
 
 - When replica actors fail, the Controller actor will replace them with new ones.
-- When the HTTP proxy actor fails, the Controller actor will restart it.
+- When the proxy actor fails, the Controller actor will restart it.
 - When the Controller actor fails, Ray will restart it.
 - When using the [KubeRay RayService](https://ray-project.github.io/kuberay/guidance/rayservice/), KubeRay will recover crashed nodes or a crashed cluster.  Cluster crashes can be avoided using the [GCS FT feature](https://ray-project.github.io/kuberay/guidance/gcs-ft/).
 - If not using KubeRay, when the Ray cluster fails, Ray Serve cannot recover.
@@ -92,7 +91,7 @@ Ray Serve's autoscaling feature automatically increases or decreases a deploymen
 - Each ServeHandle continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it will send any buffered or new queries to the replica until `max_concurrent_queries` is reached.  Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_concurrent_queries` requests at a time.
 
 :::{note}
-When the controller dies, requests can still be sent via HTTP and ServeHandles, but autoscaling will be paused. When the controller recovers, the autoscaling will resume, but all previous metrics collected will be lost.
+When the controller dies, requests can still be sent via HTTP, gRPC, and ServeHandles, but autoscaling will be paused. When the controller recovers, the autoscaling will resume, but all previous metrics collected will be lost.
 :::
 
 ## Ray Serve API Server
@@ -104,11 +103,11 @@ Each node in your Ray cluster provides a Serve REST API server that can connect 
 
 ### How does Serve ensure horizontal scalability and availability?
 
-Serve can be configured to start one HTTP proxy actor per node via the `location` field of [`http_options`](core-apis). Each one will bind the same port. You
+Serve can be configured to start one proxy actor per node via the `location` field of [`http_options`](core-apis). Each one will bind the same port. You
 should be able to reach Serve and send requests to any models via any of the
 servers.  You can use your own load balancer on top of Ray Serve.
 
-This architecture ensures horizontal scalability for Serve. You can scale your HTTP ingress by adding more nodes and scale your model inference by increasing the number
+This architecture ensures horizontal scalability for Serve. You can scale your HTTP/ gRPC ingress by adding more nodes and scale your model inference by increasing the number
 of replicas via the `num_replicas` option of your deployment.
 
 ### How do ServeHandles work?
@@ -116,7 +115,7 @@ of replicas via the `num_replicas` option of your deployment.
 {mod}`ServeHandles <ray.serve.handle.RayServeHandle>` wrap a handle to a "router" on the
 same node which routes requests to replicas for a deployment. When a
 request is sent from one replica to another via the handle, the
-requests go through the same data path as incoming HTTP requests. This enables
+requests go through the same data path as incoming HTTP/ gRPC requests. This enables
 the same deployment selection and batching procedures to happen. ServeHandles are
 often used to implement [model composition](serve-model-composition).
 
