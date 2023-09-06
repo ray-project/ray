@@ -409,7 +409,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self.num_scheduling_tasks_gauge = metrics.Gauge(
             "serve_num_scheduling_tasks",
             description="The number of request scheduling tasks in the router.",
-            tag_keys=("deployment", "actor_name"),
+            tag_keys=("app", "deployment", "actor_name"),
         ).set_default_tags(
             {
                 "app": self._deployment_id.app,
@@ -426,7 +426,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 "The number of request scheduling tasks in the router "
                 "that are undergoing backoff."
             ),
-            tag_keys=("deployment", "actor_name"),
+            tag_keys=("app", "deployment", "actor_name"),
         ).set_default_tags(
             {
                 "app": self._deployment_id.app,
