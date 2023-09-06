@@ -787,10 +787,10 @@ class RunConfig:
 
         # Convert Paths to strings
         if isinstance(self.local_dir, Path):
-            self.local_dir = str(self.local_dir)
+            self.local_dir = self.local_dir.as_posix()
 
         if isinstance(self.storage_path, Path):
-            self.storage_path = str(self.storage_path)
+            self.storage_path = self.storage_path.as_posix()
 
         # TODO(justinvyu): [code_removal] Legacy stuff below.
         from ray.tune.utils.util import _resolve_storage_path
