@@ -380,3 +380,12 @@ cc_proto_library(
     name = "autoscaler_cc_proto",
     deps = [":autoscaler_proto"],
 )
+
+
+filegroup(
+    name = "all_proto",
+    srcs = glob([
+        "**/*.proto",
+    ]),
+    visibility = ["//visibility:public"],
+)

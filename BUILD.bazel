@@ -2695,35 +2695,17 @@ copy_to_workspace(
     dstdir = "python/ray/core/src/ray/gcs",
 )
 
-genrule(
+sh_binary(
     name = "install_py_proto",
     srcs = [
-        ":compile_py_proto",
+        "ci/install_py_proto.sh",
     ],
-    outs = ["install_py_proto.out"],
-    cmd = """
-        # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
-        # command to change the import path in the generated file.
-        # shellcheck disable=SC2006
-        files=(
-            `ls python/ray/core/generated/*_pb2*.py` \
-            `ls python/ray/serve/generated/*_pb2*.py` \
-            )
-        sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
-        # Help the generated serve files to have the correct module
-        serve_files=(`ls python/ray/serve/generated/*_pb2*.py`)
-        sed -i -E 's/'"'"'src.ray.protobuf./'"'"'ray.serve.generated./' "$${serve_files[@]}"
-        # TODO(sang): Build our own proto instead of creating a new proto for opencensus separately.
-        # https://github.com/ray-project/ray/issues/31358
-        sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
-        sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
-        # TODO(rickyx): Remove this experimental path rewrite once we move instance manager proto out
-        # of experimental.
-        autoscale_files=(`ls python/ray/core/generated/instance_manager_pb2*.py`)
-        sed -i -E 's/from ..experimental/from ./' "$${autoscale_files[@]}"
-        echo "$${PWD}" > $@
-    """,
-    local = 1,
+    data = [
+        ":compile_py_proto.tar",
+    ],
+    args = [
+        "$(location :compile_py_proto.tar)",
+    ],
 )
 
 genrule(
@@ -2731,7 +2713,6 @@ genrule(
     srcs = [
         ":cp_raylet_so",
         ":python_sources",
-        ":install_py_proto",
         ":cp_redis",
         ":cp_raylet",
         ":cp_gcs_server",
@@ -2771,29 +2752,47 @@ genrule(
     srcs = [
         "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto",
         "@io_opencensus_proto//opencensus/proto/resource/v1:resource.proto",
-    ] + glob([
-        "src/ray/protobuf/**/*.proto",
-    ]),
+        "//src/ray/protobuf:all_proto",
+    ],
     cmd = """
-        $(location :grpc_tools_protoc) --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated src/ray/protobuf/*.proto src/ray/protobuf/**/*.proto --proto_path=. --proto_path=$$(dirname $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto))/../../../..
+        TMP=$$(mktemp -d)
+        $(location :grpc_tools_protoc) --python_out=$${TMP} --grpc_python_out=$${TMP} $(locations //src/ray/protobuf:all_proto) --proto_path=. --proto_path=$$(dirname $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto))/../../../..
         mkdir -p opencensus/proto/metrics/v1
         mkdir -p opencensus/proto/resource/v1
         cp $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto) opencensus/proto/metrics/v1/metrics.proto
         cp $(locations @io_opencensus_proto//opencensus/proto/resource/v1:resource.proto) opencensus/proto/resource/v1/resource.proto
-        $(location :grpc_tools_protoc) --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated opencensus/proto/metrics/v1/metrics.proto opencensus/proto/resource/v1/resource.proto --proto_path=.
-        mv python/ray/core/generated/src/ray/protobuf/*.py python/ray/core/generated/
-        mv python/ray/core/generated/src/ray/protobuf/**/*.py python/ray/core/generated/
-        mv python/ray/core/generated/opencensus/proto/**/v1/*.py python/ray/core/generated/
-        mkdir -p python/ray/serve/generated
-        mv python/ray/core/generated/serve_*.py python/ray/serve/generated/
-        rm -rf opencensus
-        rm -rf python/ray/core/generated/src/
-        rm -rf python/ray/core/generated/opencensus/
-        echo "$${PWD}" > $@
+        $(location :grpc_tools_protoc) --python_out=$${TMP} --grpc_python_out=$${TMP} opencensus/proto/metrics/v1/metrics.proto opencensus/proto/resource/v1/resource.proto --proto_path=.
+        mv $${TMP}/src/ray/protobuf/*.py $${TMP}/
+        mv $${TMP}/src/ray/protobuf/**/*.py $${TMP}/
+        mv $${TMP}/opencensus/proto/**/v1/*.py $${TMP}/
+
+        # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
+        # command to change the import path in the generated file.
+        # shellcheck disable=SC2006
+        files=(
+            `ls $${TMP}/*_pb2*.py`
+        )
+        sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
+        # Help the generated serve files to have the correct module
+        serve_files=(`ls $${TMP}/serve_pb2*.py`)
+        sed -i -E 's/'"'"'src.ray.protobuf./'"'"'ray.serve.generated./' "$${serve_files[@]}"
+        # TODO(sang): Build our own proto instead of creating a new proto for opencensus separately.
+        # https://github.com/ray-project/ray/issues/31358
+        sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
+        sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
+        # TODO(rickyx): Remove this experimental path rewrite once we move instance manager proto out
+        # of experimental.
+        autoscale_files=(`ls $${TMP}/instance_manager_pb2*.py`)
+        sed -i -E 's/from ..experimental/from ./' "$${autoscale_files[@]}"
+
+        pushd $${TMP}
+        tar -cvf compile_py_proto.tar *.py
+        popd
+        mv $${TMP}/compile_py_proto.tar $@
+        rm -r $${TMP}
     """,
     tools = [
         ":grpc_tools_protoc",
     ],
-    outs = ["compile_py_proto.out"],
-    local = 1,
+    outs = ["compile_py_proto.tar"],
 )
