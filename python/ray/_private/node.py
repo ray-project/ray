@@ -18,11 +18,13 @@ from collections import defaultdict
 from typing import Dict, Optional, Tuple, IO, AnyStr
 
 from filelock import FileLock
+from pathlib import Path
 
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
+from ray._private.ray_constants import RAY_NODE_IP_FILENAME
 from ray._private import storage
 from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
@@ -98,26 +100,6 @@ class Node:
             ray_params.external_addresses = external_redis
             ray_params.num_redis_shards = len(external_redis) - 1
 
-        # Try to get node IP address with the parameters.
-        if ray_params.node_ip_address:
-            node_ip_address = ray_params.node_ip_address
-        elif ray_params.redis_address:
-            node_ip_address = ray.util.get_node_ip_address(ray_params.redis_address)
-        else:
-            node_ip_address = ray.util.get_node_ip_address()
-        self._node_ip_address = node_ip_address
-
-        if ray_params.raylet_ip_address:
-            raylet_ip_address = ray_params.raylet_ip_address
-        else:
-            raylet_ip_address = node_ip_address
-
-        if raylet_ip_address != node_ip_address and (not connect_only or head):
-            raise ValueError(
-                "The raylet IP address should only be different than the node "
-                "IP address when connecting to an existing raylet; i.e., when "
-                "head=False and connect_only=True."
-            )
         if (
             ray_params._system_config
             and len(ray_params._system_config) > 0
@@ -126,8 +108,6 @@ class Node:
             raise ValueError(
                 "System config parameters can only be set on the head node."
             )
-
-        self._raylet_ip_address = raylet_ip_address
 
         ray_params.update_if_absent(
             include_log_monitor=True,
@@ -177,18 +157,21 @@ class Node:
             self._init_gcs_client()
 
         # Register the temp dir.
-        if head:
-            # We expect this the first time we initialize a cluster, but not during
-            # subsequent restarts of the head node.
-            maybe_key = self.check_persisted_session_name()
-            if maybe_key is None:
-                # date including microsecond
-                date_str = datetime.datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
-                self._session_name = f"session_{date_str}_{os.getpid()}"
+        self._session_name = ray_params.session_name
+        if self._session_name is None:
+            if head:
+                # We expect this the first time we initialize a cluster, but not during
+                # subsequent restarts of the head node.
+                maybe_key = self.check_persisted_session_name()
+                if maybe_key is None:
+                    # date including microsecond
+                    date_str = datetime.datetime.today().strftime(
+                        "%Y-%m-%d_%H-%M-%S_%f"
+                    )
+                    self._session_name = f"session_{date_str}_{os.getpid()}"
+                else:
+                    self._session_name = ray._private.utils.decode(maybe_key)
             else:
-                self._session_name = ray._private.utils.decode(maybe_key)
-        else:
-            if ray_params.session_name is None:
                 assert not self._default_worker
                 session_name = ray._private.utils.internal_kv_get_with_retry(
                     self.get_gcs_client(),
@@ -197,9 +180,6 @@ class Node:
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
                 self._session_name = ray._private.utils.decode(session_name)
-            else:
-                # worker mode
-                self._session_name = ray_params.session_name
 
         # Initialize webui url
         if head:
@@ -213,7 +193,36 @@ class Node:
                     f"{ray_params.dashboard_host}:{ray_params.dashboard_port}"
                 )
 
+        # It creates a session_dir.
         self._init_temp()
+
+        node_ip_address = ray_params.node_ip_address
+        if node_ip_address is None:
+            if connect_only:
+                node_ip_address = self._wait_and_get_for_node_address()
+            else:
+                node_ip_address = ray.util.get_node_ip_address()
+
+        assert node_ip_address is not None
+        ray_params.update_if_absent(
+            node_ip_address=node_ip_address, raylet_ip_address=node_ip_address
+        )
+        self._node_ip_address = node_ip_address
+        if not connect_only:
+            self._write_node_ip_address(node_ip_address)
+
+        if ray_params.raylet_ip_address:
+            raylet_ip_address = ray_params.raylet_ip_address
+        else:
+            raylet_ip_address = node_ip_address
+
+        if raylet_ip_address != node_ip_address and (not connect_only or head):
+            raise ValueError(
+                "The raylet IP address should only be different than the node "
+                "IP address when connecting to an existing raylet; i.e., when "
+                "head=False and connect_only=True."
+            )
+        self._raylet_ip_address = raylet_ip_address
 
         # Validate and initialize the persistent storage API.
         if head:
@@ -963,6 +972,139 @@ class Node:
                     json.dump(ports_by_node, f)
 
         return port
+
+    def _wait_and_get_for_node_address(self, timeout_s: int = 60) -> str:
+        """Wait until the RAY_NODE_IP_FILENAME file is avialable.
+
+        RAY_NODE_IP_FILENAME is created when a ray instance is started.
+
+        Args:
+            timeout_s: If the ip address is not found within this
+                timeout, it will raise ValueError.
+        Returns:
+            The node_ip_address of the current session if it finds it
+            within timeout_s.
+        """
+        for i in range(timeout_s):
+            node_ip_address = self._get_cached_node_ip_address()
+
+            if node_ip_address is not None:
+                return node_ip_address
+
+            time.sleep(1)
+            if i % 10 == 0:
+                logger.info(
+                    f"Can't find a `{RAY_NODE_IP_FILENAME}` file from "
+                    f"{self.get_session_dir_path()}. "
+                    "Have you started Ray instsance using "
+                    "`ray start` or `ray.init`?"
+                )
+
+        raise ValueError(
+            f"Can't find a `{RAY_NODE_IP_FILENAME}` file from "
+            f"{self.get_session_dir_path()}. "
+            f"for {timeout_s} seconds. "
+            "A ray instance hasn't started. "
+            "Did you do `ray start` or `ray.init` on this host?"
+        )
+
+    def _get_cached_node_ip_address(self) -> str:
+        """Get a node address cached on this session.
+
+        If a ray instance is started by `ray start --node-ip-address`,
+        the node ip address is cached to a file RAY_NODE_IP_FILENAME.
+        Otherwise, the file exists, but it is emptyl.
+
+        This API is process-safe, meaning the file access is protected by
+        a file lock.
+
+        Returns:
+            node_ip_address cached on the current node. None if the node
+            the file doesn't exist, meaning ray instance hasn't been
+            started on a current node. If node_ip_address is not written
+            to a file, it means --node-ip-address is not given, and in this
+            case, we find the IP address ourselves.
+        """
+        assert hasattr(self, "_session_dir")
+        file_path = Path(
+            os.path.join(self.get_session_dir_path(), RAY_NODE_IP_FILENAME)
+        )
+        cached_node_ip_address = {}
+
+        with FileLock(str(file_path.absolute()) + ".lock"):
+            if not file_path.exists():
+                return None
+
+            with file_path.open() as f:
+                cached_node_ip_address.update(json.load(f))
+
+            if "node_ip_address" in cached_node_ip_address:
+                return cached_node_ip_address["node_ip_address"]
+            else:
+                return ray.util.get_node_ip_address()
+
+    def _write_node_ip_address(self, node_ip_address: Optional[str]) -> None:
+        """Write a node ip address of the current session to
+        RAY_NODE_IP_FILENAME.
+
+        If a ray instance is started by `ray start --node-ip-address`,
+        the node ip address is cached to a file RAY_NODE_IP_FILENAME.
+
+        This API is process-safe, meaning the file access is protected by
+        a file lock.
+
+        The file contains a single string node_ip_address. If nothing
+        is written, it means --node-ip-address was not given, and Ray
+        resolves the IP address on its own. It assumes in a single node,
+        you can have only 1 IP address (which is the assumption ray
+        has in general).
+
+        node_ip_address is the ip address of the current node.
+
+        Args:
+            node_ip_address: The node IP address of the current node.
+                If None, it means the node ip address is not given
+                by --node-ip-address. In this case, we don't write
+                anything to a file.
+        """
+        assert hasattr(self, "_session_dir")
+
+        file_path = Path(
+            os.path.join(self.get_session_dir_path(), RAY_NODE_IP_FILENAME)
+        )
+        cached_node_ip_address = {}
+
+        with FileLock(str(file_path.absolute()) + ".lock"):
+            if not file_path.exists():
+                with file_path.open(mode="w") as f:
+                    json.dump({}, f)
+
+            with file_path.open() as f:
+                cached_node_ip_address.update(json.load(f))
+
+            cached_node_ip = cached_node_ip_address.get("node_ip_address")
+
+            if node_ip_address is not None:
+                if cached_node_ip:
+                    if cached_node_ip == node_ip_address:
+                        # Nothing to do.
+                        return
+                    else:
+                        logger.warning(
+                            "The node IP address of the current host recorded "
+                            f"in {RAY_NODE_IP_FILENAME} ({cached_node_ip}) "
+                            "is different from the current IP address: "
+                            f"{node_ip_address}. Ray will use {node_ip_address} "
+                            "as the current node's IP address. "
+                            "Creating 2 instances in the same host with different "
+                            "IP address is not supported. "
+                            "Please create an enhnacement request to"
+                            "https://github.com/ray-project/ray/issues."
+                        )
+
+                cached_node_ip_address["node_ip_address"] = node_ip_address
+                with file_path.open(mode="w") as f:
+                    json.dump(cached_node_ip_address, f)
 
     def start_reaper_process(self):
         """
