@@ -96,7 +96,7 @@ Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/k
   class Actor:
     pass
 
-  ray.init()
+  ray.init(namespace="default_namespace")
   Actor.options(name=sys.argv[1], lifetime="detached").remote()
   ```
 
@@ -105,7 +105,7 @@ Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/k
   import ray
   import sys
 
-  ray.init()
+  ray.init(namespace="default_namespace")
   detached_actor = ray.get_actor(sys.argv[1])
   ray.kill(detached_actor)
   ```
