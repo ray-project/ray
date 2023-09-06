@@ -495,9 +495,10 @@ def _setup_ray_cluster(
         ray_addr = canonicalize_bootstrap_address_or_die("auto", ray_temp_root_dir)
         if ray_addr is not None:
             raise RuntimeError(
-                f"Global mode is enabled by setting {DATABRICKS_RAY_CLUSTER_GLOBAL_MODE}, "
-                "current active ray cluster on spark haven't shut down."
-                "Please call `ray.util.spark.shutdown_ray_cluster()` before initiating a "
+                "Global mode is enabled by setting "
+                f"{DATABRICKS_RAY_CLUSTER_GLOBAL_MODE} to true. Current active ray "
+                "cluster on spark haven't shut down. Please call "
+                "`ray.util.spark.shutdown_ray_cluster()` before initiating a "
                 "new Ray cluster on spark."
             )
         ray_temp_dir = os.path.join(ray_temp_root_dir, "ray")
