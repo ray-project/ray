@@ -72,7 +72,6 @@ INFO 2023-05-24 01:19:15,988 default_Model default_Model#rimNjA WzjTbJvbPN / def
 INFO 2023-05-24 01:19:16,993 default_Model default_Model#rimNjA WzjTbJvbPN / default replica.py:542 - __CALL__ OK 1005.7ms
 ```
 
-
 You can also send a request to a specific model by using handle {mod}`options <ray.serve.handle.RayServeHandle>` API.
 ```{literalinclude} ../doc_code/multiplexed.py
 :language: python
@@ -80,7 +79,7 @@ You can also send a request to a specific model by using handle {mod}`options <r
 :end-before: __serve_handle_send_example_end__
 ```
 
-By using ray serve handle, you can also send multiplexed request within a deployment for model composition.
+By using ray serve handle, you can also send multiplexed request within a deployment for model composition. (You should always set `multiplexed_model_id` when using the ray serve handle to send a multiplexed request)
 ```{literalinclude} ../doc_code/multiplexed.py
 :language: python
 :start-after: __serve_model_composition_example_begin__
