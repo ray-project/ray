@@ -487,7 +487,7 @@ class DreamerV3Config(AlgorithmConfig):
     def share_module_between_env_runner_and_learner(self) -> bool:
         # If we only have one local Learner (num_learner_workers=0) and only
         # one local EnvRunner (num_rollout_workers=0), share the RLModule
-        # between these two to avoid having to sync weights, ever.
+        # between these two to avoid having to ever sync weights.
         return self.num_learner_workers == 0 and self.num_rollout_workers == 0
 
 
@@ -697,6 +697,23 @@ class DreamerV3(Algorithm):
 
         # Return all results.
         return results
+
+    @override(Algorithm)
+    def load_checkpoint(self, checkpoint_dir: str) -> None:
+        super().load_checkpoint(checkpoint_dir=checkpoint_dir)
+
+        # Share RLModule between EnvRunner and single (local) Learner instance.
+        # To avoid possibly expensive weight synching step.
+        if self.config.share_module_between_env_runner_and_learner:
+            self.workers.local_worker().module = self.learner_group._learner.module[
+                DEFAULT_POLICY_ID
+            ]
+        # TODO: Move this logic into parent method. This is the same behavior as when
+        #  an Algorithm gets constructed (given that it uses the new API stack).
+        else:
+            weights = self.learner_group.get_weights()
+            self.workers().local_worker.set_weights(weights)
+            self.workers.sync_weights()
 
     @property
     def training_ratio(self) -> float:
