@@ -235,7 +235,7 @@ When both Grafana and the Ray Cluster are on the same Kubernetes cluster, set `R
 
 
 #### User authentication for Grafana
-When the Grafana instance requires user authentication, the following settings have to be in its `configuration file <https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/>`_ to correctly embed in Ray Dashboard:
+When the Grafana instance requires user authentication, the following settings have to be in its [configuration file](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/) to correctly embed in Ray Dashboard:
 
 ```ini
   [security]
