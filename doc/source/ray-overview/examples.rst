@@ -75,10 +75,10 @@ Ray Examples
 
     .. grid-item-card:: :bdg-success:`Tutorial`
         :class-item: gallery-item pytorch training
-        :link: /ray-air/examples/convert_existing_pytorch_code_to_ray_air
+        :link: /train/examples/pytorch/convert_existing_pytorch_code_to_ray_train
         :link-type: doc
 
-        Get started with Ray AIR from an existing PyTorch codebase
+        Get started with Ray Train from an existing PyTorch codebase
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training

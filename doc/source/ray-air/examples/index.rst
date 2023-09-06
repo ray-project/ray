@@ -6,7 +6,6 @@ Examples
 Framework-specific Examples
 ---------------------------
 
-- :doc:`/ray-air/examples/convert_existing_pytorch_code_to_ray_air`: Get started with Ray AIR from an existing PyTorch codebase
 - :doc:`/ray-air/examples/lightgbm_example`: Distributed training with LightGBM
 - :doc:`/ray-air/examples/xgboost_example`: Distributed training with XGBoost
 
