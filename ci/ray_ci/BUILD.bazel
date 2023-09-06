@@ -18,7 +18,7 @@ py_library(
         ["*.py"],
         exclude = [
             "test_*.py",
-            "ray_ci.py",
+            "test_in_docker.py",
         ],
     ),
     visibility = ["//visibility:private"],
@@ -29,15 +29,15 @@ py_library(
 )
 
 py_binary(
-    name = "ray_ci",
-    srcs = ["ray_ci.py"],
+    name = "test_in_docker",
+    srcs = ["test_in_docker.py"],
     deps = [":ray_ci_lib"],
 )
 
 py_test(
-    name = "test_runner",
+    name = "test_tester",
     size = "small",
-    srcs = ["test_runner.py"],
+    srcs = ["test_tester.py"],
     tags = [
         "ci_unit",
         "team:ci",

@@ -6,7 +6,7 @@ from typing import List
 
 import pytest
 
-from ci.ray_ci.runner import (
+from ci.ray_ci.tester import (
     _get_all_test_targets,
     _get_all_test_query,
     _get_test_targets,
@@ -33,7 +33,7 @@ def test_get_test_targets() -> None:
             "",
         ]
         with mock.patch(
-            "ci.ray_ci.runner.shard_tests", side_effect=_mock_shard_tests
+            "ci.ray_ci.tester.shard_tests", side_effect=_mock_shard_tests
         ), mock.patch(
             "subprocess.check_output",
             return_value="\n".join(test_targets).encode("utf-8"),
