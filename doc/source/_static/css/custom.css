@@ -651,19 +651,11 @@ padding: 20px;
   position: absolute;
 }
 
-.mantine-Button-root{
-    bottom: 60px !important;
-}
-
 #kapa-widget-container {
   z-index: 10000 !important;
   position: absolute !important;
 }
 
-.mantine-1sc70ew, .mantine-fp9t1o {
-    width: 100% !important;
-    height: 100% !important;
-}
 
 .searchDiv {
     width: 100%;

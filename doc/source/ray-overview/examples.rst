@@ -590,7 +590,7 @@ Ray Examples
         :link: lightning_advanced_example
         :link-type: ref
 
-        Use LightningTrainer with Ray Data and Batch Predictor
+        Fine-tune a PyTorch Lightning Text Classifier with Ray Data
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tensorflow tuning
@@ -1402,3 +1402,10 @@ Ray Examples
         :link-type: ref
 
         Distributed Training with Hugging Face Accelelate and TorchTrainer
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item inference huggingface cv
+        :link: kuberay-batch-inference-example
+        :link-type: ref
+
+        RayJob Batch Inference Example on Kubernetes with Ray

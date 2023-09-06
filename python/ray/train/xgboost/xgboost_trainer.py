@@ -6,9 +6,9 @@ try:
 except ImportError:
     from distutils.version import LooseVersion as Version
 
-from ray.air.checkpoint import Checkpoint
-from ray.air.constants import MODEL_KEY
+from ray.train import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
+from ray.train.xgboost import XGBoostCheckpoint
 from ray.util.annotations import PublicAPI
 
 import xgboost
@@ -94,7 +94,9 @@ class XGBoostTrainer(GBDTTrainer):
         """Retrieve the XGBoost model stored in this checkpoint."""
         with checkpoint.as_directory() as checkpoint_path:
             booster = xgboost.Booster()
-            booster.load_model(os.path.join(checkpoint_path, MODEL_KEY))
+            booster.load_model(
+                os.path.join(checkpoint_path, XGBoostCheckpoint.MODEL_FILENAME)
+            )
             return booster
 
     def _train(self, **kwargs):
@@ -104,7 +106,7 @@ class XGBoostTrainer(GBDTTrainer):
         return self.__class__.get_model(checkpoint)
 
     def _save_model(self, model: xgboost.Booster, path: str):
-        model.save_model(path)
+        model.save_model(os.path.join(path, XGBoostCheckpoint.MODEL_FILENAME))
 
     def _model_iteration(self, model: xgboost.Booster) -> int:
         if not hasattr(model, "num_boosted_rounds"):

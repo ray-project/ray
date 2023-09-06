@@ -3,11 +3,11 @@ from pydantic import ValidationError
 
 from ray import cloudpickle
 
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.config import (
-    DeploymentConfig,
     DeploymentMode,
     HTTPOptions,
-    ReplicaConfig,
+    ProxyLocation,
     gRPCOptions,
 )
 from ray.serve.config import AutoscalingConfig
@@ -196,6 +196,60 @@ class TestReplicaConfig:
         for option in disallowed_ray_actor_options:
             with pytest.raises(ValueError):
                 ReplicaConfig.create(Class, ray_actor_options={option: None})
+
+    def test_max_replicas_per_node_validation(self):
+        class Class:
+            pass
+
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            max_replicas_per_node=5,
+        )
+
+        # Invalid type
+        with pytest.raises(TypeError, match="Get invalid type"):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node="1",
+            )
+
+        # Invalid: not in the range of [1, 100]
+        with pytest.raises(
+            ValueError,
+            match="Valid values are None or an integer in the range of \[1, 100\]",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node=0,
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="Valid values are None or an integer in the range of \[1, 100\]",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node=110,
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="Valid values are None or an integer in the range of \[1, 100\]",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node=-1,
+            )
 
     def test_placement_group_options_validation(self):
         class Class:
@@ -442,6 +496,31 @@ def test_grpc_options():
     assert grpc_options.grpc_servicer_func_callable == [
         add_UserDefinedServiceServicer_to_server
     ]
+
+
+def test_proxy_location_to_deployment_mode():
+    assert (
+        ProxyLocation._to_deployment_mode(ProxyLocation.Disabled)
+        == DeploymentMode.NoServer
+    )
+    assert (
+        ProxyLocation._to_deployment_mode(ProxyLocation.HeadOnly)
+        == DeploymentMode.HeadOnly
+    )
+    assert (
+        ProxyLocation._to_deployment_mode(ProxyLocation.EveryNode)
+        == DeploymentMode.EveryNode
+    )
+
+    assert ProxyLocation._to_deployment_mode("Disabled") == DeploymentMode.NoServer
+    assert ProxyLocation._to_deployment_mode("HeadOnly") == DeploymentMode.HeadOnly
+    assert ProxyLocation._to_deployment_mode("EveryNode") == DeploymentMode.EveryNode
+
+    with pytest.raises(ValueError):
+        ProxyLocation._to_deployment_mode("Unknown")
+
+    with pytest.raises(TypeError):
+        ProxyLocation._to_deployment_mode({"some_other_obj"})
 
 
 if __name__ == "__main__":

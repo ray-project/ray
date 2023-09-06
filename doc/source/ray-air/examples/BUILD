@@ -23,10 +23,6 @@ py_test_run_all_notebooks(
         "stablediffusion_batch_prediction.ipynb",  # Requires GPUs
         "gptj_deepspeed_fine_tuning.ipynb",  # Requires release test
         "dolly_lightning_fsdp_finetuning.ipynb", # Requires release test
-        # TODO(matthewdeng): Re-enable after XGBoost and LightGBM use new train.report
-        # codepath and new checkpointing flow is enabled for the examples.
-        "lightgbm_example.ipynb",
-        "xgboost_example.ipynb",
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],
