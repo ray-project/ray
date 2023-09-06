@@ -20,6 +20,8 @@ assert handle.remote(1).result() == 2
 # __batch_begin__
 from typing import List
 
+import numpy as np
+
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
