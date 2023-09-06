@@ -116,14 +116,12 @@ class RemoteFunction:
             self._default_options["runtime_env"] = self._runtime_env
 
         self._language = language
-        self._function = _inject_tracing_into_function(function)
+        self._function = function
+        self._injected_tracing = False
         self._function_name = function.__module__ + "." + function.__name__
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
         self._decorator = getattr(function, "__ray_invocation_decorator__", None)
-        self._function_signature = ray._private.signature.extract_signature(
-            self._function
-        )
         self._last_export_session_and_job = None
         self._uuid = uuid.uuid4()
 
@@ -253,6 +251,15 @@ class RemoteFunction:
 
         worker = ray._private.worker.global_worker
         worker.check_connected()
+
+        # We cannot do this when the function is first defined, because we need
+        # ray.init() to have been called when this executes
+        if not self._injected_tracing:
+            self._function = _inject_tracing_into_function(self._function)
+            self._function_signature = ray._private.signature.extract_signature(
+                self._function
+            )
+            self._injected_tracing = True
 
         # If this function was not exported in this session and job, we need to
         # export this function again, because the current GCS doesn't have it.
