@@ -104,6 +104,7 @@ There are handful of ways to address these issues:
 3. Consider using `async` methods in your callable. See [the section below](serve-performance-async-methods).
 4. Set an end-to-end timeout for your HTTP requests. See [the section below](serve-performance-e2e-timeout).
 
+
 (serve-performance-async-methods)=
 ### Using `async` methods
 
