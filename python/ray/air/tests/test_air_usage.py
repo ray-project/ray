@@ -2,6 +2,7 @@
 
 import json
 import os
+from packaging.version import Version
 
 import pyarrow.fs
 import pytest
@@ -85,6 +86,11 @@ def test_tag_storage_type(storage_path_filesystem_expected, mock_record, monkeyp
     monkeypatch.setattr(StorageContext, "_check_validation_file", lambda _: None)
 
     storage_path, storage_filesystem, expected = storage_path_filesystem_expected
+
+    if Version(pyarrow.__version__) < Version("9.0.0") and storage_path.startswith(
+        "gs://"
+    ):
+        pytest.skip("GCS support requires pyarrow >= 9.0.0")
 
     storage = StorageContext(
         storage_path=storage_path,
