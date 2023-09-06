@@ -1038,6 +1038,7 @@
   cluster:
     byod:
       type: cu121
+      # This needs to be in sync with requirements under go/llm-forge.
       pip:
         - torch==2.0.0
         - torchvision==0.15.1
