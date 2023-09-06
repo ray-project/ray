@@ -4,7 +4,7 @@ steps:
     instance_type: large
     parallelism: 6
     commands:
-      - bazel run //ci/ray_ci -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --except-tags debug_tests,asan_tests,post_wheel_build,xcommit
     depends_on: corebuild
@@ -14,6 +14,6 @@ steps:
     instance_type: large
     soft_fail: true
     commands:
-      - bazel run //ci/ray_ci -- //... core --run-flaky-tests --parallelism-per-worker 3
+      - bazel run //ci/ray_ci:test_in_docker -- //... core --run-flaky-tests --parallelism-per-worker 3
     depends_on: corebuild
     job_env: corebuild

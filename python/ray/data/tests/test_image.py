@@ -63,9 +63,9 @@ class TestReadImages:
         if ignore_missing_paths:
             ds = ray.data.read_images(paths, ignore_missing_paths=ignore_missing_paths)
             # example:// directive redirects to /ray/python/ray/data/examples/data
-            assert ds.input_files() == [
-                "/ray/python/ray/data/examples/data/image-datasets/simple/image1.jpg"
-            ]
+            assert len(ds.input_files()) == 1 and ds.input_files()[0].endswith(
+                "ray/data/examples/data/image-datasets/simple/image1.jpg",
+            )
         else:
             with pytest.raises(FileNotFoundError):
                 ds = ray.data.read_images(
