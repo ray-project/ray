@@ -375,7 +375,7 @@ _bazel_build_before_install() {
   if [ "${OSTYPE}" = msys ]; then
     # On Windows, we perform as full of a build as possible, to ensure the repository always remains buildable on Windows.
     # (Pip install will not perform a full build.)
-    target="//:*"
+   target="//:ray_pkg"
   else
     # Just build Python on other platforms.
     # This because pip install captures & suppresses the build output, which causes a timeout on CI.
@@ -456,6 +456,7 @@ validate_wheels_commit_str() {
 
 build_wheels_and_jars() {
   _bazel_build_before_install
+  conda init
 
   # Create wheel output directory and empty contents
   # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
