@@ -103,6 +103,7 @@ There are handful of ways to address these issues:
 2. Try batching your requests. See [Dynamic Request Batching](serve-performance-batching-requests).
 3. Consider using `async` methods in your callable. See [the section below](serve-performance-async-methods).
 4. Set an end-to-end timeout for your HTTP requests. See [the section below](serve-performance-e2e-timeout).
+5. Set keep alive timeout for uvicorn server on Serve's HTTP proxy. See [the section below](serve-performance-keep-alive-timeout).
 
 
 (serve-performance-async-methods)=
@@ -124,3 +125,16 @@ proper backpressure. You can increase the value in the deployment decorator; e.g
 By default, Serve lets client HTTP requests run to completion no matter how long they take. However, slow requests could bottleneck the replica processing, blocking other requests that are waiting. It's recommended that you set an end-to-end timeout, so slow requests can be terminated and retried.
 
 You can set an end-to-end timeout for HTTP requests by setting the `request_timeout_s` in the `http_options` field of the Serve config. HTTP Proxies will wait for that many seconds before terminating an HTTP request. This config is global to your Ray cluster, and it cannot be updated during runtime. Use [client-side retries](serve-best-practices-http-requests) to retry requests that time out due to transient failures.
+
+(serve-performance-keep-alive-timeout)=
+### Set keep alive timeout
+
+Serve uses Uvicorn HTTP server internally to serve HTTP requests. By default, Serve sets
+Uvicorn keeps HTTP connections alive for 5 seconds. The setting defines the duration to
+keep idle connections alive when no requests are ongoing. You can set the keep alive
+timeout by setting the `keep_alive_timeout_s` in the `http_options` field of the Serve
+config files. This config is global to your Ray cluster, and it cannot be updated during
+runtime. You can also set `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` environment variable to
+set the keep alive timeout. `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` will take the
+precedent over the `keep_alive_timeout_s` config if both are set. You can find more
+information about Uvicorn's keep alive timeout [here](https://www.uvicorn.org/settings/#keep-alive-timeout).
