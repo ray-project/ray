@@ -57,6 +57,10 @@ def test_send_recv_text_and_binary(serve_instance, route_prefix: str):
     not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     reason="Streaming feature flag is disabled.",
 )
+@pytest.mark.skipif(
+    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
+    reason="Different disconnect behavior on 3.7.",
+)
 def test_client_disconnect(serve_instance):
     app = FastAPI()
 
