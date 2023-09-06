@@ -194,4 +194,5 @@ if __name__ == "__main__":
         host=args.node_ip_address,
         port=args.runtime_env_agent_port,
         loop=get_or_create_event_loop(),
+        keepalive_timeout=None,  # we want to always keep alive.
     )
