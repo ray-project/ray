@@ -24,6 +24,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
+from ray._private.ray_constants import RAY_NODE_IP_FILENAME
 from ray._private import storage
 from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
@@ -973,9 +974,9 @@ class Node:
         return port
 
     def _wait_and_get_for_node_address(self, timeout_s: int = 60) -> str:
-        """Wait until the node_ip_address.json file is avialable.
+        """Wait until the RAY_NODE_IP_FILENAME file is avialable.
 
-        node_ip_address.json is created when a ray instance is started.
+        RAY_NODE_IP_FILENAME is created when a ray instance is started.
 
         Args:
             timeout_s: If the ip address is not found within this
@@ -993,14 +994,14 @@ class Node:
             time.sleep(1)
             if i % 10 == 0:
                 logger.info(
-                    "Can't find a `node_ip_address.json` file from "
+                    f"Can't find a `{RAY_NODE_IP_FILENAME}` file from "
                     f"{self.get_session_dir_path()}. "
                     "Have you started Ray instsance using "
                     "`ray start` or `ray.init`?"
                 )
 
         raise ValueError(
-            "Can't find a `node_ip_address.json` file from "
+            f"Can't find a `{RAY_NODE_IP_FILENAME}` file from "
             f"{self.get_session_dir_path()}. "
             f"for {timeout_s} seconds. "
             "A ray instance hasn't started. "
@@ -1011,7 +1012,7 @@ class Node:
         """Get a node address cached on this session.
 
         If a ray instance is started by `ray start --node-ip-address`,
-        the node ip address is cached to a file node_ip_address.json.
+        the node ip address is cached to a file RAY_NODE_IP_FILENAME.
         Otherwise, the file exists, but it is emptyl.
 
         This API is process-safe, meaning the file access is protected by
@@ -1026,7 +1027,7 @@ class Node:
         """
         assert hasattr(self, "_session_dir")
         file_path = Path(
-            os.path.join(self.get_session_dir_path(), "node_ip_address.json")
+            os.path.join(self.get_session_dir_path(), RAY_NODE_IP_FILENAME)
         )
         cached_node_ip_address = {}
 
@@ -1044,16 +1045,16 @@ class Node:
 
     def _write_node_ip_address(self, node_ip_address: Optional[str]) -> None:
         """Write a node ip address of the current session to
-        node_ip_address.json.
+        RAY_NODE_IP_FILENAME.
 
         If a ray instance is started by `ray start --node-ip-address`,
-        the node ip address is cached to a file node_ip_address.json.
+        the node ip address is cached to a file RAY_NODE_IP_FILENAME.
 
         This API is process-safe, meaning the file access is protected by
         a file lock.
 
-        The file contains a single string node_ip_address. It nothing
-        is written, --node-ip-address is not given. In this case, Ray
+        The file contains a single string node_ip_address. If nothing
+        is written, it means --node-ip-address was not given, and Ray
         resolves the IP address on its own. It assumes in a single node,
         you can have only 1 IP address (which is the assumption ray
         has in general).
@@ -1069,7 +1070,7 @@ class Node:
         assert hasattr(self, "_session_dir")
 
         file_path = Path(
-            os.path.join(self.get_session_dir_path(), "node_ip_address.json")
+            os.path.join(self.get_session_dir_path(), RAY_NODE_IP_FILENAME)
         )
         cached_node_ip_address = {}
 
@@ -1081,7 +1082,27 @@ class Node:
             with file_path.open() as f:
                 cached_node_ip_address.update(json.load(f))
 
+            cached_node_ip = cached_node_ip_address.get("node_ip_address")
+
             if node_ip_address is not None:
+                if cached_node_ip:
+                    if cached_node_ip == node_ip_address:
+                        # Nothing to do.
+                        return
+                    else:
+                        assert False, (
+                            "The node IP address of the current host recorded "
+                            f"in {RAY_NODE_IP_FILENAME} ({cached_node_ip}) "
+                            "is different from the current IP address: "
+                            f"{node_ip_address}. Ray will use {node_ip_address} "
+                            "as the current node's IP address. "
+                            "It happens when you start more than 1 Ray instance "
+                            "for the same cluster in the same host "
+                            "with a different IP address. "
+                            "If you see this error message, please create an "
+                            "issue in https://github.com/ray-project/ray/issues."
+                        )
+
                 cached_node_ip_address["node_ip_address"] = node_ip_address
                 with file_path.open(mode="w") as f:
                     json.dump(cached_node_ip_address, f)
