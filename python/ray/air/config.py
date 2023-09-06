@@ -573,7 +573,7 @@ class FailureConfig:
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class CheckpointConfig:
     """Configurable parameters for defining the checkpointing strategy.
 

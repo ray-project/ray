@@ -14,7 +14,7 @@ from ray.train import DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
-from ray.util import PublicAPI
+from ray.util.annotations import Deprecated
 from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
     RayFSDPStrategy,
@@ -31,7 +31,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class LightningConfigBuilder:
     """Configuration Class to pass into LightningTrainer.
 
@@ -221,7 +221,7 @@ class LightningConfigBuilder:
         return config_dict
 
 
-@PublicAPI(stability="alpha")
+@Deprecated("Use TorchTrainer instead.")
 class LightningTrainer(TorchTrainer):
     """A Trainer for data parallel PyTorch Lightning training.
 

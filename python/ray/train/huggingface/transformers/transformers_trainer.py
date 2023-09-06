@@ -20,7 +20,7 @@ from ray.train import DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
-from ray.util import PublicAPI
+from ray.util.annotations import Deprecated
 
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
@@ -73,7 +73,7 @@ if TYPE_CHECKING:
 TRAINER_INIT_FN_KEY = "_trainer_init_per_worker"
 
 
-@PublicAPI(stability="alpha")
+@Deprecated("Use TorchTrainer instead.")
 class TransformersTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Transformers on PyTorch training.
 

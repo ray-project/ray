@@ -193,11 +193,11 @@ local log files. It can also be used to report results to
 :ref:`checkpoint bookkeeping <train-dl-configure-checkpoints>`.
 
 The easiest way to report your results with Keras is by using the
-:class:`~air.integrations.keras.ReportCheckpointCallback`:
+:class:`~ray.train.tensorflow.keras.ReportCheckpointCallback`:
 
 .. code-block:: python
 
-    from ray.air.integrations.keras import ReportCheckpointCallback
+    from ray.train.tensorflow.keras import ReportCheckpointCallback
 
     def train_func(config: dict):
         # ...

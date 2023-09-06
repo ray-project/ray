@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Tuple, Union
 
 from ray import train
+from ray.util.annotations import Deprecated
 from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train import DataConfig
 from ray.train.torch import TorchConfig
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
     from ray.tune.trainable import Trainable
 
 
+@Deprecated("Use TorchTrainer instead.")
 class AccelerateTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Accelerate training with PyTorch.
 
