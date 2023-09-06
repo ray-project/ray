@@ -1,4 +1,4 @@
-from ci.ray_ci.runner import main
+from ci.ray_ci.tester import main
 
 if __name__ == "__main__":
     main()
