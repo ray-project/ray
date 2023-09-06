@@ -534,8 +534,9 @@ def is_autoscaler_v2() -> bool:
     # If env var is set to enable autoscaler v2, we should always return True.
     if ray._config.enable_autoscaler_v2():
         # TODO(rickyx): Once we migrate completely to v2, we should remove this.
-        # While this short-circuit may allow client-server inconsistency (e.g. client running v1,
-        # while server running v2), it's currently not possible with existing usecases. 
+        # While this short-circuit may allow client-server inconsistency
+        # (e.g. client running v1, while server running v2), it's currently
+        # not possible with existing use-cases.
         return True
 
     global cached_is_autoscaler_v2
