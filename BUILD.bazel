@@ -2798,5 +2798,4 @@ genrule(
     ],
     outs = ["compile_py_proto.out"],
     local = 1,
-    tags = ["no-cache"],
 )
