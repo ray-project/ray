@@ -75,9 +75,9 @@ serve.run(driver)
 ## Ingress Deployment (HTTP handling)
 
 A Serve application can consist of multiple deployments that can be combined to perform model composition or complex business logic.
-However, there is always one "top-level" deployment, the one that will be passed to `serve.run` or `serve.build` to deploy the application.
+However, one deployment is always the "top-level" one that is passed to `serve.run` to deploy the application.
 This deployment is called the "ingress deployment" because it serves as the entrypoint for all traffic to the application.
-Often, it will then route to other deployments or call into them using the `ServeHandle` API and compose the results before returning to the user.
+Often, it then routes to other deployments or calls into them using the `ServeHandle` API, and composes the results before returning to the user.
 
 The ingress deployment defines the HTTP handling logic for the application.
 By default, the `__call__` method of the class will be called and passed in a `Starlette` request object.
