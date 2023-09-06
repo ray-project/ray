@@ -17,39 +17,33 @@ Lightweight config updates are only possible for deployments that are included a
 (serve-updating-user-config)=
 
 ## Updating User Config
-Let's use the `FruitStand` deployment graph [from the production guide](fruit-config-yaml) as an example. All the individual fruit deployments contain a `reconfigure()` method. This method allows us to issue lightweight updates to our deployments by updating the `user_config`.
+Let's use the text summarization and translation application [from the production guide](production-config-yaml) as an example. Both of the individual deployments contain a `reconfigure()` method. This method allows us to issue lightweight updates to our deployments by updating the `user_config`.
 
 First let's deploy the graph. Make sure to stop any previous Ray cluster using the CLI command `ray stop` for this example:
 
 ```console
 $ ray start --head
-$ serve deploy fruit_config.yaml
+$ serve deploy serve_config.yaml
 ...
 
-$ python
-
->>> import requests
->>> requests.post("http://localhost:8000/", json=["MANGO", 2]).json()
-
-6
+$ curl -H "Content-Type: application/json" -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"' "http://localhost:8000/"
+c'était le meilleur des temps, c'était le pire des temps .
 ```
 
-Now, let's update the price of mangos in our deployment. We can change the `price` attribute in the `MangoStand` deployment to `5` in our config file:
+Now, let's change the language that the text is translated into from French to German. We can change the `language` attribute in the `Translator` user config:
 
 ```yaml
 ...
 
 applications:
-
-- name: app1
+- name: default
   route_prefix: /
-  import_path: fruit:deployment_graph
+  import_path: text_ml:app
   runtime_env: {}
   deployments:
-  - name: MangoStand
+  - name: Translator
     user_config:
-      # price: 3 (outdated price)
-      price: 5
+      language: german
 
 ...
 ```
@@ -57,7 +51,7 @@ applications:
 Without stopping the Ray cluster, we can redeploy our graph using `serve deploy`:
 
 ```console
-$ serve deploy fruit_config.yaml
+$ serve deploy serve_config.yaml
 ...
 ```
 
@@ -66,48 +60,29 @@ We can inspect our deployments with `serve status`. Once the `app_status`'s `sta
 ```console
 $ serve status
 proxies:
-  0eeaadc5f16b64b8cd55aae184254406f0609370cbc79716800cb6f2: HEALTHY
+  cef533a072b0f03bf92a6b98cb4eb9153b7b7c7b7f15954feb2f38ec: HEALTHY
 applications:
-  app1:
+  default:
     status: RUNNING
     message: ''
-    last_deployed_time_s: 1693430845.863128
+    last_deployed_time_s: 1694041157.2211847
     deployments:
-      MangoStand:
+      Translator:
         status: HEALTHY
         replica_states:
           RUNNING: 1
         message: ''
-      OrangeStand:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 1
-        message: ''
-      PearStand:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 1
-        message: ''
-      FruitMarket:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 2
-        message: ''
-      DAGDriver:
+      Summarizer:
         status: HEALTHY
         replica_states:
           RUNNING: 1
         message: ''
 
-$ python
-
->>> import requests
->>> requests.post("http://localhost:8000/", json=["MANGO", 2]).json()
-
-10
+$ curl -H "Content-Type: application/json" -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"' "http://localhost:8000/"
+Es war die beste Zeit, es war die schlimmste Zeit .
 ```
 
-The price has updated! The same request now returns `10` instead of `6`, reflecting the new price.
+The language was updated! Now the returned text is in German instead of French.
 
 ## Code Updates
 

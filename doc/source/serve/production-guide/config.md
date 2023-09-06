@@ -11,33 +11,23 @@ This config file can be used with the [serve deploy](serve-in-production-deployi
 The file is written in YAML and has the following format:
 
 ```yaml
+proxy_location: ...
+
 http_options: 
-
   host: ...
-
   port: ...
-
   request_timeout_s: ...
 
 applications:
-  
 - name: ...
-    
   route_prefix: ...
-    
   import_path: ...
-    
   runtime_env: ... 
-
   deployments:
-
   - name: ...
     num_replicas: ...
     ...
-
   - name:
-    ...
-
     ...
 ```
 
@@ -54,63 +44,48 @@ These are the fields per application:
 - A `runtime_env` that defines the environment that the application will run in. This is used to package application dependencies such as `pip` packages (see {ref}`Runtime Environments <runtime-environments>` for supported fields). The `import_path` must be available _within_ the `runtime_env` if it's specified. The Serve config's `runtime_env` can only use [remote URIs](remote-uris) in its `working_dir` and `py_modules`; it cannot use local zip files or directories. [More details on runtime env](serve-runtime-env).
 - A list of `deployments`. This is optional and allows you to override the `@serve.deployment` settings specified in the deployment graph code. Each entry in this list must include the deployment `name`, which must match one in the code. If this section is omitted, Serve launches all deployments in the graph with the settings specified in the code.
 
-Below is an equivalent config for the [`FruitStand` example](serve-in-production-example):
+Below is an equivalent config for the [`Text ML Model` example](serve-in-production-example):
 
 ```yaml
+proxy_location: EveryNode
+
+http_options:
+  host: 0.0.0.0
+  port: 8000
+
 applications:
-
-- name: app1
-
+- name: default
   route_prefix: /
-
-  import_path: fruit:deployment_graph
-
+  import_path: text_ml:app
   runtime_env: {}
-
   deployments:
-
-  - name: MangoStand
-    user_config:
-      price: 3
-
-  - name: OrangeStand
-    user_config:
-      price: 2
-
-  - name: PearStand
-    user_config:
-      price: 4
-
-  - name: FruitMarket
-    num_replicas: 2
-
-  - name: DAGDriver
+  - name: Translator
+    num_replicas: 1
+  - name: Summarizer
+    num_replicas: 1
 ```
 
-The file uses the same `fruit:deployment_graph` import path that was used with `serve run` and it has five entries in the `deployments` list– one for each deployment. All the entries contain a `name` setting and some other configuration options such as `num_replicas` or `user_config`.
+The file uses the same `text_ml:app` import path that was used with `serve run` and it has two entries in the `deployments` list for the translation and summarization deployments. All the entries contain a `name` setting and some other configuration options such as `num_replicas`.
 
 :::{tip}
-Each individual entry in the `deployments` list is optional. In the example config file above, we could omit the `PearStand`, including its `name` and `user_config`, and the file would still be valid. When we deploy the file, the `PearStand` deployment will still be deployed, using the configurations set in the `@serve.deployment` decorator from the deployment graph's code.
+Each individual entry in the `deployments` list is optional. In the example config file above, we could omit the `Summarizer`, including its `name` and `num_replicas`, and the file would still be valid. When we deploy the file, the `Summarizer` deployment will still be deployed, using the configurations set in the `@serve.deployment` decorator from the application's code.
 :::
 
 We can also auto-generate this config file from the code. The `serve build` command takes an import path to your deployment graph and it creates a config file containing all the deployments and their settings from the graph. You can tweak these settings to manage your deployments in production.
 
-Using [the `FruitStand` deployment graph example](serve-in-production-example):
-
 ```console
 $ ls
-fruit.py
+text_ml.py
 
-$ serve build fruit:deployment_graph -o fruit_config.yaml
+$ serve build text_ml:app -o serve_config.yaml
 
 $ ls
-fruit.py
-fruit_config.yaml
+text_ml.py
+serve_config.yaml
 ```
 
-(fruit-config-yaml)=
-
-The `fruit_config.yaml` file contains:
+(production-config-yaml)=
+The `serve_config.yaml` file contains:
 
 ```yaml
 proxy_location: EveryNode
@@ -124,28 +99,18 @@ grpc_options:
   grpc_servicer_functions: []
 
 applications:
-
-- name: app1
+- name: default
   route_prefix: /
-  import_path: fruit:deployment_graph
+  import_path: text_ml:app
   runtime_env: {}
   deployments:
-  - name: MangoStand
+  - name: Translator
     user_config:
-      price: 3
-  - name: OrangeStand
-    user_config:
-      price: 2
-  - name: PearStand
-    user_config:
-      price: 4
-  - name: FruitMarket
-    num_replicas: 2
-  - name: DAGDriver
+      language: french
+  - name: Summarizer
 ```
 
 Note that the `runtime_env` field will always be empty when using `serve build` and must be set manually.
 
-Additionally, `serve build` includes the default `host` and `port` in its
-autogenerated files. You can modify these parameters to select a different host
-and port.
+Additionally, `serve build` includes the default HTTP and gPRC options in its
+autogenerated files. You can modify these parameters.

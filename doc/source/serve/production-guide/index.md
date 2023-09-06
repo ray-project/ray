@@ -16,28 +16,28 @@ For deploying on VMs instead of Kubernetes, see [Deploy on VM](serve-in-producti
 
 (serve-in-production-example)=
 
-## Working example: FruitStand application
+## Working example: Text Summarization and Translation Application
 
 Throughout the production guide, we will use the following Serve application as a working example.
-The application takes in requests containing a list of two values, a fruit name and an amount, and returns the total price for the batch of fruits.
+The application takes in a string of text in english, then summarizes and translates it into French (default), German, or Romanian.
 
-```{literalinclude} ../doc_code/production_fruit_example.py
+```{literalinclude} ../doc_code/production_guide/text_ml.py
 :language: python
-:start-after: __fruit_example_begin__
-:end-before: __fruit_example_end__
+:start-after: __example_start__
+:end-before: __example_end__
 ```
 
-Save this code locally in `fruit.py` to follow along.
+Save this code locally in `text_ml.py` to follow along.
 In development, we would likely use the `serve run` command to iteratively run, develop, and repeat (see the [Development Workflow](serve-dev-workflow) for more information).
 When we're ready to go to production, we will generate a structured [config file](serve-in-production-config-file) that acts as the single source of truth for the application.
 
 This config file can be generated using `serve build`:
 ```
-$ serve build fruit:deployment_graph -o fruit_config.yaml
+$ serve build text_ml:app -o serve_config.yaml
 ```
 
 The generated version of this file contains an `import_path`, `runtime_env`, and configuration options for each deployment in the application.
-A minimal version of the config looks as follows (save this config locally in `fruit_config.yaml` to follow along):
+A minimal version of the config looks as follows (save this config locally in `serve_config.yaml` to follow along):
 
 ```yaml
 proxy_location: EveryNode
@@ -47,24 +47,15 @@ http_options:
   port: 8000
 
 applications:
-
-- name: app1
+- name: default
   route_prefix: /
-  import_path: fruit:deployment_graph
+  import_path: text_ml:app
   runtime_env: {}
   deployments:
-  - name: MangoStand
-    user_config:
-      price: 3
-  - name: OrangeStand
-    user_config:
-      price: 2
-  - name: PearStand
-    user_config:
-      price: 4
-  - name: FruitMarket
-    num_replicas: 2
-  - name: DAGDriver
+  - name: Translator
+    num_replicas: 1
+  - name: Summarizer
+    num_replicas: 1
 ```
 
 You can use `serve deploy` to deploy the application to a local Ray cluster and `serve status` to get the status at runtime:
@@ -73,8 +64,8 @@ You can use `serve deploy` to deploy the application to a local Ray cluster and 
 # Start a local Ray cluster.
 ray start --head
 
-# Deploy the FruitStand application to the local Ray cluster.
-serve deploy fruit_config.yaml
+# Deploy the text ML application to the local Ray cluster.
+serve deploy serve_config.yaml
 2022-08-16 12:51:22,043 SUCC scripts.py:180 --
 Sent deploy request successfully!
  * Use `serve status` to check deployments' statuses.
@@ -82,34 +73,19 @@ Sent deploy request successfully!
 
 $ serve status
 proxies:
-  df28936ee5d5235a01250da8344118dfc8a45d834c5978bc97d56463: HEALTHY
+  cef533a072b0f03bf92a6b98cb4eb9153b7b7c7b7f15954feb2f38ec: HEALTHY
 applications:
-  app1:
+  default:
     status: RUNNING
     message: ''
-    last_deployed_time_s: 1693431420.8891141
+    last_deployed_time_s: 1694041157.2211847
     deployments:
-      MangoStand:
+      Translator:
         status: HEALTHY
         replica_states:
           RUNNING: 1
         message: ''
-      OrangeStand:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 1
-        message: ''
-      PearStand:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 1
-        message: ''
-      FruitMarket:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 2
-        message: ''
-      DAGDriver:
+      Summarizer:
         status: HEALTHY
         replica_states:
           RUNNING: 1
@@ -119,8 +95,8 @@ applications:
 You can test the application using `curl`:
 
 ```console
-$ curl -H "Content-Type: application/json" -d '["PEAR", 2]' "http://localhost:8000/"
-8
+$ curl -H "Content-Type: application/json" -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"' "http://localhost:8000/"
+c'était le meilleur des temps, c'était le pire des temps .
 ```
 
 To update the application, modify the config file and use `serve deploy` again.
