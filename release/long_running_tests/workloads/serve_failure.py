@@ -10,7 +10,7 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import safe_write_to_results_json
 
@@ -91,7 +91,7 @@ class RandomKiller:
         self.sanctuary.discard(deployment_name)
 
     def _get_serve_actors(self):
-        controller = get_global_client()._controller
+        controller = _get_global_client()._controller
         routers = list(ray.get(controller.get_http_proxies.remote()).values())
         all_handles = routers + [controller]
         replica_dict = ray.get(controller._all_running_replicas.remote())
@@ -122,7 +122,7 @@ class RandomTest:
         self.random_killer.run.remote()
 
     def wait_for_deployments_ready(self, deployment_names: List[str]):
-        client = get_global_client()
+        client = _get_global_client()
         for deployment_name in deployment_names:
             client._wait_for_deployment_healthy(deployment_name, timeout_s=60)
 
