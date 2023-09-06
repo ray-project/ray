@@ -72,3 +72,9 @@ steps:
     commands:
       - ./ci/lint/check-documentation-style.sh
     depends_on: forge
+
+  - label: ":lint-roller: lint: python proto"
+    commands:
+      - pip install -c ci/requirements_compile_by_proto.txt
+      - ./ci/lint/check-python-proto.sh
+    depends_on: forge
