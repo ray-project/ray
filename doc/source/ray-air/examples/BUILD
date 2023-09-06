@@ -12,16 +12,6 @@ filegroup(
 # Test all doc/source/ray-air/examples notebooks.
 # --------------------------------------------------------------------
 
-py_test_run_all_notebooks(
-    size = "large",
-    include = ["*.ipynb"],
-    exclude = [
-        "gptj_serving.ipynb",  # Requires GPUs
-    ],
-    data = ["//doc/source/ray-air/examples:air_examples"],
-    tags = ["exclusive", "team:ml", "ray_air"],
-)
-
 # GPU Tests
 
 py_test_run_all_notebooks(
