@@ -8,15 +8,13 @@
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_python//python:defs.bzl", "py_library", "py_binary", "py_runtime", "py_runtime_pair")
+load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_test", "ray_cc_library")
 load("@python3_9//:defs.bzl", python39 = "interpreter")
-load("@rules_python//python:pip.bzl", "compile_pip_requirements")
-load("@py_deps_compile_py_proto//:requirements.bzl", "requirement")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -2519,19 +2517,6 @@ copy_to_workspace(
     dstdir = "python/ray/core/",
 )
 
-sh_binary(
-    name = "install_py_proto",
-    srcs = [
-        "ci/install_py_proto.sh",
-    ],
-    data = [
-        ":compile_py_proto.tar",
-    ],
-    args = [
-        "$(location :compile_py_proto.tar)",
-    ],
-)
-
 genrule(
     name = "ray_pkg",
     srcs = [
@@ -2554,74 +2539,4 @@ genrule(
         echo "$${PWD}" > $@
     """,
     local = 1,
-)
-
-compile_pip_requirements(
-    name = "requirements_compile_py_proto",
-    requirements_in = "ci/requirements_compile_py_proto.in",
-    requirements_txt = "ci/requirements_compile_py_proto.txt",
-    extra_args = ["--allow-unsafe"],
-    tags = ["team:ci"],
-    visibility = ["//visibility:private"],
-)
-
-py_binary(
-    name = "grpc_tools_protoc",
-    srcs = ["ci/grpc_tools_protoc.py"],
-    deps = [
-        requirement("grpcio-tools"),
-    ],
-    exec_compatible_with = ["//:hermetic_python"],
-    tags = ["team:ci"],
-    visibility = ["//visibility:public"],
-)
-
-genrule(
-    name = "compile_py_proto",
-    srcs = [
-        "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto",
-        "@io_opencensus_proto//opencensus/proto/resource/v1:resource.proto",
-        "//src/ray/protobuf:all_proto",
-    ],
-    cmd = """
-        TMP=$$(mktemp -d)
-        $(location :grpc_tools_protoc) --python_out=$${TMP} --grpc_python_out=$${TMP} $(locations //src/ray/protobuf:all_proto) --proto_path=. --proto_path=$$(dirname $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto))/../../../..
-        mkdir -p opencensus/proto/metrics/v1
-        mkdir -p opencensus/proto/resource/v1
-        cp $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto) opencensus/proto/metrics/v1/metrics.proto
-        cp $(locations @io_opencensus_proto//opencensus/proto/resource/v1:resource.proto) opencensus/proto/resource/v1/resource.proto
-        $(location :grpc_tools_protoc) --python_out=$${TMP} --grpc_python_out=$${TMP} opencensus/proto/metrics/v1/metrics.proto opencensus/proto/resource/v1/resource.proto --proto_path=.
-        mv $${TMP}/src/ray/protobuf/*.py $${TMP}/
-        mv $${TMP}/src/ray/protobuf/**/*.py $${TMP}/
-        mv $${TMP}/opencensus/proto/**/v1/*.py $${TMP}/
-
-        # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
-        # command to change the import path in the generated file.
-        # shellcheck disable=SC2006
-        files=(
-            `ls $${TMP}/*_pb2*.py`
-        )
-        sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
-        # Help the generated serve files to have the correct module
-        serve_files=(`ls $${TMP}/serve_pb2*.py`)
-        sed -i -E 's/'"'"'src.ray.protobuf./'"'"'ray.serve.generated./' "$${serve_files[@]}"
-        # TODO(sang): Build our own proto instead of creating a new proto for opencensus separately.
-        # https://github.com/ray-project/ray/issues/31358
-        sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
-        sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
-        # TODO(rickyx): Remove this experimental path rewrite once we move instance manager proto out
-        # of experimental.
-        autoscale_files=(`ls $${TMP}/instance_manager_pb2*.py`)
-        sed -i -E 's/from ..experimental/from ./' "$${autoscale_files[@]}"
-
-        pushd $${TMP}
-        tar -cvf compile_py_proto.tar *.py
-        popd
-        mv $${TMP}/compile_py_proto.tar $@
-        rm -r $${TMP}
-    """,
-    tools = [
-        ":grpc_tools_protoc",
-    ],
-    outs = ["compile_py_proto.tar"],
 )

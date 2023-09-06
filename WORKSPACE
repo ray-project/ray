@@ -67,7 +67,7 @@ pip_parse(
 pip_parse(
     name = "py_deps_compile_py_proto",
     python_interpreter_target = python39,
-    requirements_lock = "//:ci/requirements_compile_py_proto.txt",
+    requirements_lock = "//ci/compile_py_proto:requirements_compile_py_proto.txt",
 )
 
 load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")

@@ -75,6 +75,6 @@ steps:
 
   - label: ":lint-roller: lint: python proto"
     commands:
-      - pip install -c ci/requirements_compile_py_proto.txt
+      - pip install -r ci/compile_py_proto/requirements_compile_py_proto.txt
       - ./ci/lint/check-python-proto.sh
     depends_on: forge
