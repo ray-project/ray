@@ -45,6 +45,7 @@ SampleRange = Union["Domain", Dict[str, List]]
 
 MAX = "max"
 MIN = "min"
+_DEPRECATED_VALUE = "DEPRECATED"
 
 
 logger = logging.getLogger(__name__)
@@ -608,15 +609,15 @@ class CheckpointConfig:
             This attribute is only supported by trainers that don't take in
             custom training loops. Defaults to True for trainers that support it
             and False for generic function trainables.
-        _checkpoint_keep_all_ranks: If True, will save checkpoints from all ranked
-            training workers. If False, only checkpoint from rank 0 worker is kept.
-            NOTE: This API is experimental and subject to change between minor
-            releases.
-        _checkpoint_upload_from_workers: If True, distributed workers
-            will upload their checkpoints to cloud directly. This is to avoid the
-            need for transferring large checkpoint files to the training worker
-            group coordinator for persistence. NOTE: This API is experimental and
-            subject to change between minor releases.
+        _checkpoint_keep_all_ranks: This experimental config is deprecated.
+            This behavior is now controlled by reporting `checkpoint=None`
+            in the workers that shouldn't persist a checkpoint.
+            For example, if you only want the rank 0 worker to persist a checkpoint
+            (e.g., in standard data parallel training), then you should save and
+            report a checkpoint if `ray.train.get_context().get_world_rank() == 0`
+            and `None` otherwise.
+        _checkpoint_upload_from_workers: This experimental config is deprecated.
+            Uploading checkpoint directly from the worker is now the default behavior.
     """
 
     num_to_keep: Optional[int] = None
@@ -624,10 +625,29 @@ class CheckpointConfig:
     checkpoint_score_order: Optional[str] = MAX
     checkpoint_frequency: Optional[int] = 0
     checkpoint_at_end: Optional[bool] = None
-    _checkpoint_keep_all_ranks: Optional[bool] = False
-    _checkpoint_upload_from_workers: Optional[bool] = False
+    _checkpoint_keep_all_ranks: Optional[bool] = _DEPRECATED_VALUE
+    _checkpoint_upload_from_workers: Optional[bool] = _DEPRECATED_VALUE
 
     def __post_init__(self):
+        if self._checkpoint_keep_all_ranks != _DEPRECATED_VALUE:
+            raise DeprecationWarning(
+                "The experimental `_checkpoint_keep_all_ranks` config is deprecated. "
+                "This behavior is now controlled by reporting `checkpoint=None` "
+                "in the workers that shouldn't persist a checkpoint. "
+                "For example, if you only want the rank 0 worker to persist a "
+                "checkpoint (e.g., in standard data parallel training), "
+                "then you should save and report a checkpoint if "
+                "`ray.train.get_context().get_world_rank() == 0` "
+                "and `None` otherwise."
+            )
+
+        if self._checkpoint_upload_from_workers != _DEPRECATED_VALUE:
+            raise DeprecationWarning(
+                "The experimental `_checkpoint_upload_from_workers` config is "
+                "deprecated. Uploading checkpoint directly from the worker is "
+                "now the default behavior."
+            )
+
         if self.num_to_keep is not None and self.num_to_keep <= 0:
             raise ValueError(
                 f"Received invalid num_to_keep: "
@@ -787,10 +807,10 @@ class RunConfig:
 
         # Convert Paths to strings
         if isinstance(self.local_dir, Path):
-            self.local_dir = str(self.local_dir)
+            self.local_dir = self.local_dir.as_posix()
 
         if isinstance(self.storage_path, Path):
-            self.storage_path = str(self.storage_path)
+            self.storage_path = self.storage_path.as_posix()
 
         # TODO(justinvyu): [code_removal] Legacy stuff below.
         from ray.tune.utils.util import _resolve_storage_path
