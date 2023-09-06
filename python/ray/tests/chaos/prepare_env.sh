@@ -47,11 +47,3 @@ helm repo add chaos-mesh https://charts.chaos-mesh.org
 kubectl create ns chaos-mesh
 helm install chaos-mesh chaos-mesh/chaos-mesh -n=chaos-mesh --set chaosDaemon.runtime=containerd --set chaosDaemon.socketPath=/run/containerd/containerd.sock --version 2.6.1
 kubectl wait pod  --namespace chaos-mesh  -l app.kubernetes.io/instance=chaos-mesh --for=condition=Ready=True
-
-echo "--Running the script without faults"
-ray job submit --address http://localhost:8265 --runtime-env python/ray/tests/chaos/runtime_env.yaml --working-dir python/ray/tests/chaos -python potato_passer.py --num-actors=3 --pass-times=1000 --sleep-secs=0.01
-
-# Now add the delay, rerun the job
-kubectl apply -f python/ray/tests/chaos/chaos_network_delay.yaml
-echo "--Running the script with fault of networking delay"
-ray job submit --address http://localhost:8265 --runtime-env python/ray/tests/chaos/runtime_env.yaml --working-dir python/ray/tests/chaos -python potato_passer.py --num-actors=3 --pass-times=1000 --sleep-secs=0.01
