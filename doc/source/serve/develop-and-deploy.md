@@ -44,7 +44,7 @@ Converting this model into a Ray Serve application with FastAPI requires three c
 
 For other HTTP options, see [Set Up FastAPI and HTTP](serve-set-up-fastapi-http). 
 
-```{literalinclude} ../serve/doc_code/develop_and_deploy/model_deployment_with_fastapi.py
+```{literalinclude} ../serve/doc_code/develop_and_deploy.py
 :start-after: __deployment_start__
 :end-before: __deployment_end__
 :language: python
@@ -70,7 +70,7 @@ http://127.0.0.1:8000/
 
 Send a POST request with JSON data containing the English text. This client script requests a translation for "Hello world!":
 
-```{literalinclude} ../serve/doc_code/develop_and_deploy/model_deployment_with_fastapi.py
+```{literalinclude} ../serve/doc_code/develop_and_deploy.py
 :start-after: __client_function_start__
 :end-before: __client_function_end__
 :language: python
