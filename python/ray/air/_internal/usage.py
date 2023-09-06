@@ -239,17 +239,18 @@ def tag_storage_type(storage: "StorageContext"):
         with default implementations in pyarrow.
     - 'custom' = All other storage schemes, which includes ALL cases where a
         custom `storage_filesystem` is provided.
+    - 'other' = catches any other cases not explicitly handled above.
     """
     whitelist = {"local", "mock", "s3", "gcs", "abfs", "hdfs"}
 
-    storage_config_tag = None
     if storage.custom_fs_provided:
         storage_config_tag = "custom"
     elif storage.storage_filesystem.type_name in whitelist:
         storage_config_tag = storage.storage_filesystem.type_name
+    else:
+        storage_config_tag = "other"
 
-    if storage_config_tag is not None:
-        record_extra_usage_tag(TagKey.AIR_STORAGE_CONFIGURATION, storage_config_tag)
+    record_extra_usage_tag(TagKey.AIR_STORAGE_CONFIGURATION, storage_config_tag)
 
 
 def tag_ray_air_storage_config(
