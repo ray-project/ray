@@ -1,5 +1,4 @@
 import time
-from logging import Logger
 
 import pytest
 
@@ -30,8 +29,6 @@ def test_redeploy_start_time(serve_instance):
     )
     deployment_info_1 = DeploymentInfo.from_proto(deployment_route.deployment_info)
     start_time_ms_1 = deployment_info_1.start_time_ms
-
-    # print('name is : %s ' % (deployment_name))
 
     time.sleep(0.1)
 

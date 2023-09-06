@@ -58,7 +58,7 @@ def _get_global_client(
         is no running controller and raise_if_no_controller_running is
         set to False, returns None.
 
-    Raises:https://s.plusx.cn/plus/immediate/86047704/20220819130135011/JAQ9703_w2912.JPG?imageView2/0/w/1600/h/3000/q/85&sign=762f7d0d79c8fc9422cc19e92e6e4fbc&t=64e5d8ac
+    Raises:
         RayServeException: if there is no running Serve controller actor
         and raise_if_no_controller_running is set to True.
     """
