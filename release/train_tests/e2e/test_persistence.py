@@ -7,8 +7,8 @@ This test also records timing metrics on checkpoint save (to disk), save (to sto
 and load (from storage) operations and outputs them as release test metrics.
 
 Setup:
-- 4x 16CPU instances
-- 8 workers, each allocated 8 CPUs
+- 4x 8 CPU instances
+- 8 workers, each allocated 4 CPUs
 
 Test owner: justinvyu
 """
@@ -324,7 +324,7 @@ def test_no_storage_no_checkpoints(tmp_path, monkeypatch):
         scaling_config=train.ScalingConfig(
             num_workers=TestConstants.NUM_WORKERS,
             trainer_resources={"CPU": 0},
-            resources_per_worker={"CPU": 8},
+            resources_per_worker={"CPU": 4},
         ),
         run_config=train.RunConfig(
             failure_config=train.FailureConfig(max_failures=2),
