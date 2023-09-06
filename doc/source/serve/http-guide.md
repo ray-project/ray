@@ -27,7 +27,7 @@ When you deploy a Serve application, the [ingress deployment](serve-key-concepts
 :language: python
 ```
 
-Requests to the Serve HTTP server at `/` are routed to the deployment's `__call__` method with a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (e.g., to return a custom status code or custom headers).
+Requests to the Serve HTTP server at `/` are routed to the deployment's `__call__` method with a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (e.g., to return a custom status code or custom headers). A Serve app's route prefix can be changed from `/` to another string by setting `route_prefix` in `serve.run()` or the Serve config file.
 
 Often for ML models, you just need the API to accept a `numpy` array. You can use Serve's `DAGDriver` to simplify the request parsing.
 
@@ -40,6 +40,34 @@ Often for ML models, you just need the API to accept a `numpy` array. You can us
 ```{note}
 Serve provides a library of HTTP adapters to help you avoid boilerplate code. The [later section](serve-http-adapters) dives deeper into how these works.
 ```
+
+(serve-request-cancellation-http)=
+### Request cancellation
+
+When processing a request takes longer than the [end-to-end timeout](serve-performance-e2e-timeout) or an HTTP client disconnects before receiving a response, Serve cancels the in-flight request:
+
+- If the proxy hasn't yet sent the request to a replica, Serve simply drops the request.
+- If the request has been sent to a replica, Serve attempts to interrupt the replica and cancel the request. The `asyncio.Task` running the handler on the replica is cancelled, raising an `asyncio.CancelledError` the next time it enters an `await` statement. See [the asyncio docs](https://docs.python.org/3/library/asyncio-task.html#task-cancellation) for more info. Handle this exception in a try-except block to customize your deployment's behavior when a request is cancelled:
+
+```{literalinclude} doc_code/http_guide/disconnects.py
+:start-after: __start_basic_disconnect__
+:end-before: __end_basic_disconnect__
+:language: python
+```
+
+If no `await` statements are left in the deployment's code before the request completes, the replica processes the request as usual, sends the response back to the proxy, and the proxy discards the response. Use `await` statements for blocking operations in a deployment, so Serve can cancel in-flight requests without waiting for the blocking operation to complete.
+
+Cancellation cascades to any downstream deployment handle, task, or actor calls that were spawned in the deployment's request-handling method. These can handle the `asyncio.CancelledError` in the same way as the ingress deployment.
+
+To prevent an async call from being interrupted by `asyncio.CancelledError`, use `asyncio.shield()`:
+
+```{literalinclude} doc_code/http_guide/disconnects.py
+:start-after: __start_shielded_disconnect__
+:end-before: __end_shielded_disconnect__
+:language: python
+```
+
+When the request is cancelled, a cancellation error is raised inside the `SnoringSleeper` deployment's `__call__()` method. However, the cancellation is not raised inside the `snore()` call, so `ZZZ` is printed even if the request is cancelled. Note that `asyncio.shield` cannot be used on a `ServeHandle` call to prevent the downstream handler from being cancelled. You need to explicitly handle the cancellation error in that handler as well.
 
 (serve-fastapi-http)=
 ## FastAPI HTTP Deployments
@@ -132,10 +160,10 @@ Got result 0.9s after start: '9'
 (ServeReplica:default_StreamingResponder pid=41052) INFO 2023-05-25 10:49:52,230 default_StreamingResponder default_StreamingResponder#qlZFCa yomKnJifNJ / default replica.py:634 - __CALL__ OK 1017.6ms
 ```
 
-### Handling client disconnects
+### Terminating the stream when a client disconnects
 
 In some cases, you may want to cease processing a request when the client disconnects before the full stream has been returned.
-If you pass an async generator to `StreamingResponse`, it will be cancelled and raise an `asyncio.CancelledError` when the client disconnects.
+If you pass an async generator to `StreamingResponse`, it is cancelled and raises an `asyncio.CancelledError` when the client disconnects.
 Note that you must `await` at some point in the generator for the cancellation to occur.
 
 In the example below, the generator streams responses forever until the client disconnects, then it prints that it was cancelled and exits. Save this code in `stream.py` and run it:
