@@ -17,26 +17,6 @@ resp = requests.get("http://localhost:8000?a=b&c=d")
 assert resp.json() == {"a": "b", "c": "d"}
 # __end_starlette__
 
-# __begin_dagdriver__
-import numpy as np
-import requests
-from ray import serve
-from ray.serve.drivers import DAGDriver
-from ray.serve.http_adapters import json_to_ndarray
-
-
-@serve.deployment
-class Model:
-    def __call__(self, arr: np.ndarray):
-        return arr.sum()
-
-
-serve.run(DAGDriver.bind(Model.bind(), http_adapter=json_to_ndarray))
-resp = requests.post("http://localhost:8000", json={"array": [[1, 2], [2, 3]]})
-assert resp.json() == 8
-
-# __end_dagdriver__
-
 # __begin_fastapi__
 import ray
 import requests
