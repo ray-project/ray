@@ -60,7 +60,7 @@ class AlphaStarConfig(appo.APPOConfig):
 
     Example:
         >>> from ray.rllib.algorithms.alpha_star import AlphaStarConfig
-        >>> from ray import train
+        >>> from ray import air
         >>> from ray import tune
         >>> config = AlphaStarConfig()
         >>> # Print out some default values.
@@ -73,7 +73,7 @@ class AlphaStarConfig(appo.APPOConfig):
         >>> # when running with tune.
         >>> tune.Tuner( # doctest: +SKIP
         ...     "AlphaStar",
-        ...     run_config=train.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
         ... ).fit()
     """

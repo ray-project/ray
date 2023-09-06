@@ -77,7 +77,7 @@ class DreamerV3Config(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.dreamerv3 import DreamerV3Config
-        >>> from ray import train
+        >>> from ray import air
         >>> from ray import tune
         >>> config = DreamerV3Config()
         >>> # Print out some default values.
@@ -92,7 +92,7 @@ class DreamerV3Config(AlgorithmConfig):
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP
         ...     "DreamerV3",
-        ...     run_config=train.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
         ... ).fit()
     """

@@ -27,7 +27,7 @@ import gymnasium as gym
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
 from ray.tune.logger import pretty_print
@@ -269,7 +269,5 @@ if __name__ == "__main__":
         }
 
         tune.Tuner(
-            args.run,
-            param_space=config,
-            run_config=train.RunConfig(stop=stop, verbose=2),
+            args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
         ).fit()

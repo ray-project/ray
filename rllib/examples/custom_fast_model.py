@@ -8,7 +8,7 @@ import argparse
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.examples.env.fast_image_env import FastImageEnv
 from ray.rllib.examples.models.fast_model import FastModel, TorchFastModel
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     }
 
     tuner = tune.Tuner(
-        "IMPALA", param_space=config, run_config=train.RunConfig(stop=stop, verbose=1)
+        "IMPALA", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
     )
     tuner.fit()
 

@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray import train
+from ray import air
 from ray.rllib.algorithms.a2c.a2c import A2CConfig
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
@@ -76,7 +76,7 @@ class TestGPUs(unittest.TestCase):
                                 tune.Tuner(
                                     "A2C",
                                     param_space=config,
-                                    run_config=train.RunConfig(
+                                    run_config=air.RunConfig(
                                         stop={"training_iteration": 0}
                                     ),
                                 ).fit()
@@ -105,7 +105,7 @@ class TestGPUs(unittest.TestCase):
                     tune.Tuner(
                         "A2C",
                         param_space=config,
-                        run_config=train.RunConfig(stop={"training_iteration": 0}),
+                        run_config=air.RunConfig(stop={"training_iteration": 0}),
                     ).fit()
 
         ray.shutdown()

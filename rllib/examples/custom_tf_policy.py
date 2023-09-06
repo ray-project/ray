@@ -2,7 +2,7 @@ import argparse
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
     tuner = tune.Tuner(
         MyAlgo,
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             stop={"training_iteration": args.stop_iters},
         ),
         param_space={

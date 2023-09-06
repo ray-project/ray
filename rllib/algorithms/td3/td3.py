@@ -26,7 +26,7 @@ class TD3Config(DDPGConfig):
 
     Example:
         >>> from ray.rllib.algorithms.td3 import TD3Config
-        >>> from ray import train
+        >>> from ray import air
         >>> from ray import tune
         >>> config = TD3Config()
         >>> # Print out some default values.
@@ -40,7 +40,7 @@ class TD3Config(DDPGConfig):
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP
         ...     "TD3",
-        ...     run_config=train.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
         ... ).fit()
     """

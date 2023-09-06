@@ -4,7 +4,7 @@ import argparse
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.examples.models.batch_norm_model import (
     BatchNormModel,
     KerasBatchNormModel,
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         args.run,
         param_space=config.to_dict(),
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             verbose=2,
             stop=stop,
         ),

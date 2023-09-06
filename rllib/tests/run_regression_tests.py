@@ -24,7 +24,7 @@ import re
 import yaml
 
 import ray
-from ray import train
+from ray import air
 from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib import _register_all
 from ray.rllib.common import SupportedFileType
@@ -197,7 +197,7 @@ if __name__ == "__main__":
             ] = args.override_mean_reward
 
         # Checkpoint settings.
-        exp["checkpoint_config"] = train.CheckpointConfig(
+        exp["checkpoint_config"] = air.CheckpointConfig(
             checkpoint_frequency=args.checkpoint_freq,
             checkpoint_at_end=args.checkpoint_freq > 0,
         )

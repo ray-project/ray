@@ -14,7 +14,7 @@ import os
 from typing import Union
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -170,7 +170,7 @@ if __name__ == "__main__":
         results = tune.Tuner(
             PPORemoteInference,
             param_space=config,
-            run_config=train.RunConfig(stop=stop, verbose=1),
+            run_config=air.RunConfig(stop=stop, verbose=1),
         ).fit()
 
         if args.as_test:

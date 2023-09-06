@@ -6,7 +6,7 @@ Demonstrates transition from stable_baselines to Ray RLlib.
 Run example: python sb2rllib_rllib_example.py
 """
 import gymnasium as gym
-from ray import train, tune
+from ray import tune, air
 import ray.rllib.algorithms.ppo as ppo
 
 # settings used for both stable baselines and rllib
@@ -18,10 +18,10 @@ save_dir = "saved_models"
 # training and saving
 analysis = tune.Tuner(
     "PPO",
-    run_config=train.RunConfig(
+    run_config=air.RunConfig(
         stop={"timesteps_total": train_steps},
         local_dir=save_dir,
-        checkpoint_config=train.CheckpointConfig(
+        checkpoint_config=air.CheckpointConfig(
             checkpoint_at_end=True,
         ),
     ),

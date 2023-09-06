@@ -4,7 +4,7 @@ import unittest
 
 import pytest
 import ray
-from ray import train
+from ray import air
 from ray import tune
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
@@ -53,7 +53,7 @@ class TestRayClient(unittest.TestCase):
             tune.Tuner(
                 "PPO",
                 param_space=config,
-                run_config=train.RunConfig(stop=stop, verbose=2),
+                run_config=air.RunConfig(stop=stop, verbose=2),
             ).fit()
 
     def test_custom_experiment(self):

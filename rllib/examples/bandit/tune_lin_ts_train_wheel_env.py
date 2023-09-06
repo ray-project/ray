@@ -8,7 +8,7 @@ import numpy as np
 import time
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.bandit.bandit import BanditLinTSConfig
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 
@@ -55,9 +55,9 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         "BanditLinTS",
         param_space=config.to_dict(),
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             stop={"training_iteration": training_iterations},
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=air.CheckpointConfig(
                 checkpoint_at_end=True,
             ),
         ),

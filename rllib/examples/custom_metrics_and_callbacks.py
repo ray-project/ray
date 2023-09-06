@@ -14,7 +14,7 @@ import numpy as np
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import Episode, RolloutWorker
@@ -192,7 +192,7 @@ if __name__ == "__main__":
     ray.init(local_mode=True)
     tuner = tune.Tuner(
         "PG",
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             stop={
                 "training_iteration": args.stop_iters,
             },

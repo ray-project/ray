@@ -20,7 +20,7 @@ import os
 import random
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -154,7 +154,7 @@ if __name__ == "__main__":
         tuner = tune.Tuner(
             args.run,
             param_space=config.to_dict(),
-            run_config=train.RunConfig(stop=stop),
+            run_config=air.RunConfig(stop=stop),
         )
         results = tuner.fit()
 

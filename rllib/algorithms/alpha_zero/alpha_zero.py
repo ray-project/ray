@@ -71,7 +71,7 @@ class AlphaZeroConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
-        >>> from ray import train
+        >>> from ray import air
         >>> from ray import tune
         >>> config = AlphaZeroConfig()
         >>> # Print out some default values.
@@ -84,7 +84,7 @@ class AlphaZeroConfig(AlgorithmConfig):
         >>> # when running with tune.
         >>> tune.Tuner( # doctest: +SKIP
         ...     "AlphaZero",
-        ...     run_config=train.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
         ... ).fit()
     """

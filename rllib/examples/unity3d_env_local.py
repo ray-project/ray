@@ -25,7 +25,7 @@ import argparse
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -188,10 +188,10 @@ if __name__ == "__main__":
     results = tune.Tuner(
         "PPO",
         param_space=config.to_dict(),
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             stop=stop,
             verbose=1,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=5,
                 checkpoint_at_end=True,
             ),

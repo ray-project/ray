@@ -10,7 +10,7 @@ which includes and a priority update, given that a fitting buffer is provided.
 import argparse
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.r2d2 import R2D2Config
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
@@ -68,9 +68,7 @@ if __name__ == "__main__":
     }
 
     results = tune.Tuner(
-        "R2D2",
-        param_space=config.to_dict(),
-        run_config=train.RunConfig(stop=stop_config),
+        "R2D2", param_space=config.to_dict(), run_config=air.RunConfig(stop=stop_config)
     ).fit()
 
     ray.shutdown()

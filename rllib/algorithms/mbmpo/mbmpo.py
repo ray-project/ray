@@ -60,7 +60,7 @@ class MBMPOConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig
-        >>> from ray import train
+        >>> from ray import air
         >>> from ray import tune
         >>> config = MBMPOConfig()
         >>> # Print out some default values.
@@ -74,7 +74,7 @@ class MBMPOConfig(AlgorithmConfig):
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP
         ...     "AlphaStar",
-        ...     run_config=train.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
         ... ).fit()
     """

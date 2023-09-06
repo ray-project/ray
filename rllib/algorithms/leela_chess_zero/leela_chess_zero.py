@@ -86,7 +86,7 @@ class LeelaChessZeroConfig(AlgorithmConfig):
     Example:
         >>> from ray.rllib.algorithms.leela_chess_zero as lc0 # doctest: +SKIP
         >>> from lc0 import LeelaChessZeroConfig # doctest: +SKIP
-        >>> from ray import train # doctest: +SKIP
+        >>> from ray import air # doctest: +SKIP
         >>> from ray import tune # doctest: +SKIP
         >>> config = LeelaChessZeroConfig() # doctest: +SKIP
         >>> # Print out some default values.
@@ -99,7 +99,7 @@ class LeelaChessZeroConfig(AlgorithmConfig):
         >>> # when running with tune.
         >>> tune.Tuner( # doctest: +SKIP
         ...     "LeelaChessZero", # doctest: +SKIP
-        ...     run_config=train.RunConfig(stop={ # doctest: +SKIP
+        ...     run_config=air.RunConfig(stop={ # doctest: +SKIP
                     "episode_reward_mean": 200}), # doctest: +SKIP
         ...     param_space=config.to_dict(), # doctest: +SKIP
         ... ).fit() # doctest: +SKIP

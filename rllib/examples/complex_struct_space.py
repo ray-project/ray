@@ -11,7 +11,7 @@ import argparse
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.models import ModelCatalog
 from ray.rllib.examples.env.simple_rpg import SimpleRPG
@@ -54,5 +54,5 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         "PG",
         param_space=config.to_dict(),
-        run_config=train.RunConfig(stop=stop, verbose=1),
+        run_config=air.RunConfig(stop=stop, verbose=1),
     )

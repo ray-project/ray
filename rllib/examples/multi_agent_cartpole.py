@@ -14,7 +14,7 @@ import os
 import random
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.models.shared_weights_model import (
@@ -119,7 +119,7 @@ if __name__ == "__main__":
     results = tune.Tuner(
         "PPO",
         param_space=config.to_dict(),
-        run_config=train.RunConfig(stop=stop, verbose=1),
+        run_config=air.RunConfig(stop=stop, verbose=1),
     ).fit()
 
     if args.as_test:

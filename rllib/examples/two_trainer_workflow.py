@@ -9,7 +9,7 @@ import argparse
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
@@ -217,7 +217,7 @@ if __name__ == "__main__":
     }
 
     results = tune.Tuner(
-        MyAlgo, param_space=config.to_dict(), run_config=train.RunConfig(stop=stop)
+        MyAlgo, param_space=config.to_dict(), run_config=air.RunConfig(stop=stop)
     ).fit()
 
     if args.as_test:

@@ -81,7 +81,7 @@ class ImpalaConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.impala import ImpalaConfig
-        >>> from ray import train
+        >>> from ray import air
         >>> from ray import tune
         >>> config = ImpalaConfig()
         >>> # Print out some default values.
@@ -96,7 +96,7 @@ class ImpalaConfig(AlgorithmConfig):
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP
         ...     "IMPALA",
-        ...     run_config=train.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
         ... ).fit()
     """

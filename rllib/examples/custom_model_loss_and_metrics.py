@@ -16,7 +16,7 @@ from pathlib import Path
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.examples.models.custom_loss_model import (
     CustomLossModel,
     TorchCustomLossModel,
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         args.run,
         param_space=config,
-        run_config=train.RunConfig(stop=stop, verbose=1),
+        run_config=air.RunConfig(stop=stop, verbose=1),
     )
     results = tuner.fit()
     info = results.get_best_result().metrics["info"]

@@ -57,7 +57,7 @@ class A2CConfig(A3CConfig):
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP
         ...     "A2C",
-        ...     run_config=train.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
         ... ).fit()
     """

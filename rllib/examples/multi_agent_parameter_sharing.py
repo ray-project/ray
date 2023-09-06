@@ -1,4 +1,4 @@
-from ray import train, tune
+from ray import air, tune
 from ray.tune.registry import register_env
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from pettingzoo.sisl import waterworld_v4
@@ -16,9 +16,9 @@ if __name__ == "__main__":
 
     tune.Tuner(
         "APEX_DDPG",
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             stop={"episodes_total": 60000},
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=10,
             ),
         ),

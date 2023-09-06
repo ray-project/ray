@@ -8,7 +8,7 @@ import argparse
 
 import numpy as np
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.tune.registry import get_trainable_cls
@@ -144,7 +144,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         args.run,
         param_space=config.to_dict(),
-        run_config=train.RunConfig(stop={"training_iteration": args.stop_iters}),
+        run_config=air.RunConfig(stop={"training_iteration": args.stop_iters}),
     )
     tuner.fit()
     ray.shutdown()

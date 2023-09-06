@@ -1,7 +1,7 @@
 import argparse
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig
 
 RESOURCE_CONFIG = {
@@ -52,9 +52,9 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         "PPO",
         param_space=config.to_dict(),
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             stop={"training_iteration": 1},
-            failure_config=train.FailureConfig(fail_fast="raise"),
+            failure_config=air.FailureConfig(fail_fast="raise"),
         ),
     )
     tuner.fit()

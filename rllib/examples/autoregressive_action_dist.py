@@ -39,7 +39,7 @@ import argparse
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.examples.env.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.examples.models.autoregressive_action_model import (
     AutoregressiveActionModel,
@@ -202,9 +202,7 @@ if __name__ == "__main__":
     # run with Tune for auto env and Algorithm creation and TensorBoard
     else:
         tuner = tune.Tuner(
-            args.run,
-            run_config=train.RunConfig(stop=stop, verbose=2),
-            param_space=config,
+            args.run, run_config=air.RunConfig(stop=stop, verbose=2), param_space=config
         )
         results = tuner.fit()
 

@@ -6,7 +6,7 @@ import argparse
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.examples.env.coin_game_non_vectorized_env import CoinGame, AsymCoinGame
 
@@ -71,10 +71,10 @@ def main(debug, stop_iters=2000, tf=False, asymmetric_env=False):
     tuner = tune.Tuner(
         PPO,
         param_space=rllib_config,
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             name="PPO_AsymCG",
             stop=stop,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=0, checkpoint_at_end=True
             ),
         ),

@@ -6,7 +6,7 @@ import argparse
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.pg import PG
 from ray.rllib.examples.env.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
@@ -32,10 +32,10 @@ def main(debug, stop_iters=200, framework="tf"):
     tuner = tune.Tuner(
         PG,
         param_space=rllib_config,
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             name="PG_IPD",
             stop=stop_config,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=0,
                 checkpoint_at_end=True,
             ),

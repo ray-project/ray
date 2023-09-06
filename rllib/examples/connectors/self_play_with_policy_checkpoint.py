@@ -9,7 +9,7 @@ import os
 import tempfile
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.env.utils import try_import_pyspiel
@@ -106,9 +106,9 @@ def main(checkpoint_dir):
     tuner = tune.Tuner(
         "SAC",
         param_space=config.to_dict(),
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             stop=stop,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=air.CheckpointConfig(
                 checkpoint_at_end=True,
                 checkpoint_frequency=10,
             ),

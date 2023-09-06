@@ -10,7 +10,7 @@ You can visualize experiment results in ~/ray_results using TensorBoard.
 import argparse
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.examples.env.gpu_requiring_env import GPURequiringEnv
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -120,7 +120,7 @@ if __name__ == "__main__":
     # >>     print(results)
 
     results = tune.Tuner(
-        args.run, param_space=config.to_dict(), run_config=train.RunConfig(stop=stop)
+        args.run, param_space=config.to_dict(), run_config=air.RunConfig(stop=stop)
     ).fit()
 
     if args.as_test:

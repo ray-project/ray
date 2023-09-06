@@ -9,7 +9,7 @@ import gymnasium as gym
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.dt import DTConfig
 from ray.tune.utils.log import Verbosity
@@ -126,10 +126,10 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         "DT",
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             stop=stop,
             verbose=Verbosity.V3_TRIAL_DETAILS,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=1,
                 checkpoint_at_end=True,
             ),

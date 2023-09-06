@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.tune.registry import get_trainable_cls
 
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
@@ -61,11 +61,11 @@ if __name__ == "__main__":
     # TRAIN
     results = tune.Tuner(
         "RNNSAC",
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             name="RNNSAC_example",
             local_dir=str(Path(__file__).parent / "example_out"),
             verbose=2,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=air.CheckpointConfig(
                 checkpoint_at_end=True,
                 num_to_keep=1,
                 checkpoint_score_attribute="episode_reward_mean",

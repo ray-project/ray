@@ -16,7 +16,7 @@ import gymnasium as gym
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.tune.registry import get_trainable_cls
 
@@ -152,7 +152,7 @@ if __name__ == "__main__":
 
     results = tune.Tuner(
         args.run,
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             stop=stop,
         ),
         param_space=config,

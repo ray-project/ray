@@ -36,7 +36,7 @@ parser.add_argument(
 
 if __name__ == "__main__":
     import ray
-    from ray import train, tune
+    from ray import air, tune
 
     args = parser.parse_args()
 
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         args.run,
         param_space=config.to_dict(),
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             stop=stop,
         ),
     )

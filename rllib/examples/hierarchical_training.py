@@ -28,7 +28,7 @@ import logging
 import os
 
 import ray
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.env.windy_maze_env import WindyMazeEnv, HierarchicalWindyMazeEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     if args.flat:
         results = tune.Tuner(
             "PPO",
-            run_config=train.RunConfig(stop=stop),
+            run_config=air.RunConfig(stop=stop),
             param_space=(
                 PPOConfig()
                 .environment(WindyMazeEnv)
@@ -124,7 +124,7 @@ if __name__ == "__main__":
         results = tune.Tuner(
             "PPO",
             param_space=config.to_dict(),
-            run_config=train.RunConfig(stop=stop, verbose=1),
+            run_config=air.RunConfig(stop=stop, verbose=1),
         ).fit()
 
     if args.as_test:
