@@ -1,3 +1,5 @@
+load("//bazel:python.bzl", "py_test_run_all_notebooks")
+
 filegroup(
     name = "train_pytorch_examples",
     srcs = glob(["*.ipynb"]),
