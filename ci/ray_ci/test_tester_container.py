@@ -53,7 +53,6 @@ def test_run_tests() -> None:
     def _mock_shard_tests(tests: List[str], workers: int, worker_id: int) -> List[str]:
         return chunk_into_n(tests, workers)[worker_id]
 
-
     with mock.patch(
         "ci.ray_ci.tester_container.TesterContainer._run_tests_in_docker",
         side_effect=_mock_run_tests_in_docker,
