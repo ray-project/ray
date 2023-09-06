@@ -215,7 +215,9 @@ class GBDTTrainer(BaseTrainer):
                 f"is currently ignored and defaults to `{{}}`. Remove the "
                 f"`trainer_resources` key from your `ScalingConfig` to resolve."
             )
-        return BaseTrainer._validate_scaling_config(scaling_config=scaling_config)
+        return super(GBDTTrainer, cls)._validate_scaling_config(
+            scaling_config=scaling_config
+        )
 
     def _get_dmatrices(
         self, dmatrix_params: Dict[str, Any]
