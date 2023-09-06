@@ -1090,17 +1090,16 @@ class Node:
                         # Nothing to do.
                         return
                     else:
-                        assert False, (
+                        logger.warning(
                             "The node IP address of the current host recorded "
                             f"in {RAY_NODE_IP_FILENAME} ({cached_node_ip}) "
                             "is different from the current IP address: "
                             f"{node_ip_address}. Ray will use {node_ip_address} "
                             "as the current node's IP address. "
-                            "It happens when you start more than 1 Ray instance "
-                            "for the same cluster in the same host "
-                            "with a different IP address. "
-                            "If you see this error message, please create an "
-                            "issue in https://github.com/ray-project/ray/issues."
+                            "Creating 2 instances in the same host with different "
+                            "IP address is not supported. "
+                            "Please create an enhnacement request to"
+                            "https://github.com/ray-project/ray/issues."
                         )
 
                 cached_node_ip_address["node_ip_address"] = node_ip_address
