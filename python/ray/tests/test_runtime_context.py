@@ -345,6 +345,7 @@ def test_ids(ray_start_regular):
     actor = FooActor.remote()
     ray.get(actor.foo.remote())
 
+
 def test_actor_name(ray_start_regular):
     signal = SignalActor.remote()
 
@@ -352,7 +353,7 @@ def test_actor_name(ray_start_regular):
     class NamedActor:
         def name(self):
             return ray.get_runtime_context().get_actor_name()
-    
+
     ACTOR_NAME = "actor_name"
     named_actor = NamedActor.options(name=ACTOR_NAME).remote()
     assert ray.get(named_actor.name.remote()) == ACTOR_NAME

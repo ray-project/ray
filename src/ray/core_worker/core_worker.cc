@@ -2487,8 +2487,8 @@ CoreWorker::ListNamedActorsLocalMode() {
 }
 
 const std::string CoreWorker::GetActorName() const {
-    absl::MutexLock lock(&mutex_);
-    return actor_manager_->GetActorHandle(actor_id_)->GetName(); 
+  absl::MutexLock lock(&mutex_);
+  return actor_manager_->GetActorHandle(actor_id_)->GetName();
 }
 
 const ResourceMappingType CoreWorker::GetResourceIDs() const {
