@@ -44,7 +44,7 @@ obj_ref = handle.options(multiplexed_model_id="1").remote("<your param>")
 # __serve_handle_send_example_end__
 
 
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 # __serve_model_composition_example_begin__
 @serve.deployment
@@ -55,12 +55,11 @@ class Downstream:
 
 @serve.deployment
 class Upstream:
-    def __init__(self, downstream: RayServeHandle):
-        self._h = downstream
+    def __init__(self, downstream: DeploymentHandle):
+        self._h: DeploymentHandle = downstream.options(use_new_handle_api=True)
 
-    async def __call__(self):
-        ref = await self._h.options(multiplexed_model_id="bar").remote()
-        return await ref
+    async def __call__(self, request: starlette.requests.Request):
+        return await self._h.options(multiplexed_model_id="bar").remote()
 
 
 serve.run(Upstream.bind(Downstream.bind()))
