@@ -28,7 +28,7 @@ class Caller:
         # Response generator can be used in an `async for` block.
         r: DeploymentResponseGenerator = self._streamer.remote(limit)
         async for i in r:
-            yield r
+            yield i
 
 
 app = Caller.bind(Streamer.bind())
