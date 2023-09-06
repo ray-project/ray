@@ -8,7 +8,7 @@ bazel run  //:install_py_proto
 
 if ! git diff --quiet &>/dev/null; then
     echo 'Python proto source files are not manually generated when proto files are changed.'
-    echo 'Run `bazel run  //:install_py_proto` to generate.'
+    echo 'Run "bazel run  //:install_py_proto" to generate.'
     echo
 
     exit 1
