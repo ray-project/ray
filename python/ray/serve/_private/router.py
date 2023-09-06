@@ -1058,9 +1058,9 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
 
     async def assign_replica(self, query: Query) -> ray.ObjectRef:
         """Given a query, submit it to a replica and return the object ref.
-        This method will keep track of the in flight queries for each replicas
+        This method will keep track of the in-flight queries for each replicas
         and only send a query to available replicas (determined by the
-        max_concurrent_quries value.)
+        max_concurrent_queries value.)
         """
         if query.metadata.is_streaming:
             raise NotImplementedError("Streaming requires new routing to be enabled.")
