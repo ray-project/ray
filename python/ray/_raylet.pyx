@@ -3072,6 +3072,9 @@ cdef class CoreWorker:
     def get_actor_id(self):
         return ActorID(
             CCoreWorkerProcess.GetCoreWorker().GetActorId().Binary())
+    
+    def get_actor_name(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetActorName()
 
     def get_placement_group_id(self):
         return PlacementGroupID(
