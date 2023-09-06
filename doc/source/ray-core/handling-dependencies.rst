@@ -266,6 +266,7 @@ However, using runtime environments you can dynamically specify packages to be a
 
 
 You may also specify your ``pip`` dependencies either via a Python list or a local ``requirements.txt`` file.
+Consider specifying a ``requirements.txt`` file when your ``pip install`` command requires options such as ``--extra-index-url`` or ``--find-links``; see `<https://pip.pypa.io/en/stable/reference/requirements-file-format/#>`_ for details.
 Alternatively, you can specify a ``conda`` environment, either as a Python dictionary or via a local ``environment.yml`` file.  This conda environment can include ``pip`` packages.
 For details, head to the :ref:`API Reference <runtime-environments-api-ref>`.
 
