@@ -16,7 +16,6 @@ py_test_run_all_notebooks(
     size = "large",
     include = ["*.ipynb"],
     exclude = [
-        "huggingface_text_classification.ipynb",
         "gptj_serving.ipynb",  # Requires GPUs
         "gptj_deepspeed_fine_tuning.ipynb",  # Requires release test
         "dolly_lightning_fsdp_finetuning.ipynb", # Requires release test
@@ -30,7 +29,6 @@ py_test_run_all_notebooks(
 py_test_run_all_notebooks(
     size = "large",
     include = [
-        "huggingface_text_classification.ipynb",
         "gptj_serving.ipynb",
     ],
     exclude = [],

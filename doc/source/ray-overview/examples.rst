@@ -545,7 +545,7 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training huggingface nlp
-        :link: /ray-air/examples/huggingface_text_classification
+        :link: /train/examples/transformers/huggingface_text_classification
         :link-type: doc
 
         Fine-tune a 🤗 Transformers model
