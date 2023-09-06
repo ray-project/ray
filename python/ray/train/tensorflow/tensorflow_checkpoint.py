@@ -129,7 +129,9 @@ class TensorflowCheckpoint(FrameworkCheckpoint):
                 "Please supply a directory to `TensorflowCheckpoint.from_saved_model`"
             )
         tempdir = tempfile.mkdtemp()
-        shutil.copytree(dir_path, tempdir, dirs_exist_ok=True)
+        # TODO(ml-team): Replace this with copytree()
+        os.rmdir(tempdir)
+        shutil.copytree(dir_path, tempdir)
 
         checkpoint = cls.from_directory(tempdir)
         if preprocessor:
