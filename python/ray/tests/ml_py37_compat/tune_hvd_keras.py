@@ -9,9 +9,6 @@ from ray.tune import Tuner, TuneConfig
 import numpy as np
 
 
-# TF/Keras-specific
-import horovod.keras as hvd
-
 from ray.air.integrations.keras import ReportCheckpointCallback
 import tensorflow as tf
 
@@ -28,6 +25,8 @@ def create_keras_model(input_features):
 
 
 def keras_train_loop(config):
+    import horovod.keras as hvd
+
     lr = config["lr"]
     epochs = config["epochs"]
     batch_size = config["batch_size"]

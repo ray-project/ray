@@ -1,8 +1,8 @@
 (kuberay-raycluster-quickstart)=
 
-# RayCluster
+# RayCluster Quickstart
 
-In this guide, we show you how to manage and interact with Ray clusters on Kubernetes.
+This guide shows you how to manage and interact with Ray clusters on Kubernetes.
 
 ## Preparation
 
@@ -24,6 +24,7 @@ Deploy the KubeRay operator with the [Helm chart repository](https://github.com/
 
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update
 
 # Install both CRDs and KubeRay operator v0.6.0.
 helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
