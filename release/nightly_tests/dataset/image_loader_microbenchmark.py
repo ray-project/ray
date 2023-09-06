@@ -282,10 +282,13 @@ class MosaicDataset(LocalDataset):
 
 class S3MosaicDataset(StreamingDataset):
     def __init__(
-        self, s3_bucket: str,
+        self,
+        s3_bucket: str,
         num_physical_nodes,
-        cache_dir: str, transforms: Callable,
-        cache_limit=None, epoch_size=None,
+        cache_dir: str,
+        transforms: Callable,
+        cache_limit=None,
+        epoch_size=None,
     ) -> None:
         super().__init__(
             remote=s3_bucket,
@@ -295,7 +298,7 @@ class S3MosaicDataset(StreamingDataset):
             # Set StreamingDataset to read sequentially.
             shuffle=False,
             num_canonical_nodes=num_physical_nodes,
-            )
+        )
         self.transforms = transforms
 
     def __getitem__(self, idx: int) -> Any:
@@ -305,15 +308,24 @@ class S3MosaicDataset(StreamingDataset):
         return self.transforms(image), label
 
 
-def get_mosaic_dataloader(mosaic_data_root, batch_size,
-        num_physical_nodes,
-        epoch_size=None, num_workers=None, cache_limit=None):
+def get_mosaic_dataloader(
+    mosaic_data_root,
+    batch_size,
+    num_physical_nodes,
+    epoch_size=None,
+    num_workers=None,
+    cache_limit=None,
+):
     # MosaicML StreamingDataset.
     use_s3 = mosaic_data_root.startswith("s3://")
 
     if not use_s3:
-        assert epoch_size is not None, "epoch_size not supported for streaming.LocalDataset"
-        assert cache_limit is not None, "cache_limit not supported for streaming.LocalDataset"
+        assert (
+            epoch_size is not None
+        ), "epoch_size not supported for streaming.LocalDataset"
+        assert (
+            cache_limit is not None
+        ), "cache_limit not supported for streaming.LocalDataset"
 
     if use_s3:
         MOSAIC_CACHE = "/tmp/mosaic_cache"
@@ -334,16 +346,16 @@ def get_mosaic_dataloader(mosaic_data_root, batch_size,
             transforms=get_transform(True),
         )
     else:
-        mosaic_ds = MosaicDataset(
-            mosaic_data_root, transforms=get_transform(True)
-        )
+        mosaic_ds = MosaicDataset(mosaic_data_root, transforms=get_transform(True))
 
     if num_workers is None:
         num_workers = os.cpu_count()
 
     print(f"Initializing torch DataLoader with {num_workers} workers.")
     mosaic_dl = torch.utils.data.DataLoader(
-        mosaic_ds, batch_size=batch_size, num_workers=num_workers,
+        mosaic_ds,
+        batch_size=batch_size,
+        num_workers=num_workers,
         drop_last=True,
     )
 
@@ -352,20 +364,14 @@ def get_mosaic_dataloader(mosaic_data_root, batch_size,
 
 def get_ray_mosaic_dataset(mosaic_data_root):
     mds_source = MdsDatasource()
-    return ray.data.read_datasource(
-        mds_source, paths=mosaic_data_root
-    )
+    return ray.data.read_datasource(mds_source, paths=mosaic_data_root)
 
 
 def get_ray_parquet_dataset(parquet_data_root, parallelism=None):
     if parallelism is not None:
-        ray_dataset = ray.data.read_parquet(
-            parquet_data_root, parallelism=parallelism
-        )
+        ray_dataset = ray.data.read_parquet(parquet_data_root, parallelism=parallelism)
     else:
-        ray_dataset = ray.data.read_parquet(
-            parquet_data_root
-        )
+        ray_dataset = ray.data.read_parquet(parquet_data_root)
     ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
     return ray_dataset
 
@@ -556,9 +562,7 @@ if __name__ == "__main__":
             )
 
     if args.parquet_data_root is not None:
-        ray_dataset = get_ray_parquet_dataset(
-            args.parquet_data_root, parallelism=128
-        )
+        ray_dataset = get_ray_parquet_dataset(args.parquet_data_root, parallelism=128)
         for i in range(args.num_epochs):
             iterate(
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),

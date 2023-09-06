@@ -19,7 +19,11 @@ import time
 import torchvision
 import torch
 
-from dataset_benchmark_util import get_prop_parquet_paths, get_prop_raw_image_paths, get_mosaic_epoch_size
+from dataset_benchmark_util import (
+    get_prop_parquet_paths,
+    get_prop_raw_image_paths,
+    get_mosaic_epoch_size,
+)
 
 
 # This benchmark does the following:
@@ -29,7 +33,6 @@ from dataset_benchmark_util import get_prop_parquet_paths, get_prop_raw_image_pa
 # Metrics recorded to the output file are:
 # - ray.torchtrainer.fit: Throughput of the final epoch in
 #   TorchTrainer.fit() (step 3 above)
-
 
 
 def parse_args():
@@ -123,6 +126,12 @@ def parse_args():
         default=None,
         type=int,
     )
+    parser.add_argument(
+        "--split-input",
+        action="store_true",
+        default=True,
+        help="Whether to split input dataset.",
+    )
     args = parser.parse_args()
 
     if args.data_root is None and not args.use_mosaic:
@@ -185,9 +194,12 @@ def decode_image_crop_and_flip(row):
 
 
 def train_loop_per_worker():
-    it = train.get_dataset_shard("train")
-    device = train.torch.get_device()
     worker_rank = train.get_context().get_world_rank()
+    if args.split_input:
+        it = train.get_dataset_shard("train")
+    else:
+        it = train.get_dataset_shard(f"train_{worker_rank}")
+    device = train.torch.get_device()
 
     batch_iter = None
     if args.use_torch:
@@ -201,10 +213,19 @@ def train_loop_per_worker():
             transform=get_transform(True),
         )
     elif args.use_mosaic:
-        target_epoch_size = get_mosaic_epoch_size(args.num_workers, target_worker_gb=args.target_worker_gb)
-        print("Epoch size:", target_epoch_size if target_epoch_size is not None else "all", "images")
+        target_epoch_size = get_mosaic_epoch_size(
+            args.num_workers, target_worker_gb=args.target_worker_gb
+        )
+        print(
+            "Epoch size:",
+            target_epoch_size if target_epoch_size is not None else "all",
+            "images",
+        )
 
-        num_physical_nodes = ray.train.get_context().get_world_size() // ray.train.get_context().get_local_world_size()
+        num_physical_nodes = (
+            ray.train.get_context().get_world_size()
+            // ray.train.get_context().get_local_world_size()
+        )
         torch_num_workers = args.torch_num_workers
         if torch_num_workers is None:
             torch_num_workers = os.cpu_count()
@@ -217,7 +238,7 @@ def train_loop_per_worker():
             num_physical_nodes=num_physical_nodes,
             epoch_size=target_epoch_size,
             num_workers=torch_num_workers,
-            )
+        )
 
     for i in range(args.num_epochs):
         print(f"Epoch {i+1} of {args.num_epochs}")
@@ -235,10 +256,14 @@ def train_loop_per_worker():
         for batch in batch_iter:
             num_rows += args.batch_size
             if num_rows >= print_at:
-                print(f"Read {num_rows} rows on rank {train.get_context().get_world_rank()}, tput so far: {num_rows / (time.time()  - start_t)}")
+                print(
+                    f"Read {num_rows} rows on rank {train.get_context().get_world_rank()}, tput so far: {num_rows / (time.time()  - start_t)}"
+                )
                 print_at = ((num_rows // print_at_interval) + 1) * print_at_interval
         end_t = time.time()
-        print(f"Epoch {i+1} of {args.num_epochs}, tput: {num_rows / (end_t - start_t)}, run time: {end_t - start_t}")
+        print(
+            f"Epoch {i+1} of {args.num_epochs}, tput: {num_rows / (end_t - start_t)}, run time: {end_t - start_t}"
+        )
 
     # Workaround to report the final epoch time from each worker, so that we
     # can sum up the times at the end when calculating throughput.
@@ -265,15 +290,11 @@ def train_loop_per_worker():
 
 
 # The input files URLs per training worker.
-# This is used by PyTorch DataLoader only.
 INPUT_FILES_PER_WORKER = []
 
 
 def split_input_files_per_worker(args):
-    """Set the input files per each trianing worker.
-
-    This is used by PyTorch DataLoader workers to load input files in parallel.
-    """
+    """Set the input files per each training worker."""
     global INPUT_FILES_PER_WORKER
     import numpy as np
     from torchdata.datapipes.iter import IterableWrapper
@@ -359,57 +380,76 @@ def benchmark_code(
         sum([cache_output_ds, cache_input_ds]) <= 1
     ), "Can only test one caching variant at a time"
 
-    ray_dataset = None
+    if args.use_torch or not args.split_input:
+        split_input_files_per_worker(args)
+
+    ray_datasets_dict = {}
     if not args.use_mosaic:
-        # 1) Read in data with read_images() / read_parquet()
-        if args.file_type == "image":
-            ray_dataset = ray.data.read_images(
-                args.data_root,
-                mode="RGB",
-                ray_remote_args={"num_cpus": args.read_task_cpus},
-            )
-        elif args.file_type == "parquet":
-            ray_dataset = ray.data.read_parquet(
-                args.data_root,
-                ray_remote_args={"num_cpus": args.read_task_cpus},
-            )
-        else:
-            raise Exception(f"Unknown file type {args.file_type}")
+        # Only create one dataset if `args.split_input` is True.
+        # Otherwise, create N datasets for N training workers,
+        # each dataset reads the corresponding portion of input data.
+        num_datasets = 1
+        if not args.split_input:
+            num_datasets = args.num_workers
 
-        if cache_input_ds:
-            ray_dataset = ray_dataset.materialize()
+        for i in range(num_datasets):
+            if args.split_input:
+                input_paths = args.data_root
+                ds_name = "train"
+            else:
+                input_paths = INPUT_FILES_PER_WORKER[i]
+                ds_name = f"train_{i}"
 
-        # 2) Preprocess data by applying transformation with map/map_batches()
-        if args.file_type == "image":
-            ray_dataset = ray_dataset.map(crop_and_flip_image, num_cpus=args.read_task_cpus)
-        elif args.file_type == "parquet":
-            ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
-        if cache_output_ds:
-            ray_dataset = ray_dataset.materialize()
+            # 1) Read in data with read_images() / read_parquet()
+            if args.file_type == "image":
+                ray_dataset = ray.data.read_images(
+                    input_paths,
+                    mode="RGB",
+                    ray_remote_args={"num_cpus": args.read_task_cpus},
+                )
+            elif args.file_type == "parquet":
+                ray_dataset = ray.data.read_parquet(
+                    args.data_root,
+                    ray_remote_args={"num_cpus": args.read_task_cpus},
+                )
+            else:
+                raise Exception(f"Unknown file type {args.file_type}")
+
+            if cache_input_ds:
+                ray_dataset = ray_dataset.materialize()
+
+            # 2) Preprocess data by applying transformation with map/map_batches()
+            if args.file_type == "image":
+                ray_dataset = ray_dataset.map(
+                    crop_and_flip_image, num_cpus=args.read_task_cpus
+                )
+            elif args.file_type == "parquet":
+                ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
+            if cache_output_ds:
+                ray_dataset = ray_dataset.materialize()
+            ray_datasets_dict[ds_name] = ray_dataset
 
     # 3) Train TorchTrainer on processed data
     options = DataConfig.default_ingest_options()
     options.preserve_order = args.preserve_order
 
-    if args.use_torch:
-        split_input_files_per_worker(args)
-
     if args.num_workers == 1 or args.use_gpu:
         torch_trainer = TorchTrainer(
             train_loop_per_worker,
-            datasets={"train": ray_dataset} if ray_dataset is not None else {},
+            datasets=ray_datasets_dict,
             scaling_config=ScalingConfig(
                 num_workers=args.num_workers,
                 use_gpu=args.use_gpu,
             ),
             dataset_config=ray.train.DataConfig(
+                datasets_to_split="all" if args.split_input else [],
                 execution_options=options,
             ),
         )
     else:
         torch_trainer = TorchTrainer(
             train_loop_per_worker,
-            datasets={"train": ray_dataset} if ray_dataset is not None else {},
+            datasets=ray_datasets_dict,
             # In the multi-node case without GPUs, we use a SPREAD placement strategy
             # to ensure that tasks are spread across nodes. We reserve one worker
             # for the driver.
@@ -444,9 +484,7 @@ if __name__ == "__main__":
     # Workaround for FileBasedDatasource parallel read issue when reading many sources.
     file_based_datasource.FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 1000
     args = parse_args()
-    benchmark_name = (
-        f"read_{args.file_type}_repeat{args.repeat_ds}_train_{args.num_workers}workers_{args.target_worker_gb}gb_per_worker"
-    )
+    benchmark_name = f"read_{args.file_type}_repeat{args.repeat_ds}_train_{args.num_workers}workers_{args.target_worker_gb}gb_per_worker"
     if args.preserve_order:
         benchmark_name = f"{benchmark_name}_preserve_order"
 

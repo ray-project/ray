@@ -351,9 +351,17 @@ def get_prop_parquet_paths(num_workers, target_worker_gb):
             break
     return file_paths
 
+
 def get_mosaic_epoch_size(num_workers, target_worker_gb=10):
     if target_worker_gb == -1:
         return None
     AVG_MOSAIC_IMAGE_SIZE_BYTES = 500 * 1024  # 500KiB.
-    epoch_size = math.ceil(target_worker_gb * num_workers * 1024 * 1024 * 1024 / AVG_MOSAIC_IMAGE_SIZE_BYTES)
+    epoch_size = math.ceil(
+        target_worker_gb
+        * num_workers
+        * 1024
+        * 1024
+        * 1024
+        / AVG_MOSAIC_IMAGE_SIZE_BYTES
+    )
     return epoch_size
