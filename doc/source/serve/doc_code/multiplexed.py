@@ -44,7 +44,8 @@ obj_ref = handle.options(multiplexed_model_id="1").remote("<your param>")
 # __serve_handle_send_example_end__
 
 
-from ray.serve.handle import DeploymentHandle
+from ray.serve.handle import DeploymentHandle  # noqa: E402
+
 
 # __serve_model_composition_example_begin__
 @serve.deployment
