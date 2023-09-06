@@ -110,7 +110,7 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item cv training gen-ai
-        :link: /ray-air/examples/dreambooth_finetuning
+        :link: /train/examples/pytorch/dreambooth_finetuning
         :link-type: doc
 
         How to fine-tune a DreamBooth text-to-image model with your own images.
