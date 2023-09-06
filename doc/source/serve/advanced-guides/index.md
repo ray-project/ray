@@ -9,6 +9,6 @@ Use these advanced guides for more options and configurations:
 - [Dynamic Request Batching](serve-performance-batching-requests)
 - [In-Place Updates for Serve](serve-inplace-updates)
 - [Development Workflow](serve-dev-workflow)
+- [gRPC Support](serve-set-up-grpc-service)
 - [Ray Serve Dashboard](dash-serve-view)
 - [Experimental Java API](serve-java-api)
-- [gRPC Support](serve-set-up-grpc-service)
