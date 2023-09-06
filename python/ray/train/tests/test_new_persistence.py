@@ -15,7 +15,11 @@ import ray
 from ray import train, tune
 from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_RESULT_FILE
-from ray.train._internal.storage import _download_from_fs_path, StorageContext
+from ray.train._internal.storage import (
+    _delete_fs_path,
+    _download_from_fs_path,
+    StorageContext,
+)
 from ray.train._checkpoint import Checkpoint
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
@@ -269,7 +273,12 @@ class ClassTrainable(tune.Trainable):
             ).read_text() == "dummy"
 
 
-def _resume_from_checkpoint(checkpoint: Checkpoint, expected_state: dict):
+def _resume_from_checkpoint(
+    checkpoint: Checkpoint,
+    expected_state: dict,
+    storage_path: Optional[str] = None,
+    storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+):
     print(f"\nStarting run with `resume_from_checkpoint`: {checkpoint}\n")
 
     def assert_fn(config):
@@ -290,7 +299,11 @@ def _resume_from_checkpoint(checkpoint: Checkpoint, expected_state: dict):
     trainer = DataParallelTrainer(
         assert_fn,
         scaling_config=train.ScalingConfig(num_workers=2),
-        run_config=train.RunConfig(name="test_resume_from_checkpoint"),
+        run_config=train.RunConfig(
+            name="test_resume_from_checkpoint",
+            storage_path=storage_path,
+            storage_filesystem=storage_filesystem,
+        ),
         resume_from_checkpoint=checkpoint,
     )
     result = trainer.fit()
@@ -299,6 +312,9 @@ def _resume_from_checkpoint(checkpoint: Checkpoint, expected_state: dict):
     assert Path(
         result.checkpoint.path
     ).name == StorageContext._make_checkpoint_dir_name(0)
+
+    # Clean up this run's experiment directory immediately after.
+    _delete_fs_path(result.filesystem, Path(result.path).parent.as_posix())
 
 
 def _assert_storage_contents(
@@ -310,6 +326,8 @@ def _assert_storage_contents(
     no_checkpoint_ranks: List[int] = None,
     constants: type = TestConstants,
 ):
+    no_checkpoint_ranks = no_checkpoint_ranks or []
+
     # Second, inspect the contents of the storage path
     storage_path_ls = list(local_inspect_dir.glob("*"))
     assert len(storage_path_ls) == 1  # Only expect 1 experiment dir
