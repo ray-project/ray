@@ -2,7 +2,7 @@
 
 # Ingress
 
-Two examples show how to use ingress to access your Ray cluster:
+Three examples show how to use ingress to access your Ray cluster:
 
   * [AWS Application Load Balancer (ALB) Ingress support on AWS EKS](kuberay-aws-alb)
   * [GKE Ingress support](kuberay-gke-ingress)
