@@ -31,15 +31,23 @@ class _CheckpointMetaClass(type):
         try:
             return super().__getattribute__(item)
         except AttributeError as exc:
-            if item in [
+            if item in {
                 "from_dict",
                 "to_dict",
                 "from_bytes",
                 "to_bytes",
+                "get_internal_representation",
+            }:
+                raise _raise_migration_error(item) from exc
+            elif item in {
                 "from_uri",
                 "to_uri",
-            ]:
-                raise _raise_migration_error(item) from exc
+                "uri",
+            }:
+                raise _raise_uri_error(item) from exc
+            elif item in {"get_preprocessor", "set_preprocessor"}:
+                raise _raise_preprocessor_error(item) from exc
+
             raise exc
 
 
@@ -325,17 +333,43 @@ def _raise_migration_error(name: str):
         f"The new `ray.train.Checkpoint` class does not support `{name}()`. "
         f"Instead, only directories are supported.\n\n"
         f"Example to store a dictionary in a checkpoint:\n\n"
-        f"import os, pickle, tempfile\n"
+        f"import os, tempfile\n"
+        f"import ray.cloudpickle as pickle\n"
         f"from ray import train\n"
         f"from ray.train import Checkpoint\n\n"
         f"with tempfile.TemporaryDirectory() as checkpoint_dir:\n"
-        f"  with open(os.path.join(checkpoint_dir, 'data.json'), 'wb') as fp:\n"
+        f"  with open(os.path.join(checkpoint_dir, 'data.pkl'), 'wb') as fp:\n"
         f"    pickle.dump({{'data': 'value'}}, fp)\n\n"
         f"  checkpoint = Checkpoint.from_directory(checkpoint_dir)\n"
         f"  train.report(..., checkpoint=checkpoint)\n\n"
         f"Example to load a dictionary from a checkpoint:\n\n"
         f"if train.get_checkpoint():\n"
         f"  with train.get_checkpoint().as_directory() as checkpoint_dir:\n"
-        f"    with open(os.path.join(checkpoint_dir, 'data.json'), 'rb') as fp:\n"
+        f"    with open(os.path.join(checkpoint_dir, 'data.pkl'), 'rb') as fp:\n"
         f"      data = pickle.load(fp)"
+    )
+
+
+def _raise_uri_error(name: str):
+    raise AttributeError(
+        f"The new `ray.train.Checkpoint` class does not support `{name}()`. "
+        f"To create a checkpoint from remote storage, create a `Checkpoint` using its "
+        f"constructor instead of `from_directory`.\n"
+        f'Example: `Checkpoint(path="s3://a/b/c")`.\n'
+        f"Then, access the contents of the checkpoint with "
+        f"`checkpoint.as_directory()` / `checkpoint.to_directory()`.\n"
+        f"To upload data to remote storage, use e.g. `pyarrow.fs.FileSystem` "
+        f"or your client of choice."
+    )
+
+
+def _raise_preprocessor_error(name: str):
+    raise AttributeError(
+        f"The new `ray.train.Checkpoint` class does not support `{name}()`. "
+        f"To include preprocessor information in checkpoints, "
+        f"pass it as metadata in the <Framework>Trainer constructor. "
+        f"Example: `TorchTrainer(..., metadata={{...}})`.\n"
+        f"After training, access it in the checkpoint via `checkpoint.get_metadata()`. "
+        f"See here: https://docs.ray.io/en/master/train/user-guides/"
+        f"data-loading-preprocessing.html#preprocessing-structured-data"
     )
