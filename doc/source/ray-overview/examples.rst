@@ -62,7 +62,7 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item llm gen-ai huggingface training nlp
-        :link: /ray-air/examples/gptj_deepspeed_fine_tuning
+        :link: /train/examples/deepspeed/gptj_deepspeed_fine_tuning
         :link-type: doc
 
         GPT-J-6B Fine-Tuning with Ray Train and DeepSpeed
