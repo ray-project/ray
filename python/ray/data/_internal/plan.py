@@ -224,7 +224,7 @@ class ExecutionPlan:
             num_blocks = "?"
         else:
             num_blocks = dataset_blocks.estimated_num_blocks()
-        dataset_str = "{}(num_blocks={}, num_rows={}, schema={})".format(
+        dataset_str = "<{} num_blocks={} num_rows={} schema={}>".format(
             classname, num_blocks, count, schema_str
         )
 
@@ -266,11 +266,11 @@ class ExecutionPlan:
                     "{\n" + schema_str + f"\n{trailing_space}{INDENT_STR}" + "}"
                 )
             dataset_str = (
-                f"{classname}("
-                f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
-                f"\n{trailing_space}{INDENT_STR}num_rows={count},"
+                f"<{classname}"
+                f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks}"
+                f"\n{trailing_space}{INDENT_STR}num_rows={count}"
                 f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
-                f"\n{trailing_space})"
+                f"\n{trailing_space}>"
             )
 
         if num_stages == 0:
