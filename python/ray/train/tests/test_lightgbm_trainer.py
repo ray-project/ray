@@ -198,6 +198,14 @@ def test_default_parameters_scaling_config():
     assert trainer._ray_params.cpus_per_actor == 4
 
 
+def test_lightgbm_trainer_resources():
+    """`trainer_resources` is not allowed in the scaling config"""
+    with pytest.raises(ValueError):
+        LightGBMTrainer._validate_scaling_config(
+            ScalingConfig(trainer_resources={"something": 1})
+        )
+
+
 if __name__ == "__main__":
     import pytest
     import sys

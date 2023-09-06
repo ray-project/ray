@@ -76,7 +76,6 @@ def test_fit_with_advanced_scaling_config(ray_start_4_cpus):
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = ScalingConfigAssertingXGBoostTrainer(
         scaling_config=ScalingConfig(
-            trainer_resources={"CPU": 0},
             num_workers=2,
             placement_strategy="SPREAD",
             _max_cpu_fraction_per_node=0.9,
@@ -214,6 +213,14 @@ def test_distributed_data_loading(ray_start_4_cpus):
 
     assert trainer.dmatrix_params[TRAIN_DATASET_KEY]["distributed"]
     trainer.fit()
+
+
+def test_xgboost_trainer_resources():
+    """`trainer_resources` is not allowed in the scaling config"""
+    with pytest.raises(ValueError):
+        XGBoostTrainer._validate_scaling_config(
+            ScalingConfig(trainer_resources={"something": 1})
+        )
 
 
 if __name__ == "__main__":

@@ -203,6 +203,22 @@ class GBDTTrainer(BaseTrainer):
                         f"which is not present in `datasets`."
                     )
 
+    @classmethod
+    def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
+        # Todo: `trainer_resources` should be configurable. Currently it is silently
+        # ignored. We catch the error here rather than in
+        # `_scaling_config_allowed_keys` because the default of `None` is updated to
+        # `{}` from XGBoost-Ray.
+        if scaling_config.trainer_resources not in [None, {}]:
+            raise ValueError(
+                f"The `trainer_resources` attribute for {cls.__name__} "
+                f"is currently ignored and defaults to `{{}}`. Remove the "
+                f"`trainer_resources` key from your `ScalingConfig` to resolve."
+            )
+        return super(GBDTTrainer, cls)._validate_scaling_config(
+            scaling_config=scaling_config
+        )
+
     def _get_dmatrices(
         self, dmatrix_params: Dict[str, Any]
     ) -> Dict[str, "xgboost_ray.RayDMatrix"]:

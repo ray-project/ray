@@ -113,9 +113,6 @@ Here are some examples for common use-cases:
             :start-after: __scaling_cpu_start__
             :end-before: __scaling_cpu_end__
 
-        Note that we pass 0 CPUs for the trainer resources, so that all resources can
-        be allocated to the actual distributed training workers.
-
 
     .. tab-item:: Single-node multi-GPU
 
