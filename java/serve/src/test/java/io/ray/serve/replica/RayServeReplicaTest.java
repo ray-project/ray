@@ -46,7 +46,6 @@ public class RayServeReplicaTest {
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
               .setDeploymentDef(DummyReplica.class.getName())
-              .setDetached(false)
               .setAppName("app_test");
 
       ActorHandle<RayServeWrappedReplica> replicHandle =

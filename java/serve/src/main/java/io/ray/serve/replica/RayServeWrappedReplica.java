@@ -39,7 +39,6 @@ public class RayServeWrappedReplica implements RayServeReplica {
       byte[] deploymentConfigBytes,
       byte[] deploymentVersionBytes,
       String controllerName,
-      Boolean detached,
       String appName) {
 
     // Parse DeploymentConfig.
@@ -67,7 +66,6 @@ public class RayServeWrappedReplica implements RayServeReplica {
     deploymentWrapper.setDeploymentConfig(deploymentConfig);
     deploymentWrapper.setInitArgs(initArgs);
     deploymentWrapper.setDeploymentVersion(version);
-    deploymentWrapper.setDetached(detached);
     deploymentWrapper.setAppName(appName);
 
     // Init replica.

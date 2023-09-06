@@ -20,18 +20,7 @@ public class DeploymentWrapper implements Serializable {
 
   private Map<String, String> config;
 
-  private Boolean detached;
-
   private String appName;
-
-  public Boolean getDetached() {
-    return detached;
-  }
-
-  public DeploymentWrapper setDetached(Boolean detached) {
-    this.detached = detached;
-    return this;
-  }
 
   public String getAppName() {
     return appName;
