@@ -1,20 +1,20 @@
 (serve-set-up-grpc-service)=
-# Set Up gRPC Service
+# Set Up a gRPC Service
 
 This section helps you understand how to:
-- build a user defined gRPC service and protobuf
-- start Serve with gRPC enabled
-- deploy gRPC applications
-- send gRPC requests to Serve deployments
-- check proxy health
-- work with gRPC metadata 
-- use streaming and model composition
-- handle errors
+- Build a user defined gRPC service and protobuf
+- Start Serve with gRPC enabled
+- Deploy gRPC applications
+- Send gRPC requests to Serve deployments
+- Check proxy health
+- Work with gRPC metadata 
+- Use streaming and model composition
+- Handle errors
 
 
 (custom-serve-grpc-service)=
-## Define a gRPC Service
-To run a gRPC server it starts with first defining gRPC services, RPC methods, and 
+## Define a gRPC service
+Running a gRPC server starts with defining gRPC services, RPC methods, and
 protobufs similar to the one below.
 
 ```{literalinclude} ../doc_code/grpc_proxy/user_defined_protos.proto
@@ -24,33 +24,33 @@ protobufs similar to the one below.
 ```
 
 
-In this example, we created a file named `user_defined_protos.proto`. There are two
-gRPC services, `UserDefinedService` and `ImageClassificationService`.
-`UserDefinedService` has three RPC methods, `__call__`, `Multiplexing`, and `Streaming`.
-`ImageClassificationService` has one RPC method, `Predict`. Their corresponding input
+This example creates a file named `user_defined_protos.proto` with two
+gRPC services: `UserDefinedService` and `ImageClassificationService`.
+`UserDefinedService` has three RPC methods: `__call__`, `Multiplexing`, and `Streaming`.
+`ImageClassificationService` has one RPC method: `Predict`. Their corresponding input
 and output types are also defined specifically for each RPC method.
 
-Once the `.proto` services are defined, we can use `grpcio-tools` to compile python 
+Once you define the `.proto` services, use `grpcio-tools` to compile python
 code for those services. Example command looks like the following:
 ```bash
 python -m grpc_tools.protoc -I=. --python_out=. --grpc_python_out=. ./user_defined_protos.proto
 ```
 
-It will generate two files, `user_defined_protos_pb2.py` and 
+It generates two files: `user_defined_protos_pb2.py` and
 `user_defined_protos_pb2_grpc.py`.
 
-For more details on `grpcio-tools` see: [https://grpc.io/docs/languages/python/basics/#generating-client-and-server-code](https://grpc.io/docs/languages/python/basics/#generating-client-and-server-code)
+For more details on `grpcio-tools` see [https://grpc.io/docs/languages/python/basics/#generating-client-and-server-code](https://grpc.io/docs/languages/python/basics/#generating-client-and-server-code).
 
 :::{note}
-Please make sure the generated files are in the same directory as where the Ray cluster
-is running so it can be importable by Serve when starting the proxies.
+Ensure that the generated files are in the same directory as where the Ray cluster
+is running so that Serve can import them when starting the proxies.
 :::
 
 (start-serve-with-grpc-proxy)=
-## Start Serve with gRPC Enabled
+## Start Serve with gRPC enabled
 [Serve start](https://docs.ray.io/en/releases-2.7.0/serve/api/index.html#serve-start) CLI,
 [`ray.serve.start`](https://docs.ray.io/en/releases-2.7.0/serve/api/doc/ray.serve.start.html#ray.serve.start) API,
-and [Serve Config Files](https://docs.ray.io/en/releases-2.7.0/serve/production-guide/config.html#serve-config-files-serve-build)
+and [Serve config files](https://docs.ray.io/en/releases-2.7.0/serve/production-guide/config.html#serve-config-files-serve-build)
 all support starting Serve with gRPC proxy. There are two options related to Serve's
 gRPC proxy, `grpc_port` and `grpc_servicer_functions`. `grpc_port` is the port for gRPC 
 proxies to listen. It defaults to 9000. `grpc_servicer_functions` is a list of import 
@@ -112,7 +112,7 @@ serve run config.yaml
 ::::
 
 (deploy-serve-grpc-applications)=
-## Deploy gRPC Applications
+## Deploy gRPC applications
 gRPC applications in Serve works similarly to HTTP applications. The only difference is
 the input and output of the methods need to match with what's defined in the `.proto`
 file and that the method of the application needs to be an exact match (case sensitive)
@@ -143,7 +143,7 @@ HTTP. We will make it optional for gRPC in the future release.
 
 
 (send-serve-grpc-proxy-request)=
-## Send gRPC Requests to Serve deployments
+## Send gRPC requests to serve deployments
 Sending a gRPC request to a Serve deployment is similar to sending a gRPC request to
 any other gRPC server. You would create a gRPC channel and stub, then call the RPC
 method on the stub with the appropriate input. The output will be the protobuf object
@@ -160,7 +160,7 @@ Read more about gRPC client in Python: [https://grpc.io/docs/languages/python/ba
 
 
 (serve-grpc-proxy-health-checks)=
-## Check Proxy Health
+## Check proxy health
 Similar to HTTP's `/-/routes` and `/-/healthz` endpoints, Serve also provides gRPC
 service method to be used in health check. 
 - `/ray.serve.RayServeAPIService/ListApplications` is used to list all applications
@@ -202,7 +202,7 @@ from the proto file. It's just here for your reference.
 :::
 
 (serve-grpc-metadata)=
-## Work With gRPC Metadata
+## Work with gRPC metadata
 Just like HTTP's headers, gRPC also supports metadata to pass request related info.
 You can pass metadata to Serve's gRPC proxy and Serve will know how to parse and use
 them. Serve will also pass trailing metadata back to the client.
@@ -224,7 +224,7 @@ Example of using metadata:
 ```
 
 (serve-grpc-proxy-more-examples)=
-## Use Streaming and Model Composition
+## Use streaming and model composition
 gRPC proxy will remain feature parity with HTTP proxy. Here are more examples of using
 gRPC proxy for getting streaming response as well as doing model composition.
 
@@ -237,7 +237,7 @@ to get a streaming response.
 :language: python
 ```
 
-### Model Composition
+### Model composition
 Assuming we have the below deployments. `ImageDownloader` and `DataPreprocessor` are two
 separate steps to download and process the image before the pytorch can run inference.
 There is also a `ImageClassifier` deployment to initialize model, call both 
@@ -272,7 +272,7 @@ metadata so Serve knows which application to route to.
 
 
 (serve-grpc-proxy-error-handling)=
-## Handle Errors
+## Handle errors
 Similar to any other gRPC server, request will throw `grpc.RpcError` when the response
 code is not "OK". It's advised to put your request code in a try-except block and handle
 the error accordingly.
