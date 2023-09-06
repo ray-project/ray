@@ -65,6 +65,7 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 
    serve.start
    serve.config.ProxyLocation
+   serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.shutdown
 ```
@@ -383,6 +384,7 @@ Content-Type: application/json
    :toctree: doc/
 
    schema.ServeDeploySchema
+   schema.gRPCOptionsSchema
    schema.HTTPOptionsSchema
    schema.ServeApplicationSchema
    schema.DeploymentSchema
