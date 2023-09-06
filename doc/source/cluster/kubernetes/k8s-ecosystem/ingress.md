@@ -24,7 +24,6 @@ Three examples show how to use ingress to access your Ray cluster:
 ```sh
 # Step 1: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm repo update
 helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0-rc.0
 
 # Step 2: Install a RayCluster
@@ -112,7 +111,6 @@ Now run the following commands:
 ```bash
 # Step 1: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm repo update
 helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0-rc.0
 
 # Step 2: Install a RayCluster
