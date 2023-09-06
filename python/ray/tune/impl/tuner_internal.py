@@ -704,7 +704,6 @@ class TunerInternal:
             stop=self._run_config.stop,
             max_failures=self._run_config.failure_config.max_failures,
             checkpoint_config=checkpoint_config,
-            _experiment_checkpoint_dir=self._legacy_experiment_checkpoint_dir,
             raise_on_failed_trial=False,
             fail_fast=(self._run_config.failure_config.fail_fast),
             progress_reporter=self._run_config.progress_reporter,
@@ -714,8 +713,13 @@ class TunerInternal:
             time_budget_s=self._tune_config.time_budget_s,
             trial_name_creator=self._tune_config.trial_name_creator,
             trial_dirname_creator=self._tune_config.trial_dirname_creator,
-            chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
             _entrypoint=self._entrypoint,
+            # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
+            # For now, keep accepting both options.
+            local_dir=self._run_config.local_dir,
+            # Deprecated
+            chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
+            _experiment_checkpoint_dir=self._legacy_experiment_checkpoint_dir,
         )
 
     def _fit_internal(
