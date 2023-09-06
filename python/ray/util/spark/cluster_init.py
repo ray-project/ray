@@ -12,7 +12,9 @@ from typing import Optional, Dict, Type
 
 import ray
 from ray.util.annotations import PublicAPI
+from ray._private.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
 from ray._private.storage import _load_class
+from ray._private.services import canonicalize_bootstrap_address_or_die
 
 from .utils import (
     exec_cmd,
@@ -29,7 +31,11 @@ from .utils import (
     calc_mem_ray_head_node,
 )
 from .start_hook_base import RayOnSparkStartHook
-from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
+from .databricks_hook import (
+    DefaultDatabricksRayOnSparkStartHook,
+    global_mode_enabled,
+    DATABRICKS_RAY_CLUSTER_GLOBAL_MODE,
+)
 
 
 _logger = logging.getLogger("ray.util.spark")
@@ -194,7 +200,7 @@ class RayClusterOnSpark:
         """
         if not self.is_shutdown:
             self.disconnect()
-            os.environ.pop("RAY_ADDRESS", None)
+            os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
             if cancel_background_job:
                 try:
                     self._cancel_background_spark_job()
@@ -481,9 +487,24 @@ def _setup_ray_cluster(
 
     if ray_temp_root_dir is None:
         ray_temp_root_dir = start_hook.get_default_temp_dir()
-    ray_temp_dir = os.path.join(
-        ray_temp_root_dir, f"ray-{ray_head_port}-{cluster_unique_id}"
-    )
+    if global_mode_enabled():
+        # It reads from environment variable RAY_ADDRESS, then check
+        # ray_temp_root_dir/ray/ray_current_cluster to see if the address
+        # is available, if yes then a global ray cluster is running, otherwise
+        # it will start a new glbal ray cluster.
+        ray_addr = canonicalize_bootstrap_address_or_die("auto", ray_temp_root_dir)
+        if ray_addr is not None:
+            raise RuntimeError(
+                f"Global mode is enabled by setting {DATABRICKS_RAY_CLUSTER_GLOBAL_MODE}, "
+                "current active ray cluster on spark haven't shut down."
+                "Please call `ray.util.spark.shutdown_ray_cluster()` before initiating a "
+                "new Ray cluster on spark."
+            )
+        ray_temp_dir = os.path.join(ray_temp_root_dir, "ray")
+    else:
+        ray_temp_dir = os.path.join(
+            ray_temp_root_dir, f"ray-{ray_head_port}-{cluster_unique_id}"
+        )
     os.makedirs(ray_temp_dir, exist_ok=True)
     object_spilling_dir = os.path.join(ray_temp_dir, "spill")
     os.makedirs(object_spilling_dir, exist_ok=True)
@@ -515,11 +536,17 @@ def _setup_ray_cluster(
 
     # `preexec_fn=setup_sigterm_on_parent_death` ensures the ray head node being
     # killed if parent process died unexpectedly.
+    # While if DATABRICKS_RAY_CLUSTER_GLOBAL_MODE is set to true, we enable global
+    # mode so that ray processes are persisted along with the cluster, and only when
+    # the spark cluster is terminated we shutdown the ray processes.
+    extra_kwargs = {}
+    if not global_mode_enabled():
+        extra_kwargs["preexec_fn"] = setup_sigterm_on_parent_death
     ray_head_proc, tail_output_deque = exec_cmd(
         ray_head_node_cmd,
         synchronous=False,
-        preexec_fn=setup_sigterm_on_parent_death,
         extra_env={RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""},
+        **extra_kwargs,
     )
 
     # wait ray head node spin up.
@@ -650,7 +677,7 @@ def _setup_ray_cluster(
 
     cluster_address = f"{ray_head_ip}:{ray_head_port}"
     # Set RAY_ADDRESS environment variable to the cluster address.
-    os.environ["RAY_ADDRESS"] = cluster_address
+    os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = cluster_address
 
     ray_cluster_handler = RayClusterOnSpark(
         address=cluster_address,

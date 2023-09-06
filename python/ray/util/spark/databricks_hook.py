@@ -65,6 +65,11 @@ DATABRICKS_AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS = 3
 DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES = (
     "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES"
 )
+DATABRICKS_RAY_CLUSTER_GLOBAL_MODE = "DATABRICKS_RAY_CLUSTER_GLOBAL_MODE"
+
+
+def global_mode_enabled():
+    return os.environ.get(DATABRICKS_RAY_CLUSTER_GLOBAL_MODE, "false").lower() == "true"
 
 
 def _get_db_api_entry():
@@ -89,9 +94,14 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
     def on_cluster_created(self, ray_cluster_handler):
         db_api_entry = _get_db_api_entry()
         try:
-            db_api_entry.registerBackgroundSparkJobGroup(
-                ray_cluster_handler.spark_job_group_id
-            )
+            # We only cancel spark job group when global mode is disabled,
+            # otherwise even when the parent REPL is detached or died, we
+            # keep the spark job group alive so that ray cluster is alive
+            # and can be connected again.
+            if not global_mode_enabled():
+                db_api_entry.registerBackgroundSparkJobGroup(
+                    ray_cluster_handler.spark_job_group_id
+                )
         except Exception:
             _logger.warning(
                 "Registering Ray cluster spark job as background job failed. "

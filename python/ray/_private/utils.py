@@ -78,6 +78,14 @@ PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]
 
 
 def get_user_temp_dir():
+    # When global mode is enabled in databricks runtime, ray.init() looks for
+    # existing ray cluster in corresponding default temp dir.
+    # This should be consistent with python/ray/util/spark/databricks_hook.py.
+    if (
+        os.environ.get("DATABRICKS_RAY_CLUSTER_GLOBAL_MODE", "false").lower() == "true"
+        and "DATABRICKS_RUNTIME_VERSION" in os.environ
+    ):
+        return "/local_disk0/tmp"
     if "RAY_TMPDIR" in os.environ:
         return os.environ["RAY_TMPDIR"]
     elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
