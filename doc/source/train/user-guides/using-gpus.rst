@@ -19,32 +19,28 @@ to Ray clusters and distributed training.
     :width: 400px
 
 - **Cluster**: This is the :ref:`Ray cluster <cluster-index>` on which the training is
-  executed. There is only one Ray cluster your code interacts with.
+  executed.
 - **Node**: A node is one machine connected to the Ray cluster.
   For instance, this can be a Physical Machine, a Virtual Machine, or a Kubernetes Pod.
-  The :ref:`Head Node <cluster-head-node>` is usually where you
-  execute your script (but you can also execute it on any other node).
-  The cluster can comprise of one to many hundreds of nodes. Each node has specific
-  :ref:`Resources <core-resources>`, such as CPUs, GPUs, memory, or
-  :ref:`custom resources <custom-resources>`.
-- **Driver**: This is the script you are executing. It's called the driver as it is
-  responsible for scheduling the Ray actors and tasks (it's "driving" the execution).
-- **Trainer**: The trainer object you instantiate in Ray Train. This lives in two
-  places: First, you create it in the Driver script. Then, when you call
+- **Driver**: This is the script or notebook you are executing.
+- **Trainer**: The :class:`Trainer <ray.train.trainer.BaseTrainer>` object you
+  instantiate in Ray Train. When you call
   :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>`, a copy will be
   created as a :ref:`Ray Actor <actor-key-concept>`.
 - **(Train) Worker**: In the context of Ray Train, we often refer to training workers.
   Technically, these are also :ref:`Ray Actors <actor-key-concept>` that execute
-  your training loop. You can specify an arbitrary number of workers. The number of workers
-  can be more or less than the number of nodes. In the figure, we show two
-  training workers per node.
+  your training loop.
+
+You can specify an arbitrary number of workers. The number of workers
+can be more or less than the number of nodes. In the figure, we show two
+training workers per node.
 
 Unfortunately, the term "worker" is used differently in different contexts. In Ray
 Train, a "Worker" will always be a "Training worker" (an Actor executing your training
 loop), unless we explicitly refer to a "Worker node".
 
-Configuring scale in Ray Train (``ScalingConfig``)
---------------------------------------------------
+Creating the configuration object (:class:`~ray.train.ScalingConfig`)
+---------------------------------------------------------------------
 
 Ray Train's :class:`~ray.train.ScalingConfig` configures the number of training workers
 and the resources they should use. If the Trainer actor requires specific resources,
@@ -93,8 +89,8 @@ run on 8 GPUs (8 workers, each using one GPU).
     )
 
 
-More resources
---------------
+Setting the resources per worker
+--------------------------------
 If you want to allocate more than one CPU or GPU per training worker, or if you
 defined :ref:`custom cluster resources <cluster-resources>`, set
 the ``resources_per_worker`` attribute:
@@ -163,8 +159,13 @@ You can get the associated devices with :meth:`ray.train.torch.get_device`.
     trainer.fit()
 
 
-Setting the communication backend
----------------------------------
+Setting the communication backend (PyTorch)
+-------------------------------------------
+
+.. note::
+
+    This is an advanced setting. In most cases, you don't have to change this setting.
+
 You can set the PyTorch distributed communication backend (e.g. GLOO or NCCL) by passing a
 :class:`~ray.train.torch.TorchConfig` to the :class:`~ray.train.torch.TorchTrainer`.
 
