@@ -484,3 +484,4 @@ RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONN
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
 RAY_TPU_NUM_CHIPS_PER_HOST = 4
 RAY_TPU_CORES_PER_CHIP = 2
+RAY_NODE_IP_FILENAME = "node_ip_address.json"

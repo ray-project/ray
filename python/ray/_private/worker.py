@@ -1301,9 +1301,7 @@ def init(
     )
     _redis_max_memory: Optional[int] = kwargs.pop("_redis_max_memory", None)
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
-    _node_ip_address: str = kwargs.pop(
-        "_node_ip_address", ray_constants.NODE_DEFAULT_IP
-    )
+    _node_ip_address: str = kwargs.pop("_node_ip_address", None)
     _driver_object_store_memory: Optional[int] = kwargs.pop(
         "_driver_object_store_memory", None
     )
@@ -1458,10 +1456,6 @@ def init(
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
 
-    if _node_ip_address is not None:
-        node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
-    raylet_ip_address = node_ip_address
-
     if local_mode:
         driver_mode = LOCAL_MODE
         warnings.warn(
@@ -1506,8 +1500,7 @@ def init(
 
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
+            node_ip_address=_node_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
             redirect_output=None,
@@ -1590,8 +1583,7 @@ def init(
 
         # In this case, we only need to connect the node.
         ray_params = ray._private.parameter.RayParams(
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
+            node_ip_address=_node_ip_address,
             gcs_address=gcs_address,
             redis_address=redis_address,
             redis_password=_redis_password,
