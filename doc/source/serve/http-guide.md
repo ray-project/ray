@@ -298,7 +298,7 @@ Here is a list of adapters; please feel free to [contribute more](https://github
 ```
 
 (serve-http-guide-keep-alive-timeout)=
-### Set keep alive timeout
+## Set keep alive timeout
 
 Serve uses a Uvicorn HTTP server internally to serve HTTP requests. By default, Uvicorn
 keeps HTTP connections alive for 5 seconds between requests. Modify the keep-alive
