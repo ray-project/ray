@@ -95,13 +95,6 @@ Ray Examples
         Distributed training with XGBoost
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing
-        :link: /ray-air/examples/batch_tuning
-        :link-type: doc
-
-        Perform batch tuning on NYC Taxi Dataset with Ray AIR
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item llm nlp gen-ai
         :link: /ray-air/examples/gptj_batch_prediction
         :link-type: doc
@@ -315,7 +308,7 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training tuning
-        :link: /ray-air/examples/batch_tuning
+        :link: /tune/examples/batch_tuning
         :link-type: doc
 
         Batch Training and Tuning using Ray Tune

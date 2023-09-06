@@ -10,10 +10,6 @@ Framework-specific Examples
 - :doc:`/ray-air/examples/lightgbm_example`: Distributed training with LightGBM
 - :doc:`/ray-air/examples/xgboost_example`: Distributed training with XGBoost
 
-Simple Machine Learning
------------------------
-- :doc:`/ray-air/examples/batch_tuning`: Perform batch tuning on NYC Taxi Dataset with Ray AIR
-
 Text/NLP
 --------
 
