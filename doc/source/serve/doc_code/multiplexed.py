@@ -42,3 +42,27 @@ resp = requests.get(
 # __serve_handle_send_example_begin__
 obj_ref = handle.options(multiplexed_model_id="1").remote("<your param>")
 # __serve_handle_send_example_end__
+
+
+from ray.serve.handle import RayServeHandle
+
+# __serve_model_composition_example_begin__
+@serve.deployment
+class Downstream:
+    def __call__(self):
+        return serve.get_multiplexed_model_id()
+
+
+@serve.deployment
+class Upstream:
+    def __init__(self, downstream: RayServeHandle):
+        self._h = downstream
+
+    async def __call__(self):
+        ref = await self._h.options(multiplexed_model_id="bar").remote()
+        return await ref
+
+
+serve.run(Upstream.bind(Downstream.bind()))
+resp = requests.get("http://localhost:8000")
+# __serve_model_composition_example_end__

@@ -53,17 +53,23 @@ To send a request to a specific model, include the field `serve_multiplexed_mode
 :start-after: __serve_request_send_example_begin__
 :end-before: __serve_request_send_example_end__
 ```
+:::{note}
+`serve_multiplexed_model_id` is required in the request header, and the value should be the model ID you want to send the request to.
+:::
 
-You can also send a request to a specific model by using handle `options` API.
+You can also send a request to a specific model by using handle {mod}`options <ray.serve.handle.RayServeHandle>` API.
 ```{literalinclude} ../doc_code/multiplexed.py
 :language: python
 :start-after: __serve_handle_send_example_begin__
 :end-before: __serve_handle_send_example_end__
-```
 
-:::{note}
-`serve_multiplexed_model_id` is required in the request header, and the value should be the model id you want to send the request to.
-:::
+By using ray serve handle, you can also send multiplexed request within a deployment for model composition.
+```{literalinclude} ../doc_code/multiplexed.py
+:language: python
+:start-after: __serve_model_composition_example_begin__
+:end-before: __serve_model_composition_example_end__
+
+
 
 After you run the above code, you should see the following lines in the deployment logs:
 ```
