@@ -79,7 +79,7 @@ You can also send a request to a specific model by using handle {mod}`options <r
 :end-before: __serve_handle_send_example_end__
 ```
 
-By using ray serve handle, you can also send multiplexed request within a deployment for model composition. (You should always set `multiplexed_model_id` when using the ray serve handle to send a multiplexed request)
+By using ray serve handle, you can also send multiplexed request within a deployment for model composition. (You should always set `multiplexed_model_id` when using the ray serve handle to send a multiplexed request.)
 ```{literalinclude} ../doc_code/multiplexed.py
 :language: python
 :start-after: __serve_model_composition_example_begin__
