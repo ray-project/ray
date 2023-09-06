@@ -11,7 +11,7 @@ An application consists of one or more deployments. The deployments in an applic
 With that in mind, if you have many independent models each behind different endpoints, and you want to be able to easily add, delete, or update these models, then you should use multiple applications. Each model should then be deployed as a separate application. On the other hand, if you have ML logic and business logic distributed among separate deployments that all need to be executed for a single request, then you should use model composition to build a single application consisting of multiple deployments.
 
 
-## Get Started
+## Getting Started
 
 Define a Serve application:
 ```{literalinclude} ../doc_code/basic_calculator.py
@@ -57,16 +57,14 @@ applications:
   deployments:
   - name: Adder
   - name: Multiplier
-  - name: Router
-  - name: DAGDriver
+  - name: Ingress
 
 - name: app2
   route_prefix: /greet
   import_path: greet:app
   runtime_env: {}
   deployments:
-  - name: greet
-  - name: DAGDriver
+  - name: greeter
 ```
 
 :::{note} 
@@ -85,10 +83,10 @@ $ serve deploy config.yaml
 
 Query the applications at their respective endpoints, `/calculator` and `/greet`.
 ```pycon
->>> requests.post("http://localhost:8000/calculator", json=["ADD", 5]).json()
+>>> requests.post("http://localhost:8000/calculator", json={"op": "ADD", "val": 5}).json()
 7
 
->>> requests.post("http://localhost:8000/greet", json="Bob").json()
+>>> requests.post("http://localhost:8000/greet", json={"name": "Bob"}).json()["greeting"]
 'Good morning Bob!'
 ```
 
@@ -96,7 +94,7 @@ Query the applications at their respective endpoints, `/calculator` and `/greet`
 If you prefer to use `cURL` to ping these endpoints, add the `-L` flag. The `DAGDriver` does an HTTP redirect, and the flag ensures that `cURL` follows the redirect:
 
 ```
-curl -L -X POST -H "Content-Type: application/json" -d '["ADD", 5]' localhost:8000/calculator
+curl -L -X POST -H "Content-Type: application/json" -d '{"op": "ADD", "val": 5}' localhost:8000/calculator
 ```
 :::
 
@@ -123,12 +121,7 @@ applications:
         replica_states:
           RUNNING: 1
         message: ''
-      Router:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 1
-        message: ''
-      DAGDriver:
+      Ingress:
         status: HEALTHY
         replica_states:
           RUNNING: 1
@@ -138,12 +131,7 @@ applications:
     message: ''
     last_deployed_time_s: 1693428138.3633459
     deployments:
-      greet:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 1
-        message: ''
-      DAGDriver:
+      greeter:
         status: HEALTHY
         replica_states:
           RUNNING: 1
@@ -179,10 +167,10 @@ $ serve run config.yaml
 
 You can then query the applications in the same way:
 ```pycon
->>> requests.post("http://localhost:8000/calculator", json=["ADD", 5]).json()
+>>> requests.post("http://localhost:8000/calculator", json={"op": "ADD", "val": 5}).json()
 7
 
->>> requests.post("http://localhost:8000/greet", json="Bob").json()
+>>> requests.post("http://localhost:8000/greet", json="Bob").json()["greeting"]
 'Good morning Bob!'
 ```
 
@@ -224,16 +212,14 @@ applications:
   deployments:
   - name: Multiplier
   - name: Adder
-  - name: Router
-  - name: DAGDriver
+  - name: Ingress
 
 - name: app2
   route_prefix: /greet
   import_path: greet:app
   runtime_env: {}
   deployments:
-  - name: greet
-  - name: DAGDriver
+  - name: greeter
 ```
 
 (serve-config-migration)=
