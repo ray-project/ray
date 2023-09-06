@@ -30,8 +30,8 @@ inside of Ray Train:
     result = trainer.fit()
 
 Ray Train lets you use native experiment tracking libraries by customizing the tracking 
-logic inside the ``train_func`` function. In this way, you can port your experiment tracking 
-logic to Ray Train with minimal changes. 
+logic inside the :ref:`train_func<train-overview-training-function>` function. 
+In this way, you can port your experiment tracking logic to Ray Train with minimal changes. 
 
 Getting Started
 ===============
@@ -50,6 +50,7 @@ The following session uses Weights & Biases (W&B) and MLflow but it is adaptable
             from ray import train
             import wandb
 
+            # Step 1
             # This ensures that all ray worker processes have `WANDB_API_KEY` set.
             ray.init(runtime_env={"env_vars": {"WANDB_API_KEY": "your_api_key"}})
 
@@ -112,7 +113,7 @@ The following session uses Weights & Biases (W&B) and MLflow but it is adaptable
     multiple processes are running in parallel and under certain setups they have the same results. If all 
     of them report results to the tracking backend, you may get duplicated results. To address that,  
     Ray Train lets you apply logging logic to only the rank 0 worker with the following method:
-    :meth:`context.get_world_rank() <ray.train.context.TrainContext.get_world_rank>`.
+    :meth:`ray.train.get_context().get_world_rank() <ray.train.context.TrainContext.get_world_rank>`.
 
     .. code-block:: python
 
@@ -123,7 +124,8 @@ The following session uses Weights & Biases (W&B) and MLflow but it is adaptable
                 # do your logging logic only for rank0 worker.
             ...
 
-The interaction with the experiment tracking backend within the ``train_func`` has 4 logical steps:
+The interaction with the experiment tracking backend within the :ref:`train_func<train-overview-training-function>` 
+has 4 logical steps:
 
 #. Set up the connection to a tracking backend
 #. Configure and launch a run
@@ -142,26 +144,25 @@ If applicable, make sure that you properly set up credentials on each training w
 
     .. tab:: W&B
         
-        W&B offers both *online* and *offline* modes. For *online* mode, because you log to W&B's
-        tracking service, ensure that you set up correct credentials on each training worker 
-        (See :ref:`Set up credentials<set-up-credentials>` for more information). 
-        For *offline* mode, because you log towards a local file system, 
-        make sure that the file system is a shared storage path that all nodes can write to 
-        (See :ref:`Set up a shared file system<set-up-shared-file-system>` for more information).
+        W&B offers both *online* and *offline* modes. 
 
-        **online**
+        **Online**
 
-        Set the credentials inside of ``train_func``.
+        For *online* mode, because you log to W&B's tracking service, ensure that you set the credentials 
+        inside of :ref:`train_func<train-overview-training-function>` (See :ref:`Set up credentials<set-up-credentials>` 
+        for more information).
 
         .. code-block:: python
             
             # This is equivalent to `os.environ["WANDB_API_KEY"] = "your_api_key"`
             wandb.login(key="your_api_key")
 
-        **offline**
+        **Offline**
 
-        Point the offline directory to a shared storage path.
-
+        For *offline* mode, because you log towards a local file system, 
+        point the offline directory to a shared storage path that all nodes can write to 
+        (See :ref:`Set up a shared file system<set-up-shared-file-system>` for more information).
+        
         .. code-block:: python
 
             os.environ["WANDB_MODE"] = "offline"
@@ -169,24 +170,23 @@ If applicable, make sure that you properly set up credentials on each training w
 
     .. tab:: MLflow
         
-        MLflow offers both *local* and *remote* modes. For *local* mode, because you log to a local file 
-        system, ensure that the file system is a shared storage path that all nodes can write 
+        MLflow offers both *local* and *remote* (for example, to Databrick's MLflow service) modes. 
+
+        **Local**
+
+        For *local* mode, because you log to a local file 
+        system, point offline directory to a shared storage path. that all nodes can write 
         to (See :ref:`Set up a shared file system<set-up-shared-file-system>` for more information). 
-        For *remote* mode (for example, logging to Databrick's MLflow service), make sure that proper credentials 
-        are set for each training worker (See :ref:`Set up credentials<set-up-credentials>` for more information).
-
-        **local**
-
-        Point offline directory to a shared storage path.
-
+        
         .. code-block:: python
 
             mlflow.start_run(tracking_uri="file:some_shared_storage_path/mlruns")
 
-        **remote (hosted by Databricks)**
+        **Remote (hosted by Databricks)**
             
-        Ensure that all nodes have access to the Databricks config file.
-
+        Ensure that all nodes have access to the Databricks config file 
+        (See :ref:`Set up credentials<set-up-credentials>` for more information).
+        
         .. code-block:: python
 
             # The MLflow client looks for a Databricks config file 
@@ -267,8 +267,8 @@ Refer to the tracking libraries' documentation for semantics.
 Step 3: Log metrics
 -------------------
 
-You can customize how to log parameters, metrics, models, or media contents, within ``train_func``,  
-just as in a single process training script. 
+You can customize how to log parameters, metrics, models, or media contents, within 
+:ref:`train_func<train-overview-training-function>`, just as in a non-distributed training script. 
 You can also use native integrations that a particular tracking framework has with 
 specific training frameworks. For example ``mlflow.pytorch.autolog()``, 
 ``lightning.pytorch.loggers.MLFlowLogger``, etc. 
@@ -281,26 +281,28 @@ various tracking libraries, sometimes logs are first cached locally and only syn
 service in an asynchronous fashion. 
 Finishing the run makes sure that all logs are synced by the time training workers exit. 
 
-**W&B**
+.. tabs::
 
-.. code-block:: python
+    .. tab:: W&B
+        
+        .. code-block:: python
 
-    # https://docs.wandb.ai/ref/python/finish
-    wandb.finish()
+            # https://docs.wandb.ai/ref/python/finish
+            wandb.finish()
 
-**MLflow**
+    .. tab:: MLflow
 
-.. code-block:: python
+        .. code-block:: python
 
-    # https://mlflow.org/docs/1.2.0/python_api/mlflow.html
-    mlflow.end_run()
+            # https://mlflow.org/docs/1.2.0/python_api/mlflow.html
+            mlflow.end_run()
 
-**Comet**
+    .. tab:: Comet
 
-.. code-block:: python
+        .. code-block:: python
 
-    # https://www.comet.com/docs/v2/api-and-sdk/python-sdk/reference/Experiment/#experimentend
-    Experiment.end()
+            # https://www.comet.com/docs/v2/api-and-sdk/python-sdk/reference/Experiment/#experimentend
+            Experiment.end()    
 
 Examples
 ========
@@ -335,7 +337,7 @@ The following example walks you through the process. The code here is runnable.
 There is a common shared piece of setting up a dummy model and dataloader
 just for demonstration purposes.
 
-.. dropdown:: Wandb
+.. dropdown:: W&B
 
     .. literalinclude:: ../../../../python/ray/train/examples/experiment_tracking/lightning_exp_tracking_model_dl.py
         :language: python
@@ -379,9 +381,11 @@ Common Errors
 Missing Credentials
 -------------------
 
-**I have already called `wandb login` cli, but still getting 
-"wandb: ERROR api_key not configured (no-tty). 
-call wandb.login(key=[your_api_key])."**
+**I have already called `wandb login` cli, but still getting** 
+
+.. code-block:: none
+
+    wandb: ERROR api_key not configured (no-tty). call wandb.login(key=[your_api_key]).
 
 This is probably due to wandb credentials are not set up correctly
 on worker nodes. Make sure that you run ``wandb.login`` 
@@ -391,8 +395,11 @@ See :ref:`Set up credentials <set-up-credentials>` for more details.
 Missing Configurations
 ----------------------
 
-**"databricks_cli.utils.InvalidConfigurationError: 
-You haven't configured the CLI yet!"**
+**I have already run `databricks configure`, but still getting**
+
+.. code-block:: none
+
+    databricks_cli.utils.InvalidConfigurationError: You haven't configured the CLI yet!
 
 This is usually caused by running ``databricks configure`` which 
 generates ``~/.databrickscfg`` only on head node. Move this file to a shared
