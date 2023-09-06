@@ -2771,18 +2771,16 @@ genrule(
     srcs = [
         "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto",
         "@io_opencensus_proto//opencensus/proto/resource/v1:resource.proto",
-        "@com_google_protobuf//:well_known_type_protos",
     ] + glob([
         "src/ray/protobuf/**/*.proto",
     ]),
     cmd = """
-        $(location :grpc_tools_protoc) --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated src/ray/protobuf/*.proto src/ray/protobuf/**/*.proto --proto_path=. --proto_path=$$(dirname $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto))/../../../.. --proto_path=external/com_google_protobuf/src
-
+        $(location :grpc_tools_protoc) --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated src/ray/protobuf/*.proto src/ray/protobuf/**/*.proto --proto_path=. --proto_path=$$(dirname $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto))/../../../..
         mkdir -p opencensus/proto/metrics/v1
         mkdir -p opencensus/proto/resource/v1
         cp $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto) opencensus/proto/metrics/v1/metrics.proto
         cp $(locations @io_opencensus_proto//opencensus/proto/resource/v1:resource.proto) opencensus/proto/resource/v1/resource.proto
-        $(location :grpc_tools_protoc) --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated opencensus/proto/metrics/v1/metrics.proto opencensus/proto/resource/v1/resource.proto --proto_path=.  --proto_path=external/com_google_protobuf/src
+        $(location :grpc_tools_protoc) --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated opencensus/proto/metrics/v1/metrics.proto opencensus/proto/resource/v1/resource.proto --proto_path=.
         mv python/ray/core/generated/src/ray/protobuf/*.py python/ray/core/generated/
         mv python/ray/core/generated/src/ray/protobuf/**/*.py python/ray/core/generated/
         mv python/ray/core/generated/opencensus/proto/**/v1/*.py python/ray/core/generated/
