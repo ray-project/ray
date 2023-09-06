@@ -1598,6 +1598,7 @@ class HTTPProxyActor:
             self.wrapped_http_proxy,
             host=self.host,
             port=self.port,
+            loop="uvloop",
             root_path=self.root_path,
             lifespan="off",
             access_log=False,
