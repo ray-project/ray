@@ -4,7 +4,7 @@
 
 This section helps you:
 
-* compose multiple deployments containing ML logic or business logic into a single application
+* compose multiple deployments containing ML models or business logic into a single application
 * independently scale and configure each of your ML models and business logic steps
 
 :::{note}
@@ -133,7 +133,7 @@ Example:
 ### Advanced: Convert a DeploymentResponse to a Ray ObjectRef
 
 Under the hood, each `DeploymentResponse` corresponds to a Ray `ObjectRef` (or a `StreamingObjectRefGenerator` for streaming calls).
-In order to compose `DeploymentHandle` calls with Ray Actors or Tasks, you may want to convert the.
+In order to compose `DeploymentHandle` calls with Ray Actors or Tasks, you may want to resolve the response to its `ObjectRef`.
 For this purpose, you can use the {mod}`DeploymentResponse._to_object_ref <ray.serve.handle.DeploymentResponse._to_object_ref>` and {mod}`DeploymentResponse._to_object_ref <ray.serve.handle.DeploymentResponse._to_object_ref_gen>` developer APIs.
 
 Example:
