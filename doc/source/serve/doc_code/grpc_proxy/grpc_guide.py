@@ -22,6 +22,7 @@ serve.start(
 )
 # __end_start_grpc_proxy__
 
+
 # __begin_grpc_deployment__
 import time
 
@@ -78,13 +79,12 @@ class GrpcDeployment:
 
 
 g = GrpcDeployment.bind()
-
 # __end_grpc_deployment__
+
 
 # __begin_deploy_grpc_app__
 app1 = "app1"
 serve.run(target=g, name=app1, route_prefix=f"/{app1}")
-
 # __end_deploy_grpc_app__
 
 
@@ -102,8 +102,8 @@ response, call = stub.__call__.with_call(request=request)
 print(f"status code: {call.code()}")  # grpc.StatusCode.OK
 print(f"greeting: {response.greeting}")  # "Hello foo from bar"
 print(f"num: {response.num}")  # 60
-
 # __end_send_grpc_requests__
+
 
 # __begin_health_check__
 import grpc
@@ -120,8 +120,8 @@ print(f"Applications: {response.application_names}")  # ["app1"]
 request = HealthzRequest()
 response = stub.Healthz(request=request)
 print(f"Health: {response.message}")  # "success"
-
 # __end_health_check__
+
 
 # __begin_metadata__
 import grpc
@@ -145,7 +145,6 @@ response, call = stub.Multiplexing.with_call(request=request, metadata=metadata)
 print(f"greeting: {response.greeting}")  # "Method2 called model, loading model: 999"
 for key, value in call.trailing_metadata():
     print(f"trailing metadata key: {key}, value {value}")  # "request_id: 123"
-
 # __end_metadata__
 
 
@@ -162,9 +161,8 @@ metadata = (("application", "app1"),)
 
 responses = stub.Streaming(request=request, metadata=metadata)
 for response in responses:
-    print(f"greeting: {response.greeting}")
-    print(f"num: {response.num}")
-
+    print(f"greeting: {response.greeting}")  # greeting: n: Hello foo from bar
+    print(f"num: {response.num}")   # num: 60 + n
 # __end_streaming__
 
 
@@ -268,14 +266,12 @@ data_preprocessor = DataPreprocessor.bind()
 g2 = ImageClassifier.options(name="grpc-image-classifier").bind(
     image_downloader, data_preprocessor
 )
-
 # __end_model_composition_deployment__
 
 
 # __begin_model_composition_deploy__
 app2 = "app2"
 serve.run(target=g2, name=app2, route_prefix=f"/{app2}")
-
 # __end_model_composition_deploy__
 
 
@@ -287,17 +283,13 @@ from user_defined_protos_pb2 import ImageData
 
 channel = grpc.insecure_channel("localhost:9000")
 stub = ImageClassificationServiceStub(channel)
-request = ImageData(
-    url="https://github.com/pytorch/hub/raw/master/images/dog.jpg",
-    filename="dog.jpg",
-)
+request = ImageData(url="https://github.com/pytorch/hub/raw/master/images/dog.jpg")
 metadata = (("application", "app2"),)  # Make sure application metadata is passed.
 
 response, call = stub.Predict.with_call(request=request, metadata=metadata)
 print(f"status code: {call.code()}")  # grpc.StatusCode.OK
 print(f"Classes: {response.classes}")  # ['Samoyed', ...]
 print(f"Probabilities: {response.probabilities}")  # [0.8846230506896973, ...]
-
 # __end_model_composition_client__
 
 
@@ -314,7 +306,6 @@ request = UserDefinedMessage(name="foo", num=30, origin="bar")
 try:
     response = stub.__call__(request=request)
 except grpc.RpcError as rpc_error:
-    print(f"status code {rpc_error.code()}")  # StatusCode.NOT_FOUND
-    print(f"details {rpc_error.details()}")  # Application metadata not set...
-
+    print(f"status code: {rpc_error.code()}")  # StatusCode.NOT_FOUND
+    print(f"details: {rpc_error.details()}")  # Application metadata not set...
 # __end_error_handle__

@@ -14,7 +14,7 @@ This section helps you understand how to:
 
 (custom-serve-grpc-service)=
 ## Define a gRPC Service
-To run a gRPC server it starts with first defining gRPC services, rpc methods, and 
+To run a gRPC server it starts with first defining gRPC services, RPC methods, and 
 protobufs similar to the one below.
 
 ```{literalinclude} ../doc_code/grpc_proxy/user_defined_protos.proto
@@ -102,7 +102,7 @@ applications:
 ```
 
 ```bash
-# start Serve with above config file
+# Start Serve with above config file.
 serve run config.yaml
 
 ```
@@ -116,7 +116,7 @@ serve run config.yaml
 gRPC applications in Serve works similarly to HTTP applications. The only difference is
 the input and output of the methods need to match with what's defined in the `.proto`
 file and that the method of the application needs to be an exact match (case sensitive)
-with the predefined RPC method. For example, if we want to deploy `UserDefinedService`
+with the predefined RPC methods. For example, if we want to deploy `UserDefinedService`
 with `__call__` method, the method name needs to be `__call__`, the input type needs to
 be `UserDefinedMessage`, and the output type needs to be `UserDefinedResponse`. Serve
 will pass the protobuf object into the method and expecting the protobuf object back
@@ -145,9 +145,9 @@ HTTP. We will make it optional for gRPC in the future release.
 (send-serve-grpc-proxy-request)=
 ## Send gRPC Requests to Serve deployments
 Sending a gRPC request to a Serve deployment is similar to sending a gRPC request to
-any other gRPC server. You would create a gRPC channel and stub, then call the method
-on the stub with the appropriate input. The output will be the protobuf object returned
-from your Serve application. 
+any other gRPC server. You would create a gRPC channel and stub, then call the RPC
+method on the stub with the appropriate input. The output will be the protobuf object
+returned from your Serve application. 
 
 Sending a gRPC request:
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
@@ -165,8 +165,8 @@ Similar to HTTP's `/-/routes` and `/-/healthz` endpoints, Serve also provides gR
 service method to be used in health check. 
 - `/ray.serve.RayServeAPIService/ListApplications` is used to list all applications
   deployed in Serve. 
-- `/ray.serve.RayServeAPIService/Healthz` is used to check the health of the gRPC proxy.
-  It will return "OK" if the gRPC proxy is healthy.
+- `/ray.serve.RayServeAPIService/Healthz` is used to check the health of the proxy.
+  It will return `OK` status and "success" message if the proxy is healthy.
 
 The service method and protobuf are defined as below:
 ```proto
@@ -195,6 +195,11 @@ You can call the service method with the following code:
 :language: python
 ```
 
+:::{note}
+Serve provides `RayServeAPIServiceStub` stub and `HealthzRequest` and 
+`ListApplicationsRequest` protobufs for you to use. You do not need to generate them
+from the proto file. It's just here for your reference.
+:::
 
 (serve-grpc-metadata)=
 ## Work With gRPC Metadata
@@ -220,11 +225,11 @@ Example of using metadata:
 
 (serve-grpc-proxy-more-examples)=
 ## Use Streaming and Model Composition
-gRPC proxy will remain feature parity with HTTP Proxy. Here are more examples of using
+gRPC proxy will remain feature parity with HTTP proxy. Here are more examples of using
 gRPC proxy for getting streaming response as well as doing model composition.
 
 ### Streaming
-`Steaming` method is deployed with app name "app1" above. We can use the following code
+`Steaming` method is deployed with app named "app1" above. We can use the following code
 to get a streaming response.
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_streaming__   
@@ -234,10 +239,10 @@ to get a streaming response.
 
 ### Model Composition
 Assuming we have the below deployments. `ImageDownloader` and `DataPreprocessor` are two
-steps to process the image data before the pytorch resnet can run inference. And there
-is a `ImageClassifier` deployment to initialize model, call both `ImageDownloader` and
-`DataPreprocessor`, and feed into the model to get the classes and probabilities for the
-given image.
+separate steps to download and process the image before the pytorch can run inference.
+There is also a `ImageClassifier` deployment to initialize model, call both 
+`ImageDownloader` and `DataPreprocessor`, and feed into the resnet model to get the
+classes and probabilities of the given image.
 
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_model_composition_deployment__   
@@ -245,14 +250,14 @@ given image.
 :language: python
 ```
 
-We can deploy the `ImageClassifier` with the following code:
+We can deploy the application with the following code:
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_model_composition_deploy__   
 :end-before: __end_model_composition_deploy__
 :language: python
 ```
 
-The client code to call `ImageClassifier` will look like the following:
+The client code to call the application will look like the following:
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_model_composition_client__   
 :end-before: __end_model_composition_client__
