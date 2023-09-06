@@ -43,7 +43,7 @@ An application is the unit of upgrade in a Ray Serve cluster. An application con
 
 Applications can be called via HTTP at the specified `route_prefix` or in Python using a `DeploymentHandle`.
  
-(serve-key-concepts-query-deployment)=
+(serve-key-concepts-deployment-handle)=
 
 ## DeploymentHandle (composing deployments)
 

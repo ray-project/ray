@@ -39,7 +39,5 @@ app = Ingress.bind(Adder.bind(), Multiplier.bind())
 
 if __name__ == "__main__":
     serve.run(app)
-    resp = requests.post(
-        "http://localhost:8000/", json={"op": "ADD", "val": 5}
-    ).json()
+    resp = requests.post("http://localhost:8000/", json={"op": "ADD", "val": 5}).json()
     assert resp == 7, resp
