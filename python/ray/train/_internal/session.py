@@ -1278,3 +1278,16 @@ def get_dataset_shard(
             "that is passed into `DataParallelTrainer`."
         )
     return session.get_dataset_shard(dataset_name)
+
+
+@DeveloperAPI
+@_warn_session_misuse()
+def get_storage() -> StorageContext:
+    """Returns the :class:`~ray.train._internal.storage.StorageContext` storage
+    context which gives advanced access to the filesystem and paths
+    configured through `RunConfig`.
+
+    NOTE: This is a developer API, and the `StorageContext` interface may change
+    without notice between minor versions.
+    """
+    return get_session().storage
