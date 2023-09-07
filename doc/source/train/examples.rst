@@ -66,4 +66,3 @@ Advanced
     - :ref:`Fine-tuning vicuna-13b with PyTorch Lightning and DeepSpeed <vicuna_lightning_deepspeed_finetuning>`
   * - Lightning
     - :ref:`Fine-tuning dolly-v2-7b with PyTorch Lightning and FSDP <dolly_lightning_fsdp_finetuning>`
-

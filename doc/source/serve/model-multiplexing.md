@@ -53,9 +53,10 @@ To send a request to a specific model, include the `serve_multiplexed_model_id` 
 :start-after: __serve_request_send_example_begin__
 :end-before: __serve_request_send_example_end__
 ```
-
 :::{note}
-`serve_multiplexed_model_id` is required in the request header, and the value should be the model id you want to send the request to.
+`serve_multiplexed_model_id` is required in the request header, and the value should be the model ID you want to send the request to.
+
+If the `serve_multiplexed_model_id` is not found in the request header, Serve will treat it as a normal request and route it to a random replica.
 :::
 
 After you run the above code, you should see the following lines in the deployment logs:
@@ -71,4 +72,18 @@ INFO 2023-05-24 01:19:15,988 default_Model default_Model#rimNjA WzjTbJvbPN / def
 INFO 2023-05-24 01:19:15,988 default_Model default_Model#rimNjA WzjTbJvbPN / default multiplex.py:145 - Unloading model '3'.
 INFO 2023-05-24 01:19:15,988 default_Model default_Model#rimNjA WzjTbJvbPN / default multiplex.py:131 - Loading model '4'.
 INFO 2023-05-24 01:19:16,993 default_Model default_Model#rimNjA WzjTbJvbPN / default replica.py:542 - __CALL__ OK 1005.7ms
+```
+
+You can also send a request to a specific model by using handle {mod}`options <ray.serve.handle.RayServeHandle>` API.
+```{literalinclude} ../doc_code/multiplexed.py
+:language: python
+:start-after: __serve_handle_send_example_begin__
+:end-before: __serve_handle_send_example_end__
+```
+
+When using model composition, you can send requests from an upstream deployment to a multiplexed deployment using the Serve DeploymentHandle. You need to set the `multiplexed_model_id` in the options. For example:
+```{literalinclude} ../doc_code/multiplexed.py
+:language: python
+:start-after: __serve_model_composition_example_begin__
+:end-before: __serve_model_composition_example_end__
 ```
