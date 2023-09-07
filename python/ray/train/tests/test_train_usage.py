@@ -6,6 +6,12 @@ from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
 
+@pytest.fixture
+def shutdown_only():
+    yield None
+    ray.shutdown()
+
+
 def run_torch():
     from torch.utils.data import DataLoader, TensorDataset
     from ray.train.torch import get_device, prepare_model, prepare_data_loader
