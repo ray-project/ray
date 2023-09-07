@@ -109,7 +109,7 @@ Next, if you're not set up to use your cloud provider from the command line, you
 
             .. code-block:: shell
 
-                $ export VSPHERE_SERVER=192.168.0.1 # Enter your vSphere IP
+                $ export VSPHERE_SERVER=192.168.0.1 # Enter your vSphere vCenter Address
                 $ export VSPHERE_USER=user # Enter your username
                 $ export VSPHERE_PASSWORD=password # Enter your password
 
@@ -262,28 +262,8 @@ A minimal sample cluster configuration file looks as follows:
 
          .. tab:: vSphere
 
-            .. code-block:: yaml
-
-                # A unique identifier for the head node and workers of this cluster.
-                cluster_name: minimal
-
-                # Cloud-provider specific configuration.
-                provider:
-                    type: vsphere
-                
-                auth:
-                    ssh_user: ray # The VMs are initialised with an user called ray. 
-
-                available_node_types:
-                    ray.head.default:
-                        node_config:
-                            resource_pool: ray # Resource pool where the Ray cluster will get created
-                            library_item: ray-head-debian # OVF file name from which the head will be created
-
-                    worker:
-                        node_config:
-                            clone: True # If True, all the workers will be instant-cloned from a frozen VM
-                            library_item: ray-frozen-debian # The OVF file from which a frozen VM will be created
+            .. literalinclude:: ../../../../python/ray/autoscaler/vsphere/example-minimal.yaml
+               :language: yaml
 
 
 Save this configuration file as ``config.yaml``. You can specify a lot more details in the configuration file: instance types to use, minimum and maximum number of workers to start, autoscaling strategy, files to sync, and more. For a full reference on the available configuration properties, please refer to the :ref:`cluster YAML configuration options reference <cluster-config>`.
