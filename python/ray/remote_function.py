@@ -269,8 +269,6 @@ class RemoteFunction:
         # ray.init() to have been called when this executes
         with self._inject_lock:
             if self._function_signature is None:
-                # Since variable assignment is atomic, we don't need to acquire the
-                # lock before checking _function_signature.
                 self._function = _inject_tracing_into_function(self._function)
                 self._function_signature = ray._private.signature.extract_signature(
                     self._function
