@@ -1,35 +1,24 @@
-# From https://docs.ray.io/en/latest/tune/index.html
-
 import ray
-from ray import train, tune
 
-
-def objective(step, alpha, beta):
-    return (0.1 + alpha * step / 100) ** (-1) + beta * 0.1
-
-
-def training_function(config):
-    # Hyperparameters
-    alpha, beta = config["alpha"], config["beta"]
-    for step in range(10):
-        # Iterative training function - can be any arbitrary training procedure.
-        intermediate_score = objective(step, alpha, beta)
-        # Feed the score back back to Tune.
-        train.report(dict(mean_loss=intermediate_score))
-
+from ray import tune
 
 ray.init(address="auto")
+
+
+def objective(config):
+    score = config["a"] ** 2 + config["b"]
+    return {"score": score}
+
+
+search_space = {
+    "a": tune.grid_search([0.001, 0.01, 0.1, 1.0]),
+    "b": tune.choice([1, 2, 3]),
+}
+
+tuner = tune.Tuner(objective, param_space=search_space)
+
 print("Starting Ray Tune job")
-analysis = tune.run(
-    training_function,
-    config={
-        "alpha": tune.grid_search([0.001, 0.01, 0.1]),
-        "beta": tune.choice([1, 2, 3]),
-    },
-)
+results = tuner.fit()
 
-print("Best config: ", analysis.get_best_config(metric="mean_loss", mode="min"))
-
-# Get a dataframe for analyzing trial results.
-df = analysis.results_df
-print(df)
+print("Best config: ")
+print(results.get_best_result(metric="score", mode="min").config)
