@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Type
 
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
-from ray.tune import SyncConfig
 from ray.tune.callback import CallbackList
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
@@ -32,9 +31,7 @@ class _ExperimentCheckpointCreator:
         )
 
         # Also, create any default logger callback artifacts.
-        self.callbacks = CallbackList(
-            _create_default_callbacks([], sync_config=SyncConfig(syncer=None))
-        )
+        self.callbacks = CallbackList(_create_default_callbacks([]))
 
     def save_checkpoint(self):
         self.runner.save_to_dir()

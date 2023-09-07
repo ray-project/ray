@@ -11,7 +11,7 @@ from enum import Enum, auto
 import functools
 from pathlib import Path
 import shutil
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type, Union
 import warnings
 
 import ray
@@ -38,11 +38,17 @@ from ray.train.constants import (
     WORKER_PID,
     TIME_TOTAL_S,
     LAZY_CHECKPOINT_MARKER_FILE,
+    RAY_CHDIR_TO_TRIAL_DIR,
 )
-
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
+from ray.util.placement_group import _valid_resource_shape
+from ray.util.scheduling_strategies import (
+    PlacementGroupSchedulingStrategy,
+    SchedulingStrategyT,
+)
+
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
@@ -140,9 +146,8 @@ class _TrainSession:
         metadata: Dict[str, Any] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Checkpoint] = None,
-        # Deprecated
-        encode_data_fn: Optional[Callable] = None,
         detailed_autofilled_metrics: bool = False,
+        # Deprecated
         # If True and the worker is on the same node as driver,
         # will send over checkpoint path and metadata instead of
         # the whole checkpoint to avoid unnecessary serialization.
@@ -183,15 +188,9 @@ class _TrainSession:
         # Only used if checkpoint_upload_from_workers is True.
         self.legacy_checkpoint_uri = None
 
-        # TODO(justinvyu): Encode data fn to be removed.
-        # Function to encode checkpoint dict before sending to the driver.
-        if not encode_data_fn:
-
-            def noop(x):
-                return x
-
-            encode_data_fn = noop
-        self._encode_data_fn = encode_data_fn
+        if _use_storage_context():
+            assert storage
+            logger.debug(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
 
         # NOTE: `reset` will initialize many properties needed to start running the
         # training_func as a thread.
@@ -201,21 +200,6 @@ class _TrainSession:
             storage=storage,
             loaded_checkpoint=checkpoint,
         )
-
-        if _use_storage_context():
-            assert storage
-            logger.info(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
-
-            # Change the working directory to the local trial directory.
-            # -> All workers on the same node share a working directory.
-            os.makedirs(storage.trial_local_path, exist_ok=True)
-            os.chdir(storage.trial_local_path)
-        else:
-            if trial_info:
-                # Change the working directory to `logdir`.
-                logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
-                os.makedirs(logdir, exist_ok=True)
-                os.chdir(logdir)
 
         # Autofilled metrics attributes.
         self.detailed_autofilled_metrics = detailed_autofilled_metrics
@@ -270,6 +254,23 @@ class _TrainSession:
         self.ignore_report = False
         self.training_started = False
         self._first_report = True
+
+        if _use_storage_context():
+            # Change the working directory to the local trial directory.
+            # -> All workers on the same node share a working directory.
+            os.makedirs(storage.trial_local_path, exist_ok=True)
+            if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
+                logger.debug(
+                    "Switching the working directory to the trial directory: "
+                    f"{storage.trial_local_path}"
+                )
+                os.chdir(storage.trial_local_path)
+        else:
+            if trial_info:
+                # Change the working directory to `logdir`.
+                logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
+                os.makedirs(logdir, exist_ok=True)
+                os.chdir(logdir)
 
     def pause_reporting(self):
         """Ignore all future ``session.report()`` calls."""
@@ -506,8 +507,6 @@ class _TrainSession:
         # Only store checkpoints on worker with rank 0.
         if self.world_rank != 0 and not self.checkpoint_keep_all_ranks:
             checkpoint = None
-        elif checkpoint:
-            checkpoint = self._encode_data_fn(checkpoint)
 
         metadata = self._auto_fill_checkpoint_metrics({})
 
@@ -596,7 +595,8 @@ class _TrainSession:
 
         # Persist trial artifacts to storage.
         force_artifact_sync = (
-            persisted_checkpoint and self.storage.sync_config.sync_on_checkpoint
+            persisted_checkpoint
+            and self.storage.sync_config.sync_artifacts_on_checkpoint
         )
         self.storage.persist_artifacts(force=force_artifact_sync)
 
@@ -628,9 +628,8 @@ class _TrainSession:
                     "Passing objects containg Torch tensors as metrics "
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
-                    "to Python objects or use a `LegacyTorchCheckpoint` as the "
-                    "`checkpoint` argument of `ray.train.report` to "
-                    "store your Torch objects."
+                    "to Python objects or report a `train.Checkpoint` "
+                    "with `ray.train.report` to store your Torch objects."
                 )
 
         if _use_storage_context():
@@ -683,7 +682,73 @@ class _TrainSession:
         return shard
 
 
+# Cache of resource dicts that have been checked by the launch hook already.
+_checked_resources: Set[frozenset] = set()
 _session: Optional[_TrainSession] = None
+
+
+def _tune_task_and_actor_launch_hook(
+    fn, resources: Dict[str, float], strategy: Optional[SchedulingStrategyT]
+):
+    """Launch hook to catch nested tasks that can't fit in the placement group.
+
+    This gives users a nice warning in case they launch a nested task in a Tune trial
+    without reserving resources in the trial placement group to fit it.
+    """
+
+    # Already checked, skip for performance reasons.
+    key = frozenset({(k, v) for k, v in resources.items() if v > 0})
+    if not key or key in _checked_resources:
+        return
+
+    # No need to check if placement group is None.
+    if (
+        not isinstance(strategy, PlacementGroupSchedulingStrategy)
+        or strategy.placement_group is None
+    ):
+        return
+
+    # Check if the resource request is targeting the current placement group.
+    cur_pg = ray.util.get_current_placement_group()
+    if not cur_pg or strategy.placement_group.id != cur_pg.id:
+        return
+
+    _checked_resources.add(key)
+
+    # Check if the request can be fulfilled by the current placement group.
+    pgf = get_trial_resources()
+
+    if pgf.head_bundle_is_empty:
+        available_bundles = cur_pg.bundle_specs[0:]
+    else:
+        available_bundles = cur_pg.bundle_specs[1:]
+
+    # Check if the request can be fulfilled by the current placement group.
+    if _valid_resource_shape(resources, available_bundles):
+        return
+
+    if fn.class_name:
+        submitted = "actor"
+        name = fn.module_name + "." + fn.class_name + "." + fn.function_name
+    else:
+        submitted = "task"
+        name = fn.module_name + "." + fn.function_name
+
+    # Normalize the resource spec so it looks the same as the placement group bundle.
+    main_resources = cur_pg.bundle_specs[0]
+    resources = {k: float(v) for k, v in resources.items() if v > 0}
+
+    raise RuntimeError(
+        f"No trial resources are available for launching the {submitted} `{name}`. "
+        "To resolve this, specify the Tune option:\n\n"
+        ">  resources_per_trial=tune.PlacementGroupFactory(\n"
+        f">    [{main_resources}] + [{resources}] * N\n"
+        ">  )\n\n"
+        f"Where `N` is the number of slots to reserve for trial {submitted}s. "
+        "If you are using a Ray training library, there might be a utility function "
+        "to set this automatically for you. For more information, refer to "
+        "https://docs.ray.io/en/latest/tune/tutorials/tune-resources.html"
+    )
 
 
 def init_session(*args, **kwargs) -> None:
@@ -693,6 +758,14 @@ def init_session(*args, **kwargs) -> None:
             "A Train session is already in use. Do not call "
             "`init_session()` manually."
         )
+
+    # Setup hooks for generating placement group resource deadlock warnings.
+    from ray import actor, remote_function
+
+    if "TUNE_DISABLE_RESOURCE_CHECKS" not in os.environ:
+        actor._actor_launch_hook = _tune_task_and_actor_launch_hook
+        remote_function._task_launch_hook = _tune_task_and_actor_launch_hook
+
     _session = _TrainSession(*args, **kwargs)
 
 
@@ -1205,3 +1278,16 @@ def get_dataset_shard(
             "that is passed into `DataParallelTrainer`."
         )
     return session.get_dataset_shard(dataset_name)
+
+
+@DeveloperAPI
+@_warn_session_misuse()
+def get_storage() -> StorageContext:
+    """Returns the :class:`~ray.train._internal.storage.StorageContext` storage
+    context which gives advanced access to the filesystem and paths
+    configured through `RunConfig`.
+
+    NOTE: This is a developer API, and the `StorageContext` interface may change
+    without notice between minor versions.
+    """
+    return get_session().storage

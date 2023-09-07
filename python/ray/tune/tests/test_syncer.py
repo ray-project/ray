@@ -14,8 +14,7 @@ from ray.train._internal.storage import (
     get_fs_and_path,
     _FilesystemSyncer,
 )
-from ray.tune import TuneError
-from ray.tune.syncer import _BackgroundProcess
+from ray.train._internal.syncer import _BackgroundProcess
 
 from ray.train.tests.test_new_persistence import _create_mock_custom_fs
 
@@ -288,7 +287,7 @@ def test_syncer_wait_or_retry_failure(temp_data_dirs, tmp_path):
 
     # Will fail since the storage filesystem is invalid
     syncer.sync_up(local_dir=tmp_source, remote_dir="/test/test_syncer_wait_or_retry")
-    with pytest.raises(TuneError) as e:
+    with pytest.raises(RuntimeError) as e:
         syncer.wait_or_retry(max_retries=3, backoff_s=0)
 
     assert "Failed sync even after 3 retries." in str(e.value)
@@ -317,7 +316,7 @@ def test_syncer_wait_or_retry_timeout(temp_data_dirs, tmp_path):
     )
 
     syncer.sync_up(local_dir=tmp_source, remote_dir="/test/timeout")
-    with pytest.raises(TuneError) as e:
+    with pytest.raises(RuntimeError) as e:
         syncer.wait_or_retry(max_retries=3, backoff_s=0)
         assert "Failed sync even after 3 retries." in str(e.value)
         assert isinstance(e.value.__cause__, TimeoutError)

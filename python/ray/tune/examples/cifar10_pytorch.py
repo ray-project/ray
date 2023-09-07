@@ -5,6 +5,7 @@
 from functools import partial
 import numpy as np
 import os
+import tempfile
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -22,7 +23,9 @@ from ray.tune.schedulers import ASHAScheduler
 
 
 # __load_data_begin__
-def load_data(data_dir="./data"):
+DATA_DIR = tempfile.mkdtemp()
+
+def load_data(data_dir):
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
@@ -86,8 +89,7 @@ def train_cifar(config):
             net.load_state_dict(model_state)
             optimizer.load_state_dict(optimizer_state)
 
-    data_dir = os.path.abspath("./data")
-    trainset, testset = load_data(data_dir)
+    trainset, testset = load_data(DATA_DIR)
 
     test_abs = int(len(trainset) * 0.8)
     train_subset, val_subset = random_split(
@@ -174,7 +176,7 @@ def test_best_model(config: Dict, checkpoint: "Checkpoint"):
         model_state, optimizer_state = torch.load(checkpoint_path)
         best_trained_model.load_state_dict(model_state)
 
-    trainset, testset = load_data()
+    trainset, testset = load_data(DATA_DIR)
 
     testloader = torch.utils.data.DataLoader(
         testset, batch_size=4, shuffle=False, num_workers=2)
