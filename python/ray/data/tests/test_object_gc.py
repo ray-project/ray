@@ -8,7 +8,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import *  # noqa
 
 
-def check_no_spill(ctx, pipe):
+def check_no_spill(ctx, pipe, spill_expected=False):
     # Run up to 10 epochs of the pipeline to stress test that
     # no spilling will happen.
     max_epoch = 10
@@ -16,7 +16,10 @@ def check_no_spill(ctx, pipe):
         for _ in p.iter_batches(batch_size=None):
             pass
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
-    assert "Spilled" not in meminfo, meminfo
+    if spill_expected:
+        assert "Spilled" in meminfo, meminfo
+    else:
+        assert "Spilled" not in meminfo, meminfo
 
     def _all_executor_threads_exited():
         for thread in threading.enumerate():
@@ -234,22 +237,24 @@ def test_pipeline_splitting_has_no_spilling_with_equal_splitting(shutdown_only):
     assert "Spilled" not in meminfo, meminfo
 
 
-def test_bytes_spilled(shutdown_only):
+def test_global_bytes_spilled(shutdown_only):
     # The object store is about 90MB.
-    ray.init(object_store_memory=90e6)
+    ctx = ray.init(object_store_memory=90e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
     ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100).materialize()
 
-    assert ds._get_stats_summary().bytes_spilled > 0
+    check_no_spill(ctx, ds.repeat(), spill_expected=True)
+    assert ds._get_stats_summary().global_bytes_spilled > 0
 
 
-def test_no_bytes_spilled(shutdown_only):
+def test_no_global_bytes_spilled(shutdown_only):
     # The object store is about 200MB.
-    ray.init(object_store_memory=200e6)
+    ctx = ray.init(object_store_memory=200e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
     ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100).materialize()
 
-    assert ds._get_stats_summary().bytes_spilled == 0
+    check_no_spill(ctx, ds.repeat())
+    assert ds._get_stats_summary().global_bytes_spilled == 0
 
 
 if __name__ == "__main__":
