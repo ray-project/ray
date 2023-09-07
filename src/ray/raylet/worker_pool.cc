@@ -99,6 +99,12 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(io_service),
       get_time_(get_time) {
+  if (RayConfig::instance().worker_maximum_startup_concurrency() > 0) {
+    // Overwrite the maximum concurrency.
+    maximum_startup_concurrency_ =
+        RayConfig::instance().worker_maximum_startup_concurrency();
+  }
+
   RAY_CHECK(maximum_startup_concurrency > 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
