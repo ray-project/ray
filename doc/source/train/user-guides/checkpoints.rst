@@ -336,13 +336,12 @@ and `_checkpoint_upload_from_workers=True` to upload their checkpoints to cloud 
 Loading checkpoints
 -------------------
 
-Checkpoints can be loaded into the training function in 2 steps:
+:class:`Checkpoints <ray.train.Checkpoint>` can be accessed in the training function with :func:`ray.train.get_checkpoint <ray.train.get_checkpoint>`.
 
-1. From the training function, :func:`ray.train.get_checkpoint <ray.train.get_checkpoint>` can be used to access
-   the most recently saved :py:class:`~ray.train.Checkpoint`. This is useful to continue training even
-   if there's a worker failure.
-2. The checkpoint to start training with can be bootstrapped by passing in a
-   :py:class:`~ray.train.Checkpoint` to :class:`Trainer <ray.train.trainer.BaseTrainer>` as the ``resume_from_checkpoint`` argument.
+The checkpoint can be populated in two ways:
+
+1. It can be auto-populated, e.g. for :ref:`automatic failure recovery <train-fault-tolerance>` or :ref:`on manual restoration <train-restore-guide>`.
+2. The checkpoint can be passed to the :class:`Trainer <ray.train.trainer.BaseTrainer>` as the ``resume_from_checkpoint`` argument.
 
 
 .. tab-set::

@@ -68,7 +68,7 @@ access to the location.
 
 Automatically setting up persistent storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-You can control where to store training results locally with the ``RAY_STORAGE``
+You can control where to store training results with the ``RAY_STORAGE``
 environment variable.
 
 For instance, if you set ``RAY_STORAGE="s3://my_bucket/train_results"``, your

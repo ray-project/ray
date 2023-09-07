@@ -8,29 +8,22 @@ be done in a few lines of code.
 The main interface for configuring scale and resources
 is the :class:`~ray.train.ScalingConfig`.
 
-:class:`~ray.train.ScalingConfig` overview
-------------------------------------------
+Overview
+--------
 Ray Train's :class:`~ray.train.ScalingConfig` configures the number of training workers
 and the resources they should use.
 
 A *worker* here refers to a *training worker*. Technically, it's a
-:ref:`Ray Actor <actor-key-concept>` that runs your training loop.
-
-The :class:`Trainer <ray.train.trainer.BaseTrainer>` object you instantiate in the
-training script contains the settings to run your training. When you call
-:meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>`, it will be scheduled
-as a :ref:`Ray Actor <actor-key-concept>`. It can then also use resources.
-
-The properties of the scaling configuration are :ref:`tunable <tune-search-space-tutorial>`.
+:ref:`Ray Actor <actor-key-concept>` that runs your training function.
 
 .. literalinclude:: ../doc_code/key_concepts.py
     :language: python
     :start-after: __scaling_config_start__
     :end-before: __scaling_config_end__
 
-.. seealso::
+.. note::
 
-    See the :class:`~ray.train.ScalingConfig` API reference.
+    The properties of the scaling configuration are :ref:`tunable <tune-search-space-tutorial>`.
 
 
 Increasing the number of workers
@@ -67,7 +60,7 @@ run on 8 GPUs (8 workers, each using one GPU).
 Using GPUs in training code
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 When ``use_gpu=True`` is set, Ray Train will automatically set up environment variables
-in your training loop so that the GPUs can be detected and used
+in your training function so that the GPUs can be detected and used
 (e.g. ``CUDA_VISIBLE_DEVICES``).
 
 You can get the associated devices with :meth:`ray.train.torch.get_device`.
@@ -79,7 +72,7 @@ You can get the associated devices with :meth:`ray.train.torch.get_device`.
     from ray.train.torch import TorchTrainer, get_device
 
 
-    def train_loop(config):
+    def train_func(config):
         assert torch.cuda.is_available()
 
         device = get_device()
@@ -87,7 +80,7 @@ You can get the associated devices with :meth:`ray.train.torch.get_device`.
 
 
     trainer = TorchTrainer(
-        train_loop,
+        train_func,
         scaling_config=ScalingConfig(
             num_workers=1,
             use_gpu=True
@@ -164,11 +157,14 @@ for valid options.
     )
 
 
+.. _train_trainer_resources:
+
 Trainer resources
 -----------------
 So far we've configured resources for each training worker. Technically, each
 training worker is a :ref:`Ray Actor <actor-guide>`. Ray Train also schedules
-an actor for the :class:`Trainer <ray.train.trainer.BaseTrainer>` object.
+an actor for the :class:`Trainer <ray.train.trainer.BaseTrainer>` object when
+you call :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>`.
 
 This object often only manages lightweight communication between the training workers.
 You can still specify its resources, which can be useful if you implemented your own
