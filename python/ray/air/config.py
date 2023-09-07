@@ -112,13 +112,6 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
-        _max_cpu_fraction_per_node: [Experimental] The max fraction of CPUs per node
-            that Train will use for scheduling training actors. The remaining CPUs
-            can be used for dataset tasks. It is highly recommended that you set this
-            to less than 1.0 (e.g., 0.8) when passing datasets to trainers, to avoid
-            hangs / CPU starvation of dataset tasks. Warning: this feature is
-            experimental and is not recommended for use with autoscaling (scale-up will
-            not trigger properly).
     """
 
     # If adding new attributes here, please also update
@@ -128,7 +121,6 @@ class ScalingConfig:
     use_gpu: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
     placement_strategy: Union[str, SampleRange] = "PACK"
-    _max_cpu_fraction_per_node: Optional[Union[float, SampleRange]] = None
 
     def __post_init__(self):
         if self.resources_per_worker:
@@ -244,15 +236,7 @@ class ScalingConfig:
             for _ in range(self.num_workers if self.num_workers else 0)
         ]
         bundles = trainer_bundle + worker_bundles
-        if self._max_cpu_fraction_per_node is not None:
-            kwargs = {
-                "_max_cpu_fraction_per_node": self._max_cpu_fraction_per_node,
-            }
-        else:
-            kwargs = {}
-        return PlacementGroupFactory(
-            bundles, strategy=self.placement_strategy, **kwargs
-        )
+        return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
 
     @classmethod
     def from_placement_group_factory(
@@ -283,16 +267,12 @@ class ScalingConfig:
             num_workers = len(worker_bundles)
             resources_per_worker = first_bundle
 
-        if "_max_cpu_fraction_per_node" in pgf._kwargs:
-            max_cpu_fraction_per_node = pgf._kwargs["_max_cpu_fraction_per_node"]
-
         return ScalingConfig(
             trainer_resources=trainer_resources,
             num_workers=num_workers,
             use_gpu=use_gpu,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
-            _max_cpu_fraction_per_node=max_cpu_fraction_per_node,
         )
 
 
