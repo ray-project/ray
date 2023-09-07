@@ -636,7 +636,7 @@ py_test(
     name = "test_train_usage",
     size = "medium",
     srcs = ["tests/test_train_usage.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive"],
     deps = [":train_lib"],
 )
 
