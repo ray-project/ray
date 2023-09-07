@@ -52,7 +52,10 @@ from test_new_persistence import (
 class TestConstants:
     NUM_ITERATIONS = 12  # == num_checkpoints == num_artifacts
     NUM_TRIALS = 2
+
+    # 4 * 8 = 32 CPUs total
     NUM_WORKERS = 8
+    NUM_CPUS_PER_WORKER = 4
 
     SCORE_KEY = "score"
 
@@ -302,7 +305,7 @@ def test_no_storage_error(tmp_path, monkeypatch):
         scaling_config=train.ScalingConfig(
             num_workers=TestConstants.NUM_WORKERS,
             trainer_resources={"CPU": 0},
-            resources_per_worker={"CPU": 8},
+            resources_per_worker={"CPU": TestConstants.NUM_CPUS_PER_WORKER},
         ),
         run_config=train.RunConfig(name="test_trainer", storage_path=None),
     )
@@ -327,7 +330,7 @@ def test_no_storage_no_checkpoints(tmp_path, monkeypatch):
         scaling_config=train.ScalingConfig(
             num_workers=TestConstants.NUM_WORKERS,
             trainer_resources={"CPU": 0},
-            resources_per_worker={"CPU": 4},
+            resources_per_worker={"CPU": TestConstants.NUM_CPUS_PER_WORKER},
         ),
         run_config=train.RunConfig(
             failure_config=train.FailureConfig(max_failures=2),
