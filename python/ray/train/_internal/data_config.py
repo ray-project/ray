@@ -24,7 +24,7 @@ else:
     from typing_extensions import Literal
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class DataConfig:
     """Class responsible for configuring Train dataset preprocessing.
 

@@ -40,7 +40,7 @@ DEFAULT_SYNC_PERIOD = 300
 DEFAULT_SYNC_TIMEOUT = 1800
 
 
-@PublicAPI
+@PublicAPI(stability="stable")
 @dataclass
 class SyncConfig:
     """Configuration object for Train/Tune file syncing to `RunConfig(storage_path)`.

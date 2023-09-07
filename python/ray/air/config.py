@@ -89,7 +89,7 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class ScalingConfig:
     """Configuration for scaling training.
 
@@ -111,13 +111,6 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
-        _max_cpu_fraction_per_node: [Experimental] The max fraction of CPUs per node
-            that Train will use for scheduling training actors. The remaining CPUs
-            can be used for dataset tasks. It is highly recommended that you set this
-            to less than 1.0 (e.g., 0.8) when passing datasets to trainers, to avoid
-            hangs / CPU starvation of dataset tasks. Warning: this feature is
-            experimental and is not recommended for use with autoscaling (scale-up will
-            not trigger properly).
     """
 
     # If adding new attributes here, please also update
@@ -127,9 +120,16 @@ class ScalingConfig:
     use_gpu: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
     placement_strategy: Union[str, SampleRange] = "PACK"
+    # DEPRECATED
     _max_cpu_fraction_per_node: Optional[Union[float, SampleRange]] = None
 
     def __post_init__(self):
+        if self._max_cpu_fraction_per_node:
+            warnings.warn(
+                "_max_cpu_fraction_per_node is deprecated and will be removed in Ray 2.8." # noqa: E501
+                DeprecationWarning,
+            )
+
         if self.resources_per_worker:
             if not self.use_gpu and self.num_gpus_per_worker > 0:
                 raise ValueError(
@@ -522,7 +522,7 @@ class DatasetConfig:
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class FailureConfig:
     """Configuration related to failure handling of each training/tuning run.
 
@@ -703,7 +703,7 @@ class CheckpointConfig:
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class RunConfig:
     """Runtime configuration for training and tuning runs.
 
