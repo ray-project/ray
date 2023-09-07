@@ -6,9 +6,15 @@ Configuring Persistent Storage
 .. _train-log-dir:
 
 A Ray Train run produces results, checkpoints, and other artifacts.
-These can be configured to be saved in a persistent storage location.
+You can configure these to be saved to a persistent storage location.
 
-By default, these files are saved in a local directory under ``~/ray_results``.
+.. figure:: ../images/persistent_storage_checkpoint.png
+    :align: center
+    :width: 600px
+
+    An example of multiple workers spread across multiple nodes interacting with persistent storage.
+
+By default, these training outputs are saved in a local directory under ``~/ray_results``.
 This is sufficient for single-node setups or distributed training without saving
 model checkpoints or artifacts, but some form of external persistent storage such as
 cloud storage (e.g., S3, GCS) or NFS (e.g., AWS EFS, Google Filestore) is
@@ -18,6 +24,7 @@ Here are some benefits of setting up persistent storage:
 
 - **Checkpointing and fault tolerance**: Saving checkpoints to a persistent storage location
   allows you to resume training from the last checkpoint in case of a node failure.
+  See :ref:`train-checkpointing` for a detailed guide on how to set up checkpointing.
 - **Post-experiment analysis**: A consolidated location storing data from all trials is useful for post-experiment analysis
   such as accessing the best checkpoints and hyperparameter configs after the cluster has already been terminated.
 - **Bridge with downstream serving/batch inference tasks**: With a configured storage, you can easily access the models
@@ -33,7 +40,7 @@ Cloud storage (AWS S3, Google Cloud Storage)
 
 If all nodes in a Ray cluster have access to cloud storage, then all outputs can be uploaded to a shared cloud bucket.
 
-Use cloud storage by specifying a bucket URI as the ``storage_path``:
+Use cloud storage by specifying a bucket URI as the :class:`RunConfig(storage_path) <ray.train.RunConfig>`:
 
 .. code-block:: python
 
@@ -58,7 +65,7 @@ Network filesystem (NFS)
 If all Ray nodes have access to a network filesystem, e.g. AWS EFS or Google Cloud Filestore,
 then all outputs can be saved to this shared filesystem.
 
-Use NFS by specifying the mount path as the ``storage_path``:
+Use NFS by specifying the mount path as the :class:`RunConfig(storage_path) <ray.train.RunConfig>`:
 
 .. code-block:: python
 
@@ -73,14 +80,14 @@ Use NFS by specifying the mount path as the ``storage_path``:
         )
     )
 
-In this example, all files are at ``/mnt/cluster_storage/experiment_name`` for further processing.
+In this example, all files are saved to ``/mnt/cluster_storage/experiment_name`` for further processing.
 
 
 Local storage
 -------------
 
-Single-node cluster
-~~~~~~~~~~~~~~~~~~~
+Using local storage for a single-node cluster
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you're just running an experiment on a single node (e.g., on a laptop), Ray Train will use the
 local filesystem as the storage location for checkpoints and other artifacts.
@@ -105,8 +112,8 @@ unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.tra
 In this example, all experiment results can found locally at ``/tmp/custom/storage/path/experiment_name`` for further processing.
 
 
-Multi-node cluster
-~~~~~~~~~~~~~~~~~~
+Using local storage for a multi-node cluster
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. warning::
 
@@ -123,11 +130,137 @@ Multi-node cluster
     See `this issue <https://github.com/ray-project/ray/issues/37177>`_ for more information.
 
 
-Advanced Configuration
+.. _custom-storage-filesystem:
+
+Custom storage
+--------------
+
+If the cases above don't suit your needs, Ray Train can be configured support custom filesystems and and perform custom logic.
+Ray Train standardizes on the ``pyarrow.fs.FileSystem`` interface to interact with storage
+(`see the API reference here <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_).
+
+By default, passing ``storage_path=s3://bucket-name/sub-path/`` will use pyarrow's
+`default S3 filesystem implementation <https://arrow.apache.org/docs/python/generated/pyarrow.fs.S3FileSystem.html>`_
+to upload files. (`See the other default implementations. <https://arrow.apache.org/docs/python/api/filesystems.html#filesystem-implementations>`_)
+
+Implement custom storage upload and download logic by providing an implementation of
+``pyarrow.fs.FileSystem`` to :class:`RunConfig(storage_filesystem) <ray.train.RunConfig>`.
+
+.. warning::
+
+    When providing a custom filesystem, the associated ``storage_path`` is expected
+    to be a qualified filesystem path *without the protocol prefix*.
+
+    For example, if you provide a custom S3 filesystem for ``s3://bucket-name/sub-path/``,
+    then the ``storage_path`` should be ``bucket-name/sub-path/`` with the ``s3://`` stripped.
+    See the example below for example usage.
+
+.. code-block:: python
+
+    import pyarrow.fs
+
+    from ray import train
+    from ray.train.torch import TorchTrainer
+
+    fs = pyarrow.fs.S3FileSystem(
+        endpoint_override="http://localhost:9000",
+        access_key=...,
+        secret_key=...
+    )
+
+    trainer = TorchTrainer(
+        ...,
+        run_config=train.RunConfig(
+            storage_filesystem=fs,
+            storage_path="bucket-name/sub-path",
+            name="experiment_name",
+        )
+    )
+
+
+``fsspec`` filesystems
+~~~~~~~~~~~~~~~~~~~~~~~
+
+`fsspec <https://filesystem-spec.readthedocs.io/en/latest/>`_ offers many filesystem implementations,
+such as ``s3fs``, ``gcsfs``, etc.
+
+You can use any of these implementations by wrapping the ``fsspec`` filesystem with a ``pyarrow.fs`` utility:
+
+.. code-block:: python
+
+    # Make sure to install: `pip install -U s3fs`
+    import s3fs
+    import pyarrow.fs
+
+    s3_fs = s3fs.S3FileSystem(
+        key='miniokey...',
+        secret='asecretkey...',
+        endpoint_url='https://...'
+    )
+    custom_fs = pyarrow.fs.PyFileSystem(pyarrow.fs.FSSpecHandler(s3_fs))
+
+    run_config = RunConfig(storage_path="minio_bucket", storage_filesystem=custom_fs)
+
+.. seealso::
+
+    See the API references to the ``pyarrow.fs`` wrapper utilities:
+
+    * https://arrow.apache.org/docs/python/generated/pyarrow.fs.PyFileSystem.html
+    * https://arrow.apache.org/docs/python/generated/pyarrow.fs.FSSpecHandler.html
+
+
+
+MinIO and other S3-compatible storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can follow the :ref:`examples shown above <custom-storage-filesystem>` to configure
+a custom S3 filesystem to work with MinIO.
+
+Note that including these as query parameters in the ``storage_path`` URI directly is another option:
+
+.. code-block:: python
+
+    from ray import train
+    from ray.train.torch import TorchTrainer
+
+    trainer = TorchTrainer(
+        ...,
+        run_config=train.RunConfig(
+            storage_path="s3://bucket-name/sub-path?endpoint_override=http://localhost:9000",
+            name="experiment_name",
+        )
+    )
+
+
+Overview of Ray Train outputs
+-----------------------------
+
+Here's a rundown of all files that will be persisted to storage:
+
+
+
+Persisting training artifacts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+
+Advanced configuration
 ----------------------
+
 
 Setting the intermediate local directory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When a ``storage_path`` is specified, 
-By default, Ray Train will save intermediate files to a local directory under ``~/ray_results``.
+When a ``storage_path`` is specified, training outputs are saved to an
+*intermediate local directory*, then persisted (copied/uploaded) to the ``storage_path``.
+By default, this intermediate local directory is a sub-directory of ``~/ray_results``.
+
+Customize this intermediate local directory with the ``RAY_AIR_LOCAL_CACHE_DIR`` environment variable:
+
+.. code-block:: python
+
+    import os
+    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/custom/"
+
+    ...
