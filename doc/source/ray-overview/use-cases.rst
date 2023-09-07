@@ -140,7 +140,7 @@ Learn more about the Train library with the following talks and user guides.
 - `[Talk] Ray Train, PyTorch, TorchX, and distributed deep learning <https://www.youtube.com/watch?v=e-A93QftCfc>`_
 - `[Blog] Elastic Distributed Training with XGBoost on Ray <https://www.uber.com/blog/elastic-xgboost-ray/>`_
 - `[Guide] Getting Started with Ray Train </train/train>`_
-- `[Example] Fine-tune a 🤗 Transformers model </ray-air/examples/huggingface_text_classification>`_
+- `[Example] Fine-tune a 🤗 Transformers model </train/examples/transformers/huggingface_text_classification>`_
 - `[Gallery] Ray Train Examples Gallery </train/examples>`_
 - `[Gallery] More Train Use Cases on the Blog <https://www.anyscale.com/blog?tag=ray_train>`_
 
@@ -181,12 +181,10 @@ End-to-End ML Workflows
 
 The following highlights examples utilizing Ray AI libraries to implement end-to-end ML workflows.
 
-- `[Example] Text classification with Ray </ray-air/examples/huggingface_text_classification>`_
-- `[Example] Image classification with Ray </ray-air/examples/torch_image_example>`_
-- `[Example] Object detection with Ray </ray-air/examples/torch_detection>`_
-- `[Example] Machine learning on tabular data </ray-air/examples/xgboost_example>`_
+- `[Example] Text classification with Ray </train/examples/transformers/huggingface_text_classification>`_
+- `[Example] Object detection with Ray </train/examples/pytorch/torch_detection>`_
+- `[Example] Machine learning on tabular data </train/examples/xgboost/xgboost_example>`_
 - `[Example] AutoML for Time Series with Ray </ray-core/examples/automl_for_time_series>`_
-- `[Gallery] Full Ray AIR Examples Gallery </ray-air/examples/index>`_
 
 Large Scale Workload Orchestration
 ----------------------------------

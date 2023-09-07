@@ -1,7 +1,7 @@
 # flake8: noqa
 # isort: skip_file
 
-# __air_tf_train_start__
+# __tf_train_start__
 import ray
 import tensorflow as tf
 
@@ -74,4 +74,4 @@ trainer = TensorflowTrainer(
 )
 result = trainer.fit()
 print(result.metrics)
-# __air_tf_train_end__
+# __tf_train_end__

@@ -8,7 +8,7 @@ for more information.
 
 Quickstart
 -----------
-.. literalinclude:: /ray-air/doc_code/hvd_trainer.py
+.. literalinclude:: ./doc_code/hvd_trainer.py
   :language: python
 
 

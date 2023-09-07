@@ -83,7 +83,7 @@ class TransformersTrainer(TorchTrainer):
     configured for distributed PyTorch training. If you have PyTorch >= 1.12.0
     installed, you can also run FSDP training by specifying the ``fsdp`` argument
     in ``TrainingArguments``. DeepSpeed is
-    also supported - see :doc:`/ray-air/examples/gptj_deepspeed_fine_tuning`.
+    also supported - see :doc:`/train/examples/deepspeed/gptj_deepspeed_fine_tuning`.
     For more information on configuring FSDP or DeepSpeed, refer to `Hugging Face
     documentation <https://huggingface.co/docs/transformers/\
 main/en/main_classes/trainer#transformers.TrainingArguments>`__.
