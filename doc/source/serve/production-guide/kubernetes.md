@@ -30,7 +30,7 @@ Follow the [KubeRay quickstart guide](kuberay-quickstart) to:
 * Deploy a KubeRay operator
 
 ## Setting up a RayService custom resource (CR)
-Once the KubeRay controller is running, manage your Ray Serve application by creating and updating a `RayService` CR ([example](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.text-ml.yaml)).
+Once the KubeRay controller is running, manage your Ray Serve application by creating and updating a `RayService` CR ([example](https://github.com/ray-project/kuberay/blob/39ed913bc8258145bd31ab9bacbb2a899589866e/ray-operator/config/samples/ray-service.text-ml.yaml)).
 
 Under the `spec` section in the `RayService` CR, set the following fields:
 
@@ -56,7 +56,7 @@ Then, once the cluster is running, it deploys the Serve application to the clust
 The controller also creates a Kubernetes Service that can be used to route traffic to the Serve application.
 
 Let's see this in action by deploying the [Text ML example](serve-in-production-example).
-The Serve config for the example is embedded into [this example `RayService` CR](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.text-ml.yaml).
+The Serve config for the example is embedded into [this example `RayService` CR](https://github.com/ray-project/kuberay/blob/39ed913bc8258145bd31ab9bacbb2a899589866e/ray-operator/config/samples/ray-service.text-ml.yaml).
 To follow along, save this CR locally in a file named `ray-service.text-ml.yaml`:
 
 :::{note}
@@ -66,7 +66,7 @@ Learn more about how to configure KubeRay clusters [here](kuberay-config).
 :::
 
 ```console
-$ curl -o ray-service.text-ml.yaml https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.text-ml.yaml
+$ curl -o ray-service.text-ml.yaml https://raw.githubusercontent.com/ray-project/kuberay/39ed913bc8258145bd31ab9bacbb2a899589866e/ray-operator/config/samples/ray-service.text-ml.yaml
 ```
 
 To deploy the example, we simply `kubectl apply` the CR.
