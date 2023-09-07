@@ -46,6 +46,7 @@ opentelemetry-exporter-opencensus==0.20b0
 pexpect==4.8.0
 Pillow==9.2.0; platform_system != "Windows"
 proxy.py==2.4.3
+pyarrow==12.0.1 ; python_version > '3.7' and platform_system != "Windows"
 pydantic==1.10.12
 pydot==1.4.2
 # Keep in sync with `ci/build/upload_build_info.sh`

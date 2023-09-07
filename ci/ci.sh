@@ -138,13 +138,13 @@ compile_pip_dependencies() {
   # This is needed because we specify the requirements as torch==version, but
   # the resolver adds the device-specific version tag. If this is not removed,
   # pip install will complain about irresolvable constraints.
-  sed -iE 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
+  sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
 
   # Add python_version < 3.11 to scikit-image, scikit-optimize, scipy, networkx
   # as they need more recent versions in python 3.11.
   # These will be automatically resolved. Remove as
   # soon as we resolve to versions of scikit-image that are built for py311.
-  sed -iE 's/((scikit-image|scikit-optimize|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
+  sed -i -E 's/((scikit-image|scikit-optimize|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
 
   cat "${WORKSPACE_DIR}/python/$TARGET"
 
