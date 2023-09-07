@@ -233,7 +233,7 @@ def test_pipeline_splitting_has_no_spilling_with_equal_splitting(shutdown_only):
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
 
-def test_bytes_spilled():
+def test_bytes_spilled(shutdown_only):
     # The object store is about 90MB.
     ray.init(object_store_memory=90e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
@@ -241,7 +241,7 @@ def test_bytes_spilled():
     
     assert ds._get_stats_summary().bytes_spilled > 0
 
-def test_no_bytes_spilled():
+def test_no_bytes_spilled(shutdown_only):
     # The object store is about 200MB.
     ray.init(object_store_memory=200e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
