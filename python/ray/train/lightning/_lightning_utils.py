@@ -4,6 +4,7 @@ from ray import train
 from ray.air.constants import MODEL_KEY
 from ray.data.dataset import DataIterator
 from ray.util import PublicAPI
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 import logging
 import shutil
@@ -63,6 +64,10 @@ class RayDDPStrategy(DDPStrategy):
     https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DDPStrategy.html
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYDDPSTRATEGY, "1")
+
     @property
     def root_device(self) -> torch.device:
         return get_worker_root_device()
@@ -82,6 +87,10 @@ class RayFSDPStrategy(FSDPStrategy):
     For a full list of initialization arguments, please refer to:
     https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYFSDPSTRATEGY, "1")
 
     @property
     def root_device(self) -> torch.device:
@@ -122,6 +131,10 @@ class RayDeepSpeedStrategy(DeepSpeedStrategy):
     https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DeepSpeedStrategy.html
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYDEEPSPEEDSTRATEGY, "1")
+
     @property
     def root_device(self) -> torch.device:
         return get_worker_root_device()
@@ -137,6 +150,10 @@ class RayDeepSpeedStrategy(DeepSpeedStrategy):
 @PublicAPI(stability="beta")
 class RayLightningEnvironment(LightningEnvironment):
     """Setup Lightning DDP training environment for Ray cluster."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYLIGHTNINGENVIRONMENT, "1")
 
     def world_size(self) -> int:
         return train.get_context().get_world_size()
@@ -188,6 +205,7 @@ def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
             f"but got {type(cluster_environment)}!"
         )
 
+    record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_PREPARE_TRAINER, "1")
     return trainer
 
 
@@ -202,6 +220,8 @@ class RayTrainReportCallback(Callback):
         self.tmpdir_prefix = os.path.join(tempfile.gettempdir(), self.trial_name)
         if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
             shutil.rmtree(self.tmpdir_prefix)
+
+        record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYTRAINREPORTCALLBACK, "1")
 
     def on_train_epoch_end(self, trainer, pl_module) -> None:
         # Creates a checkpoint dir with fixed name

@@ -66,7 +66,7 @@ available_node_types:
     worker:
         # The minimum number of nodes of this type to launch.
         # This number should be >= 0.
-        min_workers: 0
+        min_workers: 1
         # For example, {"CPU": 4, "Memory": 8192}
         resources: {}
         node_config:
