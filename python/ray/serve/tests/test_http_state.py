@@ -570,10 +570,12 @@ def test_http_proxy_state_update_healthy_check_health_sometimes_fails():
     def _update_until_num_health_checks_received(
         state: HTTPProxyState, num_health_checks: int
     ):
+        if state.status in {ProxyStatus.DRAINED, ProxyStatus.UNHEALTHY}:
+            num_health_checks -= 1
         state.update()
         assert (
             ray.get(state.actor_handle.get_num_health_checks.remote())
-        ) <= num_health_checks
+        ) == num_health_checks
         return True
 
     def incur_health_checks(
