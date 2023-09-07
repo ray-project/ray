@@ -486,7 +486,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             try:
                 return ray.get_runtime_context().get_actor_id()
             except Exception:
-                logger.exception("Got exception while attempting to get actor name.")
+                logger.exception("Got exception while attempting to get actor ID.")
                 return ""
 
     @property
