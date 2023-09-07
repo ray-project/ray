@@ -37,7 +37,7 @@ $ serve build text_ml:app -o serve_config.yaml
 ```
 
 The generated version of this file contains an `import_path`, `runtime_env`, and configuration options for each deployment in the application.
-Since we'll need the packages `torch` and `transformers` to run this example, modify the `runtime_env` field of the generated config to include these two pip packages. Save this config locally in `serve_config.yaml` to follow along.
+The application needs the `torch` and `transformers` packages, so modify the `runtime_env` field of the generated config to include these two pip packages. Save this config locally in `serve_config.yaml` to follow along.
 
 ```yaml
 proxy_location: EveryNode
