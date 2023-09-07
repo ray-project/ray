@@ -27,7 +27,7 @@ There are three kinds of actors that are created to make up a Serve instance:
 - **HTTP Proxy**: By default there is one HTTP proxy actor on the head node. This actor runs a [Uvicorn](https://www.uvicorn.org/) HTTP
   server that accepts incoming requests, forwards them to replicas, and
   responds once they are completed.  For scalability and high availability,
-  you can also run a proxy on each node in the cluster via the `location` field of [`http_options`](core-apis).
+  you can also run a proxy on each node in the cluster via the `proxy_location` field inside [`serve.start()`](core-apis) or [the config file](serve-in-production-config-file).
 - **Replicas**: Actors that actually execute the code in response to a
   request. For example, they may contain an instantiation of an ML model. Each
   replica processes individual requests from the HTTP proxy (these may be batched
@@ -99,7 +99,7 @@ Each node in your Ray cluster provides a Serve REST API server that can connect 
 
 ### How does Serve ensure horizontal scalability and availability?
 
-Serve can be configured to start one HTTP proxy actor per node via the `location` field of [`http_options`](core-apis). Each one will bind the same port. You
+Serve can be configured to start one HTTP proxy actor per node via the the `proxy_location` field inside [`serve.start()`](core-apis) or [the config file](serve-in-production-config-file). Each proxy will bind the same port. You
 should be able to reach Serve and send requests to any models via any of the
 servers.  You can use your own load balancer on top of Ray Serve.
 

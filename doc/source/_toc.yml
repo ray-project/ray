@@ -58,8 +58,8 @@ parts:
       - file: train/train
         title: Ray Train
         sections:
-          - file: train/key-concepts
-            title: Key Concepts
+          - file: train/overview
+            title: Overview
           - file: train/getting-started-pytorch
             title: PyTorch Guide
           - file: train/getting-started-pytorch-lightning
@@ -215,16 +215,9 @@ parts:
               - file: serve/advanced-guides/deployment-graphs
               - file: serve/advanced-guides/direct-ingress
               - file: serve/advanced-guides/managing-java-deployments
-              - file: serve/advanced-guides/migration
               - file: serve/advanced-guides/deploy-vm
           - file: serve/architecture
           - file: serve/tutorials/index
-            sections:
-              - file: serve/tutorials/deployment-graph-patterns
-                sections:
-                  - file: serve/tutorials/deployment-graph-patterns/linear_pipeline
-                  - file: serve/tutorials/deployment-graph-patterns/branching_input
-                  - file: serve/tutorials/deployment-graph-patterns/conditional
           - file: serve/api/index
 
       - file: rllib/index
@@ -291,12 +284,15 @@ parts:
                   - file: cluster/kubernetes/getting-started/rayservice-quick-start.md
               - file: cluster/kubernetes/user-guides
                 sections:
+                  - file: cluster/kubernetes/user-guides/rayservice.md
+                  - file: cluster/kubernetes/user-guides/observability.md
                   - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
                     sections:
                       - file: cluster/kubernetes/user-guides/aws-eks-gpu-cluster.md
                       - file: cluster/kubernetes/user-guides/gcp-gke-gpu-cluster.md
                   - file: cluster/kubernetes/user-guides/config.md
                   - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
+                  - file: cluster/kubernetes/user-guides/gke-gcs-bucket.md
                   - file: cluster/kubernetes/user-guides/logging.md
                   - file: cluster/kubernetes/user-guides/gpu.md
                   - file: cluster/kubernetes/user-guides/rayserve-dev-doc.md
@@ -312,6 +308,7 @@ parts:
                   - file: cluster/kubernetes/examples/stable-diffusion-rayservice.md
                   - file: cluster/kubernetes/examples/mobilenet-rayservice.md
                   - file: cluster/kubernetes/examples/text-summarizer-rayservice.md
+                  - file: cluster/kubernetes/examples/rayjob-batch-inference-example.md
               - file: cluster/kubernetes/k8s-ecosystem
                 sections:
                   - file: cluster/kubernetes/k8s-ecosystem/ingress.md
@@ -389,17 +386,5 @@ parts:
           - file: cluster/usage-stats
           - file: ray-references/glossary
 
-      - file: ray-contribute/stability
+      - file: ray-contribute/index
         title: Developer Guides
-        sections:
-          - file: ray-contribute/getting-involved
-            sections:
-              - file: ray-contribute/development
-              - file: ray-contribute/docs
-              - file: ray-contribute/writing-code-snippets
-              - file: ray-contribute/fake-autoscaler
-              - file: ray-core/examples/testing-tips
-              - file: ray-contribute/debugging.rst
-              - file: ray-contribute/profiling.rst
-          - file: ray-core/configure
-          - file: ray-contribute/whitepaper

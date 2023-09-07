@@ -1,7 +1,3 @@
-```{eval-rst}
-.. include:: /_includes/serve/announcement.rst
-```
-
 (rayserve)=
 
 # Ray Serve: Scalable and Programmable Serving
@@ -297,7 +293,3 @@ For more, see the following blog posts about Ray Serve:
 - [The Simplest Way to Serve your NLP Model in Production with Pure Python](https://medium.com/distributed-computing-with-ray/the-simplest-way-to-serve-your-nlp-model-in-production-with-pure-python-d42b6a97ad55) by Edward Oakes and Bill Chambers
 - [Machine Learning Serving is Broken](https://medium.com/distributed-computing-with-ray/machine-learning-serving-is-broken-f59aff2d607f) by Simon Mo
 - [How to Scale Up Your FastAPI Application Using Ray Serve](https://medium.com/distributed-computing-with-ray/how-to-scale-up-your-fastapi-application-using-ray-serve-c9a7b69e786) by Archit Kulkarni
-
-```{eval-rst}
-.. include:: /_includes/serve/announcement_bottom.rst
-```
