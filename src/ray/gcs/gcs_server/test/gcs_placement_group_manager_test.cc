@@ -186,6 +186,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     EXPECT_TRUE(WaitForCondition(condition, 10 * 1000));
   }
 
+  void StopIoService() { io_service_.stop(); }
+
   ExponentialBackOff GetExpBackOff() { return ExponentialBackOff(0, 1); }
 
   std::shared_ptr<MockPlacementGroupScheduler> mock_placement_group_scheduler_;
@@ -314,6 +316,39 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemoveNamedPlacementGroup) {
       [](const Status &status) { ASSERT_TRUE(status.ok()); });
   ASSERT_EQ(gcs_placement_group_manager_->GetPlacementGroupIDByName("test_name", ""),
             PlacementGroupID::Nil());
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestRemovedPlacementGroupNotReportedAsLoad) {
+  auto request = Mocker::GenCreatePlacementGroupRequest();
+  std::atomic<int> registered_placement_group_count(0);
+  RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
+    ++registered_placement_group_count;
+  });
+  ASSERT_EQ(registered_placement_group_count, 1);
+  WaitForExpectedPgCount(1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.clear();
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::PENDING);
+
+  // Placement group is in leasing state.
+  const auto &placement_group_id = placement_group->GetPlacementGroupID();
+  EXPECT_CALL(*mock_placement_group_scheduler_, MarkScheduleCancelled(placement_group_id))
+      .Times(1);
+  gcs_placement_group_manager_->RemovePlacementGroup(placement_group_id,
+                                                     [](const Status &status) {});
+  ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::REMOVED);
+  /// This is a hack to make a synchronization point here.
+  /// This test verifies GetPlacementGroupLoad doesn't return REMOVED pgs.
+  /// If IO service keeps running, it will invoke `SchedulePendingPlacementGroups`
+  /// which cleans up REMOVED pgs from the pending list (which is
+  /// used to obtain the load). It makes test accidently pass when REMOVED
+  /// pgs can still be reported as load.
+  StopIoService();
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
+      placement_group, GetExpBackOff(), true);
+
+  auto load = gcs_placement_group_manager_->GetPlacementGroupLoad();
+  ASSERT_EQ(load->placement_group_data_size(), 0);
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRescheduleWhenNodeAdd) {
