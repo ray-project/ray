@@ -969,7 +969,7 @@ def test_log_monitor_ip_correct(ray_start_cluster):
     data = get_log_data(
         p, num=6, timeout=10, job_id=ray.get_runtime_context().get_job_id()
     )
-    assert data[0]["ip"] = "127.0.0.2"
+    assert data[0]["ip"] == "127.0.0.2"
 
 
 if __name__ == "__main__":

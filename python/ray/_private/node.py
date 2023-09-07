@@ -18,7 +18,6 @@ from collections import defaultdict
 from typing import Dict, Optional, Tuple, IO, AnyStr
 
 from filelock import FileLock
-from pathlib import Path
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -997,15 +996,15 @@ class Node:
             time.sleep(1)
             if i % 10 == 0:
                 logger.info(
-                    f"Can't find a `{RAY_NODE_IP_FILENAME}` file from "
-                    f"{self.get_session_dir_path()}. "
+                    f"Can't find a `{ray_constants.RAY_NODE_IP_FILENAME}` "
+                    f"file from {self.get_session_dir_path()}. "
                     "Have you started Ray instsance using "
                     "`ray start` or `ray.init`?"
                 )
 
         raise ValueError(
-            f"Can't find a `{RAY_NODE_IP_FILENAME}` file from "
-            f"{self.get_session_dir_path()}. "
+            f"Can't find a `{ray_constants.RAY_NODE_IP_FILENAME}` "
+            f"file from {self.get_session_dir_path()}. "
             f"for {timeout_s} seconds. "
             "A ray instance hasn't started. "
             "Did you do `ray start` or `ray.init` on this host?"
