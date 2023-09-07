@@ -32,6 +32,16 @@ class TestReadImages:
         assert isinstance(column_type, ArrowTensorType)
         assert all(record["image"].shape == (32, 32, 3) for record in ds.take())
 
+    @pytest.mark.parametrize("num_shards", [-1, 0, 1, 2, 4])
+    def test_multi_threading(self, ray_start_regular_shared, num_threads, monkeypatch):
+        monkeypatch.setattr(
+            ray.data.datasource.image_datasource.ImageDatasource,
+            "_NUM_THREADS_PER_TASK",
+            num_threads,
+        )
+        ds = ray.data.read_images("example://image-datasets/simple")
+        print(ds.take_all())
+
     def test_multiple_paths(self, ray_start_regular_shared):
         ds = ray.data.read_images(
             paths=[
