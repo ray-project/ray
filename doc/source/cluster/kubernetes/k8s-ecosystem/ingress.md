@@ -2,7 +2,7 @@
 
 # Ingress
 
-Two examples show how to use ingress to access your Ray cluster:
+Three examples show how to use ingress to access your Ray cluster:
 
   * [AWS Application Load Balancer (ALB) Ingress support on AWS EKS](kuberay-aws-alb)
   * [GKE Ingress support](kuberay-gke-ingress)
@@ -24,10 +24,11 @@ Two examples show how to use ingress to access your Ray cluster:
 ```sh
 # Step 1: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
+helm repo update
+helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0-rc.0
 
 # Step 2: Install a RayCluster
-helm install raycluster kuberay/ray-cluster --version 0.6.0
+helm install raycluster kuberay/ray-cluster --version 1.0.0-rc.0
 
 # Step 3: Edit the `ray-operator/config/samples/ray-cluster-alb-ingress.yaml`
 #
@@ -111,10 +112,11 @@ Now run the following commands:
 ```bash
 # Step 1: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
+helm repo update
+helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0-rc.0
 
 # Step 2: Install a RayCluster
-helm install raycluster kuberay/ray-cluster --version 0.6.0
+helm install raycluster kuberay/ray-cluster --version 1.0.0-rc.0
 
 # Step 3: Edit ray-cluster-gclb-ingress.yaml to replace the service name with the name of the head service from the RayCluster. (Output of `kubectl get svc`)
 
@@ -173,7 +175,8 @@ kubectl wait --namespace ingress-nginx \
 
 # Step 3: Install KubeRay operator and CRD
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
+helm repo update
+helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0-rc.0
 
 # Step 4: Install RayCluster and create an ingress separately.
 # More information about change of setting was documented in https://github.com/ray-project/kuberay/pull/699 
