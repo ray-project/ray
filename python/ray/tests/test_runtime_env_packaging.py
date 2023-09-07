@@ -525,6 +525,21 @@ class TestParseUri:
         assert protocol == Protocol.GCS
         assert package_name == gcs_uri.split("/")[-1]
 
+    @pytest.mark.parametrize(
+        "remote_wheels",
+        [
+            ("s3://bucket/file.whl", Protocol.S3, "s3_bucket_file.zip"),
+            ("https://test.com/file.whl", Protocol.HTTPS, "https_test_com_file.zip"),
+            ("gs://bucket/file.whl", Protocol.GS, "gs_bucket_file.zip"),
+        ],
+    )
+    def test_parsing_remote_wheel(self, remote_wheels):
+        uri, protocol, package_name = remote_wheels
+        parsed_protocol, parsed_package_name = parse_uri(uri)
+
+        assert protocol == parsed_protocol
+        assert package_name == parsed_package_name
+
 
 @pytest.mark.asyncio
 class TestDownloadAndUnpackPackage:
