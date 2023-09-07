@@ -12,6 +12,6 @@ Tune Syncing Configuration
 --------------------------
 
 .. autosummary::
-    :noindex:
 
     ray.train.SyncConfig
+        :noindex:
