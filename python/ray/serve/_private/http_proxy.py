@@ -1676,6 +1676,7 @@ class HTTPProxyActor:
         Make sure the async event loop is not blocked.
         """
 
+        logger.info("Health check initiated.")
         pass
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
