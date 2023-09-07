@@ -59,7 +59,7 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.train._internal.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.logger import Logger
@@ -495,6 +495,7 @@ class Trainable:
         )
         return checkpoint_dir
 
+    @DeveloperAPI
     def save(
         self, checkpoint_dir: Optional[str] = None, prevent_upload: bool = False
     ) -> str:
@@ -871,6 +872,7 @@ class Trainable:
 
         return True
 
+    @Deprecated
     def save_to_object(self):
         raise DeprecationWarning(
             "Trainable.save_to_object() has been removed. "
@@ -884,6 +886,7 @@ class Trainable:
                 checkpoint_node_ip=None,
             )
 
+    @DeveloperAPI
     def restore(
         self,
         checkpoint_path: Union[str, Checkpoint],
@@ -1072,12 +1075,14 @@ class Trainable:
         }
         logger.info("Current state after restoring: %s", state)
 
+    @Deprecated
     def restore_from_object(self, obj):
         raise DeprecationWarning(
             "Trainable.restore_from_object() has been removed. "
             "Use Trainable.restore() instead."
         )
 
+    @Deprecated
     def delete_checkpoint(self, checkpoint_path: Union[str, Checkpoint]):
         """Deletes local copy of checkpoint.
 
