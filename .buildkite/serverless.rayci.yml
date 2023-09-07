@@ -4,7 +4,7 @@ steps:
     instance_type: medium
     parallelism: 2
     commands:
-      - bazel run //ci/ray_ci -- //python/ray/tests/... serverless 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --except-tags manual,kuberay_operator,spark_plugin_tests
     depends_on: serverlessbuild
@@ -14,6 +14,6 @@ steps:
     instance_type: medium
     soft_fail: true
     commands:
-      - bazel run //ci/ray_ci -- //... serverless --run-flaky-tests  --parallelism-per-worker 3
+      - bazel run //ci/ray_ci:test_in_docker -- //... serverless --run-flaky-tests  --parallelism-per-worker 3
     depends_on: serverlessbuild
     job_env: serverlessbuild
