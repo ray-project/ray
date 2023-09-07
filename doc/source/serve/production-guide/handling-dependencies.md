@@ -4,7 +4,7 @@
 (serve-runtime-env)=
 ## Add a runtime environment
 
-The import path (e.g., `text_ml:deployment_graph`) must be importable by Serve at runtime.
+The import path (e.g., `text_ml:app`) must be importable by Serve at runtime.
 When running locally, this path might be in your current working directory.
 However, when running on a cluster you also need to make sure the path is importable.
 Build the code into the cluster's container image (see [Cluster Configuration](kuberay-config) for more details) or use a `runtime_env` with a [remote URI](remote-uris) that hosts the code in remote storage.
