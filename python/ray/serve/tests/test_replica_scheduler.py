@@ -603,7 +603,7 @@ async def test_scheduling_task_cap_hard_limit(pow_2_scheduler, fake_query):
     """
     s = pow_2_scheduler
     hard_limit = 2
-    s.max_num_scheduling_tasks_hard_limit = hard_limit
+    s.max_num_scheduling_tasks_cap = hard_limit
 
     loop = get_or_create_event_loop()
 

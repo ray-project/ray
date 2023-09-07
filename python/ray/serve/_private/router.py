@@ -357,8 +357,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     # Hard limit on the maximum number of scheduling tasks to run. Having too many of
     # these tasks can cause stability issue due to too much load on the local process
-    # and too requests in flight to fetch replicas' queue lengths.
-    max_num_scheduling_tasks_hard_limit = 50
+    # and many too requests in flight to fetch replicas' queue lengths.
+    max_num_scheduling_tasks_cap = 50
 
     def __init__(
         self,
@@ -425,7 +425,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     @property
     def max_num_scheduling_tasks(self) -> int:
         """Max number of scheduling tasks to run at any time."""
-        return min(self.max_num_scheduling_tasks_hard_limit, 2 * len(self._replicas))
+        return min(self.max_num_scheduling_tasks_cap, 2 * len(self._replicas))
 
     @property
     def target_num_scheduling_tasks(self) -> int:
