@@ -121,16 +121,9 @@ class ScalingConfig:
     use_gpu: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
     placement_strategy: Union[str, SampleRange] = "PACK"
-    # DEPRECATED
     _max_cpu_fraction_per_node: Optional[Union[float, SampleRange]] = None
 
     def __post_init__(self):
-        if self._max_cpu_fraction_per_node:
-            warnings.warn(
-                "_max_cpu_fraction_per_node is deprecated and will be removed in Ray 2.8.",  # noqa: E501
-                DeprecationWarning,
-            )
-
         if self.resources_per_worker:
             if not self.use_gpu and self.num_gpus_per_worker > 0:
                 raise ValueError(
