@@ -38,13 +38,14 @@ def memory_summary(
 ):
     from ray.dashboard.memory_utils import memory_summary
 
-    get_state_from_address(address)
+    state = get_state_from_address(address)
+    reply = get_memory_info_reply(state)
 
     if stats_only:
-        return get_store_stats(state)
+        return store_stats_summary(reply)
     return memory_summary(
         state, group_by, sort_by, line_wrap, units, num_entries
-    ) + store_stats_summary(get_memory_info_reply(state))
+    ) + store_stats_summary(reply)
 
 def get_memory_info_reply(state, node_manager_address=None, node_manager_port=None):
     """Returns global memory info."""
