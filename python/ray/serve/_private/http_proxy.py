@@ -1735,12 +1735,12 @@ class HTTPProxyActor:
 def _determine_target_loop() -> Literal["uvloop", "asyncio"]:
     """We determine target loop based on whether RAY_SERVE_DEBUG_MODE is enabled:
 
-    - RAY_SERVE_DEBUG_MODE=0 (default): we use "uvloop" (Cython) providing high-performance,
-                              native implementation of the event-loop,
+    - RAY_SERVE_DEBUG_MODE=0 (default): we use "uvloop" (Cython) providing
+                              high-performance, native implementation of the event-loop
 
-    - RAY_SERVE_DEBUG_MODE=1: we fall back to "asyncio" (pure Python) event-loop implementation
-                              that is considerably slower than "uvloop", but provides for easy
-                              access to the source implementation
+    - RAY_SERVE_DEBUG_MODE=1: we fall back to "asyncio" (pure Python) event-loop
+                              implementation that is considerably slower than "uvloop",
+                              but provides for easy access to the source implementation
     """
     if RAY_SERVE_DEBUG_MODE:
         return "asyncio"

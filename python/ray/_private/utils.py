@@ -2194,13 +2194,14 @@ def load_class(path):
 
 
 def try_install_uvloop() -> None:
-    """Installs uvloop as event-loop implementation for asyncio (if available)
-    """
+    """Installs uvloop as event-loop implementation for asyncio (if available)"""
     try:
         import uvloop
+
         uvloop.install()
         logger.info("Installing uvloop as event-loop implementation for asyncio")
     except ImportError:
-        logger.warning("No uvloop found, falling back to default asyncio event-loop implementation")
+        logger.warning(
+            "No uvloop found, falling back to default asyncio event-loop implementation"
+        )
         pass
-
