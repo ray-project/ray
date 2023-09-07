@@ -64,7 +64,7 @@ You can use `serve deploy` to deploy the application to a local Ray cluster and 
 # Start a local Ray cluster.
 ray start --head
 
-# Deploy the text ML application to the local Ray cluster.
+# Deploy the Text ML application to the local Ray cluster.
 serve deploy serve_config.yaml
 2022-08-16 12:51:22,043 SUCC scripts.py:180 --
 Sent deploy request successfully!
