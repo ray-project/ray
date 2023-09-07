@@ -442,6 +442,12 @@ def _setup_ray_cluster(
         start_hook = _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
     elif is_in_databricks_runtime():
         start_hook = DefaultDatabricksRayOnSparkStartHook()
+        if ray_temp_root_dir is not None:
+            _logger.warning(
+                "The `ray_temp_root_dir` argument is ignored when running on "
+                "Databricks. We use /local_disk0/tmp as default temp root dir."
+            )
+            ray_temp_root_dir = None
         # Set default user temp dir to always be /local_disk0/tmp on databricks.
         os.environ["RAY_TMPDIR"] = "/local_disk0/tmp"
     else:
