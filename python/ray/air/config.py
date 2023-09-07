@@ -254,7 +254,6 @@ class ScalingConfig:
         placement_strategy = pgf.strategy
         resources_per_worker = None
         num_workers = None
-        max_cpu_fraction_per_node = None
 
         if worker_bundles:
             first_bundle = worker_bundles[0]

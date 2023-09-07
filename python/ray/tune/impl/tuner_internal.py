@@ -3,7 +3,6 @@ import io
 import os
 import math
 import logging
-import warnings
 import shutil
 import tempfile
 from pathlib import Path
@@ -21,7 +20,6 @@ from typing import (
 
 import pyarrow.fs
 
-import ray
 import ray.cloudpickle as pickle
 from ray.util import inspect_serializability
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
