@@ -237,7 +237,7 @@ To fix this issue, employ an automated shell script for seamlessly transferring 
 
 :::{tab-item} Using an existing Grafana server
 
-After your Grafana server is running, find the Ray-provided default Grafana dashboard JSON at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. [Import this dashboard](https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard) to your Grafana.
+After your Grafana server is running, start a Ray Cluster and find the Ray-provided default Grafana dashboard JSONs at `/tmp/ray/session_latest/metrics/grafana/dashboards`. [Copy the JSONs over and import the Grafana dashboards](https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard) to your Grafana.
 
 If Grafana reports that the datasource is not found, [add a datasource variable](https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable). The datasource's name must be the same as value in the `RAY_PROMETHEUS_NAME` environment. By default, `RAY_PROMETHEUS_NAME` equals `Prometheus`.
 :::
