@@ -197,7 +197,7 @@ class StatusOverview:
 # (e.g., health checks and fetching queue length).
 CONTROL_PLANE_CONCURRENCY_GROUP = "control_plane"
 REPLICA_DEFAULT_ACTOR_OPTIONS = {
-    "concurrency_groups": {CONTROL_PLANE_CONCURRENCY_GROUP: 100}
+    "concurrency_groups": {CONTROL_PLANE_CONCURRENCY_GROUP: 1}
 }
 
 
