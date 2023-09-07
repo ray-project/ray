@@ -245,6 +245,7 @@ def test_global_bytes_spilled(shutdown_only):
 
     check_no_spill(ctx, ds.repeat(), spill_expected=True)
     assert ds._get_stats_summary().global_bytes_spilled > 0
+    assert ds._get_stats_summary().global_bytes_restored > 0
 
 
 def test_no_global_bytes_spilled(shutdown_only):
@@ -255,6 +256,7 @@ def test_no_global_bytes_spilled(shutdown_only):
 
     check_no_spill(ctx, ds.repeat())
     assert ds._get_stats_summary().global_bytes_spilled == 0
+    assert ds._get_stats_summary().global_bytes_restored == 0
 
 
 if __name__ == "__main__":

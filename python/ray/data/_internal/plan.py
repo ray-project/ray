@@ -640,6 +640,10 @@ class ExecutionPlan:
             reply = get_memory_info_reply(get_state_from_address(None))
             if reply.store_stats.spill_time_total_s > 0:
                 stats.global_bytes_spilled = int(reply.store_stats.spilled_bytes_total)
+            if reply.store_stats.restore_time_total_s > 0:
+                stats.global_bytes_restored = int(
+                    reply.store_stats.restored_bytes_total
+                )
 
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks

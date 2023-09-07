@@ -267,6 +267,7 @@ class DatasetStats:
 
         # Memory usage stats
         self.global_bytes_spilled: int = 0
+        self.global_bytes_restored: int = 0
 
     @property
     def stats_actor(self):
@@ -340,6 +341,7 @@ class DatasetStats:
             self.base_name,
             self.extra_metrics,
             self.global_bytes_spilled,
+            self.global_bytes_restored,
         )
 
 
@@ -355,6 +357,7 @@ class DatasetStatsSummary:
     base_name: str
     extra_metrics: Dict[str, Any]
     global_bytes_spilled: int
+    global_bytes_restored: int
 
     def to_string(
         self, already_printed: Optional[Set[str]] = None, include_parent: bool = True
@@ -436,6 +439,7 @@ class DatasetStatsSummary:
             f"{indent}   stage_stats=[{stage_stats}],\n"
             f"{indent}   iter_stats={self.iter_stats.__repr__(level+1)},\n"
             f"{indent}   global_bytes_spilled={self.global_bytes_spilled},\n"
+            f"{indent}   global_bytes_restored={self.global_bytes_restored},\n"
             f"{indent}   parents=[{parent_stats}],\n"
             f"{indent})"
         )
