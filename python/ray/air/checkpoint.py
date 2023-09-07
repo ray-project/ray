@@ -279,14 +279,6 @@ class Checkpoint:
 
         In all other cases, this will return None.
 
-        Example:
-
-            >>> from ray.air import Checkpoint
-            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
-            >>> assert checkpoint.path == "s3://some-bucket/some-location"
-            >>> checkpoint = Checkpoint.from_dict({"data": 1})
-            >>> assert checkpoint.path == None
-
         Returns:
             Checkpoint path if this checkpoint is reachable from the current node (e.g.
             cloud storage or locally available directory).
@@ -311,14 +303,6 @@ class Checkpoint:
         In all other cases, this will return None. Users can then choose to
         persist to cloud with
         :meth:`Checkpoint.to_uri() <ray.air.Checkpoint.to_uri>`.
-
-        Example:
-
-            >>> from ray.air import Checkpoint
-            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
-            >>> assert checkpoint.uri == "s3://some-bucket/some-location"
-            >>> checkpoint = Checkpoint.from_dict({"data": 1})
-            >>> assert checkpoint.uri == None
 
         Returns:
             Checkpoint URI if this URI is reachable from the current node (e.g.
