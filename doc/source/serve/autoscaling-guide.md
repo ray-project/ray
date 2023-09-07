@@ -20,7 +20,7 @@ Instead of setting a fixed number of replicas for a deployment, you can configur
 
 * Set **`target_num_ongoing_requests_per_replica`** to a reasonable number (for example, 5) and adjust it based on your request processing length (the longer the requests, the smaller this number should be) as well as your latency objective (the shorter you want your latency to be, the smaller this number should be).
 * Set **`max_concurrent_queries`** to a value ~20-50% greater than `target_num_ongoing_requests_per_replica`.
-* Set **`min_replicas`** to 0 if there are long periods of no traffic and some extra tail latency during upscale is acceptable. Otherwise, set this to what you think you'll need for low-traffic.
+* Set **`min_replicas`** to 0 if there are long periods of no traffic and some extra tail latency during upscale is acceptable. Otherwise, set this to what you think you need for low-traffic.
 * Set **`max_replicas`** to ~20% higher than what you think you'll need for peak traffic.
 
 This would be a great starting point. If you decide to further tune your autoscaling config for your application, you can read on to following sections.
