@@ -35,7 +35,15 @@ if TYPE_CHECKING:
     from ray.tune.trainable import Trainable
 
 
-@Deprecated("Use TorchTrainer instead.")
+ACCELERATE_TRAINER_DEPRECATION_MESSAGE = (
+    "The AccelerateTrainer is deprecated. "
+    "Use TorchTrainer instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/huggingface-accelerate.html#acceleratetrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
+
+
+@Deprecated(message=ACCELERATE_TRAINER_DEPRECATION_MESSAGE, warning=True)
 class AccelerateTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Accelerate training with PyTorch.
 

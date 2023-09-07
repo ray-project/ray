@@ -221,7 +221,15 @@ class LightningConfigBuilder:
         return config_dict
 
 
-@Deprecated("Use TorchTrainer instead.")
+LIGHTNING_TRAINER_DEPRECATION_MESSAGE = (
+    "The LightningTrainer is deprecated. "
+    "Use TorchTrainer instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-pytorch-lightning.html#lightningtrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
+
+
+@Deprecated(message=LIGHTNING_TRAINER_DEPRECATION_MESSAGE, warning=True)
 class LightningTrainer(TorchTrainer):
     """A Trainer for data parallel PyTorch Lightning training.
 
@@ -399,6 +407,8 @@ class LightningTrainer(TorchTrainer):
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ):
+
+        print("WHAT IS THIS")
         run_config = copy(run_config) or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()
 

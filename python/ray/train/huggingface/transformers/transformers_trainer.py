@@ -72,8 +72,15 @@ if TYPE_CHECKING:
 
 TRAINER_INIT_FN_KEY = "_trainer_init_per_worker"
 
+TRANSFORMERS_TRAINER_DEPRECATION_MESSAGE = (
+    "The TransformersTransformers is deprecated. "
+    "Use TorchTrainer instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-transformers.html#transformerstrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
 
-@Deprecated("Use TorchTrainer instead.")
+
+@Deprecated(message=TRANSFORMERS_TRAINER_DEPRECATION_MESSAGE, warning=True)
 class TransformersTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Transformers on PyTorch training.
 
