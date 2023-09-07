@@ -254,8 +254,13 @@ def train_loop_per_worker():
         print_at_interval = 1000
         print_at = print_at_interval
         for batch in batch_iter:
-            # `batch` should be in `torch.Tensor` format.
-            num_rows += batch.size(dim=0)
+            # `batch` should have tensor in `torch.Tensor` format.
+            if args.use_torch:
+                num_rows += batch.size(dim=0)
+            elif args.use_mosaic:
+                num_rows += args.batch_size
+            else:
+                num_rows += batch["image"].size(dim=0)
             if num_rows >= print_at:
                 print(
                     f"Read {num_rows} rows on rank {train.get_context().get_world_rank()}, tput so far: {num_rows / (time.time()  - start_t)}"
