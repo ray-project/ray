@@ -63,7 +63,7 @@ with a new Ray Pod before the underlying Kubernetes node is scaled down.)
 
 ## Vertical Pod Autoscaler
 There is no relationship between the Ray Autoscaler and the Kubernetes
-[Vertical Pod Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/vertical-Pod-autoscaler) (VPA),
+[Vertical Pod Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler) (VPA),
 which is meant to size individual Pods to the appropriate size based on current and past usage.
 If you find that the load on your individual Ray Pods is too high, there are a number
 of manual techniques to decrease the load
