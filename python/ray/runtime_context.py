@@ -253,29 +253,28 @@ class RuntimeContext(object):
         # only worker mode has actor_id
         if self.worker.mode != ray._private.worker.WORKER_MODE:
             logger.warning(
-                f"This method is only available when the process is a\
-                     worker. Current mode: {self.worker.mode}"
+                "This method is only available when the process is a "
+                f"worker. Current mode: {self.worker.mode}"
             )
             return None
         actor_id = self.worker.actor_id
         return actor_id.hex() if not actor_id.is_nil() else None
 
     def get_actor_name(self) -> Optional[str]:
-        """Get the current actor name in this worker.
+        """Get the current actor name of this worker.
 
-        Name of the actor of the current process.
         This shouldn't be used in a driver process.
         The name is in string format.
 
         Returns:
-            The current actor name in this worker. None if there's no
-            actor name.
+            The current actor name of this worker. None if there's no
+            actor name or if it is a driver.
         """
         # only worker mode has actor_id
         if self.worker.mode != ray._private.worker.WORKER_MODE:
             logger.warning(
-                f"This method is only available when the process is a\
-                     worker. Current mode: {self.worker.mode}"
+                "This method is only available when the process is a "
+                f"worker. Current mode: {self.worker.mode}"
             )
         return self.worker.actor_name
 

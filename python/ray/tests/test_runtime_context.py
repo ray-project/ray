@@ -345,10 +345,7 @@ def test_ids(ray_start_regular):
     actor = FooActor.remote()
     ray.get(actor.foo.remote())
 
-
-def test_actor_name(ray_start_regular):
-    signal = SignalActor.remote()
-
+    # actor name
     @ray.remote
     class NamedActor:
         def name(self):
