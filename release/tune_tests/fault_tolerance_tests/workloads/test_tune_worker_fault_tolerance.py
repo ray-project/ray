@@ -19,6 +19,7 @@ Test owner: Yard1 (Antoni)
 
 """
 
+import json
 import os
 import pickle
 import argparse
@@ -86,7 +87,9 @@ def main(bucket_uri: str):
     results = tuner.fit()
     print("Fitted:", results)
 
-    history = ray.get(instance_killer.history.remote())
+    history_file = os.environ.get("TEST_OUTPUT_JSON", "/tmp/release_test_output.json")
+    with open(history_file, "r") as f:
+        history = json.load(f)
     if not any(item["terminated_successfully"] for item in history):
         raise RuntimeError("Node termination is not working...")
 
