@@ -1,7 +1,7 @@
 (serve-multi-application)=
 # Deploy Multiple Applications
 
-In Ray 2.4+, deploying multiple independent Serve applications is supported. This user guide walks through how to generate a multi-application config file and deploy it using the Serve CLI, and monitor your applications using the CLI and the Ray Serve dashboard.
+Ray 2.4+ supports deploying multiple independent Serve applications. This user guide walks through how to generate a multi-application config file and deploy it using the Serve CLI, and monitor your applications using the CLI and the Ray Serve dashboard.
 
 ## Context
 ### Background 
@@ -9,15 +9,15 @@ With the introduction of multi-application Serve, we walk you through the new co
 
 An application consists of one or more deployments. The deployments in an application are tied into a direct acyclic graph through [model composition](serve-model-composition). An application can be called via HTTP at the specified route prefix, and the ingress deployment handles all such inbound traffic. Due to the dependence between deployments in an application, one application is a unit of upgrade. 
 
-### When to Use Multiple Applications
-Many use cases can be solved by either model composition or multi-application. However, both have their own individual benefits and can be used together.
+### When to use multiple applications
+You can solve many use cases by using either model composition or multi-application. However, both have their own individual benefits and can be used together.
 
 Suppose you have multiple models and/or business logic that all need to be executed for a single request. If they are living in one repository, then you most likely upgrade them as a unit, so we recommend having all those deployments in one application.
 
 On the other hand, if these models or business logic have logical groups, for example, groups of models that communicate with each other but live in different repositories, we recommend separating the models into applications. Another common use-case for multiple applications is separate groups of models that may not communicate with each other, but you want to co-host them to increase hardware utilization. Because one application is a unit of upgrade, having multiple applications allows you to deploy many independent models (or groups of models) each behind different endpoints. You can then easily add or delete applications from the cluster as well as upgrade applications independently of each other.
 
 
-## Get Started
+## Get started
 
 Define a Serve application:
 ```{literalinclude} doc_code/image_classifier_example.py
@@ -26,7 +26,7 @@ Define a Serve application:
 :end-before: __serve_example_end__
 ```
 
-Copy this to a file named `image_classifier.py`.
+Copy this code to a file named `image_classifier.py`.
 
 Define a second Serve application:
 ```{literalinclude} doc_code/translator_example.py
@@ -34,7 +34,7 @@ Define a second Serve application:
 :start-after: __serve_example_begin__
 :end-before: __serve_example_end__
 ```
-Copy this to a file named `text_translator.py`.
+Copy this code to a file named `text_translator.py`.
 
 Generate a multi-application config file that contains both of these two applications and save it to `config.yaml`.
 
@@ -75,7 +75,7 @@ applications:
 The names for each application are auto-generated as `app1`, `app2`, etc. To give custom names to the applications, modify the config file before moving on to the next step.
 :::
 
-### Deploy the Applications
+### Deploy the applications
 To deploy the applications, be sure to start a Ray cluster first.
 
 ```console
@@ -97,7 +97,7 @@ Query the applications at their respective endpoints, `/classify` and `/translat
 :end-before: __request_end__
 ```
 
-#### Development Workflow with `serve run`
+#### Development workflow with `serve run`
 You can also use the CLI command `serve run` to run and test your application easily, either locally or on a remote cluster. 
 ```console
 $ serve run config.yaml
@@ -106,13 +106,13 @@ $ serve run config.yaml
 > 2023-04-04 11:00:09,012 SUCC scripts.py:393 -- Submitted deploy config successfully.
 ```
 
-The command `serve run` blocks the terminal, which allows logs from Serve to stream to the console. This helps you test and debug your applications easily. If you want to change your code, you can hit Ctrl-C to interrupt the command and shutdown Serve and all its applications, then rerun `serve run`.
+The `serve run` command blocks the terminal, which allows logs from Serve to stream to the console. This helps you test and debug your applications easily. If you want to change your code, you can hit Ctrl-C to interrupt the command and shutdown Serve and all its applications, then rerun `serve run`.
 
 :::{note}
-`serve run` only has support for running multi-application config files. If you want to run applications by directly passing in an import path, `serve run` can only run one application import path at a time.
+`serve run` only supports running multi-application config files. If you want to run applications by directly passing in an import path, `serve run` can only run one application import path at a time.
 :::
 
-### Check Status
+### Check status
 Check the status of the applications by running `serve status`.
 
 ```console
@@ -148,7 +148,7 @@ applications:
 ```
 
 ### Send requests between applications
-You can also make calls between applications without going through HTTP by using the Serve API `serve.get_app_handle` to get a handle to any live Serve application on the cluster. This handle can be used to directly execute a request on an application. Take the classifier and translator app above as an example. We can modify the `__call__` method of the `ImageClassifier` to check for another parameter in the HTTP request, and send requests to the translator application.
+You can also make calls between applications without going through HTTP by using the Serve API `serve.get_app_handle` to get a handle to any live Serve application on the cluster. This handle can be used to directly execute a request on an application. Take the classifier and translator app above as an example. You can modify the `__call__` method of the `ImageClassifier` to check for another parameter in the HTTP request, and send requests to the translator application.
 
 ```{literalinclude} doc_code/image_classifier_example.py
 :language: python
@@ -156,7 +156,7 @@ You can also make calls between applications without going through HTTP by using
 :end-before: __serve_example_modified_end__
 ```
 
-Then, sending requests to the classifier application with the `should_translate` flag set to True:
+Then, send requests to the classifier application with the `should_translate` flag set to True:
 ```{literalinclude} doc_code/image_classifier_example.py
 :language: python
 :start-after: __second_request_begin__
@@ -164,7 +164,7 @@ Then, sending requests to the classifier application with the `should_translate`
 ```
 
 
-### Inspect Deeper
+### Inspect deeper
 
 For more visibility into the applications running on the cluster, go to the Ray Serve dashboard at [`http://localhost:8265/#/serve`](http://localhost:8265/#/serve).
 
@@ -183,17 +183,17 @@ As well as the list of replicas for each deployment:
 For more details on the Ray Serve dashboard, see the [Serve dashboard documentation](dash-serve-view).
 
 
-## Adding, Deleting, and Updating Applications
-You can add, remove or update entries under the `applications` field to add, remove or update applications in the cluster. This will not affect other applications on the cluster. To update an application, modify the config options in the corresponding entry under the `applications` field.
+## Add, delete, and update applications
+You can add, remove or update entries under the `applications` field to add, remove or update applications in the cluster. This doesn't affect other applications on the cluster. To update an application, modify the config options in the corresponding entry under the `applications` field.
 
 :::{note}
-The in-place update behavior for an application when a config is resubmitted is the same as the single-application behavior. For how an application reacts to different config changes, see [Updating a Serve Application](serve-inplace-updates).
+The in-place update behavior for an application when you resubmit a config is the same as the single-application behavior. For how an application reacts to different config changes, see [Updating a Serve Application](serve-inplace-updates).
 :::
 
 
 
 (serve-config-migration)=
-### Migrating from a Single-Application Config
+### Migrating from a single-application config
 
 Migrating the single-application config `ServeApplicationSchema` to the multi-application config format `ServeDeploySchema` is straightforward. Each entry under the  `applications` field matches the old, single-application config format. To convert a single-application config to the multi-application config format:
 * Copy the entire old config to an entry under the `applications` field.
