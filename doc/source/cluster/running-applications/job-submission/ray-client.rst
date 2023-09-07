@@ -113,8 +113,8 @@ or proxying from your local machine to the cluster (on `K8s <https://kubernetes.
                             ToPort: 10001
                             IpProtocol: TCP
                             IpRanges:
-                                # This will enable inbound access from ALL IPv4 addresses.
-                                - CidrIp: 0.0.0.0/0
+                                # Allow traffic only from your local IP address.
+                                - CidrIp: <YOUR_IP_ADDRESS>/32
 
 Step 3: Run Ray code
 ~~~~~~~~~~~~~~~~~~~~

@@ -126,6 +126,11 @@ Below is an example with a [traefik](https://doc.traefik.io/traefik/getting-star
         url = "http://localhost:8265"
 ```
 
+```{admonition} Warning
+:class: warning
+The Ray Dashboard provides read **and write** access to the Ray Cluster. The reverse proxy must provide authentication or network ingress controls to prevent unauthorized access to the Cluster.
+```
+
 ## Disabling the Dashboard
 
 Dashboard is included if you use `ray[default]`, `ray[air]`, or {ref}`other installation commands <installation>` and automatically started.
