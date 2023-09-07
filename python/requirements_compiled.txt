@@ -309,10 +309,6 @@ nevergrad==0.4.3.post7
 ninja==1.11.1
 notebook==6.5.5
 notebook-shim==0.2.3
-nsx-policy-python-sdk @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/nsx-policy-python-sdk/nsx_policy_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
-nsx-python-sdk @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/nsx-python-sdk/nsx_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
-nsx-vmc-aws-integration-python-sdk @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/nsx-vmc-aws-integration-python-sdk/nsx_vmc_aws_integration_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
-nsx-vmc-policy-python-sdk @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/nsx-vmc-policy-python-sdk/nsx_vmc_policy_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
 numba==0.56.4
 numexpr==2.8.4
 numpy==1.23.5 ; python_version < "3.9"
@@ -555,12 +551,7 @@ uritemplate==4.1.1
 urllib3==1.26.16
 uvicorn==0.23.2
 uvloop==0.17.0
-vapi-common-client @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/vapi-common-client/vapi_common_client-2.40.0-py2.py3-none-any.whl
-vapi-runtime @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/vapi-runtime/vapi_runtime-2.40.0-py2.py3-none-any.whl
-vcenter-bindings @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/vcenter-bindings/vcenter_bindings-4.1.0-py2.py3-none-any.whl
 virtualenv==20.21.0
-vmc-client-bindings @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/vmc-client-bindings/vmc_client_bindings-1.62.0-py2.py3-none-any.whl
-vmc-draas-client-bindings @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/vmc-draas-client-bindings/vmc_draas_client_bindings-1.21.0-py2.py3-none-any.whl
 vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0
 wandb==0.13.4
 watchfiles==0.19.0

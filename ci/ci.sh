@@ -134,6 +134,9 @@ compile_pip_dependencies() {
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn
   sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/$TARGET"
 
+  # Delete local installation
+  sed -i "/@ file/d" "${WORKSPACE_DIR}/python/$TARGET"
+
   # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
   # This is needed because we specify the requirements as torch==version, but
   # the resolver adds the device-specific version tag. If this is not removed,
