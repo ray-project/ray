@@ -188,10 +188,9 @@ class _ParquetDatasourceReader(Reader):
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        import ray
-
         self._local_scheduling = None
         if local_uri:
+            import ray
             from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
             self._local_scheduling = NodeAffinitySchedulingStrategy(
@@ -275,7 +274,6 @@ class _ParquetDatasourceReader(Reader):
         self._reader_args = reader_args
         self._columns = columns
         self._schema = schema
-        self._schema_object_ref = ray.put(schema)
         self._encoding_ratio = self._estimate_files_encoding_ratio()
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
@@ -287,6 +285,9 @@ class _ParquetDatasourceReader(Reader):
         return total_size * self._encoding_ratio
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        import ray
+
+        schema_object_ref = ray.put(self._schema)
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
@@ -332,11 +333,10 @@ class _ParquetDatasourceReader(Reader):
                 )
             else:
                 default_read_batch_size = PARQUET_READER_ROW_BATCH_SIZE
-            block_udf, reader_args, columns, schema_object_ref = (
+            block_udf, reader_args, columns = (
                 self._block_udf,
                 self._reader_args,
                 self._columns,
-                self._schema_object_ref,
             )
             read_tasks.append(
                 ReadTask(
