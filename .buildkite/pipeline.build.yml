@@ -419,7 +419,7 @@
     - helm install kuberay-operator kuberay/kuberay-operator
     - kubectl wait pod  -l app.kubernetes.io/name=kuberay-operator --for=condition=Ready=True  --timeout=5m
     # We are in m4i.xlarge and have 4 cpus. Can't have too many nodes.
-    - helm install raycluster kuberay/ray-cluster --set image.repository=ray-ci --set image.tag=kuberay-test --set worker.replicas=2 --set worker.resources.limits.cpu=1 --set worker.resources.requests.cpu=1 worker.resources.limits.memory=2G --set head.resources.limits.cpu=2 --set head.resources.requests.cpu=2  head.resources.limits.memory=2G
+    - helm install raycluster kuberay/ray-cluster --set image.repository=ray-ci --set image.tag=kuberay-test --set worker.replicas=2 --set worker.resources.limits.cpu=1 --set worker.resources.requests.cpu=1 worker.resources.limits.memory=2Gi --set head.resources.limits.cpu=2 --set head.resources.requests.cpu=2  head.resources.limits.memory=2Gi
     - kubectl wait pod -l ray.io/cluster=raycluster-kuberay --for=condition=Ready=True --timeout=5m
     - kubectl port-forward --address 0.0.0.0 service/raycluster-kuberay-head-svc 8265:8265 &
     # Helm install chaos-mesh
