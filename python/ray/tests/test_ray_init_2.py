@@ -285,7 +285,7 @@ def test_get_and_write_node_ip_address(shutdown_only):
     ray.init()
     node = ray._private.worker.global_worker.node
     node_ip = ray.util.get_node_ip_address()
-    cached_node_ip_address = node._get_cached_node_ip_address()
+    cached_node_ip_address = ray._private.services.get_cached_node_ip_address()
     assert cached_node_ip_address == node_ip
 
 

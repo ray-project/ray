@@ -25,6 +25,7 @@ from ray._private.log_monitor import (
 from ray._private.test_utils import (
     get_log_batch,
     get_log_message,
+    get_log_data,
     init_log_pubsub,
     run_string_as_driver,
     wait_for_condition,
@@ -950,6 +951,25 @@ def test_log_with_import():
     ray.log.logger_initialized = False
     ray.log.generate_logging_config()
     assert not logger.disabled
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_log_monitor_ip_correct(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, node_ip_address="127.0.0.2")
+    cluster.add_node(num_cpus=1, node_ip_address="127.0.0.2")
+    ray.init()
+
+    @ray.remote
+    def print_msg():
+        print("abc")
+
+    p = init_log_pubsub()
+    print_msg.remote()
+    data = get_log_data(
+        p, num=6, timeout=10, job_id=ray.get_runtime_context().get_job_id()
+    )
+    assert data[0]["ip"] = "127.0.0.2"
 
 
 if __name__ == "__main__":
