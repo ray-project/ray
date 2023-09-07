@@ -246,8 +246,15 @@ When the Grafana instance requires user authentication, the following settings h
 
 #### Troubleshooting
 
-##### Grafana dashboards are not embedded in the Ray dashboard
-If you're getting an error that says `RAY_GRAFANA_HOST` is not setup despite having set it up, check that:
+##### Dashboard message: either Prometheus or Grafana server is not deteced
+If you have followed the instructions above to set up everything, run the connection checks below in your browser:
+* check Head Node connection to Prometheus server: add `api/prometheus_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/prometheus_health)and visit it.
+* check Head Node connection to Grafana server: add `api/grafana_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/grafana_health) and visit it.
+* check browser connection to Grafana server: visit the URL used in `RAY_GRAFANA_IFRAME_HOST`.
+
+
+##### Getting an error that says `RAY_GRAFANA_HOST` is not setup
+If you have set up Grafana , check that:
 * You've included the protocol in the URL (e.g., `http://your-grafana-url.com` instead of `your-grafana-url.com`).
 * The URL doesn't have a trailing slash (e.g., `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).
 
