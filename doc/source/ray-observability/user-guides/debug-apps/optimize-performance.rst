@@ -117,7 +117,7 @@ not have root permissions, the Dashboard prompts with instructions on how to set
 .. note::
    You may run into permission errors when using py-spy in the docker containers. To fix the issue:
    
-   * if you start Ray manually in a Docker container, follow the `py-spy documentation`_ to resolve it. 
+   * If you start Ray manually in a Docker container, follow the `py-spy documentation`_ to resolve it. 
    * if you are a KubeRay user, follow the :ref:`guide to configure KubeRay <kuberay-pyspy-integration>` and resolve it.
    
 .. _`py-spy documentation`: https://github.com/benfred/py-spy#how-do-i-run-py-spy-in-docker
