@@ -2404,7 +2404,10 @@ cdef class GcsClient:
         else:
             c_cluster_id = cluster_id
             self.cluster_id = CClusterID.FromHex(c_cluster_id)
-        self._connect(5)
+        try:
+            self._connect(5)
+        except RpcError as e:
+            logger.exception("GcsClient can't connect at init time!")
 
     def _connect(self, timeout_s=None):
         cdef:
