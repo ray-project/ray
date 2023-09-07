@@ -16,6 +16,7 @@ from typing import (
 )
 
 import ray
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -37,7 +38,6 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.debug import log_once
-from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 
 if TYPE_CHECKING:
     import pyarrow
@@ -647,7 +647,6 @@ class ExecutionPlan:
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
             self._stages_before_snapshot += self._stages_after_snapshot
             self._stages_after_snapshot = []
-
         if _is_lazy(self._snapshot_blocks) and force_read:
             self._snapshot_blocks = self._snapshot_blocks.compute_to_blocklist()
         return self._snapshot_blocks

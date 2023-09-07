@@ -416,6 +416,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      user_time=T,\n"
         "      total_time=T,\n"
         "   ),\n"
+        "   bytes_spilled=T,\n"
         "   parents=[],\n"
         ")"
     )
@@ -474,6 +475,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      user_time=T,\n"
         "      total_time=T,\n"
         "   ),\n"
+        "   bytes_spilled=T,\n"
         "   parents=[\n"
         "      DatasetStatsSummary(\n"
         "         dataset_uuid=U,\n"
@@ -505,6 +507,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "            user_time=T,\n"
         "            total_time=T,\n"
         "         ),\n"
+        "         bytes_spilled=T,\n"
         "         parents=[],\n"
         "      ),\n"
         "   ],\n"
