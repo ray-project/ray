@@ -37,7 +37,7 @@ $ serve build text_ml:app -o serve_config.yaml
 ```
 
 The generated version of this file contains an `import_path`, `runtime_env`, and configuration options for each deployment in the application.
-A minimal version of the config looks as follows (save this config locally in `serve_config.yaml` to follow along):
+Since we'll need the packages `torch` and `transformers` to run this example, modify the `runtime_env` field of the generated config to include these two pip packages. Save this config locally in `serve_config.yaml` to follow along.
 
 ```yaml
 proxy_location: EveryNode
@@ -50,7 +50,10 @@ applications:
 - name: default
   route_prefix: /
   import_path: text_ml:app
-  runtime_env: {}
+  runtime_env:
+    pip:
+      - torch
+      - transformers
   deployments:
   - name: Translator
     num_replicas: 1
@@ -94,9 +97,10 @@ applications:
 
 You can test the application using `curl`:
 
-```console
-$ curl -H "Content-Type: application/json" -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"' "http://localhost:8000/"
-c'était le meilleur des temps, c'était le pire des temps .
+```{literalinclude} ../doc_code/production_guide/text_ml.py
+:language: python
+:start-after: __start_client__
+:end-before: __end_client__
 ```
 
 To update the application, modify the config file and use `serve deploy` again.

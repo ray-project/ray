@@ -24,10 +24,13 @@ First let's deploy the graph. Make sure to stop any previous Ray cluster using t
 ```console
 $ ray start --head
 $ serve deploy serve_config.yaml
-...
+```
 
-$ curl -H "Content-Type: application/json" -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"' "http://localhost:8000/"
-c'était le meilleur des temps, c'était le pire des temps .
+Then send a request to the application:
+```{literalinclude} ../doc_code/production_guide/text_ml.py
+:language: python
+:start-after: __start_client__
+:end-before: __end_client__
 ```
 
 Now, let's change the language that the text is translated into from French to German. We can change the `language` attribute in the `Translator` user config:
@@ -39,7 +42,10 @@ applications:
 - name: default
   route_prefix: /
   import_path: text_ml:app
-  runtime_env: {}
+  runtime_env:
+    pip:
+      - torch
+      - transformers
   deployments:
   - name: Translator
     user_config:
@@ -77,12 +83,14 @@ applications:
         replica_states:
           RUNNING: 1
         message: ''
-
-$ curl -H "Content-Type: application/json" -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"' "http://localhost:8000/"
-Es war die beste Zeit, es war die schlimmste Zeit .
 ```
 
 The language was updated! Now the returned text is in German instead of French.
+```{literalinclude} ../doc_code/production_guide/text_ml.py
+:language: python
+:start-after: __start_second_client__
+:end-before: __end_second_client__
+```
 
 ## Code Updates
 

@@ -57,7 +57,10 @@ applications:
 - name: default
   route_prefix: /
   import_path: text_ml:app
-  runtime_env: {}
+  runtime_env:
+    pip:
+      - torch
+      - transformers
   deployments:
   - name: Translator
     num_replicas: 1
@@ -102,7 +105,10 @@ applications:
 - name: default
   route_prefix: /
   import_path: text_ml:app
-  runtime_env: {}
+  runtime_env:
+    pip:
+      - torch
+      - transformers
   deployments:
   - name: Translator
     user_config:

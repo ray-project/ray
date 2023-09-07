@@ -16,6 +16,9 @@ import_path: text_ml:app
 
 runtime_env:
     working_dir: "https://github.com/ray-project/serve_config_examples/archive/HEAD.zip"
+    pip:
+      - torch
+      - transformers
 ```
 
 :::{note}

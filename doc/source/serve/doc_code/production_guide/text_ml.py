@@ -77,20 +77,41 @@ app = Summarizer.bind(Translator.bind())
 serve.run(app)
 
 # __start_client__
-# File name: composed_client.py
 import requests
 
 english_text = (
     "It was the best of times, it was the worst of times, it was the age "
-    "of wisdom, it was the age of foolishness, it was the epoch of belief."
+    "of wisdom, it was the age of foolishness, it was the epoch of belief"
 )
 response = requests.post("http://127.0.0.1:8000/", json=english_text)
 french_text = response.text
 
 print(french_text)
+# 'c'était le meilleur des temps, c'était le pire des temps .'
 # __end_client__
 
 assert french_text == "c'était le meilleur des temps, c'était le pire des temps ."
+
+serve.run(
+    Summarizer.bind(Translator.options(user_config={"language": "german"}).bind())
+)
+
+
+# __start_second_client__
+import requests
+
+english_text = (
+    "It was the best of times, it was the worst of times, it was the age "
+    "of wisdom, it was the age of foolishness, it was the epoch of belief"
+)
+response = requests.post("http://127.0.0.1:8000/", json=english_text)
+german_text = response.text
+
+print(german_text)
+# 'Es war die beste Zeit, es war die schlimmste Zeit .'
+# __end_second_client__
+
+assert german_text == "Es war die beste Zeit, es war die schlimmste Zeit ."
 
 serve.shutdown()
 ray.shutdown()
