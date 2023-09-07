@@ -8,7 +8,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import *  # noqa
 
 
-def check_no_spill(ctx, pipe, spill_expected=False):
+def check_no_spill(ctx, pipe):
     # Run up to 10 epochs of the pipeline to stress test that
     # no spilling will happen.
     max_epoch = 10
@@ -16,10 +16,7 @@ def check_no_spill(ctx, pipe, spill_expected=False):
         for _ in p.iter_batches(batch_size=None):
             pass
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
-    if spill_expected:
-        assert "Spilled" in meminfo, meminfo
-    else:
-        assert "Spilled" not in meminfo, meminfo
+    assert "Spilled" not in meminfo, meminfo
 
     def _all_executor_threads_exited():
         for thread in threading.enumerate():
@@ -243,7 +240,8 @@ def test_global_bytes_spilled(shutdown_only):
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
     ds = ray.data.range_tensor(500, shape=(80, 80, 4), parallelism=100).materialize()
 
-    check_no_spill(ctx, ds.repeat(), spill_expected=True)
+    with pytest.raises(AssertionError):
+        check_no_spill(ctx, ds.repeat())
     assert ds._get_stats_summary().global_bytes_spilled > 0
     assert ds._get_stats_summary().global_bytes_restored > 0
 

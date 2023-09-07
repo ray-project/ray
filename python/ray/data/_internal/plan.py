@@ -637,7 +637,9 @@ class ExecutionPlan:
                     )
 
             # Retrieve memory-related stats from ray.
-            reply = get_memory_info_reply(get_state_from_address(None))
+            reply = get_memory_info_reply(
+                get_state_from_address(ray.get_runtime_context().gcs_address)
+            )
             if reply.store_stats.spill_time_total_s > 0:
                 stats.global_bytes_spilled = int(reply.store_stats.spilled_bytes_total)
             if reply.store_stats.restore_time_total_s > 0:
