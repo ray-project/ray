@@ -119,6 +119,21 @@ class ScalingConfig:
             hangs / CPU starvation of dataset tasks. Warning: this feature is
             experimental and is not recommended for use with autoscaling (scale-up will
             not trigger properly).
+
+    Example:
+
+        >>> from ray.train import ScalingConfig
+        >>> scaling_config = ScalingConfig(
+        >>>     # Number of distributed workers.
+        >>>     num_workers=2,
+        >>>     # Turn on/off GPU.
+        >>>     use_gpu=True,
+        >>>     # Specify resources used for trainer.
+        >>>     trainer_resources={"CPU": 1},
+        >>>     # Try to schedule workers on different nodes.
+        >>>     placement_strategy="SPREAD",
+        >>> )
+
     """
 
     # If adding new attributes here, please also update

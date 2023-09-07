@@ -16,15 +16,6 @@ and the resources they should use.
 A *worker* here refers to a *training worker*. Technically, it's a
 :ref:`Ray Actor <actor-key-concept>` that runs your training function.
 
-.. literalinclude:: ../doc_code/key_concepts.py
-    :language: python
-    :start-after: __scaling_config_start__
-    :end-before: __scaling_config_end__
-
-.. note::
-
-    The properties of the scaling configuration are :ref:`tunable <tune-search-space-tutorial>`.
-
 
 Increasing the number of workers
 --------------------------------
