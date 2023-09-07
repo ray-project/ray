@@ -265,6 +265,9 @@ class DatasetStats:
         self.iter_blocks_remote: int = 0
         self.iter_unknown_location: int = 0
 
+        # Memory usage stats
+        self.bytes_spilled: int = 0
+
     @property
     def stats_actor(self):
         return _get_or_create_stats_actor()
@@ -336,6 +339,7 @@ class DatasetStats:
             self.time_total_s,
             self.base_name,
             self.extra_metrics,
+            self.bytes_spilled,
         )
 
 
@@ -350,6 +354,7 @@ class DatasetStatsSummary:
     time_total_s: float
     base_name: str
     extra_metrics: Dict[str, Any]
+    bytes_spilled: int
 
     def to_string(
         self, already_printed: Optional[Set[str]] = None, include_parent: bool = True
@@ -430,6 +435,7 @@ class DatasetStatsSummary:
             f"{indent}   extra_metrics={{{extra_metrics}}},\n"
             f"{indent}   stage_stats=[{stage_stats}],\n"
             f"{indent}   iter_stats={self.iter_stats.__repr__(level+1)},\n"
+            f"{indent}   bytes_spilled={self.bytes_spilled},\n"
             f"{indent}   parents=[{parent_stats}],\n"
             f"{indent})"
         )

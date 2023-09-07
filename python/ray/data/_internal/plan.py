@@ -37,6 +37,7 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.debug import log_once
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 
 if TYPE_CHECKING:
     import pyarrow
@@ -635,12 +636,18 @@ class ExecutionPlan:
                         stats_summary_string,
                     )
 
+            # Retrieve memory-related stats from ray.
+            reply = get_memory_info_reply(get_state_from_address(None))
+            if reply.store_stats.spill_time_total_s > 0:
+                stats.bytes_spilled = int(reply.store_stats.spilled_bytes_total)
+
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks
             self._snapshot_stats = stats
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
             self._stages_before_snapshot += self._stages_after_snapshot
             self._stages_after_snapshot = []
+
         if _is_lazy(self._snapshot_blocks) and force_read:
             self._snapshot_blocks = self._snapshot_blocks.compute_to_blocklist()
         return self._snapshot_blocks
