@@ -2204,4 +2204,3 @@ def try_install_uvloop() -> None:
         logger.warning(
             "No uvloop found, falling back to default asyncio event-loop implementation"
         )
-        pass
