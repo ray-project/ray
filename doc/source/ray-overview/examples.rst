@@ -46,7 +46,7 @@ Ray Examples
         :class-item: gallery-item gen-ai cv training
         :link: https://www.anyscale.com/blog/faster-stable-diffusion-fine-tuning-with-ray-air
 
-        Faster stable diffusion fine-tuning with Ray AIR
+        Faster stable diffusion fine-tuning with Ray Train
 
     .. grid-item-card:: :bdg-primary:`Blog`
         :class-item: gallery-item training serving huggingface llm gen-ai
@@ -78,7 +78,7 @@ Ray Examples
         :link: /ray-air/examples/convert_existing_pytorch_code_to_ray_air
         :link-type: doc
 
-        Get started with Ray AIR from an existing PyTorch codebase
+        Get started with Ray Train from an existing PyTorch codebase
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training
@@ -127,7 +127,7 @@ Ray Examples
         :link: /ray-air/examples/dolly_lightning_fsdp_finetuning
         :link-type: doc
 
-        How to fine-tune a dolly-v2-7b model with Ray AIR LightningTrainer and FSDP
+        Fine-tune dolly-v2-7b with Ray Train, PyTorch Lightning and FSDP
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch cv
@@ -555,7 +555,7 @@ Ray Examples
         :link: /ray-air/examples/huggingface_text_classification
         :link-type: doc
 
-        Fine-tune a 🤗 Transformers model
+        Fine-tune a 🤗 Transformers model on GLUE benchmark
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch training train cv
