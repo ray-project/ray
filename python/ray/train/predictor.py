@@ -107,6 +107,10 @@ class Predictor(abc.ABC):
         """
 
         class PandasUDFPredictor(Predictor):
+            @classmethod
+            def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
+                return PandasUDFPredictor()
+
             def _predict_pandas(self, df, **kwargs) -> "pd.DataFrame":
                 return pandas_udf(df, **kwargs)
 
