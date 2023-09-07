@@ -156,7 +156,7 @@ from ray.includes.libcoreworker cimport (
 
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
-from ray.includes.global_state_accessor cimport RedisDelKeySync
+from ray.includes.global_state_accessor cimport RedisDelKeySync, RedisGetKeySync
 from ray.includes.optional cimport (
     optional, nullopt
 )
@@ -1837,7 +1837,7 @@ cdef execute_task_with_cancellation_handler(
     task_name = name.decode("utf-8")
     title = f"ray::{task_name}"
 
-    # Automatically restrict the GPUs (CUDA), neuron_core accelerator
+    # Automatically restrict the GPUs (CUDA), neuron_core, TPU accelerator
     # runtime_ids to restrict availability to this task.
     ray._private.utils.set_gpu_and_accelerator_runtime_ids()
 
@@ -4579,3 +4579,25 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
 
 def del_key_from_storage(host, port, password, use_ssl, key):
     return RedisDelKeySync(host, port, password, use_ssl, key)
+
+
+def get_session_key_from_storage(host, port, password, use_ssl, config, key):
+    """
+    Get the session key from the storage.
+    Intended to be used for session_name only.
+    Args:
+        host: The address of the owner (caller) of the
+            generator task.
+        port: The task ID of the generator task.
+        password: The redis password.
+        use_ssl: Whether to use SSL.
+        config: The Ray config. Used to get storage namespace.
+        key: The key to retrieve.
+    """
+    cdef:
+        c_string data
+    result = RedisGetKeySync(host, port, password, use_ssl, config, key, &data)
+    if result:
+        return data
+    else:
+        return None

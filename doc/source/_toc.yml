@@ -215,16 +215,9 @@ parts:
               - file: serve/advanced-guides/deployment-graphs
               - file: serve/advanced-guides/direct-ingress
               - file: serve/advanced-guides/managing-java-deployments
-              - file: serve/advanced-guides/migration
               - file: serve/advanced-guides/deploy-vm
           - file: serve/architecture
           - file: serve/tutorials/index
-            sections:
-              - file: serve/tutorials/deployment-graph-patterns
-                sections:
-                  - file: serve/tutorials/deployment-graph-patterns/linear_pipeline
-                  - file: serve/tutorials/deployment-graph-patterns/branching_input
-                  - file: serve/tutorials/deployment-graph-patterns/conditional
           - file: serve/api/index
 
       - file: rllib/index
@@ -393,17 +386,5 @@ parts:
           - file: cluster/usage-stats
           - file: ray-references/glossary
 
-      - file: ray-contribute/stability
+      - file: ray-contribute/index
         title: Developer Guides
-        sections:
-          - file: ray-contribute/getting-involved
-            sections:
-              - file: ray-contribute/development
-              - file: ray-contribute/docs
-              - file: ray-contribute/writing-code-snippets
-              - file: ray-contribute/fake-autoscaler
-              - file: ray-core/examples/testing-tips
-              - file: ray-contribute/debugging.rst
-              - file: ray-contribute/profiling.rst
-          - file: ray-core/configure
-          - file: ray-contribute/whitepaper
