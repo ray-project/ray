@@ -38,15 +38,15 @@ class _CheckpointMetaClass(type):
                 "to_bytes",
                 "get_internal_representation",
             }:
-                raise _raise_migration_error(item) from exc
+                raise _get_migration_error(item) from exc
             elif item in {
                 "from_uri",
                 "to_uri",
                 "uri",
             }:
-                raise _raise_uri_error(item) from exc
+                raise _get_uri_error(item) from exc
             elif item in {"get_preprocessor", "set_preprocessor"}:
-                raise _raise_preprocessor_error(item) from exc
+                raise _get_preprocessor_error(item) from exc
 
             raise exc
 
@@ -328,8 +328,8 @@ def _list_existing_del_locks(path: str) -> List[str]:
     return list(glob.glob(f"{_get_del_lock_path(path, suffix='*')}"))
 
 
-def _raise_migration_error(name: str):
-    raise AttributeError(
+def _get_migration_error(name: str):
+    return AttributeError(
         f"The new `ray.train.Checkpoint` class does not support `{name}()`. "
         f"Instead, only directories are supported.\n\n"
         f"Example to store a dictionary in a checkpoint:\n\n"
@@ -350,8 +350,8 @@ def _raise_migration_error(name: str):
     )
 
 
-def _raise_uri_error(name: str):
-    raise AttributeError(
+def _get_uri_error(name: str):
+    return AttributeError(
         f"The new `ray.train.Checkpoint` class does not support `{name}()`. "
         f"To create a checkpoint from remote storage, create a `Checkpoint` using its "
         f"constructor instead of `from_directory`.\n"
@@ -363,11 +363,11 @@ def _raise_uri_error(name: str):
     )
 
 
-def _raise_preprocessor_error(name: str):
-    raise AttributeError(
+def _get_preprocessor_error(name: str):
+    return AttributeError(
         f"The new `ray.train.Checkpoint` class does not support `{name}()`. "
         f"To include preprocessor information in checkpoints, "
-        f"pass it as metadata in the <Framework>Trainer constructor. "
+        f"pass it as metadata in the <Framework>Trainer constructor.\n"
         f"Example: `TorchTrainer(..., metadata={{...}})`.\n"
         f"After training, access it in the checkpoint via `checkpoint.get_metadata()`. "
         f"See here: https://docs.ray.io/en/master/train/user-guides/"
