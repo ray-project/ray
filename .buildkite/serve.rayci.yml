@@ -36,3 +36,11 @@ steps:
         --test-env=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=0
     depends_on: servebuild
     job_env: servebuild
+
+  - label: ":ray-serve: serve: flaky tests"
+    instance_type: medium
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3
+    depends_on: servebuild
+    job_env: servebuild
