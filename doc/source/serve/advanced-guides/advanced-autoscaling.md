@@ -2,7 +2,7 @@
 
 # Advanced Ray Serve Autoscaling
 
-This guide goes over more advanced autoscaling parameters in [autoscaling_config](../serve/api/doc/ray.serve.config.AutoscalingConfig.rst) and an advanced model composition example.
+This guide goes over more advanced autoscaling parameters in [autoscaling_config](../api/doc/ray.serve.config.AutoscalingConfig.rst) and an advanced model composition example.
 
 ## Autoscaling concepts overview
 
