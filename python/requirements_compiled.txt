@@ -28,7 +28,7 @@ applicationinsights==0.11.10
 argcomplete==1.12.3
 argon2-cffi==23.1.0
 argon2-cffi-bindings==21.2.0
-array-record==0.4.1
+array-record==0.4.0
 arrow==1.2.3
 asttokens==2.4.0
 astunparse==1.6.3
@@ -69,6 +69,7 @@ boto3==1.26.76 ; python_version >= "3.8"
 botocore==1.29.76
 botorch==0.8.5
 bracex==2.4
+cached-property==1.5.2
 cachetools==5.3.1
 catboost==1.2.1
 certifi==2023.7.22
@@ -124,7 +125,7 @@ ecdsa==0.18.0
 email-validator==2.0.0.post2
 entrypoints==0.4
 et-xmlfile==1.1.0
-etils==1.4.1
+etils==1.3.0
 evaluate==0.4.0
 everett==3.2.0
 exceptiongroup==1.1.3
@@ -206,19 +207,19 @@ imageio==2.31.1
 imageio-ffmpeg==0.4.5
 imagesize==1.4.1
 importlib-metadata==4.10.0
-importlib-resources==6.0.1
+importlib-resources==5.13.0
 iniconfig==2.0.0
 ipykernel==6.25.2
-ipython==8.15.0
+ipython==8.12.2
 ipython-genutils==0.2.0
 ipywidgets==7.8.0
 isodate==0.6.1
 isoduration==20.11.0
 isort==5.10.1
 itsdangerous==2.1.2
-jax==0.4.14
+jax==0.4.13
 jax-jumpy==1.0.0
-jaxlib==0.4.14
+jaxlib==0.4.13
 jedi==0.19.0
 jinja2==3.0.3
 jmespath==1.0.1
@@ -308,13 +309,13 @@ nevergrad==0.4.3.post7
 ninja==1.11.1
 notebook==6.5.5
 notebook-shim==0.2.3
-nsx-policy-python-sdk @ file://localhost//tmp/pip-resolve-u1_j3rka/vsphere-automation-sdk_c73305eb81364cd194dcda5b7bac8e1b/lib/nsx-policy-python-sdk/nsx_policy_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
-nsx-python-sdk @ file://localhost//tmp/pip-resolve-u1_j3rka/vsphere-automation-sdk_c73305eb81364cd194dcda5b7bac8e1b/lib/nsx-python-sdk/nsx_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
-nsx-vmc-aws-integration-python-sdk @ file://localhost//tmp/pip-resolve-u1_j3rka/vsphere-automation-sdk_c73305eb81364cd194dcda5b7bac8e1b/lib/nsx-vmc-aws-integration-python-sdk/nsx_vmc_aws_integration_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
-nsx-vmc-policy-python-sdk @ file://localhost//tmp/pip-resolve-u1_j3rka/vsphere-automation-sdk_c73305eb81364cd194dcda5b7bac8e1b/lib/nsx-vmc-policy-python-sdk/nsx_vmc_policy_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
+nsx-policy-python-sdk @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/nsx-policy-python-sdk/nsx_policy_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
+nsx-python-sdk @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/nsx-python-sdk/nsx_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
+nsx-vmc-aws-integration-python-sdk @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/nsx-vmc-aws-integration-python-sdk/nsx_vmc_aws_integration_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
+nsx-vmc-policy-python-sdk @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/nsx-vmc-policy-python-sdk/nsx_vmc_policy_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
 numba==0.56.4
 numexpr==2.8.4
-numpy==1.23.5 ; python_version >= "3.9"
+numpy==1.23.5 ; python_version < "3.9"
 nvidia-ml-py==12.535.108
 oauth2client==4.1.3
 oauthlib==3.2.2
@@ -338,7 +339,7 @@ opentelemetry-semantic-conventions==0.20b0
 opt-einsum==3.3.0
 optax==0.1.7
 optuna==3.2.0
-orbax-checkpoint==0.3.5
+orbax-checkpoint==0.2.3
 orjson==3.9.5
 packaging==21.3
 pandas==1.5.3
@@ -360,6 +361,7 @@ pexpect==4.8.0
 pickleshare==0.7.5
 pillow==9.2.0 ; platform_system != "Windows"
 pkginfo==1.9.6
+pkgutil-resolve-name==1.3.10
 platformdirs==3.10.0
 plotly==5.16.1
 pluggy==1.3.0
@@ -462,7 +464,7 @@ sarif-om==1.0.4
 scikit-image==0.19.3 ; python_version < "3.11"
 scikit-learn==1.0.2 ; python_version < "3.11"
 scikit-optimize==0.9.0 ; python_version < "3.11"
-scipy==1.11.2 ; python_version < "3.11"
+scipy==1.10.1 ; python_version < "3.11"
 segment-analytics-python==2.2.0
 semantic-version==2.10.0
 semgrep==1.32.0
@@ -518,7 +520,7 @@ testfixtures==7.0.0
 tf-slim==1.1.0
 tf2onnx==1.13.0 ; sys_platform != "darwin" or platform_machine != "arm64"
 threadpoolctl==3.1.0
-tifffile==2023.8.30
+tifffile==2023.7.10
 timm==0.9.2
 tinycss2==1.2.1
 tinyscaler==1.2.6
@@ -553,12 +555,12 @@ uritemplate==4.1.1
 urllib3==1.26.16
 uvicorn==0.23.2
 uvloop==0.17.0
-vapi-common-client @ file://localhost//tmp/pip-resolve-u1_j3rka/vsphere-automation-sdk_c73305eb81364cd194dcda5b7bac8e1b/lib/vapi-common-client/vapi_common_client-2.40.0-py2.py3-none-any.whl
-vapi-runtime @ file://localhost//tmp/pip-resolve-u1_j3rka/vsphere-automation-sdk_c73305eb81364cd194dcda5b7bac8e1b/lib/vapi-runtime/vapi_runtime-2.40.0-py2.py3-none-any.whl
-vcenter-bindings @ file://localhost//tmp/pip-resolve-u1_j3rka/vsphere-automation-sdk_c73305eb81364cd194dcda5b7bac8e1b/lib/vcenter-bindings/vcenter_bindings-4.1.0-py2.py3-none-any.whl
+vapi-common-client @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/vapi-common-client/vapi_common_client-2.40.0-py2.py3-none-any.whl
+vapi-runtime @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/vapi-runtime/vapi_runtime-2.40.0-py2.py3-none-any.whl
+vcenter-bindings @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/vcenter-bindings/vcenter_bindings-4.1.0-py2.py3-none-any.whl
 virtualenv==20.21.0
-vmc-client-bindings @ file://localhost//tmp/pip-resolve-u1_j3rka/vsphere-automation-sdk_c73305eb81364cd194dcda5b7bac8e1b/lib/vmc-client-bindings/vmc_client_bindings-1.62.0-py2.py3-none-any.whl
-vmc-draas-client-bindings @ file://localhost//tmp/pip-resolve-u1_j3rka/vsphere-automation-sdk_c73305eb81364cd194dcda5b7bac8e1b/lib/vmc-draas-client-bindings/vmc_draas_client_bindings-1.21.0-py2.py3-none-any.whl
+vmc-client-bindings @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/vmc-client-bindings/vmc_client_bindings-1.62.0-py2.py3-none-any.whl
+vmc-draas-client-bindings @ file://localhost//tmp/pip-resolve-gmu1bllt/vsphere-automation-sdk_2e7a783fd6ad48b3bf691a02c26110ef/lib/vmc-draas-client-bindings/vmc_draas_client_bindings-1.21.0-py2.py3-none-any.whl
 vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0
 wandb==0.13.4
 watchfiles==0.19.0
