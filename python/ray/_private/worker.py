@@ -426,7 +426,8 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) environment variables.
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
+        # environment variables.
         self.original_gpu_and_accelerator_runtime_ids = (
             ray._private.utils.get_gpu_and_accelerator_runtime_ids()
         )
@@ -861,9 +862,9 @@ class Worker:
                     assigned_ids.add(resource_id)
 
         # If the user had already set the environment variables
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) then respect that
-        # in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
-        # NEURON_RT_VISIBLE_CORES, ..) should be returned.
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) then
+        # respect that in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
+        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
         if (
             self.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
             is not None
@@ -1301,9 +1302,7 @@ def init(
     )
     _redis_max_memory: Optional[int] = kwargs.pop("_redis_max_memory", None)
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
-    _node_ip_address: str = kwargs.pop(
-        "_node_ip_address", ray_constants.NODE_DEFAULT_IP
-    )
+    _node_ip_address: str = kwargs.pop("_node_ip_address", None)
     _driver_object_store_memory: Optional[int] = kwargs.pop(
         "_driver_object_store_memory", None
     )
@@ -1458,10 +1457,6 @@ def init(
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
 
-    if _node_ip_address is not None:
-        node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
-    raylet_ip_address = node_ip_address
-
     if local_mode:
         driver_mode = LOCAL_MODE
         warnings.warn(
@@ -1506,8 +1501,7 @@ def init(
 
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
+            node_ip_address=_node_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
             redirect_output=None,
@@ -1590,8 +1584,7 @@ def init(
 
         # In this case, we only need to connect the node.
         ray_params = ray._private.parameter.RayParams(
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
+            node_ip_address=_node_ip_address,
             gcs_address=gcs_address,
             redis_address=redis_address,
             redis_password=_redis_password,
@@ -2837,30 +2830,61 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 @PublicAPI
 @client_mode_hook
-def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True):
-    """Cancels a task according to the following conditions.
+def cancel(
+    object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True
+) -> None:
+    """Cancels a task.
 
-    If the specified task is pending execution, it will not be executed. If
-    the task is currently executing, the behavior depends on the ``force``
-    flag. When ``force=False``, a KeyboardInterrupt will be raised in Python
-    and when ``force=True``, the executing task will immediately exit.
-    If the task is already finished, nothing will happen.
+    Cancel API has a different behavior depending on if it is a remote function
+    (Task) or a remote Actor method (Actor Task).
 
-    Only non-actor tasks can be canceled. Canceled tasks will not be
-    retried (max_retries will not be respected).
+    Task:
+        If the specified Task is pending execution, it is cancelled and not
+        executed. If the Task is currently executing, the behavior depends
+        on the `force` flag. When `force=False`, a KeyboardInterrupt is
+        raised in Python and when `force=True`, the executing Task
+        immediately exits. If the Task is already finished, nothing happens.
 
-    Calling ray.get on a canceled task will raise a TaskCancelledError or a
-    WorkerCrashedError if ``force=True``.
+        Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
+
+        Calling ray.get on a cancelled Task raises a TaskCancelledError
+        if the Task has been scheduled or interrupted.
+        It raises a WorkerCrashedError if `force=True`.
+
+        If `recursive=True`, all the child Tasks and Actor Tasks
+        are cancelled. If `force=True` and `recursive=True`, `force=True`
+        is ignored for child Actor Tasks.
+
+    Actor Task:
+        If the specified Task is pending execution, it is cancelled and not
+        executed. If the Task is currently executing, the behavior depends
+        on the execution model of an Actor. If it is a regular Actor
+        or a threaded Actor, the execution isn't cancelled.
+        Actor Tasks cannot be interrupted because Actors have
+        states. If it is an async Actor, Ray cancels a `asyncio.Task`.
+        The semantic of cancellation is equivalent to asyncio's cancellation.
+        https://docs.python.org/3/library/asyncio-task.html#task-cancellation
+        If the Task has finished, nothing happens.
+
+        Only `force=False` is allowed for an Actor Task. Otherwise, it raises
+        `ValueError`. Use `ray.kill(actor)` instead to kill an Actor.
+
+        Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
+
+        Calling ray.get on a cancelled Task raises a TaskCancelledError
+        if the Task has been scheduled or interrupted. Also note that
+        only async actor tasks can be interrupted.
+
+        If `recursive=True`, all the child Tasks and actor Tasks
+        are cancelled.
 
     Args:
-        object_ref: ObjectRef returned by the task
-            that should be canceled.
-        force: Whether to force-kill a running task by killing
-            the worker that is running the task.
-        recursive: Whether to try to cancel tasks submitted by the
-            task specified.
-    Raises:
-        TypeError: This is also raised for actor tasks.
+        object_ref: ObjectRef returned by the Task
+            that should be cancelled.
+        force: Whether to force-kill a running Task by killing
+            the worker that is running the Task.
+        recursive: Whether to try to cancel Tasks submitted by the
+            Task specified.
     """
     worker = ray._private.worker.global_worker
     worker.check_connected()

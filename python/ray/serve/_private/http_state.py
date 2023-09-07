@@ -193,7 +193,8 @@ class HTTPProxyState:
         HEALTHY -> DRAINING or UNHEALTHY
         DRAINING -> HEALTHY or UNHEALTHY or DRAINED
 
-        1) When the HTTP proxy is already shutting down, do nothing.
+        1) When the HTTP proxy is already shutting down, in DRAINED or UNHEALTHY status,
+        do nothing.
         2) When the HTTP proxy is starting, check ready object reference. If ready
         object reference returns a successful call set status to HEALTHY. If the
         call to ready() on the HTTP Proxy actor has any exception or timeout, increment
@@ -212,7 +213,11 @@ class HTTPProxyState:
         5) Transition the status between HEALTHY and DRAINING.
         6) When the HTTP proxy is draining, check whether it's drained or not.
         """
-        if self._shutting_down:
+        if (
+            self._shutting_down
+            or self._status == ProxyStatus.DRAINED
+            or self._status == ProxyStatus.UNHEALTHY
+        ):
             return
 
         if self._status == ProxyStatus.STARTING:

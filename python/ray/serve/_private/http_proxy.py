@@ -26,7 +26,6 @@ from ray.serve._private.usage import ServeUsageTag
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator
 
-from ray import serve
 from ray.serve.handle import (
     DeploymentHandle,
     _DeploymentResponseBase,
@@ -169,10 +168,14 @@ class GenericProxy(ABC):
 
         self._node_id = node_id
 
-        # Set the controller name so that serve will connect to the
+        # Set the controller name so that serve connects to the
         # controller instance this proxy is running in.
         ray.serve.context._set_internal_replica_context(
-            None, None, controller_name, None, None
+            app_name=None,
+            deployment=None,
+            replica_tag=None,
+            servable_object=None,
+            controller_name=controller_name,
         )
 
         # Used only for displaying the route table.
@@ -188,7 +191,11 @@ class GenericProxy(ABC):
             )
 
         def get_handle(deployment_name, app_name):
-            return serve.context.get_global_client().get_handle(
+            # Delayed import due to circular dependency.
+            # TODO(edoakes): use `get_deployment_handle` public API instead.
+            from ray.serve.context import _get_global_client
+
+            return _get_global_client().get_handle(
                 deployment_name,
                 app_name,
                 sync=False,
@@ -693,6 +700,14 @@ class gRPCProxy(GenericProxy):
             response=response_proto.SerializeToString(),
         )
 
+    def _set_internal_error_response(
+        self, proxy_request: ProxyRequest, error: Exception
+    ) -> ProxyResponse:
+        status_code = grpc.StatusCode.INTERNAL
+        proxy_request.send_status_code(status_code=status_code)
+        proxy_request.send_details(message=str(error))
+        return ProxyResponse(status_code=str(status_code))
+
     def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
@@ -778,7 +793,7 @@ class gRPCProxy(GenericProxy):
             "multiplexed_model_id": multiplexed_model_id,
         }
         ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(**request_context_info)
+            ray.serve.context._RequestContext(**request_context_info)
         )
         proxy_request.send_request_id(request_id=request_id)
         return handle, request_id
@@ -810,6 +825,9 @@ class gRPCProxy(GenericProxy):
                 yield user_response_bytes
 
             except StopAsyncIteration:
+                break
+            except Exception as e:
+                self._set_internal_error_response(proxy_request, e)
                 break
 
     async def _consume_generator_stream(
@@ -898,7 +916,7 @@ class gRPCProxy(GenericProxy):
 
         except Exception as e:
             logger.exception(e)
-            return ProxyResponse(status_code=str(grpc.StatusCode.INTERNAL))
+            return self._set_internal_error_response(proxy_request, e)
 
 
 class HTTPProxy(GenericProxy):
@@ -1153,6 +1171,7 @@ class HTTPProxy(GenericProxy):
         response_done = False
         response_started = False
         expecting_trailers = False
+        is_websocket_connection = False
         while True:
             try:
                 next_obj_ref_task = asyncio.ensure_future(
@@ -1199,7 +1218,11 @@ class HTTPProxy(GenericProxy):
                         "during execution, cancelling request."
                     )
                     next_obj_ref_task.cancel()
-                    ray.cancel(obj_ref_generator)
+                    if not is_websocket_connection:
+                        # Websocket code explicitly handles client disconnects,
+                        # so let the ASGI disconnect message propagate instead of
+                        # cancelling the handler.
+                        ray.cancel(obj_ref_generator)
                     return DISCONNECT_ERROR_CODE
 
                 obj_ref = next_obj_ref_task.result()
@@ -1213,6 +1236,8 @@ class HTTPProxy(GenericProxy):
                         # field. Other response types (e.g., WebSockets) may not.
                         status_code = str(asgi_message["status"])
                         expecting_trailers = asgi_message.get("trailers", False)
+                    elif asgi_message["type"] == "websocket.connect":
+                        is_websocket_connection = True
                     elif (
                         asgi_message["type"] == "http.response.body"
                         and not asgi_message.get("more_body", False)
@@ -1266,7 +1291,7 @@ class HTTPProxy(GenericProxy):
                 # "x-request-id" has higher priority than "RAY_SERVE_REQUEST_ID".
                 request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(**request_context_info)
+            ray.serve.context._RequestContext(**request_context_info)
         )
         return handle, request_context_info["request_id"]
 

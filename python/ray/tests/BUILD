@@ -141,7 +141,6 @@ py_test_module_list(
     "test_multinode_failures_2.py",
     "test_node_manager.py",
     "test_object_assign_owner.py",
-    "test_placement_group.py",
     "test_placement_group_2.py",
     "test_placement_group_4.py",
     "test_placement_group_failover.py",
@@ -224,6 +223,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
+    "test_gcs_ha_e2e_2.py",
     "test_memory_pressure.py",
     "test_node_labels.py",
   ],
@@ -317,6 +317,7 @@ py_test_module_list(
     "test_reference_counting_2.py",
     "test_exit_observability.py",
     "test_usage_stats.py",
+    "test_placement_group.py",
     "test_placement_group_3.py",
     "test_placement_group_5.py",
     "test_cancel.py",

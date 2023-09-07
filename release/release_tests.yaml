@@ -1037,21 +1037,40 @@
   team: ml
   cluster:
     byod:
-      type: gpu
+      type: cu121
+      # This needs to be in sync with requirements under go/llm-forge.
+      pip:
+        - torch==2.0.0
+        - torchvision==0.15.1
+        - torchaudio==2.0.1
+        - deepspeed==0.10.0
+        - fairscale==0.4.13
+        - datasets==2.14.4
+        - accelerate==0.21.0
+        - evaluate==0.4.0
+        - bitsandbytes==0.41.1
+        - wandb==0.15.8
+        - pytorch-lightning==2.0.6
+        - protobuf<3.21.0
+        - torchmetrics==1.0.3
+        - lm_eval==0.3.0
+        - tiktoken==0.1.2
+        - sentencepiece==0.1.99
+        - urllib3<1.27
+        - transformers @ git+https://github.com/huggingface/transformers@d0c1aebea467af499331234e7b285a6bf91ea073
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
 
   run:
-    timeout: 600
+    timeout: 1000
     script: chmod +x ./run_llama_ft.sh && RAY_AIR_NEW_PERSISTENCE_MODE=1 ./run_llama_ft.sh --size=7b --as-test
 
   variations:
       - __suffix__: aws
-      # TODO (Kourosh): Enable once GCE is ready
-      # - __suffix__: gce
-      #   env: gce
-      #   frequency: manual
-      #   cluster:
-      #     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
+      - __suffix__: gce
+        env: gce
+        frequency: manual
+        cluster:
+          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b.yaml
 
 
 
@@ -4841,6 +4860,8 @@
 
   frequency: nightly
   team: core
+  # https://github.com/ray-project/ray/issues/39165
+  stable: false
 
   cluster:
     byod:
@@ -5902,30 +5923,6 @@
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
-- name: read_preprocessed_images_comparison_microbenchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    timeout: 1800
-    script: bash run_preprocessed_image_loader_microbenchmark.sh
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
 - name: read_images_train_4_gpu
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -5936,7 +5933,7 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
+    cluster_compute: multi_node_train_4_workers.yaml
 
   run:
     timeout: 1800
