@@ -188,9 +188,10 @@ class _ParquetDatasourceReader(Reader):
         import pyarrow as pa
         import pyarrow.parquet as pq
 
+        import ray
+
         self._local_scheduling = None
         if local_uri:
-            import ray
             from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
             self._local_scheduling = NodeAffinitySchedulingStrategy(
@@ -274,6 +275,7 @@ class _ParquetDatasourceReader(Reader):
         self._reader_args = reader_args
         self._columns = columns
         self._schema = schema
+        self._schema_object_ref = ray.put(schema)
         self._encoding_ratio = self._estimate_files_encoding_ratio()
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
@@ -330,11 +332,11 @@ class _ParquetDatasourceReader(Reader):
                 )
             else:
                 default_read_batch_size = PARQUET_READER_ROW_BATCH_SIZE
-            block_udf, reader_args, columns, schema = (
+            block_udf, reader_args, columns, schema_object_ref = (
                 self._block_udf,
                 self._reader_args,
                 self._columns,
-                self._schema,
+                self._schema_object_ref,
             )
             read_tasks.append(
                 ReadTask(
@@ -343,7 +345,7 @@ class _ParquetDatasourceReader(Reader):
                         reader_args,
                         default_read_batch_size,
                         columns,
-                        schema,
+                        schema_object_ref,
                         p,
                     ),
                     meta,
@@ -409,7 +411,7 @@ def _read_pieces(
     reader_args,
     default_read_batch_size,
     columns,
-    schema,
+    schema_object_ref,
     serialized_pieces: List[_SerializedPiece],
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
@@ -426,9 +428,12 @@ def _read_pieces(
     import pyarrow as pa
     from pyarrow.dataset import _get_partition_keys
 
+    import ray
+
     logger.debug(f"Reading {len(pieces)} parquet pieces")
     use_threads = reader_args.pop("use_threads", False)
     batch_size = reader_args.pop("batch_size", default_read_batch_size)
+    schema = ray.get(schema_object_ref)
     for piece in pieces:
         part = _get_partition_keys(piece.partition_expression)
         batches = piece.to_batches(
