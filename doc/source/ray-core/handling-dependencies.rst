@@ -509,7 +509,7 @@ You can set an environment variable `RAY_OVERRIDE_JOB_RUNTIME_ENV=1`
 to avoid raising an exception upon a conflict. In this case, the runtime environments
 are inherited in the same way as :ref:`Driver and Task and Actor both specify
 runtime environments <runtime-environments-inheritance>`, where ``ray job submit``
-is a parent and ``ray.init`` is a driver.
+is a parent and ``ray.init`` is a child.
 
 .. _runtime-environments-inheritance:
 
