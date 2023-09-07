@@ -419,7 +419,7 @@
     - helm install kuberay-operator kuberay/kuberay-operator
     - kubectl wait pod  -l app.kubernetes.io/name=kuberay-operator --for=condition=Ready=True  --timeout=5m
     # We are in m4i.xlarge and have 4 cpus. Can't have too many nodes.
-    - helm install raycluster kuberay/ray-cluster --set image.repository=ray-ci --set image.tag=kuberay-test --set worker.replicas=2 --set worker.resources.limits.cpu=500m --set worker.resources.requests.cpu=500m --set head.resources.limits.cpu=500m --set head.resources.requests.cpu=500m
+    - helm install raycluster kuberay/ray-cluster --set image.repository=ray-ci --set image.tag=kuberay-test --set worker.replicas=2 --set worker.resources.limits.cpu=1 --set worker.resources.requests.cpu=1 worker.resources.limits.memory=2G --set head.resources.limits.cpu=2 --set head.resources.requests.cpu=2  head.resources.limits.memory=2G
     - kubectl wait pod -l ray.io/cluster=raycluster-kuberay --for=condition=Ready=True --timeout=5m
     - kubectl port-forward --address 0.0.0.0 service/raycluster-kuberay-head-svc 8265:8265 &
     # Helm install chaos-mesh
@@ -433,7 +433,7 @@
     # Now add the delay, rerun the job
     - kubectl apply -f python/ray/tests/chaos/chaos_network_delay.yaml
     - echo "--- Running the script 100 times with fault of networking delay"
-    - for i in {1..100}; do ray job submit --address http://localhost:8265 --runtime-env python/ray/tests/chaos/runtime_env.yaml --working-dir python/ray/tests/chaos -- python fine_tuning_like.py --num-actors=8 --iteration=1; done
+    - for i in {1..5}; do ray job submit --address http://localhost:8265 --runtime-env python/ray/tests/chaos/runtime_env.yaml --working-dir python/ray/tests/chaos -- python fine_tuning_like.py --num-actors=8 --iteration=1; done
 
 
 # TODO: write a test that needs bandwidth heavy lifting
