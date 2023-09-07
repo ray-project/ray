@@ -18,7 +18,6 @@ from typing import (
     Tuple,
     Type,
     Union,
-    Literal,
 )
 import uuid
 
@@ -1732,7 +1731,7 @@ class HTTPProxyActor:
             return self._uvicorn_server.config.timeout_keep_alive
 
 
-def _determine_target_loop() -> Literal["uvloop", "asyncio"]:
+def _determine_target_loop():
     """We determine target loop based on whether RAY_SERVE_DEBUG_MODE is enabled:
 
     - RAY_SERVE_DEBUG_MODE=0 (default): we use "uvloop" (Cython) providing
