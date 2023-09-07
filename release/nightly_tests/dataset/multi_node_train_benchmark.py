@@ -68,7 +68,7 @@ def parse_args():
     parser.add_argument(
         "--read-task-cpus",
         default=1,
-        type=int,
+        type=float,
         help="Number of CPUs specified for read task",
     )
     parser.add_argument(
@@ -129,7 +129,7 @@ def parse_args():
     parser.add_argument(
         "--split-input",
         action="store_true",
-        default=True,
+        default=False,
         help="Whether to split input dataset.",
     )
     args = parser.parse_args()
@@ -196,9 +196,9 @@ def decode_image_crop_and_flip(row):
 def train_loop_per_worker():
     worker_rank = train.get_context().get_world_rank()
     if args.split_input:
-        it = train.get_dataset_shard("train")
-    else:
         it = train.get_dataset_shard(f"train_{worker_rank}")
+    else:
+        it = train.get_dataset_shard("train")
     device = train.torch.get_device()
 
     batch_iter = None
@@ -380,7 +380,7 @@ def benchmark_code(
         sum([cache_output_ds, cache_input_ds]) <= 1
     ), "Can only test one caching variant at a time"
 
-    if args.use_torch or not args.split_input:
+    if args.use_torch or args.split_input:
         split_input_files_per_worker(args)
 
     ray_datasets_dict = {}
@@ -389,16 +389,16 @@ def benchmark_code(
         # Otherwise, create N datasets for N training workers,
         # each dataset reads the corresponding portion of input data.
         num_datasets = 1
-        if not args.split_input:
+        if args.split_input:
             num_datasets = args.num_workers
 
         for i in range(num_datasets):
             if args.split_input:
-                input_paths = args.data_root
-                ds_name = "train"
-            else:
                 input_paths = INPUT_FILES_PER_WORKER[i]
                 ds_name = f"train_{i}"
+            else:
+                input_paths = args.data_root
+                ds_name = "train"
 
             # 1) Read in data with read_images() / read_parquet()
             if args.file_type == "image":
@@ -442,7 +442,7 @@ def benchmark_code(
                 use_gpu=args.use_gpu,
             ),
             dataset_config=ray.train.DataConfig(
-                datasets_to_split="all" if args.split_input else [],
+                datasets_to_split=[] if args.split_input else "all",
                 execution_options=options,
             ),
         )
