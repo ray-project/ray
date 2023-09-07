@@ -725,8 +725,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         k=min(2, len(candidate_replica_ids)),
                     )
                     yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
+                    logger.warning(f"In backoff! Replicas chosen were: {chosen_ids}")
+                else:
+                    logger.warning("In backoff! No replicas were chosen!")
 
-                logger.warning(f"In backoff! Replicas chosen were: {chosen_ids}")
                 if not entered_backoff:
                     entered_backoff = True
                     self.num_scheduling_tasks_in_backoff += 1
