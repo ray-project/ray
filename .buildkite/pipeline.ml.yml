@@ -59,7 +59,7 @@
   instance_size: medium
   commands:
     - if [[ "$BUILDKITE_PIPELINE_ID" != "0183465b-c6fb-479b-8577-4cfd743b545d" ]]; then exit 0; fi
-    - cleanup() { ./ci/build/upload_build_info.sh }; trap cleanup EXIT
+    - trap ./ci/build/upload_build_info.sh EXIT
     - TRAIN_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - $(python ci/env/setup_credentials.py)
