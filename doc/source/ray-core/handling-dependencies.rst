@@ -460,6 +460,7 @@ When running an entrypoint script (Driver), the runtime environment can be speci
 - If the runtime environment is specified by ``ray.init(runtime_env=...)``, the runtime environments are applied to all the tasks and actors, but not the entrypoint script (Driver) itself.
 
 Since ``ray job submit`` submits a Driver (that calls ``ray.init``), sometimes runtime environments are specified by both of them. When both the Ray Job and Driver specify runtime environments, their runtime environments are merged if there's no conflict.
+It means the driver script uses the runtime environment specified by `ray job submit`, and all the tasks and actors are going to use the merged runtime environment.
 Ray raises an exception if the runtime environments conflict.
 
 * The ``runtime_env["env_vars"]`` of `ray job submit --runtime-env=...` is merged with the ``runtime_env["env_vars"]`` of `ray.init(runtime_env=...)`.
