@@ -111,9 +111,8 @@ class RayClusterOnSpark:
         try:
             ray.init(address=self.address)
 
-            if (
-                self.ray_dashboard_port is not None and
-                is_port_in_use(self.address.split(":")[0], self.ray_dashboard_port)
+            if self.ray_dashboard_port is not None and is_port_in_use(
+                self.address.split(":")[0], self.ray_dashboard_port
             ):
                 self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
             else:
