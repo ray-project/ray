@@ -17,6 +17,7 @@ def global_gc():
     worker = ray._private.worker.global_worker
     worker.core_worker.global_gc()
 
+
 def get_state_from_address(address=None):
     address = services.canonicalize_bootstrap_address_or_die(address)
 
@@ -46,6 +47,7 @@ def memory_summary(
     return memory_summary(
         state, group_by, sort_by, line_wrap, units, num_entries
     ) + store_stats_summary(reply)
+
 
 def get_memory_info_reply(state, node_manager_address=None, node_manager_port=None):
     """Returns global memory info."""
