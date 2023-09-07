@@ -1,7 +1,7 @@
 # The build output should clearly not be checked in
 *test-output.xml
 /bazel-*
-/python/ray/core
+/python/ray/core/**/*
 /python/ray/pickle5_files/
 /python/ray/thirdparty_files/
 /python/ray/_private/runtime_env/agent/thirdparty_files/
@@ -98,6 +98,10 @@ python/ray/_raylet.pyd
 *_pb2.py
 *.pb.h
 *.pb.cc
+!/python/ray/core/generated/
+!/python/ray/core/generated/*.py
+!/python/ray/serve/generated/
+!/python/ray/serve/generated/*.py
 
 # Ray cluster configuration
 scripts/nodes.txt

@@ -441,7 +441,7 @@ class Publisher : public PublisherInterface {
   ///
 
   int UnregisterSubscriberInternal(const SubscriberID &subscriber_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Periodic runner to invoke CheckDeadSubscribers.
   PeriodicalRunner *periodical_runner_;
@@ -458,16 +458,17 @@ class Publisher : public PublisherInterface {
 
   /// Mapping of node id -> subscribers.
   absl::flat_hash_map<SubscriberID, std::unique_ptr<pub_internal::SubscriberState>>
-      subscribers_ GUARDED_BY(mutex_);
+      subscribers_ ABSL_GUARDED_BY(mutex_);
 
   /// Index that stores the mapping of messages <-> subscribers.
   absl::flat_hash_map<rpc::ChannelType, pub_internal::SubscriptionIndex>
-      subscription_index_map_ GUARDED_BY(mutex_);
+      subscription_index_map_ ABSL_GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.
   int publish_batch_size_;
 
-  absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_
+      ABSL_GUARDED_BY(mutex_);
 
   /// The monotonically increasing sequence_id for this publisher.
   /// The publisher will add this sequence_id to every message to be published.
@@ -480,7 +481,7 @@ class Publisher : public PublisherInterface {
   ///  - the subscriber doesn't expect the sequences it receives are contiguous.
   ///    this is due the fact a subscriber can only subscribe a subset
   ///    of a channel.
-  int64_t next_sequence_id_ GUARDED_BY(mutex_) = 0;
+  int64_t next_sequence_id_ ABSL_GUARDED_BY(mutex_) = 0;
 
   /// A unique identifier identifies the publisher_id.
   /// TODO(scv119) add docs about the semantics.
