@@ -85,7 +85,7 @@ applications:
         message: ''
 ```
 
-The language was updated! Now the returned text is in German instead of French.
+The language has updated! Now the returned text is in German instead of French.
 ```{literalinclude} ../doc_code/production_guide/text_ml.py
 :language: python
 :start-after: __start_second_client__
