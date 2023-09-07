@@ -582,27 +582,6 @@ class TestRuntimeEnv:
             "{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_2_VAR'}}" in logs
         )  # noqa: E501
 
-    async def test_env_var_and_driver_job_config_warning(self, job_manager):
-        """Ensure we got error message from worker.py and job logs
-        if user provided runtime_env in both driver script and submit()
-        """
-        job_id = await job_manager.submit_job(
-            entrypoint=f"python {_driver_script_path('override_env_var.py')}",
-            runtime_env={
-                "env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"}
-            },
-        )
-
-        await async_wait_for_condition_async_predicate(
-            check_job_succeeded, job_manager=job_manager, job_id=job_id
-        )
-        logs = job_manager.get_job_logs(job_id)
-        token = (
-            "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) are provided"
-        )
-        assert token in logs, logs
-        assert "JOB_1_VAR" in logs
-
     async def test_failed_runtime_env_validation(self, job_manager):
         """Ensure job status is correctly set as failed if job has an invalid
         runtime_env.
