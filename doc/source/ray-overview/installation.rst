@@ -28,7 +28,7 @@ and macOS by choosing the option that best matches your use case.
           # Model Serving
           pip install -U "ray[serve]"
 
-          # For reinforcement learning support, install RLlib instead.
+          # Reinforcement Learning
           pip install -U "ray[rllib]"
 
         **For general Python applications**
