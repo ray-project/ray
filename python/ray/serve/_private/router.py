@@ -451,7 +451,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     @property
     def max_num_scheduling_tasks(self) -> int:
         """Max number of scheduling tasks to run at any time."""
-        return 2 * len(self._replicas)
+        return min(100, 2 * len(self._replicas))
 
     @property
     def target_num_scheduling_tasks(self) -> int:
