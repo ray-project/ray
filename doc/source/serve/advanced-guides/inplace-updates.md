@@ -8,11 +8,15 @@ You can update your Serve applications once they're in production by updating th
 
 ## Lightweight Config Updates
 
-Lightweight config updates modify running deployment replicas without tearing them down and restarting them, so there's less downtime as the deployments update. For each deployment, modifying `num_replicas`, `autoscaling_config`, and/or `user_config` is considered a lightweight config update, and won't tear down the replicas for that deployment.
-
-:::{note}
-Lightweight config updates are only possible for deployments that are included as entries under `deployments` in the config file. If a deployment is not included in the config file, replicas of that deployment will be torn down and brought up again each time you redeploy with `serve deploy`.
-:::
+Lightweight config updates modify running deployment replicas without tearing them down and restarting them, so there's less downtime as the deployments update. For each deployment, modifying the following values is considered a lightweight config update, and won't tear down the replicas for that deployment:
+- `num_replicas`
+- `autoscaling_config`
+- `user_config`
+- `max_concurrent_queries`
+- `graceful_shutdown_timeout_s`
+- `graceful_shutdown_wait_loop_s`
+- `health_check_period_s`
+- `health_check_timeout_s`
 
 (serve-updating-user-config)=
 
@@ -111,12 +115,19 @@ The price has updated! The same request now returns `10` instead of `6`, reflect
 
 ## Code Updates
 
-Similarly, you can update any other setting in any deployment in the config file. If a deployment setting other than `num_replicas`, `autoscaling_config`, or `user_config` is changed, it is considered a code update, and the deployment replicas will be restarted. Note that the following modifications are all considered "changes", and will trigger tear down of replicas:
+Changing the following values in a deployment's config is considered a code update, and the deployment replicas will be restarted.
+- `ray_actor_options`
+- `placement_group_bundles`
+- `placement_group_strategy`
+
+Changing the following application-level config values is also considered a code update, and all deployments in the application will be restarted.
+- `import_path`
+- `runtime_env`
+
+Note that the following modifications are all considered "changes", and will trigger tear down of replicas:
 * changing an existing setting
 * adding an override setting that was previously not present in the config file
 * removing a setting from the config file
-
-Note also that changing `import_path` or `runtime_env` is considered a code update for all deployments, and will tear down all running deployments and restart them.
 
 :::{warning}
 Although you can update your Serve application by deploying an entirely new deployment graph using a different `import_path` and a different `runtime_env`, this is NOT recommended in production.
