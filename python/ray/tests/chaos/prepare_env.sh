@@ -21,7 +21,7 @@ echo "--Preparing k8s environment."
 ./ci/k8s/prep-helm.sh
 
 echo "--Building py38-cpu Ray image for the test."
-LINUX_WHEELS=1 ./ci/ci.sh build
+LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=py38 ./ci/ci.sh build
 pip install -q docker
 python ci/build/build-docker-images.py --py-versions py38 --device-types cpu --build-type LOCAL --build-base
 # Tag the image built in the last step. We want to be sure to distinguish the image from the real Ray nightly.
