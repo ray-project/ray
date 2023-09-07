@@ -34,16 +34,16 @@ def main():
     except Exception as e:
         print(f"Could not get Ray AIR secrets: {e}")
         sys.exit(1)
-        return
 
-    print(
-        " ".join(
-            [
-                f"--test_env={SERVICES[key]}={ray_air_secrets[key]}"
-                for key in SERVICES.keys()
-            ]
+    with open("/tmp/experiment_tracking_credentials.txt", "w") as f:
+        f.write(
+            " ".join(
+                [
+                    f"--test_env={SERVICES[key]}={ray_air_secrets[key]}"
+                    for key in SERVICES.keys()
+                ]
+            )
         )
-    )
 
 
 if __name__ == "__main__":
