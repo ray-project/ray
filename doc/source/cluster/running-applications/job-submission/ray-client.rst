@@ -83,7 +83,7 @@ To start a Ray cluster remotely, you can follow the directions in :ref:`vm-clust
 If necessary, you can modify the Ray Client server port to be other than ``10001``, by specifying ``--ray-client-server-port=...`` to the ``ray start`` :ref:`command <ray-start-doc>`.
 
 Step 2: Configure Access
-~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ensure that your local machine can access the Ray Client port on the head node.
 
