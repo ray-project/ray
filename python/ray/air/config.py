@@ -126,7 +126,7 @@ class ScalingConfig:
     def __post_init__(self):
         if self._max_cpu_fraction_per_node:
             warnings.warn(
-                "_max_cpu_fraction_per_node is deprecated and will be removed in Ray 2.8." # noqa: E501
+                "_max_cpu_fraction_per_node is deprecated and will be removed in Ray 2.8.",  # noqa: E501
                 DeprecationWarning,
             )
 
