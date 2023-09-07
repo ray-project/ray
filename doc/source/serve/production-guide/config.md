@@ -95,7 +95,7 @@ Each individual entry in the `deployments` list is optional. In the example conf
 
 We can also auto-generate this config file from the code. The `serve build` command takes an import path to your deployment graph and it creates a config file containing all the deployments and their settings from the graph. You can tweak these settings to manage your deployments in production.
 
-Using the `FruitStand` deployment graph example:
+Using [the `FruitStand` deployment graph example](serve-in-production-example):
 
 ```console
 $ ls
@@ -113,39 +113,34 @@ fruit_config.yaml
 The `fruit_config.yaml` file contains:
 
 ```yaml
+proxy_location: EveryNode
+
 http_options:
-
   host: 0.0.0.0
-
   port: 8000
+
+grpc_options:
+  port: 9000
+  grpc_servicer_functions: []
 
 applications:
 
 - name: app1
-
   route_prefix: /
-
   import_path: fruit:deployment_graph
-
   runtime_env: {}
-
   deployments:
-
   - name: MangoStand
     user_config:
       price: 3
-
   - name: OrangeStand
     user_config:
       price: 2
-
   - name: PearStand
     user_config:
       price: 4
-
   - name: FruitMarket
     num_replicas: 2
-
   - name: DAGDriver
 ```
 
