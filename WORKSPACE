@@ -64,12 +64,21 @@ pip_parse(
     requirements_lock = "//release:requirements_buildkite.txt",
 )
 
+pip_parse(
+    name = "py_deps_compile_py_proto",
+    python_interpreter_target = python39,
+    requirements_lock = "//ci/compile_py_proto:requirements_compile_py_proto.txt",
+)
+
 load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")
 load("@py_deps_ray_ci//:requirements.bzl", install_py_deps_ray_ci = "install_deps")
+load("@py_deps_compile_py_proto//:requirements.bzl", install_py_deps_compile_py_proto = "install_deps")
 
 install_py_deps_buildkite()
 
 install_py_deps_ray_ci()
+
+install_py_deps_compile_py_proto()
 
 register_toolchains("//:python_toolchain")
 
