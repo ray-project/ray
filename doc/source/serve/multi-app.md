@@ -1,7 +1,7 @@
 (serve-multi-application)=
 # Deploy Multiple Applications
 
-Ray 2.4+ supports deploying multiple independent Serve applications. This user guide walks through how to generate a multi-application config file and deploy it using the Serve CLI, and monitor your applications using the CLI and the Ray Serve dashboard.
+Serve supports deploying multiple independent Serve applications. This user guide walks through how to generate a multi-application config file and deploy it using the Serve CLI, and monitor your applications using the CLI and the Ray Serve dashboard.
 
 ## Context
 ### Background 
