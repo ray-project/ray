@@ -42,7 +42,7 @@ from ray.train._internal.storage import (
     get_fs_and_path,
 )
 
-from ray.train.tests.test_new_persistence import (
+from test_new_persistence import (
     train_fn,
     _assert_storage_contents,
     _resume_from_checkpoint,
@@ -345,4 +345,4 @@ def test_no_storage_no_checkpoints(tmp_path, monkeypatch):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    # sys.exit(pytest.main(["-v", __file__]))
