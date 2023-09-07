@@ -83,7 +83,6 @@ config_setting(
     name = "jemalloc",
     constraint_values = [
         "@platforms//os:linux",
-        "@platforms//cpu:x86_64",
     ],
     flag_values = {
         ":jemalloc_flag": "true",
@@ -2352,6 +2351,7 @@ pyx_library(
     deps = [
         "//:core_worker_lib",
         "//:global_state_accessor_lib",
+        "//:gcs_server_lib",
         "//:raylet_lib",
         "//:redis_client",
         "//:src/ray/ray_exported_symbols.lds",
