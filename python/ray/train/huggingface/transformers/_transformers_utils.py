@@ -20,6 +20,7 @@ from ray.train.huggingface.transformers.transformers_checkpoint import (
     LegacyTransformersCheckpoint,
 )
 from ray.util import PublicAPI
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +264,10 @@ class RayTrainReportCallback(TrainerCallback):
 
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        record_extra_usage_tag(TagKey.TRAIN_TRANSFORMERS_RAYTRAINREPORTCALLBACK, "1")
+
     def on_save(self, args, state, control, **kwargs):
         """Event called after a checkpoint save."""
         with TemporaryDirectory() as tmpdir:
@@ -331,4 +336,5 @@ def prepare_trainer(trainer: "Trainer") -> "Trainer":
 
     trainer.__class__ = RayTransformersTrainer
 
+    record_extra_usage_tag(TagKey.TRAIN_TRANSFORMERS_PREPARE_TRAINER, "1")
     return trainer
