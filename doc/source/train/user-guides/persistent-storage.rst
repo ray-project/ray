@@ -43,8 +43,8 @@ Use cloud storage by specifying a bucket URI as the ``storage_path``:
     trainer = TorchTrainer(
         ...,
         run_config=train.RunConfig(
-            name="experiment_name",
             storage_path="s3://bucket-name/sub-path/",
+            name="experiment_name",
         )
     )
 
@@ -68,8 +68,8 @@ Use NFS by specifying the mount path as the ``storage_path``:
     trainer = TorchTrainer(
         ...,
         run_config=train.RunConfig(
-            name="experiment_name",
             storage_path="/mnt/cluster_storage",
+            name="experiment_name",
         )
     )
 
@@ -87,19 +87,20 @@ local filesystem as the storage location for checkpoints and other artifacts.
 Results are saved to ``~/ray_results`` in a sub-directory with a unique auto-generated name by default,
 unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.train.RunConfig`.
 
+
 .. code-block:: python
 
-    from ray import tune
-    from ray.train import RunConfig
+    from ray import train
+    from ray.train.torch import TorchTrainer
 
-    tuner = tune.Tuner(
-        trainable,
-        run_config=RunConfig(
+    trainer = TorchTrainer(
+        ...,
+        run_config=train.RunConfig(
             storage_path="/tmp/custom/storage/path",
             name="experiment_name",
         )
     )
-    tuner.fit()
+
 
 In this example, all experiment results can found locally at ``/tmp/custom/storage/path/experiment_name`` for further processing.
 
