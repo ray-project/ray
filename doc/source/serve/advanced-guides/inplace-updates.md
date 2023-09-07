@@ -54,7 +54,7 @@ applications:
 ...
 ```
 
-Without stopping the Ray cluster, we can redeploy our graph using `serve deploy`:
+Without stopping the Ray cluster, we can redeploy our app using `serve deploy`:
 
 ```console
 $ serve deploy serve_config.yaml
