@@ -72,7 +72,7 @@ trainer = TorchTrainer(
     train_loop_config={
         "save_dir": os.path.join(os.environ["SHARED_STORAGE_PATH"], "mlruns")
     },
-    scaling_config=ScalingConfig(num_workers=4),
+    scaling_config=ScalingConfig(num_workers=2),
 )
 trainer.fit()
 # __end__
