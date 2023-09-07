@@ -44,9 +44,9 @@ When an HTTP or gRPC request is sent to the corresponding HTTP or gRPC proxy, th
 1. The request is received and parsed.
 2. Ray Serve looks up the correct deployment associated with the HTTP URL path or
   application name metadata. Serve places the request in a queue.
-3. For each request in a deployment's queue, an available replica is looked up using power of two choices
+3. For each request in a deployment's queue, an available replica is looked up
   and the request is sent to it. If no replicas are available (that is, more
-   than `max_concurrent_queries` requests are outstanding at each replica), the request
+  than `max_concurrent_queries` requests are outstanding at each replica), the request
   is left in the queue until a replica becomes available.
 
 Each replica maintains a queue of requests and executes requests one at a time, possibly
