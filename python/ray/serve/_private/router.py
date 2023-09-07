@@ -229,9 +229,14 @@ class ActorReplicaWrapper:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
         # change both (or introduce a branch here).
-        queue_len = await self._actor_handle.get_num_ongoing_requests.remote()
-        accepted = queue_len < self._replica_info.max_concurrent_queries
-        return queue_len, accepted
+        obj_ref = self._actor_handle.get_num_ongoing_requests.remote()
+        try:
+            queue_len = await obj_ref
+            accepted = queue_len < self._replica_info.max_concurrent_queries
+            return queue_len, accepted
+        except asyncio.CancelledError:
+            ray.cancel(obj_ref)
+            raise
 
     def _send_query_java(self, query: Query) -> ray.ObjectRef:
         """Send the query to a Java replica.
@@ -350,6 +355,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     # received within this deadline, the replica will not be considered.
     queue_len_response_deadline_s = 0.1
 
+    # Hard limit on the maximum number of scheduling tasks to run. Having too many of
+    # these tasks can cause stability issue due to too much load on the local process
+    # and too requests in flight to fetch replicas' queue lengths.
+    max_num_scheduling_tasks_hard_limit = 50
+
     def __init__(
         self,
         event_loop: asyncio.AbstractEventLoop,
@@ -415,7 +425,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     @property
     def max_num_scheduling_tasks(self) -> int:
         """Max number of scheduling tasks to run at any time."""
-        return 2 * len(self._replicas)
+        return min(self.max_num_scheduling_tasks_hard_limit, 2 * len(self._replicas))
 
     @property
     def target_num_scheduling_tasks(self) -> int:
