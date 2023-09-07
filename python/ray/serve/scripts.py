@@ -183,7 +183,7 @@ def cli():
     required=False,
     multiple=True,
     help="Servicer function for adding the method handler to the gRPC server. "
-    "Defaults to empty list and no gRPC server will be started.",
+    "Defaults to an empty list and no gRPC server is started.",
 )
 def start(
     address,
@@ -776,7 +776,7 @@ def shutdown(address: str, yes: bool):
     required=False,
     multiple=True,
     help="Servicer function for adding the method handler to the gRPC server. "
-    "Defaults to empty list and no gRPC server will be started.",
+    "Defaults to an empty list and no gRPC server is started.",
 )
 def build(
     import_paths: Tuple[str],

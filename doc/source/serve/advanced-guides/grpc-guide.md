@@ -48,15 +48,15 @@ is running so that Serve can import them when starting the proxies.
 
 (start-serve-with-grpc-proxy)=
 ## Start Serve with gRPC enabled
-[Serve start](https://docs.ray.io/en/releases-2.7.0/serve/api/index.html#serve-start) CLI,
+The [Serve start](https://docs.ray.io/en/releases-2.7.0/serve/api/index.html#serve-start) CLI,
 [`ray.serve.start`](https://docs.ray.io/en/releases-2.7.0/serve/api/doc/ray.serve.start.html#ray.serve.start) API,
 and [Serve config files](https://docs.ray.io/en/releases-2.7.0/serve/production-guide/config.html#serve-config-files-serve-build)
-all support starting Serve with gRPC proxy. There are two options related to Serve's
-gRPC proxy, `grpc_port` and `grpc_servicer_functions`. `grpc_port` is the port for gRPC 
-proxies to listen. It defaults to 9000. `grpc_servicer_functions` is a list of import 
-paths for gRPC `add_servicer_to_server` functions to add to Serve’s gRPC proxy. It also 
-serves as the flag to determine whether to start gRPC server. Default empty list, 
-meaning no gRPC server will be started. 
+all support starting Serve with a gRPC proxy. Two options are related to Serve's
+gRPC proxy: `grpc_port` and `grpc_servicer_functions`. `grpc_port` is the port for gRPC
+proxies to listen to. It defaults to 9000. `grpc_servicer_functions` is a list of import
+paths for gRPC `add_servicer_to_server` functions to add to a gRPC proxy. It also
+serves as the flag to determine whether to start gRPC server. The default is an empty
+list, meaning no gRPC server is started.
 
 ::::{tab-set}
 
@@ -114,12 +114,12 @@ serve run config.yaml
 (deploy-serve-grpc-applications)=
 ## Deploy gRPC applications
 gRPC applications in Serve works similarly to HTTP applications. The only difference is
-the input and output of the methods need to match with what's defined in the `.proto`
+that the input and output of the methods need to match with what's defined in the `.proto`
 file and that the method of the application needs to be an exact match (case sensitive)
 with the predefined RPC methods. For example, if we want to deploy `UserDefinedService`
 with `__call__` method, the method name needs to be `__call__`, the input type needs to
 be `UserDefinedMessage`, and the output type needs to be `UserDefinedResponse`. Serve
-will pass the protobuf object into the method and expecting the protobuf object back
+passes the protobuf object into the method and expects the protobuf object back
 from the method. 
 
 Example deployment:
@@ -137,17 +137,17 @@ Deploy the application:
 ```
 
 :::{note}
-`route_prefix` is still a required field as of Ray 2.7.0 due to shared code path with
-HTTP. We will make it optional for gRPC in the future release.
+`route_prefix` is still a required field as of Ray 2.7.0 due to a shared code path with
+HTTP. Future releases will make it optional for gRPC.
 :::
 
 
 (send-serve-grpc-proxy-request)=
 ## Send gRPC requests to serve deployments
 Sending a gRPC request to a Serve deployment is similar to sending a gRPC request to
-any other gRPC server. You would create a gRPC channel and stub, then call the RPC
-method on the stub with the appropriate input. The output will be the protobuf object
-returned from your Serve application. 
+any other gRPC server. Create a gRPC channel and stub, then call the RPC
+method on the stub with the appropriate input. The output is the protobuf object
+that your Serve application returns.
 
 Sending a gRPC request:
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
@@ -156,17 +156,17 @@ Sending a gRPC request:
 :language: python
 ```
 
-Read more about gRPC client in Python: [https://grpc.io/docs/languages/python/basics/#client](https://grpc.io/docs/languages/python/basics/#client)
+Read more about gRPC clients in Python: [https://grpc.io/docs/languages/python/basics/#client](https://grpc.io/docs/languages/python/basics/#client)
 
 
 (serve-grpc-proxy-health-checks)=
 ## Check proxy health
-Similar to HTTP's `/-/routes` and `/-/healthz` endpoints, Serve also provides gRPC
+Similar to HTTP `/-/routes` and `/-/healthz` endpoints, Serve also provides gRPC
 service method to be used in health check. 
 - `/ray.serve.RayServeAPIService/ListApplications` is used to list all applications
   deployed in Serve. 
 - `/ray.serve.RayServeAPIService/Healthz` is used to check the health of the proxy.
-  It will return `OK` status and "success" message if the proxy is healthy.
+  It returns `OK` status and "success" message if the proxy is healthy.
 
 The service method and protobuf are defined as below:
 ```proto
@@ -196,25 +196,25 @@ You can call the service method with the following code:
 ```
 
 :::{note}
-Serve provides `RayServeAPIServiceStub` stub and `HealthzRequest` and 
-`ListApplicationsRequest` protobufs for you to use. You do not need to generate them
-from the proto file. It's just here for your reference.
+Serve provides the `RayServeAPIServiceStub` stub, and `HealthzRequest` and
+`ListApplicationsRequest` protobufs for you to use. You don't need to generate them
+from the proto file. They are available for your reference.
 :::
 
 (serve-grpc-metadata)=
 ## Work with gRPC metadata
-Just like HTTP's headers, gRPC also supports metadata to pass request related info.
-You can pass metadata to Serve's gRPC proxy and Serve will know how to parse and use
-them. Serve will also pass trailing metadata back to the client.
+Just like HTTP headers, gRPC also supports metadata to pass request related information.
+You can pass metadata to Serve's gRPC proxy and Serve knows how to parse and use
+them. Serve also passes trailing metadata back to the client.
 
 List of Serve accepted metadata keys:
 - `application`: The name of the Serve application to route to. If not passed and only
-one application is deployed, serve will route to the only deployed app automatically.
-- `request_id`: The request id to track the request.
-- `multiplexed_model_id`: The model id to do model multiplexing.
+  one application is deployed, serve routes to the only deployed app automatically.
+- `request_id`: The request ID to track the request.
+- `multiplexed_model_id`: The model ID to do model multiplexing.
 
 List of Serve returned trailing metadata keys:
-- `request_id`: The request id to track the request.
+- `request_id`: The request ID to track the request.
 
 Example of using metadata:
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
@@ -225,12 +225,12 @@ Example of using metadata:
 
 (serve-grpc-proxy-more-examples)=
 ## Use streaming and model composition
-gRPC proxy will remain feature parity with HTTP proxy. Here are more examples of using
+gRPC proxy remains at feature parity with HTTP proxy. Here are more examples of using
 gRPC proxy for getting streaming response as well as doing model composition.
 
 ### Streaming
-`Steaming` method is deployed with app named "app1" above. We can use the following code
-to get a streaming response.
+The `Steaming` method is deployed with the app named "app1" above. The following code
+gets a streaming response.
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_streaming__   
 :end-before: __end_streaming__
@@ -239,8 +239,8 @@ to get a streaming response.
 
 ### Model composition
 Assuming we have the below deployments. `ImageDownloader` and `DataPreprocessor` are two
-separate steps to download and process the image before the pytorch can run inference.
-There is also a `ImageClassifier` deployment to initialize model, call both 
+separate steps to download and process the image before PyTorch can run inference.
+The `ImageClassifier` deployment initializes the model, calls both
 `ImageDownloader` and `DataPreprocessor`, and feed into the resnet model to get the
 classes and probabilities of the given image.
 
@@ -257,7 +257,7 @@ We can deploy the application with the following code:
 :language: python
 ```
 
-The client code to call the application will look like the following:
+The client code to call the application looks like the following:
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_model_composition_client__   
 :end-before: __end_model_composition_client__
@@ -265,16 +265,16 @@ The client code to call the application will look like the following:
 ```
 
 :::{note}
-At this point there are two applications running on Serve, "app1" and "app2". If there
-are more than one application running, you will need to pass `application` to the
+At this point, two applications are running on Serve, "app1" and "app2". If more
+than one application is running, you need to pass `application` to the
 metadata so Serve knows which application to route to.
 :::
 
 
 (serve-grpc-proxy-error-handling)=
 ## Handle errors
-Similar to any other gRPC server, request will throw `grpc.RpcError` when the response
-code is not "OK". It's advised to put your request code in a try-except block and handle
+Similar to any other gRPC server, request throws a `grpc.RpcError` when the response
+code is not "OK". Put your request code in a try-except block and handle
 the error accordingly.
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_error_handle__   
@@ -282,9 +282,11 @@ the error accordingly.
 :language: python
 ```
 
-Serve uses gRPC error codes like below:
-- `NOT_FOUND`: When multiple application are deployed to Serve and the application is 
-not passed in metadata or passed but no matching application.
+Serve uses the following gRPC error codes:
+- `NOT_FOUND`: When multiple applications are deployed to Serve and the application is
+  not passed in metadata or passed but no matching application.
 - `UNAVAILABLE`: Only on the health check methods when the proxy is in draining state.
-- `CANCELLED`: The request takes longer than the timeout setting and got cancelled.
+  When the health check is throwing `UNAVAILABLE`, it means the health check failed on
+  this node and you should no longer route to this node.
+- `CANCELLED`: The request took longer than the timeout setting and got cancelled.
 - `INTERNAL`: Other unhandled errors during the request.

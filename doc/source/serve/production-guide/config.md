@@ -47,19 +47,19 @@ applications:
     ...
 ```
 
-The file contains `http_options`, `grpc_options`, and `applications`. These are the `http_options`:
+The YAML file contains `http_options`, `grpc_options`, and `applications`. These are the `http_options`:
 
-- `host` and `port` are HTTP options that determine the host IP address and the port for your Serve application's HTTP proxies. These are optional settings and can be omitted. By default, the `host` will be set to `0.0.0.0` to expose your deployments publicly, and the port will be set to `8000`. If you're using Kubernetes, setting `host` to `0.0.0.0` is necessary to expose your deployments outside the cluster.
-- `request_timeout_s` is a field in the `http_options` that allows you to set the end-to-end timeout for a request before terminating and retrying at another replica. This config is global to your Ray cluster, and it cannot be updated during runtime. By default, the Serve HTTP proxy retries up to `10` times when a response is not received due to failures (e.g. network disconnect, request timeout, etc.). By default, there is no request timeout. 
+- `host` and `port` are HTTP options that determine the host IP address and the port for your Serve application's HTTP proxies. These are optional settings and can be omitted. By default, the `host` is set to `0.0.0.0` to expose your deployments publicly, and the port is set to `8000`. If you're using Kubernetes, setting `host` to `0.0.0.0` is necessary to expose your deployments outside the cluster.
+- `request_timeout_s` is a field in the `http_options` that allows you to set the end-to-end timeout for a request before terminating and retrying at another replica. This config is global to your Ray cluster, and it cannot be updated during runtime. By default, the Serve HTTP proxy retries up to `10` times when a response is not received due to failures (for example, network disconnect, request timeout, etc.) By default, there is no request timeout.
 
 These are the `grpc_options`:
 
 - `port` are gRPC options that determine the host port for your Serve application's gRPC
-  proxies. These are optional settings and can be omitted. By default, the port will be
+  proxies. These are optional settings and can be omitted. By default, the port is
   set to `9000`.
 - `grpc_servicer_functions` is a list of import paths for gRPC `add_servicer_to_server`
   functions to add to Serve’s gRPC proxy. It also serves as the flag to determine
-  whether to start gRPC server. Default empty list, meaning no gRPC server will be
+  whether to start gRPC server. The default is an empty list, meaning no gRPC server is
   started.
 
 These are the fields per application:
