@@ -12,7 +12,7 @@ An application consists of one or more deployments. The deployments in an applic
 ### When to Use Multiple Applications
 Many use cases can be solved by either model composition or multi-application. However, both have their own individual benefits and can be used together.
 
-Suppose you have multiple models and/or business logic that all need to be executed for a single request. If they are living in one repository, then most likely they will be upgraded as a unit, so we recommend having all those deployments in one application.
+Suppose you have multiple models and/or business logic that all need to be executed for a single request. If they are living in one repository, then you most likely upgrade them as a unit, so we recommend having all those deployments in one application.
 
 On the other hand, if there are logical groups among these models and/or business logic, e.g. where the groups of models still communicate with each other but live in different repositories, we recommend separating the models into applications. Another common use-case for multiple applications is separate groups of models that may not communicate with each other, but you want to co-host them for improved hardware utilization. Since one application is a unit of upgrade, having multiple applications allows you to deploy many independent models (or groups of models) each behind different endpoints. You can then use easily add or delete applications from the cluster as well as upgrade applications independently of each other.
 
