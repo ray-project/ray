@@ -15,6 +15,7 @@ from ray.util.annotations import PublicAPI
 from ray._private.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
 from ray._private.storage import _load_class
 from ray._private.services import canonicalize_bootstrap_address_or_die
+from ray._private.utils import get_user_temp_dir
 
 from .utils import (
     exec_cmd,
@@ -441,6 +442,8 @@ def _setup_ray_cluster(
         start_hook = _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
     elif is_in_databricks_runtime():
         start_hook = DefaultDatabricksRayOnSparkStartHook()
+        # Set default user temp dir to always be /local_disk0/tmp on databricks.
+        os.environ["RAY_TMPDIR"] = "/local_disk0/tmp"
     else:
         start_hook = RayOnSparkStartHook()
 
@@ -489,10 +492,10 @@ def _setup_ray_cluster(
         ray_temp_root_dir = start_hook.get_default_temp_dir()
     if global_mode_enabled():
         # It reads from environment variable RAY_ADDRESS, then check
-        # ray_temp_root_dir/ray/ray_current_cluster to see if the address
+        # /local_disk0/tmp/ray/ray_current_cluster to see if the address
         # is available, if yes then a global ray cluster is running, otherwise
         # it will start a new glbal ray cluster.
-        ray_addr = canonicalize_bootstrap_address_or_die("auto", ray_temp_root_dir)
+        ray_addr = canonicalize_bootstrap_address_or_die("auto", get_user_temp_dir())
         if ray_addr is not None:
             raise RuntimeError(
                 "Global mode is enabled by setting "
