@@ -12,7 +12,7 @@ import ray.actor
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
 from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
-
+from ray._private.utils import try_install_uvloop
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
@@ -193,6 +193,10 @@ if __name__ == "__main__":
         mode = ray.RESTORE_WORKER_MODE
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
+
+    # Try installing uvloop as default event-loop implementation
+    # for asyncio
+    try_install_uvloop()
 
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:

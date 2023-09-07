@@ -2191,3 +2191,16 @@ def load_class(path):
     class_str = class_data[-1]
     module = importlib.import_module(module_path)
     return getattr(module, class_str)
+
+
+def try_install_uvloop() -> None:
+    """Installs uvloop as event-loop implementation for asyncio (if available)
+    """
+    try:
+        import uvloop
+        uvloop.install()
+        logger.info("Installing uvloop as event-loop implementation for asyncio")
+    except ImportError:
+        logger.warning("No uvloop found, falling back to default asyncio event-loop implementation")
+        pass
+
