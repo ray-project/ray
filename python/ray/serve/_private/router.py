@@ -676,8 +676,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             timeout=self.queue_len_response_deadline_s,
             return_when=asyncio.ALL_COMPLETED,
         )
-        for task in pending:
-            task.cancel()
+        for t in pending:
+            t.cancel()
+            logger.warning(
+                f"Failed to get queue length from replica {t.replica_id} "
+                f"within {self.queue_len_response_deadline_s}s."
+            )
 
         chosen_replica_id = None
         lowest_queue_len = math.inf
