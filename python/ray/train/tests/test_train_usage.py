@@ -90,7 +90,7 @@ def run_transformers():
 
 
 @pytest.mark.parametrize("framework", ["torch", "lightning", "transformers"])
-def test_torch_utility_usage_tags(framework):
+def test_torch_utility_usage_tags(shutdown_only, framework):
     from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
     ctx = ray.init()
