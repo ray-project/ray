@@ -1,8 +1,8 @@
-(ray-kubernetes-setup)=
+(best-practices-kuberay)=
 
-# Set up a Ray + Kubernetes cluster
+# Best practices for deployment and storage with KubeRay
 
-This document contains recommendations for setting up a Ray + Kubernetes cluster for your organization.
+This document contains recommendations for setting up a Ray and Kubernetes cluster for your organization.
 
 When you set up Ray on Kubernetes, the KubeRay documentation provides an overview of how to configure the operator to execute and manage the Ray cluster lifecycle. This guide complements the KubeRay documentation by providing best practices for effectively using Ray deployments in your organization.
 
@@ -17,7 +17,7 @@ Deployment considerations are different for development and production. This tab
 |   | Interactive Development  | Production  |
 |---|---|---|
 | Cluster Configuration  | KubeRay YAML  | KubeRay YAML  |
-| Code | Run driver or Jupyter notebook on head node | S3 + runtime envs <br /> OR <br /> Bake code into Docker image (link)  |
+| Code | Run driver or Jupyter notebook on head node | S3 + runtime envs <br /> OR <br /> Bake code into Docker image  |
 | Artifact Storage | Set up an EFS  | Cloud storage (S3, GS)  |
 | Package Dependencies | Install onto NFS <br /> or <br /> Use runtime environments | Bake into docker image  |
 
@@ -28,7 +28,7 @@ Table 1: Table comparing recommended setup for development and production.
 To provide an interactive development environment for data scientists, you should set up the code, storage, and dependencies in a way that reduces context switches for developers and shortens iteration times.
 
 ```{eval-rst}
-.. image:: ../images/interact-dev.png
+.. image:: ../images/interactive-dev.png
     :align: center
 ..
     Find the source document here (https://whimsical.com/clusters-P5Y6R23riCuNb6xwXVXN72)
@@ -63,7 +63,7 @@ For production, we suggest the following configuration.
 
 
 ```{eval-rst}
-.. image:: ../images/prod.png
+.. image:: ../images/production.png
     :align: center
 ..
     Find the source document here (https://whimsical.com/clusters-P5Y6R23riCuNb6xwXVXN72)
