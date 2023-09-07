@@ -8,11 +8,15 @@ You can update your Serve applications once they're in production by updating th
 
 ## Lightweight Config Updates
 
-Lightweight config updates modify running deployment replicas without tearing them down and restarting them, so there's less downtime as the deployments update. For each deployment, modifying `num_replicas`, `autoscaling_config`, and/or `user_config` is considered a lightweight config update, and won't tear down the replicas for that deployment.
-
-:::{note}
-Lightweight config updates are only possible for deployments that are included as entries under `deployments` in the config file. If a deployment is not included in the config file, replicas of that deployment will be torn down and brought up again each time you redeploy with `serve deploy`.
-:::
+Lightweight config updates modify running deployment replicas without tearing them down and restarting them, so there's less downtime as the deployments update. For each deployment, modifying the following values is considered a lightweight config update, and won't tear down the replicas for that deployment:
+- `num_replicas`
+- `autoscaling_config`
+- `user_config`
+- `max_concurrent_queries`
+- `graceful_shutdown_timeout_s`
+- `graceful_shutdown_wait_loop_s`
+- `health_check_period_s`
+- `health_check_timeout_s`
 
 (serve-updating-user-config)=
 
@@ -37,25 +41,19 @@ $ python
 Now, let's update the price of mangos in our deployment. We can change the `price` attribute in the `MangoStand` deployment to `5` in our config file:
 
 ```yaml
-import_path: fruit:deployment_graph
+...
 
-runtime_env: {}
+applications:
 
-deployments:
-
-- name: MangoStand
-  num_replicas: 2
-  route_prefix: null
-  max_concurrent_queries: 100
-  user_config:
-    # price: 3 (Outdated price)
-    price: 5
-  autoscaling_config: null
-  graceful_shutdown_wait_loop_s: 2.0
-  graceful_shutdown_timeout_s: 20.0
-  health_check_period_s: 10.0
-  health_check_timeout_s: 30.0
-  ray_actor_options: null
+- name: app1
+  route_prefix: /
+  import_path: fruit:deployment_graph
+  runtime_env: {}
+  deployments:
+  - name: MangoStand
+    user_config:
+      # price: 3 (outdated price)
+      price: 5
 
 ...
 ```
@@ -71,26 +69,39 @@ We can inspect our deployments with `serve status`. Once the `app_status`'s `sta
 
 ```console
 $ serve status
-app_status:
-  status: RUNNING
-  message: ''
-  deployment_timestamp: 1655776483.457707
-deployment_statuses:
-- name: MangoStand
-  status: HEALTHY
-  message: ''
-- name: OrangeStand
-  status: HEALTHY
-  message: ''
-- name: PearStand
-  status: HEALTHY
-  message: ''
-- name: FruitMarket
-  status: HEALTHY
-  message: ''
-- name: DAGDriver
-  status: HEALTHY
-  message: ''
+proxies:
+  0eeaadc5f16b64b8cd55aae184254406f0609370cbc79716800cb6f2: HEALTHY
+applications:
+  app1:
+    status: RUNNING
+    message: ''
+    last_deployed_time_s: 1693430845.863128
+    deployments:
+      MangoStand:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      OrangeStand:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      PearStand:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      FruitMarket:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 2
+        message: ''
+      DAGDriver:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
 
 $ python
 
@@ -104,12 +115,19 @@ The price has updated! The same request now returns `10` instead of `6`, reflect
 
 ## Code Updates
 
-Similarly, you can update any other setting in any deployment in the config file. If a deployment setting other than `num_replicas`, `autoscaling_config`, or `user_config` is changed, it is considered a code update, and the deployment replicas will be restarted. Note that the following modifications are all considered "changes", and will trigger tear down of replicas:
+Changing the following values in a deployment's config is considered a code update, and the deployment replicas will be restarted.
+- `ray_actor_options`
+- `placement_group_bundles`
+- `placement_group_strategy`
+
+Changing the following application-level config values is also considered a code update, and all deployments in the application will be restarted.
+- `import_path`
+- `runtime_env`
+
+Note that the following modifications are all considered "changes", and will trigger tear down of replicas:
 * changing an existing setting
 * adding an override setting that was previously not present in the config file
 * removing a setting from the config file
-
-Note also that changing `import_path` or `runtime_env` is considered a code update for all deployments, and will tear down all running deployments and restart them.
 
 :::{warning}
 Although you can update your Serve application by deploying an entirely new deployment graph using a different `import_path` and a different `runtime_env`, this is NOT recommended in production.
