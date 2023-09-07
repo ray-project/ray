@@ -1,5 +1,4 @@
 import sys
-
 import pytest
 from unittest import mock
 from typing import List
@@ -37,11 +36,11 @@ def test_run_tests_in_docker() -> None:
 def test_run_script_in_docker() -> None:
     def _mock_check_output(input: List[str]) -> None:
         input_str = " ".join(input)
-        assert "/bin/bash -ice run command" in input_str
+        assert "/bin/bash -iecuo pipefail -- run command" in input_str
 
     with mock.patch("subprocess.check_output", side_effect=_mock_check_output):
         container = TesterContainer("team")
-        container.run_script("run command")
+        container.run_script(["run command"])
 
 
 def test_run_tests() -> None:

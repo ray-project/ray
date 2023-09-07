@@ -12,10 +12,10 @@ def test_get_docker_image() -> None:
 
 
 def test_get_run_command() -> None:
-    command = " ".join(Container("test")._get_run_command("echo hello"))
+    command = " ".join(Container("test")._get_run_command(["hi", "hello"]))
     assert "-env BUILDKITE_JOB_ID" in command
     assert "--cap-add SYS_PTRACE" in command
-    assert "/bin/bash -ice echo hello" in command
+    assert "/bin/bash -iecuo pipefail -- hi\nhello" in command
 
 
 if __name__ == "__main__":
