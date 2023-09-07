@@ -1,12 +1,12 @@
-ddpg-hopper-v4:
-    env: Hopper-v4
+ddpg-halfcheetah-v4:
+    env: HalfCheetah-v4
     run: DDPG
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        sampler_results/episode_reward_mean: 110.0
-        timesteps_total: 50000
+        sampler_results/episode_reward_mean: 1000.0
+        timesteps_total: 100000
     stop:
-        time_total_s: 1800
+        time_total_s: 3600
     config:
         actor_hiddens: [256, 256]
         critic_hiddens: [256, 256]
