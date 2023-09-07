@@ -3,6 +3,7 @@ import logging
 import os
 import uuid
 from functools import wraps
+from threading import Lock
 
 import ray._private.signature
 from ray import Language, cross_language
@@ -117,7 +118,8 @@ class RemoteFunction:
 
         self._language = language
         self._function = function
-        self._injected_tracing = False
+        self._function_signature = None
+        self._inject_mut = Lock()
         self._function_name = function.__module__ + "." + function.__name__
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
@@ -138,6 +140,16 @@ class RemoteFunction:
             f"of running '{self._function_name}()', "
             f"try '{self._function_name}.remote()'."
         )
+
+    # Lock is not picklable
+    def __getstate__(self):
+        attrs = self.__dict__.copy()
+        del attrs["_inject_mut"]
+        return attrs
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.__dict__["_inject_mut"] = Lock()
 
     def options(self, **task_options):
         """Configures and overrides the task invocation parameters.
@@ -254,12 +266,15 @@ class RemoteFunction:
 
         # We cannot do this when the function is first defined, because we need
         # ray.init() to have been called when this executes
-        if not self._injected_tracing:
+        if self._function_signature is None:
+            # Since variable assignment is atomic, we don't need to acquire the
+            # lock before checking _function_signature.
+            self._inject_mut.acquire()
             self._function = _inject_tracing_into_function(self._function)
             self._function_signature = ray._private.signature.extract_signature(
                 self._function
             )
-            self._injected_tracing = True
+            self._inject_mut.release()
 
         # If this function was not exported in this session and job, we need to
         # export this function again, because the current GCS doesn't have it.
