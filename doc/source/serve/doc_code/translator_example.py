@@ -26,10 +26,13 @@ app = Translator.options(route_prefix="/translate").bind()
 
 
 serve.run(app, name="app2")
-assert (
-    requests.post(
-        "http://localhost:8000/translate",
-        json={"text": "Hello, the weather is quite fine today!"},
-    ).text
-    == "Hallo, das Wetter ist heute ziemlich gut!"
-)
+
+# __request_begin__
+text = "Hello, the weather is quite fine today!"
+resp = requests.post("http://localhost:8000/translate", json={"text": text})
+
+print(resp.text)
+# 'Hallo, das Wetter ist heute ziemlich gut!'
+# __request_end__
+
+assert resp.text == "Hallo, das Wetter ist heute ziemlich gut!"

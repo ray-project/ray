@@ -65,14 +65,14 @@ class ModifiedImageClassifier:
 
 
 serve.run(app, name="app1")
-bear_image_url = "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"  # noqa
-assert (
-    requests.post(
-        "http://localhost:8000/classify",
-        json={"image_url": bear_image_url},
-    ).text
-    == "brown bear, bruin, Ursus arctos"
-)
+# __request_begin__
+bear_url = "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"  # noqa
+resp = requests.post("http://localhost:8000/classify", json={"image_url": bear_url})
+
+print(resp.text)
+# 'brown bear, bruin, Ursus arctos'
+# __request_end__
+assert resp.text == "brown bear, bruin, Ursus arctos"
 
 from translator_example import app as translator_app  # noqa
 
@@ -82,10 +82,16 @@ serve.run(
     route_prefix="/classify",
 )
 serve.run(translator_app, name="app2")
-assert (
-    requests.post(
-        "http://localhost:8000/classify",
-        json={"image_url": bear_image_url, "should_translate": True},
-    ).text
-    == "Braunbär, Bruin, Ursus arctos"
+
+# __second_request_begin__
+bear_url = "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"  # noqa
+resp = requests.post(
+    "http://localhost:8000/classify",
+    json={"image_url": bear_url, "should_translate": True},
 )
+
+print(resp.text)
+# 'Braunbär, Bruin, Ursus arctos'
+# __second_request_end__
+
+assert resp.text == "Braunbär, Bruin, Ursus arctos"

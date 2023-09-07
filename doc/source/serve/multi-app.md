@@ -86,13 +86,15 @@ $ serve deploy config.yaml
 ```
 
 Query the applications at their respective endpoints, `/classify` and `/translate`.
-```python
-import requests
-requests.post("http://localhost:8000/classify", json={"image_url": "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg"}).text
-# 'brown bear, bruin, Ursus arctos'
-
-requests.post("http://localhost:8000/translate", json={"text": "Hello, the weather is quite fine today!"}).text
-# 'Hallo, das Wetter ist heute ziemlich gut!'
+```{literalinclude} doc_code/image_classifier_example.py
+:language: python
+:start-after: __request_begin__
+:end-before: __request_end__
+```
+```{literalinclude} doc_code/translator_example.py
+:language: python
+:start-after: __request_begin__
+:end-before: __request_end__
 ```
 
 #### Development Workflow with `serve run`
@@ -118,7 +120,7 @@ $ serve status
 proxies:
   2e02a03ad64b3f3810b0dd6c3265c8a00ac36c13b2b0937cbf1ef153: HEALTHY
 applications:
-  classify:
+  app1:
     status: RUNNING
     message: ''
     last_deployed_time_s: 1693267064.0735464
@@ -133,7 +135,7 @@ applications:
         replica_states:
           RUNNING: 1
         message: ''
-  translate:
+  app2:
     status: RUNNING
     message: ''
     last_deployed_time_s: 1693267064.0735464
@@ -155,11 +157,10 @@ You can also make calls between applications without going through HTTP by using
 ```
 
 Then, sending requests to the classifier application with the `should_translate` flag set to True:
-```python
-import requests
-
-requests.post("http://localhost:8000/classify", json={"image_url": "https://cdn.britannica.com/41/156441-050-A4424AEC/Grizzly-bear-Jasper-National-Park-Canada-Alberta.jpg", "should_translate": False}).text
-'Braunbär, Bruin, Ursus arctos'
+```{literalinclude} doc_code/image_classifier_example.py
+:language: python
+:start-after: __second_request_begin__
+:end-before: __second_request_end__
 ```
 
 
