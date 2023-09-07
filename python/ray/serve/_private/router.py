@@ -721,6 +721,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     )
                     yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
+                logger.warning(f"In backoff! Replicas chosen were: {chosen_ids}")
                 if not entered_backoff:
                     entered_backoff = True
                     self.num_scheduling_tasks_in_backoff += 1
@@ -762,8 +763,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             timeout=self.queue_len_response_deadline_s,
             return_when=asyncio.ALL_COMPLETED,
         )
-        for task in pending:
-            task.cancel()
+        for t in pending:
+            logger.warning(f"Failed to fetch queue length for replica {t.replica_id} within {self.queue_len_response_deadline_s}s")
+            t.cancel()
 
         chosen_replica_id = None
         lowest_queue_len = math.inf
@@ -791,6 +793,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     lowest_queue_len = queue_len
 
         if chosen_replica_id is None:
+            logger.warning(f"No replicas were chosen. len(done): {len(done)}, results: {[t.result() for t in done]}")
             return None
 
         # `self._replicas` may have been updated since the candidates were chosen.
