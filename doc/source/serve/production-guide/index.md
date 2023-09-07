@@ -19,7 +19,7 @@ For deploying on VMs instead of Kubernetes, see [Deploy on VM](serve-in-producti
 ## Working example: Text Summarization and Translation Application
 
 Throughout the production guide, we will use the following Serve application as a working example.
-The application takes in a string of text in english, then summarizes and translates it into French (default), German, or Romanian.
+The application takes in a string of text in English, then summarizes and translates it into French (default), German, or Romanian.
 
 ```{literalinclude} ../doc_code/production_guide/text_ml.py
 :language: python
