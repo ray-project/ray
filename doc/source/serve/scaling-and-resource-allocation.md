@@ -2,16 +2,16 @@
 
 # Resource Allocation
 
-This guide helps you to:
+This guide helps you configure Ray Serve to:
 
-- scale your deployments horizontally by specifying a number of replicas
-- scale up and down automatically to react to changing traffic
-- allocate hardware resources (CPUs, GPUs, etc) for each deployment
+- Scale your deployments horizontally by specifying a number of replicas
+- Scale up and down automatically to react to changing traffic
+- Allocate hardware resources (CPUs, GPUs, etc) for each deployment
 
 
 (serve-cpus-gpus)=
 
-## Resource Management (CPUs, GPUs)
+## Resource management (CPUs, GPUs)
 
 You may want to specify a deployment's resource requirements to reserve cluster resources like GPUs.  To assign hardware resources per replica, you can pass resource requirements to
 `ray_actor_options`.
@@ -29,7 +29,7 @@ def func(*args):
 
 (serve-fractional-resources-guide)=
 
-### Fractional CPUs and Fractional GPUs
+### Fractional CPUs and fractional GPUs
 
 Suppose you have two models and each doesn't fully saturate a GPU.  You might want to have them share a GPU by allocating 0.5 GPUs each.
 
@@ -48,7 +48,7 @@ def func_2(*args):
 
 In this example, each replica of each deployment will be allocated 0.5 GPUs.  The same can be done to multiplex over CPUs, using `"num_cpus"`.
 
-### Custom Resources, Accelerator types, and more
+### Custom resources, accelerator types, and more
 
 You can also specify {ref}`custom resources <cluster-resources>` in `ray_actor_options`, for example to ensure that a deployment is scheduled on a specific node.
 For example, if you have a deployment that requires 2 units of the `"custom_resource"` resource, you can specify it like this:
@@ -73,7 +73,7 @@ Below is the full list of supported options in `ray_actor_options`; please see t
 
 (serve-omp-num-threads)=
 
-## Configuring Parallelism with OMP_NUM_THREADS
+## Configuring parallelism with OMP_NUM_THREADS
 
 Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
 The number of CPUs they use is controlled by the `OMP_NUM_THREADS` environment variable.
