@@ -119,7 +119,8 @@ class RemoteFunction:
         self._language = language
         self._function = function
         self._function_signature = None
-        self._inject_mut = Lock()
+        # Guards trace injection to enforce exactly once semantics
+        self._inject_lock = Lock()
         self._function_name = function.__module__ + "." + function.__name__
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
@@ -144,12 +145,12 @@ class RemoteFunction:
     # Lock is not picklable
     def __getstate__(self):
         attrs = self.__dict__.copy()
-        del attrs["_inject_mut"]
+        del attrs["_inject_lock"]
         return attrs
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        self.__dict__["_inject_mut"] = Lock()
+        self.__dict__["_inject_lock"] = Lock()
 
     def options(self, **task_options):
         """Configures and overrides the task invocation parameters.
@@ -269,12 +270,11 @@ class RemoteFunction:
         if self._function_signature is None:
             # Since variable assignment is atomic, we don't need to acquire the
             # lock before checking _function_signature.
-            self._inject_mut.acquire()
-            self._function = _inject_tracing_into_function(self._function)
-            self._function_signature = ray._private.signature.extract_signature(
-                self._function
-            )
-            self._inject_mut.release()
+            with self._inject_lock:
+                self._function = _inject_tracing_into_function(self._function)
+                self._function_signature = ray._private.signature.extract_signature(
+                    self._function
+                )
 
         # If this function was not exported in this session and job, we need to
         # export this function again, because the current GCS doesn't have it.
