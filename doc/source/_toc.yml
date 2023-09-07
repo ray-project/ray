@@ -204,7 +204,7 @@ parts:
               - file: serve/production-guide/handling-dependencies
               - file: serve/production-guide/best-practices
           - file: serve/monitoring
-          - file: serve/scaling-and-resource-allocation
+          - file: serve/resource-allocation
           - file: serve/autoscaling-guide
           - file: serve/advanced-guides/index
             sections:
