@@ -404,17 +404,17 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._pending_requests_to_schedule: Deque[PendingRequest] = deque()
 
         # Prepare scheduler metrics.
-        self._actor_name: str = self._get_actor_name()
+        self._actor_id: str = self._get_actor_id()
 
         self.num_scheduling_tasks_gauge = metrics.Gauge(
             "serve_num_scheduling_tasks",
             description="The number of request scheduling tasks in the router.",
-            tag_keys=("app", "deployment", "actor_name"),
+            tag_keys=("app", "deployment", "actor_id"),
         ).set_default_tags(
             {
                 "app": self._deployment_id.app,
                 "deployment": self._deployment_id.name,
-                "actor_name": self._actor_name,
+                "actor_id": self._actor_id,
             }
         )
         self.num_scheduling_tasks_gauge.set(0)
@@ -426,12 +426,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 "The number of request scheduling tasks in the router "
                 "that are undergoing backoff."
             ),
-            tag_keys=("app", "deployment", "actor_name"),
+            tag_keys=("app", "deployment", "actor_id"),
         ).set_default_tags(
             {
                 "app": self._deployment_id.app,
                 "deployment": self._deployment_id.name,
-                "actor_name": self._actor_name,
+                "actor_id": self._actor_id,
             }
         )
         self.num_scheduling_tasks_in_backoff_gauge.set(
@@ -465,8 +465,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
         return self._replicas
 
-    def _get_actor_name(self) -> str:
-        """Gets the name of the actor where this scheduler runs.
+    def _get_actor_id(self) -> str:
+        """Gets the ID of the actor where this scheduler runs.
 
         NOTE: this call hangs when the GCS is down. As long as this method is
         called only when the scheduler is initialized, that should be
@@ -475,7 +475,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         is runs only when the GCS is up.
 
         Return:
-            The name of the actor where this scheduler runs. If the scheduler
+            The ID of the actor where this scheduler runs. If the scheduler
             runs in the driver, returns "DRIVER". If the method fails, returns
             an empty string.
         """
@@ -484,16 +484,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             return "DRIVER"
         else:
             try:
-                actor_id = ray.get_runtime_context().get_actor_id()
-                if actor_id is None:
-                    return ""
-                else:
-                    # NOTE (shrekris-anyscale): this import is delayed because
-                    # putting at the top of the file causes Ray client tests
-                    # to fail.
-                    from ray.util import state
-
-                    return state.get_actor(actor_id, timeout=5).name
+                return ray.get_runtime_context().get_actor_id()
             except Exception:
                 logger.exception("Got exception while attempting to get actor name.")
                 return ""
