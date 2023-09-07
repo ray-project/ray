@@ -381,11 +381,17 @@ cc_proto_library(
     deps = [":autoscaler_proto"],
 )
 
+serve_protos = ["serve.proto"]
+filegroup(
+    name = "serve_protos",
+    srcs = serve_protos,
+    visibility = ["//visibility:public"],
+)
 
 filegroup(
-    name = "all_protos",
+    name = "core_protos",
     srcs = glob([
         "**/*.proto",
-    ]),
+    ], exclude=serve_protos),
     visibility = ["//visibility:public"],
 )
