@@ -470,13 +470,13 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   /// Queue of requests to send.
   std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
-      send_queue_ GUARDED_BY(mutex_);
+      send_queue_ ABSL_GUARDED_BY(mutex_);
 
   /// The number of bytes currently in flight.
-  int64_t rpc_bytes_in_flight_ GUARDED_BY(mutex_) = 0;
+  int64_t rpc_bytes_in_flight_ ABSL_GUARDED_BY(mutex_) = 0;
 
   /// The max sequence number we have processed responses for.
-  int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
+  int64_t max_finished_seq_no_ ABSL_GUARDED_BY(mutex_) = -1;
 };
 
 typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>

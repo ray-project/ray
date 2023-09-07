@@ -8,13 +8,16 @@
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
+
+load("@rules_python//python:defs.bzl", "py_library", "py_binary", "py_runtime", "py_runtime_pair")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_test", "ray_cc_library")
 load("@python3_9//:defs.bzl", python39 = "interpreter")
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
+load("@py_deps_compile_py_proto//:requirements.bzl", "requirement")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -2521,8 +2524,7 @@ copy_to_workspace(
 genrule(
     name = "install_py_proto",
     srcs = [
-        ":cp_all_py_proto",
-        ":cp_serve_py_proto",
+        ":compile_py_proto",
     ],
     outs = ["install_py_proto.out"],
     cmd = """
@@ -2541,9 +2543,9 @@ genrule(
         # https://github.com/ray-project/ray/issues/31358
         sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
-        # TODO(rickyx): Remove this experimental path rewrite once we move autoscaler proto out
+        # TODO(rickyx): Remove this experimental path rewrite once we move instance manager proto out
         # of experimental.
-        autoscale_files=(`ls python/ray/core/generated/autoscaler_pb2*.py`)
+        autoscale_files=(`ls python/ray/core/generated/instance_manager_pb2*.py`)
         sed -i -E 's/from ..experimental/from ./' "$${autoscale_files[@]}"
         echo "$${PWD}" > $@
     """,
@@ -2575,3 +2577,57 @@ genrule(
     local = 1,
 )
 
+compile_pip_requirements(
+    name = "requirements_compile_py_proto",
+    requirements_in = "ci/requirements_compile_py_proto.in",
+    requirements_txt = "ci/requirements_compile_py_proto.txt",
+    extra_args = ["--allow-unsafe"],
+    tags = ["team:ci"],
+    visibility = ["//visibility:private"],
+)
+
+py_binary(
+    name = "grpc_tools_protoc",
+    srcs = ["ci/grpc_tools_protoc.py"],
+    deps = [
+        requirement("grpcio-tools"),
+    ],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = ["team:ci"],
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "compile_py_proto",
+    srcs = [
+        "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto",
+        "@io_opencensus_proto//opencensus/proto/resource/v1:resource.proto",
+        "@com_google_protobuf//:well_known_type_protos",
+    ] + glob([
+        "src/ray/protobuf/**/*.proto",
+    ]),
+    cmd = """
+        $(location :grpc_tools_protoc) --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated src/ray/protobuf/*.proto src/ray/protobuf/**/*.proto --proto_path=. --proto_path=$$(dirname $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto))/../../../.. --proto_path=external/com_google_protobuf/src
+
+        mkdir -p opencensus/proto/metrics/v1
+        mkdir -p opencensus/proto/resource/v1
+        cp $(locations @io_opencensus_proto//opencensus/proto/metrics/v1:metrics.proto) opencensus/proto/metrics/v1/metrics.proto
+        cp $(locations @io_opencensus_proto//opencensus/proto/resource/v1:resource.proto) opencensus/proto/resource/v1/resource.proto
+        $(location :grpc_tools_protoc) --python_out=python/ray/core/generated --grpc_python_out=python/ray/core/generated opencensus/proto/metrics/v1/metrics.proto opencensus/proto/resource/v1/resource.proto --proto_path=.  --proto_path=external/com_google_protobuf/src
+        mv python/ray/core/generated/src/ray/protobuf/*.py python/ray/core/generated/
+        mv python/ray/core/generated/src/ray/protobuf/**/*.py python/ray/core/generated/
+        mv python/ray/core/generated/opencensus/proto/**/v1/*.py python/ray/core/generated/
+        mkdir -p python/ray/serve/generated
+        mv python/ray/core/generated/serve_*.py python/ray/serve/generated/
+        rm -rf opencensus
+        rm -rf python/ray/core/generated/src/
+        rm -rf python/ray/core/generated/opencensus/
+        echo "$${PWD}" > $@
+    """,
+    tools = [
+        ":grpc_tools_protoc",
+    ],
+    outs = ["compile_py_proto.out"],
+    local = 1,
+    tags = ["no-cache"],
+)

@@ -453,6 +453,7 @@ validate_wheels_commit_str() {
 
 build_wheels_and_jars() {
   _bazel_build_before_install
+  conda init
 
   # Create wheel output directory and empty contents
   # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.

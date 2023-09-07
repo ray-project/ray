@@ -131,7 +131,7 @@ class ClientCallImpl : public ClientCall {
   /// return_status_ = GrpcStatusToRayStatus(status_) but need
   /// a separate variable because status_ is set internally by
   /// GRPC and we cannot control it holding the lock.
-  ray::Status return_status_ GUARDED_BY(mutex_);
+  ray::Status return_status_ ABSL_GUARDED_BY(mutex_);
 
   /// Context for the client. It could be used to convey extra information to
   /// the server and/or tweak certain RPC behaviors.

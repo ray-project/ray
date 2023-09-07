@@ -811,7 +811,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Keeps track of workers waiting for objects
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>>
-      async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
+      async_plasma_objects_notification_
+          ABSL_GUARDED_BY(plasma_object_notification_lock_);
 
   /// Fields that are used to report metrics.
   /// The period between debug state dumps.

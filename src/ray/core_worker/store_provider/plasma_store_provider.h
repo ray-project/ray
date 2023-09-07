@@ -52,7 +52,7 @@ class BufferTracker {
   // identifies a buffer. It should not be a shared ptr since that would keep the Buffer
   // alive forever (i.e., this is a weak ref map).
   absl::flat_hash_map<std::pair<ObjectID, TrackedBuffer *>, std::string> active_buffers_
-      GUARDED_BY(active_buffers_mutex_);
+      ABSL_GUARDED_BY(active_buffers_mutex_);
 };
 
 /// This can be used to hold the reference to a buffer.
