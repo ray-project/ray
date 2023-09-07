@@ -230,9 +230,14 @@ class ActorReplicaWrapper:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
         # change both (or introduce a branch here).
-        queue_len = await self._actor_handle.get_num_ongoing_requests.remote()
-        accepted = queue_len < self._replica_info.max_concurrent_queries
-        return queue_len, accepted
+        obj_ref = self._actor_handle.get_num_ongoing_requests.remote()
+        try:
+            queue_len = await obj_ref
+            accepted = queue_len < self._replica_info.max_concurrent_queries
+            return queue_len, accepted
+        except asyncio.CancelledError:
+            ray.cancel(obj_ref)
+            raise
 
     def _send_query_java(self, query: Query) -> ray.ObjectRef:
         """Send the query to a Java replica.
