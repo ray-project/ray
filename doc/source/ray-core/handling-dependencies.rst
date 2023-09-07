@@ -144,7 +144,7 @@ You can specify a runtime environment for your whole job, whether running a scri
 
 .. warning::
 
-    Specify the ``runtime_env`` argument in the ``submit_job`` call or the ``ray job submit`` ensures ensures the runtime environment is installed on the cluster before the entrypoint script is run.
+    Specifying the ``runtime_env`` argument in the ``submit_job`` or ``ray job submit`` call ensures the runtime environment is installed on the cluster before the entrypoint script is run.
 
     If ``runtime_env`` is specified from ``ray.init(runtime_env=...)``, the runtime env is only applied to all children Tasks and Actors, not the entrypoint script (Driver) itself.
 
@@ -453,10 +453,10 @@ When the cache size limit is exceeded, resources not currently used by any Actor
 Runtime Environment Specified by Both Job and Driver
 """"""""""""""""""""""""""""""""""""""""""""""""""""
 
-When running an entrypoint script (Driver), runtime environment can be specified via `ray.init(runtime_env=...)` or `ray job submit --runtime-env` (See :ref:`Specifying a Runtime Environment Per-Job <rte-per-job>` for more details).
+When running an entrypoint script (Driver), the runtime environment can be specified via `ray.init(runtime_env=...)` or `ray job submit --runtime-env` (See :ref:`Specifying a Runtime Environment Per-Job <rte-per-job>` for more details).
 
-- If runtime env is specified by ``ray job submit --runtime-env=...``, the runtime environments are applied to the entrypoint script (Driver) and all the tasks and actors created from it.
-- If runtime env is specified by ``ray.init(runtime_env=...)``, the runtime environments are applied to all the tasks and actors, but not the entrypoint script (Driver) itself.
+- If the runtime environment is specified by ``ray job submit --runtime-env=...``, the runtime environments are applied to the entrypoint script (Driver) and all the tasks and actors created from it.
+- If the runtime environment is specified by ``ray.init(runtime_env=...)``, the runtime environments are applied to all the tasks and actors, but not the entrypoint script (Driver) itself.
 
 Since ``ray job submit`` submits a Driver (that calls ``ray.init``), sometimes runtime environments are specified by both of them. When both the Ray Job and Driver specify runtime environments, their runtime environments are merged if there's no conflict.
 Ray raises an exception if the runtime environments conflict.
@@ -508,7 +508,7 @@ You can set an environment variable `RAY_OVERRIDE_JOB_RUNTIME_ENV=1`
 to avoid raising an exception upon a conflict. In this case, the runtime environments
 are inherited in the same way as :ref:`Driver and Task and Actor both specify
 runtime environments <runtime-environments-inheritance>`, where ``ray job submit``
-is a parent and ``ray.init`` is a driver.. 
+is a parent and ``ray.init`` is a driver.
 
 .. _runtime-environments-inheritance:
 
