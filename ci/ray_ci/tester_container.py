@@ -67,4 +67,4 @@ class TesterContainer(Container):
             test_cmd += f"--test_env {env} "
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
-        return subprocess.Popen(self._get_run_command("\n".join(commands)))
+        return subprocess.Popen(self._get_run_command(commands))
