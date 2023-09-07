@@ -2,11 +2,11 @@
 # Set Up FastAPI and HTTP
 
 This section helps you understand how to:
-- send HTTP requests to Serve deployments
-- use Ray Serve to integrate with FastAPI
-- use customized HTTP adapters
-- choose which feature to use for your use case
-- setup keep alive timeout
+- Send HTTP requests to Serve deployments
+- Use Ray Serve to integrate with FastAPI
+- Use customized HTTP adapters
+- Choose which feature to use for your use case
+- Set up keep alive timeout
 
 ## Choosing the right HTTP feature
 
@@ -192,8 +192,8 @@ Client disconnecting
 Serve uses a Uvicorn HTTP server internally to serve HTTP requests. By default, Uvicorn
 keeps HTTP connections alive for 5 seconds between requests. Modify the keep-alive
 timeout by setting the `keep_alive_timeout_s` in the `http_options` field of the Serve
-config files. This config is global to your Ray cluster, and it cannot be updated during
-runtime. You can also set `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` environment variable to
-set the keep alive timeout. `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` will take the
-precedence over the `keep_alive_timeout_s` config if both are set. You can find more
-information about Uvicorn's keep alive timeout [here](https://www.uvicorn.org/settings/#keep-alive-timeout).
+config files. This config is global to your Ray cluster, and you can't update it during
+runtime. You can also set the `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` environment variable to
+set the keep alive timeout. `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` takes
+precedence over the `keep_alive_timeout_s` config if both are set. See
+Uvicorn's keep alive timeout [guide](https://www.uvicorn.org/server-behavior/#timeouts) for more information.
