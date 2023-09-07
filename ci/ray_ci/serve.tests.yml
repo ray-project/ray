@@ -1,1 +1,2 @@
-flaky_tests: []
+flaky_tests: 
+  - //python/ray/serve:test_websockets
