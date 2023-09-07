@@ -8,7 +8,18 @@ import pickle
 import socket
 import time
 import grpc
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type, Union, Literal
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+    Literal,
+)
 import uuid
 
 import uvicorn
@@ -114,9 +125,7 @@ RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
 )
 # Controls whether Ray Serve is operating in debug-mode switching off some
 # of the performance optimizations to make troubleshooting easier
-RAY_SERVE_DEBUG_MODE = bool(
-    os.environ.get("RAY_SERVE_DEBUG_MODE", 0)
-)
+RAY_SERVE_DEBUG_MODE = bool(os.environ.get("RAY_SERVE_DEBUG_MODE", 0))
 
 if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
@@ -1726,12 +1735,12 @@ class HTTPProxyActor:
 def _determine_target_loop() -> Literal["uvloop", "asyncio"]:
     """We determine target loop based on whether RAY_SERVE_DEBUG_MODE is enabled:
 
-      - RAY_SERVE_DEBUG_MODE=0 (default): we use "uvloop" (Cython) providing high-performance,
-                                native implementation of the event-loop,
+    - RAY_SERVE_DEBUG_MODE=0 (default): we use "uvloop" (Cython) providing high-performance,
+                              native implementation of the event-loop,
 
-      - RAY_SERVE_DEBUG_MODE=1: we fall back to "asyncio" (pure Python) event-loop implementation
-                                that is considerably slower than "uvloop", but provides for easy
-                                access to the source implementation
+    - RAY_SERVE_DEBUG_MODE=1: we fall back to "asyncio" (pure Python) event-loop implementation
+                              that is considerably slower than "uvloop", but provides for easy
+                              access to the source implementation
     """
     if RAY_SERVE_DEBUG_MODE:
         return "asyncio"
