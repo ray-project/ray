@@ -71,7 +71,7 @@ Dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-
 There are two ways to expose Dashboard outside the Cluster:
 
 **1. Setting up ingress** <br/>
-Follow the [instructions](kuberay-ingress) to set up ingress to access Ray Dashboard.
+Follow the [instructions](kuberay-ingress) to set up ingress to access Ray Dashboard. **The Ingress must only allows access from trusted sources.**
 
 **2. Port forwarding** <br/>
 You can also view the dashboard from outside the Kubernetes cluster by using port-forwarding:
@@ -124,6 +124,11 @@ Below is an example with a [traefik](https://doc.traefik.io/traefik/getting-star
     [http.services.dashboard.loadBalancer]
       [[http.services.dashboard.loadBalancer.servers]]
         url = "http://localhost:8265"
+```
+
+```{admonition} Warning
+:class: warning
+The Ray Dashboard provides read **and write** access to the Ray Cluster. The reverse proxy must provide authentication or network ingress controls to prevent unauthorized access to the Cluster.
 ```
 
 ## Disabling the Dashboard
