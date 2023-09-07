@@ -81,12 +81,12 @@ class SyncConfig:
             Defaults to True.
     """
 
-    upload_dir: Optional[str] = _DEPRECATED_VALUE
-    syncer: Optional[Union[str, "Syncer"]] = _DEPRECATED_VALUE
     sync_period: int = DEFAULT_SYNC_PERIOD
     sync_timeout: int = DEFAULT_SYNC_TIMEOUT
     sync_artifacts: bool = False
     sync_artifacts_on_checkpoint: bool = True
+    upload_dir: Optional[str] = _DEPRECATED_VALUE
+    syncer: Optional[Union[str, "Syncer"]] = _DEPRECATED_VALUE
     sync_on_checkpoint: bool = _DEPRECATED_VALUE
 
     def _deprecation_warning(self, attr_name: str, extra_msg: str):
