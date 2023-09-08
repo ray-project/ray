@@ -61,6 +61,6 @@ def train_func(config):
 
 trainer = TorchTrainer(
     train_func,
-    scaling_config=ScalingConfig(num_workers=4),
+    scaling_config=ScalingConfig(num_workers=2),
 )
 trainer.fit()
