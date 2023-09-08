@@ -49,7 +49,7 @@ Each replica maintains a queue of requests and executes requests one at a time, 
 using `asyncio` to process them concurrently. If the handler (the deployment function or the `__call__` method of the deployment class) is declared with `async def`, the replica will not wait for the
 handler to run.  Otherwise, the replica will block until the handler returns.
 
-When making a request using a [DeploymentHandle](deployment-handle-explainer) instead of HTTP, the request is placed on a queue in the `DeploymentHandle`, and we skip to step 3 above.
+When making a request via a [DeploymentHandle](deployment-handle-explainer) instead of HTTP for [model composition](serve-model-composition), the request is placed on a queue in the `DeploymentHandle`, and we skip to step 3 above.
 
 (serve-ft-detail)=
 
@@ -105,15 +105,6 @@ servers.  You can use your own load balancer on top of Ray Serve.
 
 This architecture ensures horizontal scalability for Serve. You can scale your HTTP ingress by adding more nodes and scale your model inference by increasing the number
 of replicas via the `num_replicas` option of your deployment.
-
-### How do deployment handles work?
-
-The {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` object wraps a handle to a
-"router" that implements client-side load balancing of requests to replicas for a deployment.
-When a replica sends a request to another replica using the handle, the
-requests go through the same data path as incoming HTTP requests. This enables
-the same replica selection and batching procedures to happen. Deployment handles are
-often used to implement [model composition](serve-model-composition).
 
 ### What happens to large requests?
 
