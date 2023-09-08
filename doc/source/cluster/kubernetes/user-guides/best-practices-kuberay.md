@@ -1,6 +1,6 @@
 (best-practices-kuberay)=
 
-# Best practices for deployment and storage with KubeRay
+# Storage and dependencies best practices with KubeRay
 
 This document contains recommendations for setting up a Ray and Kubernetes cluster for your organization.
 
