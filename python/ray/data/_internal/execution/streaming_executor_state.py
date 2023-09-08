@@ -70,15 +70,16 @@ class TopologyResourceUsage:
         """Calculate the resource usage of the given topology."""
         downstream_usage = {}
         cur_usage = ExecutionResources(0, 0, 0)
+        # Subtract one from denom to account for input buffer.
+        topology_size = max(1.0, len(topology) - 1.0)
         # Iterate from last to first operator.
-        for op, state in list(topology.items())[::-1]:
+        for op, state in reversed(topology.items()):
             cur_usage = cur_usage.add(op.current_resource_usage())
             # Don't count input refs towards dynamic memory usage, as they have been
             # pre-created already outside this execution.
             if not isinstance(op, InputDataBuffer):
                 cur_usage.object_store_memory += state.outqueue_memory_usage()
-            # Subtract one from denom to account for input buffer.
-            f = (1.0 + len(downstream_usage)) / max(1.0, len(topology) - 1.0)
+            f = (1.0 + len(downstream_usage)) / topology_size
             downstream_usage[op] = DownstreamMemoryInfo(
                 topology_fraction=min(1.0, f),
                 object_store_memory=cur_usage.object_store_memory,
