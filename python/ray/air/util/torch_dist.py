@@ -17,7 +17,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.train._internal.utils import get_address_and_port
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
-from ray.train.torch.train_loop_utils import get_device
+from ray.air._internal.torch_utils import get_device
 
 
 class TorchDistributedWorker(ABC):

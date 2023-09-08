@@ -18,6 +18,8 @@ http_options:
   port: ...
 
   request_timeout_s: ...
+  
+  keep_alive_timeout_s: ...
 
 grpc_options:
 
@@ -51,6 +53,7 @@ The YAML file contains `http_options`, `grpc_options`, and `applications`. These
 
 - `host` and `port` are HTTP options that determine the host IP address and the port for your Serve application's HTTP proxies. These are optional settings and can be omitted. By default, the `host` is set to `0.0.0.0` to expose your deployments publicly, and the port is set to `8000`. If you're using Kubernetes, setting `host` to `0.0.0.0` is necessary to expose your deployments outside the cluster.
 - `request_timeout_s` is a field in the `http_options` that allows you to set the end-to-end timeout for a request before terminating and retrying at another replica. This config is global to your Ray cluster, and it cannot be updated during runtime. By default, the Serve HTTP proxy retries up to `10` times when a response is not received due to failures (for example, network disconnect, request timeout, etc.) By default, there is no request timeout.
+- `keep_alive_timeout_s` is a field in the `http_options` that allows you to set the keep alive timeout for the HTTP proxy. For more details, see [here](serve-http-guide-keep-alive-timeout)
 
 These are the `grpc_options`:
 
