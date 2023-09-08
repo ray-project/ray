@@ -18,7 +18,6 @@ from ray.air._internal.remote_storage import (
     list_at_uri,
 )
 from ray.air._internal.uri_utils import _join_path_or_uri, URI
-from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
     EXPR_PROGRESS_FILE,
     EXPR_RESULT_FILE,
@@ -31,9 +30,8 @@ from ray.train._internal.storage import (
     _exists_at_fs_path,
     get_fs_and_path,
 )
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.tune.execution.tune_controller import TuneController
-from ray.tune.syncer import SyncConfig
+from ray.train import Checkpoint, SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
 from ray.tune.utils.util import is_nan_or_inf, is_nan
@@ -56,7 +54,7 @@ from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoi
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +62,7 @@ DEFAULT_FILE_TYPE = "csv"
 
 
 @PublicAPI(stability="beta")
-class NewExperimentAnalysis:
+class ExperimentAnalysis:
     """Analyze results from a Ray Train/Tune experiment.
 
     To use this class, the run must store the history of reported metrics
@@ -118,7 +116,7 @@ class NewExperimentAnalysis:
             self._experiment_fs_path = experiment_checkpoint_path
 
             experiment_json_filename = (
-                NewExperimentAnalysis._find_newest_experiment_checkpoint(
+                ExperimentAnalysis._find_newest_experiment_checkpoint(
                     self._fs, self._experiment_fs_path
                 )
             )
@@ -445,7 +443,7 @@ class NewExperimentAnalysis:
 
     def _get_trial_checkpoints_with_metric(
         self, trial: Trial, metric: Optional[str] = None
-    ) -> List[Tuple[NewCheckpoint, Number]]:
+    ) -> List[Tuple[Checkpoint, Number]]:
         """Get all checkpoints and a specified metric of a trial.
 
         Args:
@@ -478,7 +476,7 @@ class NewExperimentAnalysis:
         trial: Trial,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
-    ) -> Optional[NewCheckpoint]:
+    ) -> Optional[Checkpoint]:
         """Gets best persistent checkpoint path of provided trial.
 
         Any checkpoints with an associated metric value of ``nan`` will be filtered out.
@@ -635,7 +633,7 @@ class NewExperimentAnalysis:
 
     def get_last_checkpoint(
         self, trial=None, metric="training_iteration", mode="max"
-    ) -> Optional[NewCheckpoint]:
+    ) -> Optional[Checkpoint]:
         """Gets the last checkpoint of the provided trial,
         i.e., with the highest "training_iteration".
 
@@ -680,7 +678,11 @@ class NewExperimentAnalysis:
         assert not mode or metric
         rows = {}
         for path, df in self.trial_dataframes.items():
-            if mode == "max":
+            if df.empty:
+                continue
+            if metric not in df:
+                idx = -1
+            elif mode == "max":
                 idx = df[metric].idxmax()
             elif mode == "min":
                 idx = df[metric].idxmin()
@@ -740,9 +742,15 @@ class NewExperimentAnalysis:
             "`ResultGrid` and use `Result.best_checkpoints` instead."
         )
 
+    def fetch_trial_dataframes(self) -> Dict[str, DataFrame]:
+        raise DeprecationWarning(
+            "`fetch_trial_dataframes` is deprecated. "
+            "Access the `trial_dataframes` property instead."
+        )
 
-@PublicAPI(stability="beta")
-class ExperimentAnalysis:
+
+@Deprecated
+class LegacyExperimentAnalysis:
     """Analyze results from a Tune experiment.
 
     To use this class, the experiment must be executed with the JsonLogger.
@@ -766,7 +774,7 @@ class ExperimentAnalysis:
         >>> from ray import tune
         >>> tune.run( # doctest: +SKIP
         ...     my_trainable, name="my_exp", local_dir="~/tune_results")
-        >>> analysis = ExperimentAnalysis( # doctest: +SKIP
+        >>> analysis = LegacyExperimentAnalysis( # doctest: +SKIP
         ...     experiment_checkpoint_path="~/tune_results/my_exp/state.json")
     """
 
@@ -1321,6 +1329,7 @@ class ExperimentAnalysis:
         best_path, best_metric = best_path_metrics[0]
         cloud_path = self._convert_local_to_cloud_path(best_path)
 
+        # TODO(matthewdeng): Figure out what to do here.
         if cloud_path:
             # Prefer cloud path over local path for downsteam processing
             if return_path:

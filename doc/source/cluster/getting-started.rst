@@ -54,7 +54,7 @@ What's next?
         **I want to run Ray on Kubernetes**
         ^^^
         Deploy a Ray application to a Kubernetes cluster. You can run the tutorial on a
-        Kubernetes cluster or on your laptop via KinD.
+        Kubernetes cluster or on your laptop via Kind.
 
         +++
         .. button-ref:: kuberay-quickstart
@@ -92,5 +92,3 @@ What's next?
             :expand:
 
             Job Submission
-
-.. include:: /_includes/clusters/announcement_bottom.rst

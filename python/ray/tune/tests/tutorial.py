@@ -133,7 +133,7 @@ results = tuner.fit()
 # __eval_func_end__
 
 # __plot_begin__
-dfs = {result.log_dir: result.metrics_dataframe for result in results}
+dfs = {result.path: result.metrics_dataframe for result in results}
 [d.mean_accuracy.plot() for d in dfs.values()]
 # __plot_end__
 
@@ -149,7 +149,7 @@ tuner = tune.Tuner(
 results = tuner.fit()
 
 # Obtain a trial dataframe from all run trials of this `tune.run` call.
-dfs = {result.log_dir: result.metrics_dataframe for result in results}
+dfs = {result.path: result.metrics_dataframe for result in results}
 # __run_scheduler_end__
 
 # fmt: off
@@ -190,7 +190,7 @@ results = tuner.fit()
 # __run_analysis_begin__
 import os
 
-logdir = results.get_best_result("mean_accuracy", mode="max").log_dir
+logdir = results.get_best_result("mean_accuracy", mode="max").path
 state_dict = torch.load(os.path.join(logdir, "model.pth"))
 
 model = ConvNet()

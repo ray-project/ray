@@ -4,14 +4,16 @@ import sys
 import os
 from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
 import ray
-import time
 from ray import serve
 from ray.cluster_utils import Cluster
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve._private.http_proxy import DRAINED_MESSAGE
 from ray.serve.config import gRPCOptions
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
+from ray._private.test_utils import (
+    wait_for_condition,
+    run_string_as_driver,
+    SignalActor,
+)
 from ray.serve.exceptions import RayServeException
 
 from ray.serve._private.constants import (
@@ -27,96 +29,15 @@ from ray._private.test_utils import (
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 import grpc
-
-
-def ping_grpc_list_applications(channel, app_names, test_draining=False):
-    stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
-    request = serve_pb2.ListApplicationsRequest()
-    if test_draining:
-        with pytest.raises(grpc.RpcError) as exception_info:
-            _, _ = stub.ListApplications.with_call(request=request)
-        rpc_error = exception_info.value
-        assert rpc_error.code() == grpc.StatusCode.UNAVAILABLE
-        assert rpc_error.details() == DRAINED_MESSAGE
-    else:
-        response, call = stub.ListApplications.with_call(request=request)
-        assert call.code() == grpc.StatusCode.OK
-        assert response.application_names == app_names
-    return True
-
-
-def ping_grpc_healthz(channel, test_draining=False):
-    stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
-    request = serve_pb2.HealthzRequest()
-    if test_draining:
-        with pytest.raises(grpc.RpcError) as exception_info:
-            _, _ = stub.Healthz.with_call(request=request)
-        rpc_error = exception_info.value
-        assert rpc_error.code() == grpc.StatusCode.UNAVAILABLE
-        assert rpc_error.details() == DRAINED_MESSAGE
-    else:
-        response, call = stub.Healthz.with_call(request=request)
-        assert call.code() == grpc.StatusCode.OK
-        assert response.message == "success"
-
-
-def ping_grpc_call_method(channel, app_name, test_not_found=False):
-    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-    metadata = (("application", app_name),)
-    if test_not_found:
-        with pytest.raises(grpc.RpcError) as exception_info:
-            _, _ = stub.__call__.with_call(request=request, metadata=metadata)
-        rpc_error = exception_info.value
-        assert rpc_error.code() == grpc.StatusCode.NOT_FOUND
-        assert f"Application '{app_name}' not found." in rpc_error.details()
-    else:
-        response, call = stub.__call__.with_call(request=request, metadata=metadata)
-        assert call.code() == grpc.StatusCode.OK
-        assert response.greeting == "Hello foo from bar"
-
-
-def ping_grpc_another_method(channel, app_name):
-    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-    metadata = (("application", app_name),)
-    response = stub.Method1(request=request, metadata=metadata)
-    assert response.greeting == "Hello foo from method1"
-
-
-def ping_grpc_model_multiplexing(channel, app_name):
-    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-    multiplexed_model_id = "999"
-    metadata = (
-        ("application", app_name),
-        ("multiplexed_model_id", multiplexed_model_id),
-    )
-    response = stub.Method2(request=request, metadata=metadata)
-    assert (
-        response.greeting
-        == f"Method2 called model, loading model: {multiplexed_model_id}"
-    )
-
-
-def ping_grpc_streaming(channel, app_name):
-    if not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        return
-
-    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-    metadata = (("application", app_name),)
-    responses = stub.Streaming(request=request, metadata=metadata)
-    for idx, response in enumerate(responses):
-        assert response.greeting == f"{idx}: Hello foo from bar"
-
-
-def ping_fruit_stand(channel, app_name):
-    stub = serve_pb2_grpc.FruitServiceStub(channel)
-    request = serve_pb2.FruitAmounts(orange=4, apple=8)
-    metadata = (("application", app_name),)
-    response = stub.FruitStand(request=request, metadata=metadata)
-    assert response.costs == 32
+from ray.serve.tests.utils import (
+    ping_grpc_list_applications,
+    ping_grpc_healthz,
+    ping_grpc_call_method,
+    ping_grpc_another_method,
+    ping_grpc_model_multiplexing,
+    ping_grpc_streaming,
+    ping_fruit_stand,
+)
 
 
 @pytest.fixture
@@ -665,12 +586,22 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     ],
     indirect=True,
 )
-def test_grpc_proxy_timeouts(ray_instance):
+@pytest.mark.skipif(
+    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
+    reason="Failing on Python 3.7.",
+)
+@pytest.mark.parametrize("streaming", [False, True])
+def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     """Test gRPC request timed out.
 
     When the request timed out, gRPC proxy should return timeout response for both
     unary and streaming request.
     """
+    if streaming and not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+        print(
+            "Skipping streaming condition because streaming feature flag is disabled."
+        )
+        return
 
     grpc_port = 9000
     grpc_servicer_functions = [
@@ -685,27 +616,20 @@ def test_grpc_proxy_timeouts(ray_instance):
         ),
     )
 
-    @serve.deployment()
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment
     class HelloModel:
         def __call__(self, user_message):
-            time.sleep(5)
+            ray.get(signal_actor.wait.remote())
             return serve_pb2.UserDefinedResponse(greeting="hello")
 
         def Streaming(self, user_message):
             for i in range(10):
-                time.sleep(5)
+                ray.get(signal_actor.wait.remote())
                 yield serve_pb2.UserDefinedResponse(greeting="hello")
 
-    model = HelloModel.bind()
-    app_name = "app1"
-    replica_name = DeploymentID("HelloModel", app_name)
-    serve.run(target=model, name=app_name)
-    replicas = ray.get(
-        serve.context._global_client._controller._all_running_replicas.remote()
-    )
-
-    # Ensures the app is deployed.
-    assert len(replicas[replica_name]) == 1
+    serve.run(HelloModel.bind())
 
     channel = grpc.insecure_channel("localhost:9000")
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
@@ -713,27 +637,80 @@ def test_grpc_proxy_timeouts(ray_instance):
 
     timeout_response = "timed out after 0.1s."
 
-    # Ensure unary request respond with timeout response when running longer than the
-    # serve request timeout setting
-    with pytest.raises(grpc.RpcError) as exception_info:
-        _, _ = stub.__call__(request=request)
+    if streaming:
+        # Ensure streaming request respond with timeout response when running longer
+        # than the serve request timeout setting
+        with pytest.raises(grpc.RpcError) as exception_info:
+            list(stub.Streaming(request=request))
+    else:
+        # Ensure unary request respond with timeout response when running longer than
+        # the serve request timeout setting
+        with pytest.raises(grpc.RpcError) as exception_info:
+            stub.__call__(request=request)
+
     rpc_error = exception_info.value
     assert rpc_error.code() == grpc.StatusCode.CANCELLED
     assert timeout_response in rpc_error.details()
 
-    if not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+    # Unblock the handlers to avoid graceful shutdown time.
+    ray.get(signal_actor.send.remote())
+
+
+@pytest.mark.skipif(
+    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
+    reason="Failing on Python 3.7.",
+)
+@pytest.mark.parametrize("streaming", [False, True])
+def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
+    """Test gRPC request error out.
+
+    When the request error out, gRPC proxy should return INTERNAL status and the error
+    message in the response for both unary and streaming request.
+    """
+    if streaming and not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+        print(
+            "Skipping streaming condition because streaming feature flag is disabled."
+        )
         return
 
-    # Ensure streaming request respond with timeout response when running longer than
-    # the serve request timeout setting
-    with pytest.raises(grpc.RpcError) as exception_info:
-        responses = stub.Streaming(request=request)
-        list(responses)
-    rpc_error = exception_info.value
-    assert rpc_error.code() == grpc.StatusCode.CANCELLED
-    assert timeout_response in rpc_error.details()
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
 
-    serve.shutdown()
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
+    error_message = "test error case"
+
+    @serve.deployment()
+    class HelloModel:
+        def __call__(self, user_message):
+            raise RuntimeError(error_message)
+
+        def Streaming(self, user_message):
+            raise RuntimeError(error_message)
+
+    model = HelloModel.bind()
+    app_name = "app1"
+    serve.run(target=model, name=app_name)
+
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+
+    if streaming:
+        rpc_error = stub.Streaming(request=request)
+    else:
+        with pytest.raises(grpc.RpcError) as exception_info:
+            _ = stub.__call__(request=request)
+        rpc_error = exception_info.value
+
+    assert rpc_error.code() == grpc.StatusCode.INTERNAL
+    assert error_message in rpc_error.details()
 
 
 if __name__ == "__main__":

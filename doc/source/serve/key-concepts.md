@@ -72,12 +72,12 @@ serve.run(driver)
 
 (serve-key-concepts-ingress-deployment)=
 
-## Ingress Deployment (HTTP handling)
+## Ingress deployment (HTTP handling)
 
 A Serve application can consist of multiple deployments that can be combined to perform model composition or complex business logic.
-However, there is always one "top-level" deployment, the one that will be passed to `serve.run` or `serve.build` to deploy the application.
+However, one deployment is always the "top-level" one that is passed to `serve.run` to deploy the application.
 This deployment is called the "ingress deployment" because it serves as the entrypoint for all traffic to the application.
-Often, it will then route to other deployments or call into them using the `ServeHandle` API and compose the results before returning to the user.
+Often, it then routes to other deployments or calls into them using the `ServeHandle` API, and composes the results before returning to the user.
 
 The ingress deployment defines the HTTP handling logic for the application.
 By default, the `__call__` method of the class will be called and passed in a `Starlette` request object.
@@ -118,7 +118,7 @@ class MostBasicIngress:
 
 (serve-key-concepts-deployment-graph)=
 
-## Deployment Graph
+## Deployment graph
 
 Building on top of the deployment concept, Ray Serve also provides a first-class API for composing multiple models into a graph structure and orchestrating the calls to each deployment automatically. In this case, the `DAGDriver` is the ingress deployment.
 
@@ -127,9 +127,10 @@ Here's a simple example combining a preprocess function and model.
 ```{literalinclude} doc_code/key-concepts-deployment-graph.py
 ```
 
-## What's Next?
+## What's next?
 Now that you have learned the key concepts, you can dive into these guides:
-- [Scaling and allocating resources](scaling-and-resource-allocation)
+- [Resource allocation](serve-resource-allocation)
+- [Autoscaling guide](serve-autoscaling)
 - [Configuring HTTP logic and integrating with FastAPI](http-guide)
 - [Development workflow for Serve applications](serve-dev-workflow)
 - [Composing deployments to perform model composition](serve-model-composition)

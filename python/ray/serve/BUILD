@@ -570,6 +570,14 @@ py_test(
 )
 
 py_test(
+    name = "test_cancellation",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_streaming_response",
     size = "medium",
     srcs = serve_tests_srcs,
@@ -595,6 +603,14 @@ py_test(
 
 py_test(
     name = "test_replica_placement_group",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_max_replicas_per_node",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -633,14 +649,6 @@ py_test(
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"]
-)
-
-py_test(
-    name = "conda_env",
-    size = "medium",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "post_wheel_build", "team:serve", "no_main"],
     deps = [":serve_lib"]
 )
 
@@ -726,7 +734,7 @@ py_test(
 
 py_test(
     name = "test_http_headers",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

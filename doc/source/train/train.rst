@@ -1,53 +1,174 @@
-.. include:: /_includes/train/announcement.rst
-
 .. _train-docs:
 
 Ray Train: Scalable Model Training
 ==================================
 
-.. _`issue on GitHub`: https://github.com/ray-project/ray/issues
+Ray Train is a scalable machine learning library for distributed training and fine-tuning.
 
-.. tip::
+Ray Train allows you to scale model training code from a single machine to a cluster of machines in the cloud, and abstracts away the complexities of distributed computing.
+Whether you have large models or large datasets, Ray Train is the simplest solution for distributed training.
 
-    Train is currently in **beta**. Fill out `this short form <https://forms.gle/PXFcJmHwszCwQhqX7>`_ to get involved with Train development!
+Ray Train provides support for many frameworks:
 
-Ray Train scales model training for popular ML frameworks such as Torch, XGBoost, TensorFlow, and more. It seamlessly integrates with other Ray libraries such as Tune and Predictors:
+.. list-table::
+   :widths: 1 1
+   :header-rows: 1
 
-.. https://docs.google.com/drawings/d/1FezcdrXJuxLZzo6Rjz1CHyJzseH8nPFZp6IUepdn3N4/edit
+   * - PyTorch Ecosystem
+     - More Frameworks
+   * - PyTorch
+     - TensorFlow
+   * - PyTorch Lightning
+     - Keras
+   * - Hugging Face Transformers
+     - Horovod
+   * - Hugging Face Accelerate
+     - XGBoost
+   * - DeepSpeed
+     - LightGBM
 
-.. image:: images/train-specific.svg
+Install Ray Train
+-----------------
 
-Intro to Ray Train
-------------------
+To install Ray Train, run:
 
-**Framework support**: Train abstracts away the complexity of scaling up training
-for common machine learning frameworks such as XGBoost, Pytorch, and Tensorflow.
-There are three broad categories of Trainers that Train offers:
+.. code-block:: console
 
-* Deep Learning Trainers (:doc:`PyTorch </train/getting-started-pytorch>`, :doc:`TensorFlow </train/distributed-tensorflow-keras>`, :doc:`Horovod </train/horovod>`)
-* :doc:`Tree-based Trainers </train/distributed-xgboost-lightgbm>` (XGboost, LightGBM)
-* Other ML frameworks (HuggingFace, Scikit-Learn, RLlib)
+    $ pip install -U "ray[train]"
 
-**Built for ML practitioners**: Train supports standard ML tools and features that practitioners love:
+To learn more about installing Ray and its libraries, see
+:ref:`Installing Ray <installation>`.
 
-* Callbacks for early stopping
-* Checkpointing
-* Integration with TensorBoard, Weights/Biases, and MLflow
-* Jupyter notebooks
+Get started
+-----------
 
-**Batteries included**: Train seamlessly operates in the Ray ecosystem.
+.. grid:: 1 2 2 2
+    :gutter: 1
+    :class-container: container pb-6
 
-* Use :ref:`Ray Data <data>` with Train to load and process datasets both small and large.
-* Use :ref:`Ray Tune <tune-main>` with Train to sweep parameter grids and leverage cutting edge hyperparameter search algorithms.
-* Leverage the :ref:`Ray cluster launcher <cluster-index>` to launch autoscaling or spot instance clusters on any cloud.
+    .. grid-item-card::
 
+        **Overview**
+        ^^^
 
-Next steps
+        Understand the key concepts for distributed training with Ray Train.
+
+        +++
+        .. button-ref:: train-overview
+            :color: primary
+            :outline:
+            :expand:
+
+            Learn the basics
+
+    .. grid-item-card::
+
+        **PyTorch**
+        ^^^
+
+        Get started on distributed model training with Ray Train and PyTorch.
+
+        +++
+        .. button-ref:: train-pytorch
+            :color: primary
+            :outline:
+            :expand:
+
+            Try Ray Train with PyTorch
+
+    .. grid-item-card::
+
+        **PyTorch Lightning**
+        ^^^
+
+        Get started on distributed model training with Ray Train and Lightning.
+
+        +++
+        .. button-ref:: train-pytorch-lightning
+            :color: primary
+            :outline:
+            :expand:
+
+            Try Ray Train and Lightning
+
+    .. grid-item-card::
+
+        **Hugging Face Transformers**
+        ^^^
+
+        Get started on distributed model training with Ray Train and Transformers.
+
+        +++
+        .. button-ref:: train-pytorch-transformers
+            :color: primary
+            :outline:
+            :expand:
+
+            Try Ray Train with Transformers
+
+Learn more
 ----------
 
-* :ref:`Key Concepts for Ray Train <train-key-concepts>`
-* :doc:`User Guide for distributed PyTorch </train/getting-started-pytorch>`
-* :doc:`User Guide for distributed TensorFlow </train/distributed-tensorflow-keras>`
-* :doc:`User Guide for Tree-Based Trainers </train/distributed-xgboost-lightgbm>`
+.. grid:: 1 2 2 2
+    :gutter: 1
+    :class-container: container pb-6
 
-.. include:: /_includes/train/announcement_bottom.rst
+    .. grid-item-card::
+
+        **More Frameworks**
+        ^^^
+
+        Don't see your framework? See these guides.
+
+        +++
+        .. button-ref:: train-more-frameworks
+            :color: primary
+            :outline:
+            :expand:
+
+            Try Ray Train with other frameworks
+
+    .. grid-item-card::
+
+        **User Guides**
+        ^^^
+
+        Get how-to instructions for common training tasks with Ray Train.
+
+        +++
+        .. button-ref:: train-user-guides
+            :color: primary
+            :outline:
+            :expand:
+
+            Read how-to guides
+
+    .. grid-item-card::
+
+        **Examples**
+        ^^^
+
+        Browse end-to-end code examples for different use cases.
+
+        +++
+        .. button-ref:: train-examples
+            :color: primary
+            :outline:
+            :expand:
+
+            Learn through examples
+
+    .. grid-item-card::
+
+        **API**
+        ^^^
+
+        Consult the API Reference for full descriptions of the Ray Train API.
+
+        +++
+        .. button-ref:: air-trainer-ref
+            :color: primary
+            :outline:
+            :expand:
+
+            Read the API Reference

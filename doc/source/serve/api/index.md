@@ -44,6 +44,32 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    serve.handle.RayServeSyncHandle
 ```
 
+### Running Applications
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.start
+   serve.run
+   serve.delete
+   serve.status
+   serve.shutdown
+```
+
+### Configurations
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.config.ProxyLocation
+   serve.config.HTTPOptions
+   serve.config.AutoscalingConfig
+```
+
 #### Advanced APIs
 
 ```{eval-rst}
@@ -52,23 +78,10 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    :toctree: doc/
 
    serve.get_replica_context
+   serve.context.ReplicaContext
    serve.get_multiplexed_model_id
    serve.get_app_handle
    serve.get_deployment_handle
-```
-
-### Running Applications
-
-```{eval-rst}
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   serve.run
-   serve.delete
-   serve.start
-   serve.shutdown
-   serve.status
 ```
 
 (serve-cli)=

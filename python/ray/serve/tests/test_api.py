@@ -131,8 +131,6 @@ def test_starlette_response(serve_instance):
 
 @pytest.mark.parametrize("use_async", [False, True])
 def test_deploy_function_no_params(serve_instance, use_async):
-    serve.start()
-
     if use_async:
         expected_output = "async!"
         deployment_cls = async_d
@@ -150,8 +148,6 @@ def test_deploy_function_no_params(serve_instance, use_async):
 
 @pytest.mark.parametrize("use_async", [False, True])
 def test_deploy_function_no_params_call_with_param(serve_instance, use_async):
-    serve.start()
-
     if use_async:
         expected_output = "async!"
         deployment_cls = async_d
@@ -175,11 +171,11 @@ def test_deploy_function_no_params_call_with_param(serve_instance, use_async):
 
 @pytest.mark.parametrize("use_async", [False, True])
 def test_deploy_class_no_params(serve_instance, use_async):
-    serve.start()
     if use_async:
         deployment_cls = AsyncCounter
     else:
         deployment_cls = Counter
+
     handle = serve.run(deployment_cls.bind())
 
     assert requests.get(f"http://127.0.0.1:8000/{deployment_cls.name}").json() == {
@@ -360,9 +356,6 @@ def test_start_idempotent(serve_instance):
     func.deploy()
 
     assert "start" in serve.list_deployments()
-    serve.start(detached=True)
-    serve.start()
-    serve.start(detached=True)
     serve.start()
     assert "start" in serve.list_deployments()
 
@@ -1062,6 +1055,33 @@ def test_get_deployment_handle_basic(serve_instance):
     app_handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
     assert isinstance(app_handle, DeploymentHandle)
     assert app_handle.remote().result() == "hello world!!"
+
+
+def test_deployment_handle_nested_in_obj(serve_instance):
+    """Test binding a handle within a custom object."""
+
+    class HandleWrapper:
+        def __init__(self, handle: RayServeHandle):
+            self._handle = handle
+
+        def get(self) -> DeploymentHandle:
+            return self._handle.options(use_new_handle_api=True)
+
+    @serve.deployment
+    def f() -> str:
+        return "hi"
+
+    @serve.deployment
+    class MyDriver:
+        def __init__(self, handle_wrapper: HandleWrapper):
+            self.handle_wrapper = handle_wrapper
+
+        async def __call__(self) -> str:
+            return await self.handle_wrapper.get().remote()
+
+    handle_wrapper = HandleWrapper(f.bind())
+    h = serve.run(MyDriver.bind(handle_wrapper)).options(use_new_handle_api=True)
+    assert h.remote().result() == "hi"
 
 
 if __name__ == "__main__":

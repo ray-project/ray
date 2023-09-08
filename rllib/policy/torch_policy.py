@@ -32,7 +32,6 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.error import ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
@@ -62,7 +61,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class TorchPolicy(Policy):
     """PyTorch specific Policy class to use with RLlib."""
 
@@ -303,7 +302,6 @@ class TorchPolicy(Policy):
         timestep: Optional[int] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
@@ -341,7 +339,6 @@ class TorchPolicy(Policy):
         timestep: Optional[int] = None,
         **kwargs,
     ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
-
         with torch.no_grad():
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
             input_dict = self._lazy_tensor_dict(
@@ -378,7 +375,6 @@ class TorchPolicy(Policy):
         actions_normalized: bool = True,
         **kwargs,
     ) -> TensorType:
-
         if self.action_sampler_fn and self.action_distribution_fn is None:
             raise ValueError(
                 "Cannot compute log-prob/likelihood w/o an "
@@ -404,7 +400,6 @@ class TorchPolicy(Policy):
 
             # Action dist class and inputs are generated via custom function.
             if self.action_distribution_fn:
-
                 # Try new action_distribution_fn signature, supporting
                 # state_batches and seq_lens.
                 try:
@@ -454,7 +449,6 @@ class TorchPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def learn_on_batch(self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
-
         # Set Model to train mode.
         if self.model:
             self.model.train()
@@ -649,7 +643,6 @@ class TorchPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def compute_gradients(self, postprocessed_batch: SampleBatch) -> ModelGradients:
-
         assert len(self.devices) == 1
 
         # If not done yet, see whether we have to zero-pad this batch.
@@ -1209,7 +1202,7 @@ class TorchPolicy(Policy):
         return outputs
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class DirectStepOptimizer:
     """Typesafe method for indicating `apply_gradients` can directly step the
     optimizers with in-place gradients.
@@ -1223,7 +1216,7 @@ class DirectStepOptimizer:
         return DirectStepOptimizer._instance
 
     def __eq__(self, other):
-        return type(self) == type(other)
+        return type(self) is type(other)
 
     def __repr__(self):
         return "DirectStepOptimizer"
