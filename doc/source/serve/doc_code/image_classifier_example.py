@@ -7,6 +7,7 @@ from io import BytesIO
 from PIL import Image
 
 from ray import serve
+from ray.serve.handle import DeploymentHandle
 
 
 @serve.deployment
@@ -19,7 +20,7 @@ def downloader(image_url: str):
 @serve.deployment
 class ImageClassifier:
     def __init__(self, downloader):
-        self.downloader = downloader.options(use_new_handle_api=True)
+        self.downloader: DeploymentHandle = downloader.options(use_new_handle_api=True)
         self.model = pipeline(
             "image-classification", model="google/vit-base-patch16-224"
         )
@@ -41,7 +42,7 @@ app = ImageClassifier.options(route_prefix="/classify").bind(downloader.bind())
 @serve.deployment
 class ModifiedImageClassifier:
     def __init__(self, downloader):
-        self.downloader = downloader.options(use_new_handle_api=True)
+        self.downloader: DeploymentHandle = downloader.options(use_new_handle_api=True)
         self.model = pipeline(
             "image-classification", model="google/vit-base-patch16-224"
         )
@@ -57,7 +58,7 @@ class ModifiedImageClassifier:
         result = await self.classify(req["image_url"])
 
         if req.get("should_translate") is True:
-            handle = serve.get_app_handle("app2")
+            handle: DeploymentHandle = serve.get_app_handle("app2")
             return await handle.translate.remote(result)
 
         return result
