@@ -1,3 +1,6 @@
+.. image:: ./ray_summit_2023_horizontal.svg
+    :target: https://raysummit.anyscale.com/?utm_source=github&utm_medium=website&utm_campaign=ray_summit_2023&utm_content=banner
+
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
 .. image:: https://readthedocs.org/projects/ray/badge/?version=master
@@ -136,4 +139,3 @@ Getting Involved
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
 .. _`Twitter`: https://twitter.com/raydistributed
 .. _`Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
-
