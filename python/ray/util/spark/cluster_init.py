@@ -503,11 +503,18 @@ def _setup_ray_cluster(
     if ray_temp_root_dir is None:
         ray_temp_root_dir = start_hook.get_default_temp_dir()
     if global_mode_enabled():
-        # It reads from environment variable RAY_ADDRESS, then check
-        # /local_disk0/tmp/ray/ray_current_cluster to see if the address
-        # is available, if yes then a global ray cluster is running, otherwise
-        # it will start a new glbal ray cluster.
-        ray_addr = canonicalize_bootstrap_address_or_die("auto", get_user_temp_dir())
+        ray_addr = None
+        try:
+            # It reads from environment variable RAY_ADDRESS, then check
+            # /local_disk0/tmp/ray/ray_current_cluster to see if the address
+            # is available, if yes then a global ray cluster is running, otherwise
+            # it will start a new glbal ray cluster.
+            ray_addr = canonicalize_bootstrap_address_or_die(
+                "auto", get_user_temp_dir()
+            )
+        except Exception:
+            # Surpress exceptions thrown when there's no valid ray address
+            pass
         if ray_addr is not None:
             raise RuntimeError(
                 "Global mode is enabled by setting "
