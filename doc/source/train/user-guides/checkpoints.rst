@@ -3,12 +3,16 @@
 Saving and Loading Checkpoints
 ==============================
 
-Ray Train provides a way to save your model state during training with :class:`Checkpoints <ray.train.Checkpoint>`.
+Ray Train provides a way to snapshot training progress with :class:`Checkpoints <ray.train.Checkpoint>`.
+
 This is useful for:
 
-1. **Persist the best-performing model weights:** Save your model to persistent storage, and use it for downstream serving/inference.
+1. **Storing the best-performing model weights:** Save your model to persistent storage, and use it for downstream serving/inference.
 2. **Fault tolerance:** Handle node failures in a long-running training job on a cluster of pre-emptible machines/pods.
-3. **Integration with Ray Tune:** Checkpointing is required by certain :ref:`Ray Tune schedulers <tune-schedulers>`.
+3. **Distributed checkpointing:** When doing *model-parallel training*, Ray Train checkpointing provides an easy way to
+   :ref:`upload model shards from each worker in parallel <train-distributed-checkpointing>`,
+   without needing to gather the full model to a single node.
+4. **Integration with Ray Tune:** Checkpoint saving and loading is required by certain :ref:`Ray Tune schedulers <tune-schedulers>`.
 
 
 .. _train-dl-saving-checkpoints:
@@ -19,7 +23,7 @@ Saving checkpoints during training
 The :class:`Checkpoint <ray.train.Checkpoint>` is a lightweight interface provided
 by Ray Train that represents a *directory* that exists at some ``(filesystem, path)``.
 
-For example, a checkpoint living in cloud storage would be represented by
+For example, a checkpoint in cloud storage would be represented by
 ``Checkpoint(filesystem=S3FileSystem, path="my-bucket/my-checkpoint")``.
 A locally available checkpoint would be represented by
 ``Checkpoint(filesystem=LocalFileSystem, path="/tmp/my-checkpoint")``.
@@ -28,25 +32,43 @@ Here's how you modify your training loop to save a checkpoint in Ray Train:
 
 1. Write your model checkpoint to a local directory.
 
-    Since a :class:`Checkpoint <ray.train.Checkpoint>` just points to a directory,
-    the contents are completely up to you.
-    This means that you can use any serialization format you want.
-
-    This makes it easy to use familiar checkpoint utilities provided by training frameworks, such as
-    ``torch.save``, ``pl.Trainer.save_checkpoint``, Accelerate's ``accelerator.save_model``,
-    Transformers' ``save_pretrained``, and ``tf.keras.Model.save``, .
-
+   - Since a :class:`Checkpoint <ray.train.Checkpoint>` just points to a directory, the contents are completely up to you.
+   - This means that you can use any serialization format you want.
+   - This makes it **easy to use familiar checkpoint utilities provided by training frameworks**, such as
+     ``torch.save``, ``pl.Trainer.save_checkpoint``, Accelerate's ``accelerator.save_model``,
+     Transformers' ``save_pretrained``, and ``tf.keras.Model.save``.
 
 2. Create a :class:`Checkpoint <ray.train.Checkpoint>` from the directory using :meth:`Checkpoint.from_directory <ray.train.Checkpoint.from_directory>`.
 
 3. Report the checkpoint to Ray Train using :func:`ray.train.report(metrics, checkpoint=...) <ray.train.report>`.
 
-    The metrics reported alongside the checkpoint are used to :ref:`keep track of the best-performing checkpoints <train-dl-configure-checkpoints>`.
+   - The metrics reported alongside the checkpoint are used to :ref:`keep track of the best-performing checkpoints <train-dl-configure-checkpoints>`.
+   - This will **upload the checkpoint to persistent storage** if configured. See :ref:`persistent-storage-guide`.
 
-    This will **upload the checkpoint to persistent storage** if configured. See :ref:`persistent-storage-guide`.
+
+.. figure:: ../images/checkpoint_lifecycle.png
+
+    The lifecycle of a :class:`~ray.train.Checkpoint`, from being saved locally
+    to disk to being uploaded to persistent storage via ``train.report``.
+
+.. tip::
+
+    In standard DDP training, where each worker has a copy of the full-model, you should
+    only save and report a checkpoint from a single worker to prevent redundant uploads.
+
+    This typically looks like:
+
+    .. literalinclude::  ../doc_code/checkpoints.py
+        :language: python
+        :start-after: __checkpoint_from_single_worker_start__
+        :end-before: __checkpoint_from_single_worker_end__
+
+    If using parallel training strategies such as DeepSpeed Zero-3 and FSDP, where
+    each worker only has a shard of the full-model, you should save and report a checkpoint
+    from each worker. See :ref:`train-distributed-checkpointing` for an example.
 
 
-Here are a few examples of checkpointing with different training frameworks:
+Here are a few examples of saving checkpoints with different training frameworks:
 
 .. tab-set::
 
@@ -57,9 +79,16 @@ Here are a few examples of checkpointing with different training frameworks:
             :start-after: __pytorch_save_start__
             :end-before: __pytorch_save_end__
 
+        .. tip::
+
+            You should unwrap the DDP model before saving it to a checkpoint.
+
+            ``model.module`` is the original model before wrapping it with DDP.
+
+
     .. tab-item:: PyTorch Lightning
 
-        Ray Train leverages PyTorch Lightning's Callback interface to report metrics
+        Ray Train leverages PyTorch Lightning's ``Callback`` interface to report metrics
         and checkpoints. We provide a simple callback implementation that reports
         ``on_train_epoch_end``.
 
@@ -69,45 +98,10 @@ Here are a few examples of checkpointing with different training frameworks:
         - saves a checkpoint via ``trainer.save_checkpoint``
         - reports to Ray Train via :func:`ray.train.report(metrics, checkpoint) <ray.train.report>`
 
-        .. code-block:: python
-            :emphasize-lines: 2,11,20,28,29,30,31,32
-
-            import pytorch_lightning as pl
-            from ray.train.lightning import RayTrainReportCallback
-            from ray.train.torch import TorchTrainer
-            from ray.train import CheckpointConfig, RunConfig
-
-            class MyLightningModule(LightningModule):
-                ...
-                def on_validation_epoch_end(self):
-                    ...
-                    mean_acc = calculate_accuracy()
-                    self.log("mean_accuracy", mean_acc, sync_dist=True)
-
-            def train_func_per_worker():
-                ...
-                model = MyLightningModule(...)
-                datamodule = MyLightningDataModule(...)
-
-                trainer = pl.Trainer(
-                    # ...
-                    callbacks = [RayTrainReportCallback()]
-                )
-                trainer.fit(model, datamodule=datamodule)
-
-            ray_trainer = TorchTrainer(
-                train_func_per_worker,
-                scaling_config=ScalingConfig(num_workers=2),
-                run_config=RunConfig(
-                    checkpoint_config=CheckpointConfig(
-                        num_to_keep=2,
-                        checkpoint_score_attribute="mean_accuracy",
-                        checkpoint_score_order="max",
-                    ),
-                )
-            )
-            result = ray_trainer.fit()
-
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __lightning_save_example_start__
+            :end-before: __lightning_save_example_end__
 
         You can always get the saved checkpoint path from :attr:`result.checkpoint <ray.train.Result.checkpoint>` and
         :attr:`result.best_checkpoints <ray.train.Result.best_checkpoints>`.
@@ -116,40 +110,15 @@ Here are a few examples of checkpointing with different training frameworks:
         customized checkpoint files), you can implement your own customized callback.
         Here is a simple example that reports a checkpoint every 3 epochs:
 
-        .. code-block:: python
-
-            import os
-            import ray
-            from ray.train import Checkpoint
-            from tempfile import TemporaryDirectory
-            from pytorch_lightning.callbacks import Callback
-
-            class CustomRayTrainReportCallback(Callback):
-                def on_train_epoch_end(self, trainer, pl_module):
-                    if trainer.current_epoch % 3 != 0:
-                        return
-
-                    with TemporaryDirectory() as tmpdir:
-                        # Fetch metrics
-                        metrics = trainer.callback_metrics
-                        metrics = {k: v.item() for k, v in metrics.items()}
-
-                        # Add customized metrics
-                        metrics["epoch"] = trainer.current_epoch
-                        metrics["custom_metric"] = 123
-
-                        # Save model checkpoint file to tmpdir
-                        ckpt_path = os.path.join(tmpdir, "ckpt.pt")
-                        trainer.save_checkpoint(ckpt_path, weights_only=False)
-
-                        # Report to train session
-                        checkpoint = Checkpoint.from_directory(tmpdir)
-                        ray.train.report(metrics=metrics, checkpoint=checkpoint)
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __lightning_custom_save_example_start__
+            :end-before: __lightning_custom_save_example_end__
 
 
     .. tab-item:: Hugging Face Transformers
 
-        Ray Train leverages HuggingFace Transformers Trainer's Callback
+        Ray Train leverages HuggingFace Transformers Trainer's ``Callback`` interface
         to report metrics and checkpoints.
 
         **Option 1: Use Ray Train's default report callback**
@@ -158,46 +127,10 @@ Here are a few examples of checkpointing with different training frameworks:
         reports on checkpoint save. You can change the checkpointing frequency by ``save_strategy`` and ``save_steps``.
         It collects the latest logged metrics and report them together with the latest saved checkpoint.
 
-        .. code-block:: python
-            :emphasize-lines: 21-24
-
-            from ray.train.huggingface.transformers import (
-                RayTrainReportCallback,
-                prepare_trainer
-            )
-            from ray.train.torch import TorchTrainer
-            from transformers import TrainingArguments
-
-            def train_func(config):
-                ...
-
-                # Configure logging, saving, evaluation strategies as usual.
-                args = TrainingArguments(
-                    ...,
-                    evaluation_strategy="epoch",
-                    save_strategy="epoch",
-                    logging_strategy="step",
-                )
-
-                trainer = transformers.Trainer(args, ...)
-
-                # Add a report callback to transformers Trainer
-                # =============================================
-                trainer.add_callback(RayTrainReportCallback())
-                trainer = prepare_trainer(trainer)
-
-                trainer.train()
-
-            ray_trainer = TorchTrainer(
-                train_func,
-                run_config=RunConfig(
-                    checkpoint_config=CheckpointConfig(
-                        num_to_keep=3,
-                        checkpoint_score_attribute="eval_loss", # The monitoring metric
-                        checkpoint_score_order="min",
-                    )
-                )
-            )
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __transformers_save_example_start__
+            :end-before: __transformers_save_example_end__
 
         Note that :class:`~ray.train.huggingface.transformers.RayTrainReportCallback`
         binds the latest metrics and checkpoints together,
@@ -229,43 +162,59 @@ Here are a few examples of checkpointing with different training frameworks:
 
         **Option 2: Implement your customized report callback**
 
-        If you feel that Ray Train's default :class:`~ray.train.huggingface.transformers.RayTrainReportCallback` is not sufficient for your use case, you can also
-        implement a callback yourself! Below is a example implementation that collects latest metrics
+        If you feel that Ray Train's default :class:`~ray.train.huggingface.transformers.RayTrainReportCallback`
+        is not sufficient for your use case, you can also implement a callback yourself!
+        Below is a example implementation that collects latest metrics
         and reports on checkpoint save.
 
-        .. code-block:: python
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __transformers_custom_save_example_start__
+            :end-before: __transformers_custom_save_example_end__
 
-            from transformers.trainer_callback import TrainerCallback
 
-            class MyTrainReportCallback(TrainerCallback):
-                def __init__(self):
-                    super().__init__()
-                    self.metrics = {}
-
-                def on_log(self, args, state, control, model=None, logs=None, **kwargs):
-                    """Log is called on evaluation step and logging step."""
-                    self.metrics.update(logs)
-
-                def on_save(self, args, state, control, **kwargs):
-                    """Event called after a checkpoint save."""
-                    with TemporaryDirectory() as tmpdir:
-                        # Copy the latest checkpoint to tempdir
-                        source_ckpt_path = transformers.trainer.get_last_checkpoint(args.output_dir)
-                        target_ckpt_path = os.path.join(tmpdir, "checkpoint")
-                        shutil.copytree(source_ckpt_path, target_ckpt_path)
-
-                        # Build Ray Train Checkpoint
-                        checkpoint = Checkpoint.from_directory(tmpdir)
-
-                        # Report to Ray Train with up-to-date metrics
-                        ray.train.report(metrics=self.metrics, checkpoint=checkpoint)
-
-                        # Clear the metrics buffer
-                        self.metrics = {}
-
-        You can customize when(``on_save``, ``on_epoch_end``, ``on_evaluate``) and
-        what(customized metrics and checkpoint files) to report by implementing your own
+        You can customize when (``on_save``, ``on_epoch_end``, ``on_evaluate``) and
+        what (customized metrics and checkpoint files) to report by implementing your own
         Transformers Trainer callback.
+
+
+.. _train-distributed-checkpointing:
+
+Saving checkpoints from multiple workers (distributed checkpointing)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In model parallel training strategies where each worker only has a shard of the full-model,
+you can save and report checkpoint shards in parallel from each worker.
+
+.. figure:: ../images/persistent_storage_checkpoints.png
+
+    Distributed checkpointing in Ray Train. Each worker uploads its own checkpoint shard
+    to persistent storage independently.
+
+Distributed checkpointing is the best practice for saving checkpoints
+when doing model-parallel training (e.g., DeepSpeed, FSDP, Megatron-LM).
+
+There are two major benefits:
+
+1. **It is faster, resulting in less idle time.** Faster checkpointing incentivizes more frequent checkpointing!
+
+   Each worker can upload its checkpoint shard in parallel,
+   maximizing the network bandwidth of the cluster. Instead of a single node
+   uploading the full model of size ``M``, the cluster distributes the load across
+   ``N`` nodes, each uploading a shard of size ``M / N``.
+
+2. **Distributed checkpointing avoids needing to gather the full model onto a single worker's CPU memory.**
+
+   This gather operation puts a large CPU memory requirement on the worker that performs checkpointing
+   and is a common source of OOM errors.
+
+
+Here is an example of distributed checkpointing with PyTorch:
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __distributed_checkpointing_start__
+    :end-before: __distributed_checkpointing_end__
 
 
 .. _train-dl-configure-checkpoints:
@@ -303,7 +252,11 @@ The latest saved checkpoint can be accessed with :attr:`Result.checkpoint <ray.t
 The full list of persisted checkpoints can be accessed with :attr:`Result.best_checkpoints <ray.train.Result.best_checkpoints>`.
 If :class:`CheckpointConfig(num_to_keep) <ray.train.CheckpointConfig>` is set, this list will contain the best ``num_to_keep`` checkpoints.
 
+See :ref:`train-inspect-results` for a full guide on inspecting training results.
 
+:meth:`Checkpoint.as_directory <ray.train.Checkpoint.as_directory>`
+and :meth:`Checkpoint.to_directory <ray.train.Checkpoint.to_directory>`
+are the two main APIs to interact with Train checkpoints.
 
 
 .. _train-dl-loading-checkpoints:

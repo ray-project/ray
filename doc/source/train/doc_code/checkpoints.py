@@ -5,11 +5,10 @@
 import os
 import tempfile
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.optim import Adam
-import numpy as np
-
 
 import ray.train.torch
 from ray import train
@@ -25,7 +24,7 @@ def train_func(config):
     X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
     Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
     # toy neural network : 1-layer
-    # wrap the model in DDP
+    # Wrap the model in DDP
     model = ray.train.torch.prepare_model(nn.Linear(4, 1))
     criterion = nn.MSELoss()
 
@@ -42,11 +41,12 @@ def train_func(config):
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
             checkpoint = None
 
+            should_checkpoint = epoch % config.get("checkpoint_freq", 1) == 0
             # In standard DDP training, where the model is the same across all ranks,
             # only the global rank 0 worker needs to save and report the checkpoint
-            if train.get_context().get_world_rank() == 0:
+            if train.get_context().get_world_rank() == 0 and should_checkpoint:
                 torch.save(
-                    model.module.state_dict(),
+                    model.module.state_dict(),  # NOTE: Unwrap the model.
                     os.path.join(temp_checkpoint_dir, "model.pt"),
                 )
                 checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
@@ -61,3 +61,214 @@ trainer = TorchTrainer(
 )
 result = trainer.fit()
 # __pytorch_save_end__
+
+
+# __checkpoint_from_single_worker_start__
+import tempfile
+
+from ray import train
+
+
+def train_fn(config):
+    ...
+
+    metrics = {...}
+    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+        checkpoint = None
+
+        # Only the global rank 0 worker saves and reports the checkpoint
+        if train.get_context().get_world_rank() == 0:
+            ...  # Save checkpoint to temp_checkpoint_dir
+
+            checkpoint = Checkpoint.from_directory(tmpdir)
+
+        train.report(metrics, checkpoint=checkpoint)
+
+
+# __checkpoint_from_single_worker_end__
+
+
+# __lightning_save_example_start__
+import pytorch_lightning as pl
+from ray.train.lightning import RayTrainReportCallback
+from ray.train.torch import TorchTrainer
+from ray.train import CheckpointConfig, RunConfig
+
+
+class MyLightningModule(LightningModule):
+    # ...
+
+    def on_validation_epoch_end(self):
+        ...
+        mean_acc = calculate_accuracy()
+        self.log("mean_accuracy", mean_acc, sync_dist=True)
+
+
+def train_func_per_worker():
+    ...
+    model = MyLightningModule(...)
+    datamodule = MyLightningDataModule(...)
+
+    trainer = pl.Trainer(
+        # ...
+        callbacks=[RayTrainReportCallback()]
+    )
+    trainer.fit(model, datamodule=datamodule)
+
+
+ray_trainer = TorchTrainer(
+    train_func_per_worker,
+    scaling_config=ScalingConfig(num_workers=2),
+    run_config=RunConfig(
+        checkpoint_config=CheckpointConfig(
+            num_to_keep=2,
+            checkpoint_score_attribute="mean_accuracy",
+            checkpoint_score_order="max",
+        ),
+    ),
+)
+# __lightning_save_example_end__
+
+
+# __lightning_custom_save_example_start__
+import os
+from tempfile import TemporaryDirectory
+
+from pytorch_lightning.callbacks import Callback
+
+import ray
+import ray.train
+from ray.train import Checkpoint
+
+
+class CustomRayTrainReportCallback(Callback):
+    def on_train_epoch_end(self, trainer, pl_module):
+        should_checkpoint = trainer.current_epoch % 3 == 0
+
+        with TemporaryDirectory() as tmpdir:
+            # Fetch metrics
+            metrics = trainer.callback_metrics
+            metrics = {k: v.item() for k, v in metrics.items()}
+
+            # Add customized metrics
+            metrics["epoch"] = trainer.current_epoch
+            metrics["custom_metric"] = 123
+
+            checkpoint = None
+            global_rank = ray.train.get_context().get_world_rank() == 0
+            if global_rank == 0 and should_checkpoint:
+                # Save model checkpoint file to tmpdir
+                ckpt_path = os.path.join(tmpdir, "ckpt.pt")
+                trainer.save_checkpoint(ckpt_path, weights_only=False)
+
+                checkpoint = Checkpoint.from_directory(tmpdir)
+
+            # Report to train session
+            ray.train.report(metrics=metrics, checkpoint=checkpoint)
+
+
+# __lightning_custom_save_example_end__
+
+
+# __transformers_save_example_start__
+from transformers import TrainingArguments
+
+from ray.train.huggingface.transformers import RayTrainReportCallback, prepare_trainer
+from ray.train.torch import TorchTrainer
+
+
+def train_func(config):
+    ...
+
+    # Configure logging, saving, evaluation strategies as usual.
+    args = TrainingArguments(
+        ...,
+        evaluation_strategy="epoch",
+        save_strategy="epoch",
+        logging_strategy="step",
+    )
+
+    trainer = transformers.Trainer(args, ...)
+
+    # Add a report callback to transformers Trainer
+    # =============================================
+    trainer.add_callback(RayTrainReportCallback())
+    trainer = prepare_trainer(trainer)
+
+    trainer.train()
+
+
+ray_trainer = TorchTrainer(
+    train_func,
+    run_config=RunConfig(
+        checkpoint_config=CheckpointConfig(
+            num_to_keep=3,
+            checkpoint_score_attribute="eval_loss",  # The monitoring metric
+            checkpoint_score_order="min",
+        )
+    ),
+)
+# __transformers_save_example_end__
+
+
+# __transformers_custom_save_example_start__
+from ray import train
+
+from transformers.trainer_callback import TrainerCallback
+
+
+class MyTrainReportCallback(TrainerCallback):
+    def __init__(self):
+        super().__init__()
+        self.metrics = {}
+
+    def on_log(self, args, state, control, model=None, logs=None, **kwargs):
+        """Log is called on evaluation step and logging step."""
+        self.metrics.update(logs)
+
+    def on_save(self, args, state, control, **kwargs):
+        """Event called after a checkpoint save."""
+
+        checkpoint = None
+        if train.get_context().get_world_rank() == 0:
+            # Build a Ray Train Checkpoint from the latest checkpoint
+            checkpoint_path = transformers.trainer.get_last_checkpoint(args.output_dir)
+            checkpoint = Checkpoint.from_directory(checkpoint_path)
+
+        # Report to Ray Train with up-to-date metrics
+        ray.train.report(metrics=self.metrics, checkpoint=checkpoint)
+
+        # Clear the metrics buffer
+        self.metrics = {}
+
+
+# __transformers_custom_save_example_end__
+
+
+# __distributed_checkpointing_start__
+from ray import train
+from ray.train import Checkpoint
+from ray.train.torch import TorchTrainer
+
+
+def train_func(config):
+    ...
+
+    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+        rank = train.get_context().get_world_rank()
+        torch.save(
+            ...,
+            os.path.join(temp_checkpoint_dir, f"model-rank={rank}.pt"),
+        )
+        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+
+        train.report(metrics, checkpoint=checkpoint)
+
+
+trainer = TorchTrainer(
+    train_func,
+    scaling_config=train.ScalingConfig(num_workers=2),
+    run_config=train.RunConfig(storage_path="s3://bucket/"),
+)
+# The checkpoint in cloud storage will contain: model-rank=0.pt, model-rank=1.pt
+# __distributed_checkpointing_end__
