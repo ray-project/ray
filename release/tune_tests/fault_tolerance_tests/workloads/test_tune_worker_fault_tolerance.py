@@ -19,7 +19,6 @@ Test owner: Yard1 (Antoni)
 
 """
 
-import json
 import os
 import pickle
 import argparse
