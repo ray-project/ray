@@ -90,11 +90,6 @@ def _convert_scaling_config_to_ray_params(
     placement_options = {
         "strategy": scaling_config.placement_strategy,
     }
-    # Special case, same as in ScalingConfig.as_placement_group_factory
-    if scaling_config._max_cpu_fraction_per_node is not None:
-        placement_options[
-            "_max_cpu_fraction_per_node"
-        ] = scaling_config._max_cpu_fraction_per_node
     ray_params = ray_params_cls_extended(
         placement_options=placement_options,
         **ray_params_kwargs,

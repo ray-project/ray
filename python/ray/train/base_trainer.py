@@ -189,7 +189,6 @@ class BaseTrainer(abc.ABC):
 
     _scaling_config_allowed_keys: List[str] = [
         "trainer_resources",
-        "_max_cpu_fraction_per_node",
     ]
     _handles_checkpoint_freq: bool = False
     _handles_checkpoint_at_end: bool = False
