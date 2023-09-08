@@ -100,7 +100,6 @@ class TuneController:
         metric: Optional[str] = None,
         trial_checkpoint_config: Optional[CheckpointConfig] = None,
         storage: Optional[StorageContext] = None,
-        chdir_to_trial_dir: bool = False,
         reuse_actors: bool = False,
         resource_manager_factory: Optional[Callable[[], ResourceManager]] = None,
         _trainer_api: bool = False,
@@ -167,9 +166,6 @@ class TuneController:
         # Reuse actors
         self._reuse_actors = reuse_actors
         self._actor_cache = _ObjectCache(may_keep_one=True)
-
-        # General trial behavior
-        self._chdir_to_trial_dir = chdir_to_trial_dir
 
         # Trial metadata for experiment checkpoints
         self._trials_to_cache: Set[Trial] = set()
@@ -1177,9 +1173,7 @@ class TuneController:
         _actor_cls = self._class_cache.get(trainable_cls)
 
         trial.set_location(_Location())
-        trainable_kwargs = _get_trainable_kwargs(
-            trial=trial, should_chdir=self._chdir_to_trial_dir
-        )
+        trainable_kwargs = _get_trainable_kwargs(trial=trial)
 
         with _change_working_directory(trial):
             tracked_actor = self._actor_manager.add_actor(
@@ -1540,6 +1534,13 @@ class TuneController:
 
         logger.debug(f"Requesting to STOP actor for trial {trial}")
 
+        if trial.is_saving:
+            logger.debug(
+                f"Trial {trial} is currently saving/pausing. Scheduling STOP after "
+                f"save resolved."
+            )
+            self._cached_trial_decisions[trial.trial_id] = TrialScheduler.STOP
+
         trial.temporary_state.saving_to = None
         trial.temporary_state.restoring_from = None
 
@@ -1629,10 +1630,10 @@ class TuneController:
                 return
 
             if should_checkpoint:
+                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
                 future_result = self._schedule_trial_save(
                     trial=trial, storage=CheckpointStorage.PERSISTENT
                 )
-                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
                 trial.temporary_state.saving_to = future_result
             else:
                 self._schedule_trial_stop(trial)
@@ -2202,11 +2203,7 @@ class TuneController:
         extra_config[STDOUT_FILE] = stdout_file
         extra_config[STDERR_FILE] = stderr_file
 
-        logger_creator = partial(
-            _noop_logger_creator,
-            logdir=trial.local_path,
-            should_chdir=self._chdir_to_trial_dir,
-        )
+        logger_creator = partial(_noop_logger_creator, logdir=trial.local_path)
 
         self._resetting_trials.add(trial)
         self._schedule_trial_task(

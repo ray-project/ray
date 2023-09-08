@@ -14,8 +14,8 @@ build:clang-cl --cxxopt="-std=c++17"
 build:msvc-cl --cxxopt="/std:c++17"
 build:windows --cxxopt="/std:c++17"
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
-build:linux --force_pic
-build:macos --force_pic
+build:linux --copt="-fPIC"
+build:macos --copt="-fPIC"
 build:clang-cl --compiler=clang-cl
 build:msvc-cl --compiler=msvc-cl
 # `LC_ALL` and `LANG` is needed for cpp worker tests, because they will call "ray start".

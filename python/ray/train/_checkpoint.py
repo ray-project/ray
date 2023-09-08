@@ -59,7 +59,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
 
     Example creating a checkpoint using ``Checkpoint.from_directory``:
 
-        >>> from ray.train._checkpoint import Checkpoint
+        >>> from ray.train import Checkpoint
         >>> checkpoint = Checkpoint.from_directory("/tmp/example_checkpoint_dir")
         >>> checkpoint.filesystem  # doctest: +ELLIPSIS
         <pyarrow._fs.LocalFileSystem object...
@@ -217,7 +217,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
             from pathlib import Path
             import tempfile
 
-            from ray.train._checkpoint import Checkpoint
+            from ray.train import Checkpoint
 
             temp_dir = tempfile.mkdtemp()
             (Path(temp_dir) / "example.txt").write_text("example checkpoint data")

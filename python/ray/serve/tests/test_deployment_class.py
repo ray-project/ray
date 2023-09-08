@@ -5,7 +5,7 @@ import itertools
 from typing import Dict, List
 
 from ray import serve
-from ray.serve.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 
 

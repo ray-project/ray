@@ -272,6 +272,7 @@ def init_ray_and_catch_exceptions() -> Callable:
                             log_to_driver=False,
                             configure_logging=False,
                             namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
+                            _skip_env_hook=True,
                         )
                     except Exception as e:
                         ray.shutdown()

@@ -90,8 +90,6 @@ class RewardPredictor(tf.keras.Model):
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
-            return_logits: Whether to return the logits over the reward buckets
-                as a second return value (besides the expected reward).
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3

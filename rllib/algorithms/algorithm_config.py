@@ -2219,6 +2219,10 @@ class AlgorithmConfig(_Config):
             This updated AlgorithmConfig object.
         """
         if policies is not NotProvided:
+            # If no policy information is provided, set self.policies to the default.
+            if not policies:
+                policies = {DEFAULT_POLICY_ID: PolicySpec()}
+
             # Make sure our Policy IDs are ok (this should work whether `policies`
             # is a dict or just any Sequence).
             for pid in policies:
@@ -2688,7 +2692,7 @@ class AlgorithmConfig(_Config):
             # We do NOT attempt to auto-detect Atari env for other specified types like
             # a callable, to avoid running heavy logics in validate().
             # For these cases, users can explicitly set `environment(atari=True)`.
-            if not type(self.env) == str:
+            if type(self.env) is not str:
                 return False
             try:
                 env = gym.make(self.env)
