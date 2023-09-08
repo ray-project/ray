@@ -17,7 +17,6 @@ import warnings
 import ray
 from ray.air._internal.session import _get_session
 from ray.air._internal.util import StartTraceback, RunnerThread
-from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
     _RESULT_FETCH_TIMEOUT,
     _ERROR_FETCH_TIMEOUT,
@@ -26,7 +25,7 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
 )
 from ray.data import Dataset, DatasetPipeline
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train import Checkpoint
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train.constants import (
@@ -79,6 +78,7 @@ class TrialInfo:
     experiment_name: Optional[str] = None
 
 
+# TODO(justinvyu): [code_removal]
 @dataclass
 class TrainingResult:
     type: TrainingResultType
@@ -576,20 +576,13 @@ class _TrainSession:
             sys.exit(0)
 
     def new_report(
-        self, metrics: Dict, checkpoint: Optional[NewCheckpoint] = None
+        self, metrics: Dict, checkpoint: Optional[Checkpoint] = None
     ) -> None:
         if self.ignore_report:
             return
 
         persisted_checkpoint = None
         if checkpoint:
-            # TODO(justinvyu): [code_removal]
-            if not isinstance(checkpoint, NewCheckpoint):
-                raise ValueError(
-                    "You must pass a `ray.train.Checkpoint` "
-                    "object to `train.report`. `ray.air.Checkpoint` is deprecated."
-                )
-
             # Persist the reported checkpoint files to storage.
             persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
 
