@@ -1,5 +1,7 @@
 from typing import Optional
 
+import gymnasium as gym
+
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
@@ -82,13 +84,6 @@ class PettingZooEnv(MultiAgentEnv):
         self.env = env
         env.reset()
 
-        # Since all agents have the same spaces, do not provide full observation-
-        # and action-spaces as Dicts, mapping agent IDs to the individual
-        # agents' spaces. Instead, `self.[action|observation]_space` are the single
-        # agent spaces.
-        self._obs_space_in_preferred_format = False
-        self._action_space_in_preferred_format = False
-
         # Collect the individual agents' spaces (they should all be the same):
         first_obs_space = self.env.observation_space(self.env.agents[0])
         first_action_space = self.env.action_space(self.env.agents[0])
@@ -107,33 +102,31 @@ class PettingZooEnv(MultiAgentEnv):
                     "`supersuit.aec_wrappers.pad_action_space(env)`"
                 )
 
-        # Convert from gym to gymnasium, if necessary.
-        self.observation_space = convert_old_gym_space_to_gymnasium_space(
-            first_obs_space
-        )
-        self.action_space = convert_old_gym_space_to_gymnasium_space(first_action_space)
-
         self._agent_ids = self.env.agents
 
+        # Convert from gym to gymnasium, if necessary.
+        self.observation_space = gym.spaces.Dict({
+            aid: convert_old_gym_space_to_gymnasium_space(
+                first_obs_space
+            ) for aid in self._agent_ids
+        })
+        self.action_space = gym.spaces.Dict({
+            aid: convert_old_gym_space_to_gymnasium_space(
+                first_action_space
+            ) for aid in self._agent_ids
+        })
+
     def observation_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
+        sample = self.observation_space.sample()
         if agent_ids is None:
-            agent_ids = self._agent_ids
-        return {id: self.observation_space.sample() for id in agent_ids}
+            return sample
+        return {aid: sample[aid] for aid in agent_ids}
 
     def action_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
+        sample = self.action_space.sample()
         if agent_ids is None:
-            agent_ids = self._agent_ids
-        return {id: self.action_space.sample() for id in agent_ids}
-
-    def action_space_contains(self, x: MultiAgentDict) -> bool:
-        if not isinstance(x, dict):
-            return False
-        return all(self.action_space.contains(val) for val in x.values())
-
-    def observation_space_contains(self, x: MultiAgentDict) -> bool:
-        if not isinstance(x, dict):
-            return False
-        return all(self.observation_space.contains(val) for val in x.values())
+            return sample
+        return {aid: sample[aid] for aid in agent_ids}
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         info = self.env.reset(seed=seed, options=options)
@@ -188,23 +181,25 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         super().__init__()
         self.par_env = env
         self.par_env.reset()
+        self._agent_ids = self.par_env.agents
 
-        # Since all agents have the same spaces, do not provide full observation-
-        # and action-spaces as Dicts, mapping agent IDs to the individual
-        # agents' spaces. Instead, `self.[action|observation]_space` are the single
-        # agent spaces.
-        self._obs_space_in_preferred_format = False
-        self._action_space_in_preferred_format = False
+        agent0 = next(iter(self.get_agent_ids()))
 
         # Get first observation space, assuming all agents have equal space
-        self.observation_space = self.par_env.observation_space(self.par_env.agents[0])
+        self.observation_space = gym.spaces.Dict({
+            aid: self.par_env.observation_space(aid)
+            for aid in self.get_agent_ids()
+        })
 
         # Get first action space, assuming all agents have equal space
-        self.action_space = self.par_env.action_space(self.par_env.agents[0])
+        self.action_space = gym.spaces.Dict({
+            aid: self.par_env.action_space(aid)
+            for aid in self.get_agent_ids()
+        })
 
         assert all(
-            self.par_env.observation_space(agent) == self.observation_space
-            for agent in self.par_env.agents
+            self.observation_space[aid] == self.observation_space[agent0]
+            for aid in self.get_agent_ids()
         ), (
             "Observation spaces for all agents must be identical. Perhaps "
             "SuperSuit's pad_observations wrapper can help (useage: "
@@ -212,8 +207,8 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         )
 
         assert all(
-            self.par_env.action_space(agent) == self.action_space
-            for agent in self.par_env.agents
+            self.action_space[aid] == self.action_space[agent0]
+            for aid in self.get_agent_ids()
         ), (
             "Action spaces for all agents must be identical. Perhaps "
             "SuperSuit's pad_action_space wrapper can help (useage: "
