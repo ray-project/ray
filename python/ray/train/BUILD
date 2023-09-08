@@ -633,6 +633,14 @@ py_test(
 )
 
 py_test(
+    name = "test_train_usage",
+    size = "medium",
+    srcs = ["tests/test_train_usage.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"],
+)
+
+py_test(
     name = "test_training_iterator",
     size = "large",
     srcs = ["tests/test_training_iterator.py"],
