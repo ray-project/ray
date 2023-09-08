@@ -438,8 +438,8 @@ class DatasetStatsSummary:
             f"{indent}   extra_metrics={{{extra_metrics}}},\n"
             f"{indent}   stage_stats=[{stage_stats}],\n"
             f"{indent}   iter_stats={self.iter_stats.__repr__(level+1)},\n"
-            f"{indent}   global_bytes_spilled={self.global_bytes_spilled},\n"
-            f"{indent}   global_bytes_restored={self.global_bytes_restored},\n"
+            f"{indent}   global_bytes_spilled={self.global_bytes_spilled / 1e6}MB,\n"
+            f"{indent}   global_bytes_restored={self.global_bytes_restored / 1e6}MB,\n"
             f"{indent}   parents=[{parent_stats}],\n"
             f"{indent})"
         )
