@@ -2,7 +2,7 @@ import logging
 
 from typing import Mapping
 
-from ray.rllib.algorithms.marwil.marwil_Learner import (
+from ray.rllib.algorithms.marwil.marwil_learner import (
     LEARNER_RESULTS_MOVING_AVG_SQD_ADV_NORM_KEY,
     LEARNER_RESULTS_VF_EXPLAINED_VARIANCE_KEY,
     MARWILLearner,

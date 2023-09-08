@@ -3,9 +3,14 @@ import gymnasium as gym
 
 from ray.rllib.algorithms.ppo.ppo_catalog import _check_if_diag_gaussian
 from ray.rllib.core.models.catalog import Catalog
-from ray.rllib.core.models.configs import ActorCriticEncoderConfig, FreeLogStdMLPHeadConfig, MLPHeadConfig
+from ray.rllib.core.models.configs import (
+    ActorCriticEncoderConfig,
+    FreeLogStdMLPHeadConfig,
+    MLPHeadConfig,
+)
 from ray.rllib.core.models.base import ActorCriticEncoder, Encoder, Model
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+
 
 class MARWILCatalog(Catalog):
     """The Catalog class used to build models for MARWIL.
@@ -38,7 +43,7 @@ class MARWILCatalog(Catalog):
         self.pi_and_vf_hiddens = self._model_config_dict["post_fcnet_hiddens"]
         self.pi_and_vf_activation = self._model_config_dict["post_fcnet_activation"]
 
-        # At this time we do not have information about the exact (framework-specific) 
+        # At this time we do not have information about the exact (framework-specific)
         # action distribution class, yet. We postpone the configuration of the output
         # nodes thus to the `self.build_pi_head()` method that can be called at a state
         # where the action distribution is known.
@@ -57,12 +62,11 @@ class MARWILCatalog(Catalog):
         """Builds the ActorCriticEncoder."""
 
         return self.actor_critic_encoder_config.build(framework=framework)
-    
 
     @override(Catalog)
     def build_encoder(self, framework: str) -> Encoder:
         """Usually builds the Encoder.
-        
+
         MARWIL uses a value network and therefore the ActorCriticEncoder. Therefore
         this method is not implemented and instead the `self.build_actor_critic_encoder()`
         method should be used.
@@ -70,7 +74,7 @@ class MARWILCatalog(Catalog):
         raise NotImplementedError(
             "Use MARWILCatalog.build_actor_critic_encoder()` instead for MARWIL."
         )
-    
+
     @OverrideToImplementCustomLogic
     def build_pi_head(self, framework: str) -> Model:
         """Builds the policy head."""
@@ -78,8 +82,10 @@ class MARWILCatalog(Catalog):
         # Get the action distribution class to define the exact output dimension.
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
         if self._model_config_dict["free_log_std"]:
-            _check_if_diag_gaussian(action_distribution_cls=action_distribution_cls, framework=framework)
-        
+            _check_if_diag_gaussian(
+                action_distribution_cls=action_distribution_cls, framework=framework
+            )
+
         required_output_dim = action_distribution_cls.required_input_dim(
             space=self.action_space, model_config=self._model_config_dict
         )
@@ -89,7 +95,7 @@ class MARWILCatalog(Catalog):
             if self._model_config_dict["free_log_std"]
             else MLPHeadConfig
         )
-        
+
         self.pi_head_config = pi_head_config_class(
             input_dims=self.latent_dims,
             hidden_layer_dims=self.pi_and_vf_hiddens,
@@ -99,15 +105,12 @@ class MARWILCatalog(Catalog):
         )
 
         return self.pi_head_config.build(framework=framework)
-    
+
     @OverrideToImplementCustomLogic
     def build_vf_head(self, framework: str) -> Model:
         """Builds the value function head."""
 
         return self.vf_head_config.build(framework=framework)
-    
+
 
 # __sphinx_doc_end__
-
-
-

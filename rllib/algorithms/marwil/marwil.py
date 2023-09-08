@@ -1,7 +1,14 @@
+import dataclasses
+import logging
 from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.core.learner.learner import Learner, POLICY_LOSS_KEY, VF_LOSS_KEY
+from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
+from ray.rllib.algorithms.marwil.marwil_learner import MARWILLearnerHyperparameters
+from ray.rllib.core.learner.learner_group_config import ModuleSpec
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -13,6 +20,8 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    LEARNER_STATS_KEY,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     SYNCH_WORKER_WEIGHTS_TIMER,
@@ -22,7 +31,9 @@ from ray.rllib.utils.typing import (
     EnvType,
     ResultDict,
 )
-from ray.tune.logger import Logger
+from ray.util.debug import log_once
+
+logger = logging.getLogger(__file__)
 
 
 class MARWILConfig(AlgorithmConfig):
@@ -109,6 +120,52 @@ class MARWILConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
         self._set_off_policy_estimation_methods = False
+
+    @override(AlgorithmConfig)
+    def get_default_rl_module_spec(self) -> ModuleSpec:
+        if self.framework_str == "torch":
+            pass
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.marwil.tf.marwil_tf_rl_module import (
+                MARWILTfRLModule,
+            )
+
+            return SingleAgentRLModuleSpec(
+                module_class=MARWILTfRLModule,
+                catalog_class=MARWILCatalog,
+            )
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
+
+    @override(AlgorithmConfig)
+    def get_default_learner_class(self) -> Union[Type[Learner], str]:
+        if self.framework_str == "torch":
+            pass
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.marwil.tf.marwil_tf_learner import MARWILTfLearner
+
+            return MARWILTfLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
+
+    @override(AlgorithmConfig)
+    def get_learner_hyperparameters(self) -> MARWILLearnerHyperparameters:
+        base_hps = super().get_learner_hyperparameters()
+        return MARWILLearnerHyperparameters(
+            beta=self.beta,
+            bc_logstd_coeff=self.bc_logstd_coeff,
+            moving_average_sqd_adv_norm_update_rate=self.moving_average_sqd_adv_norm_update_rate,
+            moving_average_sqd_adv_norm_start=self.moving_average_sqd_adv_norm_start,
+            use_gae=self.use_gae,
+            grad_clip=self.grad_clip,
+            **dataclasses.asdict(base_hps),
+        )
 
     @override(AlgorithmConfig)
     def training(
@@ -201,6 +258,12 @@ class MARWILConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def validate(self) -> None:
+        # Can not use Tf with learner api.
+        # TODO (kourosh): Do we want to do this silently?
+        if self.framework_str == "tf":
+            self.rl_module(_enable_rl_module_api=False)
+            self.training(_enable_learner_api=False)
+
         # Call super's validation method.
         super().validate()
 
@@ -247,12 +310,20 @@ class MARWIL(Algorithm):
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         with self._timers[SAMPLE_TIMER]:
+            # TODO (simon): Check, if also possible for agent_steps.
             train_batch = synchronous_parallel_sample(worker_set=self.workers)
+
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+
         # Train.
-        if self.config.simple_optimizer:
+        if self.config._enable_learner_api:
+            is_module_trainable = self.workers.local_worker().is_policy_to_train
+            self.learner_group.set_is_module_trainable(is_module_trainable)
+            train_results = self.learner_group.update(train_batch)
+
+        elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
@@ -261,17 +332,57 @@ class MARWIL(Algorithm):
         # # Update train step counters.
         # self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
         # self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
+        if self.config._enable_learner_api:
+            policies_to_update = set(train_results.keys()) - {ALL_MODULES}
+        else:
+            policies_to_update = list(train_results.keys())
 
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+            # TODO (simon): CHeck if multi-agent is possible. Then add 
+            # "num_grad_update_per_policy".
         }
 
         # Update weights - after learning on the local worker - on all remote
         # workers (only those policies that were actually trained).
-        if self.workers.remote_workers():
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+        # if self.workers.remote_workers():
+        #     with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+        #         self.workers.sync_weights(
+        #             policies=list(train_results.keys()), global_vars=global_vars
+        #         )
+
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            if self.workers.num_remote_workers() > 0:
+                from_worker_or_learner_group = None
+                if self.config._enable_learner_api:
+                    # Sync weights from learner group to all rollout workers.
+                    from_worker_or_learner_group = self.learner_group
                 self.workers.sync_weights(
-                    policies=list(train_results.keys()), global_vars=global_vars
+                    from_worker_or_learner_group=from_worker_or_learner_group,
+                    policies=policies_to_update,
+                    global_vars=global_vars,
+                )
+            elif self.config._enable_learner_api:
+                weights = self.learner_group.get_weights()
+                self.workers.local_worker().set_weights(weights)
+
+        for policy_id, policy_info in train_results.items():
+            # Warn about excessively high value_function loss.
+            scaled_vf_loss = (
+                self.config.vf_coeff * policy_info[LEARNER_STATS_KEY][VF_LOSS_KEY]
+            )
+            policy_loss = policy_info[LEARNER_STATS_KEY][POLICY_LOSS_KEY]
+            if (
+                log_once("marwil_warned_lr_ratio")
+                and self.config.get("model", {}).get("vf_share_layers")
+                and scaled_vf_loss > 100
+            ):
+                logger.warning(
+                     "The magnitude of your value function loss for policy: {} is "
+                    "extremely large ({}) compared to the policy loss ({}). This "
+                    "can prevent the policy from learning. Consider scaling down "
+                    "the VF loss by reducing vf_loss_coeff, or disabling "
+                    "vf_share_layers.".format(policy_id, scaled_vf_loss, policy_loss)
                 )
 
         # Update global vars on local worker as well.
