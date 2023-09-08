@@ -7,8 +7,9 @@ Ray Train User Guides
     :maxdepth: 2
 
     user-guides/data-loading-preprocessing
+    user-guides/configuration-overview
     user-guides/using-gpus
-    Configuring Persistent Storage <user-guides/persistent-storage>
+    user-guides/persistent-storage
     user-guides/monitoring-logging
     user-guides/checkpoints
     user-guides/experiment-tracking
