@@ -6,14 +6,12 @@ Saving and Loading Checkpoints
 Ray Train provides a way to save :class:`Checkpoints <ray.train.Checkpoint>` during the training process. This is
 useful for:
 
-1. :ref:`Integration with Ray Tune <train-tune>` to use certain Ray Tune
+1. Running a long-running training job on a cluster of pre-emptible machines/pods.
+2. Persisting trained model state to later use for serving/inference.
+3. :ref:`Integration with Ray Tune <train-tune>` to use certain Ray Tune
    schedulers.
-2. Running a long-running training job on a cluster of pre-emptible machines/pods.
-3. Persisting trained model state to later use for serving/inference.
 4. In general, storing any model artifacts.
 
-By default, checkpoints will be persisted to local disk in the :ref:`log
-directory <train-log-dir>` of each run.
 
 .. _train-dl-saving-checkpoints:
 
