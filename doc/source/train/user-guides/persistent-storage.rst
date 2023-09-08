@@ -1,9 +1,9 @@
-Configuring Persistent Storage
-==============================
-
 .. _persistent-storage-guide:
 
 .. _train-log-dir:
+
+Configuring Persistent Storage
+==============================
 
 A Ray Train run produces results, checkpoints, and other artifacts.
 You can configure these to be saved to a persistent storage location.
