@@ -25,12 +25,11 @@ deployments:
 Instead of setting a fixed number of replicas for a deployment and manually updating it, you can configure a deployment to autoscale based on incoming traffic. The Serve autoscaler reacts to traffic spikes by monitoring queue sizes and making scaling decisions to add or remove replicas. Configure it by setting the [autoscaling_config](../serve/api/doc/ray.serve.config.AutoscalingConfig.rst) field in deployment options. The following is a quick guide on how to configure autoscaling.
 
 How to set `autoscaling_config`:
-* **`max_concurrent_queries`** (Not in autoscaling config) is the maximum number of ongoing requests allowed for a replica. Set this to a value ~20-50% greater than `target_num_ongoing_requests_per_replica`. Note this is not part of the autoscaling config since it is relevant to all deployments, but it is important to set it relative to the target value if autoscaling is turned on for your deployment.
 * **`target_num_ongoing_requests_per_replica`** is the average number of ongoing requests per replica that the Serve autoscaler will try to ensure. Set this to a reasonable number (for example, 5) and adjust it based on your request processing length (the longer the requests, the smaller this number should be) as well as your latency objective (the shorter you want your latency to be, the smaller this number should be).
 * **`min_replicas`** is the minimum number of replicas for the deployment. Set this to 0 if there are long periods of no traffic and some extra tail latency during upscale is acceptable. Otherwise, set this to what you think you need for low-traffic.
 * **`max_replicas`** is the minimum number of replicas for the deployment. Set this to ~20% higher than what you think you need for peak traffic.
 
-How to set other relevant values in deployment config:
+How to set other relevant values in the deployment config:
 * **`max_concurrent_queries`** is the maximum number of ongoing requests allowed for a replica. Set this to a value ~20-50% greater than `target_num_ongoing_requests_per_replica`. Note this is not part of the autoscaling config since it is relevant to all deployments, but it is important to set it relative to the target value if autoscaling is turned on for your deployment.
 
 These guidelines are a great starting point. If you decide to further tune your autoscaling config for your application, see [Advanced Ray Serve Autoscaling](serve-advanced-autoscaling).
@@ -63,8 +62,6 @@ applications:
         min_replicas: 0
         initial_replicas: 0
         max_replicas: 200
-        upscale_delay_s: 30
-        downscale_delay_s: 600
 ```
 
 :::
