@@ -279,7 +279,7 @@ Monitor your Serve application using the Ray Dashboard.
 
 ## Next Steps
 
-Check out [the end-to-end fault tolerance guide](serve-e2e-ft) to learn more about Serve's failure conditions and how to guard against them.
+See [Add End-to-End Fault Tolerance](serve-e2e-ft) to learn more about Serve's failure conditions and how to guard against them.
 
 [KubeRay]: https://ray-project.github.io/kuberay/
 [RayService]: https://ray-project.github.io/kuberay/guidance/rayservice/

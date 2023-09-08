@@ -133,5 +133,5 @@ For a deeper dive into how to deploy, update, and monitor Serve applications, se
 - Learn how to [build custom Docker images](serve-custom-docker-images) to use with KubeRay.
 - Learn how to [monitor running Serve applications](serve-monitoring).
 
-[KubeRay]: https://ray-project.github.io/kuberay/
-[RayService]: https://ray-project.github.io/kuberay/guidance/rayservice/
+[KubeRay]: kuberay-index
+[RayService]: kuberay-rayservice-quickstart
