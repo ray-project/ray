@@ -159,37 +159,41 @@ def test_fix_grpc_metrics():
     A real metric output from gcs_server, with name prefixed with "grpc.io/" and 1
     distribution time series. It has 45 buckets, first of which bounds = 0.0.
     """
-    metric_textproto = """
-metric_descriptor {
-name: "grpc.io/server/server_latency" description: "Time between first byte of request
-received to last byte of response sent, or terminal error" unit: "ms" label_keys { key:
-"grpc_server_method" } label_keys { key: "Component" } label_keys { key: "WorkerId" }
-label_keys { key: "Version" } label_keys { key: "NodeAddress" } label_keys { key:
-"SessionName" } } timeseries { start_timestamp { seconds: 1693693592 } label_values {
-value: "ray.rpc.NodeInfoGcsService/RegisterNode" } label_values { value: "gcs_server" }
-label_values { } label_values { value: "3.0.0.dev0" } label_values { value: "127.0.0.1"
-} label_values { value: "session_2023-09-02_15-26-32_589652_23265" } points { timestamp
-{ seconds: 1693693602 } distribution_value { count: 1 sum: 0.266 bucket_options {
-explicit { bounds: 0.0 bounds: 0.01 bounds: 0.05 bounds: 0.1 bounds: 0.3 bounds: 0.6
-bounds: 0.8 bounds: 1.0 bounds: 2.0 bounds: 3.0 bounds: 4.0 bounds: 5.0 bounds: 6.0
-bounds: 8.0 bounds: 10.0 bounds: 13.0 bounds: 16.0 bounds: 20.0 bounds: 25.0 bounds:
-30.0 bounds: 40.0 bounds: 50.0 bounds: 65.0 bounds: 80.0 bounds: 100.0 bounds: 130.0
-bounds: 160.0 bounds: 200.0 bounds: 250.0 bounds: 300.0 bounds: 400.0 bounds: 500.0
-bounds: 650.0 bounds: 800.0 bounds: 1000.0 bounds: 2000.0 bounds: 5000.0 bounds: 10000.0
-bounds: 20000.0 bounds: 50000.0 bounds: 100000.0 } } buckets { } buckets { } buckets { }
-buckets { } buckets { count: 1 } buckets { } buckets { } buckets { } buckets { } buckets
-{ } buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } buckets { }
-buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } buckets { }
-buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } buckets { }
-buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } buckets { }
-buckets { } buckets { } buckets { } buckets { } } } }"""
+    metric_textproto = (
+        'metric_descriptor { name: "grpc.io/server/server_latency" description: "Time '
+        "between first byte of request received to last byte of response sent, or "
+        'terminal error" unit: "ms" label_keys { key: "grpc_server_method" } label_keys'
+        ' { key: "Component" } label_keys { key: "WorkerId" } label_keys { key: '
+        '"Version" } label_keys { key: "NodeAddress" } label_keys { key: "SessionName" '
+        "} } timeseries { start_timestamp { seconds: 1693693592 } label_values { value:"
+        ' "ray.rpc.NodeInfoGcsService/RegisterNode" } label_values { value: '
+        '"gcs_server" } label_values { } label_values { value: "3.0.0.dev0" } '
+        'label_values { value: "127.0.0.1" } label_values { value: '
+        '"session_2023-09-02_15-26-32_589652_23265" } points { timestamp { seconds: '
+        "1693693602 } distribution_value { count: 1 sum: 0.266 bucket_options { "
+        "explicit { bounds: 0.0 bounds: 0.01 bounds: 0.05 bounds: 0.1 bounds: 0.3 "
+        "bounds: 0.6 bounds: 0.8 bounds: 1.0 bounds: 2.0 bounds: 3.0 bounds: 4.0 "
+        "bounds: 5.0 bounds: 6.0 bounds: 8.0 bounds: 10.0 bounds: 13.0 bounds: 16.0 "
+        "bounds: 20.0 bounds: 25.0 bounds: 30.0 bounds: 40.0 bounds: 50.0 bounds: 65.0 "
+        "bounds: 80.0 bounds: 100.0 bounds: 130.0 bounds: 160.0 bounds: 200.0 bounds: "
+        "250.0 bounds: 300.0 bounds: 400.0 bounds: 500.0 bounds: 650.0 bounds: 800.0 "
+        "bounds: 1000.0 bounds: 2000.0 bounds: 5000.0 bounds: 10000.0 bounds: 20000.0 "
+        "bounds: 50000.0 bounds: 100000.0 } } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { count: 1 } buckets { } buckets { } buckets { } buckets {"
+        " } buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } buckets { } buckets { } buckets { } "
+        "buckets { } buckets { } buckets { } } } }"
+    )
 
     metric = Metric()
     text_format.Parse(metric_textproto, metric)
 
     expected_fixed_metric = Metric()
     expected_fixed_metric.CopyFrom(metric)
-    expected_fixed_metric.metric_descriptor.name == "grpc_io_server_server_latency"
+    expected_fixed_metric.metric_descriptor.name = "grpc_io_server_server_latency"
     expected_fixed_metric.timeseries[0].points[
         0
     ].distribution_value.bucket_options.explicit.bounds[0] = 0.0000001
