@@ -1236,7 +1236,7 @@ class HTTPProxy(GenericProxy):
                         # field. Other response types (e.g., WebSockets) may not.
                         status_code = str(asgi_message["status"])
                         expecting_trailers = asgi_message.get("trailers", False)
-                    elif asgi_message["type"] == "websocket.connect":
+                    elif asgi_message["type"] == "websocket.accept":
                         is_websocket_connection = True
                     elif (
                         asgi_message["type"] == "http.response.body"
@@ -1676,7 +1676,7 @@ class HTTPProxyActor:
         Make sure the async event loop is not blocked.
         """
 
-        pass
+        logger.info("Received health check.", extra={"log_to_stderr": False})
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
         """Get ASGI messages for the provided `request_id`.

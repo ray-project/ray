@@ -372,7 +372,7 @@ failed requests through the [Ray metrics monitoring infrastructure](dash-metrics
 
 :::{note}
 Different metrics are collected when Deployments are called
-via Python `ServeHandle` and when they are called via HTTP.
+via Python `DeploymentHandle` and when they are called via HTTP.
 
 See the list of metrics below marked for each.
 :::
@@ -459,12 +459,20 @@ The following metrics are exposed by Ray Serve:
        * route
        * application
      - The number of requests processed by the router.
+   * - ``ray_serve_num_scheduling_tasks`` [*]
+     - * deployment
+       * actor_name
+     - The number of request scheduling tasks in the router.
+   * - ``ray_serve_num_scheduling_tasks_in_backoff`` [*]
+     - * deployment
+       * actor_name
+     - The number of request scheduling tasks in the router that are undergoing backoff.
    * - ``ray_serve_handle_request_counter`` [**]
      - * handle
        * deployment
        * route
        * application
-     - The number of requests processed by this ServeHandle.
+     - The number of requests processed by this DeploymentHandle.
    * - ``ray_serve_deployment_queued_queries`` [*]
      - * deployment
        * route
@@ -533,7 +541,7 @@ The following metrics are exposed by Ray Serve:
      - The number of calls to get a multiplexed model.
 ```
 [*] - only available when using proxy calls
-[**] - only available when using Python `ServeHandle` calls
+[**] - only available when using Python `DeploymentHandle` calls
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 

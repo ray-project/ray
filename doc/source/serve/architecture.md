@@ -53,7 +53,7 @@ Each replica maintains a queue of requests and executes requests one at a time, 
 using `asyncio` to process them concurrently. If the handler (the deployment function or the `__call__` method of the deployment class) is declared with `async def`, the replica will not wait for the
 handler to run.  Otherwise, the replica blocks until the handler returns.
 
-When making a request with [ServeHandle](serve-handle-explainer) instead of HTTP or gRPC, Ray Serve places the request in a queue in the ServeHandle, and skips to step 3 above.
+When making a request via a [DeploymentHandle](serve-key-concepts-deployment-handle) instead of HTTP or gRPC for [model composition](serve-model-composition), the request is placed on a queue in the `DeploymentHandle`, and we skip to step 3 above.
 
 (serve-ft-detail)=
 
@@ -86,12 +86,12 @@ Ray Serve's autoscaling feature automatically increases or decreases a deploymen
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling.svg)
 
 - The Serve Autoscaler runs in the Serve Controller actor.
-- Each ServeHandle and each replica periodically pushes its metrics to the autoscaler.
-- For each deployment, the autoscaler periodically checks ServeHandle queues and in-flight queries on replicas to decide whether or not to scale the number of replicas.
-- Each ServeHandle continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it will send any buffered or new queries to the replica until `max_concurrent_queries` is reached.  Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_concurrent_queries` requests at a time.
+- Each `DeploymentHandle` and each replica periodically pushes its metrics to the autoscaler.
+- For each deployment, the autoscaler periodically checks `DeploymentHandle` queues and in-flight queries on replicas to decide whether or not to scale the number of replicas.
+- Each `DeploymentHandle` continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it sends any buffered or new queries to the replica until `max_concurrent_queries` is reached.  Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_concurrent_queries` requests at a time.
 
 :::{note}
-When the Controller dies, requests can still be sent with HTTP, gRPC, and ServeHandles, but autoscaling is paused. When the Controller recovers, the autoscaling resumes, but all previous metrics collected are lost.
+When the controller dies, requests can still be sent via HTTP, gRPC and `DeploymentHandle`, but autoscaling is paused. When the controller recovers, the autoscaling resumes, but all previous metrics collected are lost.
 :::
 
 ## Ray Serve API Server

@@ -112,6 +112,23 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray.train import ScalingConfig
+            scaling_config = ScalingConfig(
+                # Number of distributed workers.
+                num_workers=2,
+                # Turn on/off GPU.
+                use_gpu=True,
+                # Specify resources used for trainer.
+                trainer_resources={"CPU": 1},
+                # Try to schedule workers on different nodes.
+                placement_strategy="SPREAD",
+            )
+
     """
 
     # If adding new attributes here, please also update
