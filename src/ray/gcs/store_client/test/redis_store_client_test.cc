@@ -74,7 +74,8 @@ class RedisStoreClientTest : public StoreClientTestBase {
     redis_client_ = redis_client.get();
     RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
 
-    store_client_ = std::make_shared<RedisStoreClient>(std::move(redis_client));
+    store_client_ = std::make_shared<RedisStoreClient>(std::move(redis_client),
+                                                       *io_service_pool_->Get());
   }
 
   void DisconnectStoreClient() override { redis_client_->Disconnect(); }

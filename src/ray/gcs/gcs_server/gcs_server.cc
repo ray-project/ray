@@ -86,7 +86,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     auto status = redis_client->Connect(main_service_);
     RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
 
-    store_client_ = std::make_unique<RedisStoreClient>(std::move(redis_client));
+    store_client_ =
+        std::make_unique<RedisStoreClient>(std::move(redis_client), main_service_);
     break;
   }
 
