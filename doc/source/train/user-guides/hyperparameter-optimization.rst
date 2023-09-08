@@ -16,12 +16,12 @@ Hyperparameter tuning with :ref:`Ray Tune <tune-main>` is natively supported wit
 Key Concepts
 ------------
 
-There are a number of key concepts Tuner:
+There are a number of key concepts when doing hyperparameter optimization with a :class:`~ray.tune.Tuner`:
 
 * A set of hyperparameters you want to tune in a *search space*.
 * A *search algorithm* to effectively optimize your parameters and optionally use a
   *scheduler* to stop searches early and speed up your experiments.
-* The *search space*, *search algorithm*, *scheduler*, and *Trainer* are passed to a :class:`~ray.tune.Tuner`,
+* The *search space*, *search algorithm*, *scheduler*, and *Trainer* are passed to a Tuner,
   which runs the hyperparameter tuning workload by evaluating multiple hyperparameters in parallel.
 * Each individual hyperparameter evaluation run is called a *trial*.
 * The Tuner returns its results as a :class:`~ray.tune.ResultGrid`.
