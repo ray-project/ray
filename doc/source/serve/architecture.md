@@ -68,10 +68,10 @@ Machine errors and faults are handled by Ray Serve as follows:
 - When replica Actors fail, the Controller Actor replaces them with new ones.
 - When the proxy Actor fails, the Controller Actor restarts it.
 - When the Controller Actor fails, Ray restarts it.
-- When using the [KubeRay RayService](https://ray-project.github.io/kuberay/guidance/rayservice/), KubeRay recovers crashed nodes or a crashed cluster. You can avoid cluster crashes by using the [GCS FT feature](https://ray-project.github.io/kuberay/guidance/gcs-ft/).
+- When using the [KubeRay RayService](kuberay-rayservice-quickstart), KubeRay recovers crashed nodes or a crashed cluster. You can avoid cluster crashes by using the [GCS FT feature](kuberay-gcs-ft).
 - If you aren't using KubeRay, when the Ray cluster fails, Ray Serve cannot recover.
 
-When a machine hosting any of the actors crashes, those actors will be automatically restarted on another
+When a machine hosting any of the actors crashes, those actors are automatically restarted on another
 available machine. All data in the Controller (routing policies, deployment
 configurations, etc) is checkpointed to the Ray Global Control Store (GCS) on the head node. Transient data in the
 router and the replica (like network connections and internal request queues) will be lost for this kind of failure.
