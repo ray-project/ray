@@ -2,7 +2,7 @@
 
 # Production Guide
 
-The recommended way to run Ray Serve in production is on Kubernetes using the [KubeRay](kuberay-quickstart) [RayService] custom resource.
+The recommended way to run Ray Serve in production is on Kubernetes using the [KubeRay](kuberay-quickstart) [RayService](kuberay-rayservice-quickstart) custom resource.
 The RayService custom resource automatically handles important production requirements such as health checking, status reporting, failure recovery, and upgrades.
 If you're not running on Kubernetes, you can also run Ray Serve on a Ray cluster directly using the Serve CLI.
 
@@ -97,7 +97,7 @@ applications:
         message: ''
 ```
 
-You can test the application using `curl`:
+You can test the application using Python `requests`:
 
 ```{literalinclude} ../doc_code/production_guide/text_ml.py
 :language: python
@@ -115,5 +115,3 @@ For a deeper dive into how to deploy, update, and monitor Serve applications, se
 - Learn how to [build custom Docker images](serve-custom-docker-images) to use with KubeRay.
 - Learn how to [monitor running Serve applications](serve-monitoring).
 
-[KubeRay]: https://ray-project.github.io/kuberay/
-[RayService]: https://ray-project.github.io/kuberay/guidance/rayservice/
