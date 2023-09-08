@@ -135,7 +135,7 @@ void RedisStoreClient::MGetValues(const std::string &table_name,
   }
 }
 
-RedisStoreClient::RedisStoreClient(std::unique_ptr<RedisClient> &&redis_client)
+RedisStoreClient::RedisStoreClient(std::unique_ptr<RedisClient> redis_client)
     : external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
       redis_client_(std::move(redis_client)) {
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))

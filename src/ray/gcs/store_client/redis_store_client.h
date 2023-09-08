@@ -32,7 +32,7 @@ namespace gcs {
 
 class RedisStoreClient : public StoreClient {
  public:
-  explicit RedisStoreClient(std::unique_ptr<RedisClient> &&redis_client);
+  explicit RedisStoreClient(std::unique_ptr<RedisClient> redis_client);
 
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
