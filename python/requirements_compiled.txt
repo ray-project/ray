@@ -183,7 +183,7 @@ grapheme==0.6.0
 graphql-core==3.2.3
 graphviz==0.20.1
 greenlet==2.0.2
-grpcio==1.57.0 ; sys_platform != "darwin"
+grpcio==1.56.2 ; sys_platform != "darwin"
 gsutil==5.25
 gunicorn==20.1.0
 gym==0.26.2
