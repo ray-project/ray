@@ -42,16 +42,15 @@ build:windows --enable_runfiles
 # TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug
 #                 for compiling assembly files is fixed on Windows:
 #                 https://github.com/bazelbuild/bazel/issues/8924
-# Warnings should be errors except for external projects.
-build:linux    --per_file_copt="-\\.(asm|S)$,-external/.*@-Werror"
-build:macos    --per_file_copt="-\\.(asm|S)$,-external/.*@-Werror"
-build:clang-cl --per_file_copt="-\\.(asm|S)$,-external/.*@-Werror"
+# Warnings should be errors
+build:linux    --per_file_copt="-\\.(asm|S)$@-Werror"
+build:macos    --per_file_copt="-\\.(asm|S)$@-Werror"
+build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
 build:msvc-cl     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
-build --per_file_copt="\\.pb\\.cc$,external/.*@-w"
-build:macos --per_file_copt="external/.*@-w"
-build:linux --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration,-Wno-error=range-loop-analysis"
-build:macos --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration,-Wno-error=range-loop-analysis"
+build --per_file_copt="\\.pb\\.cc$@-w"
+build:linux --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
+build:macos --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
 # Ignore minor warnings for host tools, which we generally can't control
 build:macos --host_copt="-w"
 build:clang-cl --host_copt="-Wno-inconsistent-missing-override"
