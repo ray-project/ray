@@ -19,6 +19,7 @@ from ray.train._internal.utils import get_address_and_port
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.air._internal.torch_utils import get_device
 
+
 class TorchDistributedWorker(ABC):
     """Defines the interfaces required by the init_torch_dist_process_group().
 
