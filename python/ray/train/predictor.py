@@ -4,7 +4,7 @@ from typing import Dict, Type, Optional, Union, Callable
 import numpy as np
 import pandas as pd
 
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import (
     BatchFormat,
@@ -108,13 +108,13 @@ class Predictor(abc.ABC):
 
         class PandasUDFPredictor(Predictor):
             @classmethod
-            def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs):
+            def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
                 return PandasUDFPredictor()
 
             def _predict_pandas(self, df, **kwargs) -> "pd.DataFrame":
                 return pandas_udf(df, **kwargs)
 
-        return PandasUDFPredictor.from_checkpoint(Checkpoint.from_dict({"dummy": 1}))
+        return PandasUDFPredictor()
 
     def get_preprocessor(self) -> Optional[Preprocessor]:
         """Get the preprocessor to use prior to executing predictions."""
