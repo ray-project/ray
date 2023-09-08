@@ -207,7 +207,7 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
         scaling_config=train.ScalingConfig(
             num_workers=TestConstants.NUM_WORKERS,
             trainer_resources={"CPU": 0},
-            resources_per_worker={"CPU": 8},
+            resources_per_worker={"CPU": TestConstants.NUM_CPUS_PER_WORKER},
         ),
         run_config=train.RunConfig(
             failure_config=train.FailureConfig(max_failures=2),
