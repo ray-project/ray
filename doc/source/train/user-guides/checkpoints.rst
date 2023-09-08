@@ -20,12 +20,12 @@ directory <train-log-dir>` of each run.
 Saving checkpoints
 ------------------
 
-:class:`Checkpoints <ray.train.Checkpoint>` can be saved by calling ``train.report(metrics, checkpoint=Checkpoint(...))`` in the
-training function. This will saves the checkpoint from the distributed workers to the ``storage_path``. The metrics here are 
-tied to the checkpoint and are used to filter the top k checkpoints. 
+:class:`Checkpoints <ray.train.Checkpoint>` can be saved by calling :func:`train.report(metrics, checkpoint=Checkpoint(...)) <ray.train.report>` in the
+training function. This will saves the checkpoint from the distributed workers to the :attr:`storage_path <ray.train.RunConfig.storage_path>`.
+The metrics here are tied to the checkpoint and are used to filter the top k checkpoints.
 
-The latest saved checkpoint can be accessed through the ``checkpoint`` attribute of
-the :py:class:`~ray.train.Result`, and the best saved checkpoints can be accessed by the ``best_checkpoints``
+The latest saved checkpoint can be accessed through the :attr:`checkpoint <ray.train.Result.checkpoint>` attribute of
+the :py:class:`~ray.train.Result`, and the best saved checkpoints can be accessed by the :attr:`checkpoint <ray.train.Result.best_checkpoints>`
 attribute.
 
 Concrete examples are provided to demonstrate how checkpoints (model weights but not models) are saved
@@ -96,7 +96,7 @@ appropriately in distributed training.
 
         - collects all the logged metrics from ``trainer.callback_metrics`` 
         - saves a checkpoint via ``trainer.save_checkpoint`` 
-        - reports to Ray Train via ``ray.train.report(metrics, checkpoint)`` 
+        - reports to Ray Train via :func:`ray.train.report(metrics, checkpoint) <ray.train.report>`
 
         .. code-block:: python
             :emphasize-lines: 2,11,20,28,29,30,31,32
@@ -138,8 +138,8 @@ appropriately in distributed training.
             result = ray_trainer.fit()
 
         
-        You can always get the saved checkpoint path from ``result.checkpoint`` and 
-        ``result.best_checkpoints``.
+        You can always get the saved checkpoint path from :attr:`result.checkpoint <ray.train.Result.checkpoint>` and
+        :attr:`result.best_checkpoints <ray.train.Result.best_checkpoints>`.
 
         For more advanced usage (e.g. reporting at different frequency, reporting 
         customized checkpoint files), you can implement your own customized callback.
@@ -184,7 +184,7 @@ appropriately in distributed training.
         **Option 1: Use Ray Train's default report callback**
         
         We provide a simple callback implementation :class:`~ray.train.huggingface.transformers.RayTrainReportCallback` that 
-        reports on checkpoint save. You can change the checkpointing frequency by `save_strategy` and `save_steps`. 
+        reports on checkpoint save. You can change the checkpointing frequency by ``save_strategy`` and ``save_steps``.
         It collects the latest logged metrics and report them together with the latest saved checkpoint.
 
         .. code-block:: python
@@ -230,11 +230,11 @@ appropriately in distributed training.
         
         Note that :class:`~ray.train.huggingface.transformers.RayTrainReportCallback` 
         binds the latest metrics and checkpoints together, 
-        so users can properly configure `logging_strategy`, `save_strategy` and `evaluation_strategy` 
+        so users can properly configure ``logging_strategy``, ``save_strategy`` and ``evaluation_strategy``
         to ensure the monitoring metric is logged at the same step as checkpoint saving.
 
-        For example, the evaluation metrics (`eval_loss` in this case) are logged during 
-        evaluation. If users want to keep the best 3 checkpoints according to `eval_loss`, they 
+        For example, the evaluation metrics (``eval_loss`` in this case) are logged during
+        evaluation. If users want to keep the best 3 checkpoints according to ``eval_loss``, they
         should align the saving and evaluation frequency. Below are two examples of valid configurations:
 
         .. code-block:: python
@@ -258,7 +258,7 @@ appropriately in distributed training.
 
         **Option 2: Implement your customized report callback**
 
-        If you feel that Ray Train's default `RayTrainReportCallback` is not sufficient for your use case, you can also
+        If you feel that Ray Train's default :class:`~ray.train.huggingface.transformers.RayTrainReportCallback` is not sufficient for your use case, you can also
         implement a callback yourself! Below is a example implementation that collects latest metrics 
         and reports on checkpoint save.
 
@@ -292,7 +292,7 @@ appropriately in distributed training.
                         # Clear the metrics buffer
                         self.metrics = {}
 
-        You can customize when(`on_save`, `on_epoch_end`, `on_evaluate`) and 
+        You can customize when(``on_save``, ``on_epoch_end``, ``on_evaluate``) and
         what(customized metrics and checkpoint files) to report by implementing your own 
         Transformers Trainer callback.
         
@@ -330,13 +330,12 @@ checkpoints to disk), a :py:class:`~ray.train.CheckpointConfig` can be passed in
 Loading checkpoints
 -------------------
 
-Checkpoints can be loaded into the training function in 2 steps:
+:class:`Checkpoints <ray.train.Checkpoint>` can be accessed in the training function with :func:`ray.train.get_checkpoint <ray.train.get_checkpoint>`.
 
-1. From the training function, :func:`ray.train.get_checkpoint` can be used to access
-   the most recently saved :py:class:`~ray.train.Checkpoint`. This is useful to continue training even
-   if there's a worker failure.
-2. The checkpoint to start training with can be bootstrapped by passing in a
-   :py:class:`~ray.train.Checkpoint` to ``Trainer`` as the ``resume_from_checkpoint`` argument.
+The checkpoint can be populated in two ways:
+
+1. It can be auto-populated, e.g. for :ref:`automatic failure recovery <train-fault-tolerance>` or :ref:`on manual restoration <train-restore-guide>`.
+2. The checkpoint can be passed to the :class:`Trainer <ray.train.trainer.BaseTrainer>` as the ``resume_from_checkpoint`` argument.
 
 
 .. tab-set::

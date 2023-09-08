@@ -100,21 +100,6 @@ trainer.fit()
 # __session_checkpoint_end__
 
 
-# __scaling_config_start__
-from ray.train import ScalingConfig
-
-scaling_config = ScalingConfig(
-    # Number of distributed workers.
-    num_workers=2,
-    # Turn on/off GPU.
-    use_gpu=True,
-    # Specify resources used for trainer.
-    trainer_resources={"CPU": 1},
-    # Try to schedule workers on different nodes.
-    placement_strategy="SPREAD",
-)
-# __scaling_config_end__
-
 # __run_config_start__
 from ray.train import RunConfig
 from ray.air.integrations.wandb import WandbLoggerCallback
