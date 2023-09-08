@@ -391,3 +391,6 @@ parts:
 
       - file: ray-contribute/index
         title: Developer Guides
+
+      - file: ray-security/index
+        title: "Security"
