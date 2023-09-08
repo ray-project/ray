@@ -18,18 +18,18 @@ from contextlib import contextmanager
 @ray.remote(num_cpus=1)
 def read_task():
     # Waste resources
-    for _ in range(50):
+    for _ in range(10):
         np.random.rand(5 * 1024 * 1024)
 
-    # 8 MB * 10 == 80MB
-    return [np.random.rand(1024 * 1024) for _ in range(10)]
+    # 8 MB * 4 == 32MB
+    return [np.random.rand(1024 * 1024) for _ in range(4)]
 
 
 @ray.remote(num_cpus=1)
 def preproc(refs):
     n = np.random.rand(1024 * 1024)
     arrays = ray.get(refs)
-    for _ in range(50):
+    for _ in range(10):
         for arr in arrays:
             n += arr[0]
     return n
@@ -68,7 +68,7 @@ class FakeFineTuninig:
         # Do something for 30 seconds.
         for _ in range(1):
             time.sleep(1)
-            for _ in range(50):
+            for _ in range(10):
                 np.random.rand(5 * 1024 * 1024)
         self.finished = True
 
@@ -120,11 +120,11 @@ def main():
     ray.init()
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--num-actors", type=int, default=8, help="Make this many actors"
+        "--num-actors", type=int, default=2, help="Make this many actors"
     )
     parser.add_argument(
         "--num-tasks",
-        default=10,
+        default=4,
         type=int,
         help="Number of tasks. 80MB * this much of data is generated",
     )
