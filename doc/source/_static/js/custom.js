@@ -92,7 +92,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
 // Remember the scroll position when the page is unloaded.
 window.onload = function() {
-    let sidebar = document.querySelector("#bd-docs-nav");
+    let sidebar = document.querySelector("#site-navigation");
 
     window.onbeforeunload = function() {
         let scroll = sidebar.scrollTop;
