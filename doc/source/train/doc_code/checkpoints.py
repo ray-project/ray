@@ -268,6 +268,42 @@ class CustomRayTrainReportCallback(Callback):
 
 # __lightning_custom_save_example_end__
 
+# __lightning_restore_example_start__
+import os
+
+from ray import train
+from ray.train import Checkpoint
+from ray.train.torch import TorchTrainer
+from ray.train.lightning import RayTrainReportCallback
+
+def train_func_per_worker():
+    model = MyLightningModule(...)
+    datamodule = MyLightningDataModule(...)
+    trainer = pl.Trainer(
+        ...
+        callbacks=[RayTrainReportCallback()]
+    )
+
+    checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as ckpt_dir:
+            ckpt_path = os.path.join(ckpt_dir, "checkpoint.ckpt")
+            trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
+    else:
+        trainer.fit(model, datamodule=datamodule)
+
+# Build a Ray Train Checkpoint
+# Suppose we have a Lightning checkpoint at `s3://bucket/ckpt_dir/checkpoint.ckpt`
+checkpoint = Checkpoint("s3://bucket/ckpt_dir")
+
+# Resume training from checkpoint file
+ray_trainer = TorchTrainer(
+    train_func_per_worker,
+    scaling_config=train.ScalingConfig(num_workers=2),
+    resume_from_checkpoint=checkpoint,
+)
+# __lightning_restore_example_end__
+
 
 # __transformers_save_example_start__
 from transformers import TrainingArguments

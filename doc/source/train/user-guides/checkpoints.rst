@@ -51,6 +51,12 @@ Here's how you modify your training loop to save a checkpoint in Ray Train:
     The lifecycle of a :class:`~ray.train.Checkpoint`, from being saved locally
     to disk to being uploaded to persistent storage via ``train.report``.
 
+As shown in the figure above, the best practice for saving checkpoints is to
+first dump the checkpoint to a local temporary directory. Then, the call to ``train.report``
+uploads the checkpoint to its final persistent storage location.
+Then, the local temporary directory can be safely cleaned up to free up disk space
+(e.g., from exiting the `tempfile.TemporaryDirectory` context).
+
 .. tip::
 
     In standard DDP training, where each worker has a copy of the full-model, you should
@@ -81,9 +87,8 @@ Here are a few examples of saving checkpoints with different training frameworks
 
         .. tip::
 
-            You should unwrap the DDP model before saving it to a checkpoint.
-
-            ``model.module`` is the original model before wrapping it with DDP.
+            You most likely want to unwrap the DDP model before saving it to a checkpoint.
+            ``model.module.state_dict()`` is the state dict without each key having a ``"module."`` prefix.
 
 
     .. tab-item:: PyTorch Lightning
@@ -186,7 +191,7 @@ Saving checkpoints from multiple workers (distributed checkpointing)
 In model parallel training strategies where each worker only has a shard of the full-model,
 you can save and report checkpoint shards in parallel from each worker.
 
-.. figure:: ../images/persistent_storage_checkpoints.png
+.. figure:: ../images/persistent_storage_checkpoint.png
 
     Distributed checkpointing in Ray Train. Each worker uploads its own checkpoint shard
     to persistent storage independently.
@@ -276,12 +281,12 @@ Restore training state from a checkpoint
 In order to enable fault tolerance, you should modify your training loop to restore
 training state from a :class:`~ray.train.Checkpoint`.
 
-The latest :class:`Checkpoint <ray.train.Checkpoint>` can be accessed in the
+The :class:`Checkpoint <ray.train.Checkpoint>` to restore from can be accessed in the
 training function with :func:`ray.train.get_checkpoint <ray.train.get_checkpoint>`.
 
 The checkpoint returned by :func:`ray.train.get_checkpoint <ray.train.get_checkpoint>` is populated in two ways:
 
-1. It can be auto-populated, e.g. for :ref:`automatic failure recovery <train-fault-tolerance>` or :ref:`on manual restoration <train-restore-guide>`.
+1. It can be auto-populated as the latest reported checkpoint, e.g. for :ref:`automatic failure recovery <train-fault-tolerance>` or :ref:`on manual restoration <train-restore-guide>`.
 2. The checkpoint can be passed to the :class:`Trainer <ray.train.trainer.BaseTrainer>` as the ``resume_from_checkpoint`` argument.
    This is useful for initializing a new training run with a previous run's checkpoint.
 
@@ -292,46 +297,33 @@ The checkpoint returned by :func:`ray.train.get_checkpoint <ray.train.get_checkp
 
         .. literalinclude:: ../doc_code/checkpoints.py
             :language: python
-            :start-after: __distributed_checkpointing_start__
-            :end-before: __distributed_checkpointing_end__
+            :start-after: __pytorch_restore_start__
+            :end-before: __pytorch_restore_end__
 
 
     .. tab-item:: PyTorch Lightning
 
-        .. code-block:: python
-            :emphasize-lines: 11-17
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __lightning_restore_start__
+            :end-before: __lightning_restore_end__
 
-            from ray import train
-            from ray.train import Checkpoint, ScalingConfig
-            from ray.train.torch import TorchTrainer
-            from ray.train.lightning import RayTrainReportCallback
-            from os.path import join
 
-            def train_func_per_worker():
-                model = MyLightningModule(...)
-                datamodule = MyLightningDataModule(...)
-                trainer = pl.Trainer(
-                    ...
-                    callbacks=[RayTrainReportCallback()]
-                )
+.. note::
 
-                checkpoint = train.get_checkpoint()
-                if checkpoint:
-                    with checkpoint.as_directory() as ckpt_dir:
-                        ckpt_path = join(ckpt_dir, "checkpoint.ckpt")
-                        trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
-                else:
-                    trainer.fit(model, datamodule=datamodule)
+    In these examples, :meth:`Checkpoint.as_directory <ray.train.Checkpoint.as_directory>`
+    is used to view the checkpoint contents as a local directory.
 
-            # Build a Ray Train Checkpoint
-            # Suppose we have a Lightning checkpoint under ./ckpt_dir/checkpoint.ckpt
-            checkpoint = Checkpoint.from_directory("./ckpt_dir/checkpoint.ckpt")
+    *If the checkpoint points to a local directory*, this method just returns the
+    local directory path without making a copy.
 
-            # Resume training from checkpoint file
-            ray_trainer = TorchTrainer(
-                train_func_per_worker,
-                scaling_config=ScalingConfig(num_workers=2),
-                resume_from_checkpoint=checkpoint,
-            )
-            result = ray_trainer.fit()
+    *If the checkpoint points to a remote directory*, this method will download the
+    checkpoint to a local temporary directory and return the path to the temporary directory.
 
+    **If multiple processes on the same node call this method simultaneously,**
+    only a single process will perform the download, while the others
+    wait for the download to finish. Once the download finishes, all processes receive
+    the same local (temporary) directory to read from.
+
+    Once all processes have finished working with the checkpoint, the temporary directory
+    is cleaned up.
