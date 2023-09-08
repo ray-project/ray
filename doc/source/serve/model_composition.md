@@ -130,6 +130,25 @@ Example:
 :language: python
 ```
 
+### Advanced: Pass a DeploymentResponse "by reference"
+
+By default, when you pass a `DeploymentResponse` to another `DeploymentHandle` call, the downstream method will be passed the result of the `DeploymentResponse` directly once it's ready.
+However, in some cases you might want to start executing the downstream call before the result is ready (for example, to do some preprocessing or fetch a file from remote storage).
+To accomplish this, pass the `DeploymentResponse` "by reference" by embedding it in another Python object (such as a list or dictionary).
+When responses are passed by reference, they'll be replaced with Ray `ObjectRef`s instead of the resulting value and can start executing before the result is ready.
+
+In the below example, there are two deployments: a preprocessor and a downstream model that takes the output of the preprocessor.
+The downstream model has two methods:
+
+- `pass_by_value` takes the output of the preprocessor "by value," so it doesn't execute until the preprocessor is done.
+- `pass_by_reference` takes the output "by reference," so it gets an `ObjectRef` and executes eagerly.
+
+```{literalinclude} doc_code/model_composition/response_by_reference_example.py
+:start-after: __response_by_reference_example_start__
+:end-before: __response_by_reference_example_end__
+:language: python
+```
+
 ### Advanced: Convert a DeploymentResponse to a Ray ObjectRef
 
 Under the hood, each `DeploymentResponse` corresponds to a Ray `ObjectRef` (or a `StreamingObjectRefGenerator` for streaming calls).
