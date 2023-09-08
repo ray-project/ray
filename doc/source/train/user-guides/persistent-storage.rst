@@ -319,7 +319,7 @@ all artifacts saved in this directory will be persisted to storage.
 The frequency of artifact syncing can be configured via :class:`SyncConfig <ray.train.SyncConfig>`.
 Note that this behavior is off by default.
 
-.. figure:: ../images/persistent_storage_checkpoint.png
+.. figure:: ../images/persistent_storage_artifacts.png
     :align: center
     :width: 600px
 
