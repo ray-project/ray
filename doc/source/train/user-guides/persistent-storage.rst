@@ -117,7 +117,7 @@ Using local storage for a multi-node cluster
 
 .. warning::
 
-    When running on multiple nodes, using the local filesystem of the head node as the persistent storage location is no longer supported in most cases.
+    When running on multiple nodes, using the local filesystem of the head node as the persistent storage location is no longer supported.
 
     If you save checkpoints with :meth:`ray.train.report(..., checkpoint=...) <ray.train.report>`
     and run on a multi-node cluster, Ray Train will raise an error if NFS or cloud storage is not setup.
@@ -235,13 +235,117 @@ Note that including these as query parameters in the ``storage_path`` URI direct
 Overview of Ray Train outputs
 -----------------------------
 
+So far, we covered how to configure the storage location for Ray Train outputs.
+Let's walk through a concrete example to see what exactly these outputs are,
+and how they're structured in storage.
+
+.. seealso::
+
+    This example includes checkpoint saving, which is covered in detail in :ref:`train-checkpointing`.
+
+.. code-block:: python
+
+    import os
+    import tempfile
+
+    from ray import train
+    from ray.train import Checkpoint
+    from ray.train.torch import TorchTrainer
+
+    def train_fn(config):
+        for i in range(10):
+            # Training logic here
+
+            metrics = {"loss": ...}
+
+            # Save arbitrary artifacts to the working directory
+            rank = train.get_context().get_world_rank()
+            with open(f"artifact-rank={rank}-iter={i}.txt", "w") as f:
+                f.write("data")
+
+            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                torch.save(..., os.path.join(temp_checkpoint_dir, "checkpoint.pt"))
+                train.report(
+                    metrics,
+                    checkpoint=Checkpoint.from_directory(temp_checkpoint_dir)
+                )
+
+    trainer = TorchTrainer(
+        train_fn,
+        scaling_config=train.ScalingConfig(num_workers=2),
+        run_config=train.RunConfig(
+            storage_path="s3://bucket-name/sub-path/",
+            name="experiment_name",
+            sync_config=train.SyncConfig(sync_artifacts=True),
+        )
+    )
+    trainer.fit()
+
 Here's a rundown of all files that will be persisted to storage:
 
+.. code-block:: text
+
+    s3://bucket-name/sub-path (RunConfig.storage_path)
+    └── experiment_name (RunConfig.name)          <- The "experiment directory"
+        ├── experiment_state-*.json
+        ├── basic-variant-state-*.json
+        ├── trainer.pkl
+        ├── tuner.pkl
+        └── TorchTrainer_46367_00000_0_...        <- The "trial directory"
+            ├── events.out.tfevents...            <- Tensorboard logs of reported metrics
+            ├── result.json                       <- JSON log file of reported metrics
+            ├── checkpoint_000000/                <- Checkpoints
+            ├── checkpoint_000001/
+            ├── ...
+            ├── artifact-rank=0-iter=0.txt        <- Worker artifacts (see the next section)
+            ├── artifact-rank=1-iter=0.txt
+            └── ...
 
 
 Persisting training artifacts
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+In the example above, we saved some artifacts within the training loop to the worker's
+*current working directory*.
+If you were training a stable diffusion model, you could want to save
+some sample generated images every so often as a training artifact.
+
+By default, the worker's current working directory is set to the local version of the "trial directory."
+For example, ``~/ray_results/experiment_name/TorchTrainer_46367_00000_0_...`` in the example above.
+
+If :class:`RunConfig(SyncConfig(sync_artifacts=True)) <ray.train.SyncConfig>`, then
+all artifacts saved in this directory will be persisted to storage.
+
+The frequency of artifact syncing can be configured via :class:`SyncConfig <ray.train.SyncConfig>`.
+Note that this behavior is off by default.
+
+.. figure:: ../images/persistent_storage_checkpoint.png
+    :align: center
+    :width: 600px
+
+    Multiple workers spread across multiple nodes save artifacts to their local
+    working directory, which is then persisted to storage.
+
+.. warning::
+
+    Artifacts saved by *every worker* will be synced to storage. If you have multiple workers
+    co-located on the same node, make sure that workers don't delete files within their
+    shared working directory.
+
+    A best practice is to only write artifacts from a single worker unless you
+    really need artifacts from multiple.
+
+    .. code-block:: python
+
+        from ray import train
+
+        if train.get_context().get_world_rank() == 0:
+            # Only the global rank 0 worker saves artifacts.
+            ...
+
+        if train.get_context().get_local_rank() == 0:
+            # Every local rank 0 worker saves artifacts.
+            ...
 
 
 
