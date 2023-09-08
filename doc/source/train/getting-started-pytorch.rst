@@ -31,8 +31,8 @@ For reference, the final code follows:
     result = trainer.fit()
 
 1. Your `train_func` is the Python code that is executed on each distributed training worker.
-2. Your `ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
-3. Your `TorchTrainer` launches the distributed training job.
+2. Your :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
+3. Your :class:`~ray.train.torch.TorchTrainer` launches the distributed training job.
 
 Compare a PyTorch training script with and without Ray Train.
 
@@ -80,6 +80,7 @@ Compare a PyTorch training script with and without Ray Train.
     .. group-tab:: PyTorch + Ray Train
 
         .. code-block:: python
+            :emphasize-lines: 12, 18, 27, 42, 44-49
        
             import tempfile
             import torch
@@ -244,8 +245,8 @@ Configuring scale and GPUs
 
 Outside of your training function, create a :class:`~ray.train.ScalingConfig` object to configure:
 
-1. `num_workers` - The number of distributed training worker processes.
-2. `use_gpu` - Whether each worker should use a GPU (or CPU).
+1. :attr:`~ray.train.ScalingConfig.num_workers` - The number of distributed training worker processes.
+2. :attr:`~ray.train.ScalingConfig.use_gpu` - Whether each worker should use a GPU (or CPU).
 
 .. code-block:: python
 
