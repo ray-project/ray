@@ -355,6 +355,10 @@ def test_ids(ray_start_regular):
     named_actor = NamedActor.options(name=ACTOR_NAME).remote()
     assert ray.get(named_actor.name.remote()) == ACTOR_NAME
 
+    # unnamed actor name
+    unnamed_actor = NamedActor.options().remote()
+    assert ray.get(unnamed_actor.name.remote()) == ""
+
 
 def test_auto_init(shutdown_only):
     assert not ray.is_initialized()

@@ -267,8 +267,9 @@ class RuntimeContext(object):
         The name is in string format.
 
         Returns:
-            The current actor name of this worker. None if there's no
-            actor name or if it is a driver.
+            The current actor name of this worker.
+            Return empty string if there's no actor name or if it's a driver
+            None if it's not an actor.
         """
         # only worker mode has actor_id
         if self.worker.mode != ray._private.worker.WORKER_MODE:
@@ -276,7 +277,8 @@ class RuntimeContext(object):
                 "This method is only available when the process is a "
                 f"worker. Current mode: {self.worker.mode}"
             )
-        return self.worker.actor_name
+        actor_id = self.worker.actor_id
+        return self.worker.actor_name if not actor_id.is_nil() else None
 
     @property
     def namespace(self):
