@@ -2,14 +2,13 @@ import os.path
 import subprocess
 import sys
 import time
-import shutil
 import fcntl
 import signal
-import socket
 import logging
 import threading
 from ray.util.spark.cluster_init import RAY_ON_SPARK_COLLECT_LOG_TO_PATH
-from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
+from ray.util.spark.databricks_hook import global_mode_enabled
+from ray.util.spark.utils import _try_clean_temp_dir_at_exit
 
 
 # Spark on ray implementation does not directly invoke `ray start ...` script to create
@@ -55,61 +54,12 @@ if __name__ == "__main__":
     process = subprocess.Popen([ray_cli_cmd, "start", *arg_list], text=True)
 
     def try_clean_temp_dir_at_exit():
-        try:
-            # Wait for a while to ensure the children processes of the ray node all
-            # exited.
-            time.sleep(SIGTERM_GRACE_PERIOD_SECONDS + 0.5)
-            if process.poll() is None:
-                # "ray start ..." command process is still alive. Force to kill it.
-                process.kill()
-
-            # Release the shared lock, representing current ray node does not use the
-            # temp dir.
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-
-            try:
-                # acquiring exclusive lock to ensure copy logs and removing dir safely.
-                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                lock_acquired = True
-            except BlockingIOError:
-                # The file has active shared lock or exclusive lock, representing there
-                # are other ray nodes running, or other node running cleanup temp-dir
-                # routine. skip cleaning temp-dir, and skip copy logs to destination
-                # directory as well.
-                lock_acquired = False
-
-            if lock_acquired:
-                # This is the final terminated ray node on current spark worker,
-                # start copy logs (including all local ray nodes logs) to destination.
-                if collect_log_to_path:
-                    try:
-                        copy_log_dest_path = os.path.join(
-                            collect_log_to_path,
-                            os.path.basename(temp_dir) + "-logs",
-                            socket.gethostname(),
-                        )
-                        ray_session_dir = os.readlink(
-                            os.path.join(temp_dir, "session_latest")
-                        )
-                        shutil.copytree(
-                            os.path.join(ray_session_dir, "logs"),
-                            copy_log_dest_path,
-                        )
-                    except Exception as e:
-                        _logger.warning(
-                            "Collect logs to destination directory failed, "
-                            f"error: {repr(e)}."
-                        )
-
-                # Start cleaning the temp-dir,
-                shutil.rmtree(temp_dir, ignore_errors=True)
-        except Exception:
-            # swallow any exception.
-            pass
-        finally:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-            os.close(lock_fd)
-
+        _try_clean_temp_dir_at_exit(
+            process=process,
+            collect_log_to_path=collect_log_to_path,
+            temp_dir=temp_dir,
+            lock_fd=lock_fd,
+        )
 
     def check_parent_alive() -> None:
         orig_parent_id = os.getppid()
@@ -120,9 +70,13 @@ if __name__ == "__main__":
                 try_clean_temp_dir_at_exit()
                 os._exit(143)
 
-    threading.Thread(target=check_parent_alive, daemon=True).start()
+    # When global mode is enabled, parent process could be detached,
+    # so we don't kill the process when parent process died.
+    if not global_mode_enabled():
+        threading.Thread(target=check_parent_alive, daemon=True).start()
 
     try:
+
         def sighup_handler(*args):
             pass
 

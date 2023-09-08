@@ -29,6 +29,7 @@ from .utils import (
     get_max_num_concurrent_tasks,
     gen_cmd_exec_failure_msg,
     calc_mem_ray_head_node,
+    _try_clean_temp_dir_at_exit,
 )
 from .start_hook_base import RayOnSparkStartHook
 from .databricks_hook import (
@@ -216,6 +217,14 @@ class RayClusterOnSpark:
                 # swallow exception.
                 _logger.warning(
                     "An Error occurred during shutdown of ray head node: " f"{repr(e)}"
+                )
+            finally:
+                _try_clean_temp_dir_at_exit(
+                    process=self.head_proc,
+                    collect_log_to_path=os.environ.get(
+                        RAY_ON_SPARK_COLLECT_LOG_TO_PATH
+                    ),
+                    temp_dir=self.temp_dir,
                 )
             self.is_shutdown = True
 
@@ -441,14 +450,12 @@ def _setup_ray_cluster(
         start_hook = _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
     elif is_in_databricks_runtime():
         start_hook = DefaultDatabricksRayOnSparkStartHook()
-        if ray_temp_root_dir is not None:
+        if global_mode_enabled() and ray_temp_root_dir is not None:
             _logger.warning(
-                "The `ray_temp_root_dir` argument is ignored when running on "
-                "Databricks. We use /local_disk0/tmp as default temp root dir."
+                "The `ray_temp_root_dir` argument is ignored when enabling global mode"
+                "on Databricks. We use /local_disk0/tmp as default ray temp root dir."
             )
             ray_temp_root_dir = None
-        # Set default user temp dir to always be /local_disk0/tmp on databricks.
-        os.environ["RAY_TMPDIR"] = "/local_disk0/tmp"
     else:
         start_hook = RayOnSparkStartHook()
 
@@ -866,6 +873,19 @@ def setup_ray_cluster(
     `ray.util.spark.shutdown_ray_cluster()`.
     Note: If the active ray cluster haven't shut down, you cannot create a new ray
     cluster.
+
+    To enable global mode on Databricks Runtime, you can set environment variable
+    `DATABRICKS_RAY_CLUSTER_GLOBAL_MODE` to true. In global mode, the ray cluster
+    will keep running as the spark cluster persists, and you can connect to the
+    same ray cluster from different notebooks by `ray.init()` without specifying
+    ray cluster address. Restarting python REPL will not kill the global ray
+    cluster, so you need to manually shut down by calling
+    `ray.util.spark.shutdown_ray_cluster()`.
+    Note: Global mode has below limitations and risks
+        limitations: Only one global mode ray cluster could be created
+        risks: If you forget to shutdown global mode ray cluster, ray head node and
+            worker nodes will keep running, which will block Databirkcs cluster
+            auto-termination.
 
     Args:
         num_worker_nodes: This argument represents how many ray worker nodes to start

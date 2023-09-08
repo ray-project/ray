@@ -84,7 +84,7 @@ _DATABRICKS_DEFAULT_TMP_DIR = "/local_disk0/tmp"
 
 class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
     def get_default_temp_dir(self):
-        return _DATABRICKS_DEFAULT_TMP_DIR
+        return os.environ.get("RAY_TMPDIR", _DATABRICKS_DEFAULT_TMP_DIR)
 
     def on_ray_dashboard_created(self, port):
         display_databricks_driver_proxy_url(
