@@ -2,16 +2,12 @@
 
 Configuring Scale and GPUs
 ==========================
-Increasing the scale of a Ray Train training run is simple and can often
-be done in a few lines of code.
+Increasing the scale of a Ray Train training run is simple and can be done in a few lines of code.
+The main interface for this is the :class:`~ray.train.ScalingConfig`, 
+which configures the number of workers and the resources they should use.
 
-The main interface for configuring scale
-is the :class:`~ray.train.ScalingConfig`. Specifically, this configuration
-sets the number of training workers and the resources they should use.
-
-A *worker* here refers to a *training worker*. Technically, it's a
-:ref:`Ray Actor <actor-key-concept>` that runs your training function.
-
+In this guide, a *worker* refers to a Ray Train distributed training worker,
+which is a :ref:`Ray Actor <actor-key-concept>` that runs your training function.
 
 Increasing the number of workers
 --------------------------------
