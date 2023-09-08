@@ -1215,8 +1215,6 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     print("ray_serve_num_ongoing_http_requests updated successfully.")
 
     if RAY_SERVE_ENABLE_NEW_ROUTING:
-        # TODO(shrekris-anyscale): This should be 0 once async task cancellation
-        # is implemented.
         wait_for_condition(
             check_metric,
             timeout=15,
