@@ -2,11 +2,11 @@
 
 # Ray Serve Autoscaling
 
-Each [Ray Serve deployment](serve-key-concepts-deployment) has one [replica](serve-architecture-high-level-view) by default. This means there is one worker process running the model and serving requests. At some point, you may see traffic to your deployment increase, and the single replica becomes overloaded. To maintain high performance of your service, you need to scale out your deployment.
+Each [Ray Serve deployment](serve-key-concepts-deployment) has one [replica](serve-architecture-high-level-view) by default. This means there is one worker process running the model and serving requests. When traffic to your deployment increases, the single replica can become overloaded. To maintain high performance of your service, you need to scale out your deployment.
 
 ## Manual Scaling
 
-Before jumping into autoscaling, which is more complex, the other option is manual scaling. You can increase the number of replicas by setting a higher value for [num_replicas](serve-configure-deployment) in the deployment options through [In place updates](serve-inplace-updates). By default, `num_replicas` is 1. Increasing the number of replicas will horizontally scale out your deployment and improve latency and throughput for increased levels of traffic.
+Before jumping into autoscaling, which is more complex, the other option to consider is manual scaling. You can increase the number of replicas by setting a higher value for [num_replicas](serve-configure-deployment) in the deployment options through [in place updates](serve-inplace-updates). By default, `num_replicas` is 1. Increasing the number of replicas will horizontally scale out your deployment and improve latency and throughput for increased levels of traffic.
 
 ```yaml
 # Deploy with a single replica
@@ -26,7 +26,7 @@ Instead of setting a fixed number of replicas for a deployment and manually upda
 
 * **`target_num_ongoing_requests_per_replica`** is the average number of ongoing requests per replica that the Serve autoscaler will try to ensure. Set this to a reasonable number (for example, 5) and adjust it based on your request processing length (the longer the requests, the smaller this number should be) as well as your latency objective (the shorter you want your latency to be, the smaller this number should be).
 * **`max_concurrent_queries`** (not in autoscaling config) is the maximum number of ongoing requests allowed for a replica. Set this to a value ~20-50% greater than `target_num_ongoing_requests_per_replica`. Note this is not part of the autoscaling config since it is relevant to all deployments, but it is important to set it relative to the target value if autoscaling is turned on for your deployment.
-* **`min_replicas`** is the minimum number of replicas for the deployment. Set this to 0 if there are long periods of no traffic and some extra tail latency during upscale is acceptable. Otherwise, set this to what you think you need for low-traffic.
+* **`min_replicas`** is the minimum number of replicas for the deployment. Set this to 0 if there are long periods of no traffic and some extra tail latency during upscale is acceptable. Otherwise, set this to what you think you need for low traffic.
 * **`max_replicas`** is the minimum number of replicas for the deployment. Set this to ~20% higher than what you think you need for peak traffic.
 
 An example deployment config with autoscaling configured would be:
@@ -41,9 +41,10 @@ An example deployment config with autoscaling configured would be:
 
 These guidelines are a great starting point. If you decide to further tune your autoscaling config for your application, see [Advanced Ray Serve Autoscaling](serve-advanced-autoscaling).
 
+(resnet-autoscaling-example)=
 ## Basic example
 
-We go through an example of a synchronous workload that runs ResNet50. The application code and its autoscaling configuration are shown below. (Alternatively, see the second tab for specifying the autoscaling config through a YAML file) `target_num_ongoing_requests_per_replica = 1` because the ResNet model runs synchronously, and the goal is to keep the latencies low. Note that the deployment starts with 0 replicas.
+We go through an example of a synchronous workload that runs ResNet50. The application code and its autoscaling configuration are shown below. (Alternatively, see the second tab for specifying the autoscaling config through a YAML file.) We set `target_num_ongoing_requests_per_replica = 1` because the ResNet model runs synchronously, and the goal is to keep the latencies low. Note that the deployment starts with 0 replicas.
 
 ::::{tab-set}
 

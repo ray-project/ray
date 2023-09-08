@@ -14,51 +14,46 @@ In this section, we go into more detail about Serve autoscaling concepts as well
 
 To define what the steady state of your deployments should be, set values for `target_num_ongoing_requests_per_replica` and `max_concurrent_queries`.
 
-#### `target_num_ongoing_requests_per_replica [default=1]`
+#### target_num_ongoing_requests_per_replica [default=1]
 Serve scales the number of replicas for a deployment up or down based on the average number of ongoing requests per replica. Specifically, Serve compares the *actual* number of ongoing requests per replica with the target value you set in the autoscaling config and makes upscale or downscale decisions from that. The target value is set by `target_num_ongoing_requests_per_replica`, and Serve tries to make sure that each replica has roughly that number
-of requests being processed and waiting in the queue. We recommend you benchmark your application code and set this number based on an end-to-end latency objective.
+of requests being processed and waiting in the queue. 
 
-:::{tip}
-- It is always recommended to load test your workloads. For example, if the use case is latency sensitive, you can lower the `target_num_ongoing_requests_per_replica` number to maintain high performance.
-- Internally, the autoscaler decides to scale up or down by comparing `target_num_ongoing_requests_per_replica` to the number of requests running and pending on each replica.
-- `target_num_ongoing_requests_per_replica` is only a target value used for autoscaling (not a hard limit). The real ongoing requests number can be higher than the config.
-:::
+It is always recommended to load test your workloads. For example, if the use case is latency sensitive, you can lower the `target_num_ongoing_requests_per_replica` number to maintain high performance. We recommend you benchmark your application code and set this number based on an end-to-end latency objective.
 
 :::{note}
-As an example, suppose you have two replicas of a synchronous deployment that has 100ms latency, serving a traffic load of 30 QPS. Then requests are assigned to replicas faster than the replicas can finish processing them; more and more requests are queued up at the replica (these are considered "ongoing requests") as time goes on, and then the average number of ongoing requests at each replica steadily increases. If you set `target_num_ongoing_requests_per_replica = 1`, Serve detects a higher than desired number of ongoing requests per replica, and adds more replicas. At 3 replicas, your system would be able to process 30 QPS with 1 ongoing request per replica on average.
+As an example, suppose you have two replicas of a synchronous deployment that has 100ms latency, serving a traffic load of 30 QPS. Then requests are assigned to replicas faster than the replicas can finish processing them; more and more requests are queued up at the replica (these are considered "ongoing requests") as time goes on, and then the average number of ongoing requests at each replica steadily increases. Latency will also increase since new requests have to wait for old requests to finish processing. If you set `target_num_ongoing_requests_per_replica = 1`, Serve detects a higher than desired number of ongoing requests per replica, and adds more replicas. At 3 replicas, your system would be able to process 30 QPS with 1 ongoing request per replica on average.
 :::
 
-#### `max_concurrent_queries [default=100]`
+#### max_concurrent_queries [default=100]
 There is also a maximum queue limit that is proxies respect when assigning requests to replicas. The limit is defined by `max_concurrent_queries`. We recommend setting `max_concurrent_queries` to ~20 to 50% higher than `target_num_ongoing_requests_per_replica`. Note that `target_num_ongoing_requests_per_replica` should always be strictly less than `max_concurrent_queries`, otherwise the deployment never scales up. Take into account the following when setting `max_concurrent_queries`:
 
 - Setting it too low limits upscaling. For instance, if your target value is 50 and `max_concurrent_queries` is 51, then even if the traffic increases significantly, the requests will queue up at the proxy instead of at the replicas. As a result, the autoscaler only increases the number of replicas at most 2% at a time, which is very slow.
-- Setting it too high can lead to imbalanced routing. If the autoscaler is scaling a deployment up due to a traffic spike, most or all of the requests might be assigned to the existing replicas before the new replicas are started, which can lead to very high tail latencies during upscale.
+- Setting it too high can lead to imbalanced routing. Concretely, this can lead to very high tail latencies during upscale, because when the autoscaler is scaling a deployment up due to a traffic spike, most or all of the requests might be assigned to the existing replicas before the new replicas are started.
 
 ### [Required] Define upper and lower autoscaling limits
 
 To use autoscaling, you need to define the minimum and maximum number of resources allowed for your system.
 
-* **`min_replicas [default=1]`**: This is the minimum number of replicas for the deployment. If you want to ensure your system can deal with a certain level of traffic at all times, set `min_replicas` to a positive number. On the other hand, if you anticipate periods of no traffic and want to scale to zero to save cost, set `min_replicas = 0`. Note that setting `min_replicas = 0` causes higher tail latencies; when you start sending traffic, the deployment scales up, and there will be a cold start time as Serve waits for replicas to be started to serve the request.
-* **`max_replicas [default=1]`**: This is the maximum number of replicas for the deployment. This should be greater than `min_replicas`. Ray Serve Autoscaling relies on the Ray Autoscaler to scale up more nodes when the currently available cluster resources (CPUs, GPUs, etc.) are not enough to support more replicas.
-* **`initial_replicas`**: This is the number of replicas that are started initially for the deployment. This defaults to the value for `min_replicas`.
+* **min_replicas [default=1]**: This is the minimum number of replicas for the deployment. If you want to ensure your system can deal with a certain level of traffic at all times, set `min_replicas` to a positive number. On the other hand, if you anticipate periods of no traffic and want to scale to zero to save cost, set `min_replicas = 0`. Note that setting `min_replicas = 0` causes higher tail latencies; when you start sending traffic, the deployment scales up, and there will be a cold start time as Serve waits for replicas to be started to serve the request.
+* **max_replicas [default=1]**: This is the maximum number of replicas for the deployment. This should be greater than `min_replicas`. Ray Serve Autoscaling relies on the Ray Autoscaler to scale up more nodes when the currently available cluster resources (CPUs, GPUs, etc.) are not enough to support more replicas.
+* **initial_replicas**: This is the number of replicas that are started initially for the deployment. This defaults to the value for `min_replicas`.
 
 
 ### [Optional] Define how the system reacts to changing traffic
 
-Given a steady stream of traffic and appropriately configured `min_replicas` and `max_replicas`, the steady state of your system is essentially fixed for a chosen configuration value for `target_num_ongoing_requests_per_replica`. Before reaching steady state, however, your system is reacting to traffic shifts. How you want your system to react to changes in traffic determines how you want to set the remaining autoscaling configurations. Two more commonly used parameters are as follows:
+Given a steady stream of traffic and appropriately configured `min_replicas` and `max_replicas`, the steady state of your system is essentially fixed for a chosen configuration value for `target_num_ongoing_requests_per_replica`. Before reaching steady state, however, your system is reacting to traffic shifts. How you want your system to react to changes in traffic determines how you want to set the remaining autoscaling configurations.
 
-<!-- The autoscaling algorithm takes into consideration several user-specified parameters when making autoscaling decisions: -->
+* **upscale_delay_s [default=30s]**: This defines how long Serve waits before scaling up the number of replicas in your deployment. This parameter controls the frequency of downscale decisions. More specifically, if the replicas are *consistently* serving more requests than desired for an `upscale_delay_s` number of seconds, then Serve scales up the number of replicas based on aggregated ongoing requests metrics. For example, if your service is likely to experience bursts of traffic, you can lower `upscale_delay_s` so that your application can react quickly to increases in traffic.
 
-* **`upscale_delay_s [default=30s]`**: This defines how long Serve waits before scaling up the number of replicas in your deployment. This parameter controls the frequency of downscale decisions. More specifically, if the replicas are *consistently* serving more requests than desired for an `upscale_delay_s` number of seconds, then Serve scales up the number of replicas based on aggregated ongoing requests metrics. For example, if your application initializes slowly, you can increase `downscale_delay_s` to make the downscaling happen more infrequently and avoid reinitialization when the application needs to upscale again in the future.
-* **`downscale_delay_s [default=600s]`**: This defines how long Serve waits before scaling down the number of replicas in your deployment. This parameter controls the frequency of upscale decisions. More specifically, if the replicas are *consistently* serving less requests than desired for a `downscale_delay_s` number of seconds, then Serve scales down the number of replicas based on aggregated ongoing requests metrics.
+* **downscale_delay_s [default=600s]**: This defines how long Serve waits before scaling down the number of replicas in your deployment. This parameter controls the frequency of upscale decisions. More specifically, if the replicas are *consistently* serving less requests than desired for a `downscale_delay_s` number of seconds, then Serve scales down the number of replicas based on aggregated ongoing requests metrics. For example, if your application initializes slowly, you can increase `downscale_delay_s` to make the downscaling happen more infrequently and avoid reinitialization when the application needs to upscale again in the future.
 
-* **`upscale_smoothing_factor [default_value=1.0]`**: The multiplicative factor to speed up or slow down each upscaling decision. For example, when the application has high traffic volume in a short period of time, you can increase `upscale_smoothing_factor` to scale up the resource quickly. This parameter is like a "gain" factor to amplify the response of the autoscaling algorithm.
+* **upscale_smoothing_factor [default_value=1.0]**: The multiplicative factor to speed up or slow down each upscaling decision. For example, when the application has high traffic volume in a short period of time, you can increase `upscale_smoothing_factor` to scale up the resource quickly. This parameter is like a "gain" factor to amplify the response of the autoscaling algorithm.
 
-* **`downscale_smoothing_factor [default_value=1.0]`**: The multiplicative factor to speed up or slow down each downscaling decision. For example, if you want your application to be less sensitive to drops in traffic and scale down more conservatively, you can decrease `downscale_smoothing_factor` to slow down the pace of downscaling.
+* **downscale_smoothing_factor [default_value=1.0]**: The multiplicative factor to speed up or slow down each downscaling decision. For example, if you want your application to be less sensitive to drops in traffic and scale down more conservatively, you can decrease `downscale_smoothing_factor` to slow down the pace of downscaling.
 
-* **`metrics_interval_s [default_value=10]`**: This controls how often each replica sends reports on current ongoing requests to the autoscaler. Note that the autoscaler can't make new decisions if it doesn't receive updated metrics, so you most likely want to set `metrics_interval_s` to a value that is at most the upscale and downscale delay values. For instance, if you set `upscale_delay_s = 3`, but keep `metrics_interval_s = 10`, the autoscaler only upscales roughly every 10 seconds.
+* **metrics_interval_s [default_value=10]**: This controls how often each replica sends reports on current ongoing requests to the autoscaler. Note that the autoscaler can't make new decisions if it doesn't receive updated metrics, so you most likely want to set `metrics_interval_s` to a value that is at most the upscale and downscale delay values. For instance, if you set `upscale_delay_s = 3`, but keep `metrics_interval_s = 10`, the autoscaler only upscales roughly every 10 seconds.
 
-* **`look_back_period_s [default_value=30]`**: This is the window over which the average number of ongoing requests per replica is calculated.
+* **look_back_period_s [default_value=30]**: This is the window over which the average number of ongoing requests per replica is calculated.
 
 ## Model composition example
 
@@ -129,11 +124,11 @@ First consider the following deployment configurations. Because the driver deplo
 ::::
 
 
-Running the same Locust load test from the Resnet workload generates the following results:
+Running the same Locust load test from the [Resnet workload](resnet-autoscaling-example) generates the following results:
 
 | | |
 | ----------------------- | ---------------------- |
-| HeavyLoad and LightLoad Number Replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_replicas.png" alt="comp" width="500" /> |
+| HeavyLoad and LightLoad Number Replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_replicas.png" alt="comp" width="600" /> |
 
 
 As you might expect, the number of autoscaled `LightLoad` replicas is roughly half that of autoscaled `HeavyLoad` replicas. Although the same number of requests per second are sent to both deployments, `LightLoad` replicas can process twice as many requests per second as `HeavyLoad` replicas can, so the deployment should need half as many replicas to handle the same traffic load.
@@ -218,8 +213,8 @@ Running the same Locust load test again generates the following results:
 
 | | |
 | ------------------------------------ | ------------------- |
-| HeavyLoad and LightLoad Number Replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_replicas.png" alt="heavy" width="500"/> |
-| Driver Number Replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_driver_replicas.png" alt="driver" width="500"/>
+| HeavyLoad and LightLoad Number Replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_replicas.png" alt="heavy" width="600"/> |
+| Driver Number Replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_driver_replicas.png" alt="driver" width="600"/>
 
 With up to 6 `Driver` deployments to receive and distribute the incoming requests, the `HeavyLoad` deployment successfully scales up to 90+ replicas, and `LightLoad` up to 47 replicas. This configuration helps the application latency stay consistent as the traffic load increases.
 
@@ -235,7 +230,7 @@ With up to 6 `Driver` deployments to receive and distribute the incoming request
 
 If the number of replicas in your deployment keeps oscillating even though the traffic is relatively stable, try the following:
 
-* Set a smaller `upscale_smoothing_factor` and `downscale_smoothing_factor`.
+* Set a smaller `upscale_smoothing_factor` and `downscale_smoothing_factor`. Setting both values smaller than one helps the autoscaler make more conservative upscale and downscale decisions. It effectively smooths out the replicas graph, and there will be less "sharp edges".
 * Set a `look_back_period_s` value that matches the rest of the autoscaling config. For longer upscale and downscale delay values, a longer look back period can likely help stabilize the replica graph, but for shorter upscale and downscale delay values, a shorter look back period may be more appropriate. For instance, the following replica graphs show how a deployment with `upscale_delay_s = 3` works with a longer vs shorter look back period.
 
 | `look_back_period_s = 30` | `look_back_period_s = 3` |
