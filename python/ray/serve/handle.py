@@ -163,18 +163,6 @@ class _DeploymentHandleBase:
             except Exception:
                 availability_zone = None
 
-            if not self.__class__ == DeploymentHandle:
-                warnings.warn(
-                    "Ray 2.7 introduces a new `DeploymentHandle` API that will "
-                    "replace the existing `RayServeHandle` and `RayServeSyncHandle` "
-                    "APIs in a future release. You are encouraged to migrate to the "
-                    "new API to avoid breakages in the future. To opt in, either use "
-                    "`handle.options(use_new_handle_api=True)` or set the global "
-                    "environment variable `export RAY_SERVE_ENABLE_NEW_HANDLE_API=1`. "
-                    "See https://docs.ray.io/en/latest/serve/model_composition.html "
-                    "for more details."
-                )
-
             self._router = Router(
                 serve.context._get_global_client()._controller,
                 self.deployment_id,
@@ -248,6 +236,18 @@ class _DeploymentHandleBase:
         )
 
     def _remote(self, args: Tuple[Any], kwargs: Dict[str, Any]) -> Coroutine:
+        if not self.__class__ == DeploymentHandle:
+            warnings.warn(
+                "Ray 2.7 introduces a new `DeploymentHandle` API that will "
+                "replace the existing `RayServeHandle` and `RayServeSyncHandle` "
+                "APIs in a future release. You are encouraged to migrate to the "
+                "new API to avoid breakages in the future. To opt in, either use "
+                "`handle.options(use_new_handle_api=True)` or set the global "
+                "environment variable `export RAY_SERVE_ENABLE_NEW_HANDLE_API=1`. "
+                "See https://docs.ray.io/en/latest/serve/model_composition.html "
+                "for more details."
+            )
+
         self._record_telemetry_if_needed()
         _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
@@ -295,13 +295,15 @@ class _DeploymentHandleBase:
         return self.__class__._deserialize, (serialized_constructor_args,)
 
 
-@PublicAPI(stability="beta")
+@Deprecated(
+    message=(
+        "This API is being replaced by `ray.serve.handle.DeploymentHandle`. "
+        "Opt into the new API by using `handle.options(use_new_handle_api=True)` "
+        "or setting the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`."
+    )
+)
 class RayServeHandle(_DeploymentHandleBase):
     """A handle used to make requests from one deployment to another.
-
-    NOTE: This API is being replaced by `ray.serve.handle.DeploymentHandle`.
-    Opt into the new API by using `handle.options(use_new_handle_api=True)` or setting
-    the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`.
 
     This is used to compose multiple deployments into a single application. After
     building the application, this handle is substituted at runtime for deployments
@@ -392,13 +394,15 @@ class RayServeHandle(_DeploymentHandleBase):
         return asyncio.ensure_future(result_coro, loop=loop)
 
 
-@PublicAPI(stability="beta")
+@Deprecated(
+    message=(
+        "This API is being replaced by `ray.serve.handle.DeploymentHandle`. "
+        "Opt into the new API by using `handle.options(use_new_handle_api=True)` "
+        "or setting the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`."
+    )
+)
 class RayServeSyncHandle(_DeploymentHandleBase):
     """A handle used to make requests to the ingress deployment of an application.
-
-    NOTE: This API is being replaced by `ray.serve.handle.DeploymentHandle`.
-    Opt into the new API by using `handle.options(use_new_handle_api=True)` or setting
-    the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`.
 
     This is returned by `serve.run` and can be used to invoke the application from
     Python rather than over HTTP. For example:
@@ -554,7 +558,7 @@ class _DeploymentResponseBase:
             ray.cancel(self._assign_request_task.result())
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class DeploymentResponse(_DeploymentResponseBase):
     """A future-like object wrapping the result of a unary deployment handle call.
 
@@ -673,7 +677,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class DeploymentResponseGenerator(_DeploymentResponseBase):
     """A future-like object wrapping the result of a streaming deployment handle call.
 
@@ -795,7 +799,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class DeploymentHandle(_DeploymentHandleBase):
     """A handle used to make requests to a deployment at runtime.
 
