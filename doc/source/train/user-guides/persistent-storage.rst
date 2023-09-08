@@ -5,7 +5,8 @@
 Configuring Persistent Storage
 ==============================
 
-A Ray Train run produces results, checkpoints, and other artifacts.
+A Ray Train run produces a history of :ref:`reported metrics <train-monitoring-and-logging>`,
+:ref:`checkpoints <train-checkpointing>`, and :ref:`other artifacts <train-artifacts>`.
 You can configure these to be saved to a persistent storage location.
 
 .. figure:: ../images/persistent_storage_checkpoint.png
@@ -27,7 +28,7 @@ Here are some benefits of setting up persistent storage:
   See :ref:`train-checkpointing` for a detailed guide on how to set up checkpointing.
 - **Post-experiment analysis**: A consolidated location storing data from all trials is useful for post-experiment analysis
   such as accessing the best checkpoints and hyperparameter configs after the cluster has already been terminated.
-- **Bridge with downstream serving/batch inference tasks**: With a configured storage, you can easily access the models
+- **Bridge with downstream serving/batch inference tasks**: You can easily access the models
   and artifacts to share them with others or use them in downstream tasks.
 
 
@@ -135,7 +136,7 @@ Using local storage for a multi-node cluster
 Custom storage
 --------------
 
-If the cases above don't suit your needs, Ray Train can be configured support custom filesystems and and perform custom logic.
+If the cases above don't suit your needs, Ray Train can support custom filesystems and perform custom logic.
 Ray Train standardizes on the ``pyarrow.fs.FileSystem`` interface to interact with storage
 (`see the API reference here <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_).
 
@@ -279,7 +280,8 @@ and how they're structured in storage.
             sync_config=train.SyncConfig(sync_artifacts=True),
         )
     )
-    trainer.fit()
+    result: train.Result = trainer.fit()
+    last_checkpoint: Checkpoint = result.checkpoint
 
 Here's a rundown of all files that will be persisted to storage:
 
@@ -301,13 +303,29 @@ Here's a rundown of all files that will be persisted to storage:
             ├── artifact-rank=1-iter=0.txt
             └── ...
 
+The :class:`~ray.train.Result` and :class:`~ray.train.Checkpoint` objects returned by
+``trainer.fit`` are the easiest way to access the data in these files:
+
+.. code-block:: python
+
+    result.filesystem, result.path
+    # S3FileSystem, "bucket-name/sub-path/experiment_name/TorchTrainer_46367_00000_0_..."
+
+    result.checkpoint.filesystem, result.checkpoint.path
+    # S3FileSystem, "bucket-name/sub-path/experiment_name/TorchTrainer_46367_00000_0_.../checkpoint_000009"
+
+
+See :ref:`train-inspect-results` for a full guide on interacting with training :class:`~ray.train.Result`s.
+
+
+.. _train-artifacts:
 
 Persisting training artifacts
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In the example above, we saved some artifacts within the training loop to the worker's
 *current working directory*.
-If you were training a stable diffusion model, you could want to save
+If you were training a stable diffusion model, you could save
 some sample generated images every so often as a training artifact.
 
 By default, the worker's current working directory is set to the local version of the "trial directory."
@@ -346,7 +364,6 @@ Note that this behavior is off by default.
         if train.get_context().get_local_rank() == 0:
             # Every local rank 0 worker saves artifacts.
             ...
-
 
 
 Advanced configuration
