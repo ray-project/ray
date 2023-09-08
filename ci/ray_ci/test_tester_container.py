@@ -9,15 +9,15 @@ from ci.ray_ci.utils import chunk_into_n
 
 class MockPopen:
     """
-    Mock subprocess.Popen. This process returns 0 if both test_targets and
-    commands are not empty; otherwise return 1.
+    Mock subprocess.Popen. This process returns 1 if test targets is empty or contains
+    bad_test; otherwise return 0.
     """
 
     def __init__(self, test_targets: List[str]):
         self.test_targets = test_targets
 
     def wait(self) -> int:
-        return 0 if self.test_targets else 1
+        return 1 if "bad_test" in self.test_targets or not self.test_targets else 0
 
 
 def test_run_tests_in_docker() -> None:
@@ -62,8 +62,11 @@ def test_run_tests() -> None:
         container = TesterContainer("team")
         # test_targets are not empty
         assert container.run_tests(["t1", "t2"], [], 2)
-        # test_targets is empty after chunking
-        assert not container.run_tests(["t1"], [], 2)
+        # test_targets is empty after chunking, but not creating popen
+        assert container.run_tests(["t1"], [], 2)
+        assert container.run_tests([], [], 2)
+        # test targets contain bad_test
+        assert not container.run_tests(["bad_test"], [], 2)
 
 
 if __name__ == "__main__":

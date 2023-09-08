@@ -1,4 +1,3 @@
-import logging
 import os
 import sys
 from typing import List, Optional
@@ -7,7 +6,7 @@ import yaml
 import click
 
 from ci.ray_ci.tester_container import TesterContainer
-from ci.ray_ci.utils import logger, shard_tests
+from ci.ray_ci.utils import shard_tests
 
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
@@ -88,10 +87,6 @@ def main(
             worker_id,
             except_tags,
         )
-    if not test_targets:
-        logging.info("No tests to run")
-        return
-    logger.info(f"Running tests: {test_targets}")
     success = container.run_tests(test_targets, test_env, parallelism_per_worker)
     sys.exit(0 if success else 1)
 
