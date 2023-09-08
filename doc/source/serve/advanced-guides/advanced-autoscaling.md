@@ -4,7 +4,9 @@
 
 This guide goes over more advanced autoscaling parameters in [autoscaling_config](../api/doc/ray.serve.config.AutoscalingConfig.rst) and an advanced model composition example.
 
-## Autoscaling concepts overview
+
+(serve-autoscaling-config-parameters)=
+## Autoscaling config parameters
 
 In this section, we go into more detail about Serve autoscaling concepts as well as how to set your autoscaling config.
 
@@ -34,8 +36,8 @@ There is also a maximum queue limit that is proxies respect when assigning reque
 
 To use autoscaling, you need to define the minimum and maximum number of resources allowed for your system.
 
-* **`min_replicas`**: This is the minimum number of replicas for the deployment. If you want to ensure your system can deal with a certain level of traffic at all times, set `min_replicas` to a positive number. On the other hand, if you anticipate periods of no traffic and want to scale to zero to save cost, set `min_replicas = 0`. Note that setting `min_replicas = 0` causes higher tail latencies.
-* **`max_replicas`**: This is the maximum number of replicas for the deployment. This should be greater than `min_replicas`.
+* **`min_replicas`**: This is the minimum number of replicas for the deployment. If you want to ensure your system can deal with a certain level of traffic at all times, set `min_replicas` to a positive number. On the other hand, if you anticipate periods of no traffic and want to scale to zero to save cost, set `min_replicas = 0`. Note that setting `min_replicas = 0` causes higher tail latencies; when you start sending traffic, the deployment scales up, and there will be a cold start time as Serve waits for replicas to be started to serve the request.
+* **`max_replicas`**: This is the maximum number of replicas for the deployment. This should be greater than `min_replicas`. Ray Serve Autoscaling relies on the Ray Autoscaler to scale up more nodes when the currently available cluster resources (CPUs, GPUs, etc.) are not enough to support more replicas.
 * **`initial_replicas`**: This is the number of replicas that are started initially for the deployment.
 
 
@@ -43,9 +45,18 @@ To use autoscaling, you need to define the minimum and maximum number of resourc
 
 Given a steady stream of traffic and appropriately configured `min_replicas` and `max_replicas`, the steady state of your system is essentially fixed for a chosen configuration value for `target_num_ongoing_requests_per_replica`. Before reaching steady state, however, your system is reacting to traffic shifts. How you want your system to react to changes in traffic determines how you want to set the remaining autoscaling configurations. Two more commonly used parameters are as follows:
 
-* **`upscale_delay_s [default=30s]`**: This defines how long Serve waits before scaling up the number of replicas in your deployment. More specifically, if the replicas are *consistently* serving more requests than desired for an `upscale_delay_s` number of seconds, then Serve scales up the number of replicas based on aggregated ongoing requests metrics.
-* **`downscale_delay_s [default=600s]`**: This defines how long Serve waits before scaling down the number of replicas in your deployment. More specifically, if the replicas are *consistently* serving less requests than desired for a `downscale_delay_s` number of seconds, then Serve scales down the number of replicas based on aggregated ongoing requests metrics.
+<!-- The autoscaling algorithm takes into consideration several user-specified parameters when making autoscaling decisions: -->
 
+* **`upscale_delay_s [default=30s]`**: This defines how long Serve waits before scaling up the number of replicas in your deployment. This parameter controls the frequency of downscale decisions. More specifically, if the replicas are *consistently* serving more requests than desired for an `upscale_delay_s` number of seconds, then Serve scales up the number of replicas based on aggregated ongoing requests metrics. For example, if your application initializes slowly, you can increase `downscale_delay_s` to make the downscaling happen more infrequently and avoid reinitialization when the application needs to upscale again in the future.
+* **`downscale_delay_s [default=600s]`**: This defines how long Serve waits before scaling down the number of replicas in your deployment. This parameter controls the frequency of upscale decisions. More specifically, if the replicas are *consistently* serving less requests than desired for a `downscale_delay_s` number of seconds, then Serve scales down the number of replicas based on aggregated ongoing requests metrics.
+
+* **`upscale_smoothing_factor [default_value=1.0]`**: The multiplicative factor to speed up or slow down each upscaling decision. For example, when the application has high traffic volume in a short period of time, you can increase `upscale_smoothing_factor` to scale up the resource quickly. This parameter is like a "gain" factor to amplify the response of the autoscaling algorithm.
+
+* **`downscale_smoothing_factor [default_value=1.0]`**: The multiplicative factor to speed up or slow down each downscaling decision. For example, if you want your application to be less sensitive to drops in traffic and scale down more conservatively, you can decrease `downscale_smoothing_factor` to slow down the pace of downscaling.
+
+* **`metrics_interval_s [default_value=10]`**: This controls how often each replica sends reports on current ongoing requests to the autoscaler. Note that the autoscaler can't make new decisions if it doesn't receive updated metrics, so you most likely want to set `metrics_interval_s` to a value that is at most the upscale and downscale delay values. For instance, if you set `upscale_delay_s = 3`, but keep `metrics_interval_s = 10`, the autoscaler only upscales roughly every 10 seconds.
+
+* **`look_back_period_s [default_value=30]`**: This is the window over which the average number of ongoing requests per replica is calculated.
 
 ## Model composition example
 
@@ -213,30 +224,6 @@ With up to 6 `Driver` deployments to receive and distribute the incoming request
 | Improved P50 Latency | Improved RPS |
 | ---------------- | ------------ |
 | ![comp_latency](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_latency.svg) | ![comp_latency](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_comp_improved_rps.svg) |
-
-
-(serve-autoscaling-config-parameters)=
-## Autoscaling config parameters
-
-The autoscaling algorithm takes into consideration several user-specified parameters when making autoscaling decisions:
-
-**min_replicas[default_value=1]**: The minimum number of replicas for the deployment. Ray Serve allows this to be set to 0, which means there can be 0 replicas in periods of inactivity. When you start sending traffic, the deployment scales up, and there will be a cold start time as Serve waits for replicas to be started to serve the request.
-
-**max_replicas[default_value=1]**: The maximum number of replicas for the deployment. Ray Serve Autoscaling relies on the Ray Autoscaler to scale up more nodes when the currently available cluster resources (CPUs, GPUs, etc.) are not enough to support more replicas.
-
-**target_num_ongoing_requests_per_replica[default_value=1]**: How many ongoing requests are expected to run concurrently per replica. The autoscaler scales up if the value is lower than the current number of ongoing requests per replica. Similarly, the autoscaler scales down if it's higher than the current number of ongoing requests. Scaling happens quicker if this value and the current number of ongoing requests are significantly different.
-
-**downscale_delay_s[default_value=600.0]**: How long the cluster needs to wait before scaling down replicas. This parameter controls the frequency of downscale decisions. For example, if your application initializes slowly, you can increase `downscale_delay_s` to make the downscaling happen more infrequently and avoid reinitialization when the application needs to upscale again in the future.
-
-**upscale_delay_s[default_value=30.0]**: How long the cluster needs to wait before scaling up replicas. This parameter controls the frequency of upscale decisions.
-
-**upscale_smoothing_factor[default_value=1.0]**: The multiplicative factor to speed up or slow down each upscaling decision. For example, when the application has high traffic volume in a short period of time, you can increase `upscale_smoothing_factor` to scale up the resource quickly. This parameter is like a "gain" factor to amplify the response of the autoscaling algorithm.
-
-**downscale_smoothing_factor[default_value=1.0]**: The multiplicative factor to speed up or slow down each downscaling decision. For example, if you want your application to be less sensitive to drops in traffic and scale down more conservatively, you can decrease `downscale_smoothing_factor` to slow down the pace of downscaling.
-
-**metrics_interval_s[default_value=10]**: This controls how often each replica sends reports on current ongoing requests to the autoscaler. Note that the autoscaler can't make new decisions if it doesn't receive updated metrics, so you most likely want to set `metrics_interval_s` to a value that is at most the upscale and downscale delay values. For instance, if you set `upscale_delay_s = 3`, but keep `metrics_interval_s = 10`, the autoscaler only upscales roughly every 10 seconds.
-
-**look_back_period_s[default_value=30]**: This is the window over which the average number of ongoing requests per replica is calculated.
 
 
 ## Troubleshooting guide

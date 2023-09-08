@@ -12,7 +12,18 @@ from torchvision.models import ResNet50_Weights
 from ray import serve
 
 
-@serve.deployment(ray_actor_options={"num_cpus": 1})
+@serve.deployment(
+    ray_actor_options={"num_cpus": 1},
+    max_concurrent_queries=10,
+    autoscaling_config={
+        "target_num_ongoing_requests_per_replica": 1,
+        "min_replicas": 0,
+        "initial_replicas": 0,
+        "max_replicas": 200,
+        "upscale_delay_s": 30,
+        "downscale_delay_s": 600,
+    },
+)
 class Model:
     def __init__(self):
         self.resnet50 = (
