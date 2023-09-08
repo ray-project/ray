@@ -6,7 +6,7 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 from transformers import pipeline
 
@@ -29,10 +29,10 @@ class Translator:
 
 @serve.deployment
 class Summarizer:
-    def __init__(self, translator: RayServeHandle):
+    def __init__(self, translator):
         # Load model
         self.model = pipeline("summarization", model="t5-small")
-        self.translator = translator
+        self.translator: DeploymentHandle = translator.options(use_new_handle_api=True)
 
     def summarize(self, text: str) -> str:
         # Run inference
@@ -47,9 +47,7 @@ class Summarizer:
         english_text: str = await http_request.json()
         summary = self.summarize(english_text)
 
-        translation_ref = await self.translator.translate.remote(summary)
-        translation = await translation_ref
-
+        translation = await self.translator.translate.remote(summary)
         return translation
 
 

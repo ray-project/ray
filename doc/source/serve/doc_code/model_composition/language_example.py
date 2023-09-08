@@ -39,28 +39,32 @@ print(echo)
 
 # __hello_start__
 # File name: hello.py
-import ray
 from ray import serve
+from ray.serve.handle import DeploymentHandle
 
 
 @serve.deployment
 class LanguageClassifer:
     def __init__(self, spanish_responder, french_responder):
-        self.spanish_responder = spanish_responder
-        self.french_responder = french_responder
+        self.spanish_responder: DeploymentHandle = spanish_responder.options(
+            use_new_handle_api=True,
+        )
+        self.french_responder = french_responder.options(
+            use_new_handle_api=True,
+        )
 
     async def __call__(self, http_request):
         request = await http_request.json()
         language, name = request["language"], request["name"]
 
         if language == "spanish":
-            ref = await self.spanish_responder.say_hello.remote(name)
+            response = self.spanish_responder.say_hello.remote(name)
         elif language == "french":
-            ref = await self.french_responder.say_hello.remote(name)
+            response = self.french_responder.say_hello.remote(name)
         else:
             return "Please try again."
 
-        return await ref
+        return await response
 
 
 @serve.deployment

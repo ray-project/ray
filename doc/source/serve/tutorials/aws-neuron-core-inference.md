@@ -1,8 +1,8 @@
 (aws-neuron-core-inference-tutorial)=
 
-# Serving an inference model on AWS NeuronCores using Fast API (Experimental)
-This example compiles bert based model and deploys the traced model on AWS Inferentia (Inf2) or Tranium (Trn1)
-instance using Ray Serve and Fast API.
+# Serving an inference model on AWS NeuronCores using FastAPI (Experimental)
+This example compiles a BERT-based model and deploys the traced model on an AWS Inferentia (Inf2) or Tranium (Trn1)
+instance using Ray Serve and FastAPI.
 
 
 :::{note}

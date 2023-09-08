@@ -4,7 +4,6 @@
 import ray
 from ray import serve
 from ray.serve.drivers import DefaultgRPCDriver
-from ray.serve.handle import RayServeHandle
 from ray.serve.deployment_graph import InputNode
 from typing import Dict
 import struct
@@ -12,14 +11,10 @@ import struct
 
 @serve.deployment
 class FruitMarket:
-    def __init__(
-        self,
-        orange_stand: RayServeHandle,
-        apple_stand: RayServeHandle,
-    ):
+    def __init__(self, orange_stand, apple_stand):
         self.directory = {
-            "ORANGE": orange_stand,
-            "APPLE": apple_stand,
+            "ORANGE": orange_stand.options(use_new_handle_api=True),
+            "APPLE": apple_stand.options(use_new_handle_api=True),
         }
 
     async def check_price(self, inputs: Dict[str, bytes]) -> float:
@@ -28,8 +23,7 @@ class FruitMarket:
             if fruit not in self.directory:
                 return
             fruit_stand = self.directory[fruit]
-            ref: ray.ObjectRef = await fruit_stand.remote(int(amount))
-            result = await ref
+            result = await fruit_stand.remote(int(amount))
             costs += result
         return bytearray(struct.pack("f", costs))
 
