@@ -13,7 +13,7 @@ You can configure these to be saved to a persistent storage location.
     :align: center
     :width: 600px
 
-    An example of multiple workers spread across multiple nodes interacting with persistent storage.
+    An example of multiple workers spread across multiple nodes uploading checkpoints to persistent storage.
 
 By default, these training outputs are saved in a local directory under ``~/ray_results``.
 This is sufficient for single-node setups or distributed training without saving
@@ -315,7 +315,7 @@ The :class:`~ray.train.Result` and :class:`~ray.train.Checkpoint` objects return
     # S3FileSystem, "bucket-name/sub-path/experiment_name/TorchTrainer_46367_00000_0_.../checkpoint_000009"
 
 
-See :ref:`train-inspect-results` for a full guide on interacting with training :class:`~ray.train.Result`s.
+See :ref:`train-inspect-results` for a full guide on interacting with training :class:`Results <ray.train.Result>`.
 
 
 .. _train-artifacts:
