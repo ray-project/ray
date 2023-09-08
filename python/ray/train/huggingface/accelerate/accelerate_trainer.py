@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 
 ACCELERATE_TRAINER_DEPRECATION_MESSAGE = (
-    "The AccelerateTrainer is deprecated. "
+    "The AccelerateTrainer will be hard deprecated in Ray 2.8. "
     "Use TorchTrainer instead. "
     "See https://docs.ray.io/en/releases-2.7.0/train/huggingface-accelerate.html#acceleratetrainer-migration-guide "  # noqa: E501
     "for more details."

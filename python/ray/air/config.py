@@ -727,7 +727,7 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        storage_path: Path to store results at. Can be a local directory or
+        storage_path: [Beta] Path to store results at. Can be a local directory or
             a destination on cloud storage. If Ray storage is set up,
             defaults to the storage location. Otherwise, this defaults to
             the local ``~/ray_results`` directory.

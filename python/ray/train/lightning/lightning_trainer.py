@@ -31,7 +31,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@Deprecated
+LIGHTNING_CONFIG_BUILDER_DEPRECATION_MESSAGE = (
+    "The LightningConfigBuilder will be hard deprecated in Ray 2.8. "
+    "Use TorchTrainer instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-pytorch-lightning.html#lightningtrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
+
+
+@Deprecated(message=LIGHTNING_CONFIG_BUILDER_DEPRECATION_MESSAGE, warning=True)
 class LightningConfigBuilder:
     """Configuration Class to pass into LightningTrainer.
 
@@ -222,7 +230,7 @@ class LightningConfigBuilder:
 
 
 LIGHTNING_TRAINER_DEPRECATION_MESSAGE = (
-    "The LightningTrainer is deprecated. "
+    "The LightningTrainer will be hard deprecated in Ray 2.8. "
     "Use TorchTrainer instead. "
     "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-pytorch-lightning.html#lightningtrainer-migration-guide "  # noqa: E501
     "for more details."
@@ -408,7 +416,6 @@ class LightningTrainer(TorchTrainer):
         metadata: Optional[Dict[str, Any]] = None,
     ):
 
-        print("WHAT IS THIS")
         run_config = copy(run_config) or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()
 

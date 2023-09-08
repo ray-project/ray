@@ -73,7 +73,7 @@ if TYPE_CHECKING:
 TRAINER_INIT_FN_KEY = "_trainer_init_per_worker"
 
 TRANSFORMERS_TRAINER_DEPRECATION_MESSAGE = (
-    "The TransformersTransformers is deprecated. "
+    "The TransformersTransformers will be hard deprecated in Ray 2.8. "
     "Use TorchTrainer instead. "
     "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-transformers.html#transformerstrainer-migration-guide "  # noqa: E501
     "for more details."
