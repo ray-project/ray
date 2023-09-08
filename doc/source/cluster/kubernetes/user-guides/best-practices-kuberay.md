@@ -17,7 +17,7 @@ The answers to these questions will vary between development and production. Thi
 |---|---|---|
 | Cluster Configuration  | KubeRay YAML  | KubeRay YAML  |
 | Code | Run driver or Jupyter notebook on head node | Bake code into Docker image  |
-| Artifact Storage | Set up an EFS  | Cloud storage (S3, GS)  |
+| Artifact Storage | Set up an EFS <br /> or <br /> Cloud Storage (S3, GS) | Set up an EFS <br /> or <br /> Cloud Storage (S3, GS)  |
 | Package Dependencies | Install onto NFS <br /> or <br /> Use runtime environments | Bake into docker image  |
 
 Table 1: Table comparing recommended setup for development and production.
@@ -35,11 +35,12 @@ To provide an interactive development environment for data scientists and ML pra
 
 ### Storage
 
-Use one of these two standard solutions for artifact and log storage during the development process:
+Use one of these two standard solutions for artifact and log storage during the development process, depending on your use case:
 
-* POSIX-compliant network file storage (like AWS and EFS): This approach is useful when you want to have artifacts or dependencies accessible across different nodes in an interactive fashion. For example, experiment logs of different models trained on different Ray tasks.
+* POSIX-compliant network file storage (like AWS and EFS): This approach is useful when you want to have artifacts or dependencies accessible across different nodes with low latency. For example, experiment logs of different models trained on different Ray tasks.
 * Cloud storage (like AWS S3 or GCP GS): This approach is useful for large artifacts or datasets that you need to access with high throughput.
 
+Ray's AI libraries such as Ray Data, Ray Train, and Ray Tune come with out-of-the-box capabilities to read and write from cloud storage and local/networked storage.
 ### Driver script
 
 Run the main (driver) script on the head node of the cluster. Ray Core and library programs often assume that the driver is located on the head node and take advantage of the local storage. For example, Ray Tune will by default generate log files on the head node.
@@ -73,10 +74,10 @@ Our recommendations regarding production are more aligned with standard Kubernet
 
 ### Storage
 
-Reading and writing data and artifacts to cloud storage is the most reliable and observable option for production Ray deployments. 
+The choice of storage system remains the same across development and production.
 
 ### Code and Dependencies
 
 Bake your code, remote, and local dependencies into a published Docker image for the workers. This is the most common way to deploy applications onto [Kubernetes](https://kube.academy/courses/building-applications-for-kubernetes).
 
-Using Cloud storage and the `runtime_env` is a less preferred method but still viable. In this case, use the runtime environment option to download zip files containing code and other private modules from cloud storage, in addition to specifying the pip packages needed to run your application.
+Using Cloud storage and the `runtime_env` is a less preferred method but still viable as it may not be as reproducible as the container path. In this case, use the runtime environment option to download zip files containing code and other private modules from cloud storage, in addition to specifying the pip packages needed to run your application.
