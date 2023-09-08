@@ -172,7 +172,7 @@ data preprocessing as part of training, and transitioning from training to servi
 Read more about building ML platforms with Ray in :ref:`this section <ray-for-ml-infra>`.
 
 ..
-  https://docs.google.com/drawings/d/1atB1dLjZIi8ibJ2-CoHdd3Zzyl_hDRWyK2CJAVBBLdU/edit
+  https://docs.google.com/drawings/d/1PFA0uJTq7SDKxzd7RHzjb5Sz3o1WvP13abEJbD0HXTE/edit
 
 .. image:: /images/ray-air.svg
 
