@@ -52,3 +52,18 @@ __all__ = [
     "TrainingIterator",
     "TRAIN_DATASET_KEY",
 ]
+
+get_checkpoint.__module__ = "ray.train"
+get_context.__module__ = "ray.train"
+get_dataset_shard.__module__ = "ray.train"
+report.__module__ = "ray.train"
+BackendConfig.__module__ = "ray.train"
+Checkpoint.__module__ = "ray.train"
+CheckpointConfig.__module__ = "ray.train"
+DataConfig.__module__ = "ray.train"
+FailureConfig.__module__ = "ray.train"
+Result.__module__ = "ray.train"
+RunConfig.__module__ = "ray.train"
+ScalingConfig.__module__ = "ray.train"
+SyncConfig.__module__ = "ray.train"
+TrainingIterator.__module__ = "ray.train"
