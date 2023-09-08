@@ -708,7 +708,6 @@ ray_cc_library(
         ":plasma_client",
         ":pubsub_lib",
         ":ray_common",
-        ":runtime_env_rpc",
         ":scheduler",
         ":stats_lib",
         ":worker_rpc",
