@@ -75,14 +75,14 @@ INFO 2023-05-24 01:19:16,993 default_Model default_Model#rimNjA WzjTbJvbPN / def
 ```
 
 You can also send a request to a specific model by using handle {mod}`options <ray.serve.handle.RayServeHandle>` API.
-```{literalinclude} ../doc_code/multiplexed.py
+```{literalinclude} doc_code/multiplexed.py
 :language: python
 :start-after: __serve_handle_send_example_begin__
 :end-before: __serve_handle_send_example_end__
 ```
 
 When using model composition, you can send requests from an upstream deployment to a multiplexed deployment using the Serve DeploymentHandle. You need to set the `multiplexed_model_id` in the options. For example:
-```{literalinclude} ../doc_code/multiplexed.py
+```{literalinclude} doc_code/multiplexed.py
 :language: python
 :start-after: __serve_model_composition_example_begin__
 :end-before: __serve_model_composition_example_end__
