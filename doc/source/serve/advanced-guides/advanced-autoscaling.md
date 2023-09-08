@@ -43,15 +43,15 @@ To use autoscaling, you need to define the minimum and maximum number of resourc
 
 Given a steady stream of traffic and appropriately configured `min_replicas` and `max_replicas`, the steady state of your system is essentially fixed for a chosen configuration value for `target_num_ongoing_requests_per_replica`. Before reaching steady state, however, your system is reacting to traffic shifts. How you want your system to react to changes in traffic determines how you want to set the remaining autoscaling configurations.
 
-* **upscale_delay_s [default=30s]**: This defines how long Serve waits before scaling up the number of replicas in your deployment. This parameter controls the frequency of downscale decisions. More specifically, if the replicas are *consistently* serving more requests than desired for an `upscale_delay_s` number of seconds, then Serve scales up the number of replicas based on aggregated ongoing requests metrics. For example, if your service is likely to experience bursts of traffic, you can lower `upscale_delay_s` so that your application can react quickly to increases in traffic.
+* **upscale_delay_s [default=30s]**: This defines how long Serve waits before scaling up the number of replicas in your deployment. In other words, this parameter controls the frequency of upscale decisions. If the replicas are *consistently* serving more requests than desired for an `upscale_delay_s` number of seconds, then Serve scales up the number of replicas based on aggregated ongoing requests metrics. For example, if your service is likely to experience bursts of traffic, you can lower `upscale_delay_s` so that your application can react quickly to increases in traffic.
 
-* **downscale_delay_s [default=600s]**: This defines how long Serve waits before scaling down the number of replicas in your deployment. This parameter controls the frequency of upscale decisions. More specifically, if the replicas are *consistently* serving less requests than desired for a `downscale_delay_s` number of seconds, then Serve scales down the number of replicas based on aggregated ongoing requests metrics. For example, if your application initializes slowly, you can increase `downscale_delay_s` to make the downscaling happen more infrequently and avoid reinitialization when the application needs to upscale again in the future.
+* **downscale_delay_s [default=600s]**: This defines how long Serve waits before scaling down the number of replicas in your deployment. In other words, this parameter controls the frequency of downscale decisions. If the replicas are *consistently* serving less requests than desired for a `downscale_delay_s` number of seconds, then Serve scales down the number of replicas based on aggregated ongoing requests metrics. For example, if your application initializes slowly, you can increase `downscale_delay_s` to make the downscaling happen more infrequently and avoid reinitialization when the application needs to upscale again in the future.
 
-* **upscale_smoothing_factor [default_value=1.0]**: The multiplicative factor to speed up or slow down each upscaling decision. For example, when the application has high traffic volume in a short period of time, you can increase `upscale_smoothing_factor` to scale up the resource quickly. This parameter is like a "gain" factor to amplify the response of the autoscaling algorithm.
+* **upscale_smoothing_factor [default_value=1.0]**: The multiplicative factor to amplify or moderate each upscaling decision. For example, when the application has high traffic volume in a short period of time, you can increase `upscale_smoothing_factor` to scale up the resource quickly. This parameter is like a "gain" factor to amplify the response of the autoscaling algorithm.
 
-* **downscale_smoothing_factor [default_value=1.0]**: The multiplicative factor to speed up or slow down each downscaling decision. For example, if you want your application to be less sensitive to drops in traffic and scale down more conservatively, you can decrease `downscale_smoothing_factor` to slow down the pace of downscaling.
+* **downscale_smoothing_factor [default_value=1.0]**: The multiplicative factor to amplify or moderate each downscaling decision. For example, if you want your application to be less sensitive to drops in traffic and scale down more conservatively, you can decrease `downscale_smoothing_factor` to slow down the pace of downscaling.
 
-* **metrics_interval_s [default_value=10]**: This controls how often each replica sends reports on current ongoing requests to the autoscaler. Note that the autoscaler can't make new decisions if it doesn't receive updated metrics, so you most likely want to set `metrics_interval_s` to a value that is at most the upscale and downscale delay values. For instance, if you set `upscale_delay_s = 3`, but keep `metrics_interval_s = 10`, the autoscaler only upscales roughly every 10 seconds.
+* **metrics_interval_s [default_value=10]**: This controls how often each replica sends reports on current ongoing requests to the autoscaler. Note that the autoscaler can't make new decisions if it doesn't receive updated metrics, so you most likely want to set `metrics_interval_s` to a value that is less than or equal to the upscale and downscale delay values. For instance, if you set `upscale_delay_s = 3`, but keep `metrics_interval_s = 10`, the autoscaler only upscales roughly every 10 seconds.
 
 * **look_back_period_s [default_value=30]**: This is the window over which the average number of ongoing requests per replica is calculated.
 
@@ -143,18 +143,18 @@ Running the same Locust load test from the [Resnet workload](resnet-autoscaling-
 
 As you might expect, the number of autoscaled `LightLoad` replicas is roughly half that of autoscaled `HeavyLoad` replicas. Although the same number of requests per second are sent to both deployments, `LightLoad` replicas can process twice as many requests per second as `HeavyLoad` replicas can, so the deployment should need half as many replicas to handle the same traffic load.
 
-However, the service latency rises to 400+ ms when the number of Locust users increases to 100.
+Unfortunately, the service latency rises to from 230 to 400 ms when the number of Locust users increases to 100.
 
 | P50 Latency | QPS |
 | ------- | --- |
 | ![comp_latency](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_comp_latency.svg) | ![comp_rps](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_comp_rps.svg) |
 
-Note that the number of `HeavyLoad` replicas should roughly match the number of Locust users to adequately serve the Locust traffic. However, when the number of Locust users increased to 100, the `HeavyLoad` deployment struggled to reach 100 replicas, and instead only reached 65 replicas. The per-deployment latencies reveal the root cause. While `HeavyLoad` and `LightLoad` latencies stayed steady at 200ms and 100ms, `Driver` latencies rose from 220 to 400+ ms. This suggests that the high Locust workload may be overwhelming the `Driver` replica and impacting the asynchronous event loop's performance.
+Note that the number of `HeavyLoad` replicas should roughly match the number of Locust users to adequately serve the Locust traffic. However, when the number of Locust users increased to 100, the `HeavyLoad` deployment struggled to reach 100 replicas, and instead only reached 65 replicas. The per-deployment latencies reveal the root cause. While `HeavyLoad` and `LightLoad` latencies stayed steady at 200ms and 100ms, `Driver` latencies rose from 230 to 400 ms. This suggests that the high Locust workload may be overwhelming the `Driver` replica and impacting its asynchronous event loop's performance.
 
 
 ### Attempt 2: Autoscale `Driver`
 
-For this attempt, set an autoscaling configuration for `Driver` as well, with `target_num_ongoing_requests_per_replica = 20`. Now the deployment configurations are as follows.
+For this attempt, set an autoscaling configuration for `Driver` as well, with the setting `target_num_ongoing_requests_per_replica = 20`. Now the deployment configurations are as follows.
 
 ::::{tab-set}
 
