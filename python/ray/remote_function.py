@@ -3,6 +3,7 @@ import logging
 import os
 import uuid
 from functools import wraps
+from threading import Lock
 
 import ray._private.signature
 from ray import Language, cross_language
@@ -116,14 +117,14 @@ class RemoteFunction:
             self._default_options["runtime_env"] = self._runtime_env
 
         self._language = language
-        self._function = _inject_tracing_into_function(function)
+        self._function = function
+        self._function_signature = None
+        # Guards trace injection to enforce exactly once semantics
+        self._inject_lock = Lock()
         self._function_name = function.__module__ + "." + function.__name__
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
         self._decorator = getattr(function, "__ray_invocation_decorator__", None)
-        self._function_signature = ray._private.signature.extract_signature(
-            self._function
-        )
         self._last_export_session_and_job = None
         self._uuid = uuid.uuid4()
 
@@ -140,6 +141,16 @@ class RemoteFunction:
             f"of running '{self._function_name}()', "
             f"try '{self._function_name}.remote()'."
         )
+
+    # Lock is not picklable
+    def __getstate__(self):
+        attrs = self.__dict__.copy()
+        del attrs["_inject_lock"]
+        return attrs
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.__dict__["_inject_lock"] = Lock()
 
     def options(self, **task_options):
         """Configures and overrides the task invocation parameters.
@@ -253,6 +264,15 @@ class RemoteFunction:
 
         worker = ray._private.worker.global_worker
         worker.check_connected()
+
+        # We cannot do this when the function is first defined, because we need
+        # ray.init() to have been called when this executes
+        with self._inject_lock:
+            if self._function_signature is None:
+                self._function = _inject_tracing_into_function(self._function)
+                self._function_signature = ray._private.signature.extract_signature(
+                    self._function
+                )
 
         # If this function was not exported in this session and job, we need to
         # export this function again, because the current GCS doesn't have it.
