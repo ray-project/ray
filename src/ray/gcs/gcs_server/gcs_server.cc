@@ -88,7 +88,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 
     // Init redis failure detector.
     gcs_redis_failure_detector_ = std::make_unique<GcsRedisFailureDetector>(
-        main_service_, redis_client.get(), []() {
+        main_service_, *redis_client.get(), []() {
           RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
         });
     gcs_redis_failure_detector_->Start();
@@ -96,7 +96,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     break;
   }
 
-  gcs_table_storage_ = std::make_shared<GcsTableStorage>(store_client_.get());
+  gcs_table_storage_ = std::make_shared<GcsTableStorage>(*store_client_.get());
 
   auto on_done = [this](const ray::Status &status) {
     RAY_CHECK(status.ok()) << "Failed to put internal config";
@@ -569,9 +569,8 @@ void GcsServer::InitUsageStatsClient() {
 }
 
 void GcsServer::InitKVManager() {
-  // TODO (yic): Use a factory with configs
   std::unique_ptr<InternalKVInterface> instance =
-      std::make_unique<StoreClientInternalKV>(store_client_.get());
+      std::make_unique<StoreClientInternalKV>(*store_client_.get());
 
   kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
 }

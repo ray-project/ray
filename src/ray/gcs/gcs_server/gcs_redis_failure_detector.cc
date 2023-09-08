@@ -20,7 +20,7 @@ namespace ray {
 namespace gcs {
 
 GcsRedisFailureDetector::GcsRedisFailureDetector(instrumented_io_context &io_service,
-                                                 RedisClient *redis_client,
+                                                 RedisClient &redis_client,
                                                  std::function<void()> callback)
     : io_service_(io_service),
       redis_client_(redis_client),
@@ -47,7 +47,7 @@ void GcsRedisFailureDetector::DetectRedis() {
       callback_();
     }
   };
-  auto cxt = redis_client_->GetShardContext("");
+  auto cxt = redis_client_.GetShardContext("");
   cxt->RunArgvAsync({"PING"}, redis_callback);
 }
 

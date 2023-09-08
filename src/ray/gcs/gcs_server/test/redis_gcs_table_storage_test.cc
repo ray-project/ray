@@ -36,7 +36,7 @@ class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
     redis_client_ = redis_client.get();
     store_client_ = std::make_unique<gcs::RedisStoreClient>(std::move(redis_client));
 
-    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_.get());
+    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(*store_client_.get());
   }
 
   void TearDown() override { redis_client_->Disconnect(); }

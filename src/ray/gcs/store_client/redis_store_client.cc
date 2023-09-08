@@ -180,7 +180,7 @@ Status RedisStoreClient::AsyncGetAll(
   std::string match_pattern =
       GenKeyRedisMatchPattern(external_storage_namespace_, table_name);
   auto scanner = std::make_shared<RedisScanner>(
-      redis_client_.get(), external_storage_namespace_, table_name);
+      *redis_client_.get(), external_storage_namespace_, table_name);
   auto on_done = [callback,
                   scanner](absl::flat_hash_map<std::string, std::string> &&result) {
     callback(std::move(result));
@@ -380,13 +380,13 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
 }
 
 RedisStoreClient::RedisScanner::RedisScanner(
-    RedisClient *redis_client,
+    RedisClient &redis_client,
     const std::string &external_storage_namespace,
     const std::string &table_name)
     : table_name_(table_name),
       external_storage_namespace_(external_storage_namespace),
       redis_client_(redis_client) {
-  for (size_t index = 0; index < redis_client_->GetShardContexts().size(); ++index) {
+  for (size_t index = 0; index < redis_client_.GetShardContexts().size(); ++index) {
     shard_to_cursor_[index] = 0;
   }
 }
@@ -431,7 +431,7 @@ void RedisStoreClient::RedisScanner::Scan(const std::string &match_pattern,
                                      match_pattern,
                                      "COUNT",
                                      std::to_string(batch_count)};
-    auto shard_context = redis_client_->GetShardContexts()[shard_index];
+    auto shard_context = redis_client_.GetShardContexts()[shard_index];
     shard_context->RunArgvAsync(args, scan_callback);
   }
 }
@@ -480,7 +480,7 @@ Status RedisStoreClient::AsyncGetKeys(
   std::string match_pattern =
       GenKeyRedisMatchPattern(external_storage_namespace_, table_name, prefix);
   auto scanner = std::make_shared<RedisScanner>(
-      redis_client_.get(), external_storage_namespace_, table_name);
+      *redis_client_.get(), external_storage_namespace_, table_name);
 
   auto on_done = [table_name, callback, scanner](auto redis_result) {
     std::vector<std::string> result;

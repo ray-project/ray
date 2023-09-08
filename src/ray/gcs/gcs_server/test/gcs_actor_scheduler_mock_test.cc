@@ -37,7 +37,7 @@ class GcsActorSchedulerMockTest : public Test {
  public:
   void SetUp() override {
     store_client = std::make_shared<MockStoreClient>();
-    actor_table = std::make_unique<GcsActorTable>(store_client.get());
+    actor_table = std::make_unique<GcsActorTable>(*store_client.get());
     gcs_node_manager =
         std::make_unique<GcsNodeManager>(nullptr, nullptr, nullptr, ClusterID::Nil());
     raylet_client = std::make_shared<MockRayletClientInterface>();
