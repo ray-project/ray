@@ -537,7 +537,7 @@ class TorchMultiDistribution(Distribution):
 
     def to_deterministic(self) -> "TorchMultiDistribution":
         flat_deterministic_dists = [
-            dist.to_deterministic() for dist in self._flat_child_distributions
+            dist.to_deterministic for dist in self._flat_child_distributions
         ]
         deterministic_dists = tree.unflatten_as(
             self._original_struct, flat_deterministic_dists
