@@ -37,7 +37,7 @@ To provide an interactive development environment for data scientists and ML pra
 
 Use one of these two standard solutions for artifact and log storage during the development process, depending on your use case:
 
-* POSIX-compliant network file storage (like AWS and EFS): This approach is useful when you want to have artifacts or dependencies accessible across different nodes with low latency. For example, experiment logs of different models trained on different Ray tasks.
+* POSIX-compliant network file storage (like NFS and EFS): This approach is useful when you want to have artifacts or dependencies accessible across different nodes with low latency. For example, experiment logs of different models trained on different Ray tasks.
 * Cloud storage (like AWS S3 or GCP GS): This approach is useful for large artifacts or datasets that you need to access with high throughput.
 
 Ray's AI libraries such as Ray Data, Ray Train, and Ray Tune come with out-of-the-box capabilities to read and write from cloud storage and local/networked storage.
@@ -56,8 +56,8 @@ A typical workflow can look like this:
 For local dependencies (for example, if you’re working in a mono-repo), or external dependencies (like a pip package), use one of the following options:
 
 * Put the code and install the packages onto your NFS. The benefit is that you can quickly interact with the rest of the codebase and dependencies without shipping it across a cluster every time.
-* Bake remote and local dependencies into a published Docker image for the workers. This is the most common way to deploy applications onto [Kubernetes](https://kube.academy/courses/building-applications-for-kubernetes). 
 * Use the `runtime env` with the [Ray Job Submission Client](ray.job_submission.JobSubmissionClient), which can pull down code from S3 or ship code from your local working directory onto the remote cluster.
+* Bake remote and local dependencies into a published Docker image that all nodes will use ([guide](serve-custom-docker-images)). This is the most common way to deploy applications onto [Kubernetes](https://kube.academy/courses/building-applications-for-kubernetes), but it is also the highest friction option.
 
 ## Production
 
@@ -78,6 +78,6 @@ The choice of storage system remains the same across development and production.
 
 ### Code and Dependencies
 
-Bake your code, remote, and local dependencies into a published Docker image for the workers. This is the most common way to deploy applications onto [Kubernetes](https://kube.academy/courses/building-applications-for-kubernetes).
+Bake your code, remote, and local dependencies into a published Docker image for all nodes in the cluster. This is the most common way to deploy applications onto [Kubernetes](https://kube.academy/courses/building-applications-for-kubernetes). Here is a [guide](serve-custom-docker-images) for doing so.
 
-Using Cloud storage and the `runtime_env` is a less preferred method but still viable as it may not be as reproducible as the container path. In this case, use the runtime environment option to download zip files containing code and other private modules from cloud storage, in addition to specifying the pip packages needed to run your application.
+Using cloud storage and the `runtime_env` is a less preferred method but still viable as it may not be as reproducible as the container path. In this case, use the runtime environment option to download zip files containing code and other private modules from cloud storage, in addition to specifying the pip packages needed to run your application.
