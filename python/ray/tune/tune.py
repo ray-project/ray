@@ -32,7 +32,7 @@ from ray.train import SyncConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _DEPRECATED_VALUE
 from ray.train._internal.storage import _use_storage_context
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
+from ray.tune.analysis.experiment_analysis import LegacyExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
@@ -677,7 +677,6 @@ def run(
     if _use_storage_context():
         local_path, remote_path = None, None
         sync_config = sync_config or SyncConfig()
-        # TODO(justinvyu): Fix telemetry for the new persistence.
 
         # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
         # For now, keep accepting both options.
@@ -953,6 +952,9 @@ def run(
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
+    if _use_storage_context():
+        air_usage.tag_storage_type(experiments[0].storage)
+
     # NOTE: Report callback telemetry before populating the list with default callbacks.
     # This tracks user-specified callback usage.
     air_usage.tag_callbacks(callbacks)
@@ -1159,7 +1161,7 @@ def run(
             )
 
     if _use_storage_context():
-        return NewExperimentAnalysis(
+        return ExperimentAnalysis(
             experiment_checkpoint_path=runner.experiment_path,
             default_metric=metric,
             default_mode=mode,
@@ -1167,7 +1169,7 @@ def run(
             storage_filesystem=experiments[0].storage.storage_filesystem,
         )
     else:
-        return ExperimentAnalysis(
+        return LegacyExperimentAnalysis(
             runner.experiment_state_path,
             trials=all_trials,
             default_metric=metric,
