@@ -92,7 +92,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
     store_client_ = std::make_unique<ObservableStoreClient>(
         std::make_unique<InMemoryStoreClient>(io_service_));
-    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(*store_client_.get());
+    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(*store_client_);
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_, cluster_resource_manager_, NodeID::FromRandom());
     gcs_placement_group_manager_.reset(new gcs::GcsPlacementGroupManager(

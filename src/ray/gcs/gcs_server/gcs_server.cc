@@ -91,7 +91,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     break;
   }
 
-  gcs_table_storage_ = std::make_shared<GcsTableStorage>(*store_client_.get());
+  gcs_table_storage_ = std::make_shared<GcsTableStorage>(*store_client_);
 
   auto on_done = [this](const ray::Status &status) {
     RAY_CHECK(status.ok()) << "Failed to put internal config";
@@ -563,7 +563,7 @@ void GcsServer::InitUsageStatsClient() {
 
 void GcsServer::InitKVManager() {
   std::unique_ptr<InternalKVInterface> instance =
-      std::make_unique<StoreClientInternalKV>(*store_client_.get());
+      std::make_unique<StoreClientInternalKV>(*store_client_);
 
   kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
 }

@@ -53,7 +53,7 @@ class GcsJobManagerTest : public ::testing::Test {
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     store_client_ = std::make_shared<MockInMemoryStoreClient>(io_service_);
-    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(*store_client_.get());
+    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(*store_client_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);

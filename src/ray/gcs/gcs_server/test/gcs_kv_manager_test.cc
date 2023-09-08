@@ -40,7 +40,7 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
     } else if (GetParam() == "memory") {
       store_client_ = std::make_unique<ray::gcs::InMemoryStoreClient>(io_service);
     }
-    kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(*store_client_.get());
+    kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(*store_client_);
   }
 
   void TearDown() override {

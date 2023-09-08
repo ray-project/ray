@@ -44,7 +44,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       raylet_clients_.push_back(std::make_shared<GcsServerMocker::MockRayletClient>());
     }
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
-    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(*store_client_.get());
+    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(*store_client_);
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     auto local_node_id = NodeID::FromRandom();

@@ -26,7 +26,7 @@ class InMemoryGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
   void SetUp() override {
     store_client_ = std::make_unique<gcs::ObservableStoreClient>(
         std::make_unique<gcs::InMemoryStoreClient>(*(io_service_pool_->Get())));
-    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(*store_client_.get());
+    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(*store_client_);
   }
 };
 
