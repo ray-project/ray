@@ -559,7 +559,7 @@ wcmatch==8.5
 wcwidth==0.2.6
 webcolors==1.13
 webencodings==0.5.1
-websocket-client==1.6.2
+websocket-client==1.6.1
 websockets==11.0.3
 werkzeug==2.1.2
 wheel==0.41.2
