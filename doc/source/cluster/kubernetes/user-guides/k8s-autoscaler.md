@@ -16,7 +16,7 @@ The Horizontal Pod Autoscaler determines scale based on physical usage metrics l
 and memory. By contrast, the Ray autoscaler uses the logical resources expressed in
 task and actor annotations. For instance, if each Ray container spec in your RayCluster CR indicates
 a limit of 10 CPUs, and you submit twenty tasks annotated with `@ray.remote(num_cpus=5)`,
-10 Ray Pods will be created to satisfy the 100-CPU resource demand.
+10 Ray Pods are created to satisfy the 100-CPU resource demand.
 In this respect, the Ray autoscaler is similar to the
 [Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler),
 which makes scaling decisions based on the logical resources expressed in container
@@ -31,7 +31,7 @@ By contrast, the Horizontal Pod Autoscaler can only decrease a replica count, wi
 control over which Pods are deleted. For a Ray application, downscaling a random
 Pod could be dangerous.
 
-### Architecture: One Ray Autoscaler per Ray Cluster.
+### Architecture: One Ray Autoscaler per Ray Cluster
 Horizontal Pod Autoscaling is centrally controlled by a manager in the Kubernetes control plane;
 the manager controls the scale of many Kubernetes objects.
 By contrast, each Ray cluster is managed by its own Ray autoscaler process,
@@ -56,7 +56,7 @@ can provision a Kubernetes node so that the Pod can be placed.
 Similarly, after the Ray autoscaler decides to delete an idle Pod, the Kubernetes
 Cluster Autoscaler can clean up the idle Kubernetes node that remains.
 It is recommended to configure your RayCluster so that only one Ray Pod fits per Kubernetes node.
-If you follow this pattern, Ray Autoscaler Pod scaling events will correspond roughly one-to-one with cluster autoscaler
+If you follow this pattern, Ray Autoscaler Pod scaling events correspond roughly one-to-one with cluster autoscaler
 node scaling events. (We say "roughly" because it is possible for a Ray Pod be deleted and replaced
 with a new Ray Pod before the underlying Kubernetes node is scaled down.)
 

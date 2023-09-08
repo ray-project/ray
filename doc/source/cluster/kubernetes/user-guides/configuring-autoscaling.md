@@ -7,7 +7,7 @@ The Ray Autoscaler is a Ray cluster process that automatically scales a cluster 
 The Autoscaler does this by adjusting the number of nodes (Ray Pods) in the cluster based on the resources required by tasks, actors, or placement groups.
 
 The Autoscaler utilizes logical resource requests, indicated in `@ray.remote` and shown in `ray status`, not the physical machine utilization, to scale.
-If a user launches an actor, task, or placement group and resources are insufficient, the Autoscaler queues the request.
+If you launch an actor, task, or placement group and resources are insufficient, the Autoscaler queues the request.
 It adjusts the number of nodes to meet queue demands and removes idle nodes that have no tasks, actors, or objects over time.
 
 <!-- TODO(ekl): probably should change the default kuberay examples to not use autoscaling -->
@@ -19,7 +19,7 @@ We recommend starting with non-autoscaling clusters if you're new to Ray.
 ## Overview
 
 The following diagram illustrates the integration of the Ray Autoscaler with the KubeRay operator.
-Although depicted as a separate entity for clarity, the Ray Autoscaler is actually a sidecar container within the Ray head Pod in the real implementation.
+Although depicted as a separate entity for clarity, the Ray Autoscaler is actually a sidecar container within the Ray head Pod in the actual implementation.
 
 ```{eval-rst}
 .. image:: ../images/AutoscalerOperator.svg
@@ -31,7 +31,7 @@ Although depicted as a separate entity for clarity, the Ray Autoscaler is actual
 ```{admonition} 3 levels of autoscaling in KubeRay
   * **Ray actor/task**: Some Ray libraries, like Ray Serve, can automatically adjust the number of Serve replicas (i.e., Ray actors) based on the incoming request volume.
   * **Ray node**: Ray Autoscaler automatically adjusts the number of Ray nodes (i.e., Ray Pods) based on the resource demand of Ray actors/tasks.
-  * **Kubernetes node**: If the Kubernetes cluster lacks sufficient resources for the new Ray Pods that the Ray Autoscaler creates, the Kubernetes Autoscaler can provision a new Kubernetes node. ***Users must configure this themselves.***
+  * **Kubernetes node**: If the Kubernetes cluster lacks sufficient resources for the new Ray Pods that the Ray Autoscaler creates, the Kubernetes Autoscaler can provision a new Kubernetes node. ***You must configure the Kubernetes Autoscaler yourself.***
 ```
 
 * The Autoscaler scales up the cluster through the following sequence of events:
@@ -84,7 +84,7 @@ kubectl get configmaps
 # ...
 ```
 
-The RayCluster has one head Pod and zero worker Pods, and the head Pod has two containers: a Ray head container and a Ray Autoscaler sidecar container.
+The RayCluster has one head Pod and zero worker Pods. The head Pod has two containers: a Ray head container and a Ray Autoscaler sidecar container.
 Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml) includes a ConfigMap named `ray-example` that houses two Python scripts: `detached_actor.py` and `terminate_detached_actor`.py.
 
 * `detached_actor.py` is a Python script that creates a detached actor which requires 1 CPU.
@@ -117,7 +117,7 @@ Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/k
 export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
 kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/detached_actor.py actor1
 
-# Step 5.2: The Ray Autoscaler will create a new worker Pod.
+# Step 5.2: The Ray Autoscaler creates a new worker Pod.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
