@@ -63,6 +63,104 @@ result = trainer.fit()
 # __pytorch_save_end__
 
 
+# __pytorch_restore_start__
+import os
+import tempfile
+
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.optim import Adam
+
+import ray.train.torch
+from ray import train
+from ray.train import Checkpoint, ScalingConfig
+from ray.train.torch import TorchTrainer
+
+
+def train_func(config):
+    n = 100
+    # create a toy dataset
+    # data   : X - dim = (n, 4)
+    # target : Y - dim = (n, 1)
+    X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
+    Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
+    # toy neural network : 1-layer
+    model = nn.Linear(4, 1)
+    optimizer = Adam(model.parameters(), lr=3e-4)
+    criterion = nn.MSELoss()
+
+    # ====== Resume training state from the checkpoint. ======
+    start_epoch = 0
+    checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            model.load_state_dict(torch.load(os.path.join(checkpoint_dir, "model.pt")))
+            optimizer.load_state_dict(
+                torch.load(os.path.join(checkpoint_dir, "optimizer.pt"))
+            )
+            start_epoch = (
+                torch.load(os.path.join(checkpoint_dir, "extra_state.pt"))["epoch"] + 1
+            )
+
+    # Wrap the model in DDP
+    model = ray.train.torch.prepare_model(model)
+
+    for epoch in range(start_epoch, config["num_epochs"]):
+        y = model.forward(X)
+        loss = criterion(y, Y)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        metrics = {"loss": loss.item()}
+
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            checkpoint = None
+
+            should_checkpoint = epoch % config.get("checkpoint_freq", 1) == 0
+            # In standard DDP training, where the model is the same across all ranks,
+            # only the global rank 0 worker needs to save and report the checkpoint
+            if train.get_context().get_world_rank() == 0 and should_checkpoint:
+                torch.save(
+                    model.module.state_dict(),  # NOTE: Unwrap the model.
+                    os.path.join(temp_checkpoint_dir, "model.pt"),
+                )
+                # Save the optimizer state, too.
+                torch.save(
+                    optimizer.state_dict(),
+                    os.path.join(temp_checkpoint_dir, "optimizer.pt"),
+                )
+                torch.save(
+                    {"epoch": epoch},
+                    os.path.join(temp_checkpoint_dir, "extra_state.pt"),
+                )
+                checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+
+            train.report(metrics, checkpoint=checkpoint)
+
+        if epoch == 1:
+            raise RuntimeError("Intentional error to showcase restoration!")
+
+
+trainer = TorchTrainer(
+    train_func,
+    train_loop_config={"num_epochs": 5},
+    scaling_config=ScalingConfig(num_workers=2),
+    run_config=train.RunConfig(failure_config=train.FailureConfig(max_failures=1)),
+)
+result = trainer.fit()
+
+# Seed a training run with a checkpoint using `resume_from_checkpoint`
+trainer = TorchTrainer(
+    train_func,
+    train_loop_config={"num_epochs": 5},
+    scaling_config=ScalingConfig(num_workers=2),
+    resume_from_checkpoint=result.checkpoint,
+)
+# __pytorch_restore_end__
+
+
 # __checkpoint_from_single_worker_start__
 import tempfile
 
@@ -90,12 +188,13 @@ def train_fn(config):
 
 # __lightning_save_example_start__
 import pytorch_lightning as pl
+
+from ray import train
 from ray.train.lightning import RayTrainReportCallback
 from ray.train.torch import TorchTrainer
-from ray.train import CheckpointConfig, RunConfig
 
 
-class MyLightningModule(LightningModule):
+class MyLightningModule(pl.LightningModule):
     # ...
 
     def on_validation_epoch_end(self):
@@ -118,9 +217,9 @@ def train_func_per_worker():
 
 ray_trainer = TorchTrainer(
     train_func_per_worker,
-    scaling_config=ScalingConfig(num_workers=2),
-    run_config=RunConfig(
-        checkpoint_config=CheckpointConfig(
+    scaling_config=train.ScalingConfig(num_workers=2),
+    run_config=train.RunConfig(
+        checkpoint_config=train.CheckpointConfig(
             num_to_keep=2,
             checkpoint_score_attribute="mean_accuracy",
             checkpoint_score_order="max",
@@ -173,6 +272,7 @@ class CustomRayTrainReportCallback(Callback):
 # __transformers_save_example_start__
 from transformers import TrainingArguments
 
+from ray import train
 from ray.train.huggingface.transformers import RayTrainReportCallback, prepare_trainer
 from ray.train.torch import TorchTrainer
 
@@ -200,8 +300,8 @@ def train_func(config):
 
 ray_trainer = TorchTrainer(
     train_func,
-    run_config=RunConfig(
-        checkpoint_config=CheckpointConfig(
+    run_config=train.RunConfig(
+        checkpoint_config=train.CheckpointConfig(
             num_to_keep=3,
             checkpoint_score_attribute="eval_loss",  # The monitoring metric
             checkpoint_score_order="min",

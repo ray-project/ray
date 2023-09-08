@@ -235,7 +235,7 @@ Here is an example of distributed checkpointing with PyTorch:
 Configure checkpointing
 -----------------------
 
-Ray Train provides some configuration options for checkpointing.
+Ray Train provides some configuration options for checkpointing via :class:`~ray.train.CheckpointConfig`.
 The primary configuration is keeping only the top ``K`` checkpoints with respect to a metric.
 Lower-performing checkpoints are deleted to save storage space. By default, all checkpoints are kept.
 
@@ -244,10 +244,6 @@ Lower-performing checkpoints are deleted to save storage space. By default, all 
     :start-after: __checkpoint_config_start__
     :end-before: __checkpoint_config_end__
 
-
-.. seealso::
-
-    See the :class:`~ray.train.CheckpointConfig` API reference.
 
 .. note::
 
@@ -277,88 +273,28 @@ are the two main APIs to interact with Train checkpoints.
 Restore training state from a checkpoint
 ----------------------------------------
 
-:class:`Checkpoints <ray.train.Checkpoint>` can be accessed in the training function with :func:`ray.train.get_checkpoint <ray.train.get_checkpoint>`.
+In order to enable fault tolerance, you should modify your training loop to restore
+training state from a :class:`~ray.train.Checkpoint`.
 
-The checkpoint can be populated in two ways:
+The latest :class:`Checkpoint <ray.train.Checkpoint>` can be accessed in the
+training function with :func:`ray.train.get_checkpoint <ray.train.get_checkpoint>`.
+
+The checkpoint returned by :func:`ray.train.get_checkpoint <ray.train.get_checkpoint>` is populated in two ways:
 
 1. It can be auto-populated, e.g. for :ref:`automatic failure recovery <train-fault-tolerance>` or :ref:`on manual restoration <train-restore-guide>`.
 2. The checkpoint can be passed to the :class:`Trainer <ray.train.trainer.BaseTrainer>` as the ``resume_from_checkpoint`` argument.
+   This is useful for initializing a new training run with a previous run's checkpoint.
 
 
 .. tab-set::
 
     .. tab-item:: Native PyTorch
 
-        .. code-block:: python
-            :emphasize-lines: 23, 25, 26, 29, 30, 31, 35
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __distributed_checkpointing_start__
+            :end-before: __distributed_checkpointing_end__
 
-            import ray.train.torch
-            from ray import train
-            from ray.train import Checkpoint, ScalingConfig
-            from ray.train.torch import TorchTrainer
-
-            import torch
-            import torch.nn as nn
-            from torch.optim import Adam
-            import numpy as np
-
-            def train_func(config):
-                n = 100
-                # create a toy dataset
-                # data   : X - dim = (n, 4)
-                # target : Y - dim = (n, 1)
-                X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
-                Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
-
-                # toy neural network : 1-layer
-                model = nn.Linear(4, 1)
-                criterion = nn.MSELoss()
-                optimizer = Adam(model.parameters(), lr=3e-4)
-                start_epoch = 0
-
-                checkpoint = train.get_checkpoint()
-                if checkpoint:
-                    # assume that we have run the train.report() example
-                    # and successfully save some model weights
-                    checkpoint_dict = checkpoint.to_dict()
-                    model.load_state_dict(checkpoint_dict.get("model_weights"))
-                    start_epoch = checkpoint_dict.get("epoch", -1) + 1
-
-                # wrap the model in DDP
-                model = ray.train.torch.prepare_model(model)
-                for epoch in range(start_epoch, config["num_epochs"]):
-                    y = model.forward(X)
-                    # compute loss
-                    loss = criterion(y, Y)
-                    # back-propagate loss
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
-                    state_dict = model.state_dict()
-                    checkpoint = Checkpoint.from_dict(
-                        dict(epoch=epoch, model_weights=state_dict)
-                    )
-                    train.report({}, checkpoint=checkpoint)
-
-            trainer = TorchTrainer(
-                train_func,
-                train_loop_config={"num_epochs": 2},
-                scaling_config=ScalingConfig(num_workers=2),
-            )
-            # save a checkpoint
-            result = trainer.fit()
-
-            # load checkpoint
-            trainer = TorchTrainer(
-                train_func,
-                train_loop_config={"num_epochs": 4},
-                scaling_config=ScalingConfig(num_workers=2),
-                resume_from_checkpoint=result.checkpoint,
-            )
-            result = trainer.fit()
-
-            print(result.checkpoint.to_dict())
-            # {'epoch': 3, 'model_weights': OrderedDict([('bias', tensor([0.0902])), ('weight', tensor([[-0.1549, -0.0861,  0.4353, -0.4116]]))]), '_timestamp': 1656108265, '_preprocessor': None, '_current_checkpoint_id': 2}
 
     .. tab-item:: PyTorch Lightning
 
