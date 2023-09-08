@@ -52,7 +52,7 @@ The [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blo
 There are two ConfigMaps in this example: `ray-example` and `redis-config`.
 The `ray-example` ConfigMap houses two Python scripts: `detached_actor.py` and `increment_counter.py`.
 
-* `detached_actor.py` is a Python script that creates a detached actor with name `counter_actor`.
+* `detached_actor.py` is a Python script that creates a detached actor with the name, `counter_actor`.
     ```python
     import ray
 
@@ -81,7 +81,7 @@ The `ray-example` ConfigMap houses two Python scripts: `detached_actor.py` and `
 ### Step 5: Create a detached actor
 
 ```sh
-# Step 4.1: Create a detached actor with name `counter_actor`.
+# Step 4.1: Create a detached actor with the name, `counter_actor`.
 export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
 kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/detached_actor.py
 
@@ -134,10 +134,10 @@ See [this section](kuberay-external-storage-namespace) to learn more about the a
 ### Step 7: Kill the GCS process in the head Pod
 
 ```sh
-# Step 7.1: Check the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable in both head Pod and worker Pod.
+# Step 7.1: Check the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable in both the head Pod and worker Pod.
 kubectl get pods $HEAD_POD -o=jsonpath='{.spec.containers[0].env}' | jq
 # [Expected result]:
-# No `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable is set. Hence, Ray head will use its default value `60`.
+# No `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable is set. Hence, the Ray head uses its default value of `60`.
 kubectl get pods $YOUR_WORKER_POD -o=jsonpath='{.spec.containers[0].env}' | jq
 # [Expected result]:
 # KubeRay injects the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable with the value `600` to the worker Pod.
@@ -152,8 +152,8 @@ kubectl get pods $YOUR_WORKER_POD -o=jsonpath='{.spec.containers[0].env}' | jq
 # Step 7.2: Kill the GCS process in the head Pod.
 kubectl exec -it $HEAD_POD -- pkill gcs_server
 
-# Step 7.3: The head Pod will fail and restart after `RAY_gcs_rpc_server_reconnect_timeout_s` (60) seconds.
-# In addition, the worker Pod will not be terminated by the new head after reconnecting because GCS fault
+# Step 7.3: The head Pod fails and restarts after `RAY_gcs_rpc_server_reconnect_timeout_s` (60) seconds.
+# In addition, the worker Pod isn't terminated by the new head after reconnecting because GCS fault
 # tolerance is enabled.
 kubectl get pods -l=ray.io/is-ray-node=yes
 # [Example output]:
@@ -181,7 +181,7 @@ The head Pod's `rayStartParams` is set to `num-cpus: "0"`.
 Hence, no tasks or actors will be scheduled on the head Pod.
 ```
 
-With GCS fault tolerance enabled, we can still access the detached actor after the GCS process is dead and restarted.
+With GCS fault tolerance enabled, you can still access the detached actor after the GCS process is dead and restarted.
 Note that the fault tolerance doesn't persist the actor's state.
 The reason why the result is 2 instead of 1 is that the detached actor is on the worker Pod which is always running.
 On the other hand, if the head Pod hosts the detached actor, the `increment_counter.py` script yields a result of 1 in this step.
@@ -195,7 +195,7 @@ kind delete cluster
 ## KubeRay GCS fault tolerance configurations
 
 The [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml) used in the quickstart example contains detailed comments about the configuration options.
-***It's recommended to read this section in conjunction with the YAML file.***
+***Read this section in conjunction with the YAML file.***
 
 ### 1. Enable GCS fault tolerance
 
@@ -257,5 +257,5 @@ Refer to [this section](kuberay-external-storage-namespace-example) in the earli
 
 ## Next steps
 
-* See the {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide-gcs>` for more information.
-* See the {ref}`Ray Core GCS fault tolerance documentation <fault-tolerance-gcs>` for more information.
+* See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide-gcs>` for more information.
+* See `Ray Core GCS fault tolerance documentation <fault-tolerance-gcs>` for more information.
