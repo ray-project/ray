@@ -83,7 +83,7 @@ class Driver:
 hello = Hello.bind()
 world = World.bind()
 
-# The deployments passed to the Driver constructor will be replaced with handles.
+# The deployments passed to the Driver constructor are replaced with handles.
 driver = Driver.bind(hello, world)
 
 # Deploys hello, world, and driver.

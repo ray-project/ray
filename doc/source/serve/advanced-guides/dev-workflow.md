@@ -100,7 +100,7 @@ curl -X PUT http://<head-node-ip-address>:8000/?name=Ray
 # Hello, Ray! Hello, Ray!
 ```
 
-For more complex dependencies, including files outside the working directory, environment variables, and Python packages, you can use {ref}`Runtime Environments<runtime-environments>`. Here is an example using the --runtime-env-json argument:
+For more complex dependencies, including files outside the working directory, environment variables, and Python packages, you can use {ref}`Runtime Environments<runtime-environments>`. This example uses the --runtime-env-json argument:
 
 ```bash
 serve run  --address=ray://<head-node-ip-address>:10001 --runtime-env-json='{"env_vars": {"MY_ENV_VAR": "my-value"}, "working_dir": "./project/src", "pip": ["requests", "chess"]}' local_dev:app

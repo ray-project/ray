@@ -18,7 +18,7 @@ To opt into the new API, you can either use `handle.options(use_new_handle_api=T
 ## Composing Deployments using DeploymentHandles
 
 When building an application, you can `.bind()` multiple deployments and pass them to each other's constructors.
-At runtime, inside the deployment code the bound deployments will be substituted with {mod}`DeploymentHandles <ray.serve.handle.DeploymentHandle>` that can be used to call methods of the other deployment.
+At runtime, inside the deployment code the bound deployments are substituted with {mod}`DeploymentHandles <ray.serve.handle.DeploymentHandle>` that you can use to call methods of the other deployment.
 This lets you divide your application's steps (such as preprocessing, model inference, and post-processing) into independent deployments that can be independently scaled and configured.
 
 Use {mod}`handle.remote <ray.serve.handle.DeploymentHandle.remote>` to send requests to a deployment.
