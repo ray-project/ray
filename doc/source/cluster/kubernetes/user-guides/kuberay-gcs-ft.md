@@ -6,6 +6,12 @@ By default, the GCS lacks fault tolerance as it stores all data in-memory, and a
 To make the GCS fault tolerant, you must have a high-availability Redis.
 This way, in the event of a GCS restart, it retrieves all the data from the Redis instance and resumes its regular functions.
 
+## Prerequisites
+
+* Ray 2.0.0+
+* KubeRay 0.6.0+
+* Redis: single shard, one or multiple replicas
+
 ## Quickstart
 
 ### Step 1: Create a Kubernetes cluster with Kind
