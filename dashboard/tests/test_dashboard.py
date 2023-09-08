@@ -925,11 +925,12 @@ def test_dashboard_does_not_depend_on_serve():
     # Check that Serve-dependent features fail
     try:
         response = requests.get(f"http://{agent_url}/api/serve/deployments/")
-        assert response.status_code == 501
     except Exception as e:
         # Fail to connect to service is fine.
         print(e)
-        assert True
+    else:
+        print(f"response status code: {response.status_code}, expected: 501")
+        assert response.status_code == 501
 
 
 @pytest.mark.skipif(
@@ -963,11 +964,12 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     # Check that Serve-dependent features fail
     try:
         response = requests.get(f"http://{agent_url}/api/serve/deployments/")
-        assert response.status_code == 501
     except Exception as e:
         # Fail to connect to service is fine.
         print(e)
-        assert True
+    else:
+        print(f"response status code: {response.status_code}, expected: 501")
+        assert response.status_code == 501
 
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
