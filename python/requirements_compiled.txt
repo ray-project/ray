@@ -34,7 +34,7 @@ asttokens==2.4.0
 astunparse==1.6.3
 async-exit-stack==1.0.1
 async-generator==1.10
-async-timeout==4.0.3
+async-timeout==4.0.2
 asyncmock==0.4.2
 attrs==21.4.0
 autograd==1.6.2
