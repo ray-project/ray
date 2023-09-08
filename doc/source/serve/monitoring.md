@@ -73,9 +73,11 @@ runtime_env:
     - transformers
 deployments:
 - name: Translator
+  num_replicas: 1
   user_config:
     language: french
 - name: Summarizer
+  num_replicas: 1
 ```
 
 `serve status` gets your Serve application's current status. This command reports the status of the `proxies` and the `applications` running on the Ray cluster.

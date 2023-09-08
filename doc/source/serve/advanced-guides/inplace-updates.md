@@ -48,6 +48,7 @@ applications:
       - transformers
   deployments:
   - name: Translator
+    num_replicas: 1
     user_config:
       language: german
 

@@ -64,6 +64,8 @@ applications:
   deployments:
   - name: Translator
     num_replicas: 1
+    user_config:
+      language: french
   - name: Summarizer
     num_replicas: 1
 ```
@@ -111,6 +113,7 @@ applications:
       - transformers
   deployments:
   - name: Translator
+    num_replicas: 1
     user_config:
       language: french
   - name: Summarizer

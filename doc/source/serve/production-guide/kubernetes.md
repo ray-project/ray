@@ -166,10 +166,10 @@ There are two types of updates that can occur:
 
 In the Text ML example above, let's change the language of the Translator in the Serve config to German:
 
-```console
+```yaml
   - name: Translator
-    numReplicas: 1
-    userConfig:
+    num_replicas: 1
+    user_config:
       language: german
 ```
 
