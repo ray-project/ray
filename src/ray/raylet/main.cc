@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
 #ifdef __linux__
   // Reset LD_PRELOAD if it's loaded with ray jemalloc
   auto ray_ld_preload = std::getenv("RAY_LD_PRELOAD");
-  if(ray_ld_preload != nullptr && std::string(ray_ld_preload) == "1") {
+  if (ray_ld_preload != nullptr && std::string(ray_ld_preload) == "1") {
     unsetenv("LD_PRELOAD");
   }
 #endif
