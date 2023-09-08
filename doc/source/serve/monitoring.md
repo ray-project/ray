@@ -56,24 +56,28 @@ If you have a remote cluster, `serve config` and `serve status` also has an `--a
 
 `serve config` gets the latest config file that the Ray Cluster received. This config file represents the Serve application's goal state. The Ray Cluster constantly strives to reach and maintain this state by deploying deployments, and recovering failed replicas, and performing other relevant actions.
 
-Using the `fruit_config.yaml` example from [the production guide](fruit-config-yaml):
+Using the `serve_config.yaml` example from [the production guide](production-config-yaml):
 
 ```console
 $ ray start --head
-$ serve deploy fruit_config.yaml
+$ serve deploy serve_config.yaml
 ...
 
 $ serve config
-
-name: app1
+name: default
 route_prefix: /
-import_path: fruit:deployment_graph
-runtime_env: {}
+import_path: text_ml:app
+runtime_env:
+  pip:
+    - torch
+    - transformers
 deployments:
-- name: MangoStand
+- name: Translator
+  num_replicas: 1
   user_config:
-    price: 3
-...
+    language: french
+- name: Summarizer
+  num_replicas: 1
 ```
 
 `serve status` gets your Serve application's current status. This command reports the status of the `proxies` and the `applications` running on the Ray cluster.
@@ -108,43 +112,28 @@ deployments:
 
 Use the `serve status` command to inspect your deployments after they are deployed and throughout their lifetime.
 
-Using the `fruit_config.yaml` example from [an earlier section](fruit-config-yaml):
+Using the `serve_config.yaml` example from [an earlier section](production-config-yaml):
 
 ```console
 $ ray start --head
-$ serve deploy fruit_config.yaml
+$ serve deploy serve_config.yaml
 ...
 
 $ serve status
 proxies:
-  0eeaadc5f16b64b8cd55aae184254406f0609370cbc79716800cb6f2: HEALTHY
+  cef533a072b0f03bf92a6b98cb4eb9153b7b7c7b7f15954feb2f38ec: HEALTHY
 applications:
-  app1:
+  default:
     status: RUNNING
     message: ''
-    last_deployed_time_s: 1693430845.863128
+    last_deployed_time_s: 1694041157.2211847
     deployments:
-      MangoStand:
+      Translator:
         status: HEALTHY
         replica_states:
           RUNNING: 1
         message: ''
-      OrangeStand:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 1
-        message: ''
-      PearStand:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 1
-        message: ''
-      FruitMarket:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 2
-        message: ''
-      DAGDriver:
+      Summarizer:
         status: HEALTHY
         replica_states:
           RUNNING: 1
