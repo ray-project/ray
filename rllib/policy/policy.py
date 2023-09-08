@@ -26,7 +26,7 @@ from packaging import version
 import ray
 import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
