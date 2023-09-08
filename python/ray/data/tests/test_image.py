@@ -44,7 +44,7 @@ class TestReadImages:
             parallelism=1,
             include_paths=True,
         )
-        paths = [item["path"][-len("image1.jpg"):] for item in ds.take_all()]
+        paths = [item["path"][-len("image1.jpg") :] for item in ds.take_all()]
         if num_threads > 1:
             # If there are more than 1 threads, the order is not guaranteed.
             paths = sorted(paths)
