@@ -49,7 +49,7 @@ Each replica maintains a queue of requests and executes requests one at a time, 
 using `asyncio` to process them concurrently. If the handler (the deployment function or the `__call__` method of the deployment class) is declared with `async def`, the replica will not wait for the
 handler to run.  Otherwise, the replica will block until the handler returns.
 
-When making a request via a [DeploymentHandle](deployment-handle-explainer) instead of HTTP for [model composition](serve-model-composition), the request is placed on a queue in the `DeploymentHandle`, and we skip to step 3 above.
+When making a request via a [DeploymentHandle](serve-key-concepts-deployment-handle) instead of HTTP for [model composition](serve-model-composition), the request is placed on a queue in the `DeploymentHandle`, and we skip to step 3 above.
 
 (serve-ft-detail)=
 

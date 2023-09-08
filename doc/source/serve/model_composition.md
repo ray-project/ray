@@ -13,8 +13,6 @@ Existing code will continue to work, but you are encouraged to opt-in to the new
 To opt into the new API, you can either use `handle.options(use_new_handle_api=True)` on each handle or set it globally via environment variable: `export RAY_SERVE_ENABLE_NEW_HANDLE_API=1`.
 :::
 
-(deployment-handle-explainer)=
-
 ## Composing Deployments using DeploymentHandles
 
 When building an application, you can `.bind()` multiple deployments and pass them to each other's constructors.
