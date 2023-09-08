@@ -189,7 +189,6 @@ class BaseTrainer(abc.ABC):
 
     _scaling_config_allowed_keys: List[str] = [
         "trainer_resources",
-        "_max_cpu_fraction_per_node",
     ]
     _handles_checkpoint_freq: bool = False
     _handles_checkpoint_at_end: bool = False
@@ -851,10 +850,10 @@ class BaseTrainer(abc.ABC):
                     )
                 return scaling_config
 
-            def _trainable_func(self, config, reporter, checkpoint_dir):
+            def _trainable_func(self, config):
                 # We ignore the config passed by Tune and instead use the merged
                 # config which includes the initial Trainer args.
-                super()._trainable_func(self._merged_config, reporter, checkpoint_dir)
+                super()._trainable_func(self._merged_config)
 
             @classmethod
             def default_resource_request(cls, config):

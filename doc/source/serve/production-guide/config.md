@@ -19,6 +19,8 @@ http_options:
 
   request_timeout_s: ...
 
+  keep_alive_timeout_s: ...
+
 applications:
   
 - name: ...
@@ -43,8 +45,9 @@ applications:
 
 The file contains `http_options` and `applications`. These are the `http_options`:
 
-- `host` and `port` are HTTP options that determine the host IP address and the port for your Serve application's HTTP proxies. These are optional settings and can be omitted. By default, the `host` will be set to `0.0.0.0` to expose your deployments publicly, and the port will be set to `8000`. If you're using Kubernetes, setting `host` to `0.0.0.0` is necessary to expose your deployments outside the cluster.
-- `request_timeout_s` is a field in the `http_options` that allows you to set the end-to-end timeout for a request before terminating and retrying at another replica. This config is global to your Ray cluster, and it cannot be updated during runtime. By default, the Serve HTTP proxy retries up to `10` times when a response is not received due to failures (e.g. network disconnect, request timeout, etc.). By default, there is no request timeout. 
+- `host` and `port` are HTTP options that determine the host IP address and the port for your Serve application's HTTP proxies. These are optional settings and can be omitted. By default, the `host` is set to `0.0.0.0` to expose your deployments publicly, and the port is set to `8000`. If you're using Kubernetes, setting `host` to `0.0.0.0` is necessary to expose your deployments outside the cluster.
+- `request_timeout_s` is a field in the `http_options` that allows you to set the end-to-end timeout for a request before terminating and retrying at another replica. This config is global to your Ray cluster, and you can't update it during runtime. By default, the Serve HTTP proxy retries up to `10` times when a response is not received due to failures (for example, network disconnect, request timeout, etc.) By default, there is no request timeout. 
+- `keep_alive_timeout_s` is a field in the `http_options` that allows you to set the keep alive timeout for the HTTP proxy. For more details, see [here](serve-http-guide-keep-alive-timeout)
 
 These are the fields per application:
 
@@ -95,7 +98,7 @@ Each individual entry in the `deployments` list is optional. In the example conf
 
 We can also auto-generate this config file from the code. The `serve build` command takes an import path to your deployment graph and it creates a config file containing all the deployments and their settings from the graph. You can tweak these settings to manage your deployments in production.
 
-Using the `FruitStand` deployment graph example:
+Using [the `FruitStand` deployment graph example](serve-in-production-example):
 
 ```console
 $ ls
@@ -113,39 +116,34 @@ fruit_config.yaml
 The `fruit_config.yaml` file contains:
 
 ```yaml
+proxy_location: EveryNode
+
 http_options:
-
   host: 0.0.0.0
-
   port: 8000
+
+grpc_options:
+  port: 9000
+  grpc_servicer_functions: []
 
 applications:
 
 - name: app1
-
   route_prefix: /
-
   import_path: fruit:deployment_graph
-
   runtime_env: {}
-
   deployments:
-
   - name: MangoStand
     user_config:
       price: 3
-
   - name: OrangeStand
     user_config:
       price: 2
-
   - name: PearStand
     user_config:
       price: 4
-
   - name: FruitMarket
     num_replicas: 2
-
   - name: DAGDriver
 ```
 

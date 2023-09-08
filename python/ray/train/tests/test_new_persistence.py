@@ -22,7 +22,7 @@ from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune.trainable.trainable import _DICT_CHECKPOINT_FILE_NAME
 
-from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
+from ray.train.tests.util import mock_s3_bucket_uri
 
 
 _SCORE_KEY = "score"
@@ -599,6 +599,29 @@ def test_trainer(
         test_trainer=True,
         no_checkpoint_ranks=no_checkpoint_ranks,
     )
+
+
+def test_local_dir(tmp_path):
+    """Test that local_dir can do the same job as `RAY_AIR_LOCAL_CACHE_DIR`."""
+
+    def train_fn(config):
+        from ray.train._internal.session import get_session
+
+        assert get_session().storage.storage_local_path == str(tmp_path)
+
+    tune.run(train_fn, local_dir=str(tmp_path))
+
+    results = tune.Tuner(
+        train_fn, run_config=train.RunConfig(local_dir=str(tmp_path))
+    ).fit()
+    assert not results.errors
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=train.ScalingConfig(num_workers=2),
+        run_config=train.RunConfig(local_dir=str(tmp_path)),
+    )
+    trainer.fit()
 
 
 if __name__ == "__main__":

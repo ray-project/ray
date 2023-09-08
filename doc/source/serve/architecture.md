@@ -27,7 +27,7 @@ There are three kinds of actors that are created to make up a Serve instance:
 - **HTTP Proxy**: By default there is one HTTP proxy actor on the head node. This actor runs a [Uvicorn](https://www.uvicorn.org/) HTTP
   server that accepts incoming requests, forwards them to replicas, and
   responds once they are completed.  For scalability and high availability,
-  you can also run a proxy on each node in the cluster via the `location` field of [`http_options`](core-apis).
+  you can also run a proxy on each node in the cluster via the `proxy_location` field inside [`serve.start()`](core-apis) or [the config file](serve-in-production-config-file).
 - **Replicas**: Actors that actually execute the code in response to a
   request. For example, they may contain an instantiation of an ML model. Each
   replica processes individual requests from the HTTP proxy (these may be batched
@@ -49,7 +49,7 @@ Each replica maintains a queue of requests and executes requests one at a time, 
 using `asyncio` to process them concurrently. If the handler (the deployment function or the `__call__` method of the deployment class) is declared with `async def`, the replica will not wait for the
 handler to run.  Otherwise, the replica will block until the handler returns.
 
-When making a request via [ServeHandle](serve-handle-explainer) instead of HTTP, the request is placed on a queue in the ServeHandle, and we skip to step 3 above.
+When making a request via a [DeploymentHandle](serve-key-concepts-deployment-handle) instead of HTTP for [model composition](serve-model-composition), the request is placed on a queue in the `DeploymentHandle`, and we skip to step 3 above.
 
 (serve-ft-detail)=
 
@@ -82,12 +82,12 @@ Ray Serve's autoscaling feature automatically increases or decreases a deploymen
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling.svg)
 
 - The Serve Autoscaler runs in the Serve Controller actor.
-- Each ServeHandle and each replica periodically pushes its metrics to the autoscaler.
-- For each deployment, the autoscaler periodically checks ServeHandle queues and in-flight queries on replicas to decide whether or not to scale the number of replicas.
-- Each ServeHandle continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it will send any buffered or new queries to the replica until `max_concurrent_queries` is reached.  Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_concurrent_queries` requests at a time.
+- Each `DeploymentHandle` and each replica periodically pushes its metrics to the autoscaler.
+- For each deployment, the autoscaler periodically checks `DeploymentHandle` queues and in-flight queries on replicas to decide whether or not to scale the number of replicas.
+- Each `DeploymentHandle` continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it sends any buffered or new queries to the replica until `max_concurrent_queries` is reached.  Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_concurrent_queries` requests at a time.
 
 :::{note}
-When the controller dies, requests can still be sent via HTTP and ServeHandles, but autoscaling will be paused. When the controller recovers, the autoscaling will resume, but all previous metrics collected will be lost.
+When the controller dies, requests can still be sent via HTTP and `DeploymentHandle`, but autoscaling is paused. When the controller recovers, the autoscaling resumes, but all previous metrics collected are lost.
 :::
 
 ## Ray Serve API Server
@@ -99,21 +99,12 @@ Each node in your Ray cluster provides a Serve REST API server that can connect 
 
 ### How does Serve ensure horizontal scalability and availability?
 
-Serve can be configured to start one HTTP proxy actor per node via the `location` field of [`http_options`](core-apis). Each one will bind the same port. You
+Serve can be configured to start one HTTP proxy actor per node via the the `proxy_location` field inside [`serve.start()`](core-apis) or [the config file](serve-in-production-config-file). Each proxy will bind the same port. You
 should be able to reach Serve and send requests to any models via any of the
 servers.  You can use your own load balancer on top of Ray Serve.
 
 This architecture ensures horizontal scalability for Serve. You can scale your HTTP ingress by adding more nodes and scale your model inference by increasing the number
 of replicas via the `num_replicas` option of your deployment.
-
-### How do ServeHandles work?
-
-{mod}`ServeHandles <ray.serve.handle.RayServeHandle>` wrap a handle to a "router" on the
-same node which routes requests to replicas for a deployment. When a
-request is sent from one replica to another via the handle, the
-requests go through the same data path as incoming HTTP requests. This enables
-the same deployment selection and batching procedures to happen. ServeHandles are
-often used to implement [model composition](serve-model-composition).
 
 ### What happens to large requests?
 
