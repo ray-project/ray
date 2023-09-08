@@ -79,11 +79,11 @@ def parse_args():
     )
     parser.add_argument(
         "--num-epochs",
-        # Use 3 epochs and report the throughput of the last epoch, in case
-        # there is warmup in the first epoch.
-        default=3,
+        # Use 5 epochs and report the avg per-epoch throughput
+        # (excluding first epoch in case there is warmup).
+        default=5,
         type=int,
-        help="Number of epochs to run. The throughput for the last epoch will be kept.",
+        help="Number of epochs to run. The avg per-epoch throughput will be reported.",
     )
     parser.add_argument(
         "--num-workers",
@@ -240,6 +240,8 @@ def train_loop_per_worker():
             num_workers=torch_num_workers,
         )
 
+    world_size = ray.train.get_context().get_world_size()
+    all_workers_time_list_across_epochs = []
     for i in range(args.num_epochs):
         print(f"Epoch {i+1} of {args.num_epochs}")
         num_rows = 0
@@ -267,32 +269,35 @@ def train_loop_per_worker():
                 )
                 print_at = ((num_rows // print_at_interval) + 1) * print_at_interval
         end_t = time.time()
+        # Workaround to report the epoch start/end time from each worker, so that we
+        # can aggregate them at the end when calculating throughput.
+        # See: https://github.com/ray-project/ray/issues/39277
+        all_workers_time_list = [
+            torch.zeros((2), dtype=torch.double, device=device) for _ in range(world_size)
+        ]
+        curr_worker_time = torch.tensor([start_t, end_t], dtype=torch.double, device=device)
+        dist.all_gather(all_workers_time_list, curr_worker_time)
+        all_workers_time_list_across_epochs.append(all_workers_time_list)
+
         print(
             f"Epoch {i+1} of {args.num_epochs}, tput: {num_rows / (end_t - start_t)}, run time: {end_t - start_t}"
         )
-
-    # Workaround to report the final epoch time from each worker, so that we
-    # can sum up the times at the end when calculating throughput.
-    # See: https://github.com/ray-project/ray/issues/39277
-    world_size = ray.train.get_context().get_world_size()
-    all_workers_time_list = [
-        torch.zeros((2), dtype=torch.double, device=device) for _ in range(world_size)
-    ]
-    curr_worker_time = torch.tensor([start_t, end_t], dtype=torch.double, device=device)
-    dist.all_gather(all_workers_time_list, curr_worker_time)
-
+    # Similar reporting for aggregating number of rows across workers
     all_num_rows = [
         torch.zeros((1), dtype=torch.int32, device=device) for _ in range(world_size)
     ]
     curr_num_rows = torch.tensor([num_rows], dtype=torch.int32, device=device)
     dist.all_gather(all_num_rows, curr_num_rows)
 
-    train.report(
-        {
-            "time_final_epoch": [tensor.tolist() for tensor in all_workers_time_list],
-            "num_rows": [tensor.item() for tensor in all_num_rows],
-        }
-    )
+    per_epoch_times = {
+        f"epoch_{i}_times": [
+            tensor.tolist() for tensor in all_workers_time_list_across_epochs[i]
+        ] for i in range(args.num_epochs)
+    }
+    train.report({
+        **per_epoch_times,
+        "num_rows": [tensor.item() for tensor in all_num_rows],
+    })
 
 
 # The input files URLs per training worker.
@@ -471,18 +476,21 @@ def benchmark_code(
 
     result = torch_trainer.fit()
 
-    # Report the throughput of the last epoch, sum runtime across all workers.
-    time_start_last_epoch, time_end_last_epoch = zip(
-        *result.metrics["time_final_epoch"]
-    )
-    runtime_last_epoch = max(time_end_last_epoch) - min(time_start_last_epoch)
-    num_rows_last_epoch = sum(result.metrics["num_rows"])
-    print("Total num rows read in last epoch:", num_rows_last_epoch, "images")
-    print("Runtime last epoch:", runtime_last_epoch, "seconds")
-    tput_last_epoch = num_rows_last_epoch / runtime_last_epoch
-
+    # Report the average of per-epoch throughput, excluding the first epoch.
+    epoch_tputs = []
+    num_rows_per_epoch = sum(result.metrics["num_rows"])
+    for i in range(1, args.num_epochs):
+        time_start_epoch_i, time_end_epoch_i = zip(
+            *result.metrics[f"epoch_{i}_times"]
+        )
+        runtime_epoch_i = max(time_end_epoch_i) - min(time_start_epoch_i)
+        tput_epoch_i = num_rows_per_epoch / runtime_epoch_i
+        epoch_tputs.append(tput_epoch_i)
+    avg_per_epoch_tput = sum(epoch_tputs) / len(epoch_tputs)
+    print("Total num rows read per epoch:", num_rows_per_epoch, "images")
+    print("Averaged per-epoch throughput:", avg_per_epoch_tput, "img/s")
     return {
-        BenchmarkMetric.THROUGHPUT.value: tput_last_epoch,
+        BenchmarkMetric.THROUGHPUT.value: avg_per_epoch_tput,
     }
 
 
