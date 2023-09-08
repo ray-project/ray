@@ -37,9 +37,8 @@ def main():
         print(f"Could not get Ray AIR secrets: {e}")
         sys.exit(1)
 
-    with open("/tmp/generate_credentials.sh", "w") as f:
-        for key in SERVICES.keys():
-            f.write(f"export {SERVICES[key]}={ray_air_secrets[key]}")
+    for key in SERVICES.keys():
+        print(f"export {SERVICES[key]}={ray_air_secrets[key]}")
 
 
 if __name__ == "__main__":
