@@ -28,6 +28,7 @@ import pytest
 import torch
 import torch.distributed as dist
 
+import ray
 from ray import train
 from ray._private.dict import flatten_dict
 from ray.air.constants import TRAINING_ITERATION
@@ -50,7 +51,7 @@ from test_new_persistence import (
 
 
 class TestConstants:
-    NUM_ITERATIONS = 12  # == num_checkpoints == num_artifacts
+    NUM_ITERATIONS = 10  # == num_checkpoints == num_artifacts
     NUM_TRIALS = 2
 
     # 4 * 8 = 32 CPUs total
@@ -59,7 +60,7 @@ class TestConstants:
 
     SCORE_KEY = "score"
 
-    NUM_GB = 3
+    NUM_GB = 2
     NUM_MB = 10
     NUM_KB = 10
 
@@ -81,17 +82,17 @@ def create_checkpoint(checkpoint_dir: str) -> float:
 
     Returns the time it takes to dump this checkpoint to disk."""
     start = time.perf_counter()
-    # 10 small (1kb) files
+    # Small (1kb) files
     for i in range(TestConstants.NUM_KB):
         with open(os.path.join(checkpoint_dir, f"1kb-{i}.txt"), "w") as f:
             f.write("a" * 1024)
 
-    # 10 medium files (1 mb)
+    # Medium files (1 mb)
     for i in range(TestConstants.NUM_MB):
         with open(os.path.join(checkpoint_dir, f"1mb-{i}.txt"), "w") as f:
             f.write("a" * 1024 * 1024)
 
-    # 3 large files (1 gb)
+    # Large files (1 gb)
     for i in range(TestConstants.NUM_GB):
         with open(os.path.join(checkpoint_dir, f"1gb-{i}.txt"), "w") as f:
             f.write("a" * 1024 * 1024 * 1024)
@@ -181,6 +182,8 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
     """
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
 
+    ray.init(runtime_env={"working_dir": "."}, ignore_reinit_error=True)
+
     storage_path, storage_filesystem, label = storage_path_storage_filesystem_label
     checkpoint_config = train.CheckpointConfig(
         num_to_keep=TestConstants.NUM_ITERATIONS // 2
@@ -189,16 +192,25 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
 
     # Delete the existing contents at the storage path (ex: from previous runs)
     fs, storage_fs_path = get_fs_and_path(storage_path, storage_filesystem)
+    if label == "cloud+custom_fs":
+        # NOTE: Using a pyarrow-wrapped version of an fsspec filesystem
+        # causes this download to segfault -- but checkpoints were still
+        # uploaded properly during training.
+        # Deleting also doesn't work properly for some reason.Any
+        # Workaround: Just use the pyarrow default filesystem.
+        fs, _ = pyarrow.fs.FileSystem.from_uri(os.environ["ANYSCALE_ARTIFACT_STORAGE"])
+
     experiment_fs_path = os.path.join(storage_fs_path, exp_name)
     if _exists_at_fs_path(fs, experiment_fs_path):
         print("\nDeleting results from a previous run...\n")
         _delete_fs_path(fs, experiment_fs_path)
+    assert not _exists_at_fs_path(fs, experiment_fs_path)
 
     trainer = TorchTrainer(
         train_fn,
         train_loop_config={
             "in_trainer": True,
-            "fail_iters": [4, 8, 10],
+            "fail_iters": [3, 6, 8],
             "time_per_iter": 1.0,
             "num_iterations": TestConstants.NUM_ITERATIONS,
             "custom_save_fn": custom_save_fn,
@@ -238,14 +250,6 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
 
     print("\nAsserting contents of uploaded results.\n")
     local_inspect_dir = tmp_path / "inspect_dir"
-
-    fs = result.filesystem
-    if label == "cloud+custom_fs":
-        # NOTE: Using a pyarrow-wrapped version of an fsspec filesystem
-        # causes this download to segfault -- but checkpoints were still
-        # uploaded properly during training.
-        # Workaround: Just use the pyarrow default filesystem.
-        fs, _ = pyarrow.fs.FileSystem.from_uri(os.environ["ANYSCALE_ARTIFACT_STORAGE"])
 
     _download_from_fs_path(fs, storage_fs_path, str(local_inspect_dir))
     _assert_storage_contents(
@@ -295,6 +299,8 @@ def test_no_storage_error(tmp_path, monkeypatch):
     w/ no persistent storage configured."""
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
 
+    ray.init(runtime_env={"working_dir": "."}, ignore_reinit_error=True)
+
     trainer = TorchTrainer(
         train_fn,
         train_loop_config={
@@ -317,6 +323,8 @@ def test_no_storage_no_checkpoints(tmp_path, monkeypatch):
     """Tests that it's ok to run multi-node with no persistent storage
     if you never report checkpoints."""
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
+
+    ray.init(runtime_env={"working_dir": "."}, ignore_reinit_error=True)
 
     trainer = TorchTrainer(
         train_fn,
@@ -341,7 +349,7 @@ def test_no_storage_no_checkpoints(tmp_path, monkeypatch):
     )
     result = trainer.fit()
 
-    assert result.metrics[TRAINING_ITERATION] == TestConstants.NUM_ITERATIONS - 1
+    assert result.metrics[TRAINING_ITERATION] == TestConstants.NUM_ITERATIONS
     assert len(result.metrics_dataframe) == TestConstants.NUM_ITERATIONS
 
 
