@@ -38,7 +38,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def get_device() -> Union[torch.device, List[torch.device]]:
     """Gets the correct torch device configured for this process.
 
@@ -70,8 +70,7 @@ def get_device() -> Union[torch.device, List[torch.device]]:
     return torch_utils.get_device()
 
 
-# TODO: Deprecation: Hard-deprecate args in Ray 2.2.
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def prepare_model(
     model: torch.nn.Module,
     move_to_device: Union[bool, torch.device] = True,
@@ -113,7 +112,7 @@ def prepare_model(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def prepare_data_loader(
     data_loader: torch.utils.data.DataLoader,
     add_dist_sampler: bool = True,
@@ -192,7 +191,7 @@ def backward(tensor: torch.Tensor) -> None:
     get_accelerator(_TorchAccelerator).backward(tensor)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def enable_reproducibility(seed: int = 0) -> None:
     """Limits sources of nondeterministic behavior.
 

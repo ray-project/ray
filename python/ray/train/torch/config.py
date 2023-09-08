@@ -18,7 +18,7 @@ import torch.distributed as dist
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 @dataclass
 class TorchConfig(BackendConfig):
     """Configuration for torch process group setup.

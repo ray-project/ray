@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class TorchTrainer(DataParallelTrainer):
     """A Trainer for data parallel PyTorch training.
 

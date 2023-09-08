@@ -846,7 +846,7 @@ def _warn_session_misuse(default_value: Any = None):
     return inner
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 @_warn_session_misuse()
 def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     """Report metrics and optionally save a checkpoint.
@@ -907,7 +907,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     _get_session().report(metrics, checkpoint=checkpoint)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 @_warn_session_misuse()
 def get_checkpoint() -> Optional[Checkpoint]:
     """Access the session's last checkpoint to resume from if applicable.
@@ -1223,7 +1223,7 @@ def get_node_rank() -> int:
     return session.node_rank
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 @_warn_session_misuse()
 def get_dataset_shard(
     dataset_name: Optional[str] = None,

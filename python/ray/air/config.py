@@ -90,7 +90,7 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class ScalingConfig:
     """Configuration for scaling training.
 
@@ -112,13 +112,6 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
-        _max_cpu_fraction_per_node: [Experimental] The max fraction of CPUs per node
-            that Train will use for scheduling training actors. The remaining CPUs
-            can be used for dataset tasks. It is highly recommended that you set this
-            to less than 1.0 (e.g., 0.8) when passing datasets to trainers, to avoid
-            hangs / CPU starvation of dataset tasks. Warning: this feature is
-            experimental and is not recommended for use with autoscaling (scale-up will
-            not trigger properly).
     """
 
     # If adding new attributes here, please also update
@@ -523,7 +516,7 @@ class DatasetConfig:
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class FailureConfig:
     """Configuration related to failure handling of each training/tuning run.
 
@@ -574,7 +567,7 @@ class FailureConfig:
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class CheckpointConfig:
     """Configurable parameters for defining the checkpointing strategy.
 
@@ -723,7 +716,7 @@ class CheckpointConfig:
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class RunConfig:
     """Runtime configuration for training and tuning runs.
 
@@ -734,32 +727,32 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        storage_path: Path to store results at. Can be a local directory or
+        storage_path: [Beta] Path to store results at. Can be a local directory or
             a destination on cloud storage. If Ray storage is set up,
             defaults to the storage location. Otherwise, this defaults to
             the local ``~/ray_results`` directory.
-        stop: Stop conditions to consider. Refer to ray.tune.stopper.Stopper
-            for more info. Stoppers should be serializable.
-        callbacks: Callbacks to invoke.
-            Refer to ray.tune.callback.Callback for more info.
-            Callbacks should be serializable.
-            Currently only stateless callbacks are supported for resumed runs.
-            (any state of the callback will not be checkpointed by Tune
-            and thus will not take effect in resumed runs).
         failure_config: Failure mode configuration.
-        sync_config: Configuration object for syncing. See train.SyncConfig.
         checkpoint_config: Checkpointing configuration.
-        progress_reporter: Progress reporter for reporting
-            intermediate experiment progress. Defaults to CLIReporter if
-            running in command-line, or JupyterNotebookReporter if running in
-            a Jupyter notebook.
+        sync_config: Configuration object for syncing. See train.SyncConfig.
         verbose: 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = default, 2 = verbose. Defaults to 1.
             If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
             uses the old verbosity settings:
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results.
-        log_to_file: Log stdout and stderr to files in
+        stop: Stop conditions to consider. Refer to ray.tune.stopper.Stopper
+            for more info. Stoppers should be serializable.
+        callbacks: [DeveloperAPI] Callbacks to invoke.
+            Refer to ray.tune.callback.Callback for more info.
+            Callbacks should be serializable.
+            Currently only stateless callbacks are supported for resumed runs.
+            (any state of the callback will not be checkpointed by Tune
+            and thus will not take effect in resumed runs).
+        progress_reporter: [DeveloperAPI] Progress reporter for reporting
+            intermediate experiment progress. Defaults to CLIReporter if
+            running in command-line, or JupyterNotebookReporter if running in
+            a Jupyter notebook.
+        log_to_file: [DeveloperAPI] Log stdout and stderr to files in
             trial directories. If this is `False` (default), no files
             are written. If `true`, outputs are written to `trialdir/stdout`
             and `trialdir/stderr`, respectively. If this is a single string,
@@ -773,13 +766,13 @@ class RunConfig:
     name: Optional[str] = None
     storage_path: Optional[str] = None
     storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
-    callbacks: Optional[List["Callback"]] = None
-    stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure_config: Optional[FailureConfig] = None
-    sync_config: Optional["SyncConfig"] = None
     checkpoint_config: Optional[CheckpointConfig] = None
-    progress_reporter: Optional["ProgressReporter"] = None
+    sync_config: Optional["SyncConfig"] = None
     verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = None
+    stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
+    callbacks: Optional[List["Callback"]] = None
+    progress_reporter: Optional["ProgressReporter"] = None
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
     # Deprecated

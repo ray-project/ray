@@ -233,7 +233,7 @@ class TrainReportCallback(TrainerCallback):
         self._report()
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RayTrainReportCallback(TrainerCallback):
     """A simple callback to report checkpoints and metrics to Ray Tarin.
 
@@ -297,7 +297,7 @@ class RayTorchIterableDataset(IterableDataset):
         return iter(self.data_iterable)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def prepare_trainer(trainer: "Trainer") -> "Trainer":
     """Prepare your HuggingFace Transformer Trainer for Ray Train.
 
