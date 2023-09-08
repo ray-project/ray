@@ -25,7 +25,7 @@ s3://my_bucket/4/model.pt
 ```
 
 Define a multiplexed deployment:
-```{literalinclude} ../doc_code/multiplexed.py
+```{literalinclude} doc_code/multiplexed.py
 :language: python
 :start-after: __serve_deployment_example_begin__
 :end-before: __serve_deployment_example_end__
@@ -47,8 +47,8 @@ Internally, serve router will route the traffic to the corresponding replica bas
 If all replicas holding the model are over-subscribed, ray serve sends the request to a new replica that doesn't have the model loaded. The replica will load the model from the s3 bucket and cache it.
 :::
 
-To send a request to a specific model, include the field `serve_multiplexed_model_id` in the request header, and set the value to the model ID to which you want to send the request.
-```{literalinclude} ../doc_code/multiplexed.py
+To send a request to a specific model, include the `serve_multiplexed_model_id` field in the request header, and set the value to the model ID to which you want to send the request.
+```{literalinclude} doc_code/multiplexed.py
 :language: python
 :start-after: __serve_request_send_example_begin__
 :end-before: __serve_request_send_example_end__
@@ -75,14 +75,14 @@ INFO 2023-05-24 01:19:16,993 default_Model default_Model#rimNjA WzjTbJvbPN / def
 ```
 
 You can also send a request to a specific model by using handle {mod}`options <ray.serve.handle.RayServeHandle>` API.
-```{literalinclude} ../doc_code/multiplexed.py
+```{literalinclude} doc_code/multiplexed.py
 :language: python
 :start-after: __serve_handle_send_example_begin__
 :end-before: __serve_handle_send_example_end__
 ```
 
 When using model composition, you can send requests from an upstream deployment to a multiplexed deployment using the Serve DeploymentHandle. You need to set the `multiplexed_model_id` in the options. For example:
-```{literalinclude} ../doc_code/multiplexed.py
+```{literalinclude} doc_code/multiplexed.py
 :language: python
 :start-after: __serve_model_composition_example_begin__
 :end-before: __serve_model_composition_example_end__
