@@ -99,6 +99,12 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(io_service),
       get_time_(get_time) {
+  if (RayConfig::instance().worker_maximum_startup_concurrency() > 0) {
+    // Overwrite the maximum concurrency.
+    maximum_startup_concurrency_ =
+        RayConfig::instance().worker_maximum_startup_concurrency();
+  }
+
   RAY_CHECK(maximum_startup_concurrency > 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -1361,16 +1367,21 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.worker_processes.find(worker->GetStartupToken());
   if (it != state.worker_processes.end()) {
+    const auto serialized_runtime_env =
+        it->second.runtime_env_info.serialized_runtime_env();
     if (it->second.is_pending_registration) {
       // Worker is either starting or started,
       // if it's not started, we should remove it from starting.
       it->second.is_pending_registration = false;
       if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
+        // This may add new workers to state.worker_processes
+        // and invalidate the iterator, do not use `it`
+        // after this call.
         TryPendingPopWorkerRequests(worker->GetLanguage());
       }
     }
 
-    DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
+    DeleteRuntimeEnvIfPossible(serialized_runtime_env);
     RemoveWorkerProcess(state, worker->GetStartupToken());
   }
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));

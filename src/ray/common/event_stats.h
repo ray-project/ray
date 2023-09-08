@@ -43,7 +43,7 @@ struct GlobalStats {
 /// A mutex wrapper around a handler stats struct.
 struct GuardedEventStats {
   // Stats for some handler.
-  EventStats stats GUARDED_BY(mutex);
+  EventStats stats ABSL_GUARDED_BY(mutex);
 
   // The mutex protecting the reading and writing of these stats.
   // This mutex should be acquired with a reader lock before reading, and should be
@@ -54,7 +54,7 @@ struct GuardedEventStats {
 /// A mutex wrapper around a handler stats struct.
 struct GuardedGlobalStats {
   // Stats over all handlers.
-  GlobalStats stats GUARDED_BY(mutex);
+  GlobalStats stats ABSL_GUARDED_BY(mutex);
 
   // The mutex protecting the reading and writing of these stats.
   // This mutex should be acquired with a reader lock before reading, and should be
@@ -132,21 +132,21 @@ class EventTracker {
   /// \param event_name The name of the event whose stats should be returned.
   /// \return A snapshot view of the event's stats.
   absl::optional<EventStats> get_event_stats(const std::string &event_name) const
-      LOCKS_EXCLUDED(mutex_);
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns snapshot views of the count, queueing, and execution statistics for all
   /// events.
   ///
   /// \return A vector containing snapshot views of stats for all events.
   std::vector<std::pair<std::string, EventStats>> get_event_stats() const
-      LOCKS_EXCLUDED(mutex_);
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Builds and returns a statistics summary string. Used by the DebugString() of
   /// objects that used this io_context wrapper, such as the raylet and the core worker.
   ///
   /// \return A stats summary string, suitable for inclusion in an object's
   /// DebugString().
-  std::string StatsString() const LOCKS_EXCLUDED(mutex_);
+  std::string StatsString() const ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   using EventStatsTable =
@@ -163,7 +163,7 @@ class EventTracker {
 
   /// Table of per-handler post stats.
   /// We use a std::shared_ptr value in order to ensure pointer stability.
-  EventStatsTable post_handler_stats_ GUARDED_BY(mutex_);
+  EventStatsTable post_handler_stats_ ABSL_GUARDED_BY(mutex_);
 
   /// Protects access to the per-handler post stats table.
   mutable absl::Mutex mutex_;

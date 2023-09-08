@@ -145,7 +145,7 @@ $ python arithmetic_client.py
 
 Ray Serve provides the `DAGDriver`, which routes HTTP requests through your call graph. As mentioned in [the call graph section](deployment-graph-call-graph), the `DAGDriver` takes in a `DeploymentNode` and it produces a `ClassNode` that you can run.
 
-The `DAGDriver` also has an optional keyword argument: `http_adapter`. [HTTP adapters](serve-http-adapters) are functions that get run on the HTTP request before it's passed into the graph. Ray Serve provides a handful of these adapters, so you can rely on them to conveniently handle the HTTP parsing while focusing your attention on the graph itself.
+The `DAGDriver` also has an optional keyword argument: `http_adapter`. HTTP adapters are functions that get run on the HTTP request before it's passed into the graph. Ray Serve provides a handful of these adapters, so you can rely on them to conveniently handle the HTTP parsing while focusing your attention on the graph itself.
 
 For instance, you can use the Ray Serve-provided `json_request` adapter to simplify the [arithmetic call graph](deployment-graph-arithmetic-graph) by eliminating the `unpack_request` function. You can replace lines 29 through 38 with this graph:
 
@@ -165,8 +165,6 @@ At runtime:
 3. The `DAGDriver` passes the `http_adapter` output to the same function and methods that the `InputNode` is passed into, kicking off the request's journey through the call graph.
 
 In the example above, the `InputNode` represents the number packaged inside the request's JSON body instead of the HTTP request itself. You can pass the JSON directly into the graph instead of first unpacking it from the request.
-
-See [the guide](serve-http-adapters) on `http_adapters` to learn more.
 
 (deployment-graph-call-graph-testing)=
 ## Testing the Graph with the Python API
@@ -277,7 +275,3 @@ On the other hand, when the script visualizes the final graph output, `combine_o
 
 ### Visualizing the Graph with Gradio
 Another option is to visualize your deployment graph through Gradio. Check out the [Graph Visualization with Gradio Tutorial](serve-gradio-dag-visualization) to learn how to interactively run your deployment graph through the Gradio UI and see the intermediate outputs of each node in real time as they finish evaluation.
-
-# Next Steps
-
-To learn more about deployment graphs, check out some [deployment graph patterns](serve-deployment-graph-patterns-overview) you can incorporate into your own graph!
