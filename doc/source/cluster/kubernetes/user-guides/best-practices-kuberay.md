@@ -1,4 +1,4 @@
-(best-practices-kuberay)=
+(kuberay-storage)=
 
 # Best practices for dependencies and storage with KubeRay
 
