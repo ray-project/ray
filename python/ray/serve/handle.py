@@ -3,6 +3,7 @@ import concurrent.futures
 from dataclasses import dataclass
 import threading
 from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tuple, Union
+import warnings
 
 import ray
 from ray.util import metrics
@@ -161,6 +162,18 @@ class _DeploymentHandleBase:
                 availability_zone = cluster_node_info_cache.get_node_az(node_id)
             except Exception:
                 availability_zone = None
+
+            if not self.__class__ == DeploymentHandle:
+                warnings.warn(
+                    "Ray 2.7 introduces a new `DeploymentHandle` API that will "
+                    "replace the existing `RayServeHandle` and `RayServeSyncHandle` "
+                    "APIs in a future release. You are encouraged to migrate to the "
+                    "new API to avoid breakages in the future. To opt in, either use "
+                    "`handle.options(use_new_handle_api=True)` or set the global "
+                    "environment variable `export RAY_SERVE_ENABLE_NEW_HANDLE_API=1`. "
+                    "See https://docs.ray.io/en/latest/serve/model_composition.html "
+                    "for more details."
+                )
 
             self._router = Router(
                 serve.context._get_global_client()._controller,
