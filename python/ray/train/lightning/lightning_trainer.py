@@ -14,7 +14,7 @@ from ray.train import DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
-from ray.util import PublicAPI
+from ray.util.annotations import Deprecated
 from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
     RayFSDPStrategy,
@@ -31,7 +31,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+LIGHTNING_CONFIG_BUILDER_DEPRECATION_MESSAGE = (
+    "The LightningConfigBuilder will be hard deprecated in Ray 2.8. "
+    "Use TorchTrainer instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-pytorch-lightning.html#lightningtrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
+
+
+@Deprecated(message=LIGHTNING_CONFIG_BUILDER_DEPRECATION_MESSAGE, warning=True)
 class LightningConfigBuilder:
     """Configuration Class to pass into LightningTrainer.
 
@@ -221,7 +229,15 @@ class LightningConfigBuilder:
         return config_dict
 
 
-@PublicAPI(stability="alpha")
+LIGHTNING_TRAINER_DEPRECATION_MESSAGE = (
+    "The LightningTrainer will be hard deprecated in Ray 2.8. "
+    "Use TorchTrainer instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-pytorch-lightning.html#lightningtrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
+
+
+@Deprecated(message=LIGHTNING_TRAINER_DEPRECATION_MESSAGE, warning=True)
 class LightningTrainer(TorchTrainer):
     """A Trainer for data parallel PyTorch Lightning training.
 
@@ -399,6 +415,7 @@ class LightningTrainer(TorchTrainer):
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ):
+
         run_config = copy(run_config) or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()
 
