@@ -2,7 +2,7 @@
 import time
 
 from ray import serve
-from ray.serve.handle import RayServeHandle, DeploymentHandle
+from ray.serve.handle import DeploymentHandle
 
 
 @serve.deployment
@@ -27,7 +27,7 @@ class HeavyLoad:
 
 @serve.deployment
 class Driver:
-    def __init__(self, a_handle: RayServeHandle, b_handle: RayServeHandle):
+    def __init__(self, a_handle, b_handle):
         self.a_handle: DeploymentHandle = a_handle.options(use_new_handle_api=True)
         self.b_handle: DeploymentHandle = b_handle.options(use_new_handle_api=True)
 

@@ -14,7 +14,7 @@ In this section, we go into more detail about Serve autoscaling concepts as well
 
 To define what the steady state of your deployments should be, set values for `target_num_ongoing_requests_per_replica` and `max_concurrent_queries`.
 
-#### target_num_ongoing_requests_per_replica [default=1]
+#### **target_num_ongoing_requests_per_replica [default=1]**
 Serve scales the number of replicas for a deployment up or down based on the average number of ongoing requests per replica. Specifically, Serve compares the *actual* number of ongoing requests per replica with the target value you set in the autoscaling config and makes upscale or downscale decisions from that. The target value is set by `target_num_ongoing_requests_per_replica`, and Serve tries to make sure that each replica has roughly that number
 of requests being processed and waiting in the queue. 
 
@@ -24,7 +24,7 @@ It is always recommended to load test your workloads. For example, if the use ca
 As an example, suppose you have two replicas of a synchronous deployment that has 100ms latency, serving a traffic load of 30 QPS. Then requests are assigned to replicas faster than the replicas can finish processing them; more and more requests are queued up at the replica (these are considered "ongoing requests") as time goes on, and then the average number of ongoing requests at each replica steadily increases. Latency will also increase since new requests have to wait for old requests to finish processing. If you set `target_num_ongoing_requests_per_replica = 1`, Serve detects a higher than desired number of ongoing requests per replica, and adds more replicas. At 3 replicas, your system would be able to process 30 QPS with 1 ongoing request per replica on average.
 :::
 
-#### max_concurrent_queries [default=100]
+#### **max_concurrent_queries [default=100]**
 There is also a maximum queue limit that is proxies respect when assigning requests to replicas. The limit is defined by `max_concurrent_queries`. We recommend setting `max_concurrent_queries` to ~20 to 50% higher than `target_num_ongoing_requests_per_replica`. Note that `target_num_ongoing_requests_per_replica` should always be strictly less than `max_concurrent_queries`, otherwise the deployment never scales up. Take into account the following when setting `max_concurrent_queries`:
 
 - Setting it too low limits upscaling. For instance, if your target value is 50 and `max_concurrent_queries` is 51, then even if the traffic increases significantly, the requests will queue up at the proxy instead of at the replicas. As a result, the autoscaler only increases the number of replicas at most 2% at a time, which is very slow.
@@ -121,6 +121,16 @@ First consider the following deployment configurations. Because the driver deplo
 
 :::
 
+:::{tab-item} Application Code
+
+```{literalinclude} doc_code/autoscale_model_comp_example.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
+```
+
+:::
+
 ::::
 
 
@@ -139,7 +149,7 @@ However, the service latency rises to 400+ ms when the number of Locust users in
 | ------- | --- |
 | ![comp_latency](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_comp_latency.svg) | ![comp_rps](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_comp_rps.svg) |
 
-Note that the number of `HeavyLoad` replicas should roughly match the number of Locust users to adequately serve the Locust traffic. However, when the number of Locust users increased to 100, the `HeavyLoad` deployment struggled to reach 100 replicas, and instead only reached 65 replicas. The per-deployment latencies reveal the root cause. While `HeavyLoad` and `LightLoad` latencies stayed steady at 200ms and 100ms, `Driver` latencies rose from 220 to 400+ ms. This suggests that the high Locust workload may be overwhelming the `Driver` replica, potentially by impacting the asynchronous event loop's performance.
+Note that the number of `HeavyLoad` replicas should roughly match the number of Locust users to adequately serve the Locust traffic. However, when the number of Locust users increased to 100, the `HeavyLoad` deployment struggled to reach 100 replicas, and instead only reached 65 replicas. The per-deployment latencies reveal the root cause. While `HeavyLoad` and `LightLoad` latencies stayed steady at 200ms and 100ms, `Driver` latencies rose from 220 to 400+ ms. This suggests that the high Locust workload may be overwhelming the `Driver` replica and impacting the asynchronous event loop's performance.
 
 
 ### Attempt 2: Autoscale `Driver`
