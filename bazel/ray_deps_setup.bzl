@@ -220,10 +220,10 @@ def ray_deps_setup():
     # This is how diamond dependencies are prevented.
     auto_http_archive(
         name = "com_google_absl",
-        sha256 = "5366d7e7fa7ba0d915014d387b66d0d002c03236448e1ba9ef98122c13b35c36",
-        strip_prefix = "abseil-cpp-20230125.3",
+        sha256 = "59d2976af9d6ecf001a81a35749a6e551a335b949d34918cfade07737b9d93c5",
+        strip_prefix = "abseil-cpp-20230802.0",
         urls = [
-            "https://github.com/abseil/abseil-cpp/archive/20230125.3.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.0.tar.gz",
         ],
     )
 
