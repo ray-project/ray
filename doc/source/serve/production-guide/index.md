@@ -16,7 +16,7 @@ For deploying on VMs instead of Kubernetes, see [Deploy on VM](serve-in-producti
 
 (serve-in-production-example)=
 
-## Working example: Text Summarization and Translation Application
+## Working example: Text summarization and translation application
 
 Throughout the production guide, we will use the following Serve application as a working example.
 The application takes in a string of text in English, then summarizes and translates it into French (default), German, or Romanian.
@@ -27,7 +27,7 @@ The application takes in a string of text in English, then summarizes and transl
 :end-before: __example_end__
 ```
 
-Save this code locally in `text_ml.py` to follow along.
+Save this code locally in `text_ml.py`.
 In development, we would likely use the `serve run` command to iteratively run, develop, and repeat (see the [Development Workflow](serve-dev-workflow) for more information).
 When we're ready to go to production, we will generate a structured [config file](serve-in-production-config-file) that acts as the single source of truth for the application.
 
@@ -37,7 +37,7 @@ $ serve build text_ml:app -o serve_config.yaml
 ```
 
 The generated version of this file contains an `import_path`, `runtime_env`, and configuration options for each deployment in the application.
-The application needs the `torch` and `transformers` packages, so modify the `runtime_env` field of the generated config to include these two pip packages. Save this config locally in `serve_config.yaml` to follow along.
+The application needs the `torch` and `transformers` packages, so modify the `runtime_env` field of the generated config to include these two pip packages. Save this config locally in `serve_config.yaml`.
 
 ```yaml
 proxy_location: EveryNode
@@ -97,7 +97,7 @@ applications:
         message: ''
 ```
 
-You can test the application using Python `requests`:
+Test the application using Python `requests`:
 
 ```{literalinclude} ../doc_code/production_guide/text_ml.py
 :language: python

@@ -9,7 +9,7 @@ When running locally, this path might be in your current working directory.
 However, when running on a cluster you also need to make sure the path is importable.
 Build the code into the cluster's container image (see [Cluster Configuration](kuberay-config) for more details) or use a `runtime_env` with a [remote URI](remote-uris) that hosts the code in remote storage.
 
-As an example, we have [pushed a copy of the Text ML Models application to GitHub](https://github.com/ray-project/serve_config_examples/blob/master/text_ml.py). You can use this config file to deploy the text summarization and translation application to your own Ray cluster even if you don't have the code locally:
+For an example, see the [Text ML Models application on GitHub](https://github.com/ray-project/serve_config_examples/blob/master/text_ml.py). You can use this config file to deploy the text summarization and translation application to your own Ray cluster even if you don't have the code locally:
 
 ```yaml
 import_path: text_ml:app

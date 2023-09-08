@@ -55,9 +55,9 @@ When the `RayService` is created, the `KubeRay` controller first creates a Ray c
 Then, once the cluster is running, it deploys the Serve application to the cluster using the [REST API](serve-in-production-deploying).
 The controller also creates a Kubernetes Service that can be used to route traffic to the Serve application.
 
-Let's see this in action by deploying the [Text ML example](serve-in-production-example).
-The Serve config for the example is embedded into [this example `RayService` CR](https://github.com/ray-project/kuberay/blob/5b1a5a11f5df76db2d66ed332ff0802dc3bbff76/ray-operator/config/samples/ray-service.text-ml.yaml).
-To follow along, save this CR locally in a file named `ray-service.text-ml.yaml`:
+To see an example, deploy the [Text ML example](serve-in-production-example).
+The Serve config for the example is embedded into [this sample `RayService` CR](https://github.com/ray-project/kuberay/blob/5b1a5a11f5df76db2d66ed332ff0802dc3bbff76/ray-operator/config/samples/ray-service.text-ml.yaml).
+Save this CR locally to a file named `ray-service.text-ml.yaml`:
 
 :::{note}
 - The example `RayService` uses very low `numCpus` values for demonstration purposes. In production, provide more resources to the Serve application.
@@ -164,7 +164,7 @@ There are two types of updates that can occur:
 
 ### Example: Serve config update
 
-In the Text ML example above, let's change the language of the Translator in the Serve config to German:
+In the Text ML example above, change the language of the Translator in the Serve config to German:
 
 ```yaml
   - name: Translator
@@ -188,7 +188,7 @@ $ kubectl describe rayservice rayservice-sample
 ...
 ```
 
-If we query the application, we can see that we now get a different translation in German:
+Query the application to see a different translation in German:
 
 ```console
 $ curl -X POST -H "Content-Type: application/json" localhost:8000 -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'

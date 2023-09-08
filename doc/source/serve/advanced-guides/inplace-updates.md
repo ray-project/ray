@@ -11,7 +11,7 @@ You can update your Serve applications once they're in production by updating th
 Lightweight config updates modify running deployment replicas without tearing them down and restarting them, so there's less downtime as the deployments update. For each deployment, modifying the following values is considered a lightweight config update, and won't tear down the replicas for that deployment:
 - `num_replicas`
 - `autoscaling_config`
-- `user_config`
+- **`user_config`**
 - `max_concurrent_queries`
 - `graceful_shutdown_timeout_s`
 - `graceful_shutdown_wait_loop_s`
@@ -20,8 +20,8 @@ Lightweight config updates modify running deployment replicas without tearing th
 
 (serve-updating-user-config)=
 
-## Updating User Config
-Let's use the text summarization and translation application [from the production guide](production-config-yaml) as an example. Both of the individual deployments contain a `reconfigure()` method. This method allows us to issue lightweight updates to our deployments by updating the `user_config`.
+## Updating the user config
+This example uses the text summarization and translation application [from the production guide](production-config-yaml). Both of the individual deployments contain a `reconfigure()` method. This method allows you to issue lightweight updates to the deployments by updating the `user_config`.
 
 First let's deploy the graph. Make sure to stop any previous Ray cluster using the CLI command `ray stop` for this example:
 
@@ -37,7 +37,7 @@ Then send a request to the application:
 :end-before: __end_client__
 ```
 
-Now, let's change the language that the text is translated into from French to German. We can change the `language` attribute in the `Translator` user config:
+Change the language that the text is translated into from French to German by changing the `language` attribute in the `Translator` user config:
 
 ```yaml
 ...
@@ -59,7 +59,7 @@ applications:
 ...
 ```
 
-Without stopping the Ray cluster, we can redeploy our app using `serve deploy`:
+Without stopping the Ray cluster, redeploy the app using `serve deploy`:
 
 ```console
 $ serve deploy serve_config.yaml
@@ -90,7 +90,7 @@ applications:
         message: ''
 ```
 
-The language has updated! Now the returned text is in German instead of French.
+The language has updated. Now the returned text is in German instead of French.
 ```{literalinclude} ../doc_code/production_guide/text_ml.py
 :language: python
 :start-after: __start_second_client__

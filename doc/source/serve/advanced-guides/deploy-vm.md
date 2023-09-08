@@ -12,7 +12,7 @@ This section should help you:
 - understand how to update your application using the CLI.
 - understand how to deploy to a remote cluster started with the [Ray Cluster Launcher](cloud-vm-index).
 
-Let's start by deploying the [config for the Text ML Application example](production-config-yaml):
+Start by deploying this [config](production-config-yaml) for the Text ML Application [example](serve-in-production-example):
 
 ```console
 $ ls
@@ -29,7 +29,7 @@ Sent deploy request successfully!
  * Use `serve config` to see the running app's config.
 ```
 
-`ray start --head` starts a long-lived Ray cluster locally. `serve deploy serve_config.yaml` deploys the `serve_config.yaml` file to this local cluster. To stop your Ray cluster, you can run the CLI command `ray stop`.
+`ray start --head` starts a long-lived Ray cluster locally. `serve deploy serve_config.yaml` deploys the `serve_config.yaml` file to this local cluster. To stop Ray cluster, run the CLI command `ray stop`.
 
 The message `Sent deploy request successfully!` means:
 * The Ray cluster has received your config file successfully.
