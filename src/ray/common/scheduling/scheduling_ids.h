@@ -37,6 +37,7 @@ enum PredefinedResourcesEnum {
   MEM,
   GPU,
   OBJECT_STORE_MEM,
+  NODE_WORKERS,
   PredefinedResourcesEnum_MAX
 };
 
@@ -174,6 +175,12 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
   bool IsImplicitResource() const {
     return !IsPredefinedResource() && absl::StartsWith(Binary(), kImplicitResourcePrefix);
   }
+
+  // Dummy resource for leased workers.
+  static const ResourceID &NodeWorkers() {
+    static const ResourceID node_workers(PredefinedResourcesEnum::NODE_WORKERS);
+    return node_workers;
+  };
 
   /// Resource ID of CPU.
   static ResourceID CPU() { return ResourceID(PredefinedResourcesEnum::CPU); }

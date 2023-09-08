@@ -108,6 +108,12 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
+  void SetNodeWorkersIdle() { SetResourceIdle(scheduling::ResourceID::NodeWorkers()); }
+
+  void SetNodeWorkersNonIdle() {
+    SetResourceNonIdle(scheduling::ResourceID::NodeWorkers());
+  }
+
   double GetLocalAvailableCpus() const;
 
   /// Return human-readable string for this scheduler state.

@@ -224,6 +224,25 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::function<void()> &on_all_replied);
 
  private:
+  template <typename T>
+  void ReleaseWorker(T &&worker_id) {
+    leased_workers_.erase(worker_id);
+    UpdateEmptyLease();
+  }
+
+  void ReleaseWorkers(std::vector<WorkerID> &worker_ids) {
+    for (auto &it : worker_ids) {
+      leased_workers_.erase(it);
+    }
+    UpdateEmptyLease();
+  }
+
+  inline void UpdateEmptyLease() {
+    if (leased_workers_.empty()) {
+      cluster_resource_scheduler_->GetLocalResourceManager().SetNodeWorkersIdle();
+    }
+  }
+
   /// If the primary objects' usage is over the threshold
   /// specified in RayConfig, spill objects up to the max
   /// throughput.

@@ -35,7 +35,7 @@ RAY_CONFIG(bool, event_stats_metrics, false)
 RAY_CONFIG(bool, legacy_scheduler_warnings, false)
 
 /// Whether to enable cluster authentication.
-RAY_CONFIG(bool, enable_cluster_auth, false)
+RAY_CONFIG(bool, enable_cluster_auth, true)
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available to
