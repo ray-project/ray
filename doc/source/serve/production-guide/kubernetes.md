@@ -123,31 +123,6 @@ $ kubectl describe rayservice rayservice-sample
 Status:
   Active Service Status:
     Application Statuses:
-      math_app:
-        Health Last Update Time:  2023-09-07T01:21:30Z
-        Last Update Time:         2023-09-07T01:21:30Z
-        Serve Deployment Statuses:
-          math_app_Adder:
-            Health Last Update Time:  2023-09-07T01:21:30Z
-            Last Update Time:         2023-09-07T01:21:30Z
-            Status:                   HEALTHY
-          math_app_DAGDriver:
-            Health Last Update Time:  2023-09-07T01:21:30Z
-            Last Update Time:         2023-09-07T01:21:30Z
-            Status:                   HEALTHY
-          math_app_Multiplier:
-            Health Last Update Time:  2023-09-07T01:21:30Z
-            Last Update Time:         2023-09-07T01:21:30Z
-            Status:                   HEALTHY
-          math_app_Router:
-            Health Last Update Time:  2023-09-07T01:21:30Z
-            Last Update Time:         2023-09-07T01:21:30Z
-            Status:                   HEALTHY
-          math_app_create_order:
-            Health Last Update Time:  2023-09-07T01:21:30Z
-            Last Update Time:         2023-09-07T01:21:30Z
-            Status:                   HEALTHY
-        Status:                       RUNNING
       text_ml_app:
         Health Last Update Time:  2023-09-07T01:21:30Z
         Last Update Time:         2023-09-07T01:21:30Z
