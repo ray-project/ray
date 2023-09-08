@@ -276,13 +276,11 @@ from ray.train import Checkpoint
 from ray.train.torch import TorchTrainer
 from ray.train.lightning import RayTrainReportCallback
 
+
 def train_func_per_worker():
     model = MyLightningModule(...)
     datamodule = MyLightningDataModule(...)
-    trainer = pl.Trainer(
-        ...
-        callbacks=[RayTrainReportCallback()]
-    )
+    trainer = pl.Trainer(..., callbacks=[RayTrainReportCallback()])
 
     checkpoint = train.get_checkpoint()
     if checkpoint:
@@ -291,6 +289,7 @@ def train_func_per_worker():
             trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
     else:
         trainer.fit(model, datamodule=datamodule)
+
 
 # Build a Ray Train Checkpoint
 # Suppose we have a Lightning checkpoint at `s3://bucket/ckpt_dir/checkpoint.ckpt`
