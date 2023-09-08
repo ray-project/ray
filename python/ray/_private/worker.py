@@ -1648,6 +1648,18 @@ def init(
     else:
         logger.info(info_str)
 
+    # terminate any signal before connecting driver
+    def sigterm_handler(signum, frame):
+        sys.exit(signum)
+
+    try:
+        ray._private.utils.set_sigterm_handler(sigterm_handler)
+    except ValueError:
+        logger.warning(
+            "Failed to set SIGTERM handler, processes might"
+            "not be cleaned up properly on exit."
+        )
+
     connect(
         _global_node,
         _global_node.session_name,
@@ -1744,20 +1756,6 @@ def shutdown(_exiting_interpreter: bool = False):
 
 
 atexit.register(shutdown, True)
-
-
-# TODO(edoakes): this should only be set in the driver.
-def sigterm_handler(signum, frame):
-    sys.exit(signum)
-
-
-try:
-    ray._private.utils.set_sigterm_handler(sigterm_handler)
-except ValueError:
-    logger.warning(
-        "Failed to set SIGTERM handler, processes might"
-        "not be cleaned up properly on exit."
-    )
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
