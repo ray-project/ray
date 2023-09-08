@@ -18,7 +18,7 @@ When considering the security responsibilities of running Ray, it helps to think
 ## Best Practices
 **Security and isolation must be enforced outside of the Ray Cluster.** Ray expects to run in a safe network environment and to act upon trusted code. Developers and platform providers must maintain these invariants to ensure the safe operation of Ray Clusters:
 
-### Deploy Ray Clusters in a governed network environment
+### Deploy Ray Clusters in a controlled network environment
 * Network traffic between Ray core components and Ray auxiliary components should always be in a controlled, isolated network. Access to auxiliary services should be gated with strict network controls and/or external authentication/authorization proxies.
 * gRPC communication can be encrypted with TLS, but it is not a replacement for network isolation.
 * Platform providers are responsible for ensuring that Ray runs in sufficiently controlled network environments and that developers can access features like Ray Dashboard in a secure manner.
