@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import os
+import sys
 import time
 from typing import Set, Optional, Tuple, Union
 
@@ -43,6 +44,8 @@ class FakeReplicaWrapper(ReplicaWrapper):
         self._model_ids = model_ids or set()
         self._sleep_time_s = sleep_time_s
 
+        self.get_queue_state_was_cancelled = False
+
     @property
     def replica_id(self) -> str:
         return self._replica_id
@@ -71,19 +74,23 @@ class FakeReplicaWrapper(ReplicaWrapper):
         self._has_queue_len_response.set()
 
     async def get_queue_state(self) -> Tuple[int, bool]:
-        while not self._has_queue_len_response.is_set():
-            await self._has_queue_len_response.wait()
+        try:
+            while not self._has_queue_len_response.is_set():
+                await self._has_queue_len_response.wait()
 
-        if self._sleep_time_s > 0:
-            await asyncio.sleep(self._sleep_time_s)
+            if self._sleep_time_s > 0:
+                await asyncio.sleep(self._sleep_time_s)
 
-        if self._reset_after_response:
-            self._has_queue_len_response.clear()
+            if self._reset_after_response:
+                self._has_queue_len_response.clear()
 
-        if self._exception is not None:
-            raise self._exception
+            if self._exception is not None:
+                raise self._exception
 
-        return self._queue_len, self._accepted
+            return self._queue_len, self._accepted
+        except asyncio.CancelledError:
+            self.get_queue_state_was_cancelled = True
+            raise
 
     def send_query(
         self, query: Query
@@ -93,6 +100,9 @@ class FakeReplicaWrapper(ReplicaWrapper):
 
 @pytest.fixture
 def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
+    if not hasattr(request, "param"):
+        request.param = {}
+
     s = PowerOfTwoChoicesReplicaScheduler(
         get_or_create_event_loop(),
         DeploymentID("TEST_DEPLOYMENT", "TEST_APP"),
@@ -587,6 +597,65 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
     ],
     indirect=True,
 )
+async def test_scheduling_task_cap_hard_limit(pow_2_scheduler, fake_query):
+    """
+    Verify that the number of scheduling tasks never exceeds the hard limit if set.
+    """
+    s = pow_2_scheduler
+    hard_limit = 2
+    s.max_num_scheduling_tasks_cap = hard_limit
+
+    loop = get_or_create_event_loop()
+
+    tasks = []
+    for _ in range(10):
+        tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+
+    done, _ = await asyncio.wait(tasks, timeout=0.1)
+    assert len(done) == 0
+
+    # There should be zero scheduling tasks while there are no replicas.
+    assert s.curr_num_scheduling_tasks == 0
+
+    r1 = FakeReplicaWrapper("r1", reset_after_response=True)
+    r1.set_queue_state_response(0, accepted=False)
+    s.update_replicas([r1])
+
+    done, _ = await asyncio.wait(tasks, timeout=0.1)
+    assert len(done) == 0
+
+    # Now that there is at least one replica available, there should be nonzero
+    # number of tasks running.
+    assert s.curr_num_scheduling_tasks > 0
+    assert s.curr_num_scheduling_tasks == 2
+
+    # Number of tasks should not increase when adding another replica due to the limit.
+    r2 = FakeReplicaWrapper("r2")
+    r2.set_queue_state_response(0, accepted=False)
+    s.update_replicas([r1, r2])
+    assert s.curr_num_scheduling_tasks == hard_limit
+
+    # Number of tasks should decrease as the number of pending queries decreases.
+    for i in range(len(tasks)):
+        r1.set_queue_state_response(0, accepted=True)
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        assert done.pop() == tasks[0]
+        tasks = tasks[1:]
+
+        assert s.curr_num_scheduling_tasks == min(len(tasks), hard_limit)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_scheduler",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
+)
 async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query):
     """
     Verify that if a replica is removed from the active set while the queue length
@@ -1064,7 +1133,31 @@ class TestModelMultiplexing:
             m2_tasks = m2_tasks[1:]
 
 
-if __name__ == "__main__":
-    import sys
+@pytest.mark.asyncio
+async def test_get_queue_state_cancelled_on_timeout(pow_2_scheduler, fake_query):
+    """
+    Verify that `get_queue_state` is cancelled if the `queue_len_response_deadline_s`
+    is reached.
+    """
+    s = pow_2_scheduler
+    s.queue_len_response_deadline_s = 0.001
+    loop = get_or_create_event_loop()
 
+    r1 = FakeReplicaWrapper("r1")
+    s.update_replicas([r1])
+
+    # Attempt to schedule; the replica will be attempted and a timeout will occur
+    # due to the short timeout set above.
+    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0
+
+    # The `get_queue_state` method should be cancelled.
+    assert r1.get_queue_state_was_cancelled
+
+    r1.set_queue_state_response(0, accepted=True)
+    assert (await task) == r1
+
+
+if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
