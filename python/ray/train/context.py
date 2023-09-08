@@ -23,7 +23,7 @@ def _copy_doc(copy_func):
     return wrapped
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class TrainContext:
     """Context for Ray training executions."""
 
@@ -77,7 +77,7 @@ class TrainContext:
         return session.get_storage()
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def get_context() -> TrainContext:
     """Get or create a singleton training context.
 
