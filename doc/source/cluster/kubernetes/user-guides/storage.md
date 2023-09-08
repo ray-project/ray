@@ -11,7 +11,7 @@ However, administrators may still have questions with respect to actual user wor
 * What type of storage system should I set up for artifacts?
 * How do I handle package dependencies for your application?
 
-The answers to these questions will vary between development and production. This table summarizes the recommended setup for both situations:
+The answers to these questions varies between development and production. This table summarizes the recommended setup for both situations:
 
 |   | Interactive Development  | Production  |
 |---|---|---|
