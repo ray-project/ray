@@ -129,6 +129,7 @@ HGETALL 864b004c-6305-42e3-ac46-adfa8eb6f752
 
 In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `ray.io/external-storage-namespace` annotation isn't set for the RayCluster.
 Therefore, KubeRay automatically injects the environment variable `RAY_external_storage_namespace` to all Ray Pods managed by the RayCluster with the RayCluster's UID as the external storage namespace by default.
+See [this section](kuberay-external-storage-namespace) to learn more about the annotation.
 
 ### Step 7: Kill the GCS process in the head Pod
 
@@ -163,6 +164,7 @@ kubectl get pods -l=ray.io/is-ray-node=yes
 
 In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable isn't set in the specifications for either the head Pod or the worker Pod within the RayCluster.
 Therefore, KubeRay automatically injects the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable with the value **600** to the worker Pod and uses the default value **60** for the head Pod.
+The timeout value for worker Pods must be longer than the timeout value for the head Pod so that the worker Pods don't terminate before the head Pod restarts from a failure.
 
 ### Step 8: Access the detached actor again
 
