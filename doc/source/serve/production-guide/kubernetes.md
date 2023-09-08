@@ -16,10 +16,6 @@ A [RayService] CR encapsulates a multi-node Ray Cluster and a Serve application 
 Deploying, upgrading, and getting the status of the application can be done using standard `kubectl` commands.
 This section walks through how to deploy, monitor, and upgrade the [Text ML example](serve-in-production-example) on Kubernetes.
 
-:::{warning}
-Although it's actively developed and maintained, [KubeRay] is still considered alpha, or experimental, so some APIs may be subject to change.
-:::
-
 (serve-installing-kuberay-operator)=
 
 ## Installing the KubeRay operator
@@ -207,7 +203,7 @@ workerGroupSpecs:
 ```
 
 ```console
-$ kubectl apply -f ray_v1alpha1_rayservice.yaml
+$ kubectl apply -f ray-service.text-ml.yaml
 
 $ kubectl describe rayservice rayservice-sample
 ...
