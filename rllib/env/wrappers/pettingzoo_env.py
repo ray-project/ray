@@ -220,6 +220,8 @@ class ParallelPettingZooEnv(MultiAgentEnv):
             "`supersuit.aec_wrappers.pad_action_space(env)`"
         )
 
+        self._agent_ids = set(self.par_env.agents)
+
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         obs, info = self.par_env.reset(seed=seed, options=options)
         return obs, info or {}
