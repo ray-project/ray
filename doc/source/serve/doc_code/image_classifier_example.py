@@ -20,9 +20,7 @@ def downloader(image_url: str):
 @serve.deployment
 class ImageClassifier:
     def __init__(self, downloader):
-        self.downloader: DeploymentHandle = downloader.options(
-            use_new_handle_api=True
-        )
+        self.downloader: DeploymentHandle = downloader.options(use_new_handle_api=True)
         self.model = pipeline(
             "image-classification", model="google/vit-base-patch16-224"
         )
@@ -44,9 +42,7 @@ app = ImageClassifier.options(route_prefix="/classify").bind(downloader.bind())
 @serve.deployment
 class ModifiedImageClassifier:
     def __init__(self, downloader):
-        self.downloader: DeploymentHandle = downloader.options(
-            use_new_handle_api=True
-        )
+        self.downloader: DeploymentHandle = downloader.options(use_new_handle_api=True)
         self.model = pipeline(
             "image-classification", model="google/vit-base-patch16-224"
         )
