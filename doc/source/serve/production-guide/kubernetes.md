@@ -188,7 +188,7 @@ $ kubectl describe rayservice rayservice-sample
 ...
 ```
 
-If we query the application, we can see that we now get a different result reflecting the updated price:
+If we query the application, we can see that we now get a different translation in German:
 
 ```console
 $ curl -X POST -H "Content-Type: application/json" localhost:8000 -d '"It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief"'
@@ -258,5 +258,5 @@ Monitor your Serve application using the Ray Dashboard.
 
 Check out [the end-to-end fault tolerance guide](serve-e2e-ft) to learn more about Serve's failure conditions and how to guard against them.
 
-[KubeRay]: https://ray-project.github.io/kuberay/
+[KubeRay]: kuberay-quickstart
 [RayService]: kuberay-rayservice-quickstart
