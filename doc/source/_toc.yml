@@ -369,6 +369,7 @@ parts:
                   - file: ray-observability/user-guides/debug-apps/ray-debugging
               - file: ray-observability/user-guides/cli-sdk
               - file: ray-observability/user-guides/configure-logging
+              - file: ray-observability/user-guides/profiling
               - file: ray-observability/user-guides/add-app-metrics
               - file: ray-observability/user-guides/ray-tracing
           - file: ray-observability/reference/index
