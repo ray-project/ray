@@ -68,22 +68,23 @@ To opt into the new API, you can either use `handle.options(use_new_handle_api=T
    :nosignatures:
    :toctree: doc/
 
+   serve.start
    serve.run
    serve.delete
    serve.status
+   serve.shutdown
 ```
 
-### Configuring System-level Options
+### Configurations
 
 ```{eval-rst}
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
-   serve.start
    serve.config.ProxyLocation
    serve.config.HTTPOptions
-   serve.shutdown
+   serve.config.AutoscalingConfig
 ```
 
 #### Advanced APIs

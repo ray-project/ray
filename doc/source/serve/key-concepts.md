@@ -47,7 +47,7 @@ For a more comprehensive guide, see the [model composition guide](serve-model-co
 
 (serve-key-concepts-ingress-deployment)=
 
-## Ingress Deployment (HTTP handling)
+## Ingress deployment (HTTP handling)
 
 A Serve application can consist of multiple deployments that can be combined to perform model composition or complex business logic.
 However, one deployment is always the "top-level" one that is passed to `serve.run` to deploy the application.
@@ -77,9 +77,10 @@ This allows you to use the full expressiveness of FastAPI to define more complex
 :language: python
 ```
 
-## What's Next?
+## What's next?
 Now that you have learned the key concepts, you can dive into these guides:
-- [Scaling and allocating resources](scaling-and-resource-allocation)
+- [Resource allocation](serve-resource-allocation)
+- [Autoscaling guide](serve-autoscaling)
 - [Configuring HTTP logic and integrating with FastAPI](http-guide)
 - [Development workflow for Serve applications](serve-dev-workflow)
 - [Composing deployments to perform model composition](serve-model-composition)
