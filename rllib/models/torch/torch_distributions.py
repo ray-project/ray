@@ -322,10 +322,7 @@ class TorchMultiCategorical(Distribution):
     @override(Distribution)
     def kl(self, other: Distribution) -> TensorType:
         kls = torch.stack(
-            [
-                cat.kl(oth_cat)
-                for cat, oth_cat in zip(self._cats, other._cats)
-            ],
+            [cat.kl(oth_cat) for cat, oth_cat in zip(self._cats, other._cats)],
             dim=-1,
         )
         return torch.sum(kls, dim=-1)
