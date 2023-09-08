@@ -20,8 +20,6 @@ from ray import serve
         "min_replicas": 0,
         "initial_replicas": 0,
         "max_replicas": 200,
-        "upscale_delay_s": 30,
-        "downscale_delay_s": 600,
     },
 )
 class Model:

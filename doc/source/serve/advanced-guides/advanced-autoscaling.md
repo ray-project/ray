@@ -14,7 +14,7 @@ In this section, we go into more detail about Serve autoscaling concepts as well
 
 To define what the steady state of your deployments should be, set values for `target_num_ongoing_requests_per_replica` and `max_concurrent_queries`.
 
-#### `target_num_ongoing_requests_per_replica`
+#### `target_num_ongoing_requests_per_replica [default=1]`
 Serve scales the number of replicas for a deployment up or down based on the average number of ongoing requests per replica. Specifically, Serve compares the *actual* number of ongoing requests per replica with the target value you set in the autoscaling config and makes upscale or downscale decisions from that. The target value is set by `target_num_ongoing_requests_per_replica`, and Serve tries to make sure that each replica has roughly that number
 of requests being processed and waiting in the queue. We recommend you benchmark your application code and set this number based on an end-to-end latency objective.
 
@@ -28,7 +28,7 @@ of requests being processed and waiting in the queue. We recommend you benchmark
 As an example, suppose you have two replicas of a synchronous deployment that has 100ms latency, serving a traffic load of 30 QPS. Then requests are assigned to replicas faster than the replicas can finish processing them; more and more requests are queued up at the replica (these are considered "ongoing requests") as time goes on, and then the average number of ongoing requests at each replica steadily increases. If you set `target_num_ongoing_requests_per_replica = 1`, Serve detects a higher than desired number of ongoing requests per replica, and adds more replicas. At 3 replicas, your system would be able to process 30 QPS with 1 ongoing request per replica on average.
 :::
 
-#### `max_concurrent_queries`
+#### `max_concurrent_queries [default=100]`
 There is also a maximum queue limit that is proxies respect when assigning requests to replicas. The limit is defined by `max_concurrent_queries`. We recommend setting `max_concurrent_queries` to ~20 to 50% higher than `target_num_ongoing_requests_per_replica`. Note that `target_num_ongoing_requests_per_replica` should always be strictly less than `max_concurrent_queries`, otherwise the deployment never scales up. Take into account the following when setting `max_concurrent_queries`:
 
 - Setting it too low limits upscaling. For instance, if your target value is 50 and `max_concurrent_queries` is 51, then even if the traffic increases significantly, the requests will queue up at the proxy instead of at the replicas. As a result, the autoscaler only increases the number of replicas at most 2% at a time, which is very slow.
@@ -38,9 +38,9 @@ There is also a maximum queue limit that is proxies respect when assigning reque
 
 To use autoscaling, you need to define the minimum and maximum number of resources allowed for your system.
 
-* **`min_replicas`**: This is the minimum number of replicas for the deployment. If you want to ensure your system can deal with a certain level of traffic at all times, set `min_replicas` to a positive number. On the other hand, if you anticipate periods of no traffic and want to scale to zero to save cost, set `min_replicas = 0`. Note that setting `min_replicas = 0` causes higher tail latencies; when you start sending traffic, the deployment scales up, and there will be a cold start time as Serve waits for replicas to be started to serve the request.
-* **`max_replicas`**: This is the maximum number of replicas for the deployment. This should be greater than `min_replicas`. Ray Serve Autoscaling relies on the Ray Autoscaler to scale up more nodes when the currently available cluster resources (CPUs, GPUs, etc.) are not enough to support more replicas.
-* **`initial_replicas`**: This is the number of replicas that are started initially for the deployment.
+* **`min_replicas [default=1]`**: This is the minimum number of replicas for the deployment. If you want to ensure your system can deal with a certain level of traffic at all times, set `min_replicas` to a positive number. On the other hand, if you anticipate periods of no traffic and want to scale to zero to save cost, set `min_replicas = 0`. Note that setting `min_replicas = 0` causes higher tail latencies; when you start sending traffic, the deployment scales up, and there will be a cold start time as Serve waits for replicas to be started to serve the request.
+* **`max_replicas [default=1]`**: This is the maximum number of replicas for the deployment. This should be greater than `min_replicas`. Ray Serve Autoscaling relies on the Ray Autoscaler to scale up more nodes when the currently available cluster resources (CPUs, GPUs, etc.) are not enough to support more replicas.
+* **`initial_replicas`**: This is the number of replicas that are started initially for the deployment. This defaults to the value for `min_replicas`.
 
 
 ### [Optional] Define how the system reacts to changing traffic
