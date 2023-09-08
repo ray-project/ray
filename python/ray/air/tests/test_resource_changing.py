@@ -143,6 +143,7 @@ def test_gbdt_trainer(ray_start_8_cpus):
         tune_config=TuneConfig(
             mode="min",
             metric="train-logloss",
+            max_concurrent_trials=3,
             scheduler=ResourceChangingScheduler(
                 ASHAScheduler(),
                 resources_allocation_function=DistributeResources(
