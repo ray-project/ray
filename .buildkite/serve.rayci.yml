@@ -3,7 +3,7 @@ steps:
   - label: ":ray-serve: serve: core tests"
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci -- //python/ray/tests/... serve --except-tags worker-container
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serve --except-tags worker-container
     depends_on: servebuild
     job_env: servebuild
 
@@ -11,7 +11,36 @@ steps:
     parallelism: 3
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci -- //python/ray/serve/... serve --except-tags post_wheel_build,gpu,xcommit
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve --except-tags post_wheel_build,gpu,xcommit
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+    depends_on: servebuild
+    job_env: servebuild
+
+  - label: ":ray-serve: serve: serve tests (streaming ff off)"
+    parallelism: 3
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve --except-tags post_wheel_build,gpu,xcommit
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --test-env=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=0
+    depends_on: servebuild
+    job_env: servebuild
+
+  - label: ":ray-serve: serve: serve tests (streaming and routing ff off)"
+    parallelism: 3
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve --except-tags post_wheel_build,gpu,xcommit
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --test-env=RAY_SERVE_ENABLE_NEW_ROUTING=0
+        --test-env=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=0
+    depends_on: servebuild
+    job_env: servebuild
+
+  - label: ":ray-serve: serve: flaky tests"
+    instance_type: medium
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3
     depends_on: servebuild
     job_env: servebuild

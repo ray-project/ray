@@ -213,7 +213,6 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
-      -python/ray/serve:conda_env # pip field in runtime_env not supported
       -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
       -python/ray/serve:test_gcs_failure # Fork not supported in windows
       -python/ray/serve:test_standalone_2 # Multinode not supported on Windows
@@ -348,7 +347,6 @@ build_dashboard_front_end() {
 }
 
 build_sphinx_docs() {
-  _bazel_build_protobuf
   install_ray
 
   (
@@ -397,10 +395,6 @@ _bazel_build_before_install() {
   fi
 }
 
-
-_bazel_build_protobuf() {
-  bazel build "//:install_py_proto"
-}
 
 install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.
