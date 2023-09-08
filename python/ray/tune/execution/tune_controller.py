@@ -351,6 +351,7 @@ class TuneController:
                 "_set_trial_status",
                 "pause_trial",
                 "stop_trial",
+                "_schedule_trial_save",
             },
             executor_whitelist_attr={
                 "has_resources_for_trial",
