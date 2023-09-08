@@ -53,53 +53,6 @@ trainer.fit()
 # __session_data_info_end__
 
 
-# __session_checkpoint_start__
-import json
-import os
-import tempfile
-
-from ray import train
-from ray.train import ScalingConfig, Checkpoint
-from ray.train.data_parallel_trainer import DataParallelTrainer
-
-
-def train_fn(config):
-    checkpoint = train.get_checkpoint()
-
-    if checkpoint:
-        with checkpoint.as_directory() as checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, "checkpoint.json"), "r") as f:
-                state = json.load(f)
-            state["step"] += 1
-    else:
-        state = {"step": 0}
-
-    for i in range(state["step"], 10):
-        state["step"] += 1
-        with tempfile.TemporaryDirectory() as tempdir:
-            with open(os.path.join(tempdir, "checkpoint.json"), "w") as f:
-                json.dump(state, f)
-
-            train.report(
-                metrics={"step": state["step"], "loss": (100 - i) / 100},
-                checkpoint=Checkpoint.from_directory(tempdir),
-            )
-
-
-example_checkpoint_dir = tempfile.mkdtemp()
-with open(os.path.join(example_checkpoint_dir, "checkpoint.json"), "w") as f:
-    json.dump({"step": 4}, f)
-
-trainer = DataParallelTrainer(
-    train_loop_per_worker=train_fn,
-    scaling_config=ScalingConfig(num_workers=1),
-    resume_from_checkpoint=Checkpoint.from_directory(example_checkpoint_dir),
-)
-trainer.fit()
-
-# __session_checkpoint_end__
-
-
 # __run_config_start__
 from ray.train import RunConfig
 from ray.air.integrations.wandb import WandbLoggerCallback
@@ -120,12 +73,12 @@ run_config = RunConfig(
 # __failure_config_start__
 from ray.train import RunConfig, FailureConfig
 
-run_config = RunConfig(
-    failure_config=FailureConfig(
-        # Tries to recover a run up to this many times.
-        max_failures=2
-    )
-)
+
+# Tries to recover a run up to this many times.
+run_config = RunConfig(failure_config=FailureConfig(max_failures=2))
+
+# No limit on the number of retries.
+run_config = RunConfig(failure_config=FailureConfig(max_failures=-1))
 # __failure_config_end__
 
 # __checkpoint_config_start__
@@ -201,7 +154,6 @@ print("Results location", result_path)
 # __result_path_end__
 
 
-# TODO(justinvyu): Re-enable this after updating all of doc_code.
 # __result_restore_start__
 from ray.train import Result
 
