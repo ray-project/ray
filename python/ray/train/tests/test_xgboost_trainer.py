@@ -66,7 +66,6 @@ class ScalingConfigAssertingXGBoostTrainer(XGBoostTrainer):
     def training_loop(self) -> None:
         pgf = train.get_context().get_trial_resources()
         assert pgf.strategy == "SPREAD"
-        assert pgf._kwargs["_max_cpu_fraction_per_node"] == 0.9
         return super().training_loop()
 
 
@@ -78,7 +77,6 @@ def test_fit_with_advanced_scaling_config(ray_start_4_cpus):
         scaling_config=ScalingConfig(
             num_workers=2,
             placement_strategy="SPREAD",
-            _max_cpu_fraction_per_node=0.9,
         ),
         label_column="target",
         params=params,

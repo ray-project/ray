@@ -56,7 +56,7 @@ def get_worker_root_device():
         return devices
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RayDDPStrategy(DDPStrategy):
     """Subclass of DDPStrategy to ensure compatibility with Ray orchestration.
 
@@ -80,7 +80,7 @@ class RayDDPStrategy(DDPStrategy):
         )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RayFSDPStrategy(FSDPStrategy):
     """Subclass of FSDPStrategy to ensure compatibility with Ray orchestration.
 
@@ -123,7 +123,7 @@ class RayFSDPStrategy(FSDPStrategy):
             return super().lightning_module_state_dict()
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RayDeepSpeedStrategy(DeepSpeedStrategy):
     """Subclass of DeepSpeedStrategy to ensure compatibility with Ray orchestration.
 
@@ -147,7 +147,7 @@ class RayDeepSpeedStrategy(DeepSpeedStrategy):
         )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RayLightningEnvironment(LightningEnvironment):
     """Setup Lightning DDP training environment for Ray cluster."""
 
@@ -179,7 +179,7 @@ class RayLightningEnvironment(LightningEnvironment):
         pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
     """Prepare the PyTorch Lightning Trainer for distributed execution."""
 
@@ -209,7 +209,7 @@ def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
     return trainer
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RayTrainReportCallback(Callback):
     """A simple callback that reports checkpoints to Ray on train epoch end."""
 
