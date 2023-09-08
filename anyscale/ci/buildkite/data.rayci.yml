@@ -1,0 +1,45 @@
+group: runtime data tests
+steps:
+  - label: ":database: data: runtime arrow 6 tests"
+    instance_type: medium
+    parallelism: 3
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data
+        --parallelism-per-worker 3
+        --build-name data6build
+        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
+    depends_on: data6build
+    job_env: data6build
+
+  - label: ":database: data: runtime arrow 12 tests"
+    instance_type: medium
+    parallelism: 3
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data 
+        --parallelism-per-worker 3
+        --build-name data12build
+        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
+    depends_on: data12build
+    job_env: data12build
+
+  - label: ":database: data: runtime arrow nightly tests"
+    instance_type: medium
+    parallelism: 3
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data
+        --parallelism-per-worker 3
+        --build-name datanbuild
+        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
+    depends_on: datanbuild
+    job_env: datanbuild
+
+  - label: ":database: data: runtime bulk executor tests"
+    instance_type: medium
+    parallelism: 3
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data
+        --parallelism-per-worker 3
+        --build-name databbuild
+        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
+    depends_on: databbuild
+    job_env: databbuild

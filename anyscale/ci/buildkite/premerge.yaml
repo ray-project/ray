@@ -17,52 +17,6 @@ steps:
       automatic:
         limit: 1
 
-  - name: "ci test base image"
-    key: "ci-test-base-image"
-    command:
-      - source anyscale/ci/setup-env.sh
-      - /bin/bash anyscale/ci/build-ci-test-base-image.sh
-    agents:
-      queue: "large"
-    retry:
-      automatic:
-        limit: 1
-  
-  - name: "ci ml image"
-    key: "ci-ml-image"
-    depends_on: "ci-test-base-image"
-    command:
-      - source anyscale/ci/setup-env.sh
-      - /bin/bash anyscale/ci/build-ci-ml-image.sh
-    agents:
-      queue: "large"
-    retry:
-      automatic:
-        limit: 1
-
-  - group: "data tests"
-    steps:
-    - name: "Data tests (Arrow 6)"
-      depends_on: "ci-ml-image"
-      command:
-        - source anyscale/ci/setup-env.sh
-        - /bin/bash anyscale/ci/run-tests-in-docker.sh data "6.0.1"
-      agents:
-        queue: "large"
-      retry:
-        automatic:
-          limit: 1
-    - name: "Data tests (Arrow 12)"
-      depends_on: "ci-ml-image"
-      command:
-        - source anyscale/ci/setup-env.sh
-        - /bin/bash anyscale/ci/run-tests-in-docker.sh data "12"
-      agents:
-        queue: "large"
-      retry:
-        automatic:
-          limit: 1
-
   - group: "wheels and container images (aarch64)"
     if: build.env("RUNTIME_BUILD_ALL") == "true"
     steps:
