@@ -86,12 +86,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     auto status = redis_client->Connect(main_service_);
     RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
 
-    // Init redis failure detector.
-    gcs_redis_failure_detector_ = std::make_unique<GcsRedisFailureDetector>(
-        main_service_, *redis_client.get(), []() {
-          RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
-        });
-    gcs_redis_failure_detector_->Start();
     store_client_ = std::make_unique<RedisStoreClient>(std::move(redis_client));
     break;
   }
@@ -305,10 +299,8 @@ void GcsServer::Stop() {
     kv_manager_.reset();
 
     is_stopped_ = true;
-    if (gcs_redis_failure_detector_) {
-      gcs_redis_failure_detector_->Stop();
-    }
 
+    store_client_->Disconnect();
     RAY_LOG(INFO) << "GCS server stopped.";
   }
 }

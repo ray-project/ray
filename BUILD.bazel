@@ -2154,7 +2154,9 @@ ray_cc_library(
         "src/ray/gcs/store_client/store_client.h",
     ],
     deps = [
-        "redis_client",
+        ":redis_client",
+        "//src/ray/common:asio",
+        "//src/ray/common:ray_config",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
     ],

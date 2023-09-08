@@ -20,6 +20,8 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
@@ -32,7 +34,8 @@ namespace gcs {
 
 class RedisStoreClient : public StoreClient {
  public:
-  explicit RedisStoreClient(std::unique_ptr<RedisClient> &&redis_client);
+  explicit RedisStoreClient(std::unique_ptr<RedisClient> redis_client,
+                            instrumented_io_context &io_context);
 
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
@@ -68,6 +71,8 @@ class RedisStoreClient : public StoreClient {
   Status AsyncExists(const std::string &table_name,
                      const std::string &key,
                      std::function<void(bool)> callback) override;
+
+  void Disconnect() override;
 
  private:
   /// \class RedisScanner
@@ -111,6 +116,46 @@ class RedisStoreClient : public StoreClient {
     std::atomic<size_t> pending_request_count_{0};
 
     RedisClient &redis_client_;
+  };
+
+  /// \class GcsRedisFailureDetector
+  /// This class is responsible for monitoring redis and binding GCS server and
+  /// redis life cycle together. GCS client subscribes to redis messages and it cannot
+  /// sense whether the redis is inactive unless we go to ping redis voluntarily. But
+  /// there are many GCS clients, if they all Ping redis, the redis load will be high. So
+  /// we ping redis on GCS server and GCS client can sense whether redis is normal through
+  /// RPC connection with GCS server.
+  class GcsRedisFailureDetector {
+   public:
+    /// Create a GcsRedisFailureDetector.
+    ///
+    /// \param io_service The event loop to run the monitor on.
+    /// \param redis_context The redis context is used to ping redis.
+    /// \param callback Callback that will be called when redis is detected as not alive.
+    explicit GcsRedisFailureDetector(instrumented_io_context &io_service,
+                                     RedisClient &redis_client,
+                                     std::function<void()> callback);
+
+    /// Start detecting redis.
+    void Start();
+
+    /// Stop detecting redis.
+    void Stop();
+
+   protected:
+    /// Check that if redis is inactive.
+    void DetectRedis();
+
+   private:
+    instrumented_io_context &io_service_;
+
+    RedisClient &redis_client_;
+
+    /// The runner to run function periodically.
+    std::unique_ptr<PeriodicalRunner> periodical_runner_;
+
+    /// A function is called when redis is detected to be unavailable.
+    std::function<void()> callback_;
   };
 
   // Push a request to the sending queue.
@@ -158,6 +203,7 @@ class RedisStoreClient : public StoreClient {
 
   std::string external_storage_namespace_;
   std::unique_ptr<RedisClient> redis_client_;
+  GcsRedisFailureDetector failure_detector_;
   absl::Mutex mu_;
 
   // The pending redis requests queue for each key.

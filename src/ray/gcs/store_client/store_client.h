@@ -122,6 +122,9 @@ class StoreClient {
                              const std::string &key,
                              std::function<void(bool)> callback) = 0;
 
+  /// Disconnect the client.
+  virtual void Disconnect(){};
+
  protected:
   StoreClient() = default;
 };

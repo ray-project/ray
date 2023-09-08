@@ -19,6 +19,7 @@
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
 
@@ -135,12 +136,18 @@ void RedisStoreClient::MGetValues(const std::string &table_name,
   }
 }
 
-RedisStoreClient::RedisStoreClient(std::unique_ptr<RedisClient> &&redis_client)
+RedisStoreClient::RedisStoreClient(std::unique_ptr<RedisClient> redis_client,
+                                   instrumented_io_context &io_context)
     : external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
-      redis_client_(std::move(redis_client)) {
+      redis_client_(std::move(redis_client)),
+      failure_detector_(io_context, *redis_client_.get(), []() {
+        RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
+      }) {
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
       << kClusterSeparator << ".";
+
+  failure_detector_.Start();
 }
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name,
@@ -506,6 +513,41 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
         callback(exists);
       });
   return Status::OK();
+}
+
+void RedisStoreClient::Disconnect() { failure_detector_.Stop(); }
+
+RedisStoreClient::GcsRedisFailureDetector::GcsRedisFailureDetector(
+    instrumented_io_context &io_service,
+    RedisClient &redis_client,
+    std::function<void()> callback)
+    : io_service_(io_service),
+      redis_client_(redis_client),
+      callback_(std::move(callback)) {}
+
+void RedisStoreClient::GcsRedisFailureDetector::Start() {
+  RAY_LOG(INFO) << "Starting redis failure detector.";
+  periodical_runner_ = std::make_unique<PeriodicalRunner>(io_service_);
+  periodical_runner_->RunFnPeriodically(
+      [this] { DetectRedis(); },
+      RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
+      "GcsRedisFailureDetector.deadline_timer.detect_redis_failure");
+}
+
+void RedisStoreClient::GcsRedisFailureDetector::Stop() {
+  RAY_LOG(INFO) << "Stopping redis failure detector.";
+  periodical_runner_->Clear();
+}
+
+void RedisStoreClient::GcsRedisFailureDetector::DetectRedis() {
+  auto redis_callback = [this](const std::shared_ptr<CallbackReply> &reply) {
+    if (reply->IsNil()) {
+      RAY_LOG(ERROR) << "Redis is inactive.";
+      callback_();
+    }
+  };
+  auto cxt = redis_client_.GetShardContext("");
+  cxt->RunArgvAsync({"PING"}, redis_callback);
 }
 
 }  // namespace gcs
