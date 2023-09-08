@@ -16,7 +16,7 @@ Suppose you have multiple models and/or business logic that all need to be execu
 
 On the other hand, if these models or business logic have logical groups, for example, groups of models that communicate with each other but live in different repositories, we recommend separating the models into applications. Another common use-case for multiple applications is separate groups of models that may not communicate with each other, but you want to co-host them to increase hardware utilization. Because one application is a unit of upgrade, having multiple applications allows you to deploy many independent models (or groups of models) each behind different endpoints. You can then easily add or delete applications from the cluster as well as upgrade applications independently of each other.
 
-## Getting Started
+## Getting started
 
 Define a Serve application:
 ```{literalinclude} doc_code/image_classifier_example.py
