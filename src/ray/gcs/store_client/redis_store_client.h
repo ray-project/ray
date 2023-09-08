@@ -77,7 +77,7 @@ class RedisStoreClient : public StoreClient {
   /// Otherwise it will disturb the status of the RedisScanner.
   class RedisScanner {
    public:
-    explicit RedisScanner(RedisClient *redis_client,
+    explicit RedisScanner(RedisClient &redis_client,
                           const std::string &external_storage_namespace,
                           const std::string &table_name);
 
@@ -110,7 +110,7 @@ class RedisStoreClient : public StoreClient {
     /// The pending shard scan count.
     std::atomic<size_t> pending_request_count_{0};
 
-    RedisClient *redis_client_;
+    RedisClient &redis_client_;
   };
 
   // Push a request to the sending queue.

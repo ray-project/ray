@@ -366,7 +366,7 @@ struct GcsServerMocker {
   };
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:
-    MockedGcsActorTable(gcs::StoreClient *store_client) : GcsActorTable(store_client) {}
+    MockedGcsActorTable(gcs::StoreClient &store_client) : GcsActorTable(store_client) {}
 
     Status Put(const ActorID &key,
                const rpc::ActorTableData &value,
