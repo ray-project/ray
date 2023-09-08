@@ -7,7 +7,6 @@ import os
 
 import torch.distributed as dist
 import numpy as np
-import math
 
 from benchmark import Benchmark, BenchmarkMetric
 
@@ -63,7 +62,10 @@ def parse_args():
         "--target-worker-gb",
         default=4,
         type=int,
-        help="Number of GB per worker for selecting a subset from default dataset. -1 means the whole dataset",
+        help=(
+            "Number of GB per worker for selecting a subset "
+            "from default dataset. -1 means the whole dataset"
+        ),
     )
     parser.add_argument(
         "--read-task-cpus",
@@ -265,7 +267,9 @@ def train_loop_per_worker():
                 num_rows += batch["image"].size(dim=0)
             if num_rows >= print_at:
                 print(
-                    f"Read {num_rows} rows on rank {train.get_context().get_world_rank()}, tput so far: {num_rows / (time.time()  - start_t)}"
+                    f"Read {num_rows} rows on rank "
+                    f"{train.get_context().get_world_rank()}, tput so far: "
+                    f"{num_rows / (time.time()  - start_t)}"
                 )
                 print_at = ((num_rows // print_at_interval) + 1) * print_at_interval
         end_t = time.time()
@@ -273,14 +277,18 @@ def train_loop_per_worker():
         # can aggregate them at the end when calculating throughput.
         # See: https://github.com/ray-project/ray/issues/39277
         all_workers_time_list = [
-            torch.zeros((2), dtype=torch.double, device=device) for _ in range(world_size)
+            torch.zeros((2), dtype=torch.double, device=device)
+            for _ in range(world_size)
         ]
-        curr_worker_time = torch.tensor([start_t, end_t], dtype=torch.double, device=device)
+        curr_worker_time = torch.tensor(
+            [start_t, end_t], dtype=torch.double, device=device
+        )
         dist.all_gather(all_workers_time_list, curr_worker_time)
         all_workers_time_list_across_epochs.append(all_workers_time_list)
 
         print(
-            f"Epoch {i+1} of {args.num_epochs}, tput: {num_rows / (end_t - start_t)}, run time: {end_t - start_t}"
+            f"Epoch {i+1} of {args.num_epochs}, tput: {num_rows / (end_t - start_t)}, "
+            f"run time: {end_t - start_t}"
         )
     # Similar reporting for aggregating number of rows across workers
     all_num_rows = [
@@ -292,12 +300,15 @@ def train_loop_per_worker():
     per_epoch_times = {
         f"epoch_{i}_times": [
             tensor.tolist() for tensor in all_workers_time_list_across_epochs[i]
-        ] for i in range(args.num_epochs)
+        ]
+        for i in range(args.num_epochs)
     }
-    train.report({
-        **per_epoch_times,
-        "num_rows": [tensor.item() for tensor in all_num_rows],
-    })
+    train.report(
+        {
+            **per_epoch_times,
+            "num_rows": [tensor.item() for tensor in all_num_rows],
+        }
+    )
 
 
 # The input files URLs per training worker.
@@ -480,9 +491,7 @@ def benchmark_code(
     epoch_tputs = []
     num_rows_per_epoch = sum(result.metrics["num_rows"])
     for i in range(1, args.num_epochs):
-        time_start_epoch_i, time_end_epoch_i = zip(
-            *result.metrics[f"epoch_{i}_times"]
-        )
+        time_start_epoch_i, time_end_epoch_i = zip(*result.metrics[f"epoch_{i}_times"])
         runtime_epoch_i = max(time_end_epoch_i) - min(time_start_epoch_i)
         tput_epoch_i = num_rows_per_epoch / runtime_epoch_i
         epoch_tputs.append(tput_epoch_i)
@@ -498,7 +507,10 @@ if __name__ == "__main__":
     # Workaround for FileBasedDatasource parallel read issue when reading many sources.
     file_based_datasource.FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 1000
     args = parse_args()
-    benchmark_name = f"read_{args.file_type}_repeat{args.repeat_ds}_train_{args.num_workers}workers_{args.target_worker_gb}gb_per_worker"
+    benchmark_name = (
+        f"read_{args.file_type}_repeat{args.repeat_ds}_train_"
+        f"{args.num_workers}workers_{args.target_worker_gb}gb_per_worker"
+    )
     if args.preserve_order:
         benchmark_name = f"{benchmark_name}_preserve_order"
 
