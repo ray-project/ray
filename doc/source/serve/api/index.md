@@ -16,6 +16,16 @@ NOTE: `serve.deployment` and `serve.Deployment` have an autosummary-generated fi
 This is fixed by added custom filename mappings in `source/conf.py` (look for "autosummary_filename_map").
 --->
 
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_init_args.rst
+
+   serve.Deployment
+   serve.Application
+```
+
 #### Deployment Decorators
 
 ```{eval-rst}
@@ -30,7 +40,13 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    serve.multiplexed
 ```
 
-#### Object Types
+#### Deployment Handles
+
+:::{note}
+Ray 2.7 introduces a new {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API that will replace the existing `RayServeHandle` and `RayServeSyncHandle` APIs.
+Existing code will continue to work, but you are encouraged to opt-in to the new API to avoid breakages in the future.
+To opt into the new API, you can either use `handle.options(use_new_handle_api=True)` on each handle or set it globally via environment variable: `export RAY_SERVE_ENABLE_NEW_HANDLE_API=1`.
+:::
 
 ```{eval-rst}
 .. autosummary::
@@ -38,8 +54,9 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    :toctree: doc/
    :template: autosummary/class_without_init_args.rst
 
-   serve.Deployment
-   serve.Application
+   serve.handle.DeploymentHandle
+   serve.handle.DeploymentResponse
+   serve.handle.DeploymentResponseGenerator
    serve.handle.RayServeHandle
    serve.handle.RayServeSyncHandle
 ```
@@ -51,22 +68,23 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    :nosignatures:
    :toctree: doc/
 
+   serve.start
    serve.run
    serve.delete
    serve.status
+   serve.shutdown
 ```
 
-### Configuring System-level Options
+### Configurations
 
 ```{eval-rst}
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
-   serve.start
    serve.config.ProxyLocation
    serve.config.HTTPOptions
-   serve.shutdown
+   serve.config.AutoscalingConfig
 ```
 
 #### Advanced APIs
