@@ -27,4 +27,4 @@ When considering the security responsibilities of running Ray, think about the d
 * Ray developers are responsible for building their applications with this understanding in mind.
 ### Enforce isolation outside of Ray with multiple Ray Clusters
 * If workloads require isolation from each other, use separate, isolated Ray Clusters. Ray can schedule multiple distinct Jobs in a single Cluster, but doesn't attempt to enforce isolation between them. Similarly, Ray doesn't implement access controls for developers interacting with a given cluster.
-* Ray developers hold the responsibility for determining which applications need to be separated and platform providers are responsible for providing this isolation.
+* Ray developers are responsible for determining which applications need to be separated and platform providers are responsible for providing this isolation.
