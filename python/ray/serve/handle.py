@@ -299,7 +299,7 @@ class _DeploymentHandleBase:
 class RayServeHandle(_DeploymentHandleBase):
     """A handle used to make requests from one deployment to another.
 
-    NOTE: This API is being replaced by `ray.serve.handle.DeploymentHandle`. 
+    NOTE: This API is being replaced by `ray.serve.handle.DeploymentHandle`.
     Opt into the new API by using `handle.options(use_new_handle_api=True)` or setting
     the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`.
 
