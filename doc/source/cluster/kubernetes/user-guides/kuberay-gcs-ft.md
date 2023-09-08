@@ -211,7 +211,7 @@ The [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blo
 
 * **`redis-password`** in head's `rayStartParams`:
 Use this option to specify the password for the Redis service, thus allowing the Ray head to connect to it.
-In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), it uses an environment variable `REDIS_PASSWORD` to store the password from a Kubernetes secret.
+In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the RayCluster custom resource uses an environment variable `REDIS_PASSWORD` to store the password from a Kubernetes secret.
     ```yaml
     rayStartParams:
       redis-password: $REDIS_PASSWORD
@@ -230,7 +230,7 @@ In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/
 
 * **`RAY_REDIS_ADDRESS`** environment variable in head's Pod:
 Ray reads the `RAY_REDIS_ADDRESS` environment variable to establish a connection with the Redis server.
-In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), it uses the `redis` Kubernetes ClusterIP service name as the connection point to the Redis server. The ClusterIP service is also created by the YAML file.
+In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the RayCluster custom resource uses the `redis` Kubernetes ClusterIP service name as the connection point to the Redis server. The ClusterIP service is also created by the YAML file.
     ```yaml
     template:
       spec:
