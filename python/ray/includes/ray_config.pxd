@@ -92,3 +92,7 @@ cdef extern from "ray/common/ray_config.h" nogil:
         int64_t grpc_client_keepalive_timeout_ms() const
 
         c_bool enable_autoscaler_v2() const
+
+        c_string predefined_unit_instance_resources() const
+
+        c_string custom_unit_instance_resources() const

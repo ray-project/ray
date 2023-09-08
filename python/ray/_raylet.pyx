@@ -640,10 +640,13 @@ cdef int prepare_resources(
         if value < 0:
             raise ValueError("Resource quantities may not be negative.")
         if value > 0:
+            unit_resources = f"{RayConfig.instance().predefined_unit_instance_resources()},\
+            {RayConfig.instance().custom_unit_instance_resources()}"
+
             if (value >= 1 and isinstance(value, float)
-                    and not value.is_integer()):
+                    and not value.is_integer() and str(key) in unit_resources):
                 raise ValueError(
-                    "Resource quantities >1 must be whole numbers.")
+                    "Unit instance resource quantities >1 must be whole numbers.")
             resource_map[0][key.encode("ascii")] = float(value)
     return 0
 
