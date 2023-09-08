@@ -105,7 +105,7 @@ This deployment is called the "ingress deployment" because it serves as the entr
 Often, it then routes to other deployments or calls into them using the `DeploymentHandle` API, and composes the results before returning to the user.
 
 The ingress deployment defines the HTTP handling logic for the application.
-By default, the `__call__` method of the class will be called and passed in a `Starlette` request object.
+By default, the `__call__` method of the class is called and passed in a `Starlette` request object.
 The response will be serialized as JSON, but other `Starlette` response objects can also be returned directly.
 Here's an example:
 

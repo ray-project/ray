@@ -40,7 +40,7 @@ Here's an example:
 
 In line 40, the `LanguageClassifier` deployment takes in the `spanish_responder` and `french_responder` as constructor arguments. At runtime, these arguments are converted into `DeploymentHandles`. `LanguageClassifier` can then call the `spanish_responder` and `french_responder`'s deployment methods using this handle.
 
-For example, the `LanguageClassifier`'s `__call__` method uses the HTTP request's values to decide whether to respond in Spanish or French. It then forwards the request's name to the `spanish_responder` or the `french_responder` on lines 17 and 19 using the `DeploymentHandle`s. The calls are formatted as:
+For example, the `LanguageClassifier`'s `__call__` method uses the HTTP request's values to decide whether to respond in Spanish or French. It then forwards the request's name to the `spanish_responder` or the `french_responder` on lines 17 and 19 using the `DeploymentHandle`s. The format of the calls is as follows:
 
 ```python
 response: DeploymentResponse = self.spanish_responder.say_hello.remote(name)
@@ -52,7 +52,7 @@ This call has a few parts:
 * `remote` indicates that this is a `DeploymentHandle` call to another deployment.
 * `name` is the argument for `say_hello`. You can pass any number of arguments or keyword arguments here.
 
-This call returns a `DeploymentResponse` which is a reference to the result, not the result itself.
+This call returns a `DeploymentResponse`, which is a reference to the result, not the result itself.
 This pattern allows the call to execute asynchronously.
 To get the actual result, `await` the response.
 `await` blocks until the asynchronous call executes and then returns the result.
@@ -97,7 +97,7 @@ With composition, you can avoid application-level bottlenecks when serving model
 ### Chaining DeploymentHandle Calls
 
 The `DeploymentResponse` object returned from a `DeploymentHandle` can be directly passed to another `DeploymentHandle` call to chain together multiple stages of a pipeline.
-There is no need to `await` the first response; when the first call finishes, its output will be passed to the second call and substituted for the `DeploymentResponse` that was passed in.
+There is no need to `await` the first response; when the first call finishes, its output is passed to the second call and substituted for the `DeploymentResponse` that was passed in.
 
 For example, the code sample below defines three deployments in an application:
 

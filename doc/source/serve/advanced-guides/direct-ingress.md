@@ -30,7 +30,7 @@ service PredictAPIsService {
 }
 ```
 
-Take a look at the following code samples for using `DefaultgRPCDriver` in Ray Serve.
+Look at the following code samples for using `DefaultgRPCDriver` in Ray Serve.
 
 To implement the Serve, your class needs to inherit `ray.serve.drivers.DefaultgRPCDriver`.
 ```{literalinclude} ../doc_code/direct_ingress.py
@@ -109,7 +109,7 @@ Server:
 ```
 
 Client:
-You can directly use the client code to play it!
+You can directly use the client code to play it.
 ```{literalinclude} ../doc_code/direct_ingress_with_customized_schema.py
 :start-after: __begin_client__
 :end-before: __end_client__

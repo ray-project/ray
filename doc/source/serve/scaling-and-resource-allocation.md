@@ -61,9 +61,9 @@ There are several user-specified parameters the autoscaling algorithm takes into
 
 **min_replicas[default_value=1]**: The minimum number of replicas for the deployment. ``min_replicas`` will also be the initial number of replicas when the deployment is deployed.
 :::{note}
-Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deployment; the scale up will be started when you start sending traffic. There will be a cold start time as the `DeploymentHandle` waits for available replicas to assign the request.
+Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deployment; the scale up is started when you start sending traffic. There is a cold start time as the `DeploymentHandle` waits for available replicas to assign the request.
 :::
-**max_replicas[default_value=1]**: The maximum number of replicas for the deployment. Ray Serve Autoscaling will rely on the Ray Autoscaler to scale up more nodes when the currently available cluster resources (CPUs, GPUs, etc.) are not enough to support more replicas.
+**max_replicas[default_value=1]**: The maximum number of replicas for the deployment. Ray Serve Autoscaling relies on the Ray Autoscaler to scale up more nodes when the currently available cluster resources (CPUs, GPUs, etc.) are not enough to support more replicas.
 
 **target_num_ongoing_requests_per_replica[default_value=1]**: How many ongoing requests are expected to run concurrently per replica. The autoscaler scales up if the value is lower than the current number of ongoing requests per replica. Similarly, the autoscaler scales down if it's higher than the current number of ongoing requests. Scaling happens quicker if there's a high disparity between this value and the current number of ongoing requests.
 :::{note}

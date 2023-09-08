@@ -91,7 +91,7 @@ Let's see a simple example that just packages the code. Run the following comman
 serve run  --address=ray://<head-node-ip-address>:10001 --working-dir="./project/src" local_dev:app
 ```
 
-This will connect to the remote cluster via Ray Client, upload the `working_dir` directory, and run your serve application.  Here, the local directory specified by `working_dir` must contain `local_dev.py` so that it can be uploaded to the cluster and imported by Ray Serve.
+This connects to the remote cluster with the Ray Client, uploads the `working_dir` directory, and runs your Serve application.  Here, the local directory specified by `working_dir` must contain `local_dev.py` so that it can be uploaded to the cluster and imported by Ray Serve.
 
 Once this is up and running, we can send requests to the application:
 
@@ -106,7 +106,7 @@ For more complex dependencies, including files outside the working directory, en
 serve run  --address=ray://<head-node-ip-address>:10001 --runtime-env-json='{"env_vars": {"MY_ENV_VAR": "my-value"}, "working_dir": "./project/src", "pip": ["requests", "chess"]}' local_dev:app
 ```
 
-You can also specify the `runtime_env` via a YAML file; see [serve run](serve_cli.html#serve-run) for details.
+You can also specify the `runtime_env` in a YAML file; see [serve run](serve_cli.html#serve-run) for details.
 
 ## What's Next?
 
