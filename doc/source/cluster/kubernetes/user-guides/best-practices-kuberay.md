@@ -1,6 +1,6 @@
 (kuberay-storage)=
 
-# Best practices for dependencies and storage with KubeRay
+# Storage and dependencies best practices with KubeRay
 
 This document contains recommendations for setting up storage and handling application dependencies for your Ray deployment on Kubernetes.
 
