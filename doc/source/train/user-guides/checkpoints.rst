@@ -217,14 +217,27 @@ Here is an example of distributed checkpointing with PyTorch:
     :end-before: __distributed_checkpointing_end__
 
 
+.. note::
+
+    Checkpoint files with the same name will collide between workers.
+    You can get around this by adding a rank-specific suffix to checkpoint files.
+
+    Note that having filename collisions does not error, but it will result in the last
+    uploaded version being the one that is persisted. This is fine if the file
+    contents are the same across all workers.
+
+    Model shard saving utilities provided by frameworks such as DeepSpeed will create
+    rank-specific filenames already, so you usually do not need to worry about this.
+
+
 .. _train-dl-configure-checkpoints:
 
 Configure checkpointing
 -----------------------
 
-For more configurability of checkpointing behavior (specifically saving
-checkpoints to disk), a :py:class:`~ray.train.CheckpointConfig` can be passed into
-``Trainer``.
+Ray Train provides some configuration options for checkpointing.
+The primary configuration is keeping only the top ``K`` checkpoints with respect to a metric.
+Lower-performing checkpoints are deleted to save storage space. By default, all checkpoints are kept.
 
 .. literalinclude:: ../doc_code/key_concepts.py
     :language: python
@@ -238,7 +251,7 @@ checkpoints to disk), a :py:class:`~ray.train.CheckpointConfig` can be passed in
 
 .. note::
 
-    If you want to save the top-k checkpoints with respect to a metric via
+    If you want to save the top ``num_to_keep`` checkpoints with respect to a metric via
     :py:class:`~ray.train.CheckpointConfig`,
     please ensure that the metric is always reported together with the checkpoints.
 

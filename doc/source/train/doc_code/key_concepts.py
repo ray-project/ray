@@ -84,9 +84,13 @@ run_config = RunConfig(failure_config=FailureConfig(max_failures=-1))
 # __checkpoint_config_start__
 from ray.train import RunConfig, CheckpointConfig
 
+# Example 1: Only keep the 2 *most recent* checkpoints and delete the others.
+run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=2))
+
+
+# Example 2: Only keep the 2 *best* checkpoints and delete the others.
 run_config = RunConfig(
     checkpoint_config=CheckpointConfig(
-        # Only keep the 2 *best* checkpoints and delete the others.
         num_to_keep=2,
         # *Best* checkpoints are determined by these params:
         checkpoint_score_attribute="mean_accuracy",
