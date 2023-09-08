@@ -62,7 +62,7 @@ In this section, you'll learn how to add fault tolerance to Ray's Global Control
 
 By default, the Ray head node is a single point of failure: if it crashes, the entire Ray cluster crashes and must be restarted. When running on Kubernetes, the `RayService` controller health-checks the Ray cluster and restarts it if this occurs, but this introduces some downtime.
 
-In Ray 2.0, KubeRay added **experimental support** for [Global Control Store (GCS) fault tolerance](https://ray-project.github.io/kuberay/guidance/gcs-ft/#ray-gcs-fault-tolerancegcs-ft-experimental), preventing the Ray cluster from crashing if the head node goes down.
+In Ray 2.0, KubeRay added **experimental support** for [Global Control Store (GCS) fault tolerance](kuberay-gcs-ft), preventing the Ray cluster from crashing if the head node goes down.
 While the head node is recovering, Serve applications can still handle traffic via worker nodes but cannot be updated or recover from other failures (e.g. actors or worker nodes crashing).
 Once the GCS is recovered, the cluster will return to normal behavior.
 
@@ -244,7 +244,7 @@ In the example above, the Redis deployment name (`redis`) is the host within the
 After you apply the Redis objects along with your updated `RayService`, your Ray cluster can recover from head node crashes without restarting all the workers!
 
 :::{seealso}
-Check out the KubeRay guide on [GCS fault tolerance](https://ray-project.github.io/kuberay/guidance/gcs-ft/#ray-gcs-fault-tolerancegcs-ft-experimental) to learn more about how Serve leverages the external Redis cluster to provide head node fault tolerance.
+Check out the KubeRay guide on [GCS fault tolerance](kuberay-gcs-ft) to learn more about how Serve leverages the external Redis cluster to provide head node fault tolerance.
 :::
 
 (serve-e2e-ft-behavior)=
@@ -622,5 +622,5 @@ Table:
 
 Note that the PID for the first HTTPProxyActor has changed, indicating that it restarted.
 
-[KubeRay]: https://ray-project.github.io/kuberay/
-[external storage namespace]: https://ray-project.github.io/kuberay/guidance/gcs-ft/#external-storage-namespace
+[KubeRay]: kuberay-index
+[external storage namespace]: kuberay-external-storage-namespace

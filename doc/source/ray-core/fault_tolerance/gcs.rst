@@ -26,7 +26,7 @@ Setting up Redis
 
     .. tab-item:: KubeRay (officially supported)
 
-        If you are using :ref:`KubeRay <kuberay-index>`, please refer to `KubeRay docs on GCS Fault Tolerance <https://ray-project.github.io/kuberay/guidance/gcs-ft/>`_.
+        If you are using :ref:`KubeRay <kuberay-index>`, please refer to :ref:`KubeRay docs on GCS Fault Tolerance <kuberay-gcs-ft>`.
 
     .. tab-item:: ray start
 
