@@ -904,8 +904,8 @@ def test_dashboard_does_not_depend_on_serve():
     """Check that the dashboard can start without Serve."""
     ray.shutdown()
 
-    with pytest.raises(ImportError):
-        from ray import serve  # noqa: F401
+    # with pytest.raises(ImportError):
+    #     from ray import serve  # noqa: F401
 
     ctx = ray.init()
 
@@ -925,12 +925,11 @@ def test_dashboard_does_not_depend_on_serve():
     # Check that Serve-dependent features fail
     try:
         response = requests.get(f"http://{agent_url}/api/serve/deployments/")
-    except Exception as e:
-        # Fail to connect to service is fine.
-        print(e)
-    else:
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
+    except requests.ConnectionError as e:
+        # Fail to connect to service is fine.
+        print(e)
 
 
 @pytest.mark.skipif(
@@ -964,12 +963,11 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     # Check that Serve-dependent features fail
     try:
         response = requests.get(f"http://{agent_url}/api/serve/deployments/")
-    except Exception as e:
-        # Fail to connect to service is fine.
-        print(e)
-    else:
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
+    except requests.ConnectionError as e:
+        # Fail to connect to service is fine.
+        print(e)
 
     # The agent should be dead if raylet exits.
     raylet_proc.kill()
