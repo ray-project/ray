@@ -7,7 +7,6 @@ Ray Train User Guides
     :maxdepth: 2
 
     user-guides/data-loading-preprocessing
-    user-guides/configuration-overview
     user-guides/using-gpus
     user-guides/persistent-storage
     user-guides/monitoring-logging
