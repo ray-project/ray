@@ -250,4 +250,4 @@ Refer to [this section](kuberay-external-storage-namespace-example) in the earli
 ## Next steps
 
 * See the {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide-gcs>` for more information.
-* 
+* See the {ref}`Ray Core GCS fault tolerance documentation <fault-tolerance-gcs>` for more information.
