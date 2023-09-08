@@ -51,8 +51,10 @@ build:msvc-cl     --per_file_copt="-\\.(asm|S)$@-WX"
 build --per_file_copt="\\.pb\\.cc$@-w"
 build:linux --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
 build:macos --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
-# Ignore warnings for host tools, which we generally can't control
-build --host_copt="-w"
+# Ignore warnings for host tools, which we generally can't control.
+# Ideally we only want to ignore warnings for external project
+# but the current bazel version doesn't support host_per_file_copt yet.
+build:macos --host_copt="-w"
 build:clang-cl --host_copt="-Wno-inconsistent-missing-override"
 build:clang-cl --host_copt="-Wno-microsoft-unqualified-friend"
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
