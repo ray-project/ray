@@ -54,18 +54,18 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=tune,-gpu_only,-ray_air,-gpu,-doctest,-needs_credentials python/ray/train/...
 
-# - label: ":train: :key: Train examples with authentication"
-#   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_BRANCH_BUILD"]
-#   instance_size: medium
-#   commands:
-#     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
-#     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-#     - TRAIN_TESTING=1 ./ci/env/install-dependencies.sh
-#     - ./ci/env/env_info.sh
-#     - credentials=$(python ./ci/env/setup_credentials.py)
-#     - credential_exit_code=$$?
-#     - if [ $credential_exit_code -eq 0 ]; then echo "Credentials are fetched successfully"; bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials 
-#       python/ray/train/... $credentials; else echo "Credentials cannot be fetched"; exit 1; fi
+- label: ":train: :key: Train examples with authentication"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_BRANCH_BUILD"]
+  instance_size: medium
+  commands:
+    - if [[ "$BUILDKITE_PIPELINE_ID" != "0183465b-c6fb-479b-8577-4cfd743b545d" ]]; then exit 0; fi
+    - trap ./ci/build/upload_build_info.sh EXIT
+    - TRAIN_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - $(python ci/env/setup_credentials.py)
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials 
+      --test_env=WANDB_API_KEY --test_env=COMET_API_KEY
+      python/ray/train/...
 
 - label: ":brain: RLlib: Benchmarks (Torch 2.x)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
