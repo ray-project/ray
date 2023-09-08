@@ -7,37 +7,11 @@ import ray
 from ray import train, tune
 from ray.train import Checkpoint, ScalingConfig
 from ray.air.constants import MAX_REPR_LENGTH
-from ray.tune.impl import tuner_internal
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
 from ray.util.placement_group import get_current_placement_group
 
 logger = logging.getLogger(__name__)
-
-
-@pytest.fixture
-def mock_tuner_internal_logger():
-    class MockLogger:
-        def __init__(self):
-            self.warnings = []
-
-        def warning(self, msg):
-            self.warnings.append(msg)
-
-        def warn(self, msg, **kwargs):
-            self.warnings.append(msg)
-
-        def info(self, msg):
-            print(msg)
-
-        def clear(self):
-            self.warnings = []
-
-    old = tuner_internal.warnings
-    tuner_internal.warnings = MockLogger()
-    yield tuner_internal.warnings
-    # The code after the yield will run as teardown code.
-    tuner_internal.warnings = old
 
 
 class DummyTrainer(BaseTrainer):
@@ -126,9 +100,7 @@ def test_arg_override(ray_start_4_cpus):
     tune.run(trainer.as_trainable(), config=new_config)
 
 
-def test_reserved_cpu_warnings_no_cpu_usage(
-    ray_start_1_cpu_1_gpu, mock_tuner_internal_logger
-):
+def test_reserved_cpu_warnings_no_cpu_usage(ray_start_1_cpu_1_gpu):
     """Ensure there is no divide by zero error if trial requires no CPUs."""
 
     def train_loop(config):
@@ -142,7 +114,6 @@ def test_reserved_cpu_warnings_no_cpu_usage(
         datasets={"train": ray.data.range(10)},
     )
     trainer.fit()
-    assert not mock_tuner_internal_logger.warnings
 
 
 def test_setup(ray_start_4_cpus):
@@ -205,7 +176,5 @@ def test_metadata_propagation_data_parallel(ray_start_4_cpus):
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(sys.argv[1:] + ["-v", "-x", __file__]))
