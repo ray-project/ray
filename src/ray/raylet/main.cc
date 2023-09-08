@@ -50,6 +50,8 @@ DEFINE_int32(num_prestart_python_workers,
              0,
              "Number of prestarted default Python workers on raylet startup.");
 DEFINE_bool(head, false, "Whether this node is a head node.");
+/// NOTE: This value is overwritten inside worker_pool.h by
+/// worker_maximum_startup_concurrency.
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");

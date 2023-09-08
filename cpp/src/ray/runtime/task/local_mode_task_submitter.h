@@ -54,7 +54,8 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   absl::Mutex actor_contexts_mutex_;
 
-  std::unordered_map<std::string, ActorID> named_actors_ GUARDED_BY(named_actors_mutex_);
+  std::unordered_map<std::string, ActorID> named_actors_
+      ABSL_GUARDED_BY(named_actors_mutex_);
   mutable absl::Mutex named_actors_mutex_;
 
   std::unique_ptr<boost::asio::thread_pool> thread_pool_;
