@@ -248,9 +248,9 @@ In the status, you can see that the `RayService` is preparing a pending cluster.
 After the pending cluster is healthy, it becomes the active cluster and the previous cluster is terminated.
 
 ## Autoscaling
-You can configure autoscaling for your Serve application by setting the autoscaling field in the Serve config. Learn more about the configuration options in [Scaling and Resource Allocation](serve-scaling-and-resource-allocation).
+You can configure autoscaling for your Serve application by setting the autoscaling field in the Serve config. Learn more about the configuration options in the [Serve Autoscaling Guide](serve-autoscaling).
 
-To enable autoscaling in a KubeRay Cluster, you need to set `enableInTreeAutoscaling` to True. Additionally, there are other options available to configure the autoscaling behavior. For further details, please refer to the documentation [here](serve-scaling-and-resource-allocation).
+To enable autoscaling in a KubeRay Cluster, you need to set `enableInTreeAutoscaling` to True. Additionally, there are other options available to configure the autoscaling behavior. For further details, please refer to the documentation [here](serve-autoscaling).
 
 
 :::{note}

@@ -5,6 +5,7 @@ If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quicksta
 
 Use these advanced guides for more options and configurations:
 - [Pass Arguments to Applications](app-builder-guide)
+- [Advanced Ray Serve Autoscaling](serve-advanced-autoscaling)
 - [Performance Tuning](serve-perf-tuning)
 - [Dynamic Request Batching](serve-performance-batching-requests)
 - [In-Place Updates for Serve](serve-inplace-updates)
