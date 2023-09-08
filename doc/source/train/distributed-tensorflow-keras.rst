@@ -17,10 +17,10 @@ Ray Train also works with vanilla Tensorflow.
 
 Quickstart
 -----------
-.. literalinclude:: /ray-air/doc_code/tf_starter.py
+.. literalinclude:: ./doc_code/tf_starter.py
   :language: python
-  :start-after: __air_tf_train_start__
-  :end-before: __air_tf_train_end__
+  :start-after: __tf_train_start__
+  :end-before: __tf_train_end__
 
 
 Updating your training function
@@ -191,11 +191,11 @@ to Ray Train. This reporting logs the results to the console output and appends 
 local log files. The logging also triggers :ref:`checkpoint bookkeeping <train-dl-configure-checkpoints>`.
 
 The easiest way to report your results with Keras is by using the
-:class:`~air.integrations.keras.ReportCheckpointCallback`:
+:class:`~ray.train.tensorflow.keras.ReportCheckpointCallback`:
 
 .. code-block:: python
 
-    from ray.air.integrations.keras import ReportCheckpointCallback
+    from ray.train.tensorflow.keras import ReportCheckpointCallback
 
     def train_func(config: dict):
         # ...
