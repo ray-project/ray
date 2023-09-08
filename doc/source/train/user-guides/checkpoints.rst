@@ -55,7 +55,7 @@ As shown in the figure above, the best practice for saving checkpoints is to
 first dump the checkpoint to a local temporary directory. Then, the call to ``train.report``
 uploads the checkpoint to its final persistent storage location.
 Then, the local temporary directory can be safely cleaned up to free up disk space
-(e.g., from exiting the `tempfile.TemporaryDirectory` context).
+(e.g., from exiting the ``tempfile.TemporaryDirectory`` context).
 
 .. tip::
 
@@ -305,8 +305,8 @@ The checkpoint returned by :func:`ray.train.get_checkpoint <ray.train.get_checkp
 
         .. literalinclude:: ../doc_code/checkpoints.py
             :language: python
-            :start-after: __lightning_restore_start__
-            :end-before: __lightning_restore_end__
+            :start-after: __lightning_restore_example_start__
+            :end-before: __lightning_restore_example_end__
 
 
 .. note::
