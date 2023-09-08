@@ -484,7 +484,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             return "DRIVER"
         else:
             try:
-                return ray.get_runtime_context().get_actor_id()
+                actor_id = ray.get_runtime_context().get_actor_id()
+                if actor_id is None:
+                    return ""
+                else:
+                    return actor_id
             except Exception:
                 logger.exception("Got exception while attempting to get actor ID.")
                 return ""
