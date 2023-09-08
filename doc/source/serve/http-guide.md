@@ -2,10 +2,11 @@
 # Set Up FastAPI and HTTP
 
 This section helps you understand how to:
-- send HTTP requests to Serve deployments
-- use Ray Serve to integrate with FastAPI
-- use customized HTTP adapters
-- choose which feature to use for your use case
+- Send HTTP requests to Serve deployments
+- Use Ray Serve to integrate with FastAPI
+- Use customized HTTP adapters
+- Choose which feature to use for your use case
+- Set up keep alive timeout
 
 ## Choosing the right HTTP feature
 
@@ -183,3 +184,16 @@ Client disconnecting
 (ServeReplica:default_StreamingResponder pid=50842) Cancelled! Exiting.
 (ServeReplica:default_StreamingResponder pid=50842) INFO 2023-07-10 16:08:45,756 default_StreamingResponder default_StreamingResponder#cmpnmF ahteNDQSWx / default replica.py:691 - __CALL__ OK 1019.1ms
 ```
+
+
+(serve-http-guide-keep-alive-timeout)=
+## Set keep alive timeout
+
+Serve uses a Uvicorn HTTP server internally to serve HTTP requests. By default, Uvicorn
+keeps HTTP connections alive for 5 seconds between requests. Modify the keep-alive
+timeout by setting the `keep_alive_timeout_s` in the `http_options` field of the Serve
+config files. This config is global to your Ray cluster, and you can't update it during
+runtime. You can also set the `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` environment variable to
+set the keep alive timeout. `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` takes
+precedence over the `keep_alive_timeout_s` config if both are set. See
+Uvicorn's keep alive timeout [guide](https://www.uvicorn.org/server-behavior/#timeouts) for more information.
