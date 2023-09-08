@@ -123,7 +123,7 @@ First consider the following deployment configurations. Because the driver deplo
 
 :::{tab-item} Application Code
 
-```{literalinclude} doc_code/autoscale_model_comp_example.py
+```{literalinclude} ../doc_code/autoscale_model_comp_example.py
 :language: python
 :start-after: __serve_example_begin__
 :end-before: __serve_example_end__
