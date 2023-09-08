@@ -5,13 +5,9 @@ Configuring Scale and GPUs
 Increasing the scale of a Ray Train training run is simple and can often
 be done in a few lines of code.
 
-The main interface for configuring scale and resources
-is the :class:`~ray.train.ScalingConfig`.
-
-Overview
---------
-Ray Train's :class:`~ray.train.ScalingConfig` configures the number of training workers
-and the resources they should use.
+The main interface for configuring scale
+is the :class:`~ray.train.ScalingConfig`. Specifically, this configuration
+sets the number of training workers and the resources they should use.
 
 A *worker* here refers to a *training worker*. Technically, it's a
 :ref:`Ray Actor <actor-key-concept>` that runs your training function.
@@ -48,8 +44,8 @@ run on 8 GPUs (8 workers, each using one GPU).
     )
 
 
-Using GPUs in training code
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Using GPUs in the training function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 When ``use_gpu=True`` is set, Ray Train will automatically set up environment variables
 in your training function so that the GPUs can be detected and used
 (e.g. ``CUDA_VISIBLE_DEVICES``).
