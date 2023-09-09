@@ -335,7 +335,7 @@ if __name__ == "__main__":
 
     print(f"Loaded training dataset (size: {train_dataset.count()})")
 
-    # Train with Ray AIR TorchTrainer.
+    # Train with Ray Train TorchTrainer.
     trainer = TorchTrainer(
         train_fn,
         train_loop_config=vars(args),
