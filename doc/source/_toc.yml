@@ -202,10 +202,12 @@ parts:
               - file: serve/production-guide/handling-dependencies
               - file: serve/production-guide/best-practices
           - file: serve/monitoring
-          - file: serve/scaling-and-resource-allocation
+          - file: serve/resource-allocation
+          - file: serve/autoscaling-guide
           - file: serve/advanced-guides/index
             sections:
               - file: serve/advanced-guides/app-builder-guide
+              - file: serve/advanced-guides/advanced-autoscaling
               - file: serve/advanced-guides/performance
               - file: serve/advanced-guides/dyn-req-batch
               - file: serve/advanced-guides/inplace-updates
