@@ -14,7 +14,6 @@ ray_cc_library(
         ":network",
         ":ray_object",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/util",
         "@boost//:optional",
         "@com_google_googletest//:gtest",
     ],
@@ -32,7 +31,6 @@ ray_cc_library(
         ":status",
         "//:aligned_alloc",
         "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/util",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],
@@ -60,7 +58,6 @@ ray_cc_library(
     deps = [
         ":asio",
         ":ray_config",
-        "//src/ray/util",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_prod",
         "@nlohmann_json",
@@ -77,7 +74,7 @@ ray_cc_library(
     ],
     deps = [
         ":asio",
-        "//src/ray/util",
+        "//src/ray/util:event",
         "@com_google_googletest//:gtest_prod",
     ],
 )
@@ -131,8 +128,9 @@ ray_cc_library(
     deps = [
         ":constants",
         ":status",
+        "//:sha256",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/util",
+        "//src/ray/util:util",
         "@com_github_google_flatbuffers//:flatbuffers",
         "@msgpack",
     ],
@@ -176,7 +174,7 @@ ray_cc_library(
         ":ray_object",
         ":runtime_env",
         "//:node_manager_fbs",
-        "//src/ray/util",
+        "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -202,7 +200,6 @@ ray_cc_library(
     deps = [
         ":event_stats",
         ":ray_config",
-        "//src/ray/util",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
@@ -220,7 +217,6 @@ ray_cc_library(
     deps = [
         ":ray_config",
         "//:stats_metric",
-        "//src/ray/util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
     ],
@@ -235,7 +231,8 @@ ray_cc_library(
         "ray_internal_flag_def.h",
     ],
     deps = [
-        "//src/ray/util",
+        "//src/ray/util:logging",
+        "@boost//:algorithm",
         "@com_google_absl//absl/algorithm",
         "@com_google_absl//absl/strings",
         "@nlohmann_json",
@@ -250,12 +247,11 @@ ray_cc_library(
     hdrs = [
         "ray_syncer/ray_syncer.h",
         "ray_syncer/ray_syncer-inl.h",
-    ],
+        ],
     deps = [
         ":asio",
         ":id",
         "//:ray_syncer_cc_grpc",
-        "//src/ray/util",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -270,6 +266,10 @@ ray_cc_library(
         "status.h",
     ],
     deps = [
-        "//src/ray/util",
+         "//src/ray/util:logging",
+         "//src/ray/util:macros",
+         "//src/ray/util:visibility",
+         "@boost//:system",
+         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

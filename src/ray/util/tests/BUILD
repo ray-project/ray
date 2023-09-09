@@ -8,9 +8,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:util",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "//src/ray/util:container_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -22,7 +20,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:util",
+        "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -34,7 +32,8 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:util",
+        "//src/ray/util:logging",
+        "//src/ray/util:event",
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
     ],
@@ -47,7 +46,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:util",
+        "//src/ray/util:exponential_backoff",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -60,7 +59,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_common",
-        "//src/ray/util:util",
+        "//src/ray/util:logging",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -77,8 +76,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:util",
-        "@boost//:asio",
+        "//src/ray/util:logging",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
@@ -91,8 +89,8 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        "//:ray_common",
-        "@com_google_googletest//:gtest_main",
+      "//src/ray/util:sample",
+      "@com_google_googletest//:gtest_main",
     ],
 )
 cc_test(
@@ -102,7 +100,8 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:util",
+        "//src/ray/util:logging",
+        "//src/ray/util:sequencer",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -114,7 +113,8 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        "//:raylet_lib",
+        "//src/ray/util:logging",
+        "//src/ray/util:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -126,8 +126,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:util",
-        "@com_google_absl//absl/time",
+        "//src/ray/util:throttler",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -139,6 +138,8 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        "//src/ray/util:logging",
+        "//src/ray/util:process",
         "//src/ray/util:util",
         "@boost//:asio",
         "@boost//:process",
