@@ -3,9 +3,21 @@ import logging
 import os
 import pathlib
 import sys
+import threading
 import urllib.parse
+from collections import deque
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 import numpy as np
 
@@ -610,3 +622,163 @@ def get_attribute_from_class_name(class_name: str) -> Any:
     module_name = ".".join(paths[:-1])
     attribute_name = paths[-1]
     return getattr(import_module(module_name), attribute_name)
+
+
+class Queue:
+    """A thread-safe queue implementation for multiple producers and consumers.
+
+    Provide `release()` to exit producer threads cooperatively for resource release.
+    """
+
+    def __init__(self, queue_size: int):
+        # The queue shared across multiple producer threads.
+        self._queue = deque()
+        # The boolean varilable to indicate whether producer threads should exit.
+        self._threads_exit = False
+        # The semaphore for producer threads to put item into queue.
+        self._producer_semaphore = threading.Semaphore(queue_size)
+        # The semaphore for consumer threads to get item from queue.
+        self._consumer_semaphore = threading.Semaphore(0)
+        # The mutex lock to guard access of `self._queue` and `self._threads_exit`.
+        self._mutex = threading.Lock()
+
+    def put(self, item: Any) -> bool:
+        """Put an item into the queue.
+
+        Block if necessary until a free slot is available in queue.
+        This method is called by producer threads.
+
+        Returns:
+            True if the caller thread should exit immediately.
+        """
+        self._producer_semaphore.acquire()
+        with self._mutex:
+            if self._threads_exit:
+                return True
+            else:
+                self._queue.append(item)
+        self._consumer_semaphore.release()
+        return False
+
+    def get(self) -> Any:
+        """Remove and return an item from the queue.
+
+        Block if necessary until an item is available in queue.
+        This method is called by consumer threads.
+        """
+        self._consumer_semaphore.acquire()
+        with self._mutex:
+            next_item = self._queue.popleft()
+        self._producer_semaphore.release()
+        return next_item
+
+    def release(self, num_threads: int):
+        """Release `num_threads` of producers so they would exit cooperatively."""
+        with self._mutex:
+            self._threads_exit = True
+        for _ in range(num_threads):
+            # NOTE: After Python 3.9+, Semaphore.release(n) can be used to
+            # release all threads at once.
+            self._producer_semaphore.release()
+
+    def qsize(self):
+        """Return the size of the queue."""
+        with self._mutex:
+            return len(self._queue)
+
+
+T = TypeVar("T")
+U = TypeVar("U")
+
+
+def make_async_gen(
+    base_iterator: Iterator[T],
+    fn: Callable[[Iterator[T]], Iterator[U]],
+    num_workers: int = 1,
+) -> Iterator[U]:
+    """Returns a new iterator with elements fetched from the base_iterator
+    in an async fashion using a threadpool.
+
+    Each thread in the threadpool will fetch data from the base_iterator in a
+    thread-safe fashion, and apply the provided `fn` computation concurrently.
+
+    Args:
+        base_iterator: The iterator to asynchronously fetch from.
+        fn: The function to run on the input iterator.
+        num_workers: The number of threads to use in the threadpool. Defaults to 1.
+
+    Returns:
+        An iterator with the same elements as outputted from `fn`.
+    """
+
+    if num_workers < 1:
+        raise ValueError("Size of threadpool must be at least 1.")
+
+    # Use a lock to fetch from the base_iterator in a thread-safe fashion.
+    def convert_to_threadsafe_iterator(base_iterator: Iterator[T]) -> Iterator[T]:
+        class ThreadSafeIterator:
+            def __init__(self, it):
+                self.lock = threading.Lock()
+                self.it = it
+
+            def __next__(self):
+                with self.lock:
+                    return next(self.it)
+
+            def __iter__(self):
+                return self
+
+        return ThreadSafeIterator(base_iterator)
+
+    thread_safe_generator = convert_to_threadsafe_iterator(base_iterator)
+
+    class Sentinel:
+        def __init__(self, thread_index: int):
+            self.thread_index = thread_index
+
+    output_queue = Queue(1)
+
+    # Because pulling from the base iterator cannot happen concurrently,
+    # we must execute the expensive computation in a separate step which
+    # can be parallelized via a threadpool.
+    def execute_computation(thread_index: int):
+        try:
+            for item in fn(thread_safe_generator):
+                if output_queue.put(item):
+                    # Return early when it's instructed to do so.
+                    return
+            output_queue.put(Sentinel(thread_index))
+        except Exception as e:
+            output_queue.put(e)
+
+    # Use separate threads to produce output batches.
+    threads = [
+        threading.Thread(target=execute_computation, args=(i,), daemon=True)
+        for i in range(num_workers)
+    ]
+
+    for thread in threads:
+        thread.start()
+
+    # Use main thread to consume output batches.
+    num_threads_finished = 0
+    try:
+        while True:
+            next_item = output_queue.get()
+            if isinstance(next_item, Exception):
+                raise next_item
+            if isinstance(next_item, Sentinel):
+                logger.debug(f"Thread {next_item.thread_index} finished.")
+                num_threads_finished += 1
+            else:
+                yield next_item
+            if num_threads_finished >= num_workers:
+                break
+    finally:
+        # Cooperatively exit all producer threads.
+        # This is to avoid these daemon threads hanging there with holding batches in
+        # memory, which can cause GRAM OOM easily. This can happen when caller breaks
+        # in the middle of iteration.
+        num_threads_alive = num_workers - num_threads_finished
+        if num_threads_alive > 0:
+            output_queue.release(num_threads_alive)
