@@ -15,7 +15,8 @@ You can configure these to be saved to a persistent storage location.
 
     An example of multiple workers spread across multiple nodes uploading checkpoints to persistent storage.
 
-Ray Train requires some form of external persistent storage such as
+**Ray Train expects all workers to be able to write files to the same persistent storage location.**
+Therefore, Ray Train requires some form of external persistent storage such as
 cloud storage (e.g., S3, GCS) or a shared filesystem (e.g., AWS EFS, Google Filestore, HDFS)
 for multi-node training.
 
@@ -37,8 +38,6 @@ Cloud storage (AWS S3, Google Cloud Storage)
 
     Cloud storage is the recommended persistent storage option.
 
-If all nodes in a Ray cluster have access to cloud storage, then all outputs can be uploaded to a shared cloud bucket.
-
 Use cloud storage by specifying a bucket URI as the :class:`RunConfig(storage_path) <ray.train.RunConfig>`:
 
 .. code-block:: python
@@ -55,16 +54,14 @@ Use cloud storage by specifying a bucket URI as the :class:`RunConfig(storage_pa
     )
 
 
+Ensure that all nodes in the Ray cluster have access to cloud storage, so outputs from workers can be uploaded to a shared cloud bucket.
 In this example, all files are uploaded to shared storage at ``s3://bucket-name/sub-path/experiment_name`` for further processing.
 
 
-Network filesystem (NFS)
-------------------------
+Shared filesystem (NFS, HDFS)
+-----------------------------
 
-If all Ray nodes have access to a network filesystem, e.g. AWS EFS or Google Cloud Filestore,
-then all outputs can be saved to this shared filesystem.
-
-Use NFS by specifying the mount path as the :class:`RunConfig(storage_path) <ray.train.RunConfig>`:
+Use by specifying the shared storage path as the :class:`RunConfig(storage_path) <ray.train.RunConfig>`:
 
 .. code-block:: python
 
@@ -75,10 +72,14 @@ Use NFS by specifying the mount path as the :class:`RunConfig(storage_path) <ray
         ...,
         run_config=train.RunConfig(
             storage_path="/mnt/cluster_storage",
+            # HDFS example:
+            # storage_path=f"hdfs://{hostname}:{port}/subpath",
             name="experiment_name",
         )
     )
 
+Ensure that all nodes in the Ray cluster have access to the shared filesystem, e.g. AWS EFS, Google Cloud Filestore, or HDFS,
+so that outputs can be saved to there.
 In this example, all files are saved to ``/mnt/cluster_storage/experiment_name`` for further processing.
 
 
