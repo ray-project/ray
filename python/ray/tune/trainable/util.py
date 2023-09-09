@@ -358,7 +358,7 @@ def with_resources(
 
     Args:
         trainable: Trainable to wrap.
-        resources: Resource dict, placement group factory, AIR ``ScalingConfig``
+        resources: Resource dict, placement group factory, ``ScalingConfig``
             or callable that takes in a config dict and returns a placement
             group factory.
 
