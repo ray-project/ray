@@ -376,9 +376,6 @@ class RayServeHandle(_DeploymentHandleBase):
     def remote(self, *args, **kwargs) -> asyncio.Task:
         """Issue an asynchronous request to the __call__ method of the deployment.
 
-        The `args` and `kwargs` passed in will be serialized and passed to the remote
-        method call.
-
         Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
         points to the final result of the request.
 
@@ -873,7 +870,10 @@ class DeploymentHandle(_DeploymentHandleBase):
     def remote(
         self, *args, **kwargs
     ) -> Union[DeploymentResponse, DeploymentResponseGenerator]:
-        """Issue a call to the deployment.
+        """Issue a remote call to a method of the deployment.
+
+        The `args` and `kwargs` passed in will be serialized and passed to the remote
+        method call.
 
         By default, the result is a `DeploymentResponse` that can be awaited to fetch
         the result of the call or passed to another `.remote()` call to compose multiple
