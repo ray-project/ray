@@ -36,12 +36,6 @@ from ray.air._internal.uri_utils import URI
 from ray.train import Checkpoint
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.torch import TorchTrainer
-from ray.train._internal.storage import (
-    _exists_at_fs_path,
-    _delete_fs_path,
-    _download_from_fs_path,
-    get_fs_and_path,
-)
 
 from test_new_persistence import (
     train_fn,
@@ -190,21 +184,21 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
     )
     exp_name = "test_trainer"
 
-    # Delete the existing contents at the storage path (ex: from previous runs)
-    fs, storage_fs_path = get_fs_and_path(storage_path, storage_filesystem)
-    if label == "cloud+custom_fs":
-        # NOTE: Using a pyarrow-wrapped version of an fsspec filesystem
-        # causes this download to segfault -- but checkpoints were still
-        # uploaded properly during training.
-        # Deleting also doesn't work properly for some reason.Any
-        # Workaround: Just use the pyarrow default filesystem.
-        fs, _ = pyarrow.fs.FileSystem.from_uri(os.environ["ANYSCALE_ARTIFACT_STORAGE"])
-
+    # NOTE: We use fsspec directly for cleaning up the cloud folders and
+    # downloading for inspection, since the pyarrow default implementation
+    # doesn't delete/download files properly from GCS.
+    fsspec_fs, storage_fs_path = (
+        fsspec.core.url_to_fs(
+            os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence"
+        )
+        if "cloud" in label
+        else fsspec.core.url_to_fs(storage_path)
+    )
     experiment_fs_path = os.path.join(storage_fs_path, exp_name)
-    if _exists_at_fs_path(fs, experiment_fs_path):
+    if fsspec_fs.exists(experiment_fs_path):
         print("\nDeleting results from a previous run...\n")
-        _delete_fs_path(fs, experiment_fs_path)
-    assert not _exists_at_fs_path(fs, experiment_fs_path)
+        fsspec_fs.rm(experiment_fs_path, recursive=True)
+    assert not fsspec_fs.exists(experiment_fs_path)
 
     trainer = TorchTrainer(
         train_fn,
@@ -250,10 +244,12 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
 
     print("\nAsserting contents of uploaded results.\n")
     local_inspect_dir = tmp_path / "inspect_dir"
+    local_inspect_dir.mkdir()
+    # Download the results from storage
+    fsspec_fs.get(storage_fs_path, str(local_inspect_dir), recursive=True)
 
-    _download_from_fs_path(fs, storage_fs_path, str(local_inspect_dir))
     _assert_storage_contents(
-        local_inspect_dir,
+        local_inspect_dir / "test-persistence",
         exp_name,
         checkpoint_config,
         "TorchTrainer",
@@ -279,13 +275,16 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
     aggregated_metrics = {
         key: np.mean(values) for key, values in all_checkpoint_timing_metrics.items()
     }
-    # 3 GB + 10 MB + 10 KB = 3010.01 MB
     checkpoint_size_mb = (
         TestConstants.NUM_GB * 1000 + TestConstants.NUM_MB + TestConstants.NUM_KB / 1000
     )
     speeds = {
         key + "_speed_mbps": checkpoint_size_mb / time_s
         for key, time_s in aggregated_metrics.items()
+    }
+    # Add units as the suffix
+    aggregated_metrics = {
+        key + "_avg_s": time_s for key, time_s in aggregated_metrics.items()
     }
     aggregated_metrics.update(speeds)
     aggregated_metrics["checkpoint_size_mb"] = checkpoint_size_mb
