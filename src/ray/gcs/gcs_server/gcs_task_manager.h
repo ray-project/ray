@@ -122,10 +122,11 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   std::string DebugString();
 
   /// Record metrics.
-  void RecordMetrics() LOCKS_EXCLUDED(mutex_);
+  void RecordMetrics() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Set telemetry client.
-  void SetUsageStatsClient(UsageStatsClient *usage_stats_client) LOCKS_EXCLUDED(mutex_);
+  void SetUsageStatsClient(UsageStatsClient *usage_stats_client)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// A storage component that stores the task events.
   ///
@@ -298,7 +299,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   // Mutex guarding the usage stats client
   absl::Mutex mutex_;
 
-  UsageStatsClient *usage_stats_client_ GUARDED_BY(mutex_) = nullptr;
+  UsageStatsClient *usage_stats_client_ ABSL_GUARDED_BY(mutex_) = nullptr;
 
   /// Counter map for GcsTaskManager stats.
   CounterMapThreadSafe<GcsTaskManagerCounter> stats_counter_;
