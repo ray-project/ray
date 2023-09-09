@@ -171,7 +171,7 @@ class APPOTorchPolicy(
             num_valid = torch.sum(mask)
 
             def reduce_mean_valid(t):
-                return torch.sum(t[mask]) / num_valid
+                return torch.sum(t[:max_seq_len][mask]) / num_valid
 
         else:
             reduce_mean_valid = torch.mean
