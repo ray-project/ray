@@ -20,5 +20,6 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-pod-command`
 * {ref}`kuberay-pod-security`
 * {ref}`kuberay-tls`
-* {ref}`deploy-a-static-ray-cluster-without-kuberay`
 * {ref}`kuberay-gke-bucket`
+* {ref}`ray-k8s-autoscaler-comparison`
+* {ref}`deploy-a-static-ray-cluster-without-kuberay`
