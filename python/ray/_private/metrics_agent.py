@@ -85,7 +85,7 @@ def fix_grpc_metric(metric: Metric):
     alphanums,underscores and colons[2]. We santinize the name by replacing non-alphanum
     chars to underscore, like the official opencensus prometheus exporter[3].
     - distribution bucket bounds: The Metric proto asks distribution bucket bounds to
-    be > 0[4]. However, gRPC OpenCensus metrics have their first bucket bound == 0 [1].
+    be > 0 [4]. However, gRPC OpenCensus metrics have their first bucket bound == 0 [1].
     This makes the `DistributionAggregationData` constructor to raise Exceptions. This
     applies to all bytes and milliseconds (latencies). The fix: we update the initial 0
     bounds to be 0.000_000_1. This will not affect the precision of the metrics, since
@@ -96,6 +96,9 @@ def fix_grpc_metric(metric: Metric):
     [3] https://github.com/census-instrumentation/opencensus-cpp/blob/50eb5de762e5f87e206c011a4f930adb1a1775b1/opencensus/exporters/stats/prometheus/internal/prometheus_utils.cc#L39 # noqa: E501
     [4] https://github.com/census-instrumentation/opencensus-proto/blob/master/src/opencensus/proto/metrics/v1/metrics.proto#L218 # noqa: E501
     """
+
+    if not metric.metric_descriptor.name.startswith("grpc.io/"):
+        return
 
     metric.metric_descriptor.name = RE_NON_ALPHANUMS.sub(
         "_", metric.metric_descriptor.name

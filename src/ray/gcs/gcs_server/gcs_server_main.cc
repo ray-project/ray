@@ -15,7 +15,6 @@
 #include <iostream>
 
 #include "gflags/gflags.h"
-#include "grpcpp/opencensus.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/store_client/redis_store_client.h"
@@ -70,10 +69,7 @@ int main(int argc, char *argv[]) {
   // as soon as there is no more work to be processed.
   boost::asio::io_service::work work(main_service);
 
-  if (RayConfig::instance().enable_grpc_metrics_collection()) {
-    grpc::RegisterOpenCensusPlugin();
-    grpc::RegisterOpenCensusViewsForExport();
-  }
+  ray::stats::enable_grpc_metrics_collection_if_needed("gcs");
 
   const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "gcs_server"},
                                             {ray::stats::WorkerIdKey, ""},
