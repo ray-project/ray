@@ -154,7 +154,7 @@ def train_cifar(config):
         # Ray Tune and will potentially be accessed through in ``get_checkpoint()``
         # in future iterations.
         # Note to save a file like checkpoint, you still need to put it under a directory
-        # to construct an AIR checkpoint.
+        # to construct a checkpoint.
         os.makedirs("my_model", exist_ok=True)  # ok to overwrite the previous one.
         path = os.path.join("my_model", "checkpoint.pt")
         torch.save(
