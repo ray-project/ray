@@ -845,7 +845,7 @@ class DeploymentHandle(_DeploymentHandleBase):
     def remote(
         self, *args, **kwargs
     ) -> Union[DeploymentResponse, DeploymentResponseGenerator]:
-        """Issue a call to the deployment.
+        """Issue a remote call to a method of the deployment.
 
         By default, the result is a `DeploymentResponse` that can be awaited to fetch
         the result of the call or passed to another `.remote()` call to compose multiple
@@ -866,6 +866,11 @@ class DeploymentHandle(_DeploymentHandleBase):
             composed_response = handle2.remote(handle1.remote())
             composed_result = await composed_response
 
+        Args:
+            *args: Positional arguments to be serialized and passed to the
+                remote method call.
+            **kwargs: Keyword arguments to be serialized and passed to the
+                remote method call.
         """
         loop = self._get_or_create_router()._event_loop
         result_coro = self._remote(args, kwargs)
