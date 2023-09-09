@@ -82,6 +82,8 @@ def get_context() -> TrainContext:
     """Get or create a singleton training context.
 
     The context is only available in a training or tuning loop.
+
+    See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
     global _default_context
 
