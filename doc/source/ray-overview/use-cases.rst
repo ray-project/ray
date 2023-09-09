@@ -165,7 +165,7 @@ Learn more about reinforcement learning with the following resources.
 ML Platform
 -----------
 
-Ray and its AI Runtime libraries provide unified compute runtime for teams looking to simplify their ML platform.
+Ray and its AI libraries provide unified compute runtime for teams looking to simplify their ML platform.
 Ray's libraries such as Ray Train, Ray Data, and Ray Serve can be used to compose end-to-end ML workflows, providing features and APIs for
 data preprocessing as part of training, and transitioning from training to serving.
 
