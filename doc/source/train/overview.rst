@@ -13,6 +13,9 @@ To use Ray Train effectively, you need to understand four main concepts:
 #. :ref:`Scaling configuration: <train-overview-scaling-config>` A configuration of the number of workers and compute resources (for example, CPUs or GPUs).
 #. :ref:`Trainer <train-overview-trainers>`: A Python class that ties together the training function, workers, and scaling configuration to execute a distributed training job.
 
+.. figure:: images/overview.png
+    :align: center
+
 .. _train-overview-training-function:
 
 Training function
