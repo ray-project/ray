@@ -43,11 +43,34 @@ applications:
     ...
 ```
 
-The file contains `http_options` and `applications`. These are the `http_options`:
+The file contains `proxy_location`, `http_options`, `grpc_options`, and `applications`.
 
-- `host` and `port` are HTTP options that determine the host IP address and the port for your Serve application's HTTP proxies. These are optional settings and can be omitted. By default, the `host` is set to `0.0.0.0` to expose your deployments publicly, and the port is set to `8000`. If you're using Kubernetes, setting `host` to `0.0.0.0` is necessary to expose your deployments outside the cluster.
-- `request_timeout_s` is a field in the `http_options` that allows you to set the end-to-end timeout for a request before terminating and retrying at another replica. This config is global to your Ray cluster, and you can't update it during runtime. By default, the Serve HTTP proxy retries up to `10` times when a response is not received due to failures (for example, network disconnect, request timeout, etc.) By default, there is no request timeout. 
-- `keep_alive_timeout_s` is a field in the `http_options` that allows you to set the keep alive timeout for the HTTP proxy. For more details, see [here](serve-http-guide-keep-alive-timeout)
+The `proxy_location` field configures where to run proxies to handle traffic to the cluster. You can set `proxy_location` to the following values:
+- EveryNode (default): Run a proxy on every node in the cluster that has at least one replica actor.
+- HeadOnly: Only run a single proxy on the head node.
+- Disabled: Don't run proxies at all. Set this value if you are only making calls to your applications using deployment handles.
+
+The `http_options` are as follows. Note that the HTTP config is global to your Ray cluster, and you can't update it during runtime.
+
+- **`host`**: The host IP address for Serve's HTTP proxies. This is optional and can be omitted. By default, the `host` is set to `0.0.0.0` to expose your deployments publicly. If you're using Kubernetes, you must set `host` to `0.0.0.0` to expose your deployments outside the cluster.
+- **`port`**: The port for Serve's HTTP proxies. This parameter is optional and can be omitted. By default, the port is set to `8000`. 
+- **`request_timeout_s`**: Allows you to set the end-to-end timeout for a request before terminating and retrying at another replica. By default, the Serve HTTP proxy retries up to `10` times when a response is not received due to failures (for example, network disconnect, request timeout, etc.) By default, there is no request timeout. 
+- **`keep_alive_timeout_s`**: Allows you to set the keep alive timeout for the HTTP proxy. For more details, see [here](serve-http-guide-keep-alive-timeout)
+
+The `grpc_options` are as follows. Note that the gRPC config is global to your Ray cluster, and you can't update it during runtime.
+- **`port`**: The port that the gRPC proxies listen on. These are optional settings and can be omitted. By default, the port is
+  set to `9000`.
+- **`grpc_servicer_functions`**: List of import paths for gRPC `add_servicer_to_server` functions to add to Serve's gRPC proxy. The servicer functions need to be importable from the context of where Serve is running. This defaults to an empty list, which means the gRPC server isn't started.
+
+These are the `grpc_options`:
+
+- `port` are gRPC options that determine the host port for your Serve application's gRPC
+  proxies. These are optional settings and can be omitted. By default, the port is
+  set to `9000`.
+- `grpc_servicer_functions` is a list of import paths for gRPC `add_servicer_to_server`
+  functions to add to Serve’s gRPC proxy. It also serves as the flag to determine
+  whether to start gRPC server. The default is an empty list, meaning no gRPC server is
+  started.
 
 These are the fields per application:
 
