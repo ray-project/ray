@@ -202,10 +202,12 @@ parts:
               - file: serve/production-guide/handling-dependencies
               - file: serve/production-guide/best-practices
           - file: serve/monitoring
-          - file: serve/scaling-and-resource-allocation
+          - file: serve/resource-allocation
+          - file: serve/autoscaling-guide
           - file: serve/advanced-guides/index
             sections:
               - file: serve/advanced-guides/app-builder-guide
+              - file: serve/advanced-guides/advanced-autoscaling
               - file: serve/advanced-guides/performance
               - file: serve/advanced-guides/dyn-req-batch
               - file: serve/advanced-guides/inplace-updates
@@ -312,6 +314,7 @@ parts:
                   - file: cluster/kubernetes/k8s-ecosystem/ingress.md
                   - file: cluster/kubernetes/k8s-ecosystem/prometheus-grafana.md
                   - file: cluster/kubernetes/k8s-ecosystem/pyspy.md
+                  - file: cluster/kubernetes/k8s-ecosystem/volcano.md
                   - file: cluster/kubernetes/k8s-ecosystem/kubeflow.md
               - file: cluster/kubernetes/benchmarks
                 sections:
@@ -386,3 +389,6 @@ parts:
 
       - file: ray-contribute/index
         title: Developer Guides
+
+      - file: ray-security/index
+        title: "Security"
