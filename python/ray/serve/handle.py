@@ -892,7 +892,7 @@ class DeploymentHandle(_DeploymentHandleBase):
             composed_result = await composed_response
 
         Args:
-            *args: Named arguments to be serialized and passed to the
+            *args: Positional arguments to be serialized and passed to the
                 remote method call.
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
