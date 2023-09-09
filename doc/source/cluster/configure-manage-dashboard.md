@@ -133,7 +133,7 @@ The Ray Dashboard provides read **and write** access to the Ray Cluster. The rev
 
 ## Disabling the Dashboard
 
-Dashboard is included if you use `ray[default]`, `ray[air]`, or {ref}`other installation commands <installation>` and automatically started.
+Dashboard is included if you use `ray[default]` or {ref}`other installation commands <installation>` and automatically started.
 
 To disable Dashboard, use the following arguments `--include-dashboard`.
 
@@ -209,6 +209,9 @@ Configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`, `R
 * Set `RAY_GRAFANA_IFRAME_HOST` to an address that the user's browsers can use to access Grafana and embed visualizations. If `RAY_GRAFANA_IFRAME_HOST` is not set, Ray Dashboard uses the value of `RAY_GRAFANA_HOST`.
 
 For example, if the IP of the head node is 55.66.77.88 and Grafana is hosted on port 3000. Set the value to `RAY_GRAFANA_HOST=http://55.66.77.88:3000`.
+* If you start a single-node Ray Cluster manually, make sure these environment variables are set and accessible before you start the cluster or as a prefix to the `ray start ...` command, e.g., `RAY_GRAFANA_HOST=http://55.66.77.88:3000 ray start ...`
+* If you start a Ray Cluster with {ref}`VM Cluster Launcher <cloud-vm-index>`, the environment variables should be set under `head_start_ray_commands` as a prefix to the `ray start ...` command.
+* If you start a Ray Cluster with {ref}`KubeRay <kuberay-index>`, refer to this {ref}`tutorial <kuberay-prometheus-grafana>`.
 
 If all the environment variables are set properly, you should see time-series metrics in {ref}`Ray Dashboard <observability-getting-started>`.
 
@@ -237,7 +240,7 @@ When both Grafana and the Ray Cluster are on the same Kubernetes cluster, set `R
 
 
 #### User authentication for Grafana
-When the Grafana instance requires user authentication, the following settings have to be in its `configuration file <https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/>`_ to correctly embed in Ray Dashboard:
+When the Grafana instance requires user authentication, the following settings have to be in its [configuration file](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/) to correctly embed in Ray Dashboard:
 
 ```ini
   [security]
@@ -248,8 +251,15 @@ When the Grafana instance requires user authentication, the following settings h
 
 #### Troubleshooting
 
-##### Grafana dashboards are not embedded in the Ray dashboard
-If you're getting an error that says `RAY_GRAFANA_HOST` is not setup despite having set it up, check that:
+##### Dashboard message: either Prometheus or Grafana server is not deteced
+If you have followed the instructions above to set up everything, run the connection checks below in your browser:
+* check Head Node connection to Prometheus server: add `api/prometheus_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/prometheus_health)and visit it.
+* check Head Node connection to Grafana server: add `api/grafana_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/grafana_health) and visit it.
+* check browser connection to Grafana server: visit the URL used in `RAY_GRAFANA_IFRAME_HOST`.
+
+
+##### Getting an error that says `RAY_GRAFANA_HOST` is not setup
+If you have set up Grafana , check that:
 * You've included the protocol in the URL (e.g., `http://your-grafana-url.com` instead of `your-grafana-url.com`).
 * The URL doesn't have a trailing slash (e.g., `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).
 

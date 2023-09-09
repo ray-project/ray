@@ -290,6 +290,7 @@ parts:
                     sections:
                       - file: cluster/kubernetes/user-guides/aws-eks-gpu-cluster.md
                       - file: cluster/kubernetes/user-guides/gcp-gke-gpu-cluster.md
+                  - file: cluster/kubernetes/user-guides/storage.md
                   - file: cluster/kubernetes/user-guides/config.md
                   - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
                   - file: cluster/kubernetes/user-guides/kuberay-gcs-ft.md
@@ -372,6 +373,7 @@ parts:
                   - file: ray-observability/user-guides/debug-apps/ray-debugging
               - file: ray-observability/user-guides/cli-sdk
               - file: ray-observability/user-guides/configure-logging
+              - file: ray-observability/user-guides/profiling
               - file: ray-observability/user-guides/add-app-metrics
               - file: ray-observability/user-guides/ray-tracing
           - file: ray-observability/reference/index
