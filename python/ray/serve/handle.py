@@ -376,6 +376,9 @@ class RayServeHandle(_DeploymentHandleBase):
     def remote(self, *args, **kwargs) -> asyncio.Task:
         """Issue an asynchronous request to the __call__ method of the deployment.
 
+        The `args` and `kwargs` passed in will be serialized and passed to the remote
+        method call.
+
         Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
         points to the final result of the request.
 
