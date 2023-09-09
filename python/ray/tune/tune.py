@@ -32,7 +32,7 @@ from ray.train import SyncConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _DEPRECATED_VALUE
 from ray.train._internal.storage import _use_storage_context
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
+from ray.tune.analysis.experiment_analysis import LegacyExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
@@ -984,7 +984,7 @@ def run(
                 "To enable trials to use GPUs, wrap `train_func` with "
                 "`tune.with_resources(train_func, resources_per_trial={'gpu': 1})` "
                 "which allows Tune to expose 1 GPU to each trial. "
-                "For Ray AIR Trainers, you can specify GPU resources "
+                "For Ray Train Trainers, you can specify GPU resources "
                 "through `ScalingConfig(use_gpu=True)`. "
                 "You can also override "
                 "`Trainable.default_resource_request` if using the "
@@ -1161,7 +1161,7 @@ def run(
             )
 
     if _use_storage_context():
-        return NewExperimentAnalysis(
+        return ExperimentAnalysis(
             experiment_checkpoint_path=runner.experiment_path,
             default_metric=metric,
             default_mode=mode,
@@ -1169,7 +1169,7 @@ def run(
             storage_filesystem=experiments[0].storage.storage_filesystem,
         )
     else:
-        return ExperimentAnalysis(
+        return LegacyExperimentAnalysis(
             runner.experiment_state_path,
             trials=all_trials,
             default_metric=metric,

@@ -4,33 +4,24 @@
 Ray Train API
 =============
 
-This page covers framework specific integrations with Ray Train and Ray Train Developer APIs.
-
 .. _train-integration-api:
 .. _train-framework-specific-ckpts:
 
 .. currentmodule:: ray
 
-Ray Train Integrations
-----------------------
-
-.. _train-pytorch-integration:
-
 PyTorch Ecosystem
-~~~~~~~~~~~~~~~~~
-
-Scale out your PyTorch, Lightning, Hugging Face code with Ray TorchTrainer.
+-----------------
 
 .. autosummary::
     :toctree: doc/
 
     ~train.torch.TorchTrainer
     ~train.torch.TorchConfig
-    ~train.torch.TorchCheckpoint
 
+.. _train-pytorch-integration:
 
 PyTorch
-*******
+~~~~~~~
 
 .. autosummary::
     :toctree: doc/
@@ -43,7 +34,7 @@ PyTorch
 .. _train-lightning-integration:
 
 PyTorch Lightning
-*****************
+~~~~~~~~~~~~~~~~~
 
 .. autosummary::
     :toctree: doc/
@@ -55,24 +46,10 @@ PyTorch Lightning
     ~train.lightning.RayDeepSpeedStrategy
     ~train.lightning.RayTrainReportCallback
 
-.. note::
-
-    We will deprecate `LightningTrainer`, `LightningConfigBuilder`,
-    `LightningCheckpoint`, and `LightningPredictor` in Ray 2.8. Please 
-    refer to the :ref:`migration guide <lightning-trainer-migration-guide>` for more info.
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.lightning.LightningTrainer
-    ~train.lightning.LightningConfigBuilder
-    ~train.lightning.LightningCheckpoint
-    ~train.lightning.LightningPredictor
-
 .. _train-transformers-integration:
 
 Hugging Face Transformers
-*************************
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
     :toctree: doc/
@@ -80,24 +57,9 @@ Hugging Face Transformers
     ~train.huggingface.transformers.prepare_trainer
     ~train.huggingface.transformers.RayTrainReportCallback
 
-.. note::
 
-    We will deprecate `TransformersTrainer`, `TransformersCheckpoint` in Ray 2.8. Please 
-    refer to the :ref:`migration guide <transformers-trainer-migration-guide>` for more info.
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.huggingface.TransformersTrainer
-    ~train.huggingface.TransformersCheckpoint
-
-Hugging Face Accelerate
-***********************
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.huggingface.AccelerateTrainer
+More Frameworks
+---------------
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
@@ -107,21 +69,8 @@ Tensorflow/Keras
 
     ~train.tensorflow.TensorflowTrainer
     ~train.tensorflow.TensorflowConfig
-    ~train.tensorflow.TensorflowCheckpoint
-
-
-Tensorflow/Keras Training Loop Utilities
-****************************************
-
-.. autosummary::
-    :toctree: doc/
-
     ~train.tensorflow.prepare_dataset_shard
-
-.. autosummary::
-
-    ~air.integrations.keras.ReportCheckpointCallback
-
+    ~train.tensorflow.keras.ReportCheckpointCallback
 
 Horovod
 ~~~~~~~
@@ -140,7 +89,6 @@ XGBoost
     :toctree: doc/
 
     ~train.xgboost.XGBoostTrainer
-    ~train.xgboost.XGBoostCheckpoint
 
 
 LightGBM
@@ -150,32 +98,42 @@ LightGBM
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
-    ~train.lightgbm.LightGBMCheckpoint
 
 
 .. _ray-train-configs-api:
 
-Ray Train Config
-----------------
+Ray Train Configuration
+-----------------------
 
 .. autosummary::
     :toctree: doc/
 
-    ~train.ScalingConfig
-    ~train.RunConfig
     ~train.CheckpointConfig
-    ~train.FailureConfig
     ~train.DataConfig
+    ~train.FailureConfig
+    ~train.RunConfig
+    ~train.ScalingConfig
+    ~train.SyncConfig
 
 .. _train-loop-api:
 
-Ray Train Loop
---------------
+Ray Train Utilities
+-------------------
+
+**Classes**
 
 .. autosummary::
     :toctree: doc/
 
+    ~train.Checkpoint
     ~train.context.TrainContext
+
+**Functions**
+
+.. autosummary::
+    :toctree: doc/
+    
+    ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
     ~train.report
@@ -190,14 +148,9 @@ Ray Train Output
 
     ~train.Result
 
-.. autosummary::
-    :toctree: doc/
 
-    ~train.Checkpoint
-
-
-Ray Train Base Classes (Developer APIs)
----------------------------------------
+Ray Train Developer APIs
+------------------------
 
 .. _train-base-trainer:
 

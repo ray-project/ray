@@ -3,7 +3,7 @@
 Fine-tuning DreamBooth with Ray Train
 =====================================
 
-This example shows how to do DreamBooth fine-tuning of a Stable Diffusion model using Ray AIR.
+This example shows how to do DreamBooth fine-tuning of a Stable Diffusion model using Ray Train.
 See the original `DreamBooth project homepage <https://dreambooth.github.io/>`_ for more details on what this fine-tuning method achieves.
 
 .. image:: https://dreambooth.github.io/DreamBooth_files/high_level.png
@@ -109,7 +109,7 @@ The code was compacted for brevity. The `full code <https://github.com/ray-proje
   :start-at: def train_fn(config)
   :end-before: END: Training loop
 
-We can then run this training loop with Ray AIR's TorchTrainer:
+We can then run this training loop with Ray Train's TorchTrainer:
 
 
 .. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth/train.py
