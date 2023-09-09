@@ -1,6 +1,6 @@
 (serve-inplace-updates)=
 
-# In-Place Updates to Serve
+# Updating Applications In-Place
 
 You can update your Serve applications once they're in production by updating the settings in your config file and redeploying it using the `serve deploy` command. In the redeployed config file, you can add new deployment settings or remove old deployment settings. This is because `serve deploy` is **idempotent**, meaning your Serve application's config always matches (or honors) the latest config you deployed successfully – regardless of what config files you deployed before that.
 
