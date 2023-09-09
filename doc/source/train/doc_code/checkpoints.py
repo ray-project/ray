@@ -409,3 +409,21 @@ trainer = TorchTrainer(
 )
 # The checkpoint in cloud storage will contain: model-rank=0.pt, model-rank=1.pt
 # __distributed_checkpointing_end__
+
+# __inspect_checkpoint_example_start__
+from pathlib import Path
+
+from ray.train import Checkpoint
+
+# Create a sample locally available checkpoint
+example_checkpoint_dir = Path("/tmp/test-checkpoint")
+example_checkpoint_dir.mkdir()
+example_checkpoint_dir.joinpath("model.pt").touch()
+checkpoint = Checkpoint.from_directory(example_checkpoint_dir)
+
+with checkpoint.as_directory() as checkpoint_dir:
+    assert Path(checkpoint_dir).joinpath("model.pt").exists()
+
+checkpoint_dir = checkpoint.to_directory()
+assert Path(checkpoint_dir).joinpath("model.pt").exists()
+# __inspect_checkpoint_example_end__

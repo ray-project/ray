@@ -21,14 +21,14 @@ Saving checkpoints during training
 ----------------------------------
 
 The :class:`Checkpoint <ray.train.Checkpoint>` is a lightweight interface provided
-by Ray Train that represents a *directory* that exists at some ``(filesystem, path)``.
+by Ray Train that represents a *directory* that exists at on local or remote storage.
 
-For example, a checkpoint in cloud storage would be represented by
-``Checkpoint(filesystem=S3FileSystem, path="my-bucket/my-checkpoint")``.
-A locally available checkpoint would be represented by
-``Checkpoint(filesystem=LocalFileSystem, path="/tmp/my-checkpoint")``.
+For example, a checkpoint could point to a directory in cloud storage:
+``s3://my-bucket/my-checkpoint-dir``.
+A locally available checkpoint points to a location on the local filesystem:
+``/tmp/my-checkpoint-dir``.
 
-Here's how you modify your training loop to save a checkpoint in Ray Train:
+Here's how you save a checkpoint in the training loop:
 
 1. Write your model checkpoint to a local directory.
 
@@ -36,7 +36,7 @@ Here's how you modify your training loop to save a checkpoint in Ray Train:
    - This means that you can use any serialization format you want.
    - This makes it **easy to use familiar checkpoint utilities provided by training frameworks**, such as
      ``torch.save``, ``pl.Trainer.save_checkpoint``, Accelerate's ``accelerator.save_model``,
-     Transformers' ``save_pretrained``, and ``tf.keras.Model.save``.
+     Transformers' ``save_pretrained``, ``tf.keras.Model.save``, etc.
 
 2. Create a :class:`Checkpoint <ray.train.Checkpoint>` from the directory using :meth:`Checkpoint.from_directory <ray.train.Checkpoint.from_directory>`.
 
@@ -270,7 +270,12 @@ See :ref:`train-inspect-results` for a full guide on inspecting training results
 
 :meth:`Checkpoint.as_directory <ray.train.Checkpoint.as_directory>`
 and :meth:`Checkpoint.to_directory <ray.train.Checkpoint.to_directory>`
-are the two main APIs to interact with Train checkpoints.
+are the two main APIs to interact with Train checkpoints:
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __inspect_checkpoint_example_start__
+    :end-before: __inspect_checkpoint_example_end__
 
 
 .. _train-dl-loading-checkpoints:
@@ -286,8 +291,8 @@ training function with :func:`ray.train.get_checkpoint <ray.train.get_checkpoint
 
 The checkpoint returned by :func:`ray.train.get_checkpoint <ray.train.get_checkpoint>` is populated in two ways:
 
-1. It can be auto-populated as the latest reported checkpoint, e.g. for :ref:`automatic failure recovery <train-fault-tolerance>` or :ref:`on manual restoration <train-restore-guide>`.
-2. The checkpoint can be passed to the :class:`Trainer <ray.train.trainer.BaseTrainer>` as the ``resume_from_checkpoint`` argument.
+1. It can be auto-populated as the latest reported checkpoint, e.g. during :ref:`automatic failure recovery <train-fault-tolerance>` or :ref:`on manual restoration <train-restore-guide>`.
+2. It can be manually populated by passing a checkpoint to the ``resume_from_checkpoint`` argument of a Ray :class:`Trainer <ray.train.trainer.BaseTrainer>`.
    This is useful for initializing a new training run with a previous run's checkpoint.
 
 
