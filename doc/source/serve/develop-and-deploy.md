@@ -163,4 +163,4 @@ Deploy the Ray Serve application in production on Kubernetes using the [KubeRay]
 
 Use the Ray Dashboard to get a high-level overview of your Ray Cluster and Ray Serve application's states. The Ray Dashboard is available both during local testing and on a remote cluster in production. Ray Serve provides some in-built metrics and logging as well as utilities for adding custom metrics and logs in your application. For production deployments, exporting logs and metrics to your observability platforms is recommended. See [Monitoring](serve-monitoring) for more details. 
 
-[KubeRay]: https://ray-project.github.io/kuberay/
+[KubeRay]: kuberay-index
