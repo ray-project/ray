@@ -705,7 +705,7 @@ def _load_checkpoint_dict(
             message.
 
     Returns:
-        The model or weights and AIR preprocessor contained within.
+        The model or weights and preprocessor contained within.
     """
     checkpoint_dict = checkpoint.to_dict()
     preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
