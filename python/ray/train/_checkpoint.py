@@ -159,10 +159,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         """Create checkpoint object from a local directory.
 
         Args:
-            path: Local directory containing checkpoint data. The caller should not
-                modify the contents of this directory after creating the Checkpoint.
-                If passing this checkpoint to `train.report`, Ray will take control
-                of the checkpoint directory.
+            path: Local directory containing checkpoint data.
 
         Returns:
             A ray.train.Checkpoint object.
