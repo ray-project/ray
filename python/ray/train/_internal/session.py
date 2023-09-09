@@ -857,7 +857,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
 
     Example:
 
-        .. code-block:: python
+        .. testcode::
 
             import tempfile
 
@@ -888,7 +888,6 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
             trainer = TorchTrainer(
                 train_func, scaling_config=train.ScalingConfig(num_workers=2)
             )
-
 
     Args:
         metrics: The metrics you want to report.
@@ -903,13 +902,9 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
 def get_checkpoint() -> Optional[Checkpoint]:
     """Access the session's last checkpoint to resume from if applicable.
 
-    Returns:
-        Checkpoint object if the session is currently being resumed.
-            Otherwise, return None.
-
     Example:
 
-        .. code-block:: python
+        .. testcode::
 
             import tempfile
 
@@ -940,6 +935,10 @@ def get_checkpoint() -> Optional[Checkpoint]:
             trainer = TorchTrainer(
                 train_func, scaling_config=train.ScalingConfig(num_workers=2)
             )
+
+    Returns:
+        Checkpoint object if the session is currently being resumed.
+            Otherwise, return None.
     """
 
     return _get_session().loaded_checkpoint
