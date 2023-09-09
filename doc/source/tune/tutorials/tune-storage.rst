@@ -88,11 +88,11 @@ All we need to do is **set the shared network filesystem as the path to save res
 
 .. code-block:: python
 
-    from ray import air, tune
+    from ray import train, tune
 
     tuner = tune.Tuner(
         trainable,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="experiment_name",
             storage_path="/mnt/path/to/shared/storage/",
         )

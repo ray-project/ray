@@ -15,20 +15,18 @@ You can configure these to be saved to a persistent storage location.
 
     An example of multiple workers spread across multiple nodes uploading checkpoints to persistent storage.
 
-By default, these training outputs are saved in a local directory under ``~/ray_results``.
-This is sufficient for single-node setups or distributed training without saving
-model checkpoints or artifacts, but some form of external persistent storage such as
-cloud storage (e.g., S3, GCS) or NFS (e.g., AWS EFS, Google Filestore) is
-highly recommended when doing multi-node training.
+Ray Train requires some form of external persistent storage such as
+cloud storage (e.g., S3, GCS) or a shared filesystem (e.g., AWS EFS, Google Filestore, HDFS)
+for multi-node training.
 
-Here are some benefits of setting up persistent storage:
+Here are some capabilities that persistent storage enables:
 
 - **Checkpointing and fault tolerance**: Saving checkpoints to a persistent storage location
   allows you to resume training from the last checkpoint in case of a node failure.
   See :ref:`train-checkpointing` for a detailed guide on how to set up checkpointing.
 - **Post-experiment analysis**: A consolidated location storing data from all trials is useful for post-experiment analysis
   such as accessing the best checkpoints and hyperparameter configs after the cluster has already been terminated.
-- **Bridge with downstream serving/batch inference tasks**: You can easily access the models
+- **Bridge training/fine-tuning with downstream serving and batch inference tasks**: You can easily access the models
   and artifacts to share them with others or use them in downstream tasks.
 
 
@@ -242,7 +240,7 @@ and how they're structured in storage.
 
 .. seealso::
 
-    This example includes checkpoint saving, which is covered in detail in :ref:`train-checkpointing`.
+    This example includes checkpointing, which is covered in detail in :ref:`train-checkpointing`.
 
 .. code-block:: python
 
@@ -369,7 +367,6 @@ Note that this behavior is off by default.
 Advanced configuration
 ----------------------
 
-
 Setting the intermediate local directory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -385,3 +382,17 @@ Customize this intermediate local directory with the ``RAY_AIR_LOCAL_CACHE_DIR``
     os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/custom/"
 
     ...
+
+.. _train-ray-storage:
+
+Automatically setting up persistent storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can control where to store training results with the ``RAY_STORAGE``
+environment variable.
+
+For instance, if you set ``RAY_STORAGE="s3://my_bucket/train_results"``, your
+results will automatically persisted there.
+
+If you manually set a :attr:`RunConfig.storage_path <ray.train.RunConfig.storage_path>`, it
+will take precedence over this environment variable.

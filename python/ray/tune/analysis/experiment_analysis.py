@@ -163,10 +163,10 @@ class ExperimentAnalysis:
         # Prefer reading the JSON if it exists.
         if _exists_at_fs_path(trial.storage.storage_filesystem, json_fs_path):
             with trial.storage.storage_filesystem.open_input_stream(json_fs_path) as f:
-                json_list = [
-                    json.loads(json_row)
-                    for json_row in f.readall().decode("utf-8").rstrip("\n").split("\n")
-                ]
+                content = f.readall().decode("utf-8").rstrip("\n")
+                if not content:
+                    return DataFrame()
+                json_list = [json.loads(row) for row in content.split("\n")]
             df = pd.json_normalize(json_list, sep="/")
         # Fallback to reading the CSV.
         elif _exists_at_fs_path(trial.storage.storage_filesystem, csv_fs_path):
