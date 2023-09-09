@@ -857,7 +857,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
 
     Example:
 
-        .. testcode::
+        .. code-block:: python
 
             import tempfile
 
@@ -889,10 +889,6 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
                 train_func, scaling_config=train.ScalingConfig(num_workers=2)
             )
 
-        .. testoutput::
-            :hide:
-
-            ...
 
     Args:
         metrics: The metrics you want to report.
@@ -913,12 +909,13 @@ def get_checkpoint() -> Optional[Checkpoint]:
 
     Example:
 
-        .. testcode::
+        .. code-block:: python
 
             import tempfile
 
             from ray import train
             from ray.train import Checkpoint
+            from ray.train.torch import TorchTrainer
 
 
             def train_func(config):
@@ -943,11 +940,6 @@ def get_checkpoint() -> Optional[Checkpoint]:
             trainer = TorchTrainer(
                 train_func, scaling_config=train.ScalingConfig(num_workers=2)
             )
-
-        .. testoutput::
-            :hide:
-
-            ...
     """
 
     return _get_session().loaded_checkpoint
