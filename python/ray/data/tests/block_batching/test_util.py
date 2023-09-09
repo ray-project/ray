@@ -9,15 +9,14 @@ import pytest
 import ray
 from ray.data._internal.block_batching.interfaces import Batch
 from ray.data._internal.block_batching.util import (
-    Queue,
     _calculate_ref_hits,
     blocks_to_batches,
     collate,
     finalize_batches,
     format_batches,
-    make_async_gen,
     resolve_block_refs,
 )
+from ray.data._internal.util import Queue, make_async_gen
 
 
 def block_generator(num_rows: int, num_blocks: int):

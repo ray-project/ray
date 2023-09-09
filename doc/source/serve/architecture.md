@@ -68,10 +68,10 @@ Machine errors and faults are handled by Ray Serve as follows:
 - When replica Actors fail, the Controller Actor replaces them with new ones.
 - When the proxy Actor fails, the Controller Actor restarts it.
 - When the Controller Actor fails, Ray restarts it.
-- When using the [KubeRay RayService](https://ray-project.github.io/kuberay/guidance/rayservice/), KubeRay will recover crashed nodes or a crashed cluster.  Cluster crashes can be avoided using the [GCS FT feature](https://ray-project.github.io/kuberay/guidance/gcs-ft/).
+- When using the [KubeRay RayService](kuberay-rayservice-quickstart), KubeRay recovers crashed nodes or a crashed cluster. You can avoid cluster crashes by using the [GCS FT feature](kuberay-gcs-ft).
 - If you aren't using KubeRay, when the Ray cluster fails, Ray Serve cannot recover.
 
-When a machine hosting any of the actors crashes, those actors will be automatically restarted on another
+When a machine hosting any of the actors crashes, those actors are automatically restarted on another
 available machine. All data in the Controller (routing policies, deployment
 configurations, etc) is checkpointed to the Ray Global Control Store (GCS) on the head node. Transient data in the
 router and the replica (like network connections and internal request queues) will be lost for this kind of failure.
@@ -86,9 +86,9 @@ Ray Serve's autoscaling feature automatically increases or decreases a deploymen
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling.svg)
 
 - The Serve Autoscaler runs in the Serve Controller actor.
-- Each ServeHandle and each replica periodically pushes its metrics to the autoscaler.
-- For each deployment, the autoscaler periodically checks ServeHandle queues and in-flight queries on replicas to decide whether or not to scale the number of replicas.
-- Each ServeHandle continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it will send any buffered or new queries to the replica until `max_concurrent_queries` is reached.  Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_concurrent_queries` requests at a time.
+- Each `DeploymentHandle` and each replica periodically pushes its metrics to the autoscaler.
+- For each deployment, the autoscaler periodically checks `DeploymentHandle` queues and in-flight queries on replicas to decide whether or not to scale the number of replicas.
+- Each `DeploymentHandle` continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it sends any buffered or new queries to the replica until `max_concurrent_queries` is reached.  Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_concurrent_queries` requests at a time.
 
 :::{note}
 When the controller dies, requests can still be sent via HTTP, gRPC and `DeploymentHandle`, but autoscaling is paused. When the controller recovers, the autoscaling resumes, but all previous metrics collected are lost.

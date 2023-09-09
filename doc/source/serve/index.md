@@ -243,7 +243,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
         ^^^
         
         Understand the key concepts behind Ray Serve.
-        Learn about :ref:`Deployments <serve-key-concepts-deployment>`, :ref:`how to query them <serve-key-concepts-query-deployment>`, and the :ref:`Deployment Graph <serve-key-concepts-deployment-graph>` API for composing models into a graph structure.
+        Learn about :ref:`Deployments <serve-key-concepts-deployment>`, :ref:`how to query them <serve-key-concepts-ingress-deployment>`, and using :ref:`DeploymentHandles <serve-key-concepts-deployment-handle>` to compose multiple models and business logic together.
         
         +++
         .. button-ref:: serve-key-concepts
