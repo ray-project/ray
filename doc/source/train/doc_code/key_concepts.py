@@ -54,6 +54,8 @@ trainer.fit()
 
 
 # __run_config_start__
+import os
+
 from ray.train import RunConfig
 from ray.air.integrations.wandb import WandbLoggerCallback
 
