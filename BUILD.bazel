@@ -544,7 +544,6 @@ ray_cc_binary(
         ":gcs_server_lib",
         ":stats_lib",
         "@com_github_gflags_gflags//:gflags",
-        "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
 )
 
@@ -616,6 +615,7 @@ ray_cc_library(
     deps = [
         ":reporter_rpc",
         ":stats_metric",
+        "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
 )
 
