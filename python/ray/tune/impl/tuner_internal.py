@@ -447,7 +447,7 @@ class TunerInternal:
 
         Args:
             tuner_run_config: The run config passed into the Tuner constructor.
-            trainer: The AIR Trainer instance to use with Tune, which may have
+            trainer: The Trainer instance to use with Tune, which may have
                 a RunConfig specified by the user.
             param_space: The param space passed to the Tuner.
 
@@ -562,8 +562,8 @@ class TunerInternal:
             self._process_scaling_config()
 
     def _convert_trainable(self, trainable: TrainableTypeOrTrainer) -> TrainableType:
-        """Converts an AIR Trainer to a Tune trainable and saves the converted
-        trainable. If not using an AIR Trainer, this leaves the trainable as is."""
+        """Converts a Trainer to a Tune trainable and saves the converted
+        trainable. If not using a Trainer, this leaves the trainable as is."""
         from ray.train.trainer import BaseTrainer
 
         return (
@@ -610,7 +610,7 @@ class TunerInternal:
                     "You passed `checkpoint_frequency="
                     f"{checkpoint_config.checkpoint_frequency}` to your "
                     "CheckpointConfig, but this trainer does not support "
-                    "this argument. If you passed in an AIR trainer that takes in a "
+                    "this argument. If you passed in a Trainer that takes in a "
                     "custom training loop, you will need to "
                     "report a checkpoint every `checkpoint_frequency` iterations "
                     "within your training loop using "
@@ -621,7 +621,7 @@ class TunerInternal:
                 # If we specifically support it, it's handled in the training loop,
                 # so we disable tune's bookkeeping.
                 checkpoint_config.checkpoint_frequency = 0
-            # Otherwise, the trainable is not an AIR trainer and we just keep the
+            # Otherwise, the trainable is not a Trainer and we just keep the
             # user-supplied value.
             # Function trainables will raise a runtime error later if set > 0
         if checkpoint_config.checkpoint_at_end is not None:
@@ -633,7 +633,7 @@ class TunerInternal:
                     "You passed `checkpoint_at_end="
                     f"{checkpoint_config.checkpoint_at_end}` "
                     "to your CheckpointConfig, but this trainer does not support "
-                    "this argument. If you passed in an AIR trainer that takes in a "
+                    "this argument. If you passed in a Trainer that takes in a "
                     "custom training loop, you should include one last call to "
                     "`ray.train.report(metrics=..., checkpoint=...)` "
                     "at the end of your training loop to get this behavior."

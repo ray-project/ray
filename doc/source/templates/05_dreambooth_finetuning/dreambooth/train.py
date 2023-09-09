@@ -24,7 +24,7 @@ from diffusers.models.attention_processor import (
 
 # LoRA related imports end ##
 from diffusers.utils.import_utils import is_xformers_available
-from ray.air import ScalingConfig
+from ray.train import ScalingConfig
 from ray import train
 from ray.train.torch import TorchTrainer
 import torch
