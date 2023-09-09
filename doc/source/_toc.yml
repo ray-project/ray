@@ -290,6 +290,7 @@ parts:
                     sections:
                       - file: cluster/kubernetes/user-guides/aws-eks-gpu-cluster.md
                       - file: cluster/kubernetes/user-guides/gcp-gke-gpu-cluster.md
+                  - file: cluster/kubernetes/user-guides/storage.md
                   - file: cluster/kubernetes/user-guides/config.md
                   - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
                   - file: cluster/kubernetes/user-guides/kuberay-gcs-ft.md
