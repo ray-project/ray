@@ -102,6 +102,7 @@ def train_func(config):
             start_epoch = (
                 torch.load(os.path.join(checkpoint_dir, "extra_state.pt"))["epoch"] + 1
             )
+    # ========================================================
 
     # Wrap the model in DDP
     model = ray.train.torch.prepare_model(model)
@@ -122,11 +123,11 @@ def train_func(config):
             # In standard DDP training, where the model is the same across all ranks,
             # only the global rank 0 worker needs to save and report the checkpoint
             if train.get_context().get_world_rank() == 0 and should_checkpoint:
+                # === Make sure to save all state needed for resuming training ===
                 torch.save(
                     model.module.state_dict(),  # NOTE: Unwrap the model.
                     os.path.join(temp_checkpoint_dir, "model.pt"),
                 )
-                # Save the optimizer state, too.
                 torch.save(
                     optimizer.state_dict(),
                     os.path.join(temp_checkpoint_dir, "optimizer.pt"),
@@ -135,6 +136,7 @@ def train_func(config):
                     {"epoch": epoch},
                     os.path.join(temp_checkpoint_dir, "extra_state.pt"),
                 )
+                # ================================================================
                 checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
 
             train.report(metrics, checkpoint=checkpoint)
