@@ -40,6 +40,8 @@ def train_fn(config):
             "local_rank": context.get_local_rank(),
             # Data
             "data_shard": next(iter(dataset_shard.iter_batches(batch_format="pandas"))),
+            # Other training metrics
+            "loss": 1.0,
         }
     )
 
