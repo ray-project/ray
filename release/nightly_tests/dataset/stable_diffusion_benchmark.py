@@ -1,0 +1,104 @@
+import argparse
+import json
+import os
+from timeit import default_timer as timer
+from typing import Dict
+
+import numpy as np
+import torch
+from diffusers import StableDiffusionImg2ImgPipeline
+
+import ray
+
+DATA_URI = "s3://air-example-data-2/300G-image-data-synthetic-raw-parquet/"
+BATCH_SIZE = 20
+PROMPT = "ghibli style"
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Stable diffusion benchmark")
+    parser.add_argument("--smoke-test", action="store_true")
+    return parser.parse_args()
+
+
+def main(args):
+    ray.init()
+    ray.data.DataContext.get_current().execution_options.verbose_progress = True
+
+    start_time = timer()
+
+    dataset = ray.data.read_parquet(DATA_URI)
+
+    if args.smoke_test:
+        dataset = dataset.limit(1)
+        actor_pool_size = 1
+        num_gpus = 0
+    else:
+        actor_pool_size = int(ray.cluster_resources().get("GPU"))
+        num_gpus = 1
+
+    dataset = dataset.map_batches(
+        GenerateImage,
+        compute=ray.data.ActorPoolStrategy(size=actor_pool_size),
+        batch_size=BATCH_SIZE,
+        num_gpus=num_gpus,
+    )
+
+    num_images = 0
+    for batch in dataset.iter_batches(batch_format="pyarrow", batch_size=None):
+        num_images += len(batch)
+
+    end_time = timer()
+
+    total_time = end_time - start_time
+    throughput = num_images / total_time
+
+    # For structured output integration with internal tooling
+    results = {
+        "data_uri": DATA_URI,
+        "num_images": num_images,
+        "perf_metrics": [
+            {
+                "perf_metric_name": "total_time_s",
+                "perf_metric_value": total_time,
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": "throughput_images_s",
+                "perf_metric_value": throughput,
+                "perf_metric_type": "THROUGHPUT",
+            },
+        ],
+    }
+
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "release_test_out.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(results, f)
+
+    print(results)
+
+
+class GenerateImage:
+    def __init__(self):
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
+            "nitrosocke/Ghibli-Diffusion",
+            torch_dtype=torch.float16,
+            use_safetensors=True,
+            requires_safety_checker=False,
+            safety_checker=None,
+        ).to(device)
+        self.pipeline.set_progress_bar_config(disable=True)
+
+    def __call__(self, batch: Dict[str, np.ndarray]):
+        output = self.pipeline(
+            prompt=[PROMPT] * len(batch["image"]),
+            image=batch["image"],
+            output_type="np",
+        )
+        return {"image": output.images}
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    main(args)
