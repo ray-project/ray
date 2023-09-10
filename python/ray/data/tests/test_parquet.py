@@ -21,9 +21,9 @@ from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
     ParquetDatasource,
-    _deserialize_pieces_with_retry,
+    _deserialize_fragments_with_retry,
     _ParquetDatasourceReader,
-    _SerializedPiece,
+    _SerializedFragment,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -47,7 +47,7 @@ def check_num_computed(ds, expected, streaming_expected) -> None:
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
     ],
 )
-def test_parquet_deserialize_pieces_with_retry(
+def test_parquet_deserialize_fragments_with_retry(
     ray_start_regular_shared, fs, data_path, monkeypatch
 ):
     setup_data_path = _unwrap_protocol(data_path)
@@ -64,10 +64,10 @@ def test_parquet_deserialize_pieces_with_retry(
     pq_ds = pq.ParquetDataset(
         data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
     )
-    serialized_pieces = [_SerializedPiece(p) for p in pq_ds.pieces]
+    serialized_pieces = [_SerializedFragment(p) for p in pq_ds.pieces]
 
     # test 1st attempt succeed
-    pieces = _deserialize_pieces_with_retry(serialized_pieces)
+    pieces = _deserialize_fragments_with_retry(serialized_pieces)
     assert "test1.parquet" in pieces[0].path
     assert "test2.parquet" in pieces[1].path
 
@@ -96,7 +96,7 @@ def test_parquet_deserialize_pieces_with_retry(
     monkeypatch.setattr(
         ray.data.datasource.parquet_datasource, "_deserialize_pieces", mock_deserializer
     )
-    retried_pieces = _deserialize_pieces_with_retry(serialized_pieces)
+    retried_pieces = _deserialize_fragments_with_retry(serialized_pieces)
     assert "test1.parquet" in retried_pieces[0].path
     assert "test2.parquet" in retried_pieces[1].path
 

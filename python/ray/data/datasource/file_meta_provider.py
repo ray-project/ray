@@ -314,21 +314,21 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         from ray.data.datasource.file_based_datasource import _fetch_metadata_parallel
         from ray.data.datasource.parquet_datasource import (
             PARALLELIZE_META_FETCH_THRESHOLD,
-            PIECES_PER_META_FETCH,
+            FRAGMENTS_PER_META_FETCH,
             _fetch_metadata,
             _fetch_metadata_serialization_wrapper,
-            _SerializedPiece,
+            _SerializedFragment,
         )
 
         if len(pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
             # Wrap Parquet fragments in serialization workaround.
-            pieces = [_SerializedPiece(piece) for piece in pieces]
+            pieces = [_SerializedFragment(piece) for piece in pieces]
             # Fetch Parquet metadata in parallel using Ray tasks.
             return list(
                 _fetch_metadata_parallel(
                     pieces,
                     _fetch_metadata_serialization_wrapper,
-                    PIECES_PER_META_FETCH,
+                    FRAGMENTS_PER_META_FETCH,
                     **ray_remote_args,
                 )
             )
