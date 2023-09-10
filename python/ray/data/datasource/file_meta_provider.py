@@ -313,8 +313,8 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
     ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
         from ray.data.datasource.file_based_datasource import _fetch_metadata_parallel
         from ray.data.datasource.parquet_datasource import (
-            PARALLELIZE_META_FETCH_THRESHOLD,
             FRAGMENTS_PER_META_FETCH,
+            PARALLELIZE_META_FETCH_THRESHOLD,
             _fetch_metadata,
             _fetch_metadata_serialization_wrapper,
             _SerializedFragment,
