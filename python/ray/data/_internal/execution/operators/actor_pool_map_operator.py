@@ -254,7 +254,6 @@ class ActorPoolMapOperator(MapOperator):
         # Warn if the user specified a batch or block size that prevents full
         # parallelization across the actor pool. We only know this information after
         # execution has completed.
-        total_rows = sum([m.num_rows for m in self._output_metadata])
         min_workers = self._autoscaling_policy.min_workers
         if len(self._output_metadata) < min_workers:
             # The user created a stream that has too few blocks to begin with.
