@@ -18,7 +18,7 @@ import io.ray.serve.generated.DeploymentStatusInfo;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.StatusOverview;
 import io.ray.serve.handle.RayServeHandle;
-import io.ray.serve.util.LogUtil;
+import io.ray.serve.util.MessageFormatter;
 import io.ray.serve.util.ServeProtoUtil;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -94,36 +94,28 @@ public class ServeControllerClient {
     }
 
     if (!missingOk && (endpoints == null || !endpoints.containsKey(deploymentName))) {
-      throw new RayServeException(LogUtil.format("Deployment {} does not exist.", deploymentName));
+      throw new RayServeException(MessageFormatter.format("Deployment {} does not exist.", deploymentName));
     }
 
-    RayServeHandle handle = new RayServeHandle(controller, deploymentName, null, null);
+    RayServeHandle handle = new RayServeHandle(deploymentName, null, null, null);
     handleCache.put(cacheKey, handle);
     return handle;
   }
 
   public void deploy(
       String name,
-      String deploymentDef,
-      Object[] initArgs,
-      Map<String, Object> rayActorOptions,
+      ReplicaConfig replicaConfig,
       DeploymentConfig deploymentConfig,
       String version,
-      String prevVersion,
       String routePrefix,
       String url,
       Boolean blocking) {
+
     if (deploymentConfig == null) {
       deploymentConfig = new DeploymentConfig();
     }
-    if (rayActorOptions == null) {
-      rayActorOptions = new HashMap<>();
-    }
-    // TODO set runtime_env to rayActorOptions is not supported now.
-    ReplicaConfig replicaConfig = new ReplicaConfig(deploymentDef, initArgs, rayActorOptions);
 
     deploymentConfig.setVersion(version);
-    deploymentConfig.setPrevVersion(prevVersion);
 
     if (deploymentConfig.getAutoscalingConfig() != null
         && deploymentConfig.getMaxConcurrentQueries()
@@ -147,9 +139,9 @@ public class ServeControllerClient {
 
     String tag = "component=serve deployment=" + name;
     if (updating) {
-      String msg = LogUtil.format("Updating deployment '{}'", name);
+      String msg = MessageFormatter.format("Updating deployment '{}'", name);
       if (StringUtils.isNotBlank(version)) {
-        msg += LogUtil.format(" to version '{}'", version);
+        msg += MessageFormatter.format(" to version '{}'", version);
       }
       LOGGER.info("{}. {}", msg, tag);
     } else {
@@ -159,7 +151,7 @@ public class ServeControllerClient {
 
     if (blocking) {
       waitForDeploymentHealthy(name);
-      String urlPart = url != null ? LogUtil.format(" at `{}`", url) : "";
+      String urlPart = url != null ? MessageFormatter.format(" at `{}`", url) : "";
       LOGGER.info(
           "Deployment '{}{}' is ready {}. {}",
           name,
@@ -185,7 +177,7 @@ public class ServeControllerClient {
       DeploymentStatusInfo status = getDeploymentStatus(name);
       if (status == null) {
         throw new RayServeException(
-            LogUtil.format(
+            MessageFormatter.format(
                 "Waiting for deployment {} to be HEALTHY, but deployment doesn't exist.", name));
       }
 
@@ -194,7 +186,7 @@ public class ServeControllerClient {
         break;
       } else if (status.getStatus() == DeploymentStatus.DEPLOYMENT_STATUS_UNHEALTHY) {
         throw new RayServeException(
-            LogUtil.format("Deployment {} is UNHEALTHY: {}", name, status.getMessage()));
+            MessageFormatter.format("Deployment {} is UNHEALTHY: {}", name, status.getMessage()));
       } else {
         Preconditions.checkState(status.getStatus() == DeploymentStatus.DEPLOYMENT_STATUS_UPDATING);
       }
@@ -207,7 +199,7 @@ public class ServeControllerClient {
     }
     if (isTimeout) {
       throw new RayServeException(
-          LogUtil.format("Deployment {} did not become HEALTHY after {}s.", name, timeoutS));
+          MessageFormatter.format("Deployment {} did not become HEALTHY after {}s.", name, timeoutS));
     }
   }
 
@@ -280,7 +272,7 @@ public class ServeControllerClient {
     }
 
     throw new RayServeException(
-        LogUtil.format(
+        MessageFormatter.format(
             "Shutdown didn't complete after {}s. Deployments still alive: {}.",
             timeoutS,
             liveNames));
@@ -354,7 +346,7 @@ public class ServeControllerClient {
       }
     }
     throw new RayServeException(
-        LogUtil.format("Deployment {} wasn't deleted after {}s.", name, timeoutS));
+        MessageFormatter.format("Deployment {} wasn't deleted after {}s.", name, timeoutS));
   }
 
   private StatusOverview getServeStatus() {

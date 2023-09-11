@@ -3,8 +3,14 @@ package io.ray.serve.deployment;
 import com.google.common.base.Preconditions;
 import io.ray.serve.api.Serve;
 import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.config.ReplicaConfig;
+import io.ray.serve.dag.ClassNode;
+import io.ray.serve.dag.DAGNode;
 import io.ray.serve.handle.RayServeHandle;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
@@ -14,33 +20,26 @@ import java.util.Map;
  */
 public class Deployment {
 
-  private final String deploymentDef;
-
   private final String name;
 
-  private final DeploymentConfig config;
+  private final DeploymentConfig deploymentConfig;
+
+  private final ReplicaConfig replicaConfig;
 
   private final String version;
 
-  private final String prevVersion;
-
-  private final Object[] initArgs;
-
   private final String routePrefix;
-
-  private final Map<String, Object> rayActorOptions;
 
   private final String url;
 
+  // TODO placement group parameters.
+
   public Deployment(
-      String deploymentDef,
       String name,
-      DeploymentConfig config,
+      DeploymentConfig deploymentConfig,
+      ReplicaConfig replicaConfig,
       String version,
-      String prevVersion,
-      Object[] initArgs,
-      String routePrefix,
-      Map<String, Object> rayActorOptions) {
+      String routePrefix) {
 
     if (routePrefix != null) {
       Preconditions.checkArgument(routePrefix.startsWith("/"), "route_prefix must start with '/'.");
@@ -53,17 +52,14 @@ public class Deployment {
     }
 
     Preconditions.checkArgument(
-        version != null || config.getAutoscalingConfig() == null,
+        version != null || deploymentConfig.getAutoscalingConfig() == null,
         "Currently autoscaling is only supported for versioned deployments. Try Serve.deployment.setVersion.");
 
-    this.deploymentDef = deploymentDef;
     this.name = name;
     this.version = version;
-    this.prevVersion = prevVersion;
-    this.config = config;
-    this.initArgs = initArgs != null ? initArgs : new Object[0];
+    this.deploymentConfig = deploymentConfig;
+    this.replicaConfig = replicaConfig;
     this.routePrefix = routePrefix;
-    this.rayActorOptions = rayActorOptions;
     this.url = routePrefix != null ? Serve.getGlobalClient().getRootUrl() + routePrefix : null;
   }
 
@@ -72,19 +68,10 @@ public class Deployment {
    *
    * @param blocking
    */
+  @Deprecated
   public void deploy(boolean blocking) {
     Serve.getGlobalClient()
-        .deploy(
-            name,
-            deploymentDef,
-            initArgs,
-            rayActorOptions,
-            config,
-            version,
-            prevVersion,
-            routePrefix,
-            url,
-            blocking);
+        .deploy(name, replicaConfig, deploymentConfig, version, routePrefix, url, blocking);
   }
 
   /** Delete this deployment. */
@@ -112,54 +99,67 @@ public class Deployment {
   public DeploymentCreator options() {
 
     return new DeploymentCreator()
-        .setDeploymentDef(this.deploymentDef)
+        .setDeploymentDef(this.replicaConfig.getDeploymentDef())
         .setName(this.name)
         .setVersion(this.version)
-        .setPrevVersion(this.prevVersion)
-        .setNumReplicas(this.config.getNumReplicas())
-        .setInitArgs(this.initArgs)
+        .setNumReplicas(this.deploymentConfig.getNumReplicas())
+        .setInitArgs(this.replicaConfig.getInitArgs())
         .setRoutePrefix(this.routePrefix)
-        .setRayActorOptions(this.rayActorOptions)
-        .setUserConfig(this.config.getUserConfig())
-        .setMaxConcurrentQueries(this.config.getMaxConcurrentQueries())
-        .setAutoscalingConfig(this.config.getAutoscalingConfig())
-        .setGracefulShutdownWaitLoopS(this.config.getGracefulShutdownWaitLoopS())
-        .setGracefulShutdownTimeoutS(this.config.getGracefulShutdownTimeoutS())
-        .setHealthCheckPeriodS(this.config.getHealthCheckPeriodS())
-        .setHealthCheckTimeoutS(this.config.getHealthCheckTimeoutS())
-        .setLanguage(this.config.getDeploymentLanguage());
+        .setRayActorOptions(this.replicaConfig.getRayActorOptions())
+        .setUserConfig(this.deploymentConfig.getUserConfig())
+        .setMaxConcurrentQueries(this.deploymentConfig.getMaxConcurrentQueries())
+        .setAutoscalingConfig(this.deploymentConfig.getAutoscalingConfig())
+        .setGracefulShutdownWaitLoopS(this.deploymentConfig.getGracefulShutdownWaitLoopS())
+        .setGracefulShutdownTimeoutS(this.deploymentConfig.getGracefulShutdownTimeoutS())
+        .setHealthCheckPeriodS(this.deploymentConfig.getHealthCheckPeriodS())
+        .setHealthCheckTimeoutS(this.deploymentConfig.getHealthCheckTimeoutS())
+        .setLanguage(this.deploymentConfig.getDeploymentLanguage());
   }
 
-  public String getDeploymentDef() {
-    return deploymentDef;
+  public Application bind() {
+    return bind(null);
+  }
+
+  public Application bind(Object firstArg, Object... otherArgs) {
+  	Object[] args = null;
+  	if (firstArg != null) {
+  		if (otherArgs == null) {
+        args = new Object[] {firstArg};
+      } else {
+        args = Stream.concat(Stream.of(firstArg), Arrays.stream(otherArgs)).toArray(Object[]::new);
+  		}
+  	}
+
+    Map<String, Object> otherArgsToResolve = new HashMap<>();
+    otherArgsToResolve.put("deployment_schema", this);
+    otherArgsToResolve.put("is_from_serve_deployment", true);
+    DAGNode dagNode =
+        new ClassNode(
+            replicaConfig.getDeploymentDef(),
+            args,
+            replicaConfig.getRayActorOptions(),
+            otherArgsToResolve);
+    return Application.fromInternalDagNode(dagNode);
   }
 
   public String getName() {
     return name;
   }
 
-  public DeploymentConfig getConfig() {
-    return config;
+  public DeploymentConfig getDeploymentConfig() {
+    return deploymentConfig;
+  }
+
+  public ReplicaConfig getReplicaConfig() {
+    return replicaConfig;
   }
 
   public String getVersion() {
     return version;
   }
 
-  public String getPrevVersion() {
-    return prevVersion;
-  }
-
-  public Object[] getInitArgs() {
-    return initArgs;
-  }
-
   public String getRoutePrefix() {
     return routePrefix;
-  }
-
-  public Map<String, Object> getRayActorOptions() {
-    return rayActorOptions;
   }
 
   public String getUrl() {

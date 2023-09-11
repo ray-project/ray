@@ -1,20 +1,23 @@
 package io.ray.serve.handle;
 
-import com.google.common.collect.ImmutableMap;
-import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Metrics;
+import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
+import io.ray.serve.deployment.DeploymentId;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.router.Router;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 /** A handle to a service deployment. */
 public class RayServeHandle {
 
-  private String deploymentName;
+  private DeploymentId deploymentId;
 
   private HandleOptions handleOptions;
 
@@ -25,14 +28,21 @@ public class RayServeHandle {
   private Router router;
 
   public RayServeHandle(
-      BaseActorHandle controllerHandle,
-      String deploymentName,
-      HandleOptions handleOptions,
-      Router router) {
-    this.deploymentName = deploymentName;
+      String deploymentName, String appName, HandleOptions handleOptions, Router router) {
+    this.deploymentId = new DeploymentId(deploymentName, appName);
     this.handleOptions = handleOptions != null ? handleOptions : new HandleOptions();
-    this.handleTag = deploymentName + "#" + RandomStringUtils.randomAlphabetic(6);
-    this.router = router != null ? router : new Router(controllerHandle, deploymentName);
+    this.handleTag =
+        StringUtils.isBlank(appName)
+            ? deploymentName + "#" + RandomStringUtils.randomAlphabetic(6)
+            : appName + "#" + deploymentName + "#" + RandomStringUtils.randomAlphabetic(6);
+    this.router = router;
+
+    Map<String, String> metricsTags = new HashMap<>();
+    metricsTags.put(RayServeMetrics.TAG_HANDLE, handleTag);
+    metricsTags.put(RayServeMetrics.TAG_ENDPOINT, deploymentName);
+    if (StringUtils.isNotBlank(appName)) {
+      metricsTags.put(RayServeMetrics.TAG_APPLICATION, appName);
+    }
     RayServeMetrics.execute(
         () ->
             this.requestCounter =
@@ -40,12 +50,7 @@ public class RayServeHandle {
                     .name(RayServeMetrics.SERVE_HANDLE_REQUEST_COUNTER.name())
                     .description(RayServeMetrics.SERVE_HANDLE_REQUEST_COUNTER.getDescription())
                     .unit("")
-                    .tags(
-                        ImmutableMap.of(
-                            RayServeMetrics.TAG_HANDLE,
-                            handleTag,
-                            RayServeMetrics.TAG_ENDPOINT,
-                            deploymentName))
+                    .tags(metricsTags)
                     .register());
   }
 
@@ -60,10 +65,24 @@ public class RayServeHandle {
     RayServeMetrics.execute(() -> requestCounter.inc(1.0));
     RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
     requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
-    requestMetadata.setEndpoint(deploymentName);
+    requestMetadata.setEndpoint(deploymentId.getName());
     requestMetadata.setCallMethod(
         handleOptions != null ? handleOptions.getMethodName() : Constants.CALL_METHOD);
-    return router.assignRequest(requestMetadata.build(), parameters);
+    return getOrCreateRouter().assignRequest(requestMetadata.build(), parameters);
+  }
+
+  private Router getOrCreateRouter() {
+    if (router != null) {
+      return router;
+    }
+
+    synchronized (RayServeHandle.class) {
+      if (router != null) {
+        return router;
+      }
+      router = new Router(Serve.getGlobalClient().getController(), deploymentId.getName());
+    }
+    return router;
   }
 
   public RayServeHandle method(String methodName) {

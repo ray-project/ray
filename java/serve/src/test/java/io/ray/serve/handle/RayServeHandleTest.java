@@ -23,6 +23,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class RayServeHandleTest {
+  @SuppressWarnings("unused")
   @Test
   public void test() {
 
@@ -73,8 +74,7 @@ public class RayServeHandleTest {
 
       // RayServeHandle
       RayServeHandle rayServeHandle =
-          new RayServeHandle(controllerHandle, deploymentName, null, null)
-              .method("getDeploymentName");
+          new RayServeHandle(deploymentName, null, null, null).method("getDeploymentName");
       ActorNameList.Builder builder = ActorNameList.newBuilder();
       builder.addNames(actorName);
       rayServeHandle.getRouter().getReplicaSet().updateWorkerReplicas(builder.build());

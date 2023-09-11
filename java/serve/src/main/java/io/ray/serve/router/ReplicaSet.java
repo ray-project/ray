@@ -58,7 +58,7 @@ public class ReplicaSet {
     this.allActorHandles = new ConcurrentHashMap<>();
     try {
       Deployment deployment = Serve.getDeployment(deploymentName);
-      this.language = deployment.getConfig().getDeploymentLanguage();
+      this.language = deployment.getDeploymentConfig().getDeploymentLanguage();
     } catch (Exception e) {
       LOGGER.warn(
           "Failed to get language from controller. Set it to Java as default value. The exception is ",
@@ -76,7 +76,6 @@ public class ReplicaSet {
                     .register());
   }
 
-  @SuppressWarnings("unchecked")
   public synchronized void updateWorkerReplicas(Object actorSet) {
     if (null != actorSet) {
       Set<String> actorNameSet = new HashSet<>(((ActorNameList) actorSet).getNamesList());
