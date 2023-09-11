@@ -33,8 +33,12 @@ def _check_is_uri(s: str) -> bool:
     except ValueError:
         protocol, path = None, None
 
-    if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
-        raise ValueError("Only .zip files supported for remote URIs.")
+    if (
+        protocol in Protocol.remote_protocols()
+        and not path.endswith(".zip")
+        and not path.endswith(".whl")
+    ):
+        raise ValueError("Only .zip or .whl files supported for remote URIs.")
 
     return protocol is not None
 
@@ -167,13 +171,13 @@ class PyModulesPlugin(RuntimeEnvPlugin):
     def get_uris(self, runtime_env: dict) -> List[str]:
         return runtime_env.py_modules()
 
-    async def _download_and_install_wheel(
-        self, uri: str, logger: Optional[logging.Logger] = default_logger
+    async def _unpack_wheel(
+        self,
+        wheel_file: str,
+        uri: str,
+        logger: Optional[logging.Logger] = default_logger,
     ):
         """Download and install a wheel URI, and then delete the local wheel file."""
-        wheel_file = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_aio_client, logger=logger
-        )
         module_dir = self._get_local_dir_from_uri(uri)
 
         pip_install_cmd = [
@@ -208,12 +212,14 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        if is_whl_uri(uri):
-            module_dir = await self._download_and_install_wheel(uri=uri, logger=logger)
 
-        else:
-            module_dir = await download_and_unpack_package(
-                uri, self._resources_dir, self._gcs_aio_client, logger=logger
+        module_dir = await download_and_unpack_package(
+            uri, self._resources_dir, self._gcs_aio_client, logger=logger
+        )
+
+        if is_whl_uri(uri):
+            module_dir = self._unpack_wheel(
+                wheel_file=module_dir, uri=uri, logger=logger
             )
 
         return get_directory_size_bytes(module_dir)
