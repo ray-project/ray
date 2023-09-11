@@ -411,6 +411,7 @@ class ActorReplicaWrapper:
                 self._version.to_proto().SerializeToString(),
                 # String controllerName
                 self._controller_name,
+                deployment_info.app_name,
             )
 
         actor_options = {
