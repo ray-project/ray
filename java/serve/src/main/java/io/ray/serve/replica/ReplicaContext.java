@@ -21,11 +21,11 @@ public class ReplicaContext {
       String controllerName,
       Object servableObject,
       Map<String, String> config) {
-    this.deploymentName = deploymentName;
-    this.replicaTag = replicaTag;
-    this.internalControllerName = controllerName;
-    this.servableObject = servableObject;
-    this.config = config;
+      this.deploymentName = deploymentName;
+      this.replicaTag = replicaTag;
+      this.internalControllerName = controllerName;
+      this.servableObject = servableObject;
+      this.config = config;
   }
 
   public String getDeploymentName() {

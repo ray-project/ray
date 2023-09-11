@@ -71,8 +71,13 @@ public class ServeControllerClient {
    * @param missingOk If true, then Serve won't check the deployment is registered.
    * @return
    */
-  @SuppressWarnings("unchecked")
   public RayServeHandle getHandle(String deploymentName, boolean missingOk) {
+    return getHandle(deploymentName, missingOk, false);
+  }
+
+  @SuppressWarnings("unchecked")
+  public RayServeHandle getHandle(
+      String deploymentName, boolean missingOk, boolean isForHttpRequests) {
     String cacheKey = deploymentName + "#" + missingOk;
     if (handleCache.containsKey(cacheKey)) {
       return handleCache.get(cacheKey);
@@ -101,7 +106,8 @@ public class ServeControllerClient {
       throw new RayServeException(LogUtil.format("Deployment {} does not exist.", deploymentName));
     }
 
-    RayServeHandle handle = new RayServeHandle(controller, deploymentName, null, null);
+    RayServeHandle handle =
+        new RayServeHandle(controller, deploymentName, null, null, isForHttpRequests);
     handleCache.put(cacheKey, handle);
     return handle;
   }
@@ -173,6 +179,84 @@ public class ServeControllerClient {
     }
   }
 
+  public void deployApplication(List<HashMap<String, Object>> deployments, Boolean blocking) {
+
+    List<HashMap<String, Object>> deployment_args_list = new ArrayList<>();
+    for (HashMap<String, Object> deployment : deployments) {
+      String name = (String) deployment.get("name");
+      String deploymentDef = (String) deployment.get("deploymentDef");
+      DeploymentConfig deploymentConfig = (DeploymentConfig) deployment.get("config");
+      String version = (String) deployment.get("version");
+      String prevVersion = (String) deployment.get("prevVersion");
+      Object[] initArgs = (Object[]) deployment.get("initArgs");
+      String routePrefix = (String) deployment.get("routePrefix");
+      Map<String, Object> rayActorOptions = (Map<String, Object>) deployment.get("rayActorOptions");
+
+      if (deploymentConfig == null) {
+        deploymentConfig = new DeploymentConfig();
+      }
+      if (rayActorOptions == null) {
+        rayActorOptions = new HashMap<>();
+      }
+      // TODO set runtime_env to rayActorOptions is not supported now.
+      ReplicaConfig replicaConfig = new ReplicaConfig(deploymentDef, initArgs, rayActorOptions);
+
+      deploymentConfig.setVersion(version);
+      deploymentConfig.setPrevVersion(prevVersion);
+
+      if (deploymentConfig.getAutoscalingConfig() != null
+          && deploymentConfig.getMaxConcurrentQueries()
+              < deploymentConfig.getAutoscalingConfig().getTargetNumOngoingRequestsPerReplica()) {
+        LOGGER.warn(
+            "Autoscaling will never happen, because 'max_concurrent_queries' is less than 'target_num_ongoing_requests_per_replica'.");
+      }
+
+      Map<String, Object> finalRayActorOptions = rayActorOptions;
+      DeploymentConfig finalDeploymentConfig = deploymentConfig;
+      deployment_args_list.add(
+          new HashMap<String, Object>() {
+            {
+              put("name", name);
+              put("deploymentDef", deploymentDef);
+              put("config", finalDeploymentConfig);
+              put("replicaConfig", replicaConfig);
+              put("routePrefix", routePrefix);
+              put("rayActorOptions", finalRayActorOptions);
+            }
+          });
+    }
+
+    // TODO use contorller.deployApplication
+    for (int i = 0; i < deployment_args_list.size(); i++) {
+      HashMap<String, Object> deployment = deployment_args_list.get(i);
+      String name = (String) deployment.get("name");
+      DeploymentConfig deploymentConfig = (DeploymentConfig) deployment.get("config");
+      ReplicaConfig replicaConfig = (ReplicaConfig) deployment.get("replicaConfig");
+      String routePrefix = (String) deployment.get("routePrefix");
+
+      System.out.println(name);
+      boolean updating =
+          (boolean)
+              ((PyActorHandle) controller)
+                  .task(
+                      PyActorMethod.of("deploy"),
+                      name,
+                      deploymentConfig.toProtoBytes(),
+                      replicaConfig.toProtoBytes(),
+                      routePrefix,
+                      Ray.getRuntimeContext().getCurrentJobId().getBytes())
+                  .remote()
+                  .get();
+
+      if (blocking) {
+        waitForDeploymentHealthy(name);
+      }
+      if (updating) {
+        String msg = LogUtil.format("Updating deployment '{}'", name);
+        LOGGER.info("{}. ", msg);
+      }
+    }
+  }
   /**
    * Waits for the named deployment to enter "HEALTHY" status.
    *
