@@ -19,11 +19,9 @@ from typing import (
 )
 
 import numpy as np
-from pyarrow.util import functools
 
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.air._internal.remote_storage import _is_local_windows_path
-from ray.data._internal.block_batching.util import make_async_gen
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
