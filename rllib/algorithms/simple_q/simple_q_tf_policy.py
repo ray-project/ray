@@ -90,43 +90,6 @@ def get_simple_q_tf_policy(
             q_vals = self._compute_q_values(self.model, obs_batch, is_training=False)
             return q_vals, Categorical, state_batches
 
-        def xyz_compute_actions(
-            self,
-            *,
-            input_dict,
-            explore=True,
-            timestep=None,
-            episodes=None,
-            is_training=False,
-            **kwargs,
-        ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
-            if timestep is None:
-                timestep = self.global_timestep
-            # Compute the Q-values for each possible action, using our Q-value network.
-            q_vals = self._compute_q_values(
-                self.model, input_dict[SampleBatch.OBS], is_training=is_training
-            )
-            # Use a Categorical distribution for the exploration component.
-            # This way, it may either sample storchastically (e.g. when using SoftQ)
-            # or deterministically/greedily (e.g. when using EpsilonGreedy).
-            distribution = Categorical(q_vals, self.model)
-            # Call the exploration component's `get_exploration_action` method to
-            # explore, if necessary.
-            actions, logp = self.exploration.get_exploration_action(
-                action_distribution=distribution, timestep=timestep, explore=explore
-            )
-            # Return (exploration) actions, state_outs (empty list), and extra outs.
-            return (
-                actions,
-                [],
-                {
-                    "q_values": q_vals,
-                    SampleBatch.ACTION_LOGP: logp,
-                    SampleBatch.ACTION_PROB: tf.exp(logp),
-                    SampleBatch.ACTION_DIST_INPUTS: q_vals,
-                },
-            )
-
         @override(base)
         def loss(
             self,
