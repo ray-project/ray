@@ -291,7 +291,7 @@ class _ParquetDatasourceReader(Reader):
         # FileBasedDatasource's write side (do_write), however.
         read_tasks = []
         for fragments, paths, metadata in zip(
-            np.array_split(self._pq_fragment, parallelism),
+            np.array_split(self._pq_fragments, parallelism),
             np.array_split(self._pq_paths, parallelism),
             np.array_split(self._metadata, parallelism),
         ):
