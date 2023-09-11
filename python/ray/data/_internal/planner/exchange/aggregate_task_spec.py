@@ -1,5 +1,6 @@
 from typing import List, Optional, Tuple, Union
 
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.sort import SortKey
 from ray.data._internal.table_block import TableBlockAccessor
@@ -67,8 +68,17 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, BlockMetadata]:
-        return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
-            list(mapper_outputs), key, aggs, finalize=not partial_reduce
+        accessor = BlockAccessor.for_block(mapper_outputs[0])
+        batch_format = (
+            "pyarrow" if isinstance(accessor, ArrowBlockAccessor) else "pandas"
+        )
+        mapper_outputs = list(mapper_outputs)
+        for i, output in enumerate(mapper_outputs):
+            mapper_outputs[i] = BlockAccessor.for_block(output).to_batch_format(
+                batch_format
+            )
+        return accessor.aggregate_combined_blocks(
+            mapper_outputs, key, aggs, finalize=not partial_reduce
         )
 
     @staticmethod
