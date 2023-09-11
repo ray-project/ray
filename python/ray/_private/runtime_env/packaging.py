@@ -184,7 +184,6 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     >>> parse_uri("https://test.com/file.zip")
     (<Protocol.HTTPS: 'https'>, 'https_test_com_file.zip')
 
-    Note: Replace .whl with .zip to support remote URIs for .whl files.
     """
     uri = urlparse(pkg_uri)
     try:
@@ -206,9 +205,6 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         package_name = package_name.replace(".", "_", package_name.count(".") - 1)
     else:
         package_name = uri.netloc
-
-    if protocol in Protocol.remote_protocols() and package_name.endswith(".whl"):
-        package_name = str(Path(package_name).with_suffix(".zip"))
 
     return (protocol, package_name)
 

@@ -174,19 +174,20 @@ class PyModulesPlugin(RuntimeEnvPlugin):
 
     async def _unpack_wheel(
         self,
-        wheel_file: str,
-        uri: str,
+        wheel_uri: str,
+        target_uri: str,
         logger: Optional[logging.Logger] = default_logger,
     ):
         """Download and install a wheel URI, and then delete the local wheel file."""
-        module_dir = self._get_local_dir_from_uri(uri)
+        module_dir = self._get_local_dir_from_uri(target_uri)
 
         pip_install_cmd = [
             "pip",
             "install",
-            wheel_file,
+            wheel_uri,
             f"--target={module_dir}",
         ]
+        raise ValueError
         logger.info(
             "Running py_modules wheel install command: %s", str(pip_install_cmd)
         )
@@ -194,14 +195,14 @@ class PyModulesPlugin(RuntimeEnvPlugin):
             # TODO(architkulkarni): Use `await check_output_cmd` or similar.
             exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
         finally:
-            if Path(wheel_file).exists():
-                Path(wheel_file).unlink()
+            if Path(wheel_uri).exists():
+                Path(wheel_uri).unlink()
 
             if exit_code != 0:
                 if Path(module_dir).exists():
                     Path(module_dir).unlink()
                 raise RuntimeError(
-                    f"Failed to install py_modules wheel {wheel_file}"
+                    f"Failed to install py_modules wheel {wheel_uri}"
                     f"to {module_dir}:\n{output}"
                 )
         return module_dir
@@ -217,10 +218,10 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         module_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )
-
+        assert 1 == 2
         if is_whl_uri(uri):
             module_dir = self._unpack_wheel(
-                wheel_file=module_dir, uri=uri, logger=logger
+                wheel_file=module_dir, target_uri=uri, logger=logger
             )
 
         return get_directory_size_bytes(module_dir)
