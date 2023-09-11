@@ -268,7 +268,8 @@ class RuntimeContext(object):
 
         Returns:
             The current actor name of this worker.
-            If a current worker is an actor, and if actor name doesn't exist, it returns an empty string.
+            If a current worker is an actor, and
+            if actor name doesn't exist, it returns an empty string.
             If a current worker is not an actor, it returns None.
         """
         # only worker mode has actor_id
