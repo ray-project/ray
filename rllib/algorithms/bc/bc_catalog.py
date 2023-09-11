@@ -11,22 +11,22 @@ from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 class BCCatalog(Catalog):
     """The Catalog class used to build models for BC.
-    
+
     BCCatalog provides the following models:
-        - Default Encoder: The encoder used to encode the observations. 
+        - Default Encoder: The encoder used to encode the observations.
             This is simply the default encoder.
         - Pi Head: The head used for the policy logits.
 
     The default encoder is chosen by RLlib dependent on the observation space.
-    See `ray.rllib.core.models.encoders::Encoder` for details. To define the 
+    See `ray.rllib.core.models.encoders::Encoder` for details. To define the
     network architecture use the `fcnet_hiddens` and `fcnet_activation`.
 
-    To implement custom logic, use the `BCCatalog.build_encoder()` or the 
+    To implement custom logic, use the `BCCatalog.build_encoder()` or the
     `EncoderConfig` at `BCCatalog.encoder_config`.
 
-    Any custom head can be built by overriding the `build_pi_head()` method. 
-    Alternatively, the `PiHeadConfig` can be overridden to build a custom  
-    policy head during runtime. To change solely the network architecture, 
+    Any custom head can be built by overriding the `build_pi_head()` method.
+    Alternatively, the `PiHeadConfig` can be overridden to build a custom
+    policy head during runtime. To change solely the network architecture,
     `post_fcnet_hiddens` and `post_fcnet_hidden` can be used.
     """
 
@@ -37,7 +37,7 @@ class BCCatalog(Catalog):
         model_config_dict: dict,
     ):
         """Initializes the BCCatalog.
-        
+
         Args:
             observation_space: The observation space if the Encoder.
             action_space: The action space for the Pi Head.
@@ -61,7 +61,7 @@ class BCCatalog(Catalog):
     @OverrideToImplementCustomLogic
     def build_pi_head(self, framework: str) -> Model:
         """Builds the policy head.
-        
+
                 The default behavior is to build the head from the pi_head_config.
         This can be overridden to build a custom policy head as a means of configuring
         the behavior of a BCRLModule implementation.

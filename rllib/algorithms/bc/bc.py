@@ -67,8 +67,7 @@ class BCConfig(MARWILConfig):
         # not important for behavioral cloning.
         self.postprocess_inputs = False
         # Important to be False for dummy runs.
-        self.use_gae=False
-
+        self.use_gae = False
         # Set RLModule as default.
         self.rl_module(_enable_rl_module_api=True)
         self.training(_enable_learner_api=True)

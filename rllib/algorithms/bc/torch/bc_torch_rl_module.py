@@ -17,9 +17,9 @@ class BCTorchRLModule(TorchRLModule, BCRLModule):
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        """BC forward pass during inference. 
-        
-        See the `BCTorchRLModule._forward_exploration` method for 
+        """BC forward pass during inference.
+
+        See the `BCTorchRLModule._forward_exploration` method for
         implementation details.
         """
         return self._forward_exploration(batch)
@@ -27,13 +27,13 @@ class BCTorchRLModule(TorchRLModule, BCRLModule):
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
         """BC forward pass during exploration.
-        
-        Besides the action distribution this method also returns a possible
-        state in case a stateful encoder is used. 
 
-        Note that for BC `_forward_train`, `_forward_exploration`, and 
-        `_forward_inference` return the same items and therefore only 
-        `_forward_exploration` is implemented and is used by the two other 
+        Besides the action distribution this method also returns a possible
+        state in case a stateful encoder is used.
+
+        Note that for BC `_forward_train`, `_forward_exploration`, and
+        `_forward_inference` return the same items and therefore only
+        `_forward_exploration` is implemented and is used by the two other
         forward methods.
         """
         output = {}
@@ -52,9 +52,9 @@ class BCTorchRLModule(TorchRLModule, BCRLModule):
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict):
-        """BC forward pass during training. 
-        
-        See the `BCTorchRLModule._forward_exploration` method for 
+        """BC forward pass during training.
+
+        See the `BCTorchRLModule._forward_exploration` method for
         implementation details.
         """
         return self._forward_exploration(batch)
