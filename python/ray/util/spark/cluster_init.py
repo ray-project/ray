@@ -1,5 +1,6 @@
 import json
 import os
+import psutil
 import socket
 import sys
 import time
@@ -13,7 +14,6 @@ from typing import Optional, Dict, Type
 import ray
 from ray.util.annotations import PublicAPI
 from ray._private.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
-from ray._private.storage import _load_class
 from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._private.utils import get_user_temp_dir
 
@@ -31,23 +31,20 @@ from .utils import (
     calc_mem_ray_head_node,
     _try_clean_temp_dir_at_exit,
 )
-from .start_hook_base import RayOnSparkStartHook
 from .databricks_hook import (
-    DefaultDatabricksRayOnSparkStartHook,
     global_mode_enabled,
     DATABRICKS_RAY_CLUSTER_GLOBAL_MODE,
+    _get_start_hook,
 )
 
 
 _logger = logging.getLogger("ray.util.spark")
 _logger.setLevel(logging.INFO)
 
-
-RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
-
 MAX_NUM_WORKER_NODES = -1
 
 RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
+GLOBAL_RAY_CLUSTER_INFO_FILE = "global_ray_cluster_info.json"
 
 
 def _check_system_environment():
@@ -76,7 +73,7 @@ class RayClusterOnSpark:
                  port on Spark driver node)
         head_proc: Ray head process
         spark_job_group_id: The Spark job id for a submitted ray job
-        num_workers_node: The number of workers in the ray cluster.
+        num_worker_nodes: The number of workers in the ray cluster.
     """
 
     def __init__(
@@ -84,7 +81,7 @@ class RayClusterOnSpark:
         address,
         head_proc,
         spark_job_group_id,
-        num_workers_node,
+        num_worker_nodes,
         temp_dir,
         cluster_unique_id,
         start_hook,
@@ -93,7 +90,7 @@ class RayClusterOnSpark:
         self.address = address
         self.head_proc = head_proc
         self.spark_job_group_id = spark_job_group_id
-        self.num_worker_nodes = num_workers_node
+        self.num_worker_nodes = num_worker_nodes
         self.temp_dir = temp_dir
         self.cluster_unique_id = cluster_unique_id
         self.start_hook = start_hook
@@ -102,6 +99,13 @@ class RayClusterOnSpark:
         self.is_shutdown = False
         self.spark_job_is_canceled = False
         self.background_job_exception = None
+
+        if global_mode_enabled():
+            self._store_global_ray_cluster_info()
+
+    def _store_global_ray_cluster_info(self):
+        with open(os.path.join(self.temp_dir, GLOBAL_RAY_CLUSTER_INFO_FILE), "w") as f:
+            f.write(json.dumps(self.to_dict()))
 
     def _cancel_background_spark_job(self):
         self.spark_job_is_canceled = True
@@ -227,6 +231,31 @@ class RayClusterOnSpark:
                     temp_dir=self.temp_dir,
                 )
             self.is_shutdown = True
+
+    def to_dict(self):
+        ignore_fields = {
+            "head_proc",
+            "start_hook",
+            "is_shutdown",
+            "spark_job_is_canceled",
+            "background_job_exception",
+        }
+        cluster_info = {
+            str(k): v for k, v in self.__dict__.items() if k not in ignore_fields
+        }
+        cluster_info["head_proc_pid"] = self.head_proc.pid
+        return cluster_info
+
+    @classmethod
+    def from_dict(cls, cluster_info):
+        head_proc_pid = cluster_info.pop("head_proc_pid", None)
+        if head_proc_pid is None:
+            raise ValueError(
+                "The cluster info dict doesn't contain head_proc_pid field."
+            )
+        head_proc = psutil.Process(head_proc_pid)
+        start_hook = _get_start_hook()
+        return cls(head_proc=head_proc, start_hook=start_hook, **cluster_info)
 
     def __enter__(self):
         return self
@@ -446,19 +475,7 @@ def _setup_ray_cluster(
     """
     from pyspark.util import inheritable_thread_target
 
-    if RAY_ON_SPARK_START_HOOK in os.environ:
-        start_hook = _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
-    elif is_in_databricks_runtime():
-        start_hook = DefaultDatabricksRayOnSparkStartHook()
-        if global_mode_enabled() and ray_temp_root_dir is not None:
-            _logger.warning(
-                "The `ray_temp_root_dir` argument is ignored when enabling global mode"
-                "on Databricks. We use /local_disk0/tmp as default ray temp root dir."
-            )
-            ray_temp_root_dir = None
-    else:
-        start_hook = RayOnSparkStartHook()
-
+    start_hook = _get_start_hook()
     spark = get_spark_session()
 
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
@@ -500,6 +517,16 @@ def _setup_ray_cluster(
 
     cluster_unique_id = uuid.uuid4().hex[:8]
 
+    if (
+        is_in_databricks_runtime()
+        and global_mode_enabled()
+        and ray_temp_root_dir is not None
+    ):
+        _logger.warning(
+            "The `ray_temp_root_dir` argument is ignored when enabling global mode"
+            "on Databricks. We use /local_disk0/tmp as default ray temp root dir."
+        )
+        ray_temp_root_dir = None
     if ray_temp_root_dir is None:
         ray_temp_root_dir = start_hook.get_default_temp_dir()
     if global_mode_enabled():
@@ -692,7 +719,7 @@ def _setup_ray_cluster(
         address=cluster_address,
         head_proc=ray_head_proc,
         spark_job_group_id=spark_job_group_id,
-        num_workers_node=num_worker_nodes,
+        num_worker_nodes=num_worker_nodes,
         temp_dir=ray_temp_dir,
         cluster_unique_id=cluster_unique_id,
         start_hook=start_hook,
@@ -1237,7 +1264,18 @@ def shutdown_ray_cluster() -> None:
 
     with _active_ray_cluster_rwlock:
         if _active_ray_cluster is None:
-            raise RuntimeError("No active ray cluster to shut down.")
+            if global_mode_enabled():
+                # If global mode enabled, we need to construct RayClusterOnSpark
+                # from saved GLOBAL_RAY_CLUSTER_INFO_FILE file, then shutdown the global
+                # ray cluster.
+                ray_temp_root_dir = _get_start_hook().get_default_temp_dir()
+                with open(
+                    os.path.join(ray_temp_root_dir, "ray", GLOBAL_RAY_CLUSTER_INFO_FILE)
+                ) as f:
+                    cluster_info = json.load(f)
+                _active_ray_cluster = RayClusterOnSpark.from_dict(cluster_info)
+            else:
+                raise RuntimeError("No active ray cluster to shut down.")
 
         _active_ray_cluster.shutdown()
         _active_ray_cluster = None

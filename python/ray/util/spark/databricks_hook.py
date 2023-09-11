@@ -1,8 +1,10 @@
 import os
 
+from ray._private.storage import _load_class
 from .start_hook_base import RayOnSparkStartHook
-from .utils import get_spark_session
+from .utils import get_spark_session, is_in_databricks_runtime
 import logging
+from functools import lru_cache
 import threading
 import time
 
@@ -66,6 +68,8 @@ DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES = (
     "DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES"
 )
 DATABRICKS_RAY_CLUSTER_GLOBAL_MODE = "DATABRICKS_RAY_CLUSTER_GLOBAL_MODE"
+RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
+_DATABRICKS_DEFAULT_TMP_DIR = "/local_disk0/tmp"
 
 
 def global_mode_enabled():
@@ -79,7 +83,13 @@ def _get_db_api_entry():
     return get_dbutils().entry_point
 
 
-_DATABRICKS_DEFAULT_TMP_DIR = "/local_disk0/tmp"
+@lru_cache(maxsize=1)
+def _get_start_hook():
+    if RAY_ON_SPARK_START_HOOK in os.environ:
+        return _load_class(os.environ[RAY_ON_SPARK_START_HOOK])()
+    if is_in_databricks_runtime():
+        return DefaultDatabricksRayOnSparkStartHook()
+    return RayOnSparkStartHook()
 
 
 class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
