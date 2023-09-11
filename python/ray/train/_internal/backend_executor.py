@@ -28,7 +28,8 @@ from ray.train.constants import (
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     DISABLE_LAZY_CHECKPOINTING_ENV,
-    ENABLE_SHARE_NEURON_RT_VISIBLE_CORES_ENV,
+    ENABLE_SHARE_ACCELERATOR_DEVICES_ENV,
+    SUPPORTED_ACCELERATOR_DEVICES_TO_ENV_VAR,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
@@ -156,8 +157,9 @@ class BackendExecutor:
             if self._num_gpus_per_worker > 0 and share_cuda_visible_devices_enabled:
                 self._share_cuda_visible_devices()
             elif self._additional_resources_per_worker:
-                if self._share_neuron_core_ids_enabled():
-                    self._share_neuron_core_ids()
+                for accelerator, env_var in SUPPORTED_ACCELERATOR_DEVICES_TO_ENV_VAR:
+                    if self._share_accelerator_devices_enabled(accelerator):
+                        self._share_resource_ids(accelerator, env_var)
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
             logger.exception(str(exc))
@@ -250,23 +252,18 @@ class BackendExecutor:
             - Worker2: "0,1"
 
         """
-        node_ids_and_gpu_ids = [
-            (w.metadata.node_id, w.metadata.gpu_and_accelerator_ids[ray_constants.GPU])
-            for w in self.worker_group.workers
-        ]
-        self._share_runtime_ids(
-            node_ids_and_runtime_ids=node_ids_and_gpu_ids,
-            env_var=ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR,
+        self._share_resource_ids(
+            ray_constants.GPU, ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR
         )
 
-    def _share_neuron_core_ids(self):
-        """Sets NEURON_RT_VISIBLE_CORES on all workers.
+    def _share_resource_ids(self, accelerator: str, env_var: str):
+        """Sets the given env_var on all workers.
 
-        For each worker, NEURON_RT_VISIBLE_CORES will be set to the
-        NEURON_CORE IDs visible to all workers on that worker's node.
+        For each worker, desired will be set to the accelerator ids
+        and visible to all workers on that worker's node.
 
-        This allows the workers on the same node to communicate
-        with one another.
+        This allows workers on the same node to communicate with one
+        another.
 
         Example:
 
@@ -277,65 +274,55 @@ class BackendExecutor:
             - Node2:
                 - Worker3: {0, 1}
 
-            NEURON_RT_VISIBLE_CORES:
+            NEURON_RT_VISIBLE_CORES/TPU_VISIBLE_CHIPS/...:
             - Worker1: "0,1,2,3"
             - Worker2: "0,1,2,3"
             - Worker2: "0,1"
+
+        Args:
+            accelerator: The name of the accelerator.
+            env_var: The name of the environment variable to set.
         """
-        node_ids_and_neuron_core_ids = [
+        node_ids_and_resource_ids = [
             (
                 w.metadata.node_id,
-                w.metadata.gpu_and_accelerator_ids[ray_constants.NEURON_CORES],
+                w.metadata.resource_ids[accelerator],
             )
             for w in self.worker_group.workers
         ]
-        self._share_runtime_ids(
-            node_ids_and_runtime_ids=node_ids_and_neuron_core_ids,
-            env_var=ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
-        )
-
-    def _share_runtime_ids(
-        self, node_ids_and_runtime_ids: List[Tuple[str, List[str]]], env_var: str
-    ):
-        """Sets the given env_var on all workers.
-        Args:
-            node_ids_and_runtime_ids: A list of tuples of node_id and
-                list of runtime_ids.
-            env_var: The name of the environment variable to set.
-        """
         node_id_to_worker_id = defaultdict(set)
-        node_id_to_runtime_ids = defaultdict(set)
+        node_id_to_resource_ids = defaultdict(set)
 
-        for worker_id, (node_id, runtime_id) in enumerate(node_ids_and_runtime_ids):
+        for worker_id, (node_id, resource_id) in enumerate(node_ids_and_resource_ids):
             node_id_to_worker_id[node_id].add(worker_id)
-            node_id_to_runtime_ids[node_id].update(runtime_id)
+            node_id_to_resource_ids[node_id].update(resource_id)
 
         futures = []
-        for node_id, runtime_ids in node_id_to_runtime_ids.items():
-            runtime_ids = sorted(runtime_ids)
-            all_runtime_ids = ",".join(runtime_ids)
+        for node_id, resource_runtime_ids in node_id_to_resource_ids.items():
+            resource_runtime_ids = sorted(resource_runtime_ids)
+            all_resource_runtime_ids = ",".join(resource_runtime_ids)
 
-            def set_runtime_ids():
-                os.environ[env_var] = all_runtime_ids
+            def set_resource_runtime_ids():
+                os.environ[env_var] = all_resource_runtime_ids
 
             for worker_id in node_id_to_worker_id[node_id]:
                 futures.append(
-                    self.worker_group.execute_single_async(worker_id, set_runtime_ids)
+                    self.worker_group.execute_single_async(
+                        worker_id, set_resource_runtime_ids
+                    )
                 )
         ray.get(futures)
 
-    def _share_neuron_core_ids_enabled(self):
-        """Whether to share NEURON_RT_VISIBLE_CORES on all workers.
-        This is enabled by default if neuron_cores are requested for
-        workers. User can disable it by configuring the
-        TRAIN_ENABLE_SHARE_NEURON_RT_VISIBLE_CORES to "0"
+    def _share_accelerator_devices_enabled(self, accelerator: str):
+        """Whether to share NEURON_RT_VISIBLE_CORES/TPU_VISIBLE_CHIPS/..
+        on all workers. This is enabled by default if neuron_cores/TPU/.. are
+        requested for workers. User can disable it by configuring the
+        TRAIN_ENABLE_SHARE_ACCELERATOR_DEVICES to "0"
         """
         return bool(
             env_integer(
-                ENABLE_SHARE_NEURON_RT_VISIBLE_CORES_ENV,
-                self._additional_resources_per_worker.get(
-                    ray_constants.NEURON_CORES, None
-                )
+                ENABLE_SHARE_ACCELERATOR_DEVICES_ENV,
+                self._additional_resources_per_worker.get(accelerator, None)
                 is not None,
             )
         )

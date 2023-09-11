@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+import ray._private.ray_constants as ray_constants
+
 from ray.air.constants import (  # noqa: F401
     EVALUATION_DATASET_KEY,
     MODEL_KEY,
@@ -55,6 +57,13 @@ TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 # Deprecated configs can use this value to detect if the user has set it.
 _DEPRECATED_VALUE = "DEPRECATED"
 
+# Map of supported accelerators to the environment variable that
+# are available in worker metadata as resource_ids.
+SUPPORTED_ACCELERATOR_DEVICES_TO_ENV_VAR = {
+    ray_constants.NEURON_CORES: ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
+    ray_constants.TPU: ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR,
+}
+
 # ==================================================
 #               Environment Variables
 # ==================================================
@@ -67,9 +76,9 @@ ENABLE_DETAILED_AUTOFILLED_METRICS_ENV = (
 # Backend.share_cuda_visible_devices. 1 for True, 0 for False.
 ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_CUDA_VISIBLE_DEVICES"
 
-# Integer value which if set will not share the RT visible cores across workers.
-# 1 for True (default), 0 for False.
-ENABLE_SHARE_NEURON_RT_VISIBLE_CORES_ENV = "TRAIN_ENABLE_SHARE_NEURON_RT_VISIBLE_CORES"
+# Integer value which if set will not share the accelerator visible cores/devices
+# across workers. 1 for True (default), 0 for False.
+ENABLE_SHARE_ACCELERATOR_DEVICES_ENV = "TRAIN_ENABLE_SHARE_ACCELERATOR_DEVICES"
 
 # Integer value which indicates the number of seconds to wait when creating
 # the worker placement group before timing out.
@@ -89,7 +98,7 @@ RAY_CHDIR_TO_TRIAL_DIR = "RAY_CHDIR_TO_TRIAL_DIR"
 TRAIN_ENV_VARS = {
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-    ENABLE_SHARE_NEURON_RT_VISIBLE_CORES_ENV,
+    ENABLE_SHARE_ACCELERATOR_DEVICES_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     RAY_AIR_NEW_PERSISTENCE_MODE,
