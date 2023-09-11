@@ -3,21 +3,20 @@ import os
 import random
 import types
 import collections
+import numpy as np
 from packaging.version import Version
-
 from typing import Any, Dict, List, Optional, Callable, Union
 
 from ray.train._internal import session
 from ray.train._internal.accelerator import Accelerator
-from torch.optim import Optimizer
 from ray.train._internal.session import get_accelerator, set_accelerator
 from ray.util.annotations import PublicAPI, Deprecated
-
-import numpy as np
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 import torch
 from torch.cuda.amp import autocast, GradScaler
 from torch.nn.parallel import DistributedDataParallel
+from torch.optim import Optimizer
 
 if Version(torch.__version__) < Version("1.11.0"):
     FullyShardedDataParallel = None
@@ -39,7 +38,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def get_device() -> Union[torch.device, List[torch.device]]:
     """Gets the correct torch device configured for this process.
 
@@ -67,11 +66,11 @@ def get_device() -> Union[torch.device, List[torch.device]]:
     """
     from ray.air._internal import torch_utils
 
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_GET_DEVICE, "1")
     return torch_utils.get_device()
 
 
-# TODO: Deprecation: Hard-deprecate args in Ray 2.2.
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def prepare_model(
     model: torch.nn.Module,
     move_to_device: Union[bool, torch.device] = True,
@@ -104,6 +103,7 @@ def prepare_model(
             "Run `pip install 'torch>=1.11.0'` to use FullyShardedDataParallel."
         )
 
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_PREPARE_MODEL, "1")
     return get_accelerator(_TorchAccelerator).prepare_model(
         model,
         move_to_device=move_to_device,
@@ -112,7 +112,7 @@ def prepare_model(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def prepare_data_loader(
     data_loader: torch.utils.data.DataLoader,
     add_dist_sampler: bool = True,
@@ -138,6 +138,7 @@ def prepare_data_loader(
             regardless of the setting. This configuration will be ignored
             if ``move_to_device`` is False.
     """
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_PREPARE_DATALOADER, "1")
     return get_accelerator(_TorchAccelerator).prepare_data_loader(
         data_loader,
         add_dist_sampler=add_dist_sampler,
@@ -190,7 +191,7 @@ def backward(tensor: torch.Tensor) -> None:
     get_accelerator(_TorchAccelerator).backward(tensor)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def enable_reproducibility(seed: int = 0) -> None:
     """Limits sources of nondeterministic behavior.
 

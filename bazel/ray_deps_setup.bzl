@@ -86,11 +86,19 @@ def auto_http_archive(
 def ray_deps_setup():
     # Explicitly bring in protobuf dependency to work around
     # https://github.com/ray-project/ray/issues/14117
+    # This is copied from grpc's bazel/grpc_deps.bzl
     http_archive(
         name = "com_google_protobuf",
-        strip_prefix = "protobuf-3.19.4",
-        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz"],
-        sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
+        sha256 = "76a33e2136f23971ce46c72fd697cd94dc9f73d56ab23b753c3e16854c90ddfd",
+        strip_prefix = "protobuf-2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a",
+        urls = [
+            # https://github.com/protocolbuffers/protobuf/commits/v23.4
+            "https://github.com/protocolbuffers/protobuf/archive/2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a.tar.gz",
+        ],
+        patches = [
+            "@com_github_grpc_grpc//third_party:protobuf.patch",
+        ],
+        patch_args = ["-p1"],
     )
 
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
@@ -205,15 +213,18 @@ def ray_deps_setup():
             "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
             "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
         ],
-        patch_args = ["-p1"],        
+        patch_args = ["-p1"],
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
     auto_http_archive(
         name = "com_google_absl",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20220623.1.tar.gz",
-        sha256 = "91ac87d30cc6d79f9ab974c51874a704de9c2647c40f6932597329a282217ba8",
+        sha256 = "5366d7e7fa7ba0d915014d387b66d0d002c03236448e1ba9ef98122c13b35c36",
+        strip_prefix = "abseil-cpp-20230125.3",
+        urls = [
+            "https://github.com/abseil/abseil-cpp/archive/20230125.3.tar.gz",
+        ],
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
@@ -232,14 +243,13 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.46.6.tar.gz",
-        sha256 = "6514b3e6eab9e9c7017304512d4420387a47b1a9c5caa986643692977ed44e8a",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.57.0.tar.gz",
+        sha256 = "8393767af531b2d0549a4c26cf8ba1f665b16c16fb6c9238a7755e45444881dd",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
-            "@com_github_ray_project_ray//thirdparty/patches:grpc-python.patch",
         ],
     )
-    
+
     http_archive(
         name = "openssl",
         strip_prefix = "openssl-1.1.1f",
@@ -249,7 +259,7 @@ def ray_deps_setup():
         ],
         build_file = "@rules_foreign_cc_thirdparty//openssl:BUILD.openssl.bazel",
     )
-    
+
     http_archive(
         name = "rules_foreign_cc",
         sha256 = "2a4d07cd64b0719b39a7c12218a3e507672b82a97b98c6a89d38565894cf7c51",
@@ -279,11 +289,11 @@ def ray_deps_setup():
         # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
         # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
         name = "boringssl",
-        sha256 = "534fa658bd845fd974b50b10f444d392dfd0d93768c4a51b61263fd37d851c40",
-        strip_prefix = "boringssl-b9232f9e27e5668bc0414879dcdedb2a59ea75f2",
+        sha256 = "0675a4f86ce5e959703425d6f9063eaadf6b61b7f3399e77a154c0e85bad46b1",
+        strip_prefix = "boringssl-342e805bc1f5dfdd650e3f031686d6c939b095d9",
         urls = [
-            "https://storage.googleapis.com/grpc-bazel-mirror/github.com/google/boringssl/archive/b9232f9e27e5668bc0414879dcdedb2a59ea75f2.tar.gz",
-            "https://github.com/google/boringssl/archive/b9232f9e27e5668bc0414879dcdedb2a59ea75f2.tar.gz",
+            "https://storage.googleapis.com/grpc-bazel-mirror/github.com/google/boringssl/archive/342e805bc1f5dfdd650e3f031686d6c939b095d9.tar.gz",
+            "https://github.com/google/boringssl/archive/342e805bc1f5dfdd650e3f031686d6c939b095d9.tar.gz",
         ],
     )
 
@@ -348,3 +358,12 @@ def ray_deps_setup():
         # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
         sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
     )
+
+
+    http_archive(
+        name = "jemalloc",
+        urls = ["https://github.com/jemalloc/jemalloc/releases/download/5.3.0/jemalloc-5.3.0.tar.bz2"],
+         build_file = "@com_github_ray_project_ray//bazel:BUILD.jemalloc",
+        sha256 = "2db82d1e7119df3e71b7640219b6dfe84789bc0537983c3b7ac4f7189aecfeaa",
+        strip_prefix = "jemalloc-5.3.0",
+     )

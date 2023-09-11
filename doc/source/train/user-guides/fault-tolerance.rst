@@ -12,8 +12,6 @@ Ray Train has built-in fault tolerance to recover from worker failures (i.e.
 ``RayActorError``\s). When a failure is detected, the workers will be shut
 down and new workers will be added in.
 
-.. note:: Elastic Training is not yet supported.
-
 The training function will be restarted, but progress from the previous execution can
 be resumed through checkpointing.
 
@@ -24,7 +22,7 @@ be resumed through checkpointing.
 
 Each instance of recovery from a worker failure is considered a retry. The
 number of retries is configurable through the ``max_failures`` attribute of the
-:class:`~ray.air.FailureConfig` argument set in the :class:`~ray.air.RunConfig`
+:class:`~ray.train.FailureConfig` argument set in the :class:`~ray.train.RunConfig`
 passed to the ``Trainer``:
 
 .. literalinclude:: ../doc_code/key_concepts.py
@@ -32,12 +30,19 @@ passed to the ``Trainer``:
     :start-after: __failure_config_start__
     :end-before: __failure_config_end__
 
+Which checkpoint will be restored?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Ray Train will automatically resume training from the latest available
+:ref:`checkpoint reported to Ray Train <train-checkpointing>`.
+
+This will be the last checkpoint passed to :func:`train.report() <ray.train.report>`.
+
 .. _train-restore-guide:
 
 Restore a Ray Train Experiment
 ------------------------------
 
-At the experiment level, :ref:`Trainer restoration <trainer-restore>`
+At the experiment level, Trainer restoration 
 allows you to resume a previously interrupted experiment from where it left off.
 
 A Train experiment may be interrupted due to one of the following reasons:
@@ -61,7 +66,7 @@ has been implemented.
     :start-after: __ft_initial_run_start__
     :end-before: __ft_initial_run_end__
 
-The results and checkpoints of the experiment are saved to the path configured by :class:`~ray.air.config.RunConfig`.
+The results and checkpoints of the experiment are saved to the path configured by :class:`~ray.train.RunConfig`.
 If the experiment has been interrupted due to one of the reasons listed above, use this path to resume:
 
 .. literalinclude:: ../doc_code/dl_guide.py
@@ -90,11 +95,16 @@ If the experiment has been interrupted due to one of the reasons listed above, u
     Different trainers may allow more parameters to be optionally re-specified on restore.
     Only **datasets** are required to be re-specified on restore, if they were supplied originally.
 
-    See :ref:`train-framework-specific-restore` for more details.
+    `TorchTrainer.restore`, `TensorflowTrainer.restore`, and `HorovodTrainer.restore`
+    can take in the same parameters as their parent class's
+    :meth:`DataParallelTrainer.restore <ray.train.data_parallel_trainer.DataParallelTrainer.restore>`.
+
+    Unless otherwise specified, other trainers will accept the same parameters as
+    :meth:`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>`.
 
 
 Auto-resume
-+++++++++++
+~~~~~~~~~~~
 
 Adding the branching logic below will allow you to run the same script after the interrupt,
 picking up training from where you left on the previous run. Notice that we use the

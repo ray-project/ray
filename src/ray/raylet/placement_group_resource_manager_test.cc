@@ -20,7 +20,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 // clang-format on
@@ -29,6 +29,7 @@ namespace ray {
 
 class NewPlacementGroupResourceManagerTest : public ::testing::Test {
  public:
+  instrumented_io_context io_context;
   std::unique_ptr<raylet::NewPlacementGroupResourceManager>
       new_placement_group_resource_manager_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
@@ -73,7 +74,6 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
         std::make_shared<const BundleSpecification>(std::move(bundle_spec)));
     return bundle_specs;
   }
-  instrumented_io_context io_context;
 };
 
 TEST_F(NewPlacementGroupResourceManagerTest,

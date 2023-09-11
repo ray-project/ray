@@ -2,7 +2,7 @@ import inspect
 import logging
 import os
 from types import FunctionType
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 from pydantic.main import ModelMetaclass
 
@@ -11,7 +11,7 @@ from ray._private.usage import usage_lib
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve.config import HTTPOptions
+from ray.serve.config import gRPCOptions, HTTPOptions
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     HTTP_PROXY_TIMEOUT,
@@ -27,7 +27,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.controller import ServeController
 from ray.serve.context import (
-    get_global_client,
+    _get_global_client,
     _set_global_client,
 )
 from ray.actor import ActorHandle
@@ -40,7 +40,7 @@ FLAG_DISABLE_HTTP_PROXY = (
 )
 
 
-def get_deployment(name: str):
+def get_deployment(name: str, app_name: str = ""):
     """Dynamically fetch a handle to a Deployment object.
 
     Args:
@@ -54,42 +54,45 @@ def get_deployment(name: str):
         (
             deployment_info,
             route_prefix,
-        ) = get_global_client().get_deployment_info(name)
+        ) = _get_global_client().get_deployment_info(name, app_name)
     except KeyError:
-        raise KeyError(
-            f"Deployment {name} was not found. Did you call Deployment.deploy()?"
-        )
+        if len(app_name) == 0:
+            msg = (
+                f"Deployment {name} was not found. Did you call Deployment.deploy()? "
+                "Note that `serve.get_deployment()` can only be used to fetch a "
+                "deployment that was deployed using the 1.x API `Deployment.deploy()`. "
+                "If you want to fetch a handle to an application deployed through "
+                "`serve.run` or through a Serve config, please use "
+                "`serve.get_app_handle()` instead."
+            )
+        else:
+            msg = f"Deployment {name} in application {app_name} was not found."
+        raise KeyError(msg)
     return Deployment(
-        deployment_info.replica_config.deployment_def,
         name,
         deployment_info.deployment_config,
+        deployment_info.replica_config,
         version=deployment_info.version,
-        init_args=deployment_info.replica_config.init_args,
-        init_kwargs=deployment_info.replica_config.init_kwargs,
         route_prefix=route_prefix,
-        ray_actor_options=deployment_info.replica_config.ray_actor_options,
         _internal=True,
     )
 
 
 def list_deployments() -> Dict[str, Deployment]:
-    """Returns a dictionary of all active deployments.
+    """Returns a dictionary of all active 1.x deployments.
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = get_global_client().list_deployments()
+    infos = _get_global_client().list_deployments_v1()
 
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
-            deployment_info.replica_config.deployment_def,
             name,
             deployment_info.deployment_config,
+            deployment_info.replica_config,
             version=deployment_info.version,
-            init_args=deployment_info.replica_config.init_args,
-            init_kwargs=deployment_info.replica_config.init_kwargs,
             route_prefix=route_prefix,
-            ray_actor_options=deployment_info.replica_config.ray_actor_options,
             _internal=True,
         )
 
@@ -122,8 +125,9 @@ def _check_http_options(
 
 def _start_controller(
     detached: bool = False,
-    http_options: Optional[Union[dict, HTTPOptions]] = None,
+    http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
+    grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> Tuple[ActorHandle, str]:
     """Start Ray Serve controller.
@@ -179,10 +183,14 @@ def _start_controller(
         if http_options is None:
             http_options = HTTPOptions()
 
+        if isinstance(grpc_options, dict):
+            grpc_options = gRPCOptions(**grpc_options)
+
         controller = ServeController.options(**controller_actor_options).remote(
             controller_name,
             http_config=http_options,
             detached=detached,
+            grpc_options=grpc_options,
         )
 
         proxy_handles = ray.get(controller.get_http_proxies.remote())
@@ -201,8 +209,9 @@ def _start_controller(
 
 async def serve_start_async(
     detached: bool = False,
-    http_options: Optional[Union[dict, HTTPOptions]] = None,
+    http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
+    grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -218,7 +227,7 @@ async def serve_start_async(
     usage_lib.record_library_usage("serve")
 
     try:
-        client = get_global_client(_health_check_controller=True)
+        client = _get_global_client(_health_check_controller=True)
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
             " New http options will not be applied."
@@ -232,7 +241,7 @@ async def serve_start_async(
     controller, controller_name = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
-        .remote(detached, http_options, dedicated_cpu, **kwargs)
+        .remote(detached, http_options, dedicated_cpu, grpc_options, **kwargs)
     )
 
     client = ServeControllerClient(
@@ -250,8 +259,9 @@ async def serve_start_async(
 
 def serve_start(
     detached: bool = False,
-    http_options: Optional[Union[dict, HTTPOptions]] = None,
+    http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
+    grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -291,12 +301,19 @@ def serve_start(
               internal Serve HTTP proxy actor.  Defaults to 0.
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
+        grpc_options: [Experimental] Configuration options for gRPC proxy.
+          You can pass in a gRPCOptions object with fields:
+
+            - port(int): Port for gRPC server. Defaults to 9000.
+            - grpc_servicer_functions(list): List of import paths for gRPC
+                `add_servicer_to_server` functions to add to Serve's gRPC proxy.
+                Default empty list, meaning not to start the gRPC server.
     """
 
     usage_lib.record_library_usage("serve")
 
     try:
-        client = get_global_client(_health_check_controller=True)
+        client = _get_global_client(_health_check_controller=True)
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
             " New http options will not be applied."
@@ -308,7 +325,7 @@ def serve_start(
         pass
 
     controller, controller_name = _start_controller(
-        detached, http_options, dedicated_cpu, **kwargs
+        detached, http_options, dedicated_cpu, grpc_options, **kwargs
     )
 
     client = ServeControllerClient(

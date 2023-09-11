@@ -107,16 +107,7 @@ class ClusterResourceManager {
   /// Add available resource to a given node.
   /// Return false if such node doesn't exist.
   bool AddNodeAvailableResources(scheduling::NodeID node_id,
-                                 const ResourceRequest &resource_request);
-
-  /// Update node available resources.
-  /// NOTE: This method only updates the existing resources of the node, and the
-  /// nonexistent resources will be filtered out, whitch is different from `UpdateNode`.
-  /// Return false if such node doesn't exist.
-  /// TODO(Shanly): This method will be replaced with UpdateNode once we have resource
-  /// version.
-  bool UpdateNodeAvailableResourcesIfExist(scheduling::NodeID node_id,
-                                           const rpc::ResourcesData &resource_data);
+                                 const ResourceSet &resource_set);
 
   /// Update node normal task resources.
   /// Return false if such node doesn't exist.

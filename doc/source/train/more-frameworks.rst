@@ -8,15 +8,23 @@ More Frameworks
     :class-container: container pb-3
 
     .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
+        :img-top: /images/accelerate_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: train-hf-transformers-accelerate
+        .. button-ref:: train-hf-accelerate
 
-            Hugging Face Transformers & Accelerate
+            Hugging Face Accelerate
+    
+    .. grid-item-card::
+        :img-top: /images/deepspeed_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: train-deepspeed
+
+            DeepSpeed
 
     .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
+        :img-top: /images/tf_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
         .. button-ref:: distributed-tensorflow-keras
@@ -24,7 +32,7 @@ More Frameworks
             TensorFlow & Keras
 
     .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
+        :img-top: /images/xgboost_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
         .. button-ref:: distributed-xgboost-lightgbm
@@ -32,7 +40,7 @@ More Frameworks
             XGBoost & LightGBM
 
     .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
+        :img-top: /images/horovod.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
         .. button-ref:: horovod

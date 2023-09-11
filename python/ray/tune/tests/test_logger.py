@@ -18,6 +18,7 @@ from ray.air.constants import (
     EXPR_RESULT_FILE,
 )
 from ray.cloudpickle import cloudpickle
+from ray.train import Checkpoint
 from ray.tune.logger import (
     CSVLoggerCallback,
     JsonLoggerCallback,
@@ -38,6 +39,7 @@ class Trial:
     experiment_path: Optional[str] = None
     experiment_dir_name: Optional[str] = None
     remote_checkpoint_dir: Optional[str] = None
+    checkpoint: Optional[Checkpoint] = None
 
     @property
     def config(self):
@@ -205,7 +207,7 @@ class LoggerSuite(unittest.TestCase):
             "b": [1, 2],
             "c": {"c": {"D": 123}},
             "d": np.int64(1),
-            "e": np.bool8(True),
+            "e": np.bool_(True),
             "f": None,
         }
         t = Trial(evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
@@ -224,7 +226,7 @@ class LoggerSuite(unittest.TestCase):
             "c": {"c": {"D": 123}},
             "int32": np.int32(1),
             "int64": np.int64(2),
-            "bool8": np.bool8(True),
+            "bool8": np.bool_(True),
             "float32": np.float32(3),
             "float64": np.float64(4),
             "bad": np.float128(4),
@@ -321,7 +323,7 @@ class AimLoggerSuite(unittest.TestCase):
             "c": {"d": {"e": 123}},
             "int32": np.int32(1),
             "int64": np.int64(2),
-            "bool8": np.bool8(True),
+            "bool8": np.bool_(True),
             "float32": np.float32(3),
             "float64": np.float64(4),
             "bad": Dummy(),

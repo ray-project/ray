@@ -3,7 +3,7 @@ import argparse
 import ray
 from ray import tune
 from ray.train.torch import TorchTrainer
-from ray.train import ScalingConfig
+from ray.train import ScalingConfig, DataConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -20,6 +20,7 @@ def tune_linear(num_workers, num_samples, use_gpu):
         train_loop_config=config,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": train_dataset, "validation": val_dataset},
+        dataset_config=DataConfig(datasets_to_split=["train"]),
     )
 
     tuner = Tuner(

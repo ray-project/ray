@@ -2,34 +2,34 @@ from typing import Optional
 
 import argparse
 import os
+import pickle
+import tempfile
 import time
 
 import ray
 from ray import train, tune
 from ray.train import Checkpoint
-from ray.air.constants import REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 
-from run_cloud_test import ARTIFACT_FILENAME
+from run_cloud_test import ARTIFACT_FILENAME, CHECKPOINT_DATA_FILENAME
 
 
 def fn_trainable(config):
     checkpoint = train.get_checkpoint()
     if checkpoint:
-        state = {"internal_iter": checkpoint.to_dict()["internal_iter"] + 1}
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(
+                os.path.join(checkpoint_dir, CHECKPOINT_DATA_FILENAME), "rb"
+            ) as f:
+                checkpoint_dict = pickle.load(f)
+        state = {"internal_iter": checkpoint_dict["internal_iter"] + 1}
     else:
-        # NOTE: Need to 1 index because `train.report`
-        # will save checkpoints w/ 1-indexing.
         state = {"internal_iter": 1}
 
     for i in range(state["internal_iter"], config["max_iterations"] + 1):
         state["internal_iter"] = i
         time.sleep(config["sleep_time"])
-
-        checkpoint = None
-        if i % config["checkpoint_freq"] == 0:
-            checkpoint = Checkpoint.from_dict({"internal_iter": i})
 
         # Log artifacts to the trial dir.
         trial_dir = train.get_context().get_trial_dir()
@@ -40,8 +40,13 @@ def fn_trainable(config):
             score=i * 10 * config["score_multiplied"],
             internal_iter=state["internal_iter"],
         )
-
-        train.report(metrics, checkpoint=checkpoint)
+        if i % config["checkpoint_freq"] == 0:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with open(os.path.join(tmpdir, CHECKPOINT_DATA_FILENAME), "wb") as f:
+                    pickle.dump({"internal_iter": i}, f)
+                train.report(metrics, checkpoint=Checkpoint.from_directory(tmpdir))
+        else:
+            train.report(metrics)
 
 
 class RLlibCallback(DefaultCallbacks):
@@ -71,7 +76,7 @@ def run_tune(
     num_cpus_per_trial: int = 2,
 ):
     if trainable == "function":
-        train = fn_trainable
+        train_fn = fn_trainable
         config = {
             "max_iterations": 100,
             "sleep_time": 5,
@@ -82,9 +87,9 @@ def run_tune(
         kwargs = {"resources_per_trial": {"cpu": num_cpus_per_trial}}
     elif trainable == "rllib_str" or trainable == "rllib_trainer":
         if trainable == "rllib_str":
-            train = "PPO"
+            train_fn = "PPO"
         else:
-            train = PPO
+            train_fn = PPO
 
         config = {
             "env": "CartPole-v1",
@@ -101,18 +106,14 @@ def run_tune(
     else:
         raise RuntimeError(f"Unknown trainable: {trainable}")
 
-    if not no_syncer and storage_path is None:
-        # syncer="auto" + storage_path=None -> legacy head node syncing path
-        os.environ[REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE] = "1"
-
     tune.run(
-        train,
+        train_fn,
         name=experiment_name,
         resume="AUTO",
         num_samples=1,  # 4 trials from the grid search
         config=config,
         storage_path=storage_path,
-        sync_config=tune.SyncConfig(
+        sync_config=train.SyncConfig(
             syncer="auto" if not no_syncer else None,
             sync_on_checkpoint=True,
             sync_period=0.5,

@@ -41,7 +41,7 @@ const useStyles = makeStyles((theme) =>
 
 export type ServeDetails = Pick<
   ServeApplicationsRsp,
-  "http_options" | "proxy_location" | "controller_info"
+  "http_options" | "grpc_options" | "proxy_location" | "controller_info"
 >;
 
 type ServeSystemDetailsProps = {
@@ -83,10 +83,17 @@ export const ServeSystemDetails = ({
               },
             },
             {
-              label: "Port",
+              label: "HTTP Port",
               content: {
                 copyableValue: `${serveDetails.http_options.port}`,
                 value: `${serveDetails.http_options.port}`,
+              },
+            },
+            {
+              label: "gRPC Port",
+              content: {
+                copyableValue: `${serveDetails.grpc_options.port}`,
+                value: `${serveDetails.grpc_options.port}`,
               },
             },
             {
@@ -186,7 +193,7 @@ export const ServeSystemPreview = ({
             ),
           },
           {
-            label: "HTTP Proxy status",
+            label: "Proxy status",
             content: (
               <StatusCountChips
                 elements={httpProxies}

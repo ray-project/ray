@@ -1,7 +1,3 @@
-```{eval-rst}
-.. include:: /_includes/serve/announcement.rst
-```
-
 (rayserve)=
 
 # Ray Serve: Scalable and Programmable Serving
@@ -21,9 +17,9 @@
 Ray Serve is a scalable model serving library for building online inference APIs.
 Serve is framework-agnostic, so you can use a single toolkit to serve everything from deep learning models built with frameworks like PyTorch, Tensorflow, and Keras, to Scikit-Learn models, to arbitrary Python business logic. It has several features and performance optimizations for serving Large Language Models such as response streaming, dynamic request batching, multi-node/multi-GPU serving, etc.
 
-Ray Serve is particularly well suited for [model composition](serve-model-composition) and [many model serving](serve-deploy-many-models), enabling you to build a complex inference service consisting of multiple ML models and business logic all in Python code. 
+Ray Serve is particularly well suited for [model composition](serve-model-composition) and many model serving, enabling you to build a complex inference service consisting of multiple ML models and business logic all in Python code. 
 
-Ray Serve is built on top of Ray, so it easily scales to many machines and offers flexible scheduling support such as fractional GPUs so you can share resources and serve many machine learning models at low cost. 
+Ray Serve is built on top of Ray, so it easily scales to many machines and offers flexible scheduling support such as fractional GPUs so you can share resources and serve many machine learning models at low cost.
 
 ## Quickstart
 
@@ -247,7 +243,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
         ^^^
         
         Understand the key concepts behind Ray Serve.
-        Learn about :ref:`Deployments <serve-key-concepts-deployment>`, :ref:`how to query them <serve-key-concepts-query-deployment>`, and the :ref:`Deployment Graph <serve-key-concepts-deployment-graph>` API for composing models into a graph structure.
+        Learn about :ref:`Deployments <serve-key-concepts-deployment>`, :ref:`how to query them <serve-key-concepts-ingress-deployment>`, and using :ref:`DeploymentHandles <serve-key-concepts-deployment-handle>` to compose multiple models and business logic together.
         
         +++
         .. button-ref:: serve-key-concepts
@@ -297,7 +293,3 @@ For more, see the following blog posts about Ray Serve:
 - [The Simplest Way to Serve your NLP Model in Production with Pure Python](https://medium.com/distributed-computing-with-ray/the-simplest-way-to-serve-your-nlp-model-in-production-with-pure-python-d42b6a97ad55) by Edward Oakes and Bill Chambers
 - [Machine Learning Serving is Broken](https://medium.com/distributed-computing-with-ray/machine-learning-serving-is-broken-f59aff2d607f) by Simon Mo
 - [How to Scale Up Your FastAPI Application Using Ray Serve](https://medium.com/distributed-computing-with-ray/how-to-scale-up-your-fastapi-application-using-ray-serve-c9a7b69e786) by Archit Kulkarni
-
-```{eval-rst}
-.. include:: /_includes/serve/announcement_bottom.rst
-```

@@ -21,7 +21,7 @@ InboundRequest::InboundRequest() {}
 
 InboundRequest::InboundRequest(
     std::function<void(rpc::SendReplyCallback)> accept_callback,
-    std::function<void(rpc::SendReplyCallback)> reject_callback,
+    std::function<void(const Status &, rpc::SendReplyCallback)> reject_callback,
     rpc::SendReplyCallback send_reply_callback,
     class TaskID task_id,
     bool has_dependencies,
@@ -36,7 +36,9 @@ InboundRequest::InboundRequest(
       has_pending_dependencies_(has_dependencies) {}
 
 void InboundRequest::Accept() { accept_callback_(std::move(send_reply_callback_)); }
-void InboundRequest::Cancel() { reject_callback_(std::move(send_reply_callback_)); }
+void InboundRequest::Cancel(const Status &status) {
+  reject_callback_(status, std::move(send_reply_callback_));
+}
 
 bool InboundRequest::CanExecute() const { return !has_pending_dependencies_; }
 ray::TaskID InboundRequest::TaskID() const { return task_id_; }

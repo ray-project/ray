@@ -59,6 +59,7 @@ import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._raylet import StreamingObjectRefGenerator
+from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -426,8 +427,11 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # CUDA_VISIBLE_DEVICES environment variable.
-        self.original_gpu_ids = ray._private.utils.get_cuda_visible_devices()
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
+        # environment variables.
+        self.original_gpu_and_accelerator_runtime_ids = (
+            ray._private.utils.get_gpu_and_accelerator_runtime_ids()
+        )
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
@@ -832,6 +836,54 @@ class Worker:
             # Close the pubsub client to avoid leaking file descriptors.
             subscriber.close()
 
+    def get_resource_ids_for_resource(
+        self, resource_name: str, resource_regex: str
+    ) -> Union[List[str], List[int]]:
+        """Get the resource IDs that are assigned to the given resource.
+
+        Args:
+            resource_name: The name of the resource.
+            resource_regex: The regex of the resource.
+
+        Returns:
+            (List[str]) The IDs that are assigned to the given resource pre-configured.
+            (List[int]) The IDs that are assigned to the given resource.
+
+        """
+        resource_ids = self.core_worker.resource_ids()
+        assigned_ids = set()
+        # Handle both normal and placement group GPU, accelerator resources.
+        # Note: We should only get the GPU, accelerator ids from the placement
+        # group resource that does not contain the bundle index!
+        import re
+
+        for resource, assignment in resource_ids.items():
+            if resource == resource_name or re.match(resource_regex, resource):
+                for resource_id, _ in assignment:
+                    assigned_ids.add(resource_id)
+
+        # If the user had already set the environment variables
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) then
+        # respect that in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
+        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
+        if (
+            self.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
+            is not None
+        ):
+            runtime_ids = self.original_gpu_and_accelerator_runtime_ids[resource_name]
+            assigned_ids = [str(runtime_ids[i]) for i in assigned_ids]
+            # Give all accelerator ids local_mode.
+            if self.mode == LOCAL_MODE:
+                if resource_name == ray_constants.GPU:
+                    max_runtime_ids = self.node.get_resource_spec().num_gpus
+                else:
+                    max_runtime_ids = self.node.get_resource_spec().resources.get(
+                        resource_name, None
+                    )
+                if max_runtime_ids:
+                    assigned_ids = runtime_ids[:max_runtime_ids]
+        return list(assigned_ids)
+
 
 @PublicAPI
 @client_mode_hook
@@ -848,42 +900,9 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-
-    if worker.mode != WORKER_MODE:
-        if log_once("worker_get_gpu_ids_empty_from_driver"):
-            logger.warning(
-                "`ray.get_gpu_ids()` will always return the empty list when "
-                "called from the driver. This is because Ray does not manage "
-                "GPU allocations to the driver process."
-            )
-
-    # TODO(ilr) Handle inserting resources in local mode
-    all_resource_ids = global_worker.core_worker.resource_ids()
-    assigned_ids = set()
-    for resource, assignment in all_resource_ids.items():
-        # Handle both normal and placement group GPU resources.
-        # Note: We should only get the GPU ids from the placement
-        # group resource that does not contain the bundle index!
-        import re
-
-        if resource == "GPU" or re.match(r"^GPU_group_[0-9A-Za-z]+$", resource):
-            for resource_id, _ in assignment:
-                assigned_ids.add(resource_id)
-
-    assigned_ids = list(assigned_ids)
-    # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
-    # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
-    # returned).
-    if global_worker.original_gpu_ids is not None:
-        assigned_ids = [
-            global_worker.original_gpu_ids[gpu_id] for gpu_id in assigned_ids
-        ]
-        # Give all GPUs in local_mode.
-        if global_worker.mode == LOCAL_MODE:
-            max_gpus = global_worker.node.get_resource_spec().num_gpus
-            assigned_ids = global_worker.original_gpu_ids[:max_gpus]
-
-    return assigned_ids
+    return worker.get_resource_ids_for_resource(
+        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+    )
 
 
 @Deprecated(
@@ -1153,7 +1172,7 @@ def init(
 
     To connect to an existing remote cluster, use this as follows (substituting
     in the appropriate address). Note the addition of "ray://" at the beginning
-    of the address.
+    of the address. This requires `ray[client]`.
 
     .. testcode::
         :skipif: True
@@ -1284,9 +1303,7 @@ def init(
     )
     _redis_max_memory: Optional[int] = kwargs.pop("_redis_max_memory", None)
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
-    _node_ip_address: str = kwargs.pop(
-        "_node_ip_address", ray_constants.NODE_DEFAULT_IP
-    )
+    _node_ip_address: str = kwargs.pop("_node_ip_address", None)
     _driver_object_store_memory: Optional[int] = kwargs.pop(
         "_driver_object_store_memory", None
     )
@@ -1391,24 +1408,43 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
+    if job_config is None:
+        job_config = ray.job_config.JobConfig()
+
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
-        if runtime_env:
-            logger.warning(
-                "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
-                "are provided, only using JSON_ENV_VAR to construct "
-                "job_config. Please ensure no runtime_env is used in driver "
-                "script's ray.init() when using job submission API."
+        injected_job_config_json = json.loads(
+            os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR)
+        )
+        injected_job_config: ray.job_config.JobConfig = (
+            ray.job_config.JobConfig.from_json(injected_job_config_json)
+        )
+        driver_runtime_env = runtime_env
+        runtime_env = _merge_runtime_env(
+            injected_job_config.runtime_env,
+            driver_runtime_env,
+            override=os.getenv("RAY_OVERRIDE_JOB_RUNTIME_ENV") == "1",
+        )
+        if runtime_env is None:
+            # None means there was a conflict.
+            raise ValueError(
+                "Failed to merge the Job's runtime env "
+                f"{injected_job_config.runtime_env} with "
+                f"a ray.init's runtime env {driver_runtime_env} because "
+                "of a conflict. Specifying the same runtime_env fields "
+                "or the same environment variable keys is not allowed. "
+                "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 to instruct Ray to "
+                "combine Job and Driver's runtime environment in the event of "
+                "a conflict."
             )
-        # Set runtime_env in job_config if passed as env variable, such as
-        # ray job submission with driver script executed in subprocess
-        job_config_json = json.loads(os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR))
-        job_config = ray.job_config.JobConfig.from_json(job_config_json)
 
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
-                job_config.runtime_env
+                runtime_env
             )
-            job_config.set_runtime_env(runtime_env)
+        job_config.set_runtime_env(runtime_env)
+        # Similarly, we prefer metadata provided via job submission API
+        for key, value in injected_job_config.metadata.items():
+            job_config.set_metadata(key, value)
 
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
     # higher priority in case user also provided runtime_env for ray.init()
@@ -1420,8 +1456,6 @@ def init(
 
         if runtime_env:
             # Set runtime_env in job_config if passed in as part of ray.init()
-            if job_config is None:
-                job_config = ray.job_config.JobConfig()
             job_config.set_runtime_env(runtime_env)
 
     redis_address, gcs_address = None, None
@@ -1429,10 +1463,6 @@ def init(
     if bootstrap_address is not None:
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
-
-    if _node_ip_address is not None:
-        node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
-    raylet_ip_address = node_ip_address
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -1478,8 +1508,7 @@ def init(
 
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
+            node_ip_address=_node_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
             redirect_output=None,
@@ -1562,8 +1591,7 @@ def init(
 
         # In this case, we only need to connect the node.
         ray_params = ray._private.parameter.RayParams(
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
+            node_ip_address=_node_ip_address,
             gcs_address=gcs_address,
             redis_address=redis_address,
             redis_password=_redis_password,
@@ -2316,7 +2344,7 @@ def connect(
         b"tracing_startup_hook", ray_constants.KV_NAMESPACE_TRACING
     )
     if tracing_hook_val is not None:
-        ray.util.tracing.tracing_helper._enbale_tracing()
+        ray.util.tracing.tracing_helper._enable_tracing()
         if not getattr(ray, "__traced__", False):
             _setup_tracing = _import_from_string(tracing_hook_val.decode("utf-8"))
             _setup_tracing()
@@ -2809,30 +2837,61 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 
 @PublicAPI
 @client_mode_hook
-def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True):
-    """Cancels a task according to the following conditions.
+def cancel(
+    object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True
+) -> None:
+    """Cancels a task.
 
-    If the specified task is pending execution, it will not be executed. If
-    the task is currently executing, the behavior depends on the ``force``
-    flag. When ``force=False``, a KeyboardInterrupt will be raised in Python
-    and when ``force=True``, the executing task will immediately exit.
-    If the task is already finished, nothing will happen.
+    Cancel API has a different behavior depending on if it is a remote function
+    (Task) or a remote Actor method (Actor Task).
 
-    Only non-actor tasks can be canceled. Canceled tasks will not be
-    retried (max_retries will not be respected).
+    Task:
+        If the specified Task is pending execution, it is cancelled and not
+        executed. If the Task is currently executing, the behavior depends
+        on the `force` flag. When `force=False`, a KeyboardInterrupt is
+        raised in Python and when `force=True`, the executing Task
+        immediately exits. If the Task is already finished, nothing happens.
 
-    Calling ray.get on a canceled task will raise a TaskCancelledError or a
-    WorkerCrashedError if ``force=True``.
+        Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
+
+        Calling ray.get on a cancelled Task raises a TaskCancelledError
+        if the Task has been scheduled or interrupted.
+        It raises a WorkerCrashedError if `force=True`.
+
+        If `recursive=True`, all the child Tasks and Actor Tasks
+        are cancelled. If `force=True` and `recursive=True`, `force=True`
+        is ignored for child Actor Tasks.
+
+    Actor Task:
+        If the specified Task is pending execution, it is cancelled and not
+        executed. If the Task is currently executing, the behavior depends
+        on the execution model of an Actor. If it is a regular Actor
+        or a threaded Actor, the execution isn't cancelled.
+        Actor Tasks cannot be interrupted because Actors have
+        states. If it is an async Actor, Ray cancels a `asyncio.Task`.
+        The semantic of cancellation is equivalent to asyncio's cancellation.
+        https://docs.python.org/3/library/asyncio-task.html#task-cancellation
+        If the Task has finished, nothing happens.
+
+        Only `force=False` is allowed for an Actor Task. Otherwise, it raises
+        `ValueError`. Use `ray.kill(actor)` instead to kill an Actor.
+
+        Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
+
+        Calling ray.get on a cancelled Task raises a TaskCancelledError
+        if the Task has been scheduled or interrupted. Also note that
+        only async actor tasks can be interrupted.
+
+        If `recursive=True`, all the child Tasks and actor Tasks
+        are cancelled.
 
     Args:
-        object_ref: ObjectRef returned by the task
-            that should be canceled.
-        force: Whether to force-kill a running task by killing
-            the worker that is running the task.
-        recursive: Whether to try to cancel tasks submitted by the
-            task specified.
-    Raises:
-        TypeError: This is also raised for actor tasks.
+        object_ref: ObjectRef returned by the Task
+            that should be cancelled.
+        force: Whether to force-kill a running Task by killing
+            the worker that is running the Task.
+        recursive: Whether to try to cancel Tasks submitted by the
+            Task specified.
     """
     worker = ray._private.worker.global_worker
     worker.check_connected()
@@ -2843,7 +2902,7 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
 
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
-            "ray.cancel() only supported for non-actor object refs. "
+            "ray.cancel() only supported for object refs. "
             f"For actors, try ray.kill(). Got: {type(object_ref)}."
         )
     return worker.core_worker.cancel_task(object_ref, force, recursive)

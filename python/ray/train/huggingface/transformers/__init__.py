@@ -1,5 +1,6 @@
 from ray.train.huggingface.transformers.transformers_checkpoint import (
     TransformersCheckpoint,
+    LegacyTransformersCheckpoint,
 )
 from ray.train.huggingface.transformers.transformers_predictor import (
     TransformersPredictor,
@@ -14,6 +15,7 @@ from ray.train.huggingface.transformers._transformers_utils import (
 
 __all__ = [
     "TransformersCheckpoint",
+    "LegacyTransformersCheckpoint",
     "TransformersPredictor",
     "TransformersTrainer",
     "RayTrainReportCallback",
