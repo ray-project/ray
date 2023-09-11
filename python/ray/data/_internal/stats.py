@@ -360,7 +360,10 @@ class DatasetStatsSummary:
     global_bytes_restored: int
 
     def to_string(
-        self, already_printed: Optional[Set[str]] = None, include_parent: bool = True
+        self,
+        already_printed: Optional[Set[str]] = None,
+        include_parent: bool = True,
+        add_global_stats=True,
     ) -> str:
         """Return a human-readable summary of this Dataset's stats.
 
@@ -378,7 +381,7 @@ class DatasetStatsSummary:
         out = ""
         if self.parents and include_parent:
             for p in self.parents:
-                parent_sum = p.to_string(already_printed)
+                parent_sum = p.to_string(already_printed, add_global_stats=False)
                 if parent_sum:
                     out += parent_sum
                     out += "\n"
@@ -415,6 +418,11 @@ class DatasetStatsSummary:
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         out += str(self.iter_stats)
+        if add_global_stats:
+            out += "\nGlobal memory:\n"
+            out += "* Spilled: {}MB\n".format(round(self.global_bytes_spilled / 1e6))
+            out += "* Restored: {}MB\n".format(round(self.global_bytes_restored / 1e6))
+
         return out
 
     def __repr__(self, level=0) -> str:
