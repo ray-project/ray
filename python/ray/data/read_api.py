@@ -64,6 +64,7 @@ from ray.data.datasource import (
     SQLDatasource,
     TextDatasource,
     TFRecordDatasource,
+    TorchDatasource,
     WebDatasetDatasource,
 )
 from ray.data.datasource._default_metadata_providers import (
@@ -2283,6 +2284,8 @@ def from_tf(
 @PublicAPI
 def from_torch(
     dataset: "torch.utils.data.Dataset",
+    parallelism: int = -1,
+    random_split: bool = False,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
@@ -2314,7 +2317,12 @@ def from_torch(
     Returns:
         A :class:`MaterializedDataset` containing the Torch dataset samples.
     """  # noqa: E501
-    return from_items(list(dataset))
+    return read_datasource(
+        TorchDatasource(),
+        dataset=dataset,
+        parallelism=parallelism,
+        random_split=random_split,
+    )
 
 
 def _get_reader(
