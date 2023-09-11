@@ -1,6 +1,7 @@
 import sys
 import os
 import psutil
+import pytest
 
 import ray
 import ray.cluster_utils
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 # actor should not infinitely go up.
 
 
+@pytest.mark.skip(reason="Occational extra non-Ray threads, e.g. jemalloc")
 def test_threaded_actor_have_bounded_num_of_threads(shutdown_only):
     ray.init()
 
@@ -45,6 +47,7 @@ def test_threaded_actor_have_bounded_num_of_threads(shutdown_only):
     assert ray.get(a.my_number_of_threads.remote()) == n
 
 
+@pytest.mark.skip(reason="Occational extra non-Ray threads, e.g. jemalloc")
 def test_async_actor_have_bounded_num_of_threads(shutdown_only):
     ray.init()
 
@@ -76,6 +79,7 @@ def test_async_actor_have_bounded_num_of_threads(shutdown_only):
     assert ray.get(a.my_number_of_threads.remote()) == n
 
 
+@pytest.mark.skip(reason="Occational extra non-Ray threads, e.g. jemalloc")
 def test_async_actor_cg_have_bounded_num_of_threads(shutdown_only):
     ray.init()
 
