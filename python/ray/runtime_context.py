@@ -268,8 +268,8 @@ class RuntimeContext(object):
 
         Returns:
             The current actor name of this worker.
-            Return empty string if there's no actor name or if it's a driver
-            None if it's not an actor.
+            If a current worker is an actor, and if actor name doesn't exist, it returns an empty string.
+            If a current worker is not an actor, it returns None.
         """
         # only worker mode has actor_id
         if self.worker.mode != ray._private.worker.WORKER_MODE:

@@ -359,6 +359,16 @@ def test_ids(ray_start_regular):
     unnamed_actor = NamedActor.options().remote()
     assert ray.get(unnamed_actor.name.remote()) == ""
 
+    # task actor name
+    @ray.remote
+    def task_actor_name():
+        ray.get_runtime_context().get_actor_name()
+
+    assert ray.get(task_actor_name.remote()) is None
+
+    # driver actor name
+    assert rtc.get_actor_name() is None
+
 
 def test_auto_init(shutdown_only):
     assert not ray.is_initialized()
