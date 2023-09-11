@@ -450,11 +450,11 @@ The following metrics are exposed by Ray Serve:
      - The number of requests processed by the router.
    * - ``ray_serve_num_scheduling_tasks`` [*]
      - * deployment
-       * actor_name
+       * actor_id
      - The number of request scheduling tasks in the router.
    * - ``ray_serve_num_scheduling_tasks_in_backoff`` [*]
      - * deployment
-       * actor_name
+       * actor_id
      - The number of request scheduling tasks in the router that are undergoing backoff.
    * - ``ray_serve_handle_request_counter`` [**]
      - * handle
