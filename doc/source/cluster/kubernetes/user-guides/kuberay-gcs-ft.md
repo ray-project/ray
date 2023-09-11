@@ -245,8 +245,9 @@ In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/
 ### 3. Use an external storage namespace
 
 * **`ray.io/external-storage-namespace`** annotation (**optional**):
+KubeRay uses the value of this annotation to set the environment variable `RAY_external_storage_namespace` to all Ray Pods managed by the RayCluster.
 In most cases, ***you don't need to set `ray.io/external-storage-namespace`*** because KubeRay automatically sets it to the UID of RayCluster.
-Only modify this annotation if you fully understand the behaviors of the GCS fault tolerance and RayService to avoid misconfiguration.
+Only modify this annotation if you fully understand the behaviors of the GCS fault tolerance and RayService to avoid [this issue](kuberay-raysvc-issue10).
 Refer to [this section](kuberay-external-storage-namespace-example) in the earlier quickstart example for more details.
     ```yaml
     kind: RayCluster
