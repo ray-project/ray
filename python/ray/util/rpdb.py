@@ -103,7 +103,10 @@ class _RemotePdb(Pdb):
         self._breakpoint_uuid = breakpoint_uuid
         self._quiet = quiet
         self._patch_stdstreams = patch_stdstreams
-        self._listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if host == "::":
+            self._listen_socket = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        else:
+            self._listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         self._listen_socket.bind((host, port))
         self._ip_address = ip_address
@@ -341,8 +344,12 @@ def _post_mortem():
 
 
 def _connect_pdb_client(host, port):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((host, port))
+    if host.startswith("[") and host.endswith("]"):
+        s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        s.connect((host[1:-1], port))
+    else:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((host, port))
 
     while True:
         # Get the list of sockets which are readable.
