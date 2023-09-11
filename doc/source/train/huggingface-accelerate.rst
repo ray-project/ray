@@ -1,11 +1,11 @@
 .. _train-hf-accelerate:
 
-Training with HuggingFace Accelerate
-====================================
+Training with Hugging Face Accelerate
+=====================================
 
 The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your `Accelelate <https://huggingface.co/docs/accelerate>`_  training across a distributed Ray cluster.
 
-All you need to do is run your existing training code with a TorchTrainer. You can expect the final code to look like this:
+You only need to run your existing training code with a TorchTrainer. You can expect the final code to look like this:
 
 .. code-block:: python
 
@@ -161,11 +161,11 @@ object in your training function. Below are starter examples for configuring Acc
             trainer.fit()
 
 Note that Accelerate also provides a CLI tool, `"accelerate config"`, to generate a configuration and launch your training 
-job with `"accelerate launch"`. However, it is not necessary here because Ray's `TorchTrainer` already sets up the Torch 
+job with `"accelerate launch"`. However, it's not necessary here because Ray's `TorchTrainer` already sets up the Torch 
 distributed environment and launches the training function on all workers.
 
 
-Next, check these end-to-end examples below for more details:
+Next, see these end-to-end examples below for more details:
 
 .. tabs::
 
@@ -211,6 +211,6 @@ Aside from that, the functionality of ``AccelerateTrainer`` is identical to ``To
 
 However, this caused confusion around whether this was the *only* way to run Accelerate code. 
 Because the full Accelerate functionality can be expressed with the ``Accelerator`` and ``TorchTrainer`` combination, the ``AccelerateTrainer`` will be deprecated in Ray 2.8, 
-and it is recommend to run your  Accelerate code directly with ``TorchTrainer``. 
+and it's recommend to run your  Accelerate code directly with ``TorchTrainer``. 
 
 

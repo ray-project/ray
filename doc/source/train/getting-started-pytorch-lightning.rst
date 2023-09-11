@@ -29,7 +29,7 @@ For reference, the final code follows:
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
-1. Your `train_func` is the Python code that is executed on each distributed training worker.
+1. Your `train_func` is the Python code that each distributed training worker executes.
 2. Your `ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
 3. Your `TorchTrainer` launches the distributed training job.
 
@@ -147,8 +147,8 @@ Compare a PyTorch Lightning training script with and without Ray Train.
             result = trainer.fit()            
 
 
-Setting up your training function
----------------------------------
+Set up the training function
+----------------------------
 
 First, update your training code to support distributed training. 
 Begin by wrapping your code in a function:
@@ -158,7 +158,7 @@ Begin by wrapping your code in a function:
     def train_func(config):
         # Your PyTorch Lightning training code here.
 
-This function is executed on each distributed training worker.
+Each distributed training worker executes this function.
 
 
 Ray Train sets up your distributed process group on each worker. You only need to 
@@ -364,7 +364,7 @@ information about the training run, including the metrics and checkpoints report
 Next steps
 ---------- 
 
-After you have converted your PyTorch Lightningtraining script to use Ray Train:
+After you have converted your PyTorch Lightning training script to use Ray Train:
 
 * See :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
 * Browse the :ref:`Examples <train-examples>` for end-to-end examples of how to use Ray Train.
@@ -374,7 +374,7 @@ Version Compatibility
 ---------------------
 
 Ray Train is tested with `pytorch_lightning` versions `1.6.5` and `2.0.4`. For full compatibility, use ``pytorch_lightning>=1.6.5`` . 
-Earlier versions are not prohibited but may result in unexpected issues. If you run into any compatibility issues, consider upgrading your PyTorch Lightning version or 
+Earlier versions aren't prohibited but may result in unexpected issues. If you run into any compatibility issues, consider upgrading your PyTorch Lightning version or 
 `file an issue <https://github.com/ray-project/ray/issues>`_. 
 
 .. _lightning-trainer-migration-guide:

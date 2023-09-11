@@ -7,11 +7,11 @@ This tutorial walks through the process of converting an existing PyTorch script
 
 Learn how to:
 
-1. Configure your model so that it runs distributed and is placed on the correct CPU/GPU device.
-2. Configure your dataloader so that it is sharded across the workers and place data on the correct CPU/GPU device.
-3. Configure your training function to report metrics and save checkpoints.
-4. Configure scale and CPU/GPU resource requirements for your training job.
-5. Launch your distributed training job with a :class:`~ray.train.torch.TorchTrainer`.
+1. Configure a model to run distributed and on the correct CPU/GPU device.
+2. Configure a dataloader to shard data across the workers and place data on the correct CPU/GPU device.
+3. Configure a training function to report metrics and save checkpoints.
+4. Configure scale and CPU/GPU resource requirements for a training job.
+5. Launch a distributed training job with a :class:`~ray.train.torch.TorchTrainer` class.
 
 Quickstart
 ----------
@@ -30,9 +30,9 @@ For reference, the final code follows:
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
-1. Your `train_func` is the Python code that is executed on each distributed training worker.
-2. Your `ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
-3. Your `TorchTrainer` launches the distributed training job.
+1. `train_func` is the Python code that executes on each distributed training worker.
+2. `ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
+3. `TorchTrainer` launches the distributed training job.
 
 Compare a PyTorch training script with and without Ray Train.
 
@@ -135,19 +135,19 @@ Setting up your training function
 ---------------------------------
 
 First, update your training code to support distributed training. 
-You can begin by wrapping your code in a function:
+You can begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
 
 .. code-block:: python
 
     def train_func(config):
         # Your PyTorch training code here.
 
-This function is executed on each distributed training worker.
+Each distributed training worker executes this function.
 
 Setting up your model
 ^^^^^^^^^^^^^^^^^^^^^
 
-Use the :func:`ray.train.torch.prepare_model` utility function. This will:
+Use the :func:`ray.train.torch.prepare_model` utility function to:
 
 1. Move your model to the right device.
 2. Wrap it in ``DistributedDataParallel``.
@@ -182,8 +182,8 @@ Use the :func:`ray.train.torch.prepare_data_loader` utility function, which:
 1. Adds a ``DistributedSampler`` to your ``DataLoader``.
 2. Moves the batches to the right device. 
 
-Note that this step is not necessary if you are passing in Ray Data to your Trainer
-(see :ref:`data-ingest-torch`):
+Note that this step isn't necessary if you're passing in Ray Data to your Trainer.
+See :ref:`data-ingest-torch`.
 
 .. code-block:: diff
 
