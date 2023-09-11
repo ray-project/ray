@@ -425,11 +425,8 @@ class TorchMultiDistribution(Distribution):
             for dist in self._flat_child_distributions:
                 if isinstance(dist, TorchCategorical):
                     split_indices.append(1)
-                elif (
-                    isinstance(dist, TorchMultiCategorical)
-                    and dist.action_space is not None
-                ):
-                    split_indices.append(int(np.prod(dist.action_space.shape)))
+                elif isinstance(dist, TorchMultiCategorical):
+                    split_indices.append(len(dist._cats))
                 else:
                     sample = dist.sample()
                     # Cover Box(shape=()) case.
