@@ -732,7 +732,7 @@ async def download_and_unpack_package(
                     with open_file(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
 
-                if is_zip_uri(pkg_file):
+                if Path(pkg_uri).suffix == ".zip":
                     unzip_package(
                         package_path=pkg_file,
                         target_dir=local_dir,
@@ -740,6 +740,8 @@ async def download_and_unpack_package(
                         unlink_zip=True,
                         logger=logger,
                     )
+                else:
+                    return str(pkg_file)
             else:
                 raise NotImplementedError(f"Protocol {protocol} is not supported")
 
