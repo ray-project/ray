@@ -204,9 +204,9 @@ def test_fix_grpc_metrics():
 
 @pytest.fixture
 def enable_grpc_metrics_collection():
-    os.environ["RAY_enable_grpc_metrics_collection"] = "true"
+    os.environ["RAY_enable_grpc_metrics_collection_for"] = "gcs"
     yield
-    os.environ.pop("RAY_enable_grpc_metrics_collection", None)
+    os.environ.pop("RAY_enable_grpc_metrics_collection_for", None)
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")

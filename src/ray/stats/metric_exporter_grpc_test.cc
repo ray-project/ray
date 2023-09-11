@@ -69,9 +69,9 @@ class MockExporterClientKeepsAll : public MetricExporterClient {
   void ReportMetrics(const std::vector<MetricPoint> &points) override {
     for (const auto &point : points) {
       points_.push_back({
-          .metric_name = point.metric_name,
-          .value = point.value,
-          .tags = point.tags,
+          point.metric_name,
+          point.value,
+          point.tags,
       });
       RAY_LOG(INFO) << "received metrics " << point.metric_name << ", " << point.timestamp
                     << ", " << point.value << ", ";
@@ -138,15 +138,15 @@ TEST(MetricPointExporterTest, adds_global_tags_to_grpc) {
   ASSERT_THAT(
       out_data,
       testing::UnorderedElementsAre(
-          ExpectedPoint{.metric_name = "grpc.io/client/sent_messages_per_rpc.mean",
-                        .value = 1.0,
-                        .tags = expected_tags},
-          ExpectedPoint{.metric_name = "grpc.io/client/sent_messages_per_rpc.min",
-                        .value = 1.0,
-                        .tags = expected_tags},
-          ExpectedPoint{.metric_name = "grpc.io/client/sent_messages_per_rpc.max",
-                        .value = 1.0,
-                        .tags = expected_tags}));
+          ExpectedPoint{/*.metric_name=*/"grpc.io/client/sent_messages_per_rpc.mean",
+                        /*.value=*/1.0,
+                        /*.tags=*/expected_tags},
+          ExpectedPoint{/*.metric_name=*/"grpc.io/client/sent_messages_per_rpc.min",
+                        /*.value=*/1.0,
+                        /*.tags=*/expected_tags},
+          ExpectedPoint{/*.metric_name=*/"grpc.io/client/sent_messages_per_rpc.max",
+                        /*.value=*/1.0,
+                        /*.tags=*/expected_tags}));
   ray::stats::Shutdown();
 }
 }  // namespace ray
