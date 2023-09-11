@@ -13,7 +13,7 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaTag
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import DeveloperAPI
 import contextvars
 
 logger = logging.getLogger(__file__)
@@ -22,20 +22,26 @@ _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 @dataclass
 class ReplicaContext:
-    """Stores data for Serve API calls from within deployments."""
+    """Stores runtime context info for replicas.
 
+    Fields:
+        - app_name: name of the application the replica is a part of.
+        - deployment: name of the deployment the replica is a part of.
+        - replica_tag: unique ID for the replica.
+        - servable_object: instance of the user class/function this replica is running.
+    """
+
+    app_name: str
     deployment: str
     replica_tag: ReplicaTag
-    _internal_controller_name: str
     servable_object: Callable
-    app_name: str
+    _internal_controller_name: str
 
 
-@PublicAPI(stability="alpha")
-def get_global_client(
+def _get_global_client(
     _health_check_controller: bool = False, raise_if_no_controller_running: bool = True
 ) -> Optional[ServeControllerClient]:
     """Gets the global client, which stores the controller's handle.
@@ -74,29 +80,30 @@ def _set_global_client(client):
     _global_client = client
 
 
-@PublicAPI(stability="alpha")
-def get_internal_replica_context():
+def _get_internal_replica_context():
     return _INTERNAL_REPLICA_CONTEXT
 
 
 def _set_internal_replica_context(
+    *,
+    app_name: str,
     deployment: str,
     replica_tag: ReplicaTag,
-    controller_name: str,
     servable_object: Callable,
-    app_name: str,
+    controller_name: str,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        deployment, replica_tag, controller_name, servable_object, app_name
+        app_name=app_name,
+        deployment=deployment,
+        replica_tag=replica_tag,
+        servable_object=servable_object,
+        _internal_controller_name=controller_name,
     )
 
 
 def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClient:
     """Connect to an existing Serve application on this Ray cluster.
-
-    If calling from the driver program, the Serve app on this Ray cluster
-    must first have been initialized using `serve.start(detached=True)`.
 
     If called from within a replica, this will connect to the same Serve
     app that the replica is running in.
@@ -129,10 +136,7 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
     except ValueError:
         if raise_if_no_controller_running:
             raise RayServeException(
-                "There is no Serve "
-                "instance running on this Ray cluster. Please "
-                "call `serve.start(detached=True) to start "
-                "one."
+                "There is no Serve instance running on this Ray cluster."
             )
         return
 
@@ -157,9 +161,8 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
 #       async task conflicts when using it concurrently.
 
 
-@DeveloperAPI
 @dataclass(frozen=True)
-class RequestContext:
+class _RequestContext:
     route: str = ""
     request_id: str = ""
     app_name: str = ""
@@ -167,7 +170,7 @@ class RequestContext:
 
 
 _serve_request_context = contextvars.ContextVar(
-    "Serve internal request context variable", default=RequestContext()
+    "Serve internal request context variable", default=_RequestContext()
 )
 
 
@@ -182,7 +185,7 @@ def _set_request_context(
 
     current_request_context = _serve_request_context.get()
     _serve_request_context.set(
-        RequestContext(
+        _RequestContext(
             route=route or current_request_context.route,
             request_id=request_id or current_request_context.request_id,
             app_name=app_name or current_request_context.app_name,

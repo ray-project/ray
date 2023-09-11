@@ -4,7 +4,7 @@ import tempfile
 from typing import Any, Dict, Type
 
 import ray.cloudpickle as ray_pickle
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.train._internal.storage import StorageContext
 
 
@@ -26,8 +26,14 @@ def load_dict_checkpoint(checkpoint: Checkpoint) -> Dict[str, Any]:
 
 
 def mock_storage_context() -> StorageContext:
-    return StorageContext(
-        storage_path=tempfile.mkdtemp(),
-        experiment_dir_name="exp_name",
-        trial_dir_name="trial_name",
+    storage_path = tempfile.mkdtemp()
+    exp_name = "exp_name"
+    trial_name = "trial_name"
+    storage = StorageContext(
+        storage_path=storage_path,
+        experiment_dir_name=exp_name,
+        trial_dir_name=trial_name,
     )
+    storage.storage_local_path = storage_path
+    os.makedirs(os.path.join(storage_path, exp_name, trial_name), exist_ok=True)
+    return storage

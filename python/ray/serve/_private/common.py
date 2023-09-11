@@ -5,7 +5,7 @@ from typing import Any, List, Dict, Optional, NamedTuple
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.generated.serve_pb2 import (
     DeploymentInfo as DeploymentInfoProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -391,6 +391,8 @@ class ReplicaName:
 class RunningReplicaInfo:
     deployment_name: str
     replica_tag: ReplicaTag
+    node_id: Optional[str]
+    availability_zone: Optional[str]
     actor_handle: ActorHandle
     max_concurrent_queries: int
     is_cross_language: bool = False
@@ -408,6 +410,7 @@ class RunningReplicaInfo:
                 [
                     self.deployment_name,
                     self.replica_tag,
+                    self.node_id if self.node_id else "",
                     str(self.actor_handle._actor_id),
                     str(self.max_concurrent_queries),
                     str(self.is_cross_language),
@@ -440,7 +443,7 @@ class ServeDeployMode(str, Enum):
 
 # Keep in sync with ServeSystemActorStatus in
 # python/ray/dashboard/client/src/type/serve.ts
-class HTTPProxyStatus(str, Enum):
+class ProxyStatus(str, Enum):
     STARTING = "STARTING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"

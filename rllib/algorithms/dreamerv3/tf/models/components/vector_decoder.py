@@ -8,6 +8,11 @@ from typing import Optional
 import gymnasium as gym
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_gru_units,
+    get_num_z_categoricals,
+    get_num_z_classes,
+)
 from ray.rllib.utils.framework import try_import_tf
 
 _, tf, _ = try_import_tf()
@@ -36,6 +41,8 @@ class VectorDecoder(tf.keras.Model):
         """
         super().__init__(name="vector_decoder")
 
+        self.model_size = model_size
+
         assert (
             isinstance(observation_space, gym.spaces.Box)
             and len(observation_space.shape) == 1
@@ -45,6 +52,22 @@ class VectorDecoder(tf.keras.Model):
             model_size=model_size,
             output_layer_size=observation_space.shape[0],
         )
+
+        # Trace self.call.
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
+        self.call = tf.function(
+            input_signature=[
+                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
+                tf.TensorSpec(
+                    shape=[
+                        None,
+                        get_num_z_categoricals(model_size),
+                        get_num_z_classes(model_size),
+                    ],
+                    dtype=dl_type,
+                ),
+            ]
+        )(self.call)
 
     def call(self, h, z):
         """Performs a forward pass through the vector encoder.
@@ -57,9 +80,19 @@ class VectorDecoder(tf.keras.Model):
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
-        z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
+        z = tf.reshape(z, shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
+        out.set_shape(
+            [
+                None,
+                (
+                    get_num_z_categoricals(self.model_size)
+                    * get_num_z_classes(self.model_size)
+                    + get_gru_units(self.model_size)
+                ),
+            ]
+        )
         # Send h-cat-z through MLP to get mean values of diag gaussian.
         loc = self.mlp(out)
 

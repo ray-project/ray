@@ -4,12 +4,11 @@ from typing import List
 
 import pytest
 
-from ray.train import CheckpointConfig
+from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import (
     _CheckpointManager,
     _TrainingResult,
 )
-from ray.train._checkpoint import Checkpoint
 
 
 @pytest.fixture

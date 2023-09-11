@@ -672,6 +672,7 @@ def validate_save_restore(
             algorithms that pause training (i.e., PBT, HyperBand).
     """
     assert ray.is_initialized(), "Need Ray to be initialized."
+
     remote_cls = ray.remote(num_gpus=num_gpus)(trainable_cls)
     trainable_1 = remote_cls.remote(config=config)
     trainable_2 = remote_cls.remote(config=config)
@@ -712,10 +713,8 @@ def _detect_checkpoint_function(train_func, abort=False, partial=False):
     if abort and not validated:
         func_args = inspect.getfullargspec(train_func).args
         raise ValueError(
-            "Provided training function must have 2 args "
-            "in the signature, and the latter arg must "
-            "contain `checkpoint_dir`. For example: "
-            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args)
+            "Provided training function must have 1 `config` argument "
+            "`func(config)`. Got {}".format(func_args)
         )
     return validated
 

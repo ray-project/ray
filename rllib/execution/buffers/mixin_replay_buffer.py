@@ -179,6 +179,6 @@ class MixInMultiAgentReplayBuffer:
         """
         return platform.node()
 
-    @Deprecated(new="MixInMultiAgentReplayBuffer.add()", error=False)
+    @Deprecated(new="MixInMultiAgentReplayBuffer.add()", error=True)
     def add_batch(self, *args, **kwargs):
-        return self.add(*args, **kwargs)
+        pass

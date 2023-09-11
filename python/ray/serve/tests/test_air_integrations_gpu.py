@@ -38,9 +38,14 @@ def test_automatic_enable_gpu(serve_instance):
         async def __call__(self, data):
             return self.predictor.predict(data)
 
+    import tempfile
+
+    tmpdir = tempfile.mkdtemp()
+    checkpoint = Checkpoint.from_directory(tmpdir)
+
     serve.run(
         DAGDriver.bind(
-            DummyGPUDeployment.options(name="GPU").bind(Checkpoint.from_dict({"x": 1})),
+            DummyGPUDeployment.options(name="GPU").bind(checkpoint),
             http_adapter=json_to_ndarray,
         )
     )

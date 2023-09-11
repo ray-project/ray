@@ -1,4 +1,3 @@
-.. include:: /_includes/rllib/announcement.rst
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
@@ -9,7 +8,7 @@ Saving and Loading your RL Algorithms and Policies
 ##################################################
 
 
-You can use :py:class:`~ray.air.checkpoint.Checkpoint` objects to store
+You can use :py:class:`~ray.train.Checkpoint` objects to store
 and load the current state of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
 or :py:class:`~ray.rllib.policy.policy.Policy` and the neural networks (weights)
 within these structures. In the following, we will cover how you can create these
@@ -27,7 +26,7 @@ or a single :py:class:`~ray.rllib.policy.policy.Policy` instance.
 The Algorithm- or Policy instances that were used to create the checkpoint in the first place
 may or may not have been trained prior to this.
 
-RLlib uses the :py:class:`~ray.air.checkpoint.Checkpoint` class to create checkpoints and
+RLlib uses the :py:class:`~ray.train.Checkpoint` class to create checkpoints and
 restore objects from them.
 
 The main file in a checkpoint directory, containing the state information, is currently
@@ -51,7 +50,7 @@ How do I create an Algorithm checkpoint?
 ----------------------------------------
 
 The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` ``save()`` method creates a new checkpoint
-(directory with files in it) and returns the path to that directory.
+(directory with files in it).
 
 Let's take a look at a simple example on how to create such an
 Algorithm checkpoint:
@@ -70,8 +69,6 @@ like this:
     $ ls -la
       .
       ..
-      .is_checkpoint
-      .tune_metadata
       policies/
       algorithm_state.pkl
       rllib_checkpoint.json

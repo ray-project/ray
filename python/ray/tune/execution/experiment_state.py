@@ -14,7 +14,7 @@ from ray.air._internal.uri_utils import _join_path_or_uri
 from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune.experiment import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
-from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
+from ray.train._internal.syncer import SyncConfig, get_node_to_storage_syncer
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,8 @@ _EXPERIMENT_SYNC_TIMEOUT_MESSAGE = (
     "reason behind the hanging sync operation, or increase the "
     "`sync_timeout` in `SyncConfig`."
 )
+
+_DRIVER_SYNC_EXCLUDE_PATTERNS = ["*/checkpoint_*"]
 
 
 @dataclass
@@ -281,14 +283,14 @@ class _ExperimentCheckpointManager:
             # TODO(justinvyu, krfricke): Ideally, this excludes all trial directories.
             # But for now, this is needed to upload driver artifacts that live in the
             # trial directory.
-            exclude = ["*/checkpoint_*"]
+            exclude = _DRIVER_SYNC_EXCLUDE_PATTERNS
             experiment_local_path = self._storage.experiment_local_path
             experiment_fs_path = self._storage.experiment_fs_path
         else:
             if bool(self._legacy_remote_checkpoint_dir):
                 # If an upload dir is given, trainable actors upload checkpoints
                 # themselves. Then the driver does not need to sync checkpoints.
-                exclude = ["*/checkpoint_*"]
+                exclude = _DRIVER_SYNC_EXCLUDE_PATTERNS
             else:
                 # Otherwise, we sync the full trial dir.
                 exclude = None

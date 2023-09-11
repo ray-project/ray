@@ -268,7 +268,7 @@ documentation, sorted alphabetically.
         hyperparameters for a learning algorithm. A hyperparameter can be a parameter
         whose value is used to control the learning process (e.g., learning rate),
         define the model architecture (e.g, number of hidden layers), or influence data
-        pre-processing. In the case of Ray AIR, hyperparameters can also include
+        pre-processing. In the case of Ray Train, hyperparameters can also include
         compute processing scale-out parameters such as the number of distributed
         training workers.
 

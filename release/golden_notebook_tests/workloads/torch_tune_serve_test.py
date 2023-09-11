@@ -7,8 +7,7 @@ import time
 import subprocess
 
 import ray
-from ray.train import ScalingConfig, RunConfig
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint, ScalingConfig, RunConfig
 from ray.tune.tune_config import TuneConfig
 import requests
 import torch
