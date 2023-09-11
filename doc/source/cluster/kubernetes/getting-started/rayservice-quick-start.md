@@ -89,7 +89,7 @@ When the Ray Serve applications are healthy and ready, KubeRay creates a head se
 kubectl port-forward svc/rayservice-sample-head-svc --address 0.0.0.0 8265:8265
 ```
 
-* Refer to [rayservice-troubleshooting.md](https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayservice-troubleshooting.md#observability) for more details on RayService observability.
+* Refer to [rayservice-troubleshooting.md](kuberay-raysvc-troubleshoot) for more details on RayService observability.
 Below is a screenshot example of the Serve page in the Ray dashboard.
   ![Ray Serve Dashboard](../images/dashboard_serve.png)
 
