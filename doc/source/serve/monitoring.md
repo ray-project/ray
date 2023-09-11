@@ -529,8 +529,9 @@ The following metrics are exposed by Ray Serve:
        * application
      - The number of calls to get a multiplexed model.
 ```
-[*] - only available when using proxy calls
-[**] - only available when using Python `DeploymentHandle` calls
+
+[*] - only available when using proxy calls</br>
+[**] - only available when using Python `DeploymentHandle` calls</br>
 [†] - developer metrics for advanced usage; may change in future releases
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
