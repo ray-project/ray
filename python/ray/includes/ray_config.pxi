@@ -156,3 +156,7 @@ cdef class Config:
     @staticmethod
     def grpc_client_keepalive_timeout_ms():
         return RayConfig.instance().grpc_client_keepalive_timeout_ms()
+
+    @staticmethod
+    def enable_autoscaler_v2():
+        return RayConfig.instance().enable_autoscaler_v2()

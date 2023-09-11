@@ -157,6 +157,8 @@ BLACK_EXCLUDES=(
     `'python/ray/thirdparty_files/*|'`
     `'python/ray/_private/thirdparty/*|'`
     `'python/ray/serve/tests/test_config_files/syntax_error\.py|'`
+    `'python/ray/core/generated/*|'`
+    `'python/ray/serve/generated/*|'`
     `'doc/external/*'
 )
 
@@ -164,6 +166,13 @@ GIT_LS_EXCLUDES=(
   ':(exclude)python/ray/cloudpickle/'
   ':(exclude)python/ray/_private/runtime_env/_clonevirtualenv.py'
   ':(exclude)doc/external/'
+  ':(exclude)python/ray/core/generated/'
+  ':(exclude)python/ray/serve/generated/'
+)
+
+GIT_DIFF_EXCLUDES=(
+  ':(exclude)python/ray/core/generated/'
+  ':(exclude)python/ray/serve/generated/'
 )
 
 JAVA_EXCLUDES=(
@@ -202,7 +211,7 @@ mypy_on_each() {
 format_frontend() {
   (
     echo "$(date)" "format frontend...."
-    local folder 
+    local folder
     folder="$(pwd)/dashboard/client"
     local filenames
     # shellcheck disable=SC2207
@@ -329,16 +338,16 @@ format_changed() {
     # exist on both branches.
     MERGEBASE="$(git merge-base upstream/master HEAD)"
 
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
-        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
+    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' "${GIT_DIFF_EXCLUDES[@]}" &>/dev/null; then
+        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' "${GIT_DIFF_EXCLUDES[@]}" | xargs -P 5 \
             isort
     fi
 
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
-        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
+    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' "${GIT_DIFF_EXCLUDES[@]}" &>/dev/null; then
+        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' "${GIT_DIFF_EXCLUDES[@]}" | xargs -P 5 \
             black "${BLACK_EXCLUDES[@]}"
         if command -v flake8 >/dev/null; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
+            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' "${GIT_DIFF_EXCLUDES[@]}" | xargs -P 5 \
                  flake8 --config=.flake8
         fi
     fi

@@ -14,7 +14,7 @@ from ray.train import DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
-from ray.util import PublicAPI
+from ray.util.annotations import Deprecated
 from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
     RayFSDPStrategy,
@@ -31,7 +31,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+LIGHTNING_CONFIG_BUILDER_DEPRECATION_MESSAGE = (
+    "The LightningConfigBuilder will be hard deprecated in Ray 2.8. "
+    "Use TorchTrainer instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-pytorch-lightning.html#lightningtrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
+
+
+@Deprecated(message=LIGHTNING_CONFIG_BUILDER_DEPRECATION_MESSAGE, warning=True)
 class LightningConfigBuilder:
     """Configuration Class to pass into LightningTrainer.
 
@@ -192,7 +200,7 @@ class LightningConfigBuilder:
 
         Note that this method is not a replacement for the
         ``ray.train.CheckpointConfig``. You still need to specify your
-        checkpointing strategy in ``CheckpointConfig``. Otherwise, AIR stores
+        checkpointing strategy in ``CheckpointConfig``. Otherwise, Ray stores
         all the reported checkpoints by default.
 
         Args:
@@ -221,7 +229,15 @@ class LightningConfigBuilder:
         return config_dict
 
 
-@PublicAPI(stability="alpha")
+LIGHTNING_TRAINER_DEPRECATION_MESSAGE = (
+    "The LightningTrainer will be hard deprecated in Ray 2.8. "
+    "Use TorchTrainer instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-pytorch-lightning.html#lightningtrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
+
+
+@Deprecated(message=LIGHTNING_TRAINER_DEPRECATION_MESSAGE, warning=True)
 class LightningTrainer(TorchTrainer):
     """A Trainer for data parallel PyTorch Lightning training.
 
@@ -399,6 +415,7 @@ class LightningTrainer(TorchTrainer):
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ):
+
         run_config = copy(run_config) or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()
 
@@ -442,14 +459,14 @@ class LightningTrainer(TorchTrainer):
     def _unify_checkpoint_configs(
         self, ptl_ckpt_config: Dict, air_ckpt_config: CheckpointConfig
     ) -> CheckpointConfig:
-        """Unify the Lightning checkpointing config and the AIR CheckpointConfig."""
+        """Unify the Lightning checkpointing config and the Ray CheckpointConfig."""
 
         ptl_ckpt_metric = ptl_ckpt_config.get("monitor", None)
         air_ckpt_metric = air_ckpt_config.checkpoint_score_attribute
 
         if ptl_ckpt_metric and air_ckpt_metric and ptl_ckpt_metric != air_ckpt_metric:
             logger.warning(
-                "You have specified different metrics to track in AIR "
+                "You have specified different metrics to track in "
                 "`CheckpointConfig` and Lightning ModelCheckpoint. "
                 "Make sure that you have logged both metrics before "
                 "a checkpoint is created."
@@ -583,7 +600,7 @@ def _lightning_train_loop_per_worker(config):
 
     checkpoint = session.get_checkpoint()
     if checkpoint:
-        checkpoint_log_message = "Resuming training from an AIR checkpoint."
+        checkpoint_log_message = "Resuming training from a checkpoint."
         if "ckpt_path" in trainer_fit_params:
             checkpoint_log_message += " `ckpt_path` will be ignored."
         logger.info(checkpoint_log_message)
