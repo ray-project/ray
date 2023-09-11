@@ -1,8 +1,9 @@
 # __local_dev_start__
 # Filename: local_dev.py
-import ray
+from starlette.requests import Request
+
 from ray import serve
-import starlette.requests
+from ray.serve.handle import DeploymentHandle, DeploymentResponse
 
 
 @serve.deployment
@@ -14,21 +15,20 @@ class Doubler:
 @serve.deployment
 class HelloDeployment:
     def __init__(self, doubler):
-        self.doubler = doubler
+        self.doubler: DeploymentHandle = doubler.options(use_new_handle_api=True)
 
     async def say_hello_twice(self, name: str):
-        ref = await self.doubler.double.remote(f"Hello, {name}!")
-        return await ref
+        return await self.doubler.double.remote(f"Hello, {name}!")
 
-    async def __call__(self, request: starlette.requests.Request):
+    async def __call__(self, request: Request):
         return await self.say_hello_twice(request.query_params["name"])
 
 
-graph = HelloDeployment.bind(Doubler.bind())
+app = HelloDeployment.bind(Doubler.bind())
 # __local_dev_end__
 
 # __local_dev_handle_start__
-handle = serve.run(graph)
-result = ray.get(handle.say_hello_twice.remote(name="Ray"))
-assert result == "Hello, Ray! Hello, Ray!"
+handle: DeploymentHandle = serve.run(app).options(use_new_handle_api=True)
+response: DeploymentResponse = handle.say_hello_twice.remote(name="Ray")
+assert response.result() == "Hello, Ray! Hello, Ray!"
 # __local_dev_handle_end__

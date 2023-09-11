@@ -106,7 +106,7 @@ Ray Examples
         :link: /ray-air/examples/gptj_serving
         :link-type: doc
 
-        How to use Ray AIR to do online serving with the Hugging Face Transformers GPT-J model
+        How to use Ray Serve to do online serving with the Hugging Face Transformers GPT-J model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item cv training gen-ai
@@ -1373,7 +1373,7 @@ Ray Examples
         :link: /train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune
         :link-type: doc
 
-        Fine-tune vicuna-13b-v1.3 with DeepSpeed and LightningTrainer
+        Fine-tune vicuna-13b-v1.3 with DeepSpeed, PyTorch Lightning and Ray Train
     
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training llm pytorch nlp

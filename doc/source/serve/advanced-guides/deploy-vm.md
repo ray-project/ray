@@ -12,24 +12,24 @@ This section should help you:
 - understand how to update your application using the CLI.
 - understand how to deploy to a remote cluster started with the [Ray Cluster Launcher](cloud-vm-index).
 
-Let's start by deploying the [config for the `FruitStand` example](fruit-config-yaml):
+Start by deploying this [config](production-config-yaml) for the Text ML Application [example](serve-in-production-example):
 
 ```console
 $ ls
-fruit.py
-fruit_config.yaml
+text_ml.py
+serve_config.yaml
 
 $ ray start --head
 ...
 
-$ serve deploy fruit_config.yaml
+$ serve deploy serve_config.yaml
 2022-06-20 17:26:31,106	SUCC scripts.py:139 --
 Sent deploy request successfully!
  * Use `serve status` to check deployments' statuses.
  * Use `serve config` to see the running app's config.
 ```
 
-`ray start --head` starts a long-lived Ray cluster locally. `serve deploy fruit_config.yaml` deploys the `fruit_config.yaml` file to this local cluster. To stop your Ray cluster, you can run the CLI command `ray stop`.
+`ray start --head` starts a long-lived Ray cluster locally. `serve deploy serve_config.yaml` deploys the `serve_config.yaml` file to this local cluster. To stop Ray cluster, run the CLI command `ray stop`.
 
 The message `Sent deploy request successfully!` means:
 * The Ray cluster has received your config file successfully.

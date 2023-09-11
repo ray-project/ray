@@ -15,9 +15,9 @@ from ray.data._internal.block_batching.util import (
     collate,
     finalize_batches,
     format_batches,
-    make_async_gen,
     resolve_block_refs,
 )
+from ray.data._internal.util import make_async_gen
 
 
 def block_generator(num_rows: int, num_blocks: int):

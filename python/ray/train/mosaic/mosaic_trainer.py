@@ -227,7 +227,7 @@ class MosaicTrainer(TorchTrainer):
         if config is not None and "loggers" in config:
             warnings.warn(
                 "Composer's Loggers (any subclass of LoggerDestination) are \
-                not supported for MosaicComposer. Use Ray AIR provided loggers instead"
+                not supported for MosaicComposer. Use Ray provided loggers instead"
             )
 
 
