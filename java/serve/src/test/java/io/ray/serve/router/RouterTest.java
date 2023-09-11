@@ -66,7 +66,7 @@ public class RouterTest {
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // Set ReplicaContext
-      Serve.setInternalReplicaContext(null, null, controllerName, null, config,null);
+      Serve.setInternalReplicaContext(null, null, controllerName, null, config, null);
 
       // Router
       Router router = new Router(controllerHandle, deploymentName);
