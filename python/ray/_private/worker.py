@@ -1476,6 +1476,18 @@ def init(
     else:
         driver_mode = SCRIPT_MODE
 
+    # terminate any signal before connecting driver
+    def sigterm_handler(signum, frame):
+        sys.exit(signum)
+
+    try:
+        ray._private.utils.set_sigterm_handler(sigterm_handler)
+    except ValueError:
+        logger.warning(
+            "Failed to set SIGTERM handler, processes might"
+            "not be cleaned up properly on exit."
+        )
+
     global _global_node
 
     if global_worker.connected:
@@ -1647,18 +1659,6 @@ def init(
         )
     else:
         logger.info(info_str)
-
-    # terminate any signal before connecting driver
-    def sigterm_handler(signum, frame):
-        sys.exit(signum)
-
-    try:
-        ray._private.utils.set_sigterm_handler(sigterm_handler)
-    except ValueError:
-        logger.warning(
-            "Failed to set SIGTERM handler, processes might"
-            "not be cleaned up properly on exit."
-        )
 
     connect(
         _global_node,
