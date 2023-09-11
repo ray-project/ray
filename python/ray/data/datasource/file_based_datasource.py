@@ -32,6 +32,7 @@ from ray.data._internal.util import (
     _check_pyarrow_version,
     _resolve_custom_scheme,
     get_attribute_from_class_name,
+    make_async_gen,
 )
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
@@ -228,6 +229,9 @@ class FileBasedDatasource(Datasource):
     # each block to a file.
     _WRITE_FILE_PER_ROW = False
     _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
+    # Number of threads for concurrent reading within each read task.
+    # If zero or negative, reading will be performed in the main thread.
+    _NUM_THREADS_PER_TASK = 0
 
     def _open_input_source(
         self,
@@ -544,8 +548,9 @@ class _FileBasedDatasourceReader(Reader):
 
         def read_files(
             read_paths: Iterable[str],
-            fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
         ) -> Iterable[Block]:
+            nonlocal filesystem, open_stream_args, reader_args, partitioning
+
             DataContext._set_current(ctx)
             fs = _unwrap_s3_serialization_workaround(filesystem)
             for read_path in read_paths:
@@ -592,6 +597,29 @@ class _FileBasedDatasourceReader(Reader):
                             data = _add_partitions(data, partitions)
                         yield data
 
+        def create_read_task_fn(read_paths, num_threads):
+            def read_task_fn():
+                nonlocal num_threads, read_paths
+
+                if num_threads > 0:
+                    if len(read_paths) < num_threads:
+                        num_threads = len(read_paths)
+
+                    logger.get_logger().debug(
+                        f"Reading {len(read_paths)} files with {num_threads} threads."
+                    )
+
+                    yield from make_async_gen(
+                        iter(read_paths),
+                        read_files,
+                        num_workers=num_threads,
+                    )
+                else:
+                    logger.get_logger().debug(f"Reading {len(read_paths)} files.")
+                    yield from read_files(read_paths)
+
+            return read_task_fn
+
         # fix https://github.com/ray-project/ray/issues/24296
         parallelism = min(parallelism, len(paths))
 
@@ -609,15 +637,11 @@ class _FileBasedDatasourceReader(Reader):
                 file_sizes=file_sizes,
             )
 
-            def do_read():
-                logger.get_logger().debug(f"Reading {len(read_paths)} files.")
-                yield from make_async_gen(
-                    iter(read_paths),
-                    functools.partial(read_files, fs=filesystem),
-                    num_workers=8,
-                )
+            read_task_fn = create_read_task_fn(
+                read_paths, self._delegate._NUM_THREADS_PER_TASK
+            )
 
-            read_task = ReadTask(do_read, meta)
+            read_task = ReadTask(read_task_fn, meta)
 
             read_tasks.append(read_task)
 

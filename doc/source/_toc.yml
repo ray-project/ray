@@ -212,8 +212,8 @@ parts:
               - file: serve/advanced-guides/dyn-req-batch
               - file: serve/advanced-guides/inplace-updates
               - file: serve/advanced-guides/dev-workflow
+              - file: serve/advanced-guides/grpc-guide
               - file: serve/advanced-guides/deployment-graphs
-              - file: serve/advanced-guides/direct-ingress
               - file: serve/advanced-guides/managing-java-deployments
               - file: serve/advanced-guides/deploy-vm
           - file: serve/architecture
@@ -290,13 +290,14 @@ parts:
                     sections:
                       - file: cluster/kubernetes/user-guides/aws-eks-gpu-cluster.md
                       - file: cluster/kubernetes/user-guides/gcp-gke-gpu-cluster.md
+                  - file: cluster/kubernetes/user-guides/storage.md
                   - file: cluster/kubernetes/user-guides/config.md
                   - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
+                  - file: cluster/kubernetes/user-guides/kuberay-gcs-ft.md
                   - file: cluster/kubernetes/user-guides/gke-gcs-bucket.md
                   - file: cluster/kubernetes/user-guides/logging.md
                   - file: cluster/kubernetes/user-guides/gpu.md
                   - file: cluster/kubernetes/user-guides/rayserve-dev-doc.md
-                  - file: cluster/kubernetes/user-guides/experimental.md
                   - file: cluster/kubernetes/user-guides/pod-command.md
                   - file: cluster/kubernetes/user-guides/pod-security.md
                   - file: cluster/kubernetes/user-guides/tls.md
@@ -391,3 +392,6 @@ parts:
 
       - file: ray-contribute/index
         title: Developer Guides
+
+      - file: ray-security/index
+        title: "Security"

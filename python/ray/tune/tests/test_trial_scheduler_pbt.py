@@ -2,6 +2,7 @@ import tempfile
 from functools import partial
 from typing import List
 
+import json
 import numpy as np
 import os
 import pickle
@@ -312,12 +313,13 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
                 return {"score": self.score}
 
             def save_checkpoint(self, checkpoint_dir):
-                checkpoint = Checkpoint.from_dict({"a": self.a})
-                checkpoint.to_directory(path=checkpoint_dir)
+                with open(os.path.join(checkpoint_dir, "checkpoint.json"), "w") as f:
+                    json.dump({"a": self.a}, f)
                 time.sleep(self.saving_time)
 
             def load_checkpoint(self, checkpoint_dir):
-                checkpoint_dict = Checkpoint.from_directory(checkpoint_dir).to_dict()
+                with open(os.path.join(checkpoint_dir, "checkpoint.json"), "r") as f:
+                    checkpoint_dict = json.load(f)
                 self.a = checkpoint_dict["a"]
 
             def reset_config(self, new_config):
@@ -333,9 +335,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
             metric="score",
             mode="max",
             perturbation_interval=perturbation_interval,
-            hyperparam_mutations={
-                "a": tune.uniform(0, 1),
-            },
+            hyperparam_mutations={"a": tune.uniform(0, 1)},
             synch=True,
         )
 
@@ -379,7 +379,8 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         )
         random.seed(100)
         np.random.seed(1000)
-        tuner.fit()
+        results = tuner.fit()
+        assert not results.errors
 
 
 class PopulationBasedTrainingConfigTest(unittest.TestCase):
