@@ -157,7 +157,7 @@ class BackendExecutor:
             if self._num_gpus_per_worker > 0 and share_cuda_visible_devices_enabled:
                 self._share_cuda_visible_devices()
             elif self._additional_resources_per_worker:
-                for accelerator, env_var in SUPPORTED_ACCELERATOR_DEVICES_TO_ENV_VAR:
+                for accelerator, env_var in SUPPORTED_ACCELERATOR_DEVICES_TO_ENV_VAR.items():
                     if self._share_accelerator_devices_enabled(accelerator):
                         self._share_resource_ids(accelerator, env_var)
             self._backend.on_start(self.worker_group, self._backend_config)
