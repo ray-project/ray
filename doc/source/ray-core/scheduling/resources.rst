@@ -196,4 +196,4 @@ The precision of the fractional resource requirement is 0.0001 so you should avo
   which can include Python packages, local files, environment variables, and more---see :ref:`Runtime Environments <runtime-environments>` for details.
 
 .. note::
-  Fractional resource requirement  must be smaller than 1. For any resource requirement greater than 1, it needs to be a whole number (e.g. ``num_cpus=1.5`` is invalid).
+  For any unit resource (GPU, TPU, Neuron Core) requirement greater than 1, it needs to be a whole number (e.g. ``num_gpus=1.5`` is invalid).
