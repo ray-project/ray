@@ -50,6 +50,7 @@ from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
     MetricsPusher,
+    in_ray_driver_process,
 )
 from ray.serve.generated.serve_pb2 import (
     DeploymentRoute,
@@ -229,9 +230,14 @@ class ActorReplicaWrapper:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
         # change both (or introduce a branch here).
-        queue_len = await self._actor_handle.get_num_ongoing_requests.remote()
-        accepted = queue_len < self._replica_info.max_concurrent_queries
-        return queue_len, accepted
+        obj_ref = self._actor_handle.get_num_ongoing_requests.remote()
+        try:
+            queue_len = await obj_ref
+            accepted = queue_len < self._replica_info.max_concurrent_queries
+            return queue_len, accepted
+        except asyncio.CancelledError:
+            ray.cancel(obj_ref)
+            raise
 
     def _send_query_java(self, query: Query) -> ray.ObjectRef:
         """Send the query to a Java replica.
@@ -350,6 +356,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     # received within this deadline, the replica will not be considered.
     queue_len_response_deadline_s = 0.1
 
+    # Hard limit on the maximum number of scheduling tasks to run. Having too many of
+    # these tasks can cause stability issue due to too much load on the local process
+    # and many too requests in flight to fetch replicas' queue lengths.
+    max_num_scheduling_tasks_cap = 50
+
     def __init__(
         self,
         event_loop: asyncio.AbstractEventLoop,
@@ -402,6 +413,41 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
         self._pending_requests_to_schedule: Deque[PendingRequest] = deque()
 
+        # Prepare scheduler metrics.
+        self._actor_id: str = self._get_actor_id()
+
+        self.num_scheduling_tasks_gauge = metrics.Gauge(
+            "serve_num_scheduling_tasks",
+            description="The number of request scheduling tasks in the router.",
+            tag_keys=("app", "deployment", "actor_id"),
+        ).set_default_tags(
+            {
+                "app": self._deployment_id.app,
+                "deployment": self._deployment_id.name,
+                "actor_id": self._actor_id,
+            }
+        )
+        self.num_scheduling_tasks_gauge.set(0)
+
+        self.num_scheduling_tasks_in_backoff = 0
+        self.num_scheduling_tasks_in_backoff_gauge = metrics.Gauge(
+            "serve_num_scheduling_tasks_in_backoff",
+            description=(
+                "The number of request scheduling tasks in the router "
+                "that are undergoing backoff."
+            ),
+            tag_keys=("app", "deployment", "actor_id"),
+        ).set_default_tags(
+            {
+                "app": self._deployment_id.app,
+                "deployment": self._deployment_id.name,
+                "actor_id": self._actor_id,
+            }
+        )
+        self.num_scheduling_tasks_in_backoff_gauge.set(
+            self.num_scheduling_tasks_in_backoff
+        )
+
     @property
     def num_pending_requests(self) -> int:
         """Current number of requests pending assignment."""
@@ -415,7 +461,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     @property
     def max_num_scheduling_tasks(self) -> int:
         """Max number of scheduling tasks to run at any time."""
-        return 2 * len(self._replicas)
+        return min(self.max_num_scheduling_tasks_cap, 2 * len(self._replicas))
 
     @property
     def target_num_scheduling_tasks(self) -> int:
@@ -428,6 +474,34 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     @property
     def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
         return self._replicas
+
+    def _get_actor_id(self) -> str:
+        """Gets the ID of the actor where this scheduler runs.
+
+        NOTE: this call hangs when the GCS is down. As long as this method is
+        called only when the scheduler is initialized, that should be
+        okay because a ServeHandle (and its scheduler) relies
+        on the Serve controller for intialization, and the Serve controller
+        is runs only when the GCS is up.
+
+        Return:
+            The ID of the actor where this scheduler runs. If the scheduler
+            runs in the driver, returns "DRIVER". If the method fails, returns
+            an empty string.
+        """
+
+        if in_ray_driver_process():
+            return "DRIVER"
+        else:
+            try:
+                actor_id = ray.get_runtime_context().get_actor_id()
+                if actor_id is None:
+                    return ""
+                else:
+                    return actor_id
+            except Exception:
+                logger.exception("Got exception while attempting to get actor ID.")
+                return ""
 
     @property
     def app_name(self) -> str:
@@ -479,7 +553,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """Shim for compatibility with the existing round robin scheduler."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
-    def _get_candidate_replica_ids_for_multiplexed_model_id(
+    def _get_candidate_multiplexed_replica_ids(
         self,
         model_id: str,
         get_from_all_replicas: bool = False,
@@ -539,107 +613,134 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         backoff sleep time.
         """
 
-        backoff_index = 0
-        multiplexed_start_matching_time = None
-        multiplexed_matching_timeout = random.uniform(
-            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
-            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
-        )
-        tried_same_node = False
-        tried_same_az = False
+        try:
+            entered_backoff = False
+            backoff_index = 0
+            multiplexed_start_matching_time = None
+            multiplexed_matching_timeout = random.uniform(
+                RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
+                RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
+            )
+            tried_same_node = False
+            tried_same_az = False
 
-        while True:
-            # If no replicas are available, wait until `update_replicas` is called.
-            while len(self._replicas) == 0:
-                app_msg = f" in application '{self.app_name}'" if self.app_name else ""
-                logger.info(
-                    "Tried to assign replica for deployment "
-                    f"'{self._deployment_id.name}'{app_msg} but none are available. "
-                    "Waiting for new replicas to be added.",
-                    extra={"log_to_stderr": False},
-                )
-                self._replicas_updated_event.clear()
-                await self._replicas_updated_event.wait()
-                logger.info(
-                    f"Got replicas for deployment '{self._deployment_id.name}'"
-                    f"{app_msg}, waking up.",
-                    extra={"log_to_stderr": False},
-                )
-
-            if multiplexed_start_matching_time is None:
-                multiplexed_start_matching_time = time.time()
-
-            candidate_replica_ids = None
-            if request_metadata is not None and request_metadata.multiplexed_model_id:
-                # Get candidates for multiplexed model ID.
-                if (
-                    time.time() - multiplexed_start_matching_time
-                    < multiplexed_matching_timeout
-                ):
-                    candidate_replica_ids = (
-                        self._get_candidate_replica_ids_for_multiplexed_model_id(
-                            request_metadata.multiplexed_model_id
-                        )
+            while True:
+                # If no replicas are available, wait until `update_replicas` is called.
+                while len(self._replicas) == 0:
+                    app_msg = (
+                        f" in application '{self.app_name}'" if self.app_name else ""
                     )
-                    # When there is no match for a multiplexed model id, we will try to
-                    # fallback to all replicas immediately.
+                    logger.info(
+                        "Tried to assign replica for deployment "
+                        f"'{self._deployment_id.name}'{app_msg} but none are "
+                        "available. Waiting for new replicas to be added.",
+                        extra={"log_to_stderr": False},
+                    )
+                    self._replicas_updated_event.clear()
+                    await self._replicas_updated_event.wait()
+                    logger.info(
+                        f"Got replicas for deployment '{self._deployment_id.name}'"
+                        f"{app_msg}, waking up.",
+                        extra={"log_to_stderr": False},
+                    )
+
+                if multiplexed_start_matching_time is None:
+                    multiplexed_start_matching_time = time.time()
+
+                candidate_replica_ids = None
+                if (
+                    request_metadata is not None
+                    and request_metadata.multiplexed_model_id
+                ):
+                    # Get candidates for multiplexed model ID.
                     if (
-                        len(candidate_replica_ids) == 0
-                        and request_metadata.multiplexed_model_id
-                        not in self._multiplexed_model_id_fallback_match
+                        time.time() - multiplexed_start_matching_time
+                        < multiplexed_matching_timeout
                     ):
                         candidate_replica_ids = (
-                            self._get_candidate_replica_ids_for_multiplexed_model_id(
+                            self._get_candidate_multiplexed_replica_ids(
+                                request_metadata.multiplexed_model_id
+                            )
+                        )
+                        # When there is no match for a multiplexed model id,
+                        # we will try to fallback to all replicas immediately.
+                        if (
+                            len(candidate_replica_ids) == 0
+                            and request_metadata.multiplexed_model_id
+                            not in self._multiplexed_model_id_fallback_match
+                        ):
+                            candidate_replica_ids = (
+                                self._get_candidate_multiplexed_replica_ids(
+                                    request_metadata.multiplexed_model_id,
+                                    get_from_all_replicas=True,
+                                )
+                            )
+                            self._multiplexed_model_id_fallback_match.add(
+                                request_metadata.multiplexed_model_id
+                            )
+                        elif len(candidate_replica_ids) > 0:
+                            self._multiplexed_model_id_fallback_match.discard(
+                                request_metadata.multiplexed_model_id
+                            )
+                    else:
+                        candidate_replica_ids = (
+                            self._get_candidate_multiplexed_replica_ids(
                                 request_metadata.multiplexed_model_id,
                                 get_from_all_replicas=True,
                             )
                         )
-                        self._multiplexed_model_id_fallback_match.add(
-                            request_metadata.multiplexed_model_id
-                        )
-                    elif len(candidate_replica_ids) > 0:
-                        self._multiplexed_model_id_fallback_match.discard(
-                            request_metadata.multiplexed_model_id
-                        )
-                else:
-                    candidate_replica_ids = (
-                        self._get_candidate_replica_ids_for_multiplexed_model_id(
-                            request_metadata.multiplexed_model_id,
-                            get_from_all_replicas=True,
-                        )
+                elif (
+                    self._prefer_local_node_routing
+                    and not tried_same_node
+                    and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
+                ):
+                    # Attempt to schedule requests to replicas on the
+                    # same node at most once
+                    candidate_replica_ids = self._colocated_replica_ids[
+                        LocalityScope.NODE
+                    ]
+                    tried_same_node = True
+                elif (
+                    self._prefer_local_az_routing
+                    and not tried_same_az
+                    and len(
+                        self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]
                     )
-            elif (
-                self._prefer_local_node_routing
-                and not tried_same_node
-                and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
-            ):
-                # Attempt to schedule requests to replicas on the same node at most once
-                candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
-                tried_same_node = True
-            elif (
-                self._prefer_local_az_routing
-                and not tried_same_az
-                and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE])
-                > 0
-            ):
-                # Attempt to schedule requests to replicas in the same AZ at most once
-                candidate_replica_ids = self._colocated_replica_ids[
-                    LocalityScope.AVAILABILITY_ZONE
-                ]
-                tried_same_az = True
-            else:
-                # On subsequent iterations or when there are no replicas on the same
-                # node or AZ, consider all available replicas.
-                candidate_replica_ids = self._replica_id_set
+                    > 0
+                ):
+                    # Attempt to schedule requests to replicas in the same
+                    # AZ at most once
+                    candidate_replica_ids = self._colocated_replica_ids[
+                        LocalityScope.AVAILABILITY_ZONE
+                    ]
+                    tried_same_az = True
+                else:
+                    # On subsequent iterations or when there are no replicas on the same
+                    # node or AZ, consider all available replicas.
+                    candidate_replica_ids = self._replica_id_set
 
-            if candidate_replica_ids:
-                chosen_ids = random.sample(
-                    list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
+                if candidate_replica_ids:
+                    chosen_ids = random.sample(
+                        list(candidate_replica_ids),
+                        k=min(2, len(candidate_replica_ids)),
+                    )
+                    yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
+
+                if not entered_backoff:
+                    entered_backoff = True
+                    self.num_scheduling_tasks_in_backoff += 1
+                    self.num_scheduling_tasks_in_backoff_gauge.set(
+                        self.num_scheduling_tasks_in_backoff
+                    )
+
+                await asyncio.sleep(self.backoff_sequence_s[backoff_index])
+                backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
+        finally:
+            if entered_backoff:
+                self.num_scheduling_tasks_in_backoff -= 1
+                self.num_scheduling_tasks_in_backoff_gauge.set(
+                    self.num_scheduling_tasks_in_backoff
                 )
-                yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
-
-            await asyncio.sleep(self.backoff_sequence_s[backoff_index])
-            backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
 
     async def select_from_candidate_replicas(
         self, candidates: List[ReplicaWrapper]
@@ -666,8 +767,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             timeout=self.queue_len_response_deadline_s,
             return_when=asyncio.ALL_COMPLETED,
         )
-        for task in pending:
-            task.cancel()
+        for t in pending:
+            t.cancel()
+            logger.warning(
+                f"Failed to get queue length from replica {t.replica_id} "
+                f"within {self.queue_len_response_deadline_s}s."
+            )
 
         chosen_replica_id = None
         lowest_queue_len = math.inf
@@ -781,6 +886,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             logger.exception("Unexpected error in fulfill_pending_requests.")
         finally:
             self._scheduling_tasks.remove(asyncio.current_task(loop=self._loop))
+            self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
 
     def maybe_start_scheduling_tasks(self):
         """Start scheduling tasks to fulfill pending requests if necessary.
@@ -799,6 +905,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             self._scheduling_tasks.add(
                 self._loop.create_task(self.fulfill_pending_requests())
             )
+        if tasks_to_start > 0:
+            self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
 
     async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
         """Chooses a replica to send the provided request to.
