@@ -17,6 +17,7 @@
 #include <future>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/common_protocol.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 
 namespace {
@@ -157,10 +158,25 @@ Status ActorInfoAccessor::AsyncGet(
   return Status::OK();
 }
 
-Status ActorInfoAccessor::AsyncGetAll(
+Status ActorInfoAccessor::AsyncGetAllByFilter(
+    const std::optional<ActorID> &actor_id,
+    const std::optional<JobID> &job_id,
+    const std::optional<std::string> &actor_state_name,
     const MultiItemCallback<rpc::ActorTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting all actor info.";
   rpc::GetAllActorInfoRequest request;
+  if (actor_id) {
+    request.mutable_filters()->set_actor_id(actor_id.value().Binary());
+  }
+  if (job_id) {
+    request.mutable_filters()->set_job_id(job_id.value().Binary());
+  }
+  if (actor_state_name) {
+    rpc::ActorTableData::ActorState actora_sate =
+        StringToActorState(actor_state_name.value());
+    request.mutable_filters()->set_state(actora_sate);
+  }
+
   client_impl_->GetGcsRpcClient().GetAllActorInfo(
       request, [callback](const Status &status, const rpc::GetAllActorInfoReply &reply) {
         callback(status, VectorFromProtobuf(reply.actor_table_data()));

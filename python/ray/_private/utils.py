@@ -2191,3 +2191,21 @@ def load_class(path):
     class_str = class_data[-1]
     module = importlib.import_module(module_path)
     return getattr(module, class_str)
+
+
+def validate_actor_state_name(actor_state_name):
+    if actor_state_name is None:
+        return
+    actor_state_names = [
+        "DEPENDENCIES_UNREADY",
+        "PENDING_CREATION",
+        "ALIVE",
+        "RESTARTING",
+        "DEAD",
+    ]
+    if actor_state_name not in actor_state_names:
+        raise ValueError(
+            f'"{actor_state_name}" is not a valid actor state name, '
+            'it must be one of the following: "DEPENDENCIES_UNREADY", '
+            '"PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD"'
+        )
