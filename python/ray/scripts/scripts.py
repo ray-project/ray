@@ -847,7 +847,6 @@ def start(
                         "network configuration."
                     )
                 )
-
         ray_params.gcs_address = bootstrap_address
     else:
         # Start worker node.
