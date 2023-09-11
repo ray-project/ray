@@ -1,7 +1,6 @@
 import sys
 import os
 import psutil
-import pytest
 
 import ray
 import ray.cluster_utils
