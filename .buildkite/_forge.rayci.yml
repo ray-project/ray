@@ -5,6 +5,9 @@ steps:
 
   - name: manylinux
     wanda: ci/docker/manylinux.wanda.yaml
+
+  - name: raypy38cu118base
+    wanda: ci/docker/ray.py38.cu118.base.wanda.yaml
   
   - name: oss-ci-base_test
     wanda: ci/docker/base.test.wanda.yaml
