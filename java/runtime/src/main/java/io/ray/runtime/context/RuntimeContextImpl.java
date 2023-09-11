@@ -6,6 +6,7 @@ import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.runtimecontext.ActorInfo;
 import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.api.runtimecontext.RuntimeContext;
@@ -63,6 +64,11 @@ public class RuntimeContextImpl implements RuntimeContext {
   @Override
   public List<NodeInfo> getAllNodeInfo() {
     return runtime.getGcsClient().getAllNodeInfo();
+  }
+
+  @Override
+  public List<ActorInfo> getAllActorInfo() {
+    return runtime.getGcsClient().getAllActorInfo();
   }
 
   @Override
