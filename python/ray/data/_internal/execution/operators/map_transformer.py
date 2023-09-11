@@ -281,7 +281,9 @@ class BlocksToBatchesMapTransformFn(MapTransformFn):
         if first is None:
             # If the input blocks are all empty, then yield an empty block with same
             # format as the input blocks.
-            return [empty_block]
+            return [
+                BlockAccessor.for_block(empty_block).to_batch_format(self._batch_format)
+            ]
         else:
             return itertools.chain([first], formatted_batch_iter)
 
