@@ -1,27 +1,32 @@
 import math
 
 import cloudpickle
-import torch
+from typing import TYPE_CHECKING
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask
 
+if TYPE_CHECKING:
+    import torch
+
 
 class TorchDatasource(Datasource):
     def create_reader(
-        self, dataset: torch.utils.data.Dataset, random_split: bool = False
+        self, dataset: "torch.utils.data.Dataset", random_split: bool = False
     ):
         return _TorchDatasourceReader(dataset, random_split)
 
 
 class _TorchDatasourceReader(Reader):
-    def __init__(self, dataset: torch.utils.data.Dataset, random_split: bool):
+    def __init__(self, dataset: "torch.utils.data.Dataset", random_split: bool):
         self._dataset = dataset
         self._random_split = random_split
         self._size = len(cloudpickle.dumps(self._dataset))
 
     def get_read_tasks(self, parallelism):
+        import torch
+
         rows = len(self._dataset)
         subsets = None
         if self._random_split:
@@ -63,7 +68,9 @@ class _TorchDatasourceReader(Reader):
         return self._size
 
 
-def _read_subset(subset):
+def _read_subset(subset: "torch.utils.data.Subset"):
+    import torch
+
     data_loader = torch.utils.data.DataLoader(
         # default_collate does not accept `PIL.Image.Image`s
         subset,
