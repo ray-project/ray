@@ -1057,7 +1057,7 @@
         - tiktoken==0.1.2
         - sentencepiece==0.1.99
         - urllib3<1.27
-        - transformers @ git+https://github.com/huggingface/transformers@d0c1aebea467af499331234e7b285a6bf91ea073
+        - git+https://github.com/huggingface/transformers.git@d0c1aeb
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
 
   run:
