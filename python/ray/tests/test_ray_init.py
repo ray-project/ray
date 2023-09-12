@@ -1,8 +1,8 @@
 import os
 import sys
 import unittest.mock
-import subprocess
 import signal
+import subprocess
 
 import grpc
 import pytest
@@ -283,12 +283,12 @@ os.kill(os.getpid(), signal.SIGTERM)
 
     # test if sigterm handler is not overwritten by import ray
     test_child = subprocess.run(["python", "-c", sigterm_handler_cmd()])
-    assert os.path.exists(TEST_FILENAME)
+    assert test_child.returncode == 0 and os.path.exists(TEST_FILENAME)
     os.remove(TEST_FILENAME)
 
     # test if sigterm handler is overwritten by ray.init
     test_child = subprocess.run(["python", "-c", sigterm_handler_cmd(ray_init=True)])
-    assert not os.path.exists(TEST_FILENAME)
+    assert test_child.returncode == signal.SIGTERM and not os.path.exists(TEST_FILENAME)
 
 
 if __name__ == "__main__":
