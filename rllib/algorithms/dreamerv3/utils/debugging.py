@@ -8,6 +8,10 @@ from ray.rllib.utils.framework import try_import_tf
 
 _, tf, _ = try_import_tf()
 
+# These env's are not to be used for training, but only for debugging.
+_dummy_cartpole_env = None
+_dummy_frozenlake_env = None
+
 
 class CartPoleDebug(CartPoleEnv):
     def __init__(self, *args, **kwargs):
@@ -36,16 +40,6 @@ class CartPoleDebug(CartPoleEnv):
         return (obs, reward) + ret[2:]
 
 
-gym.register("CartPoleDebug-v0", CartPoleDebug)
-cartpole_env = gym.make("CartPoleDebug-v0", render_mode="rgb_array")
-cartpole_env.reset()
-
-frozenlake_env = gym.make(
-    "FrozenLake-v1", render_mode="rgb_array", is_slippery=False, map_name="4x4"
-)  # desc=["SF", "HG"])
-frozenlake_env.reset()
-
-
 def create_cartpole_dream_image(
     dreamed_obs,  # real space (not symlog'd)
     dreamed_V,  # real space (not symlog'd)
@@ -55,18 +49,24 @@ def create_cartpole_dream_image(
     dreamed_c_tp1,  # continue flag
     value_target,  # real space (not symlog'd)
     initial_h,
-    as_tensor=False,
+    as_tf_tensor=False,
 ):
+    global _dummy_cartpole_env
+    if not _dummy_cartpole_env:
+        gym.register("CartPoleDebug-v0", CartPoleDebug)
+        _dummy_cartpole_env = gym.make("CartPoleDebug-v0", render_mode="rgb_array")
+        _dummy_cartpole_env.reset()
+
     # CartPoleDebug
     if dreamed_obs.shape == (5,):
         # Set the state of our env to the given observation.
-        cartpole_env.unwrapped.state = np.array(dreamed_obs[1:], dtype=np.float32)
+        _dummy_cartpole_env.unwrapped.state = np.array(dreamed_obs[1:], dtype=np.float32)
     # Normal CartPole-v1
     else:
-        cartpole_env.unwrapped.state = np.array(dreamed_obs, dtype=np.float32)
+        _dummy_cartpole_env.unwrapped.state = np.array(dreamed_obs, dtype=np.float32)
 
     # Produce an RGB-image of the current state.
-    rgb_array = cartpole_env.render()
+    rgb_array = _dummy_cartpole_env.render()
 
     # Add value-, action-, reward-, and continue-prediction information.
     image = Image.fromarray(rgb_array)
@@ -93,7 +93,7 @@ def create_cartpole_dream_image(
 
     # Return image.
     np_img = np.asarray(image)
-    if as_tensor:
+    if as_tf_tensor:
         return tf.convert_to_tensor(np_img, dtype=tf.uint8)
     return np_img
 
@@ -107,12 +107,19 @@ def create_frozenlake_dream_image(
     dreamed_c_tp1,  # continue flag
     value_target,  # real space (not symlog'd)
     initial_h,
-    as_tensor=False,
+    as_tf_tensor=False,
 ):
-    frozenlake_env.unwrapped.s = np.argmax(dreamed_obs, axis=0)
+    global _dummy_frozenlake_env
+    if not _dummy_frozenlake_env:
+        _dummy_frozenlake_env = gym.make(
+            "FrozenLake-v1", render_mode="rgb_array", is_slippery=False, map_name="4x4"
+        )  # desc=["SF", "HG"])
+        _dummy_frozenlake_env.reset()
+
+    _dummy_frozenlake_env.unwrapped.s = np.argmax(dreamed_obs, axis=0)
 
     # Produce an RGB-image of the current state.
-    rgb_array = frozenlake_env.render()
+    rgb_array = _dummy_frozenlake_env.render()
 
     # Add value-, action-, reward-, and continue-prediction information.
     image = Image.fromarray(rgb_array)
@@ -137,7 +144,7 @@ def create_frozenlake_dream_image(
 
     # Return image.
     np_img = np.asarray(image)
-    if as_tensor:
+    if as_tf_tensor:
         return tf.convert_to_tensor(np_img, dtype=tf.uint8)
     return np_img
 
