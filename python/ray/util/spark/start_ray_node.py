@@ -6,7 +6,10 @@ import fcntl
 import signal
 import logging
 import threading
-from ray.util.spark.cluster_init import RAY_ON_SPARK_COLLECT_LOG_TO_PATH
+from ray.util.spark.cluster_init import (
+    RAY_ON_SPARK_COLLECT_LOG_TO_PATH,
+    START_RAY_WORKER_NODE,
+)
 from ray.util.spark.databricks_hook import global_mode_enabled
 from ray.util.spark.utils import _try_clean_temp_dir_at_exit
 
@@ -70,9 +73,14 @@ if __name__ == "__main__":
                 try_clean_temp_dir_at_exit()
                 os._exit(143)
 
-    # When global mode is enabled, parent process could be detached,
-    # so we don't kill the process when parent process died.
-    if not global_mode_enabled():
+    # When global mode is enabled and head node is started, parent process could be
+    # detached so we don't kill the process when parent process died.
+    # But we should always check parent alive for worker nodes, as spark application
+    # only kills worker processes but not subprocesses within them.
+    if (
+        not global_mode_enabled()
+        or os.environ.get(START_RAY_WORKER_NODE).lower() == "true"
+    ):
         threading.Thread(target=check_parent_alive, daemon=True).start()
 
     try:

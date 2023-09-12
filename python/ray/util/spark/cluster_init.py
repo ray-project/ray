@@ -45,6 +45,7 @@ MAX_NUM_WORKER_NODES = -1
 
 RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
 GLOBAL_RAY_CLUSTER_INFO_FILE = "global_ray_cluster_info.json"
+START_RAY_WORKER_NODE = "START_RAY_WORKER_NODE"
 
 
 def _check_system_environment():
@@ -670,6 +671,7 @@ def _setup_ray_cluster(
             DATABRICKS_RAY_CLUSTER_GLOBAL_MODE: os.environ.get(
                 DATABRICKS_RAY_CLUSTER_GLOBAL_MODE, "false"
             ),
+            START_RAY_WORKER_NODE: "true",
         }
 
         if num_gpus_worker_node > 0:
