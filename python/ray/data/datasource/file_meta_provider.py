@@ -152,6 +152,7 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
             schema=schema,
             input_files=paths,
             exec_stats=None,
+            location=None,
         )  # Exec stats filled in later.
 
     def expand_paths(
