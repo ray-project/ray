@@ -2,6 +2,7 @@ import os
 import sys
 import unittest.mock
 import subprocess
+import signal
 
 import grpc
 import pytest
@@ -260,6 +261,34 @@ def test_new_cluster_new_session_dir(ray_start_cluster):
         assert ray._private.worker._global_node.get_session_dir_path() != session_dir
     ray.shutdown()
     cluster.shutdown()
+
+
+def test_ray_init_sigterm_handler():
+    TEST_FILENAME = "sigterm.txt"
+
+    def sigterm_handler_cmd(ray_init=False):
+        return f"""
+import os
+import sys
+import signal
+def sigterm_handler(signum, frame):
+    f = open("{TEST_FILENAME}", "w")
+    sys.exit(0)
+signal.signal(signal.SIGTERM, sigterm_handler)
+
+import ray
+{"ray.init()" if ray_init else ""}
+os.kill(os.getpid(), signal.SIGTERM)
+"""
+
+    # test if sigterm handler is not overwritten by import ray
+    test_child = subprocess.run(["python", "-c", sigterm_handler_cmd()])
+    assert os.path.exists(TEST_FILENAME)
+    os.remove(TEST_FILENAME)
+
+    # test if sigterm handler is overwritten by ray.init
+    test_child = subprocess.run(["python", "-c", sigterm_handler_cmd(ray_init=True)])
+    assert not os.path.exists(TEST_FILENAME)
 
 
 if __name__ == "__main__":
