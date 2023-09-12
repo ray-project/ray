@@ -1,6 +1,5 @@
 import sys
 import os
-import psutil
 
 import ray
 import logging
@@ -50,7 +49,7 @@ def assert_threads_are_bounded(
     Rule: For each (thread_name, count) in now_threads, it must either be in
     prev_threads, or in KNOWN_THREADS.
     """
-    for thread_name, count in now_threads:
+    for thread_name, count in now_threads.items():
         target = max(
             prev_threads.get(thread_name, 0), KNOWN_THREADS.get(thread_name, 0)
         )
