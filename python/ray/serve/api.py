@@ -698,11 +698,11 @@ def multiplexed(
 
     Args:
         max_num_models_per_replica: the maximum number of models
-        to be loaded on each replica. By default, it is 3, which
-        means that each replica can cache up to 3 models. You can
-        set it to a larger number if you have enough memory on
-        the node resource, in opposite, you can set it to a smaller
-        number if you want to save memory on the node resource.
+            to be loaded on each replica. By default, it is 3, which
+            means that each replica can cache up to 3 models. You can
+            set it to a larger number if you have enough memory on
+            the node resource, in opposite, you can set it to a smaller
+            number if you want to save memory on the node resource.
     """
 
     if func is not None:

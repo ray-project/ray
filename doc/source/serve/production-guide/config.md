@@ -51,8 +51,19 @@ The `http_options` are as follows. Note that the HTTP config is global to your R
 - **`keep_alive_timeout_s`**: Allows you to set the keep alive timeout for the HTTP proxy. For more details, see [here](serve-http-guide-keep-alive-timeout)
 
 The `grpc_options` are as follows. Note that the gRPC config is global to your Ray cluster, and you can't update it during runtime.
-- **`port`**: THe port that the gRPC proxies listen on.
+- **`port`**: The port that the gRPC proxies listen on. These are optional settings and can be omitted. By default, the port is
+  set to `9000`.
 - **`grpc_servicer_functions`**: List of import paths for gRPC `add_servicer_to_server` functions to add to Serve's gRPC proxy. The servicer functions need to be importable from the context of where Serve is running. This defaults to an empty list, which means the gRPC server isn't started.
+
+These are the `grpc_options`:
+
+- `port` are gRPC options that determine the host port for your Serve application's gRPC
+  proxies. These are optional settings and can be omitted. By default, the port is
+  set to `9000`.
+- `grpc_servicer_functions` is a list of import paths for gRPC `add_servicer_to_server`
+  functions to add to Serve’s gRPC proxy. It also serves as the flag to determine
+  whether to start gRPC server. The default is an empty list, meaning no gRPC server is
+  started.
 
 These are the fields per application:
 

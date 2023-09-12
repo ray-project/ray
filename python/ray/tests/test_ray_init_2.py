@@ -2,6 +2,8 @@ import logging
 import os
 import sys
 import unittest.mock
+import tempfile
+import shutil
 from unittest.mock import patch
 
 import pytest
@@ -374,6 +376,20 @@ def test_driver_node_ip_address_auto_configuration(monkeypatch, ray_start_cluste
                 _get_node_id_from_node_ip(get_node_ip_address())
                 == ray.get_runtime_context().get_node_id()
             )
+
+
+@pytest.fixture
+def short_tmp_path():
+    path = tempfile.mkdtemp(dir="/tmp")
+    yield path
+    shutil.rmtree(path)
+
+
+def test_temp_dir_with_node_ip_address(ray_start_cluster, short_tmp_path):
+    cluster = ray_start_cluster
+    cluster.add_node(temp_dir=short_tmp_path)
+    ray.init(address=cluster.address)
+    assert short_tmp_path == ray._private.worker._global_node.get_temp_dir_path()
 
 
 if __name__ == "__main__":
