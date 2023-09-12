@@ -175,6 +175,7 @@ class PlasmaStore {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Record the fact that a particular client is no longer using an object.
+  /// This function is idempotent thus can be called multiple times.
   ///
   /// \param object_id The object ID of the object that is being released.
   /// \param client The client making this request.
