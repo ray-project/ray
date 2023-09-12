@@ -285,6 +285,9 @@ class _ParquetDatasourceReader(Reader):
         return total_size * self._encoding_ratio
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        import ray
+
+        schema_object_ref = ray.put(self._schema)
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
@@ -330,11 +333,10 @@ class _ParquetDatasourceReader(Reader):
                 )
             else:
                 default_read_batch_size = PARQUET_READER_ROW_BATCH_SIZE
-            block_udf, reader_args, columns, schema = (
+            block_udf, reader_args, columns = (
                 self._block_udf,
                 self._reader_args,
                 self._columns,
-                self._schema,
             )
             read_tasks.append(
                 ReadTask(
@@ -343,7 +345,7 @@ class _ParquetDatasourceReader(Reader):
                         reader_args,
                         default_read_batch_size,
                         columns,
-                        schema,
+                        schema_object_ref,
                         p,
                     ),
                     meta,
@@ -409,7 +411,7 @@ def _read_pieces(
     reader_args,
     default_read_batch_size,
     columns,
-    schema,
+    schema_object_ref,
     serialized_pieces: List[_SerializedPiece],
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
@@ -426,9 +428,12 @@ def _read_pieces(
     import pyarrow as pa
     from pyarrow.dataset import _get_partition_keys
 
+    import ray
+
     logger.debug(f"Reading {len(pieces)} parquet pieces")
     use_threads = reader_args.pop("use_threads", False)
     batch_size = reader_args.pop("batch_size", default_read_batch_size)
+    schema = ray.get(schema_object_ref)
     for piece in pieces:
         part = _get_partition_keys(piece.partition_expression)
         batches = piece.to_batches(
