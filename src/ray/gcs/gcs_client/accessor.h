@@ -52,9 +52,16 @@ class ActorInfoAccessor {
 
   /// Get all actor specification from the GCS asynchronously.
   ///
+  /// \param  actor_id To filter actors by actor_id.
+  /// \param  job_id To filter actors by job_id.
+  /// \param  actor_state_name To filter actors based on actor state.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback);
+  virtual Status AsyncGetAllByFilter(
+      const std::optional<ActorID> &actor_id,
+      const std::optional<JobID> &job_id,
+      const std::optional<std::string> &actor_state_name,
+      const MultiItemCallback<rpc::ActorTableData> &callback);
 
   /// Get actor specification for a named actor from the GCS asynchronously.
   ///

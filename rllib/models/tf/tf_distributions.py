@@ -415,11 +415,8 @@ class TfMultiDistribution(Distribution):
             for dist in self._flat_child_distributions:
                 if isinstance(dist, TfCategorical):
                     split_indices.append(1)
-                elif (
-                    isinstance(dist, TfMultiCategorical)
-                    and dist.action_space is not None
-                ):
-                    split_indices.append(np.prod(dist.action_space.shape))
+                elif isinstance(dist, TfMultiCategorical):
+                    split_indices.append(len(dist._cats))
                 else:
                     sample = dist.sample()
                     # Cover Box(shape=()) case.
