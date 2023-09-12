@@ -678,7 +678,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pong", "learning_tests_discrete"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pong-ppo.yaml.py"],
+    data = ["tuned_examples/ppo/pong-ppo.yaml"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
