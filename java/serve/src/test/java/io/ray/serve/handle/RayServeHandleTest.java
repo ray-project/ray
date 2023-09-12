@@ -52,7 +52,9 @@ public class RayServeHandleTest {
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
       Object[] initArgs =
-          new Object[] {deploymentName, replicaTag, controllerName, new Object(), new HashMap<>(), appName};
+          new Object[] {
+            deploymentName, replicaTag, controllerName, new Object(), new HashMap<>(), appName
+          };
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()
