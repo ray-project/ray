@@ -112,6 +112,23 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray.train import ScalingConfig
+            scaling_config = ScalingConfig(
+                # Number of distributed workers.
+                num_workers=2,
+                # Turn on/off GPU.
+                use_gpu=True,
+                # Specify resources used for trainer.
+                trainer_resources={"CPU": 1},
+                # Try to schedule workers on different nodes.
+                placement_strategy="SPREAD",
+            )
+
     """
 
     # If adding new attributes here, please also update
@@ -121,7 +138,6 @@ class ScalingConfig:
     use_gpu: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
     placement_strategy: Union[str, SampleRange] = "PACK"
-    _max_cpu_fraction_per_node: Optional[Union[float, SampleRange]] = None
 
     def __post_init__(self):
         if self.resources_per_worker:
@@ -237,15 +253,7 @@ class ScalingConfig:
             for _ in range(self.num_workers if self.num_workers else 0)
         ]
         bundles = trainer_bundle + worker_bundles
-        if self._max_cpu_fraction_per_node is not None:
-            kwargs = {
-                "_max_cpu_fraction_per_node": self._max_cpu_fraction_per_node,
-            }
-        else:
-            kwargs = {}
-        return PlacementGroupFactory(
-            bundles, strategy=self.placement_strategy, **kwargs
-        )
+        return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
 
     @classmethod
     def from_placement_group_factory(
@@ -263,7 +271,6 @@ class ScalingConfig:
         placement_strategy = pgf.strategy
         resources_per_worker = None
         num_workers = None
-        max_cpu_fraction_per_node = None
 
         if worker_bundles:
             first_bundle = worker_bundles[0]
@@ -276,16 +283,12 @@ class ScalingConfig:
             num_workers = len(worker_bundles)
             resources_per_worker = first_bundle
 
-        if "_max_cpu_fraction_per_node" in pgf._kwargs:
-            max_cpu_fraction_per_node = pgf._kwargs["_max_cpu_fraction_per_node"]
-
         return ScalingConfig(
             trainer_resources=trainer_resources,
             num_workers=num_workers,
             use_gpu=use_gpu,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
-            _max_cpu_fraction_per_node=max_cpu_fraction_per_node,
         )
 
 

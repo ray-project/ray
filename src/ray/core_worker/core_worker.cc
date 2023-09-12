@@ -2486,6 +2486,11 @@ CoreWorker::ListNamedActorsLocalMode() {
   return std::make_pair(actors, Status::OK());
 }
 
+const std::string CoreWorker::GetActorName() const {
+  absl::MutexLock lock(&mutex_);
+  return actor_manager_->GetActorHandle(actor_id_)->GetName();
+}
+
 const ResourceMappingType CoreWorker::GetResourceIDs() const {
   absl::MutexLock lock(&mutex_);
   return *resource_ids_;

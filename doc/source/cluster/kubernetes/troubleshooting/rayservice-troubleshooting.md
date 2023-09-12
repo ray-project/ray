@@ -87,12 +87,13 @@ kubectl exec -it $HEAD_POD -- ray summary actors
 * {ref}`kuberay-raysvc-issue7`
 * {ref}`kuberay-raysvc-issue8`
 * {ref}`kuberay-raysvc-issue9`
+* {ref}`kuberay-raysvc-issue10`
 
 (kuberay-raysvc-issue1)=
 ### Issue 1: Ray Serve script is incorrect.
 
 We strongly recommend that you test your Ray Serve script locally or in a RayCluster before
-deploying it to a RayService. Please refer to [rayserve-dev-doc.md](https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayserve-dev-doc.md) for more details.
+deploying it to a RayService. Refer to [rayserve-dev-doc.md](kuberay-dev-serve) for more details.
 
 (kuberay-raysvc-issue2)=
 ### Issue 2: `serveConfigV2` is incorrect.
@@ -118,10 +119,10 @@ Therefore, the YAML file includes `python-multipart` in the runtime environment.
 (kuberay-raysvc-issue3-2)=
 ### Issue 3-2: Examples for troubleshooting dependency issues.
 
-> Note: We highly recommend testing your Ray Serve script locally or in a RayCluster before deploying it to a RayService. This helps identify any dependency issues in the early stages. Please refer to [rayserve-dev-doc.md](https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayserve-dev-doc.md) for more details.
+> Note: We highly recommend testing your Ray Serve script locally or in a RayCluster before deploying it to a RayService. This helps identify any dependency issues in the early stages. Refer to [rayserve-dev-doc.md](kuberay-dev-serve) for more details.
 
 In the [MobileNet example](kuberay-mobilenet-rayservice-example), the [mobilenet.py](https://github.com/ray-project/serve_config_examples/blob/master/mobilenet/mobilenet.py) consists of two functions: `__init__()` and `__call__()`.
-The function `__call__()` will only be called when the Serve application receives a request.
+The function `__call__()` is only called when the Serve application receives a request.
 
 * Example 1: Remove `python-multipart` from the runtime environment in [the MobileNet YAML](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.mobilenet.yaml).
   * The `python-multipart` library is only required for the `__call__` method. Therefore, we can only observe the dependency issue when we send a request to the application.
@@ -332,6 +333,24 @@ the multi-app API endpoint `/api/serve/applications/`.
 To resolve this issue, you can replace `serveConfig` with `serveConfigV2` and modify `rayVersion` which has no effect when the Ray version is 2.0.0 or later to 2.100.0.
 This will trigger a new RayCluster preparation instead of an in-place update.
 
-If, after following the steps above, you still see the error message and GCS fault tolerance is enabled, it may be due to the `ray.io/external-storage-namespace` annotatoin being the same for both old and new RayClusters.
+If, after following the steps above, you still see the error message and GCS fault tolerance is enabled, it may be due to the `ray.io/external-storage-namespace` annotation being the same for both old and new RayClusters.
 You can remove the annotation and KubeRay will automatically generate a unique key for each RayCluster custom resource.
-You can refer to [kuberay#1297](https://github.com/ray-project/kuberay/issues/1297) for more details.
+See [kuberay#1297](https://github.com/ray-project/kuberay/issues/1297) for more details.
+
+(kuberay-raysvc-issue10)=
+### Issue 10: Upgrade RayService with GCS fault tolerance enabled without downtime
+
+KubeRay uses the value of the annotation [ray.io/external-storage-namespace](kuberay-external-storage-namespace) to assign the environment variable `RAY_external_storage_namespace` to all Ray Pods managed by the RayCluster.
+This value represents the storage namespace in Redis where the Ray cluster metadata resides.
+In the process of a head Pod recovery, the head Pod attempts to reconnect to the Redis server using the `RAY_external_storage_namespace` value to recover the cluster data.
+
+However, specifying the `RAY_external_storage_namespace` value in RayService can potentially lead to downtime during zero-downtime upgrades.
+Specifically, the new RayCluster accesses the same Redis storage namespace as the old one for cluster metadata.
+This configuration can lead the KubeRay operator to assume that the Ray Serve applications are operational, as indicated by the existing metadata in Redis.
+Consequently, the operator might deem it safe to retire the old RayCluster and redirect traffic to the new one, even though the latter may still require time to initialize the Ray Serve applications.
+
+The recommended solution is to remove the `ray.io/external-storage-namespace` annotation from the RayService CRD.
+If the annotation isn't set, KubeRay automatically uses each RayCluster custom resource's UID as the `RAY_external_storage_namespace` value.
+Hence, both the old and new RayClusters have different `RAY_external_storage_namespace` values, and the new RayCluster is unable to access the old cluster metadata.
+Another solution is to set the `RAY_external_storage_namespace` value manually to a unique value for each RayCluster custom resource.
+See [kuberay#1296](https://github.com/ray-project/kuberay/issues/1296) for more details.
