@@ -107,7 +107,7 @@ It is up to the user to correctly update the hyperparameters of your trainable.
 
 .. code-block:: python
 
-    class PytorchTrainble(tune.Trainable):
+    class PytorchTrainable(tune.Trainable):
         """Train a Pytorch ConvNet."""
 
         def setup(self, config):
@@ -174,6 +174,11 @@ declare the resources per trial based on the given configuration.
 
 It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
 
+Function API
+------------
+For reporting results and checkpoints with the function API,
+see the :ref:`Ray Train utilities <train-loop-api>` documentation.
+
 .. _tune-trainable-docstring:
 
 Trainable (Class API)
@@ -236,3 +241,4 @@ Tune Trainable Debugging Utilities
 
     tune.utils.diagnose_serialization
     tune.utils.validate_save_restore
+
