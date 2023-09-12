@@ -34,3 +34,13 @@ steps:
       - forge
       - raypy38cu118base
     job_env: forge
+
+  - label: ":tapioca: build: pip-compile dependencies"
+    instance_type: medium
+    commands:
+      - rm ./python/requirements_compiled.txt
+      - ./ci/ci.sh compile_pip_dependencies
+      - cp -f ./python/requirements_compiled.txt /artifact-mount/
+    depends_on:
+      - forge
+    job_env: forge
