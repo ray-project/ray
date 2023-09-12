@@ -84,7 +84,7 @@ class PettingZooEnv(MultiAgentEnv):
         self.env = env
         env.reset()
 
-        self._agent_ids = self.env.agents
+        self._agent_ids = set(self.env.agents)
 
         self.observation_space = gym.spaces.Dict(self.env.observation_spaces)
         self.action_space = gym.spaces.Dict(self.env.action_spaces)
@@ -154,7 +154,7 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         super().__init__()
         self.par_env = env
         self.par_env.reset()
-        self._agent_ids = self.par_env.agents
+        self._agent_ids = set(self.par_env.agents)
 
         self.observation_space = gym.spaces.Dict(self.par_env.observation_spaces)
         self.action_space = gym.spaces.Dict(self.par_env.action_spaces)
