@@ -174,6 +174,8 @@ declare the resources per trial based on the given configuration.
 
 It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
 
+.. currentmodule:: ray
+
 Function API
 ------------
 For reporting results and checkpoints with the function API,
