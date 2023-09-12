@@ -6,16 +6,18 @@ from ray.data.datasource import file_based_datasource
 import os
 
 import torch.distributed as dist
-import numpy as np
 
 from benchmark import Benchmark, BenchmarkMetric
+from image_loader_microbenchmark import (
+    get_transform,
+    crop_and_flip_image,
+    decode_image_crop_and_flip,
+)
 
-from PIL import Image
 from image_loader_microbenchmark import get_mosaic_dataloader
 
 
 import time
-import torchvision
 import torch
 
 from dataset_benchmark_util import (
@@ -60,7 +62,7 @@ def parse_args():
     )
     parser.add_argument(
         "--target-worker-gb",
-        default=4,
+        default=10,
         type=int,
         help=(
             "Number of GB per worker for selecting a subset "
@@ -132,7 +134,19 @@ def parse_args():
         "--split-input",
         action="store_true",
         default=False,
-        help="Whether to split input dataset.",
+        help="Whether to pre-split the input dataset instead of using streaming split.",
+    )
+    parser.add_argument(
+        "--cache-input-ds",
+        action="store_true",
+        default=False,
+        help="Whether to cache input dataset (before preprocessing).",
+    )
+    parser.add_argument(
+        "--cache-output-ds",
+        action="store_true",
+        default=False,
+        help="Whether to cache output dataset (after preprocessing).",
     )
     args = parser.parse_args()
 
@@ -160,41 +174,6 @@ def parse_args():
 DEFAULT_IMAGE_SIZE = 224
 
 
-def get_transform(to_torch_tensor):
-    # Note(swang): This is a different order from tf.data.
-    # torch: decode -> randCrop+resize -> randFlip
-    # tf.data: decode -> randCrop -> randFlip -> resize
-    transform = torchvision.transforms.Compose(
-        [
-            torchvision.transforms.RandomResizedCrop(
-                size=DEFAULT_IMAGE_SIZE,
-                scale=(0.05, 1.0),
-                ratio=(0.75, 1.33),
-            ),
-            torchvision.transforms.RandomHorizontalFlip(),
-        ]
-        + ([torchvision.transforms.ToTensor()] if to_torch_tensor else [])
-    )
-    return transform
-
-
-def crop_and_flip_image(row):
-    transform = get_transform(False)
-    # Make sure to use torch.tensor here to avoid a copy from numpy.
-    row["image"] = transform(torch.tensor(np.transpose(row["image"], axes=(2, 0, 1))))
-    return row
-
-
-def decode_image_crop_and_flip(row):
-    transform = get_transform(False)
-    row["image"] = Image.frombytes("RGB", (row["height"], row["width"]), row["image"])
-    del row["width"]
-    del row["height"]
-    # Convert back np to avoid storing a np.object array.
-    row["image"] = np.array(transform(row["image"]))
-    return row
-
-
 def train_loop_per_worker():
     worker_rank = train.get_context().get_world_rank()
     if args.split_input:
@@ -205,9 +184,7 @@ def train_loop_per_worker():
 
     batch_iter = None
     if args.use_torch:
-        torch_num_workers = args.torch_num_workers
-        if torch_num_workers is None:
-            torch_num_workers = 256
+        torch_num_workers = args.torch_num_workers or 256
         batch_iter = get_torch_data_loader(
             worker_rank=worker_rank,
             batch_size=args.batch_size,
@@ -228,9 +205,8 @@ def train_loop_per_worker():
             ray.train.get_context().get_world_size()
             // ray.train.get_context().get_local_world_size()
         )
-        torch_num_workers = args.torch_num_workers
-        if torch_num_workers is None:
-            torch_num_workers = os.cpu_count()
+
+        torch_num_workers = args.torch_num_workers or os.cpu_count()
         # Divide by the number of Train workers because each has its own dataloader.
         torch_num_workers //= ray.train.get_context().get_local_world_size()
 
@@ -258,14 +234,11 @@ def train_loop_per_worker():
         print_at_interval = 1000
         print_at = print_at_interval
         for batch in batch_iter:
+            if not (args.use_torch or args.use_mosaic):
+                batch = batch["image"]
             # `batch` should have tensor in `torch.Tensor` format.
-            if args.use_torch:
-                num_rows += batch.size(dim=0)
-            elif args.use_mosaic:
-                num_rows += args.batch_size
-            else:
-                num_rows += batch["image"].size(dim=0)
-            if num_rows >= print_at:
+            num_rows += batch.size(dim=0)
+            if worker_rank == 0 and num_rows >= print_at:
                 print(
                     f"Read {num_rows} rows on rank "
                     f"{train.get_context().get_world_rank()}, tput so far: "
@@ -391,13 +364,9 @@ def get_torch_data_loader(worker_rank, batch_size, num_workers, transform=None):
 
 def benchmark_code(
     args,
-    cache_output_ds=False,
-    cache_input_ds=False,
 ):
-    """
-    - cache_output_ds: Cache output dataset (ds.materialize()) after preprocessing fn.
-    - cache_input_ds: Cache input dataset, then apply a preprocessing fn.
-    """
+    cache_input_ds = args.cache_input_ds
+    cache_output_ds = args.cache_output_ds
     assert (
         sum([cache_output_ds, cache_input_ds]) <= 1
     ), "Can only test one caching variant at a time"
@@ -406,7 +375,7 @@ def benchmark_code(
         split_input_files_per_worker(args)
 
     ray_datasets_dict = {}
-    if not args.use_mosaic:
+    if not (args.use_mosaic or args.use_torch):
         # Only create one dataset if `args.split_input` is True.
         # Otherwise, create N datasets for N training workers,
         # each dataset reads the corresponding portion of input data.
@@ -455,35 +424,18 @@ def benchmark_code(
     options = DataConfig.default_ingest_options()
     options.preserve_order = args.preserve_order
 
-    if args.num_workers == 1 or args.use_gpu:
-        torch_trainer = TorchTrainer(
-            train_loop_per_worker,
-            datasets=ray_datasets_dict,
-            scaling_config=ScalingConfig(
-                num_workers=args.num_workers,
-                use_gpu=args.use_gpu,
-            ),
-            dataset_config=ray.train.DataConfig(
-                datasets_to_split=[] if args.split_input else "all",
-                execution_options=options,
-            ),
-        )
-    else:
-        torch_trainer = TorchTrainer(
-            train_loop_per_worker,
-            datasets=ray_datasets_dict,
-            # In the multi-node case without GPUs, we use a SPREAD placement strategy
-            # to ensure that tasks are spread across nodes. We reserve one worker
-            # for the driver.
-            scaling_config=ScalingConfig(
-                num_workers=args.num_workers - 1,
-                use_gpu=args.use_gpu,
-                placement_strategy="STRICT_SPREAD",
-            ),
-            dataset_config=ray.train.DataConfig(
-                execution_options=options,
-            ),
-        )
+    torch_trainer = TorchTrainer(
+        train_loop_per_worker,
+        datasets=ray_datasets_dict,
+        scaling_config=ScalingConfig(
+            num_workers=args.num_workers,
+            use_gpu=args.use_gpu,
+        ),
+        dataset_config=ray.train.DataConfig(
+            datasets_to_split=[] if args.split_input else "all",
+            execution_options=options,
+        ),
+    )
 
     result = torch_trainer.fit()
 
@@ -505,22 +457,22 @@ def benchmark_code(
 
 if __name__ == "__main__":
     # Workaround for FileBasedDatasource parallel read issue when reading many sources.
-    file_based_datasource.FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 1000
+    file_based_datasource.FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 10e10
     args = parse_args()
     benchmark_name = (
         f"read_{args.file_type}_repeat{args.repeat_ds}_train_"
         f"{args.num_workers}workers_{args.target_worker_gb}gb_per_worker"
     )
+
     if args.preserve_order:
         benchmark_name = f"{benchmark_name}_preserve_order"
+    if args.cache_input_ds:
+        case_name = "cache-input"
+    elif args.cache_output_ds:
+        case_name = "cache-output"
+    else:
+        case_name = "cache-none"
 
     benchmark = Benchmark(benchmark_name)
-
-    benchmark.run_fn("cache-none", benchmark_code, args=args)
-    # benchmark.run_fn("cache-output", benchmark_code, args=args, cache_output_ds=True)
-    # benchmark.run_fn("cache-input", benchmark_code, args=args, cache_input_ds=True)
-    # # TODO: enable after implementing prepartition case.
-    # # benchmark.run_fn(
-    # # "prepartition-ds", benchmark_code, args=args, prepartition_ds=True,
-    # # )
+    benchmark.run_fn(case_name, benchmark_code, args=args)
     benchmark.write_result("/tmp/multi_node_train_benchmark.json")
