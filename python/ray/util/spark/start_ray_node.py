@@ -85,7 +85,7 @@ if __name__ == "__main__":
     # only kills worker processes but not subprocesses within them.
     if (
         not global_mode_enabled()
-        or os.environ.get(START_RAY_WORKER_NODE).lower() == "true"
+        or os.environ.get(START_RAY_WORKER_NODE, "false").lower() == "true"
     ):
         threading.Thread(target=check_parent_alive, daemon=True).start()
 
