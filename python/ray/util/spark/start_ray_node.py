@@ -12,7 +12,6 @@ from ray.util.spark.cluster_init import (
 )
 from ray.util.spark.databricks_hook import global_mode_enabled
 from ray.util.spark.utils import (
-    GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE,
     _try_clean_temp_dir_at_exit,
 )
 
@@ -58,9 +57,9 @@ if __name__ == "__main__":
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
     process = subprocess.Popen([ray_cli_cmd, "start", *arg_list], text=True)
-    ray_session_dir = os.readlink(os.path.join(temp_dir, "session_latest"))
-    with open(os.path.join(temp_dir, GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE), "w") as f:
-        f.write(ray_session_dir)
+
+    def running_on_worker_node():
+        return os.environ.get(START_RAY_WORKER_NODE, "false").lower() == "true"
 
     def try_clean_temp_dir_at_exit():
         _try_clean_temp_dir_at_exit(
@@ -68,6 +67,7 @@ if __name__ == "__main__":
             collect_log_to_path=collect_log_to_path,
             temp_dir=temp_dir,
             lock_fd=lock_fd,
+            is_head_node=not running_on_worker_node(),
         )
 
     def check_parent_alive() -> None:
@@ -83,10 +83,7 @@ if __name__ == "__main__":
     # detached so we don't kill the process when parent process died.
     # But we should always check parent alive for worker nodes, as spark application
     # only kills worker processes but not subprocesses within them.
-    if (
-        not global_mode_enabled()
-        or os.environ.get(START_RAY_WORKER_NODE, "false").lower() == "true"
-    ):
+    if not global_mode_enabled() or running_on_worker_node():
         threading.Thread(target=check_parent_alive, daemon=True).start()
 
     try:

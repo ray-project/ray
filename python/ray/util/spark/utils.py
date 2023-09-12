@@ -420,7 +420,9 @@ def get_spark_task_assigned_physical_gpus(gpu_addr_list):
 GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE = "global_ray_cluster_session_name.txt"
 
 
-def _try_clean_temp_dir_at_exit(process, collect_log_to_path, temp_dir, lock_fd=None):
+def _try_clean_temp_dir_at_exit(
+    process, collect_log_to_path, temp_dir, lock_fd=None, is_head_node=True
+):
     if lock_fd is None:
         lock_file = temp_dir + ".lock"
         lock_fd = os.open(lock_file, os.O_RDWR | os.O_CREAT | os.O_TRUNC)
@@ -458,11 +460,18 @@ def _try_clean_temp_dir_at_exit(process, collect_log_to_path, temp_dir, lock_fd=
                         os.path.basename(temp_dir) + "-logs",
                         socket.gethostname(),
                     )
-                    with open(
-                        os.path.join(temp_dir, GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE),
-                        "r",
-                    ) as f:
-                        ray_session_dir = f.read()
+                    if is_head_node:
+                        with open(
+                            os.path.join(
+                                temp_dir, GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE
+                            ),
+                            "r",
+                        ) as f:
+                            ray_session_dir = f.read()
+                    else:
+                        ray_session_dir = os.readlink(
+                            os.path.join(temp_dir, "session_latest")
+                        )
                     shutil.copytree(
                         os.path.join(ray_session_dir, "logs"),
                         copy_log_dest_path,
