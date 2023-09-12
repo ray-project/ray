@@ -27,7 +27,8 @@ class BCCatalog(Catalog):
     Any custom head can be built by overriding the `build_pi_head()` method.
     Alternatively, the `PiHeadConfig` can be overridden to build a custom
     policy head during runtime. To change solely the network architecture,
-    `post_fcnet_hiddens` and `post_fcnet_hidden` can be used.
+    `model_config_dict["post_fcnet_hiddens"]` and 
+    `model_config_dict["post_fcnet_activation"]` can be used.
     """
 
     def __init__(
@@ -62,7 +63,7 @@ class BCCatalog(Catalog):
     def build_pi_head(self, framework: str) -> Model:
         """Builds the policy head.
 
-                The default behavior is to build the head from the pi_head_config.
+        The default behavior is to build the head from the pi_head_config.
         This can be overridden to build a custom policy head as a means of configuring
         the behavior of a BCRLModule implementation.
 
