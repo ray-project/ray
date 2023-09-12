@@ -16,7 +16,6 @@ from ray.util.annotations import PublicAPI
 from ray._private.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
 from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._private.utils import get_user_temp_dir
-from ray._private.worker import _global_node
 
 from .utils import (
     exec_cmd,
@@ -136,7 +135,8 @@ class RayClusterOnSpark:
                         "server cannot be found. They can be installed with "
                         "pip install ray[default]."
                     )
-            ray_session_dir = _global_node.get_session_dir_path()
+            # ray.init makes sure _global_node is not None
+            ray_session_dir = ray._private.worker._global_node.get_session_dir_path()
             with open(
                 os.path.join(self.temp_dir, GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE), "w"
             ) as f:
