@@ -15,7 +15,8 @@ import ray
 HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
-REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI]
+S3_WHL_PACKAGE_URI = "s3://runtime-env-test/test_module-0.0.1-py3-none-any.whl"
+REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI, S3_WHL_PACKAGE_URI]
 
 
 @pytest.mark.parametrize("remote_uri", REMOTE_URIS)

@@ -195,14 +195,18 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         )
 
     if protocol in Protocol.remote_protocols():
-        package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
+        if pkg_uri.endswith(".whl"):
+            # .whl file name can't be modified
+            package_name = pkg_uri.split("/")[-1]
+        else:
+            package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
 
-        disallowed_chars = ["/", ":", "@", "+"]
-        for disallowed_char in disallowed_chars:
-            package_name = package_name.replace(disallowed_char, "_")
+            disallowed_chars = ["/", ":", "@", "+"]
+            for disallowed_char in disallowed_chars:
+                package_name = package_name.replace(disallowed_char, "_")
 
-        # Remove all periods except the last, which is part of the file extension
-        package_name = package_name.replace(".", "_", package_name.count(".") - 1)
+            # Remove all periods except the last, which is part of the file extension
+            package_name = package_name.replace(".", "_", package_name.count(".") - 1)
     else:
         package_name = uri.netloc
 
@@ -728,7 +732,7 @@ async def download_and_unpack_package(
                     with open_file(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
 
-                if Path(pkg_uri).suffix == ".zip":
+                if Path(pkg_name).suffix == ".zip":
                     unzip_package(
                         package_path=pkg_file,
                         target_dir=local_dir,

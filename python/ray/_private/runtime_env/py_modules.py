@@ -187,7 +187,7 @@ class PyModulesPlugin(RuntimeEnvPlugin):
             wheel_uri,
             f"--target={module_dir}",
         ]
-        raise ValueError
+
         logger.info(
             "Running py_modules wheel install command: %s", str(pip_install_cmd)
         )
@@ -218,10 +218,10 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         module_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )
-        assert 1 == 2
+
         if is_whl_uri(uri):
-            module_dir = self._unpack_wheel(
-                wheel_file=module_dir, target_uri=uri, logger=logger
+            module_dir = await self._unpack_wheel(
+                wheel_uri=module_dir, target_uri=uri, logger=logger
             )
 
         return get_directory_size_bytes(module_dir)
