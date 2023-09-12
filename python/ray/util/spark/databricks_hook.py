@@ -69,7 +69,7 @@ DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES = (
 )
 DATABRICKS_RAY_CLUSTER_GLOBAL_MODE = "DATABRICKS_RAY_CLUSTER_GLOBAL_MODE"
 RAY_ON_SPARK_START_HOOK = "RAY_ON_SPARK_START_HOOK"
-_DATABRICKS_DEFAULT_TMP_DIR = "/local_disk0/tmp"
+_DATABRICKS_DEFAULT_TMP_ROOT_DIR = "/local_disk0/tmp"
 
 
 def global_mode_enabled():
@@ -93,8 +93,8 @@ def _get_start_hook():
 
 
 class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
-    def get_default_temp_dir(self):
-        return os.environ.get("RAY_TMPDIR", _DATABRICKS_DEFAULT_TMP_DIR)
+    def get_default_temp_root_dir(self):
+        return os.environ.get("RAY_TMPDIR", _DATABRICKS_DEFAULT_TMP_ROOT_DIR)
 
     def on_ray_dashboard_created(self, port):
         display_databricks_driver_proxy_url(

@@ -528,7 +528,7 @@ def _setup_ray_cluster(
         )
         ray_temp_root_dir = None
     if ray_temp_root_dir is None:
-        ray_temp_root_dir = start_hook.get_default_temp_dir()
+        ray_temp_root_dir = start_hook.get_default_temp_root_dir()
     if global_mode_enabled():
         ray_addr = None
         try:
@@ -666,7 +666,10 @@ def _setup_ray_cluster(
         ]
 
         ray_worker_node_extra_envs = {
-            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""
+            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
+            DATABRICKS_RAY_CLUSTER_GLOBAL_MODE: os.environ.get(
+                DATABRICKS_RAY_CLUSTER_GLOBAL_MODE, "false"
+            ),
         }
 
         if num_gpus_worker_node > 0:
@@ -1268,7 +1271,7 @@ def shutdown_ray_cluster() -> None:
                 # If global mode enabled, we need to construct RayClusterOnSpark
                 # from saved GLOBAL_RAY_CLUSTER_INFO_FILE file, then shutdown the global
                 # ray cluster.
-                ray_temp_root_dir = _get_start_hook().get_default_temp_dir()
+                ray_temp_root_dir = _get_start_hook().get_default_temp_root_dir()
                 with open(
                     os.path.join(ray_temp_root_dir, "ray", GLOBAL_RAY_CLUSTER_INFO_FILE)
                 ) as f:
