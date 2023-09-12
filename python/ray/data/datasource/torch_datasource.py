@@ -1,7 +1,7 @@
 import math
+from typing import TYPE_CHECKING
 
 import cloudpickle
-from typing import TYPE_CHECKING
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import BlockMetadata
@@ -13,14 +13,20 @@ if TYPE_CHECKING:
 
 class TorchDatasource(Datasource):
     def create_reader(
-        self, dataset: "torch.utils.data.Dataset", random_split: bool = False
+        self,
+        dataset: "torch.utils.data.Dataset",
+        batch_size: int = 32,
+        random_split: bool = False,
     ):
-        return _TorchDatasourceReader(dataset, random_split)
+        return _TorchDatasourceReader(dataset, batch_size, random_split)
 
 
 class _TorchDatasourceReader(Reader):
-    def __init__(self, dataset: "torch.utils.data.Dataset", random_split: bool):
+    def __init__(
+        self, dataset: "torch.utils.data.Dataset", batch_size: int, random_split: bool
+    ):
         self._dataset = dataset
+        self._batch_size = batch_size
         self._random_split = random_split
         self._size = len(cloudpickle.dumps(self._dataset))
 
@@ -55,8 +61,9 @@ class _TorchDatasourceReader(Reader):
             )
             read_tasks.append(
                 ReadTask(
-                    lambda subset=subsets[i]: _read_subset(
+                    lambda subset=subsets[i], batch_size=self._batch_size: _read_subset(
                         subset,
+                        batch_size,
                     ),
                     metadata=meta,
                 ),
@@ -68,14 +75,14 @@ class _TorchDatasourceReader(Reader):
         return self._size
 
 
-def _read_subset(subset: "torch.utils.data.Subset"):
+def _read_subset(subset: "torch.utils.data.Subset", batch_size):
     import torch
 
     data_loader = torch.utils.data.DataLoader(
-        # default_collate does not accept `PIL.Image.Image`s
         subset,
+        # default_collate does not accept `PIL.Image.Image`s
         collate_fn=lambda x: x,
-        batch_size=5,
+        batch_size=batch_size,
     )
 
     for batch in data_loader:

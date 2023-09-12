@@ -2286,6 +2286,7 @@ def from_torch(
     dataset: "torch.utils.data.Dataset",
     parallelism: int = -1,
     random_split: bool = False,
+    batch_size: int = 32,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
@@ -2322,6 +2323,7 @@ def from_torch(
         dataset=dataset,
         parallelism=parallelism,
         random_split=random_split,
+        batch_size=batch_size,
     )
 
 
