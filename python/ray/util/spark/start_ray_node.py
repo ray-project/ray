@@ -11,7 +11,10 @@ from ray.util.spark.cluster_init import (
     START_RAY_WORKER_NODE,
 )
 from ray.util.spark.databricks_hook import global_mode_enabled
-from ray.util.spark.utils import _try_clean_temp_dir_at_exit
+from ray.util.spark.utils import (
+    _try_clean_temp_dir_at_exit,
+    GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE,
+)
 
 
 # Spark on ray implementation does not directly invoke `ray start ...` script to create
@@ -55,6 +58,9 @@ if __name__ == "__main__":
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
     process = subprocess.Popen([ray_cli_cmd, "start", *arg_list], text=True)
+    ray_session_dir = os.path.realpath(os.path.join(temp_dir, "session_latest"))
+    with open(os.path.join(temp_dir, GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE), "w") as f:
+        f.write(ray_session_dir)
 
     def try_clean_temp_dir_at_exit():
         _try_clean_temp_dir_at_exit(
