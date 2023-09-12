@@ -169,7 +169,11 @@ def cleanup_cluster(cluster_config):
     """
     print("======================================")
     print("Cleaning up cluster...")
-    subprocess.run(["ray", "down", "-v", "-y", str(cluster_config)], check=True)
+    subprocess.run(
+        ["ray", "down", "-v", "-y", str(cluster_config)],
+        check=True,
+        capture_output=True,
+    )
 
 
 def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_nodes=1):
@@ -192,7 +196,7 @@ def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_node
     if no_config_cache:
         cmd.append("--no-config-cache")
     cmd.append(str(cluster_config))
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, capture_output=True)
 
     print("======================================")
     print("Verifying Ray is running...")
