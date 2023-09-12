@@ -263,7 +263,6 @@ class DatasetStats:
         # This serves as an indicator of block prefetching effectiveness.
         self.iter_blocks_local: int = 0
         self.iter_blocks_remote: int = 0
-        self.iter_unknown_location: int = 0
 
     @property
     def stats_actor(self):
@@ -322,7 +321,6 @@ class DatasetStats:
             self.iter_total_s,
             self.iter_blocks_local,
             self.iter_blocks_remote,
-            self.iter_unknown_location,
         )
         stats_summary_parents = []
         if self.parents is not None:
@@ -745,8 +743,6 @@ class IterStatsSummary:
     iter_blocks_local: int
     # Num of blocks that are in remote node and have to fetch locally
     iter_blocks_remote: int
-    # Num of blocks with unknown locations
-    iter_unknown_location: int
 
     def __str__(self) -> str:
         if self.legacy_iter_batches:
@@ -778,9 +774,6 @@ class IterStatsSummary:
                 out += "* Total time overall: {}\n".format(fmt(self.total_time.get()))
             out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
             out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
-            out += "* Num blocks unknown location: {}\n".format(
-                self.iter_unknown_location
-            )
             out += (
                 "* Batch iteration time breakdown (summed across prefetch threads):\n"
             )
@@ -847,9 +840,6 @@ class IterStatsSummary:
             out += "* In ray.get(): {}\n".format(fmt(self.get_time.get()))
             out += "* Num blocks local: {}\n".format(self.iter_blocks_local)
             out += "* Num blocks remote: {}\n".format(self.iter_blocks_remote)
-            out += "* Num blocks unknown location: {}\n".format(
-                self.iter_unknown_location
-            )
             out += "* In next_batch(): {}\n".format(fmt(self.next_time.get()))
             out += "* In format_batch(): {}\n".format(fmt(self.format_time.get()))
             out += "* In user code: {}\n".format(fmt(self.user_time.get()))
@@ -864,7 +854,6 @@ class IterStatsSummary:
             f"{indent}   get_time={fmt(self.get_time.get()) or None},\n"
             f"{indent}   iter_blocks_local={self.iter_blocks_local or None},\n"
             f"{indent}   iter_blocks_remote={self.iter_blocks_remote or None},\n"
-            f"{indent}   iter_unknown_location={self.iter_unknown_location or None},\n"
             f"{indent}   next_time={fmt(self.next_time.get()) or None},\n"
             f"{indent}   format_time={fmt(self.format_time.get()) or None},\n"
             f"{indent}   user_time={fmt(self.user_time.get()) or None},\n"
