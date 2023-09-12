@@ -13,7 +13,7 @@ from ray.data._internal.block_batching.interfaces import (
     CollatedBatch,
 )
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
-from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.data.block import Block, BlockAccessor, BlockMetadata, DataBatch
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -23,22 +23,8 @@ U = TypeVar("U")
 logger = logging.getLogger(__name__)
 
 
-def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
-    """Given a list of object references, returns how many are already on the local
-    node, how many require fetching from another node, and how many have unknown
-    locations."""
-    current_node_id = ray.get_runtime_context().get_node_id()
-
-    locs = ray.experimental.get_object_locations(refs)
-    nodes: List[List[str]] = [loc["node_ids"] for loc in locs.values()]
-    hits = sum(current_node_id in node_ids for node_ids in nodes)
-    unknowns = sum(1 for node_ids in nodes if not node_ids)
-    misses = len(nodes) - hits - unknowns
-    return hits, misses, unknowns
-
-
 def resolve_block_refs(
-    block_ref_iter: Iterator[ObjectRef[Block]],
+    block_ref_iter: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
@@ -49,13 +35,13 @@ def resolve_block_refs(
     """
     hits = 0
     misses = 0
-    unknowns = 0
 
-    for block_ref in block_ref_iter:
-        current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
-        hits += current_hit
-        misses += current_miss
-        unknowns += current_unknown
+    for block_ref, block_meta in block_ref_iter:
+        current_node_id = ray.get_runtime_context().get_node_id()
+        if block_meta.location is not None and block_meta.location == current_node_id:
+            hits += 1
+        else:
+            misses += 1
 
         # TODO(amogkam): Optimized further by batching multiple references in a single
         # `ray.get()` call.
@@ -66,7 +52,6 @@ def resolve_block_refs(
     if stats:
         stats.iter_blocks_local = hits
         stats.iter_blocks_remote = misses
-        stats.iter_unknown_location = unknowns
 
 
 def blocks_to_batches(

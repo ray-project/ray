@@ -2,10 +2,10 @@ import math
 from collections import deque
 from typing import Dict, List, Optional
 
+from ray.data._internal.common import NodeIdStr
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
-    NodeIdStr,
     PhysicalOperator,
     RefBundle,
 )

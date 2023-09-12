@@ -19,6 +19,7 @@ import numpy as np
 
 import ray
 from ray import ObjectRefGenerator
+from ray.data._internal.common import NodeIdStr
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
@@ -206,6 +207,8 @@ class BlockMetadata:
     input_files: Optional[List[str]]
     #: Execution stats for this block.
     exec_stats: Optional[BlockExecStats]
+    #: Node where this block was created.
+    location: Optional[NodeIdStr]
 
     def __post_init__(self):
         if self.input_files is None:
@@ -326,7 +329,10 @@ class BlockAccessor:
         raise NotImplementedError
 
     def get_metadata(
-        self, input_files: List[str], exec_stats: Optional[BlockExecStats]
+        self,
+        input_files: List[str],
+        exec_stats: Optional[BlockExecStats],
+        location: Optional[NodeIdStr],
     ) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
@@ -335,6 +341,7 @@ class BlockAccessor:
             schema=self.schema(),
             input_files=input_files,
             exec_stats=exec_stats,
+            location=location,
         )
 
     def zip(self, other: "Block") -> "Block":

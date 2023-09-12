@@ -333,6 +333,7 @@ class _RangeDatasourceReader(Reader):
                 schema=copy(schema),
                 input_files=None,
                 exec_stats=None,
+                location=None,
             )
             read_tasks.append(
                 ReadTask(lambda i=i, count=count: [make_block(i, count)], meta)

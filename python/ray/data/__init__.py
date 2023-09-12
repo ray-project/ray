@@ -2,12 +2,9 @@
 # Dataset has a hard dependency on pandas, so it doesn't need to be delayed.
 import pandas  # noqa
 
+from ray.data._internal.common import NodeIdStr
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.interfaces import (
-    ExecutionOptions,
-    ExecutionResources,
-    NodeIdStr,
-)
+from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import Dataset, Schema

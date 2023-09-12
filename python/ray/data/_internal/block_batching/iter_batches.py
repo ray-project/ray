@@ -234,7 +234,7 @@ def prefetch_batches_locally(
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
     eager_free: bool = False,
-) -> Iterator[ObjectRef[Block]]:
+) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
     """Given an iterator of batched block references, returns an iterator over the same
     block references while prefetching `num_batches_to_prefetch` batches in advance.
 
@@ -252,7 +252,7 @@ def prefetch_batches_locally(
 
     if num_batches_to_prefetch <= 0:
         for block_ref, metadata in block_ref_iter:
-            yield block_ref
+            yield block_ref, metadata
         return
 
     if batch_size is not None:
@@ -287,7 +287,7 @@ def prefetch_batches_locally(
                 )
             except StopIteration:
                 pass
-        yield block_ref
+        yield block_ref, metadata
         trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
     prefetcher.stop()
 

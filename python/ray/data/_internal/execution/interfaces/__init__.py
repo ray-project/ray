@@ -1,4 +1,3 @@
-from .common import NodeIdStr
 from .execution_options import ExecutionOptions, ExecutionResources
 from .executor import Executor, OutputIterator
 from .physical_operator import PhysicalOperator
@@ -11,7 +10,6 @@ __all__ = [
     "ExecutionOptions",
     "ExecutionResources",
     "Executor",
-    "NodeIdStr",
     "OutputIterator",
     "PhysicalOperator",
     "RefBundle",
