@@ -583,8 +583,9 @@ class BaseTrainer(abc.ABC):
 
         ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
 
-        You can use the :ref:`Tune Function API functions <tune-function-docstring>`
-        (``train.report()`` and ``train.get_checkpoint()``) inside
+        You can use the Tune Function API functions
+        (:func:`train.report() <ray.train.report>` and
+        :func:`train.get_checkpoint() <ray.train.get_checkpoint>`) inside
         this training loop.
 
         Example:
