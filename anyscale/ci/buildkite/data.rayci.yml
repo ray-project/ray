@@ -2,7 +2,6 @@ group: runtime data tests
 steps:
   - label: ":database: data: runtime arrow 6 tests"
     instance_type: medium
-    parallelism: 3
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data
         --parallelism-per-worker 3
@@ -13,7 +12,6 @@ steps:
 
   - label: ":database: data: runtime arrow 12 tests"
     instance_type: medium
-    parallelism: 3
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data 
         --parallelism-per-worker 3
@@ -24,7 +22,6 @@ steps:
 
   - label: ":database: data: runtime arrow nightly tests"
     instance_type: medium
-    parallelism: 3
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data
         --parallelism-per-worker 3
@@ -35,7 +32,6 @@ steps:
 
   - label: ":database: data: runtime bulk executor tests"
     instance_type: medium
-    parallelism: 3
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data
         --parallelism-per-worker 3
