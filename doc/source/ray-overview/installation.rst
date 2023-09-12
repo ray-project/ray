@@ -60,8 +60,6 @@ and macOS by choosing the option that best matches your use case.
             - Core, Dashboard, Cluster Launcher, Serve with gRPC support
           * - `pip install -U "ray[rllib]"`
             - Core, Tune, RLlib
-          * - `pip install -U "ray[air]"`
-            - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve
           * - `pip install -U "ray[all]"`
             - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve, RLlib
 
