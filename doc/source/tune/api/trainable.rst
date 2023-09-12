@@ -166,7 +166,7 @@ then you should use :func:`tune.with_resources <ray.tune.with_resources>` like t
             {"GPU": 1},
             {"GPU": 1}
         ])),
-        run_config=air.RunConfig(name="my_trainable")
+        run_config=RunConfig(name="my_trainable")
     )
 
 The ``Trainable`` also provides the ``default_resource_requests`` interface to automatically
