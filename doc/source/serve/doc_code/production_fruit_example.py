@@ -1,11 +1,9 @@
 # __fruit_example_begin__
 # File name: fruit.py
 
-import ray
 from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.serve.deployment_graph import InputNode
-from ray.serve.handle import RayServeHandle
 from ray.serve.http_adapters import json_request
 
 # These imports are used only for type hints:
@@ -14,16 +12,11 @@ from typing import Dict
 
 @serve.deployment(num_replicas=2)
 class FruitMarket:
-    def __init__(
-        self,
-        mango_stand: RayServeHandle,
-        orange_stand: RayServeHandle,
-        pear_stand: RayServeHandle,
-    ):
+    def __init__(self, mango_stand, orange_stand, pear_stand):
         self.directory = {
-            "MANGO": mango_stand,
-            "ORANGE": orange_stand,
-            "PEAR": pear_stand,
+            "MANGO": mango_stand.options(use_new_handle_api=True),
+            "ORANGE": orange_stand.options(use_new_handle_api=True),
+            "PEAR": pear_stand.options(use_new_handle_api=True),
         }
 
     async def check_price(self, fruit: str, amount: float) -> float:
@@ -31,9 +24,7 @@ class FruitMarket:
             return -1
         else:
             fruit_stand = self.directory[fruit]
-            ref: ray.ObjectRef = await fruit_stand.check_price.remote(amount)
-            result = await ref
-            return result
+            return await fruit_stand.check_price.remote(amount)
 
 
 @serve.deployment(user_config={"price": 3})

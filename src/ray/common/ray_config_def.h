@@ -294,6 +294,10 @@ RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 /// starting_worker_timeout_callback() is called.
 RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 
+/// The maximum workers raylet can start at the same time.
+/// 0 means it will use the default (number of CPUs).
+RAY_CONFIG(int64_t, worker_maximum_startup_concurrency, 0)
+
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128)
 
@@ -447,8 +451,10 @@ RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
 /// gRPC channel reconnection related configs to GCS.
 /// Check https://grpc.github.io/grpc/core/group__grpc__arg__keys.html for details
+/// Note: `gcs_grpc_min_reconnect_backoff_ms` is (mis)used by gRPC as the connection
+/// timeout. If your cluster has a high latency, make it to > 4x the latency.
 RAY_CONFIG(int32_t, gcs_grpc_max_reconnect_backoff_ms, 2000)
-RAY_CONFIG(int32_t, gcs_grpc_min_reconnect_backoff_ms, 100)
+RAY_CONFIG(int32_t, gcs_grpc_min_reconnect_backoff_ms, 1000)
 RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 100)
 
 /// Maximum bytes of request queued when RPC failed due to GCS is down.

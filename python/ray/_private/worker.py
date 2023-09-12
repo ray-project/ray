@@ -59,6 +59,7 @@ import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._raylet import StreamingObjectRefGenerator
+from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -493,6 +494,12 @@ class Worker:
         if hasattr(self, "core_worker"):
             return self.core_worker.get_actor_id()
         return ActorID.nil()
+
+    @property
+    def actor_name(self):
+        if hasattr(self, "core_worker"):
+            return self.core_worker.get_actor_name().decode("utf-8")
+        return None
 
     @property
     def current_task_id(self):
@@ -1411,29 +1418,35 @@ def init(
         job_config = ray.job_config.JobConfig()
 
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
-        if runtime_env:
-            logger.warning(
-                "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
-                "are provided, only using JSON_ENV_VAR to construct "
-                "job_config. Please ensure no runtime_env is used in driver "
-                "script's ray.init() when using job submission API."
-            )
         injected_job_config_json = json.loads(
             os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR)
         )
         injected_job_config: ray.job_config.JobConfig = (
             ray.job_config.JobConfig.from_json(injected_job_config_json)
         )
-        # NOTE: We always prefer runtime_env injected via RAY_JOB_CONFIG_JSON_ENV_VAR,
-        #       as compared to via ray.init(runtime_env=...) to make sure runtime_env
-        #       specified via job submission API takes precedence
-        runtime_env = injected_job_config.runtime_env
+        driver_runtime_env = runtime_env
+        runtime_env = _merge_runtime_env(
+            injected_job_config.runtime_env,
+            driver_runtime_env,
+            override=os.getenv("RAY_OVERRIDE_JOB_RUNTIME_ENV") == "1",
+        )
+        if runtime_env is None:
+            # None means there was a conflict.
+            raise ValueError(
+                "Failed to merge the Job's runtime env "
+                f"{injected_job_config.runtime_env} with "
+                f"a ray.init's runtime env {driver_runtime_env} because "
+                "of a conflict. Specifying the same runtime_env fields "
+                "or the same environment variable keys is not allowed. "
+                "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 to instruct Ray to "
+                "combine Job and Driver's runtime environment in the event of "
+                "a conflict."
+            )
 
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
             )
-
         job_config.set_runtime_env(runtime_env)
         # Similarly, we prefer metadata provided via job submission API
         for key, value in injected_job_config.metadata.items():

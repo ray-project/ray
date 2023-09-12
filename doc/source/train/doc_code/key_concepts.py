@@ -1,121 +1,31 @@
 # flake8: noqa
 # isort: skip_file
 
-# __session_report_start__
-from ray import train
-from ray.train.data_parallel_trainer import DataParallelTrainer
-
-
-def train_fn(config):
-    for i in range(10):
-        train.report({"step": i})
-
-
-trainer = DataParallelTrainer(
-    train_loop_per_worker=train_fn, scaling_config=train.ScalingConfig(num_workers=1)
-)
-trainer.fit()
-
-# __session_report_end__
-
-
-# __session_data_info_start__
-import ray.data
-
-from ray.train import ScalingConfig
-from ray.train.data_parallel_trainer import DataParallelTrainer
-
-
-def train_fn(config):
-    context = ray.train.get_context()
-    dataset_shard = train.get_dataset_shard("train")
-
-    ray.train.report(
-        {
-            # Global world size
-            "world_size": context.get_world_size(),
-            # Global worker rank on the cluster
-            "world_rank": context.get_world_rank(),
-            # Local worker rank on the current machine
-            "local_rank": context.get_local_rank(),
-            # Data
-            "data_shard": next(iter(dataset_shard.iter_batches(batch_format="pandas"))),
-        }
-    )
-
-
-trainer = DataParallelTrainer(
-    train_loop_per_worker=train_fn,
-    scaling_config=ScalingConfig(num_workers=2),
-    datasets={"train": ray.data.from_items([1, 2, 3, 4])},
-)
-trainer.fit()
-# __session_data_info_end__
-
-
-# __session_checkpoint_start__
-import json
-import os
+from pathlib import Path
 import tempfile
 
 from ray import train
-from ray.train import ScalingConfig, Checkpoint
+from ray.train import Checkpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
 def train_fn(config):
-    checkpoint = train.get_checkpoint()
-
-    if checkpoint:
-        with checkpoint.as_directory() as checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, "checkpoint.json"), "r") as f:
-                state = json.load(f)
-            state["step"] += 1
-    else:
-        state = {"step": 0}
-
-    for i in range(state["step"], 10):
-        state["step"] += 1
-        with tempfile.TemporaryDirectory() as tempdir:
-            with open(os.path.join(tempdir, "checkpoint.json"), "w") as f:
-                json.dump(state, f)
-
+    for i in range(3):
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            Path(temp_checkpoint_dir).joinpath("model.pt").touch()
             train.report(
-                metrics={"step": state["step"], "loss": (100 - i) / 100},
-                checkpoint=Checkpoint.from_directory(tempdir),
+                {"loss": i}, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir)
             )
 
 
-example_checkpoint_dir = tempfile.mkdtemp()
-with open(os.path.join(example_checkpoint_dir, "checkpoint.json"), "w") as f:
-    json.dump({"step": 4}, f)
-
 trainer = DataParallelTrainer(
-    train_loop_per_worker=train_fn,
-    scaling_config=ScalingConfig(num_workers=1),
-    resume_from_checkpoint=Checkpoint.from_directory(example_checkpoint_dir),
+    train_fn, scaling_config=train.ScalingConfig(num_workers=2)
 )
-trainer.fit()
 
-# __session_checkpoint_end__
-
-
-# __scaling_config_start__
-from ray.train import ScalingConfig
-
-scaling_config = ScalingConfig(
-    # Number of distributed workers.
-    num_workers=2,
-    # Turn on/off GPU.
-    use_gpu=True,
-    # Specify resources used for trainer.
-    trainer_resources={"CPU": 1},
-    # Try to schedule workers on different nodes.
-    placement_strategy="SPREAD",
-)
-# __scaling_config_end__
 
 # __run_config_start__
+import os
+
 from ray.train import RunConfig
 from ray.air.integrations.wandb import WandbLoggerCallback
 
@@ -135,20 +45,24 @@ run_config = RunConfig(
 # __failure_config_start__
 from ray.train import RunConfig, FailureConfig
 
-run_config = RunConfig(
-    failure_config=FailureConfig(
-        # Tries to recover a run up to this many times.
-        max_failures=2
-    )
-)
+
+# Tries to recover a run up to this many times.
+run_config = RunConfig(failure_config=FailureConfig(max_failures=2))
+
+# No limit on the number of retries.
+run_config = RunConfig(failure_config=FailureConfig(max_failures=-1))
 # __failure_config_end__
 
 # __checkpoint_config_start__
 from ray.train import RunConfig, CheckpointConfig
 
+# Example 1: Only keep the 2 *most recent* checkpoints and delete the others.
+run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=2))
+
+
+# Example 2: Only keep the 2 *best* checkpoints and delete the others.
 run_config = RunConfig(
     checkpoint_config=CheckpointConfig(
-        # Only keep the 2 *best* checkpoints and delete the others.
         num_to_keep=2,
         # *Best* checkpoints are determined by these params:
         checkpoint_score_attribute="mean_accuracy",
@@ -216,7 +130,6 @@ print("Results location", result_path)
 # __result_path_end__
 
 
-# TODO(justinvyu): Re-enable this after updating all of doc_code.
 # __result_restore_start__
 from ray.train import Result
 

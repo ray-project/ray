@@ -11,7 +11,7 @@ import ray
 
 import ray.util.spark.cluster_init
 from ray.util.spark import setup_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES
-from ray.util.spark.utils import check_port_open
+from ray.util.spark.utils import is_port_in_use
 from pyspark.sql import SparkSession
 import time
 import logging
@@ -157,7 +157,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
         time.sleep(2)  # wait ray head node exit.
         # assert ray head node exit by checking head port being closed.
         hostname, port = cluster.address.split(":")
-        assert not check_port_open(hostname, int(port))
+        assert not is_port_in_use(hostname, int(port))
 
     def test_background_spark_job_exit_trigger_ray_head_exit(self):
         with _setup_ray_cluster(num_worker_nodes=self.max_spark_tasks) as cluster:
@@ -169,7 +169,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
             # assert ray head node exit by checking head port being closed.
             hostname, port = cluster.address.split(":")
-            assert not check_port_open(hostname, int(port))
+            assert not is_port_in_use(hostname, int(port))
 
 
 class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):

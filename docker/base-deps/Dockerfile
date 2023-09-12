@@ -78,15 +78,6 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
         $(if [[ "$BASE_IMAGE" == "ubuntu:focal" && "$HOSTTYPE" == "x86_64" ]]; then echo \
         g++; fi) \
-    # Either install kubectl or remove wget 
-    && (if [ "$AUTOSCALER" = "autoscaler" ]; \
-        then wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add - \
-        && sudo touch /etc/apt/sources.list.d/kubernetes.list \
-        && echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list \
-        && sudo apt-get update \
-        && sudo apt-get install kubectl; \
-    else sudo apt-get autoremove -y wget; \
-    fi;) \
     && sudo rm -rf /var/lib/apt/lists/* \
     && sudo apt-get clean
 
