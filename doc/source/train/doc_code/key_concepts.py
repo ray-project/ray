@@ -1,56 +1,26 @@
 # flake8: noqa
 # isort: skip_file
 
-# __session_report_start__
+from pathlib import Path
+import tempfile
+
 from ray import train
+from ray.train import Checkpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
 def train_fn(config):
-    for i in range(10):
-        train.report({"step": i})
+    for i in range(3):
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            Path(temp_checkpoint_dir).joinpath("model.pt").touch()
+            train.report(
+                {"loss": i}, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir)
+            )
 
 
 trainer = DataParallelTrainer(
-    train_loop_per_worker=train_fn, scaling_config=train.ScalingConfig(num_workers=1)
+    train_fn, scaling_config=train.ScalingConfig(num_workers=2)
 )
-trainer.fit()
-
-# __session_report_end__
-
-
-# __session_data_info_start__
-import ray.data
-
-from ray.train import ScalingConfig
-from ray.train.data_parallel_trainer import DataParallelTrainer
-
-
-def train_fn(config):
-    context = ray.train.get_context()
-    dataset_shard = train.get_dataset_shard("train")
-
-    ray.train.report(
-        {
-            # Global world size
-            "world_size": context.get_world_size(),
-            # Global worker rank on the cluster
-            "world_rank": context.get_world_rank(),
-            # Local worker rank on the current machine
-            "local_rank": context.get_local_rank(),
-            # Data
-            "data_shard": next(iter(dataset_shard.iter_batches(batch_format="pandas"))),
-        }
-    )
-
-
-trainer = DataParallelTrainer(
-    train_loop_per_worker=train_fn,
-    scaling_config=ScalingConfig(num_workers=2),
-    datasets={"train": ray.data.from_items([1, 2, 3, 4])},
-)
-trainer.fit()
-# __session_data_info_end__
 
 
 # __run_config_start__

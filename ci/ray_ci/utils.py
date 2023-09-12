@@ -54,7 +54,20 @@ def docker_login(docker_ecr: str) -> None:
             stdin=f,
             stdout=sys.stdout,
             stderr=sys.stderr,
+            check=True,
         )
+
+
+def docker_pull(image: str) -> None:
+    """
+    Pull docker image
+    """
+    subprocess.run(
+        ["docker", "pull", image],
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        check=True,
+    )
 
 
 logger = logging.getLogger()
