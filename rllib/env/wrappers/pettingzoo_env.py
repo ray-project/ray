@@ -4,7 +4,6 @@ import gymnasium as gym
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.typing import MultiAgentDict
 
 
@@ -18,17 +17,17 @@ class PettingZooEnv(MultiAgentEnv):
     (actor-environment-cycle) game from the PettingZoo project via the
     MultiAgentEnv public API.
 
-    Note that the wrapper has some important limitations:
+    Note that the wrapper has the following important limitation:
 
-    1. All agents have the same action_spaces and observation_spaces.
-       Note: If, within your aec game, agents do not have homogeneous action /
-       observation spaces, apply SuperSuit wrappers
-       to apply padding functionality: https://github.com/Farama-Foundation/
-       SuperSuit#built-in-multi-agent-only-functions
-    2. Environments are positive sum games (-> Agents are expected to cooperate
+    Environments are positive sum games (-> Agents are expected to cooperate
        to maximize reward). This isn't a hard restriction, it just that
        standard algorithms aren't expected to work well in highly competitive
        games.
+
+    Also note that the earlier existing restriction of all agents having the same
+    observation- and action spaces has been lifted. Different agents can now have
+    different spaces and the entire environment's e.g. `self.action_space` is a Dict
+    mapping agent IDs to individual agents' spaces. Same for `self.observation_space`.
 
     Examples:
         >>> from pettingzoo.butterfly import prison_v3
