@@ -5,7 +5,11 @@
 Fine-tune of Stable Diffusion with DreamBooth and Ray Train
 ===========================================================
 
-This example shows how to do DreamBooth fine-tuning of a Stable Diffusion model using Ray Train.
+This is an intermediate example that shows how to do DreamBooth fine-tuning of a Stable Diffusion model using Ray Train.
+It demonstrates how to use :ref:`Ray Dataset <data>` with PyTorch Lightning in Ray Train.
+If you just want to quickly convert your existing Transformer scripts into Ray Train, you can refer to the :ref:`Getting Started with Transformers <train-pytorch-transformers>`.
+
+
 See the original `DreamBooth project homepage <https://dreambooth.github.io/>`_ for more details on what this fine-tuning method achieves.
 
 .. image:: https://dreambooth.github.io/DreamBooth_files/high_level.png
@@ -118,8 +122,8 @@ You can then run this training function with Ray Train's TorchTrainer:
   :end-at: trainer.fit()
   :dedent: 4
 
-Configuring the scale
-^^^^^^^^^^^^^^^^^^^^^
+Configure the scale
+^^^^^^^^^^^^^^^^^^^
 
 In the TorchTrainer, you can easily configure the scale.
 The preceding example uses the ``num_workers`` argument to specify the number
@@ -291,6 +295,6 @@ For example, for the dog subject, you can try:
 See also
 --------
 
-For more Train examples, see :ref:`Ray Train Examples <train-examples>`.
+* :ref:`Ray Train Examples <train-examples>` for more use cases
 
-For how-to guides, see :ref:`Ray Train User Guides <train-user-guides>`.
+* :ref:`Ray Train User Guides <train-user-guides>` for how-to guides

@@ -1,22 +1,22 @@
 .. _train-pytorch:
 
-Getting Started with PyTorch
-============================
+Get Started with PyTorch
+========================
 
 This tutorial walks through the process of converting an existing PyTorch script to use Ray Train.
 
 Learn how to:
 
 1. Configure a model to run distributed and on the correct CPU/GPU device.
-2. Configure a dataloader to shard data across the workers and place data on the correct CPU/GPU device.
+2. Configure a dataloader to shard data across the workers and place data on the correct CPU or GPU device.
 3. Configure a training function to report metrics and save checkpoints.
-4. Configure scale and CPU/GPU resource requirements for a training job.
+4. Configure scale and CPU or GPU resource requirements for a training job.
 5. Launch a distributed training job with a :class:`~ray.train.torch.TorchTrainer` class.
 
 Quickstart
 ----------
 
-For reference, the final code follows:
+For reference, the final code is as follows:
 
 .. code-block:: python
 
@@ -131,11 +131,11 @@ Compare a PyTorch training script with and without Ray Train.
             trainer = TorchTrainer(train_func, scaling_config=scaling_config)
             result = trainer.fit()
 
-Setting up your training function
----------------------------------
+Set up a training function
+--------------------------
 
 First, update your training code to support distributed training. 
-You can begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
+Begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
 
 .. code-block:: python
 
@@ -144,12 +144,12 @@ You can begin by wrapping your code in a :ref:`training function <train-overview
 
 Each distributed training worker executes this function.
 
-Setting up your model
-^^^^^^^^^^^^^^^^^^^^^
+Set up a model
+^^^^^^^^^^^^^^
 
 Use the :func:`ray.train.torch.prepare_model` utility function to:
 
-1. Move your model to the right device.
+1. Move your model to the correct device.
 2. Wrap it in ``DistributedDataParallel``.
 
 .. code-block:: diff
@@ -172,8 +172,8 @@ Use the :func:`ray.train.torch.prepare_model` utility function to:
          
          ...
 
-Setting up your dataset
-^^^^^^^^^^^^^^^^^^^^^^^
+Set up a dataset
+^^^^^^^^^^^^^^^^
 
 .. TODO: Update this to use Ray Data.
 
@@ -216,8 +216,8 @@ See :ref:`data-ingest-torch`.
         global_batch_size = worker_batch_size * ray.train.get_context().get_world_size()
 
 
-Reporting checkpoints and metrics
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Report checkpoints and metrics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To monitor progress, you can report intermediate metrics and checkpoints using the :func:`ray.train.report` utility function.
 
@@ -239,8 +239,8 @@ To monitor progress, you can report intermediate metrics and checkpoints using t
 For more details, see :ref:`train-monitoring-and-logging` and :ref:`train-checkpointing`.
 
 
-Configuring scale and GPUs
----------------------------
+Configure scale and GPUs
+------------------------
 
 Outside of your training function, create a :class:`~ray.train.ScalingConfig` object to configure:
 
@@ -255,8 +255,8 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
 
 For more details, see :ref:`train_scaling_config`.
 
-Launching your training job
----------------------------
+Launch a training job
+---------------------
 
 Tying this all together, you can now launch a distributed training job 
 with a :class:`~ray.train.torch.TorchTrainer`.
@@ -268,8 +268,8 @@ with a :class:`~ray.train.torch.TorchTrainer`.
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
-Accessing training results
---------------------------
+Access training results
+-----------------------
 
 After training completes, a :class:`~ray.train.Result` object is returned which contains
 information about the training run, including the metrics and checkpoints reported during training.

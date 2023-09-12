@@ -2,8 +2,8 @@
 
 .. _accelerate_example:
 
-Distributed Training Example with Hugging Face Accelerate
-=========================================================
+Distributed Training with Hugging Face Accelerate
+=================================================
 
 This example does distributed data parallel training
 with Hugging Face (HF) Accelerate, Ray Train, and Ray Data.
@@ -19,7 +19,6 @@ Code example
 See also
 --------
 
-For a tutorial on using Ray Train and HF Accelerate, 
-see :ref:`Training with Hugging Face Accelerate <train-hf-accelerate>`.
+* :ref:`Get Started with Hugging Face Accelerate <train-hf-accelerate>` for a tutorial on using Ray Train and HF Accelerate
 
-For more Train examples, see :ref:`Ray Train Examples <train-examples>`.
+* :ref:`Ray Train Examples <train-examples>` for more use cases

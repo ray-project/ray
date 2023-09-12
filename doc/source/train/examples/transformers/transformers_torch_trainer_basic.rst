@@ -16,7 +16,6 @@ Code example
 See also
 --------
 
-For a tutorial on using Ray Train and Transformers, 
-see :ref:`Getting Started with Hugging Face Transformers <train-pytorch-transformers>`.
+* :ref:`Get Started with Hugging Face Transformers <train-pytorch-transformers>` for a tutorial
 
-For more Train examples, see :ref:`Ray Train Examples <train-examples>`.
+* :ref:`Ray Train Examples <train-examples>` for more use cases

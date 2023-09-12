@@ -22,15 +22,15 @@ Beginner
   * - Lightning
     - :ref:`Train an MNIST Image Classifier with Lightning <lightning_mnist_example>`
   * - Transformers
-    - :ref:`Fine-tune a Text Classifier on the Yelp Reviews Dataset with HF Transformers <transformers_torch_trainer_basic_example>`
+    - :ref:`Fine-tune a Text Classifier on the Yelp Reviews Dataset with Hugging Face Transformers <transformers_torch_trainer_basic_example>`
   * - Accelerate
-    - :ref:`Distributed Data Parallel Training with HF Accelerate <accelerate_example>`
+    - :ref:`Distributed Data Parallel Training with Hugging Face Accelerate <accelerate_example>`
   * - DeepSpeed
     - :ref:`Train with DeepSpeed ZeRO-3 <deepspeed_example>`
   * - TensorFlow
     - :ref:`Train with TensorFlow MNIST <tensorflow_mnist_example>`
   * - Horovod
-    - :ref:`End-to-end Horovod Training Example <horovod_example>`
+    - :ref:`Train with Horovod and PyTorch <horovod_example>`
 
 Intermediate
 ------------
@@ -44,9 +44,9 @@ Intermediate
   * - PyTorch
     - :ref:`Fine-tune of Stable Diffusion with DreamBooth and Ray Train <torch_finetune_dreambooth_ex>`
   * - Lightning
-    - :ref:`Model Training with PyTorch Lightning and Ray Data <lightning_advanced_example>`
+    - :ref:`Train with PyTorch Lightning and Ray Data <lightning_advanced_example>`
   * - Accelerate
-    - :ref:`Fine-tune a text classifier on GLUE Benchmark with HF Accelerate <train_transformers_accelerate_example>`
+    - :ref:`Fine-tune a text classifier on GLUE Benchmark with Hugging Face Accelerate <train_transformers_accelerate_example>`
 
 
 Advanced
