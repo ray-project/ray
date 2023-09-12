@@ -1,7 +1,7 @@
 import abc
 from typing import Any, List, Mapping, Type, Union
 
-from ray.rllib.core.models.base import ENCODER_OUT, STATE_IN, STATE_OUT
+from ray.rllib.core.models.base import ENCODER_OUT, STATE_OUT
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.models.distributions import Distribution
@@ -54,7 +54,7 @@ class BCRLModule(RLModule, abc.ABC):
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
         return self.output_specs_exploration()
-    
+
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """BC forward pass during inference.
@@ -63,7 +63,7 @@ class BCRLModule(RLModule, abc.ABC):
         implementation details.
         """
         return self._forward_exploration(batch)
-    
+
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
         """BC forward pass during exploration.
