@@ -161,7 +161,8 @@ class _ModelMultiplexWrapper:
                 )
 
     async def load_model(self, model_id: str) -> Any:
-        """Load the model if it is not loaded yet, and return the user-constructed model object.
+        """Load the model if it is not loaded yet, and return
+            the user-constructed model object.
 
         Args:
             model_id: the model ID.

@@ -340,7 +340,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
     def _get_replicas_to_stop(
         self, deployment_id: DeploymentID, max_num_to_stop: int
     ) -> Set[str]:
-        """Prioritize replicas running on a node with fewest replicas of all deployments.
+        """Prioritize replicas running on a node with fewest replicas of
+            all deployments.
 
         This algorithm helps to scale down more intelligently because it can
         relinquish nodes faster. Note that this algorithm doesn't consider
