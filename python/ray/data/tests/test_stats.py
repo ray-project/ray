@@ -86,10 +86,6 @@ Dataset iterator time breakdown:
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
     )
 
@@ -117,10 +113,6 @@ Stage N MapBatches(dummy_map_batches): N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {LARGE_ARGS_EXTRA_METRICS}
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
     )
 
@@ -164,10 +156,6 @@ def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {STANDARD_EXTRA_METRICS}
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
                 )
             else:
@@ -180,10 +168,6 @@ Global memory:
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
                 )
 
@@ -202,10 +186,6 @@ Global memory:
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {STANDARD_EXTRA_METRICS}
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
                 )
             else:
@@ -218,10 +198,6 @@ Global memory:
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
                 )
     for batch in ds.iter_batches():
@@ -261,10 +237,6 @@ Dataset iterator time breakdown:
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
             )
         else:
@@ -298,10 +270,6 @@ Dataset iterator time breakdown:
 * In format_batch(): T
 * In user code: T
 * Total time: T
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
             )
     else:
@@ -337,10 +305,6 @@ Dataset iterator time breakdown:
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
             )
         else:
@@ -369,10 +333,6 @@ Dataset iterator time breakdown:
 * In format_batch(): T
 * In user code: T
 * Total time: T
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
             )
 
@@ -614,10 +574,6 @@ Stage N Repartition: executed in T
     * Output num rows: N min, N max, N mean, N total
     * Output size bytes: N min, N max, N mean, N total
     * Tasks per node: N min, N max, N mean; N nodes used
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
     )
 
@@ -675,10 +631,6 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {STANDARD_EXTRA_METRICS}
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
         )
     else:
@@ -691,10 +643,6 @@ Global memory:
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
         )
 
@@ -735,10 +683,6 @@ Stage N Map(<lambda>): N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {STANDARD_EXTRA_METRICS}
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
             )
         else:
@@ -767,10 +711,6 @@ Stage N Map(<lambda>): N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
             )
 
@@ -815,10 +755,6 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {STANDARD_EXTRA_METRICS}
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
                 )
             else:
@@ -831,10 +767,6 @@ Global memory:
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
                 )
 
@@ -854,10 +786,6 @@ Global memory:
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {STANDARD_EXTRA_METRICS}
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
                 )
             else:
@@ -870,10 +798,6 @@ Global memory:
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
                 )
 
@@ -896,10 +820,6 @@ Global memory:
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {STANDARD_EXTRA_METRICS}
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
                 )
             else:
@@ -912,10 +832,6 @@ Global memory:
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
                 )
 
@@ -942,10 +858,6 @@ Stage N Map: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {STANDARD_EXTRA_METRICS}
 
-Global memory:
-* Spilled: M
-* Restored: M
-
 == Pipeline Window N ==
 Stage N ReadRange->MapBatches(dummy_map_batches): [execution cached]
 * Extra metrics: {STANDARD_EXTRA_METRICS}
@@ -959,10 +871,6 @@ Stage N Map: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {STANDARD_EXTRA_METRICS}
 
-Global memory:
-* Spilled: M
-* Restored: M
-
 == Pipeline Window N ==
 Stage N ReadRange->MapBatches(dummy_map_batches): [execution cached]
 * Extra metrics: {STANDARD_EXTRA_METRICS}
@@ -975,10 +883,6 @@ Stage N Map: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {STANDARD_EXTRA_METRICS}
-
-Global memory:
-* Spilled: M
-* Restored: M
 
 ##### Overall Pipeline Time Breakdown #####
 * Time stalled waiting for next dataset: T min, T max, T mean, T total
@@ -1013,10 +917,6 @@ Stage N Map: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
-Global memory:
-* Spilled: M
-* Restored: M
-
 == Pipeline Window N ==
 Stage N Read->MapBatches(dummy_map_batches): [execution cached]
 
@@ -1028,10 +928,6 @@ Stage N Map: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
-Global memory:
-* Spilled: M
-* Restored: M
-
 == Pipeline Window N ==
 Stage N Read->MapBatches(dummy_map_batches): [execution cached]
 
@@ -1042,10 +938,6 @@ Stage N Map: N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-
-Global memory:
-* Spilled: M
-* Restored: M
 
 ##### Overall Pipeline Time Breakdown #####
 * Time stalled waiting for next dataset: T min, T max, T mean, T total
@@ -1112,10 +1004,6 @@ Stage N ReadRange: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {STANDARD_EXTRA_METRICS}
 
-Global memory:
-* Spilled: M
-* Restored: M
-
 == Pipeline Window N ==
 Stage N ReadRange: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
@@ -1125,10 +1013,6 @@ Stage N ReadRange: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 * Extra metrics: {STANDARD_EXTRA_METRICS}
-
-Global memory:
-* Spilled: M
-* Restored: M
 
 ##### Overall Pipeline Time Breakdown #####
 * Time stalled waiting for next dataset: T min, T max, T mean, T total
@@ -1155,10 +1039,6 @@ Stage N Read: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
-Global memory:
-* Spilled: M
-* Restored: M
-
 == Pipeline Window N ==
 Stage N Read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
@@ -1167,10 +1047,6 @@ Stage N Read: N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-
-Global memory:
-* Spilled: M
-* Restored: M
 
 ##### Overall Pipeline Time Breakdown #####
 * Time stalled waiting for next dataset: T min, T max, T mean, T total
@@ -1367,10 +1243,6 @@ Dataset iterator time breakdown:
     * In ray.get(): T min, T max, T avg, T total
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
-
-Global memory:
-* Spilled: M
-* Restored: M
 """
     )
 

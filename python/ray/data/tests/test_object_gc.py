@@ -245,6 +245,8 @@ def test_global_bytes_spilled(shutdown_only):
     assert ds._get_stats_summary().global_bytes_spilled > 0
     assert ds._get_stats_summary().global_bytes_restored > 0
 
+    assert "Spilled to disk:" in ds.stats()
+
 
 def test_no_global_bytes_spilled(shutdown_only):
     # The object store is about 200MB.
@@ -255,6 +257,8 @@ def test_no_global_bytes_spilled(shutdown_only):
     check_no_spill(ctx, ds.repeat())
     assert ds._get_stats_summary().global_bytes_spilled == 0
     assert ds._get_stats_summary().global_bytes_restored == 0
+
+    assert "Cluster memory:" not in ds.stats()
 
 
 if __name__ == "__main__":

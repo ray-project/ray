@@ -418,10 +418,13 @@ class DatasetStatsSummary:
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         out += str(self.iter_stats)
-        if len(self.stages_stats) > 0 and add_global_stats:
-            out += "\nGlobal memory:\n"
-            out += "* Spilled: {}MB\n".format(round(self.global_bytes_spilled / 1e6))
-            out += "* Restored: {}MB\n".format(round(self.global_bytes_restored / 1e6))
+        
+        mb_spilled = round(self.global_bytes_spilled / 1e6)
+        mb_restored = round(self.global_bytes_restored / 1e6)
+        if len(self.stages_stats) > 0 and add_global_stats and (mb_spilled or mb_restored):
+            out += "\nCluster memory:\n"
+            out += "* Spilled to disk: {}MB\n".format(mb_spilled)
+            out += "* Restored from disk: {}MB\n".format(mb_restored)
 
         return out
 
