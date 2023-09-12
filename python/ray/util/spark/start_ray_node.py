@@ -58,7 +58,7 @@ if __name__ == "__main__":
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
     process = subprocess.Popen([ray_cli_cmd, "start", *arg_list], text=True)
-    ray_session_dir = os.path.realpath(os.path.join(temp_dir, "session_latest"))
+    ray_session_dir = os.readlink(os.path.join(temp_dir, "session_latest"))
     with open(os.path.join(temp_dir, GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE), "w") as f:
         f.write(ray_session_dir)
 
