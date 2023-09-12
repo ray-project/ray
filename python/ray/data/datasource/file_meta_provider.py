@@ -297,6 +297,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
                 schema=schema,
                 input_files=paths,
                 exec_stats=None,
+                location=None,
             )  # Exec stats filled in later.
         else:
             # Fragment metadata was not available, construct an empty
@@ -307,6 +308,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
                 schema=schema,
                 input_files=paths,
                 exec_stats=None,
+                location=None,
             )
         return block_metadata
 
