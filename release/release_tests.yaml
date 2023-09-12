@@ -1057,7 +1057,7 @@
         - tiktoken==0.1.2
         - sentencepiece==0.1.99
         - urllib3<1.27
-        - transformers @ git+https://github.com/huggingface/transformers@d0c1aebea467af499331234e7b285a6bf91ea073
+        - git+https://github.com/huggingface/transformers.git@d0c1aeb
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
 
   run:
@@ -3382,6 +3382,37 @@
         cluster_compute: compute_tpl_gce.yaml
 
   alert: default
+
+
+- name: train_multinode_persistence
+  group: Train tests
+  working_dir: train_tests/e2e
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      post_build_script: byod_train_persistence_test.sh
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 3000
+    script: pytest -v test_persistence.py -s
+
+    wait_for_nodes:
+      num_nodes: 4
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce.yaml
+
+  alert: default
+
 
 ########################
 # Alpa tests

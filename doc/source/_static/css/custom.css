@@ -118,6 +118,10 @@ div.navbar-brand-box {
     overflow-y: scroll !important;
 }
 
+.bd-sidebar__content {
+  overflow-y: unset !important;
+}
+
 .bd-sidebar__top {
     display: flex;
     flex-direction: column;

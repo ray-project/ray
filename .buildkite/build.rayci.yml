@@ -24,3 +24,13 @@ steps:
       - ./ci/build/copy_build_artifacts.sh jar
     depends_on: manylinux
     job_env: manylinux
+
+  - label: ":tapioca: build: docker"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version py38
+    depends_on: 
+      - manylinux
+      - forge
+      - raypy38cu118base
+    job_env: forge

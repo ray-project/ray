@@ -17,11 +17,8 @@ from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
 from ray.tune.experiment import Trial
 from ray.tune.utils import flatten_dict
 
-from ray.train.tests.util import (
-    create_dict_checkpoint,
-    load_dict_checkpoint,
-    mock_s3_bucket_uri,
-)
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.train.tests.test_new_persistence import mock_s3_bucket_uri
 
 
 NUM_TRIALS = 3
