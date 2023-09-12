@@ -262,7 +262,7 @@ void PlasmaStore::ReleaseObject(const ObjectID &object_id,
   auto entry = object_lifecycle_mgr_.GetObject(object_id);
   RAY_CHECK(entry != nullptr);
   // Remove the client from the object's array of clients.
-  RAY_CHECK(RemoveFromClientObjectIds(object_id, client) == 1);
+  RemoveFromClientObjectIds(object_id, client);
 }
 
 void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
