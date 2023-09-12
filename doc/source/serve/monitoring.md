@@ -448,13 +448,13 @@ The following metrics are exposed by Ray Serve:
        * route
        * application
      - The number of requests processed by the router.
-   * - ``ray_serve_num_scheduling_tasks`` [*]
+   * - ``ray_serve_num_scheduling_tasks`` [*][†]
      - * deployment
-       * actor_name
+       * actor_id
      - The number of request scheduling tasks in the router.
-   * - ``ray_serve_num_scheduling_tasks_in_backoff`` [*]
+   * - ``ray_serve_num_scheduling_tasks_in_backoff`` [*][†]
      - * deployment
-       * actor_name
+       * actor_id
      - The number of request scheduling tasks in the router that are undergoing backoff.
    * - ``ray_serve_handle_request_counter`` [**]
      - * handle
@@ -529,8 +529,10 @@ The following metrics are exposed by Ray Serve:
        * application
      - The number of calls to get a multiplexed model.
 ```
-[*] - only available when using proxy calls
-[**] - only available when using Python `DeploymentHandle` calls
+
+[*] - only available when using proxy calls</br>
+[**] - only available when using Python `DeploymentHandle` calls</br>
+[†] - developer metrics for advanced usage; may change in future releases
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 

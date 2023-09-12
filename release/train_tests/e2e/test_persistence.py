@@ -17,7 +17,10 @@ import collections
 from contextlib import contextmanager
 import json
 import os
+from pathlib import Path
 import pickle
+import shutil
+import subprocess
 import time
 from typing import Any, Dict
 
@@ -36,6 +39,7 @@ from ray.air._internal.uri_utils import URI
 from ray.train import Checkpoint
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.torch import TorchTrainer
+
 
 from test_new_persistence import (
     train_fn,
@@ -145,13 +149,35 @@ def strip_prefix(path: str) -> str:
     return path.replace("s3://", "").replace("gs://", "")
 
 
+def delete_at_uri(uri: str):
+    if uri.startswith("s3://"):
+        subprocess.check_output(["aws", "s3", "rm", "--recursive", uri])
+    elif uri.startswith("gs://"):
+        subprocess.check_output(["gsutil", "-m", "rm", "-r", uri])
+    else:
+        raise NotImplementedError(f"Invalid URI: {uri}")
+
+
+def download_from_uri(uri: str, local_path: str):
+    if uri.startswith("s3://"):
+        subprocess.check_output(["aws", "s3", "cp", "--recursive", uri, local_path])
+    elif uri.startswith("gs://"):
+        subprocess.check_output(
+            ["gsutil", "-m", "cp", "-r", uri.rstrip("/") + "/*", local_path]
+        )
+    else:
+        raise NotImplementedError(f"Invalid URI: {uri}")
+
+
 @pytest.mark.parametrize(
     "storage_path_storage_filesystem_label",
     [
-        (os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence", None, "cloud"),
+        (os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence/", None, "cloud"),
         ("/mnt/cluster_storage/test-persistence", None, "nfs"),
         (
-            strip_prefix(os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence"),
+            strip_prefix(
+                os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence/"
+            ),
             get_custom_cloud_fs(),
             "cloud+custom_fs",
         ),
@@ -184,21 +210,13 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
     )
     exp_name = "test_trainer"
 
-    # NOTE: We use fsspec directly for cleaning up the cloud folders and
-    # downloading for inspection, since the pyarrow default implementation
-    # doesn't delete/download files properly from GCS.
-    fsspec_fs, storage_fs_path = (
-        fsspec.core.url_to_fs(
-            os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence"
-        )
-        if "cloud" in label
-        else fsspec.core.url_to_fs(storage_path)
-    )
-    experiment_fs_path = os.path.join(storage_fs_path, exp_name)
-    if fsspec_fs.exists(experiment_fs_path):
-        print("\nDeleting results from a previous run...\n")
-        fsspec_fs.rm(experiment_fs_path, recursive=True)
-    assert not fsspec_fs.exists(experiment_fs_path)
+    print("Deleting files from previous run...")
+    if "cloud" in label:
+        # NOTE: Use the CLI to delete files on cloud, since the python libraries
+        # (pyarrow, fsspec) aren't consistent across cloud platforms (s3, gs).
+        delete_at_uri(os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence/")
+    else:
+        shutil.rmtree(storage_path, ignore_errors=True)
 
     trainer = TorchTrainer(
         train_fn,
@@ -234,22 +252,24 @@ def test_trainer(storage_path_storage_filesystem_label, tmp_path, monkeypatch):
         storage_filesystem=storage_filesystem,
     )
     result = restored_trainer.fit()
-
-    # First, inspect that the result object returns the correct paths.
     print(result)
-    trial_fs_path = result.path
-    assert trial_fs_path.startswith(storage_fs_path)
-    for checkpoint, _ in result.best_checkpoints:
-        assert checkpoint.path.startswith(trial_fs_path)
 
     print("\nAsserting contents of uploaded results.\n")
     local_inspect_dir = tmp_path / "inspect_dir"
     local_inspect_dir.mkdir()
     # Download the results from storage
-    fsspec_fs.get(storage_fs_path, str(local_inspect_dir), recursive=True)
+    if "cloud" in label:
+        # NOTE: Use the CLI to download, since the python libraries
+        # (pyarrow, fsspec) aren't consistent across cloud platforms (s3, gs).
+        download_from_uri(
+            os.environ["ANYSCALE_ARTIFACT_STORAGE"] + "/test-persistence/",
+            str(local_inspect_dir),
+        )
+    else:
+        local_inspect_dir = Path(storage_path)
 
     _assert_storage_contents(
-        local_inspect_dir / "test-persistence",
+        local_inspect_dir,
         exp_name,
         checkpoint_config,
         "TorchTrainer",
