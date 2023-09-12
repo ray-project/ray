@@ -49,7 +49,7 @@ class NodeDrainerActor:
         running_replicas = {
             replica.replica_id: replica.node_id
             for replica in serve_details.applications[self._app_name]
-            .deployments[f"{self._app_name}_{self._deployment_name}"]
+            .deployments[self._deployment_name]
             .replicas
             if replica.state == ReplicaState.RUNNING
         }
