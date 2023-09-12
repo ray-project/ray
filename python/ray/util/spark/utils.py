@@ -11,8 +11,6 @@ import socket
 import shutil
 from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
 
-GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE = "global_ray_cluster_session_name.txt"
-
 _logger = logging.getLogger("ray.util.spark.utils")
 
 
@@ -416,6 +414,10 @@ def get_spark_task_assigned_physical_gpus(gpu_addr_list):
         return [visible_cuda_dev_list[addr] for addr in gpu_addr_list]
     else:
         return gpu_addr_list
+
+
+# store the session folder path of current ray cluster.
+GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE = "global_ray_cluster_session_name.txt"
 
 
 def _try_clean_temp_dir_at_exit(process, collect_log_to_path, temp_dir, lock_fd=None):

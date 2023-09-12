@@ -12,8 +12,8 @@ from ray.util.spark.cluster_init import (
 )
 from ray.util.spark.databricks_hook import global_mode_enabled
 from ray.util.spark.utils import (
-    _try_clean_temp_dir_at_exit,
     GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE,
+    _try_clean_temp_dir_at_exit,
 )
 
 
