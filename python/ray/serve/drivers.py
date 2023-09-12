@@ -2,27 +2,26 @@ import asyncio
 import functools
 import logging
 import sys
-from typing import Any, Callable, Optional, Union, Dict
+from typing import Any, Callable, Dict, Optional, Union
 
 from fastapi import Depends, FastAPI
+
 import grpc
 
 import ray
-from ray import cloudpickle
-from ray._private.utils import get_or_create_event_loop
+from ray import cloudpickle, serve
 from ray._private.tls_utils import add_port_to_grpc_server
-from ray.util.annotations import PublicAPI
-
-from ray import serve
+from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.constants import DEFAULT_GRPC_PORT, SERVE_LOGGER_NAME
+from ray.serve._private.http_util import ASGIAppReplicaWrapper
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve._private.utils import install_serve_encoders_to_fastapi
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers_utils import load_http_adapter
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.handle import RayServeHandle
-from ray.serve._private.constants import DEFAULT_GRPC_PORT, SERVE_LOGGER_NAME
-from ray.serve._private.http_util import ASGIAppReplicaWrapper
-from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import install_serve_encoders_to_fastapi
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

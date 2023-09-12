@@ -1,20 +1,21 @@
 import time
-from typing import Any
-from typing import Dict
+from typing import Any, Dict
+
+import pytest
+import requests
+from starlette.requests import Request
 
 import grpc
-import pytest
+
 import ray
-import requests
 from ray import serve
 from ray.serve._private.constants import (
-    SERVE_NAMESPACE,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.http_proxy import DRAINED_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from starlette.requests import Request
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
