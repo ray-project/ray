@@ -63,10 +63,24 @@ class Preprocessor(abc.ABC):
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
 
+    def _check_has_fitted_state(self):
+        """Checks if the Preprocessor has fitted state.
+
+        This is also used as an indiciation if the Preprocessor has been fit, following
+        convention from Ray versions prior to 2.6.
+        This allows preprocessors that have been fit in older versions of Ray to be
+        used to transform data in newer versions.
+        """
+
+        fitted_vars = [v for v in vars(self) if v.endswith("_")]
+        return bool(fitted_vars)
+
     def fit_status(self) -> "Preprocessor.FitStatus":
         if not self._is_fittable:
             return Preprocessor.FitStatus.NOT_FITTABLE
-        elif hasattr(self, "_fitted") and self._fitted:
+        elif (
+            hasattr(self, "_fitted") and self._fitted
+        ) or self._check_has_fitted_state():
             return Preprocessor.FitStatus.FITTED
         else:
             return Preprocessor.FitStatus.NOT_FITTED

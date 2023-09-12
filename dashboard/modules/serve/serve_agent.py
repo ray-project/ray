@@ -23,7 +23,7 @@ routes = optional_utils.ClassMethodRouteTable
 
 def gracefully_handle_missing_serve_dependencies(func):
     @wraps(func)
-    def check(self, *args, **kwargs):
+    async def check(self, *args, **kwargs):
         try:
             from ray import serve  # noqa: F401
         except ImportError:
@@ -34,7 +34,7 @@ def gracefully_handle_missing_serve_dependencies(func):
                     '"ray[serve]"`.'
                 ),
             )
-        return func(self, *args, **kwargs)
+        return await func(self, *args, **kwargs)
 
     return check
 
