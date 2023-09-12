@@ -21,9 +21,9 @@ from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
     ParquetDatasource,
-    _deserialize_pieces_with_retry,
+    _deserialize_fragments_with_retry,
     _ParquetDatasourceReader,
-    _SerializedPiece,
+    _SerializedFragment,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -47,7 +47,7 @@ def check_num_computed(ds, expected, streaming_expected) -> None:
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
     ],
 )
-def test_parquet_deserialize_pieces_with_retry(
+def test_parquet_deserialize_fragments_with_retry(
     ray_start_regular_shared, fs, data_path, monkeypatch
 ):
     setup_data_path = _unwrap_protocol(data_path)
@@ -64,12 +64,12 @@ def test_parquet_deserialize_pieces_with_retry(
     pq_ds = pq.ParquetDataset(
         data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
     )
-    serialized_pieces = [_SerializedPiece(p) for p in pq_ds.pieces]
+    serialized_fragments = [_SerializedFragment(p) for p in pq_ds.fragments]
 
     # test 1st attempt succeed
-    pieces = _deserialize_pieces_with_retry(serialized_pieces)
-    assert "test1.parquet" in pieces[0].path
-    assert "test2.parquet" in pieces[1].path
+    fragments = _deserialize_fragments_with_retry(serialized_fragments)
+    assert "test1.parquet" in fragments[0].path
+    assert "test2.parquet" in fragments[1].path
 
     # test the 3rd attempt succeed with a mock function constructed
     # to throw in the first two attempts
@@ -90,15 +90,17 @@ def test_parquet_deserialize_pieces_with_retry(
         [
             Exception("1st mock failed attempt"),
             Exception("2nd mock failed attempt"),
-            pieces,
+            fragments,
         ]
     )
     monkeypatch.setattr(
-        ray.data.datasource.parquet_datasource, "_deserialize_pieces", mock_deserializer
+        ray.data.datasource.parquet_datasource,
+        "_deserialize_fragments",
+        mock_deserializer,
     )
-    retried_pieces = _deserialize_pieces_with_retry(serialized_pieces)
-    assert "test1.parquet" in retried_pieces[0].path
-    assert "test2.parquet" in retried_pieces[1].path
+    retried_fragments = _deserialize_fragments_with_retry(serialized_fragments)
+    assert "test1.parquet" in retried_fragments[0].path
+    assert "test2.parquet" in retried_fragments[1].path
 
 
 @pytest.mark.parametrize(
@@ -195,7 +197,7 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     pq.write_table(table, path2, filesystem=fs)
 
     class TestMetadataProvider(DefaultParquetMetadataProvider):
-        def prefetch_file_metadata(self, pieces):
+        def prefetch_file_metadata(self, fragments):
             return None
 
     ds = ray.data.read_parquet(
