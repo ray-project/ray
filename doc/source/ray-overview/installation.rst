@@ -370,10 +370,11 @@ To install Ray libraries, use ``pip`` as above or ``conda``/``mamba``.
 
 .. code-block:: bash
 
-  conda install -c conda-forge "ray-air"    # installs Ray + dependencies for Ray AI Runtime
+  conda install -c conda-forge "ray-data"   # installs Ray + dependencies for Ray Data
+  conda install -c conda-forge "ray-train"  # installs Ray + dependencies for Ray Train
   conda install -c conda-forge "ray-tune"   # installs Ray + dependencies for Ray Tune
-  conda install -c conda-forge "ray-rllib"  # installs Ray + dependencies for Ray RLlib
   conda install -c conda-forge "ray-serve"  # installs Ray + dependencies for Ray Serve
+  conda install -c conda-forge "ray-rllib"  # installs Ray + dependencies for Ray RLlib
 
 For a complete list of available ``ray`` libraries on Conda-forge, have a look
 at https://anaconda.org/conda-forge/ray-default

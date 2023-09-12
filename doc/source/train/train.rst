@@ -166,7 +166,7 @@ Learn more
         Consult the API Reference for full descriptions of the Ray Train API.
 
         +++
-        .. button-ref:: air-trainer-ref
+        .. button-ref:: train-api
             :color: primary
             :outline:
             :expand:
