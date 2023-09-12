@@ -27,7 +27,7 @@ Quickstart
 Update your training function
 -----------------------------
 
-First, update your :ref:`training function <train-overview-training-function> to support distributed
+First, update your :ref:`training function <train-overview-training-function>` to support distributed
 training.
 
 
