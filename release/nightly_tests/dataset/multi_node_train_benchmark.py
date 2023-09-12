@@ -2,7 +2,6 @@ import ray
 from ray import train
 from ray.train import DataConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
-from ray.data.datasource import file_based_datasource
 import os
 
 import torch.distributed as dist
@@ -43,12 +42,6 @@ def parse_args():
 
     parser.add_argument("--data-root", type=str, help="Root of data directory")
     parser.add_argument(
-        "--read-local",
-        action="store_true",
-        default=False,
-        help="Whether to read from local fs for default datasource (S3 otherwise)",
-    )
-    parser.add_argument(
         "--file-type",
         default="image",
         type=str,
@@ -68,12 +61,6 @@ def parse_args():
             "Number of GB per worker for selecting a subset "
             "from default dataset. -1 means the whole dataset"
         ),
-    )
-    parser.add_argument(
-        "--read-task-cpus",
-        default=1,
-        type=float,
-        help="Number of CPUs specified for read task",
     )
     parser.add_argument(
         "--batch-size",
@@ -100,12 +87,6 @@ def parse_args():
         action="store_true",
         default=False,
         help="Whether to use GPU with TorchTrainer.",
-    )
-    parser.add_argument(
-        "--local-shuffle-buffer-size",
-        default=200,
-        type=int,
-        help="Parameter into ds.iter_batches(local_shuffle_buffer_size=...)",
     )
     parser.add_argument(
         "--preserve-order",
@@ -183,40 +164,38 @@ def train_loop_per_worker():
     device = train.torch.get_device()
 
     batch_iter = None
-    if args.use_torch:
-        torch_num_workers = args.torch_num_workers or 256
-        batch_iter = get_torch_data_loader(
-            worker_rank=worker_rank,
-            batch_size=args.batch_size,
-            num_workers=torch_num_workers,
-            transform=get_transform(True),
-        )
-    elif args.use_mosaic:
-        target_epoch_size = get_mosaic_epoch_size(
-            args.num_workers, target_worker_gb=args.target_worker_gb
-        )
-        print(
-            "Epoch size:",
-            target_epoch_size if target_epoch_size is not None else "all",
-            "images",
-        )
-
-        num_physical_nodes = (
-            ray.train.get_context().get_world_size()
-            // ray.train.get_context().get_local_world_size()
-        )
-
+    if args.use_torch or args.use_mosaic:
         torch_num_workers = args.torch_num_workers or os.cpu_count()
         # Divide by the number of Train workers because each has its own dataloader.
         torch_num_workers //= ray.train.get_context().get_local_world_size()
 
-        batch_iter = get_mosaic_dataloader(
-            args.data_root,
-            batch_size=args.batch_size,
-            num_physical_nodes=num_physical_nodes,
-            epoch_size=target_epoch_size,
-            num_workers=torch_num_workers,
-        )
+        if args.use_torch:
+            batch_iter = get_torch_data_loader(
+                worker_rank=worker_rank,
+                batch_size=args.batch_size,
+                num_workers=torch_num_workers,
+                transform=get_transform(True),
+            )
+        elif args.use_mosaic:
+            target_epoch_size = get_mosaic_epoch_size(
+                args.num_workers, target_worker_gb=args.target_worker_gb
+            )
+            print(
+                "Epoch size:",
+                target_epoch_size if target_epoch_size is not None else "all",
+                "images",
+            )
+            num_physical_nodes = (
+                ray.train.get_context().get_world_size()
+                // ray.train.get_context().get_local_world_size()
+            )
+            batch_iter = get_mosaic_dataloader(
+                args.data_root,
+                batch_size=args.batch_size,
+                num_physical_nodes=num_physical_nodes,
+                epoch_size=target_epoch_size,
+                num_workers=torch_num_workers,
+            )
 
     world_size = ray.train.get_context().get_world_size()
     all_workers_time_list_across_epochs = []
@@ -248,7 +227,6 @@ def train_loop_per_worker():
         end_t = time.time()
         # Workaround to report the epoch start/end time from each worker, so that we
         # can aggregate them at the end when calculating throughput.
-        # See: https://github.com/ray-project/ray/issues/39277
         all_workers_time_list = [
             torch.zeros((2), dtype=torch.double, device=device)
             for _ in range(world_size)
@@ -396,12 +374,10 @@ def benchmark_code(
                 ray_dataset = ray.data.read_images(
                     input_paths,
                     mode="RGB",
-                    ray_remote_args={"num_cpus": args.read_task_cpus},
                 )
             elif args.file_type == "parquet":
                 ray_dataset = ray.data.read_parquet(
                     args.data_root,
-                    ray_remote_args={"num_cpus": args.read_task_cpus},
                 )
             else:
                 raise Exception(f"Unknown file type {args.file_type}")
@@ -411,9 +387,7 @@ def benchmark_code(
 
             # 2) Preprocess data by applying transformation with map/map_batches()
             if args.file_type == "image":
-                ray_dataset = ray_dataset.map(
-                    crop_and_flip_image, num_cpus=args.read_task_cpus
-                )
+                ray_dataset = ray_dataset.map(crop_and_flip_image)
             elif args.file_type == "parquet":
                 ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
             if cache_output_ds:
@@ -456,8 +430,6 @@ def benchmark_code(
 
 
 if __name__ == "__main__":
-    # Workaround for FileBasedDatasource parallel read issue when reading many sources.
-    file_based_datasource.FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 10e10
     args = parse_args()
     benchmark_name = (
         f"read_{args.file_type}_repeat{args.repeat_ds}_train_"
