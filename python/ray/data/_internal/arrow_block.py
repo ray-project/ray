@@ -24,7 +24,7 @@ from ray.data._internal.numpy_support import (
     is_valid_udf_return,
 )
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import _truncated_repr
+from ray.data._internal.util import _truncated_repr, find_partitions
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -414,11 +414,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:
-        columns = sort_key.get_columns()
-        if len(columns) > 1:
-            raise NotImplementedError(
-                "Sorting by multiple columns is not supported yet"
-            )
         if self._table.num_rows == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.
@@ -426,31 +421,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         context = DataContext.get_current()
         sort = get_sort_transform(context)
-        col = columns[0]
+
         table = sort(self._table, sort_key)
         if len(boundaries) == 0:
             return [table]
 
-        partitions = []
-        # For each boundary value, count the number of items that are less
-        # than it. Since the block is sorted, these counts partition the items
-        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
-        # partition[i]. If `descending` is true, `boundaries` would also be
-        # in descending order and we only need to count the number of items
-        # *greater than* the boundary value instead.
-        if sort_key.get_descending():
-            num_rows = len(table[col])
-            bounds = num_rows - np.searchsorted(
-                table[col], boundaries, sorter=np.arange(num_rows - 1, -1, -1)
-            )
-        else:
-            bounds = np.searchsorted(table[col], boundaries)
-        last_idx = 0
-        for idx in bounds:
-            partitions.append(table.slice(last_idx, idx - last_idx))
-            last_idx = idx
-        partitions.append(table.slice(last_idx))
-        return partitions
+        return find_partitions(table, boundaries, sort_key)
 
     def combine(self, key: str, aggs: Tuple["AggregateFn"]) -> Block:
         """Combine rows with the same key into an accumulator.

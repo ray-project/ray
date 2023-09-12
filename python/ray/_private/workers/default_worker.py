@@ -18,6 +18,12 @@ parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
 )
 parser.add_argument(
+    "--cluster-id",
+    required=True,
+    type=str,
+    help="the auto-generated ID of the cluster",
+)
+parser.add_argument(
     "--node-ip-address",
     required=True,
     type=str,
@@ -179,7 +185,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray._private.ray_logging.setup_logger(args.logging_level, args.logging_format)
     worker_launched_time_ms = time.time_ns() // 1e6
-
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
     elif args.worker_type == "SPILL_WORKER":
@@ -207,6 +212,7 @@ if __name__ == "__main__":
         gcs_address=args.gcs_address,
         session_name=args.session_name,
         webui=args.webui,
+        cluster_id=args.cluster_id,
     )
     node = ray._private.node.Node(
         ray_params,

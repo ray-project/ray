@@ -58,10 +58,9 @@ void GcsResourceManager::HandleGetResources(rpc::GetResourcesRequest request,
     rpc::ResourceTableData resource_table_data;
     const auto &node_resources = iter->second.GetLocalView();
 
-    for (const auto &resource_id : node_resources.total.ResourceIds()) {
-      const auto &resource_value = node_resources.total.Get(resource_id);
-      const auto &resource_name = resource_id.Binary();
-      resource_table_data.set_resource_capacity(resource_value.Double());
+    for (const auto &[resource_name, resource_value] :
+         node_resources.total.GetResourceMap()) {
+      resource_table_data.set_resource_capacity(resource_value);
       (*reply->mutable_resources()).insert({resource_name, resource_table_data});
     }
   }
@@ -101,7 +100,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     const auto node_id = NodeID::FromBinary(node_resources_entry.first.Binary());
     bool using_resource_reports = RayConfig::instance().gcs_actor_scheduling_enabled() &&
                                   node_resource_usages_.contains(node_id);
-    for (const auto &resource_id : node_resources.available.ResourceIds()) {
+    for (const auto &resource_id : node_resources.available.ExplicitResourceIds()) {
       const auto &resource_name = resource_id.Binary();
       // Because gcs scheduler does not directly update the available resources of
       // `cluster_resource_manager_`, use the record from resource reports (stored in
@@ -135,8 +134,8 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
-    if (!cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
-            scheduling::NodeID(node_id.Binary()), data)) {
+    if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
+                                              data)) {
       RAY_LOG(INFO)
           << "[UpdateFromResourceReport]: received resource usage from unknown node id "
           << node_id;
@@ -273,9 +272,9 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
     if (resources.resources_total_size() > 0) {
       (*iter->second.mutable_resources_total()) = resources.resources_total();
     }
-    if (resources.resources_available_changed()) {
-      (*iter->second.mutable_resources_available()) = resources.resources_available();
-    }
+
+    (*iter->second.mutable_resources_available()) = resources.resources_available();
+
     if (resources.resources_normal_task_changed()) {
       (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
     }

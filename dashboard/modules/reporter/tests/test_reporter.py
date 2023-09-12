@@ -696,20 +696,22 @@ def test_reporter_worker_cpu_percent():
             agent_mock.kill()
 
 
-TASK = {
-    "task_id": "32d950ec0ccf9d2affffffffffffffffffffffff01000000",
-    "attempt_number": 0,
-    "node_id": "ffffffffffffffffffffffffffffffffffffffff01000000",
-}
-
-
-def test_get_task_traceback_running_task():
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
+def test_get_task_traceback_running_task(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
+
     """
-    ray.shutdown()
-    context = ray.init()
-    dashboard_url = f"http://{context['webui_url']}"
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
 
     @ray.remote
     def f():
@@ -732,7 +734,7 @@ def test_get_task_traceback_running_task():
     }
 
     def verify():
-        resp = requests.get(f"{dashboard_url}/task/traceback", params=params)
+        resp = requests.get(f"{webui_url}/task/traceback", params=params)
         print(f"resp.text {type(resp.text)}: {resp.text}")
 
         assert "Process" in resp.text
@@ -741,13 +743,33 @@ def test_get_task_traceback_running_task():
     wait_for_condition(verify, timeout=20)
 
 
-def test_get_task_traceback_non_running_task():
+TASK = {
+    "task_id": "32d950ec0ccf9d2affffffffffffffffffffffff01000000",
+    "attempt_number": 0,
+    "node_id": "ffffffffffffffffffffffffffffffffffffffff01000000",
+}
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
+def test_get_task_traceback_non_running_task(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
     """
-    ray.shutdown()
-    context = ray.init()
-    dashboard_url = f"http://{context['webui_url']}"
+
+    # The sleep is needed since it seems a previous shutdown could be not yet
+    # done when the next test starts. This prevents a previous cluster to be
+    # connected the current test session.
+
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
 
     @ray.remote
     def f():
@@ -764,7 +786,7 @@ def test_get_task_traceback_non_running_task():
     # Make sure the API works.
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(f"{dashboard_url}/task/traceback", params=params)
+            resp = requests.get(f"{webui_url}/task/traceback", params=params)
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
         return True
@@ -772,13 +794,21 @@ def test_get_task_traceback_non_running_task():
     wait_for_condition(verify, timeout=10)
 
 
-def test_get_cpu_profile_non_running_task():
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
+def test_get_cpu_profile_non_running_task(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
     """
-    ray.shutdown()
-    context = ray.init()
-    dashboard_url = f"http://{context['webui_url']}"
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
 
     @ray.remote
     def f():
@@ -795,7 +825,7 @@ def test_get_cpu_profile_non_running_task():
     # Make sure the API works.
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(f"{dashboard_url}/task/cpu_profile", params=params)
+            resp = requests.get(f"{webui_url}/task/cpu_profile", params=params)
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
         return True

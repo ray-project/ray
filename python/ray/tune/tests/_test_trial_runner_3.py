@@ -590,7 +590,9 @@ class TrialRunnerTest3(unittest.TestCase):
 
         runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
+        self.assertEqual(
+            ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)), 1
+        )
         runner.step()  # Process result
         self.assertFalse(trials[0].has_checkpoint())
         runner.step()  # Process result
@@ -606,7 +608,9 @@ class TrialRunnerTest3(unittest.TestCase):
         )
         runner2.step()  # 5: Start trial and dispatch restore
         trials2 = runner2.get_trials()
-        self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
+        self.assertEqual(
+            ray.get(trials2[0].temporary_state.ray_actor.get_info.remote()), 1
+        )
 
     def testUserCheckpointBuffered(self):
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "8"
@@ -628,7 +632,9 @@ class TrialRunnerTest3(unittest.TestCase):
 
         runner.step()  # Start trial, schedule 1-8
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
+        self.assertEqual(
+            ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)), 1
+        )
         self.assertEqual(num_checkpoints(trials[0]), 0)
 
         runner.step()  # Process results 0-8, schedule 9-11 (CP)

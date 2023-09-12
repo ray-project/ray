@@ -32,6 +32,25 @@ class TestReadImages:
         assert isinstance(column_type, ArrowTensorType)
         assert all(record["image"].shape == (32, 32, 3) for record in ds.take())
 
+    @pytest.mark.parametrize("num_threads", [-1, 0, 1, 2, 4])
+    def test_multi_threading(self, ray_start_regular_shared, num_threads, monkeypatch):
+        monkeypatch.setattr(
+            ray.data.datasource.image_datasource.ImageDatasource,
+            "_NUM_THREADS_PER_TASK",
+            num_threads,
+        )
+        ds = ray.data.read_images(
+            "example://image-datasets/simple",
+            parallelism=1,
+            include_paths=True,
+        )
+        paths = [item["path"][-len("image1.jpg") :] for item in ds.take_all()]
+        if num_threads > 1:
+            # If there are more than 1 threads, the order is not guaranteed.
+            paths = sorted(paths)
+        expected_paths = ["image1.jpg", "image2.jpg", "image3.jpg"]
+        assert paths == expected_paths
+
     def test_multiple_paths(self, ray_start_regular_shared):
         ds = ray.data.read_images(
             paths=[
@@ -63,9 +82,9 @@ class TestReadImages:
         if ignore_missing_paths:
             ds = ray.data.read_images(paths, ignore_missing_paths=ignore_missing_paths)
             # example:// directive redirects to /ray/python/ray/data/examples/data
-            assert ds.input_files() == [
-                "/ray/python/ray/data/examples/data/image-datasets/simple/image1.jpg"
-            ]
+            assert len(ds.input_files()) == 1 and ds.input_files()[0].endswith(
+                "ray/data/examples/data/image-datasets/simple/image1.jpg",
+            )
         else:
             with pytest.raises(FileNotFoundError):
                 ds = ray.data.read_images(
@@ -150,11 +169,9 @@ class TestReadImages:
         ]
 
     def test_e2e_prediction(self, shutdown_only):
+        import torch
         from torchvision import transforms
         from torchvision.models import resnet18
-
-        from ray.train.batch_predictor import BatchPredictor
-        from ray.train.torch import TorchCheckpoint, TorchPredictor
 
         ray.shutdown()
         ray.init(num_cpus=2)
@@ -167,10 +184,18 @@ class TestReadImages:
 
         dataset = dataset.map_batches(preprocess, batch_format="numpy")
 
-        model = resnet18(pretrained=True)
-        checkpoint = TorchCheckpoint.from_model(model=model)
-        predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
-        predictions = predictor.predict(dataset)
+        class Predictor:
+            def __init__(self):
+                self.model = resnet18(pretrained=True)
+
+            def __call__(self, batch: Dict[str, np.ndarray]):
+                with torch.inference_mode():
+                    torch_tensor = torch.as_tensor(batch["out"])
+                    return {"prediction": self.model(torch_tensor)}
+
+        predictions = dataset.map_batches(
+            Predictor, compute=ray.data.ActorPoolStrategy(min_size=1), batch_size=4096
+        )
 
         for _ in predictions.iter_batches():
             pass

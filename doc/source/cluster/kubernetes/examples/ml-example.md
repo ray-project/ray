@@ -1,6 +1,6 @@
 (kuberay-ml-example)=
 
-# Ray AIR XGBoostTrainer on Kubernetes
+# Ray Train XGBoostTrainer on Kubernetes
 
 :::{note}
 To learn the basics of Ray on Kubernetes, we recommend taking a look
