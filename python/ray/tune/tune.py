@@ -32,7 +32,7 @@ from ray.train import SyncConfig
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _DEPRECATED_VALUE
 from ray.train._internal.storage import _use_storage_context
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
+from ray.tune.analysis.experiment_analysis import LegacyExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
@@ -329,8 +329,6 @@ def run(
     checkpoint_score_attr: Optional[str] = None,  # Deprecated (2.7)
     checkpoint_freq: int = 0,  # Deprecated (2.7)
     checkpoint_at_end: bool = False,  # Deprecated (2.7)
-    checkpoint_keep_all_ranks: bool = False,  # Deprecated (2.7)
-    checkpoint_upload_from_workers: bool = False,  # Deprecated (2.7)
     chdir_to_trial_dir: bool = _DEPRECATED_VALUE,  # Deprecated (2.8)
     local_dir: Optional[str] = None,
     # == internal only ==
@@ -679,7 +677,11 @@ def run(
     if _use_storage_context():
         local_path, remote_path = None, None
         sync_config = sync_config or SyncConfig()
-        # TODO(justinvyu): Fix telemetry for the new persistence.
+
+        # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
+        # For now, keep accepting both options.
+        if local_dir is not None:
+            os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_dir
     else:
         (
             storage_path,
@@ -740,22 +742,6 @@ def run(
             DeprecationWarning,
         )
         checkpoint_config.checkpoint_at_end = checkpoint_at_end
-    if checkpoint_keep_all_ranks:
-        warnings.warn(
-            "checkpoint_keep_all_ranks is deprecated and will be removed. "
-            "use checkpoint_config._checkpoint_keep_all_ranks instead.",
-            DeprecationWarning,
-        )
-        checkpoint_config._checkpoint_keep_all_ranks = checkpoint_keep_all_ranks
-    if checkpoint_upload_from_workers:
-        warnings.warn(
-            "checkpoint_upload_from_workers is deprecated and will be removed. "
-            "use checkpoint_config._checkpoint_upload_from_workers instead.",
-            DeprecationWarning,
-        )
-        checkpoint_config._checkpoint_upload_from_workers = (
-            checkpoint_upload_from_workers
-        )
 
     if chdir_to_trial_dir != _DEPRECATED_VALUE:
         warnings.warn(
@@ -966,6 +952,9 @@ def run(
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
+    if _use_storage_context():
+        air_usage.tag_storage_type(experiments[0].storage)
+
     # NOTE: Report callback telemetry before populating the list with default callbacks.
     # This tracks user-specified callback usage.
     air_usage.tag_callbacks(callbacks)
@@ -995,7 +984,7 @@ def run(
                 "To enable trials to use GPUs, wrap `train_func` with "
                 "`tune.with_resources(train_func, resources_per_trial={'gpu': 1})` "
                 "which allows Tune to expose 1 GPU to each trial. "
-                "For Ray AIR Trainers, you can specify GPU resources "
+                "For Ray Train Trainers, you can specify GPU resources "
                 "through `ScalingConfig(use_gpu=True)`. "
                 "You can also override "
                 "`Trainable.default_resource_request` if using the "
@@ -1172,7 +1161,7 @@ def run(
             )
 
     if _use_storage_context():
-        return NewExperimentAnalysis(
+        return ExperimentAnalysis(
             experiment_checkpoint_path=runner.experiment_path,
             default_metric=metric,
             default_mode=mode,
@@ -1180,7 +1169,7 @@ def run(
             storage_filesystem=experiments[0].storage.storage_filesystem,
         )
     else:
-        return ExperimentAnalysis(
+        return LegacyExperimentAnalysis(
             runner.experiment_state_path,
             trials=all_trials,
             default_metric=metric,

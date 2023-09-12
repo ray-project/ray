@@ -1171,6 +1171,7 @@ class HTTPProxy(GenericProxy):
         response_done = False
         response_started = False
         expecting_trailers = False
+        is_websocket_connection = False
         while True:
             try:
                 next_obj_ref_task = asyncio.ensure_future(
@@ -1217,7 +1218,11 @@ class HTTPProxy(GenericProxy):
                         "during execution, cancelling request."
                     )
                     next_obj_ref_task.cancel()
-                    ray.cancel(obj_ref_generator)
+                    if not is_websocket_connection:
+                        # Websocket code explicitly handles client disconnects,
+                        # so let the ASGI disconnect message propagate instead of
+                        # cancelling the handler.
+                        ray.cancel(obj_ref_generator)
                     return DISCONNECT_ERROR_CODE
 
                 obj_ref = next_obj_ref_task.result()
@@ -1231,6 +1236,8 @@ class HTTPProxy(GenericProxy):
                         # field. Other response types (e.g., WebSockets) may not.
                         status_code = str(asgi_message["status"])
                         expecting_trailers = asgi_message.get("trailers", False)
+                    elif asgi_message["type"] == "websocket.accept":
+                        is_websocket_connection = True
                     elif (
                         asgi_message["type"] == "http.response.body"
                         and not asgi_message.get("more_body", False)
@@ -1669,7 +1676,7 @@ class HTTPProxyActor:
         Make sure the async event loop is not blocked.
         """
 
-        pass
+        logger.info("Received health check.", extra={"log_to_stderr": False})
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
         """Get ASGI messages for the provided `request_id`.

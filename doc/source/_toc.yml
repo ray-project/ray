@@ -188,10 +188,8 @@ parts:
           - file: serve/key-concepts
           - file: serve/develop-and-deploy
           - file: serve/model_composition
-          - file: serve/deploy-many-models/index
-            sections:
-              - file: serve/deploy-many-models/multi-app
-              - file: serve/deploy-many-models/model-multiplexing
+          - file: serve/multi-app
+          - file: serve/model-multiplexing
           - file: serve/configure-serve-deployment
           - file: serve/http-guide
           - file: serve/production-guide/index
@@ -204,27 +202,22 @@ parts:
               - file: serve/production-guide/handling-dependencies
               - file: serve/production-guide/best-practices
           - file: serve/monitoring
-          - file: serve/scaling-and-resource-allocation
+          - file: serve/resource-allocation
+          - file: serve/autoscaling-guide
           - file: serve/advanced-guides/index
             sections:
               - file: serve/advanced-guides/app-builder-guide
+              - file: serve/advanced-guides/advanced-autoscaling
               - file: serve/advanced-guides/performance
               - file: serve/advanced-guides/dyn-req-batch
               - file: serve/advanced-guides/inplace-updates
               - file: serve/advanced-guides/dev-workflow
+              - file: serve/advanced-guides/grpc-guide
               - file: serve/advanced-guides/deployment-graphs
-              - file: serve/advanced-guides/direct-ingress
               - file: serve/advanced-guides/managing-java-deployments
-              - file: serve/advanced-guides/migration
               - file: serve/advanced-guides/deploy-vm
           - file: serve/architecture
           - file: serve/tutorials/index
-            sections:
-              - file: serve/tutorials/deployment-graph-patterns
-                sections:
-                  - file: serve/tutorials/deployment-graph-patterns/linear_pipeline
-                  - file: serve/tutorials/deployment-graph-patterns/branching_input
-                  - file: serve/tutorials/deployment-graph-patterns/conditional
           - file: serve/api/index
 
       - file: rllib/index
@@ -297,16 +290,18 @@ parts:
                     sections:
                       - file: cluster/kubernetes/user-guides/aws-eks-gpu-cluster.md
                       - file: cluster/kubernetes/user-guides/gcp-gke-gpu-cluster.md
+                  - file: cluster/kubernetes/user-guides/storage.md
                   - file: cluster/kubernetes/user-guides/config.md
                   - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
+                  - file: cluster/kubernetes/user-guides/kuberay-gcs-ft.md
                   - file: cluster/kubernetes/user-guides/gke-gcs-bucket.md
                   - file: cluster/kubernetes/user-guides/logging.md
                   - file: cluster/kubernetes/user-guides/gpu.md
                   - file: cluster/kubernetes/user-guides/rayserve-dev-doc.md
-                  - file: cluster/kubernetes/user-guides/experimental.md
                   - file: cluster/kubernetes/user-guides/pod-command.md
                   - file: cluster/kubernetes/user-guides/pod-security.md
                   - file: cluster/kubernetes/user-guides/tls.md
+                  - file: cluster/kubernetes/user-guides/k8s-autoscaler.md
                   - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay.md
               - file: cluster/kubernetes/examples
                 sections:
@@ -321,6 +316,7 @@ parts:
                   - file: cluster/kubernetes/k8s-ecosystem/ingress.md
                   - file: cluster/kubernetes/k8s-ecosystem/prometheus-grafana.md
                   - file: cluster/kubernetes/k8s-ecosystem/pyspy.md
+                  - file: cluster/kubernetes/k8s-ecosystem/volcano.md
                   - file: cluster/kubernetes/k8s-ecosystem/kubeflow.md
               - file: cluster/kubernetes/benchmarks
                 sections:
@@ -378,6 +374,7 @@ parts:
                   - file: ray-observability/user-guides/debug-apps/ray-debugging
               - file: ray-observability/user-guides/cli-sdk
               - file: ray-observability/user-guides/configure-logging
+              - file: ray-observability/user-guides/profiling
               - file: ray-observability/user-guides/add-app-metrics
               - file: ray-observability/user-guides/ray-tracing
           - file: ray-observability/reference/index
@@ -393,17 +390,8 @@ parts:
           - file: cluster/usage-stats
           - file: ray-references/glossary
 
-      - file: ray-contribute/stability
+      - file: ray-contribute/index
         title: Developer Guides
-        sections:
-          - file: ray-contribute/getting-involved
-            sections:
-              - file: ray-contribute/development
-              - file: ray-contribute/docs
-              - file: ray-contribute/writing-code-snippets
-              - file: ray-contribute/fake-autoscaler
-              - file: ray-core/examples/testing-tips
-              - file: ray-contribute/debugging.rst
-              - file: ray-contribute/profiling.rst
-          - file: ray-core/configure
-          - file: ray-contribute/whitepaper
+
+      - file: ray-security/index
+        title: "Security"

@@ -2,7 +2,8 @@ import threading
 from typing import TYPE_CHECKING, Optional, Dict, Any
 
 from ray.train._internal import session
-from ray.util.annotations import PublicAPI
+from ray.train._internal.storage import StorageContext
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ def _copy_doc(copy_func):
     return wrapped
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class TrainContext:
     """Context for Ray training executions."""
 
@@ -70,12 +71,19 @@ class TrainContext:
     def get_node_rank(self) -> int:
         return session.get_node_rank()
 
+    @DeveloperAPI
+    @_copy_doc(session.get_storage)
+    def get_storage(self) -> StorageContext:
+        return session.get_storage()
 
-@PublicAPI(stability="beta")
+
+@PublicAPI(stability="stable")
 def get_context() -> TrainContext:
     """Get or create a singleton training context.
 
     The context is only available in a training or tuning loop.
+
+    See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
     global _default_context
 

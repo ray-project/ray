@@ -21,7 +21,7 @@ from ray.train._internal.storage import _use_storage_context
 from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
@@ -333,6 +333,7 @@ class DataParallelTrainer(BaseTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
+    @PublicAPI(stability="beta")
     @classmethod
     def restore(
         cls: Type["DataParallelTrainer"],
@@ -704,7 +705,7 @@ def _load_checkpoint_dict(
             message.
 
     Returns:
-        The model or weights and AIR preprocessor contained within.
+        The model or weights and preprocessor contained within.
     """
     checkpoint_dict = checkpoint.to_dict()
     preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
