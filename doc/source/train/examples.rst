@@ -45,8 +45,8 @@ Intermediate
     - `DreamBooth fine-tuning of Stable Diffusion with Ray Train <https://github.com/ray-project/ray/tree/master/doc/source/templates/05_dreambooth_finetuning>`_
   * - Lightning
     - :ref:`Model Training with PyTorch Lightning and Ray Data <lightning_advanced_example>`
-  * - Accelerate
-    - :ref:`Fine-tuning a Text Classifier on GLUE Benchmark with HF Accelerate. <train_transformers_accelerate_example>`
+  * - Transformers
+    - :ref:`Fine-tuning a Text Classifier on GLUE Benchmark with HF Transformers. <train_transformers_glue_example>`
 
 
 Advanced
