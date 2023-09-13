@@ -38,7 +38,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
-from ray.serve._private.http_state import HTTPProxyStateManager
+from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.logging_utils import (
     configure_component_logger,
     configure_component_memory_profiler,
@@ -152,7 +152,7 @@ class ServeController:
         if _disable_http_proxy:
             self.http_proxy_state_manager = None
         else:
-            self.http_proxy_state_manager = HTTPProxyStateManager(
+            self.http_proxy_state_manager = ProxyStateManager(
                 controller_name,
                 detached,
                 http_config,

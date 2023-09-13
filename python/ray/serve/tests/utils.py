@@ -11,7 +11,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
 )
-from ray.serve._private.http_proxy import DRAINED_MESSAGE
+from ray.serve._private.proxy import DRAINED_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from starlette.requests import Request

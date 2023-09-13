@@ -1407,7 +1407,7 @@ class RequestIdMiddleware:
 
 
 @ray.remote(num_cpus=0)
-class HTTPProxyActor:
+class ProxyActor:
     def __init__(
         self,
         host: str,

@@ -156,7 +156,7 @@ def test_v1_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HTTPProxyActor",
+        "ProxyActor",
         "ServeReplica:f",
     }
 
@@ -194,7 +194,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HTTPProxyActor",
+        "ProxyActor",
         "ServeReplica:app:f",
     }
 
@@ -233,7 +233,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HTTPProxyActor",
+        "ProxyActor",
         "ServeReplica:app1:f",
         "ServeReplica:app2:f",
     }

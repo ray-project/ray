@@ -33,7 +33,7 @@ from ray.serve.schema import ProxyDetails
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class HTTPProxyState:
+class ProxyState:
     def __init__(
         self, actor_handle: ActorHandle, actor_name: str, node_id: str, node_ip: str
     ):
@@ -310,7 +310,7 @@ class HTTPProxyState:
         return False
 
 
-class HTTPProxyStateManager:
+class ProxyStateManager:
     """Manages all state for HTTP proxies in the system.
 
     This class is *not* thread safe, so any state-modifying methods should be
@@ -333,7 +333,7 @@ class HTTPProxyStateManager:
         else:
             self._config = HTTPOptions()
         self._grpc_options = grpc_options or gRPCOptions()
-        self._proxy_states: Dict[NodeId, HTTPProxyState] = dict()
+        self._proxy_states: Dict[NodeId, ProxyState] = dict()
         self._head_node_id: str = head_node_id
 
         self._cluster_node_info_cache = cluster_node_info_cache
@@ -452,7 +452,7 @@ class HTTPProxyStateManager:
         """Helper to start a single HTTP proxy.
 
         Takes the name of the proxy, the node id, and the node ip address. and creates a
-        new HTTPProxyActor actor handle for the proxy. In addition, setting up
+        new ProxyActor actor handle for the proxy. In addition, setting up
         `TEST_WORKER_NODE_HTTP_PORT` env var will help head node and worker nodes to be
         opening on different HTTP ports. Setting up `TEST_WORKER_NODE_GRPC_PORT` env var
         will help head node and worker nodes to be opening on different gRPC ports.
@@ -481,7 +481,7 @@ class HTTPProxyStateManager:
             )
             grpc_options.port = int(os.getenv("TEST_WORKER_NODE_GRPC_PORT"))
 
-        proxy = http_proxy.HTTPProxyActor.options(
+        proxy = http_proxy.ProxyActor.options(
             num_cpus=self._config.num_cpus,
             name=name,
             namespace=SERVE_NAMESPACE,
@@ -525,7 +525,7 @@ class HTTPProxyStateManager:
                     node_ip_address=node_ip_address,
                 )
 
-            self._proxy_states[node_id] = HTTPProxyState(
+            self._proxy_states[node_id] = ProxyState(
                 proxy, name, node_id, node_ip_address
             )
 

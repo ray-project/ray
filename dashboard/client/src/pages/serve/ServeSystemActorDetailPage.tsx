@@ -45,7 +45,7 @@ export const ServeHttpProxyDetailPage = () => {
   if (!httpProxy) {
     return (
       <Typography color="error">
-        HTTPProxyActor with id "{httpProxyId}" not found.
+        ProxyActor with id "{httpProxyId}" not found.
       </Typography>
     );
   }
@@ -57,15 +57,15 @@ export const ServeHttpProxyDetailPage = () => {
           httpProxy.node_id
             ? {
                 id: "serveHttpProxy",
-                title: `HTTPProxyActor:${httpProxy.node_id}`,
-                pageTitle: `${httpProxy.node_id} | Serve HTTPProxyActor`,
+                title: `ProxyActor:${httpProxy.node_id}`,
+                pageTitle: `${httpProxy.node_id} | Serve ProxyActor`,
                 path: `/serve/httpProxies/${encodeURIComponent(
                   httpProxy.node_id,
                 )}`,
               }
             : {
                 id: "serveHttpProxy",
-                title: "HTTPProxyActor",
+                title: "ProxyActor",
                 path: undefined,
               }
         }
@@ -136,7 +136,7 @@ export const ServeSystemActorDetail = ({
 }: ServeSystemActorDetailProps) => {
   const name =
     actor.type === "httpProxy"
-      ? `HTTPProxyActor:${actor.detail.actor_id}`
+      ? `ProxyActor:${actor.detail.actor_id}`
       : "Serve Controller";
 
   const { data: fetchedActor } = useFetchActor(actor.detail.actor_id);

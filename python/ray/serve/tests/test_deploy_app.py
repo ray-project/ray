@@ -1247,7 +1247,7 @@ def test_deploy_with_no_applications(client: ServeControllerClient):
             ]
         )
         actor_names = [actor["class_name"] for actor in actors]
-        return "ServeController" in actor_names and "HTTPProxyActor" in actor_names
+        return "ServeController" in actor_names and "ProxyActor" in actor_names
 
     wait_for_condition(serve_running)
 
