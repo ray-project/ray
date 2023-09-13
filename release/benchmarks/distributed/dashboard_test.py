@@ -122,9 +122,7 @@ class DashboardTestAtScale:
                         memories.append(sample.value)
 
         return Result(
-            success=True,
-            result=result,
-            memory_mb=max(memories),
+            success=True, result=result, memory_mb=max(memories) if memories else None
         )
 
     def update_release_test_result(self, release_result: dict):

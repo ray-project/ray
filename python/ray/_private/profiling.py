@@ -88,11 +88,12 @@ def profile(event_type, extra_data=None):
 
     This function can be used as follows (both on the driver or within a task).
 
-    .. code-block:: python
+    .. testcode::
         import ray._private.profiling as profiling
 
         with profiling.profile("custom event", extra_data={'key': 'val'}):
             # Do some computation here.
+            x = 1 * 2
 
     Optionally, a dictionary can be passed as the "extra_data" argument, and
     it can have keys "name" and "cname" if you want to override the default

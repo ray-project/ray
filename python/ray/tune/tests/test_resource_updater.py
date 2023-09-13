@@ -1,6 +1,7 @@
 import ray
 from ray.tests.conftest import *  # noqa
 from ray.tune.utils.resource_updater import _ResourceUpdater, _Resources
+from unittest import mock
 
 
 def test_resources_numerical_error():
@@ -83,6 +84,62 @@ def test_resource_updater(ray_start_cluster):
     cluster.wait_for_nodes()
     assert resource_updater.get_num_cpus() == 3
     assert resource_updater.get_num_gpus() == 4
+
+
+def test_resource_updater_automatic():
+    """Test that resources are automatically updated when they get out of sync.
+
+    We instantiate a resource updater. When the reported resources are less than
+    what is available, we don't force an update.
+    However, if any of the resources (cpu, gpu, or custom) are higher than what
+    the updater currently think is available, we force an update from the
+    Ray cluster.
+    """
+    resource_updater = _ResourceUpdater()
+    resource_updater._avail_resources = _Resources(
+        cpu=2,
+        gpu=1,
+        memory=1,
+        object_store_memory=1,
+        custom_resources={"a": 4},
+    )
+    resource_updater._last_resource_refresh = 2
+
+    # Should not trigger
+    with mock.patch.object(
+        _ResourceUpdater,
+        "update_avail_resources",
+        wraps=resource_updater.update_avail_resources,
+    ) as upd:
+        # No update
+        assert "2/2 CPUs" in resource_updater.debug_string(
+            total_allocated_resources={"CPU": 2, "GPU": 1, "a": 4}
+        )
+        assert upd.call_count == 0
+
+        # Too many CPUs
+        assert "4/2 CPUs" in resource_updater.debug_string(
+            total_allocated_resources={"CPU": 4, "GPU": 1, "a": 0}
+        )
+        assert upd.call_count == 1
+
+        # Too many GPUs
+        assert "8/1 GPUs" in resource_updater.debug_string(
+            total_allocated_resources={"CPU": 2, "GPU": 8, "a": 0}
+        )
+        assert upd.call_count == 2
+
+        # Too many `a`
+        assert "6/4 a" in resource_updater.debug_string(
+            total_allocated_resources={"CPU": 2, "GPU": 1, "a": 6}
+        )
+        assert upd.call_count == 3
+
+        # No update again
+        assert "2/2 CPUs" in resource_updater.debug_string(
+            total_allocated_resources={"CPU": 2, "GPU": 1, "a": 4}
+        )
+        assert upd.call_count == 3
 
 
 if __name__ == "__main__":

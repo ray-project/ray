@@ -28,7 +28,7 @@ class TestTD3(unittest.TestCase):
         config = td3.TD3Config()
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             algo = config.build(env="Pendulum-v1")
             num_iterations = 1
             for i in range(num_iterations):
@@ -53,7 +53,7 @@ class TestTD3(unittest.TestCase):
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             config.exploration(exploration_config=no_random_init)
             # Default GaussianNoise setup.
             algo = config.build()

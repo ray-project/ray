@@ -1,12 +1,13 @@
-from typing import TYPE_CHECKING, Optional, Union, Iterator, Tuple
+from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
 
-from ray.types import ObjectRef
+from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
 from ray.data.iterator import DataIterator
-from ray.data._internal.stats import DatasetStats
+from ray.types import ObjectRef
 
 if TYPE_CHECKING:
     import pyarrow
+
     from ray.data import Dataset
 
 
@@ -46,7 +47,7 @@ class DataIteratorImpl(DataIterator):
             # Raise error for backwards compatibility.
             # TODO: remove this method in 2.6.
             raise DeprecationWarning(
-                "session.get_dataset_shard returns a ray.data.DataIterator "
+                "ray.train.get_dataset_shard returns a ray.data.DataIterator "
                 "instead of a Dataset/DatasetPipeline as of Ray v2.3. "
                 "Use iter_torch_batches(), to_tf(), or iter_batches() to "
                 "iterate over one epoch. See "

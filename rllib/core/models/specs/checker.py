@@ -41,47 +41,35 @@ def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
         - a single constraint. The constraint can be a Spec object, a type, or None.
 
 
-    Examples of canoncial format #1:
+        Examples of canoncial format #1:
 
-    .. code-block:: python
-        spec = ["foo", ("bar", "baz")]
-        output = convert_to_canonical_format(spec)
-        # output = SpecDict({"foo": None, ("bar", "baz"): None})
+        >>> spec = {'foo': int, 'bar': {'baz': None}}
+        >>> convert_to_canonical_format(spec)
+        SpecDict({'foo': TypeSpec(<class 'int'>), 'bar': SpecDict({'baz': None})})
 
-        spec = {"foo": int, "bar": {"baz": None}}
-        output = convert_to_canonical_format(spec)
-        # output = SpecDict(
-        #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": None})}
-        # )
+        >>> spec = ['foo', ('bar', 'baz')]
+        >>> convert_to_canonical_format(spec)
+        SpecDict({'foo': None, 'bar': SpecDict({'baz': None})})
 
-        spec = {"foo": int, "bar": {"baz": str}}
-        output = convert_to_canonical_format(spec)
-        # output = SpecDict(
-        #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": TypeSpec(str)})}
-        # )
+        >>> from ray.rllib.core.models.specs.specs_base import TensorSpec
+        >>> spec = {'bar': {'baz': TensorSpec('b,h', framework='torch')}}
+        >>> convert_to_canonical_format(spec)
+        SpecDict({'bar': SpecDict({'baz': TensorSpec(shape=('b', 'h'), dtype=None)})})
 
-        spec = {"foo": int, "bar": {"baz": TensorSpec("b,h", framework="torch")}}
-        output = convert_to_canonical_format(spec)
-        # output = SpecDict(
-        #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": TensorSpec("b,h",
-        framework="torch")})}
-        # )
+        Example of canoncial format #2:
 
+        >>> from ray.rllib.core.models.specs.specs_base import TensorSpec
 
-    # Example of canoncial format #2:
+        >>> spec = int
+        >>> convert_to_canonical_format(spec)
+        TypeSpec(<class 'int'>)
 
-    .. code-block:: python
-        spec = int
-        output = convert_to_canonical_format(spec)
-        # output = TypeSpec(int)
+        >>> spec = None
+        >>> convert_to_canonical_format(spec) # Returns None
 
-        spec = None
-        output = convert_to_canonical_format(spec)
-        # output = None
-
-        spec = TensorSpec("b,h", framework="torch")
-        output = convert_to_canonical_format(spec)
-        # output = TensorSpec("b,h", framework="torch")
+        >>> spec = TensorSpec('b,h', framework='torch')
+        >>> convert_to_canonical_format(spec)
+        TensorSpec(shape=('b', 'h'), dtype=None)
 
     Args:
         spec: The spec to convert to canonical format.
@@ -200,18 +188,26 @@ def check_input_specs(
 
     Examples (See more examples in ../tests/test_specs_dict.py):
 
-        >>> class MyModel(nn.Module):
-        ...     @property
-        ...     def input_specs(self):
-        ...         return {"obs": TensorSpec("b, d", d=64)}
-        ...
-        ...     @check_input_specs("input_specs")
-        ...     def forward(self, input_data, return_loss=False):
-        ...         ...
+    .. testcode::
 
-        >>> model = MyModel()
-        >>> model.forward({"obs": torch.randn(32, 64)}) # No error
-        >>> model.forward({"obs": torch.randn(32, 32)}) # raises ValueError
+        import torch
+        from torch import nn
+        from ray.rllib.core.models.specs.specs_base import TensorSpec
+
+        class MyModel(nn.Module):
+            @property
+            def input_specs(self):
+                return {"obs": TensorSpec("b, d", d=64)}
+
+            @check_input_specs("input_specs", only_check_on_retry=False)
+            def forward(self, input_data, return_loss=False):
+                ...
+
+        model = MyModel()
+        model.forward({"obs": torch.randn(32, 64)})
+
+        # The following would raise an Error
+        # model.forward({"obs": torch.randn(32, 32)})
 
     Args:
         func: The instance method to decorate. It should be a callable that takes
@@ -320,14 +316,20 @@ def check_output_specs(
 
     Examples (See more examples in ../tests/test_specs_dict.py):
 
-        >>> class MyModel(nn.Module):
-        ...     @property
-        ...     def output_specs(self):
-        ...         return {"obs": TensorSpec("b, d", d=64)}
-        ...
-        ...     @check_output_specs("output_specs")
-        ...     def forward(self, input_data, return_loss=False):
-        ...         return {"obs": torch.randn(32, 64)}
+    .. testcode::
+
+        import torch
+        from torch import nn
+        from ray.rllib.core.models.specs.specs_base import TensorSpec
+
+        class MyModel(nn.Module):
+            @property
+            def output_specs(self):
+                return {"obs": TensorSpec("b, d", d=64)}
+
+            @check_output_specs("output_specs")
+            def forward(self, input_data, return_loss=False):
+                return {"obs": torch.randn(32, 64)}
 
     Args:
         func: The instance method to decorate. It should be a callable that takes

@@ -7,23 +7,25 @@ import math
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Deque, Tuple, Union
+from typing import Deque, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray.data._internal.execution.interfaces import (
-    ExecutionResources,
-    RefBundle,
-    PhysicalOperator,
-    ExecutionOptions,
-)
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    ExecutionResources,
+    PhysicalOperator,
+    RefBundle,
+)
+from ray.data._internal.execution.interfaces.physical_operator import OpTask, Waitable
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
-
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
@@ -121,6 +123,8 @@ class OpState:
         self.progress_bar = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
+        # Tracks whether `input_done` is called for each input op.
+        self.input_done_called = [False] * len(op.input_dependencies)
         self.dependents_completed_called = False
 
     def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
@@ -159,7 +163,7 @@ class OpState:
 
     def num_processing(self):
         """Return the number of bundles currently in processing for this operator."""
-        return self.op.num_active_work_refs() + self.op.internal_queue_size()
+        return self.op.num_active_tasks() + self.op.internal_queue_size()
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
@@ -175,7 +179,7 @@ class OpState:
 
     def summary_str(self) -> str:
         queued = self.num_queued() + self.op.internal_queue_size()
-        active = self.op.num_active_work_refs()
+        active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: {active} active, {queued} queued"
         mem = memory_string(
             (self.op.current_resource_usage().object_store_memory or 0)
@@ -307,44 +311,52 @@ def build_streaming_topology(
 
 
 def process_completed_tasks(topology: Topology) -> None:
-    """Process any newly completed tasks and update operator state."""
+    """Process any newly completed tasks. To update operator
+    states, call `update_operator_states()` afterwards."""
 
     # Update active tasks.
-    active_tasks: Dict[ray.ObjectRef, PhysicalOperator] = {}
+    active_tasks: Dict[Waitable, OpTask] = {}
 
     for op in topology.keys():
-        for ref in op.get_work_refs():
-            active_tasks[ref] = op
+        for task in op.get_active_tasks():
+            active_tasks[task.get_waitable()] = task
 
     # Process completed Ray tasks and notify operators.
     if active_tasks:
-        completed, _ = ray.wait(
-            list(active_tasks),
+        ready, _ = ray.wait(
+            list(active_tasks.keys()),
             num_returns=len(active_tasks),
             fetch_local=False,
             timeout=0.1,
         )
-        for ref in completed:
-            op = active_tasks.pop(ref)
-            op.notify_work_completed(ref)
+        for ref in ready:
+            active_tasks[ref].on_waitable_ready()
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
         while op.has_next():
             op_state.add_output(op.get_next())
 
+
+def update_operator_states(topology: Topology) -> None:
+    """Update operator states accordingly for newly completed tasks.
+    Should be called after `process_completed_tasks()`."""
+
     # Call inputs_done() on ops where no more inputs are coming.
     for op, op_state in topology.items():
         if op_state.inputs_done_called:
             continue
-        inputs_done = all(
-            [
-                dep.completed() and not topology[dep].outqueue
-                for dep in op.input_dependencies
-            ]
-        )
-        if inputs_done:
-            op.inputs_done()
+        all_inputs_done = True
+        for idx, dep in enumerate(op.input_dependencies):
+            if dep.completed() and not topology[dep].outqueue:
+                if not op_state.input_done_called[idx]:
+                    op.input_done(idx)
+                    op_state.input_done_called[idx] = True
+            else:
+                all_inputs_done = False
+
+        if all_inputs_done:
+            op.all_inputs_done()
             op_state.inputs_done_called = True
 
     # Traverse the topology in reverse topological order.
@@ -393,6 +405,7 @@ def select_operator_to_run(
             and state.num_queued() > 0
             and op.should_add_input()
             and under_resource_limits
+            and not op.completed()
         ):
             ops.append(op)
         # Update the op in all cases to enable internal autoscaling, etc.
@@ -414,13 +427,13 @@ def select_operator_to_run(
     if (
         ensure_at_least_one_running
         and not ops
-        and all(op.num_active_work_refs() == 0 for op in topology)
+        and all(op.num_active_tasks() == 0 for op in topology)
     ):
         # The topology is entirely idle, so choose from all ready ops ignoring limits.
         ops = [
             op
             for op, state in topology.items()
-            if op.need_more_inputs() and state.num_queued() > 0
+            if op.need_more_inputs() and state.num_queued() > 0 and not op.completed()
         ]
 
     # Nothing to run.
@@ -470,7 +483,7 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
     for op, state in topology.items():
         per_task_resource = op.incremental_resource_usage()
         task_bundle = to_bundle(per_task_resource)
-        resource_request.extend([task_bundle] * op.num_active_work_refs())
+        resource_request.extend([task_bundle] * op.num_active_tasks())
         # Only include incremental resource usage for ops that are ready for
         # dispatch.
         if state.num_queued() > 0:

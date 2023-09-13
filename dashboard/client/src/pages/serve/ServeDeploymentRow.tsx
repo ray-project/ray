@@ -43,17 +43,19 @@ const useStyles = makeStyles((theme) =>
 export type ServeDeployentRowProps = {
   deployment: ServeDeployment;
   application: ServeApplication;
+  startExpanded?: boolean;
 };
 
 export const ServeDeploymentRow = ({
   deployment,
   application: { last_deployed_time_s },
+  startExpanded = false,
 }: ServeDeployentRowProps) => {
   const { name, status, message, deployment_config, replicas } = deployment;
 
   const classes = useStyles();
 
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(startExpanded);
   const metricsUrl = useViewServeDeploymentMetricsButtonUrl(name);
 
   return (

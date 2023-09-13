@@ -1,5 +1,10 @@
 from ray.data.preprocessors.batch_mapper import BatchMapper
 from ray.data.preprocessors.chain import Chain
+from ray.data.preprocessors.concatenator import Concatenator
+from ray.data.preprocessors.discretizer import (
+    CustomKBinsDiscretizer,
+    UniformKBinsDiscretizer,
+)
 from ray.data.preprocessors.encoder import (
     Categorizer,
     LabelEncoder,
@@ -11,20 +16,15 @@ from ray.data.preprocessors.hasher import FeatureHasher
 from ray.data.preprocessors.imputer import SimpleImputer
 from ray.data.preprocessors.normalizer import Normalizer
 from ray.data.preprocessors.scaler import (
-    StandardScaler,
-    MinMaxScaler,
     MaxAbsScaler,
+    MinMaxScaler,
     RobustScaler,
+    StandardScaler,
 )
-from ray.data.preprocessors.concatenator import Concatenator
 from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.torch import TorchVisionPreprocessor
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
-from ray.data.preprocessors.discretizer import (
-    CustomKBinsDiscretizer,
-    UniformKBinsDiscretizer,
-)
 
 __all__ = [
     "BatchMapper",

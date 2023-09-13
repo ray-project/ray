@@ -4,7 +4,7 @@ from ray.rllib.utils.annotations import override
 
 
 class BCConfig(MARWILConfig):
-    """Defines a configuration class from which a new BC Trainer can be built
+    """Defines a configuration class from which a new BC Algorithm can be built
 
     Example:
         >>> from ray.rllib.algorithms.bc import BCConfig
@@ -13,7 +13,7 @@ class BCConfig(MARWILConfig):
         >>> config = config.offline_data(  # doctest: +SKIP
         ...     input_="./rllib/tests/data/cartpole/large.json")
         >>> print(config.to_dict())  # doctest:+SKIP
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build an Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build()  # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
 

@@ -8,16 +8,23 @@ doctest(
             "tests/**",
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
-            # FIXME: Failing doctests
-            "xgboost/xgboost_predictor.py",
-            "xgboost/xgboost_checkpoint.py"
+            "huggingface/transformers/transformers_trainer.py",
+            "_internal/session.py",
+            "context.py"
         ]
     ),
+    size = "large",
     tags = ["team:ml"],
 )
 
 doctest(
-    files = ["tensorflow/tensorflow_trainer.py"],
+    files = [
+        "tensorflow/tensorflow_trainer.py",
+        "huggingface/transformers/transformers_trainer.py",
+        "_internal/session.py",
+        "context.py"
+    ],
+    size = "large",
     tags = ["team:ml"],
     gpu = True
 )
@@ -31,15 +38,65 @@ py_library(
     srcs = ["tests/conftest.py"]
 )
 
+############ Experiment tracking examples start ############
+
+# no credentials needed
 py_test(
-    name = "mlflow_fashion_mnist_example",
-    size = "medium",
-    main = "examples/mlflow_fashion_mnist_example.py",
-    srcs = ["examples/mlflow_fashion_mnist_example.py"],
-    tags = ["team:ml", "exclusive"],
+    name = "lightning_exp_tracking_mlflow",
+    size = "small",
+    main = "examples/experiment_tracking/lightning_exp_tracking_mlflow.py",
+    srcs = ["examples/experiment_tracking/lightning_exp_tracking_mlflow.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
+    tags = ["team:ml", "exclusive", "no_main", "new_storage"],
     deps = [":train_lib"],
-    args = ["--smoke-test"]
 )
+
+py_test(
+    name = "lightning_exp_tracking_tensorboard",
+    size = "small",
+    main = "examples/experiment_tracking/lightning_exp_tracking_tensorboard.py",
+    srcs = ["examples/experiment_tracking/lightning_exp_tracking_tensorboard.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
+    tags = ["team:ml", "exclusive", "no_main", "new_storage"],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "torch_exp_tracking_mlflow",
+    size = "medium",
+    main = "examples/experiment_tracking/torch_exp_tracking_mlflow.py",
+    srcs = ["examples/experiment_tracking/torch_exp_tracking_mlflow.py"],
+    tags = ["team:ml", "exclusive", "no_main", "new_storage"],
+    deps = [":train_lib"],
+)
+
+# credentials needed
+py_test(
+    name = "lightning_exp_tracking_wandb",
+    size = "medium",
+    main = "examples/experiment_tracking/lightning_exp_tracking_wandb.py",
+    srcs = ["examples/experiment_tracking/lightning_exp_tracking_wandb.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
+    tags = ["team:ml", "exclusive", "no_main", "needs_credentials", "new_storage"],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "lightning_exp_tracking_comet",
+    size = "medium",
+    main = "examples/experiment_tracking/lightning_exp_tracking_comet.py",
+    srcs = ["examples/experiment_tracking/lightning_exp_tracking_comet.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
+    tags = ["team:ml", "exclusive", "no_main", "needs_credentials", "new_storage"],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "torch_exp_tracking_wandb",
+    size = "medium",
+    main = "examples/experiment_tracking/torch_exp_tracking_wandb.py",
+    srcs = ["examples/experiment_tracking/torch_exp_tracking_wandb.py"],
+    tags = ["team:ml", "exclusive", "no_main", "needs_credentials", "new_storage"],
+    deps = [":train_lib"],
+)
+
+############ Experiment tracking examples end ############
 
 py_test(
     name = "mlflow_simple_example",
@@ -66,30 +123,6 @@ py_test(
     srcs = ["examples/pytorch/torch_quick_start.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
-)
-
-py_test(
-    name = "transformers_example_gpu",
-    size = "medium",
-    main = "examples/transformers/transformers_example.py",
-    srcs = ["examples/transformers/transformers_example.py"],
-    tags = ["team:ml", "exclusive", "tune", "gpu_only"],
-    deps = [":train_lib"],
-    args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
-    "--max_length=32", "--per_device_train_batch_size=64",
-    "--max_train_steps=2", "--start_local", "--num_workers=2", "--use_gpu"]
-)
-
-py_test(
-    name = "transformers_example_cpu",
-    size = "medium",
-    main = "examples/transformers/transformers_example.py",
-    srcs = ["examples/transformers/transformers_example.py"],
-    tags = ["team:ml", "exclusive", "tune"],
-    deps = [":train_lib"],
-    args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
-    "--max_length=32", "--per_device_train_batch_size=64",
-    "--max_train_steps=2", "--start_local", "--num_workers=2"]
 )
 
 py_test(
@@ -240,15 +273,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "pytorch_pbt_failure",
-    size = "small",
-    srcs = ["tests/pytorch_pbt_failure.py"],
-    tags = ["team:ml", "exlusive", "no_main"],
-    deps = [":train_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "test_accelerate_trainer_gpu",
     size = "large",
     srcs = ["tests/test_accelerate_trainer_gpu.py"],
@@ -273,25 +297,17 @@ py_test(
 )
 
 py_test(
-    name = "test_batch_predictor",
-    size = "medium",
-    srcs = ["tests/test_batch_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_batchpredictor_runtime",
-    size = "medium",
-    srcs = ["tests/test_batchpredictor_runtime.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_checkpoints",
+    name = "test_checkpoint",
     size = "small",
-    srcs = ["tests/test_checkpoints.py"],
+    srcs = ["tests/test_checkpoint.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_checkpoint_manager",
+    size = "small",
+    srcs = ["tests/test_checkpoint_manager.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
@@ -324,6 +340,14 @@ py_test(
     name = "test_gpu",
     size = "large",
     srcs = ["tests/test_gpu.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_gpu_2",
+    size = "medium",
+    srcs = ["tests/test_gpu_2.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib", ":conftest"]
 )
@@ -433,6 +457,62 @@ py_test(
 )
 
 py_test(
+    name = "test_lightning_deepspeed",
+    size = "large",
+    srcs = ["tests/test_lightning_deepspeed.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_torch_lightning_train",
+    size = "large",
+    srcs = ["tests/test_torch_lightning_train.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_torch_transformers_train",
+    size = "large",
+    srcs = ["tests/test_torch_transformers_train.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "accelerate_torch_trainer",
+    size = "large",
+    srcs = ["examples/accelerate/accelerate_torch_trainer.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "accelerate_torch_trainer_no_raydata",
+    size = "large",
+    srcs = ["examples/accelerate/accelerate_torch_trainer_no_raydata.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "deepspeed_torch_trainer",
+    size = "large",
+    srcs = ["examples/deepspeed/deepspeed_torch_trainer.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "deepspeed_torch_trainer_no_raydata",
+    size = "large",
+    srcs = ["examples/deepspeed/deepspeed_torch_trainer_no_raydata.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
@@ -441,27 +521,19 @@ py_test(
 )
 
 py_test(
+    name = "test_new_persistence",
+    size = "large",
+    srcs = ["tests/test_new_persistence.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_predictor",
     size = "small",
     srcs = ["tests/test_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_rl_trainer",
-    size = "medium",
-    srcs = ["tests/test_rl_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
-    name = "test_rl_predictor",
-    size = "small",
-    srcs = ["tests/test_rl_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -477,6 +549,14 @@ py_test(
     size = "small",
     srcs = ["tests/test_sklearn_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_storage",
+    size = "small",
+    srcs = ["tests/test_storage.py"],
+    tags = ["team:ml", "exclusive"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -553,6 +633,14 @@ py_test(
 )
 
 py_test(
+    name = "test_train_usage",
+    size = "medium",
+    srcs = ["tests/test_train_usage.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"],
+)
+
+py_test(
     name = "test_training_iterator",
     size = "large",
     srcs = ["tests/test_training_iterator.py"],
@@ -565,14 +653,6 @@ py_test(
     size = "small",
     srcs = ["tests/test_transformers_checkpoint.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
-    name = "test_transformers_gpu",
-    size = "medium",
-    srcs = ["tests/test_transformers_gpu.py"],
-    tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -656,8 +736,9 @@ py_test(
         "exclusive",
         "ray_air",
         "team:ml",
+        "new_storage",
     ],
-    deps = [":train_lib"],
+    deps = [":train_lib", ":conftest"],
 )
 
 # This is a dummy test dependency that causes the above tests to be

@@ -13,6 +13,9 @@ from ray.air.execution.resources import (
 from ray.air.execution._internal.tracked_actor import TrackedActor
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
+from ray.tune.utils.resource_updater import _ResourceUpdater
+
+from ray.train.tests.util import mock_storage_context
 
 
 class NoopClassCache:
@@ -88,29 +91,64 @@ class NoopActorManager(RayActorManager):
     def next(self, timeout: Optional[Union[int, float]] = None) -> None:
         pass
 
+    def set_num_pending(self, num_pending: int):
+        self._pending_actors_to_attrs = {i: None for i in range(num_pending)}
+
+
+class _FakeResourceUpdater(_ResourceUpdater):
+    def __init__(self, resource_manager: BudgetResourceManager):
+        self._resource_manager = resource_manager
+
+    def get_num_cpus(self):
+        return self._resource_manager._total_resources.get("CPU", 0)
+
+    def get_num_gpus(self) -> int:
+        return self._resource_manager._total_resources.get("GPU", 0)
+
 
 class TestingTrial(Trial):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("storage", mock_storage_context())
+        super().__init__(*args, **kwargs)
+
     def get_trainable_cls(self):
         return self.trainable_name
 
     def create_placement_group_factory(self):
+        self.placement_group_factory = self._default_placement_group_factory
+
+    def set_ray_actor(self, ray_actor):
         pass
 
 
 def create_execution_test_objects(
-    tmpdir, max_pending_trials: int = 8, resources: Optional[Dict[str, float]] = None
+    tmpdir,
+    max_pending_trials: int = 8,
+    resources: Optional[Dict[str, float]] = None,
+    reuse_actors: bool = True,
+    tune_controller_cls: Type[TuneController] = TuneController,
+    **kwargs,
 ):
     os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = str(max_pending_trials)
 
     resources = resources or {"CPU": 4}
 
-    tune_controller = TuneController(
-        experiment_path=str(tmpdir),
-        reuse_actors=True,
+    storage_path = str(tmpdir)
+    experiment_name = "test_exp"
+
+    storage = kwargs.pop("storage", mock_storage_context())
+
+    tune_controller = tune_controller_cls(
+        experiment_path=os.path.join(storage_path, experiment_name),
+        reuse_actors=reuse_actors,
+        storage=storage,
+        **kwargs,
     )
     resource_manager = BudgetResourceManager(total_resources=resources)
+    resource_updater = _FakeResourceUpdater(resource_manager)
     actor_manger = NoopActorManager(resource_manager)
     tune_controller._actor_manager = actor_manger
     tune_controller._class_cache = NoopClassCache()
+    tune_controller._resource_updater = resource_updater
 
     return tune_controller, actor_manger, resource_manager

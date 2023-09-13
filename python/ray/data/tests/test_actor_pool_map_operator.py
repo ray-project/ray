@@ -4,14 +4,14 @@ import time
 import pytest
 
 import ray
-from ray.tests.conftest import *  # noqa
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    _ActorPool,
     AutoscalingConfig,
     AutoscalingPolicy,
+    _ActorPool,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.tests.conftest import *  # noqa
 
 
 @ray.remote
@@ -629,6 +629,26 @@ class TestAutoscalingPolicy:
         num_idle_workers = 3
         # Should scale down due to being over idle workers to total workers ratio.
         assert policy.should_scale_down(num_total_workers, num_idle_workers)
+
+    def test_start_actor_timeout(ray_start_regular_shared):
+        """Tests that ActorPoolMapOperator raises an exception on
+        timeout while waiting for actors."""
+        from ray.data._internal.execution.operators import actor_pool_map_operator
+        from ray.exceptions import GetTimeoutError
+
+        original_timeout = actor_pool_map_operator.DEFAULT_WAIT_FOR_MIN_ACTORS_SEC
+        actor_pool_map_operator.DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = 1
+
+        with pytest.raises(GetTimeoutError, match="Get timed out"):
+            # Specify an unachievable resource requirement to ensure
+            # we timeout while waiting for actors.
+            ray.data.range(10).map_batches(
+                lambda x: x,
+                batch_size=1,
+                compute=ray.data.ActorPoolStrategy(size=5),
+                num_gpus=100,
+            ).take_all()
+        actor_pool_map_operator.DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = original_timeout
 
 
 if __name__ == "__main__":

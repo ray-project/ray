@@ -10,7 +10,7 @@ import ray._raylet
 from ray import ActorClassID, Language, cross_language
 from ray._private import ray_option_utils
 from ray._private.async_compat import is_async_func
-from ray._private.auto_init_hook import auto_init_ray
+from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
     client_mode_convert_actor,
     client_mode_hook,
@@ -163,6 +163,7 @@ class ActorMethod:
 
         return FuncWrapper()
 
+    @wrap_auto_init
     @_tracing_actor_method_invocation
     def _remote(
         self, args=None, kwargs=None, name="", num_returns=None, concurrency_group=None
@@ -661,6 +662,7 @@ class ActorClass:
 
         return ActorOptionWrapper()
 
+    @wrap_auto_init
     @_tracing_actor_creation
     def _remote(self, args=None, kwargs=None, **actor_options):
         """Create an actor.
@@ -764,7 +766,6 @@ class ActorClass:
         if actor_options.get("max_concurrency") is None:
             actor_options["max_concurrency"] = 1000 if is_asyncio else 1
 
-        auto_init_ray()
         if client_mode_should_convert():
             return client_mode_convert_actor(self, args, kwargs, **actor_options)
 
@@ -1405,7 +1406,6 @@ def exit_actor():
         exit.is_ray_terminate = True
         exit.ray_terminate_msg = "exit_actor() is called."
         raise exit
-        assert False, "This process should have terminated."
     else:
         raise TypeError(
             "exit_actor API is called on a non-actor worker, "

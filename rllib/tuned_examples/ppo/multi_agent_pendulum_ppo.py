@@ -8,15 +8,18 @@ register_env("multi_agent_pendulum", lambda _: MultiAgentPendulum({"num_agents":
 config = (
     PPOConfig()
     .environment("multi_agent_pendulum")
-    .rollouts(num_envs_per_worker=10, batch_mode="complete_episodes")
+    .rollouts(
+        num_envs_per_worker=20,
+        observation_filter="MeanStdFilter",
+        num_rollout_workers=0,
+    )
     .training(
-        train_batch_size=2048,
+        train_batch_size=512,
         lambda_=0.1,
-        grad_clip=0.95,
+        gamma=0.95,
         lr=0.0003,
         sgd_minibatch_size=64,
-        num_sgd_iter=10,
-        model={"fcnet_hiddens": [128, 128], "fcnet_activation": "relu"},
+        model={"fcnet_activation": "relu"},
         vf_clip_param=10.0,
     )
 )

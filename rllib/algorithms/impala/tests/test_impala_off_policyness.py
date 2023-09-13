@@ -33,9 +33,7 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
         num_aggregation_workers_options = [0, 1]
 
         for num_aggregation_workers in num_aggregation_workers_options:
-            for _ in framework_iterator(
-                config, frameworks=("tf2", "torch"), with_eager_tracing=True
-            ):
+            for _ in framework_iterator(config, frameworks=("tf2", "torch")):
 
                 # We have to set exploration_config here manually because setting
                 # it through config.exploration() only deepupdates it

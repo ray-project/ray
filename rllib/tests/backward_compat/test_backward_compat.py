@@ -1,5 +1,4 @@
 import os
-import importlib
 from pathlib import Path
 from packaging import version
 import sys
@@ -21,13 +20,10 @@ from ray.tune.registry import register_env
 class TestBackwardCompatibility(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        os.system("pip install gym==0.23.1")
-        importlib.reload(sys.modules["gym"])
-        ray.init()
+        ray.init(runtime_env={"pip_packages": ["gym==0.23.1"]})
 
     @classmethod
     def tearDownClass(cls):
-        os.system("pip install gym==0.26.2")
         ray.shutdown()
 
     def test_old_checkpoint_formats(self):
@@ -42,7 +38,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         # gym version conflict (gym==0.23.x not compatible with gym==0.26.x)).
         for v in []:  # "0.1"
             v = version.Version(v)
-            for fw in framework_iterator(with_eager_tracing=True):
+            for fw in framework_iterator():
                 path_to_checkpoint = os.path.join(
                     rllib_dir,
                     "tests",

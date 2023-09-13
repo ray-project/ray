@@ -1,6 +1,7 @@
 import click
 import json
 import ray
+from ray._private.ray_constants import LOG_PREFIX_ACTOR_NAME, LOG_PREFIX_JOB_ID
 from ray._private.state_api_test_utils import (
     STATE_LIST_LIMIT,
     StateAPIMetric,
@@ -11,9 +12,15 @@ from ray._private.state_api_test_utils import (
 
 import ray._private.test_utils as test_utils
 import tqdm
-import asyncio
 import time
 import os
+
+from ray.util.placement_group import (
+    placement_group,
+    remove_placement_group,
+)
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
 
 from ray.util.state import (
     get_log,
@@ -22,24 +29,13 @@ from ray.util.state import (
     list_tasks,
 )
 
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+logger = logging.getLogger(__file__)
+
 GiB = 1024 * 1024 * 1024
 MiB = 1024 * 1024
-
-
-# We set num_cpus to zero because this actor will mostly just block on I/O.
-@ray.remote(num_cpus=0)
-class SignalActor:
-    def __init__(self):
-        self.ready_event = asyncio.Event()
-
-    def send(self, clear=False):
-        self.ready_event.set()
-        if clear:
-            self.ready_event.clear()
-
-    async def wait(self, should_wait=True):
-        if should_wait:
-            await self.ready_event.wait()
 
 
 def invoke_state_api_n(*args, **kwargs):
@@ -53,18 +49,22 @@ def invoke_state_api_n(*args, **kwargs):
 
 
 def test_many_tasks(num_tasks: int):
+    TASK_NAME_TEMPLATE = "pi4_sample_{num_tasks}"
     if num_tasks == 0:
-        print("Skipping test with no tasks")
+        logger.info("Skipping test with no tasks")
         return
 
     # No running tasks
     invoke_state_api_n(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("state", "=", "RUNNING")],
+        filters=[("name", "=", TASK_NAME_TEMPLATE.format(num_tasks=num_tasks))],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
-        err_msg="Expect 0 running tasks.",
+        err_msg=(
+            "Expect 0 running tasks for "
+            f"{TASK_NAME_TEMPLATE.format(num_tasks=num_tasks)}"
+        ),
     )
 
     # Task definition adopted from:
@@ -73,37 +73,32 @@ def test_many_tasks(num_tasks: int):
 
     SAMPLES = 100
 
-    # `num_cpus` required obtained from 1 / (num_tasks /num_total_cpus)
-    #  where num_total_cpus obtained from cluster_compute in `release_tests.yaml`
-    # 1 / (10k/45 * 7) ~= 0.03, taking a smaller value to make sure all tasks could be
-    # running at the same time.
-    @ray.remote(num_cpus=0.02)
-    def pi4_sample(signal):
+    @ray.remote
+    def pi4_sample():
         in_count = 0
         for _ in range(SAMPLES):
             x, y = random(), random()
             if x * x + y * y <= 1:
                 in_count += 1
-        # Block on signal
-        ray.get(signal.wait.remote())
         return in_count
 
     results = []
-    signal = SignalActor.remote()
     for _ in tqdm.trange(num_tasks, desc="Launching tasks"):
-        results.append(pi4_sample.remote(signal))
+        results.append(
+            pi4_sample.options(
+                name=TASK_NAME_TEMPLATE.format(num_tasks=num_tasks)
+            ).remote()
+        )
 
     invoke_state_api_n(
         lambda res: len(res) == num_tasks,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("state", "!=", "FINISHED")],
+        filters=[("name", "=", TASK_NAME_TEMPLATE.format(num_tasks=num_tasks))],
         key_suffix=f"{num_tasks}",
         limit=STATE_LIST_LIMIT,
         err_msg=f"Expect {num_tasks} non finished tasks.",
     )
 
-    print("Waiting for tasks to finish...")
-    ray.get(signal.send.remote())
     ray.get(results)
 
     # Clean up
@@ -111,18 +106,19 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api_n(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("state", "=", "RUNNING")],
+        filters=[
+            ("name", "=", TASK_NAME_TEMPLATE.format(num_tasks=num_tasks)),
+            ("state", "=", "RUNNING"),
+        ],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
         err_msg="Expect 0 running tasks",
     )
 
-    del signal
-
 
 def test_many_actors(num_actors: int):
     if num_actors == 0:
-        print("Skipping test with no actors")
+        logger.info("Skipping test with no actors")
         return
 
     @ray.remote
@@ -148,7 +144,7 @@ def test_many_actors(num_actors: int):
     ]
 
     waiting_actors = [actor.running.remote() for actor in actors]
-    print("Waiting for actors to finish...")
+    logger.info("Waiting for actors to finish...")
     ray.get(waiting_actors)
 
     invoke_state_api_n(
@@ -174,10 +170,14 @@ def test_many_actors(num_actors: int):
 
 def test_many_objects(num_objects, num_actors):
     if num_objects == 0:
-        print("Skipping test with no objects")
+        logger.info("Skipping test with no objects")
         return
 
-    @ray.remote(num_cpus=0.1)
+    pg = placement_group([{"CPU": 1}] * num_actors, strategy="SPREAD")
+    ray.get(pg.ready())
+
+    # We will try to put actors on multiple nodes.
+    @ray.remote
     class ObjectActor:
         def __init__(self):
             self.objs = []
@@ -185,18 +185,29 @@ def test_many_objects(num_objects, num_actors):
         def create_objs(self, num_objects):
             import os
 
-            for _ in range(num_objects):
+            for i in range(num_objects):
                 # Object size shouldn't matter here.
                 self.objs.append(ray.put(bytearray(os.urandom(1024))))
+                if i + 1 % 100 == 0:
+                    logger.info(f"Created object {i+1}...")
 
             return self.objs
 
-        def exit(self):
-            ray.actor.exit_actor()
+        def ready(self):
+            pass
 
     actors = [
-        ObjectActor.remote() for _ in tqdm.trange(num_actors, desc="Creating actors...")
+        ObjectActor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg,
+            )
+        ).remote()
+        for _ in tqdm.trange(num_actors, desc="Creating actors...")
     ]
+
+    waiting_actors = [actor.ready.remote() for actor in actors]
+    for _ in tqdm.trange(len(actors), desc="Waiting actors to be ready..."):
+        _ready, waiting_actors = ray.wait(waiting_actors)
 
     # Splitting objects to multiple actors for creation,
     # credit: https://stackoverflow.com/a/2135920
@@ -231,14 +242,13 @@ def test_many_objects(num_objects, num_actors):
         limit=STATE_LIST_LIMIT,
     )
 
-    exiting_actors = [actor.exit.remote() for actor in actors]
-    for _ in tqdm.trange(len(actors), desc="Destroying actors..."):
-        _exitted, exiting_actors = ray.wait(exiting_actors)
+    del actors
+    remove_placement_group(pg)
 
 
 def test_large_log_file(log_file_size_byte: int):
     if log_file_size_byte == 0:
-        print("Skipping test with 0 log file size")
+        logger.info("Skipping test with 0 log file size")
         return
 
     import sys
@@ -250,6 +260,9 @@ def test_large_log_file(log_file_size_byte: int):
     class LogActor:
         def write_log(self, log_file_size_byte: int):
             ctx = hashlib.md5()
+            job_id = ray.get_runtime_context().get_job_id()
+            prefix = f"{LOG_PREFIX_JOB_ID}{job_id}\n{LOG_PREFIX_ACTOR_NAME}LogActor\n"
+            ctx.update(prefix.encode())
             while log_file_size_byte > 0:
                 n = min(log_file_size_byte, 4 * MiB)
                 chunk = "".join(random.choices(string.ascii_letters, k=n))
@@ -272,7 +285,7 @@ def test_large_log_file(log_file_size_byte: int):
 
     time_taken = 0
     t_start = time.perf_counter()
-    for s in get_log(task_id=task.task_id().hex(), tail=1000000000):
+    for s in get_log(actor_id=actor._actor_id.hex(), tail=1000000000):
         t_end = time.perf_counter()
         time_taken += t_end - t_start
         # Not including this time
@@ -359,10 +372,13 @@ def test(
     ray.init(address="auto", log_to_driver=False)
 
     if smoke_test:
-        num_tasks = "100"
-        num_actors = "10"
-        num_objects = "100"
-        log_file_size_byte = f"{16*MiB}"
+        num_tasks = "1,100"
+        num_actors = "1,10"
+        num_objects = "1,100"
+        num_actors_for_objects = 1
+        log_file_size_byte = f"64,{16*MiB}"
+        global STATE_LIST_LIMIT
+        STATE_LIST_LIMIT = STATE_LIST_LIMIT // 1000
 
     # Parse the input
     num_tasks_arr, num_actors_arr, num_objects_arr, log_file_size_arr = _parse_input(
@@ -374,27 +390,27 @@ def test(
     start_time = time.perf_counter()
     # Run some long-running tasks
     for n in num_tasks_arr:
-        print(f"\nRunning with many tasks={n}")
+        logger.info(f"Running with many tasks={n}")
         test_many_tasks(num_tasks=n)
-        print(f"\ntest_many_tasks({n}) PASS")
+        logger.info(f"test_many_tasks({n}) PASS")
 
     # Run many actors
     for n in num_actors_arr:
-        print(f"\nRunning with many actors={n}")
+        logger.info(f"Running with many actors={n}")
         test_many_actors(num_actors=n)
-        print(f"\ntest_many_actors({n}) PASS")
+        logger.info(f"test_many_actors({n}) PASS")
 
     # Create many objects
     for n in num_objects_arr:
-        print(f"\nRunning with many objects={n}")
+        logger.info(f"Running with many objects={n}")
         test_many_objects(num_objects=n, num_actors=num_actors_for_objects)
-        print(f"\ntest_many_objects({n}) PASS")
+        logger.info(f"test_many_objects({n}) PASS")
 
     # Create large logs
     for n in log_file_size_arr:
-        print(f"\nRunning with large file={n} bytes")
+        logger.info(f"Running with large file={n} bytes")
         test_large_log_file(log_file_size_byte=n)
-        print(f"\ntest_large_log_file({n} bytes) PASS")
+        logger.info(f"test_large_log_file({n} bytes) PASS")
 
     print("\n\nPASS")
     end_time = time.perf_counter()
@@ -420,7 +436,33 @@ def test(
                 "perf_metric_name": "avg_state_api_latency_sec",
                 "perf_metric_value": state_perf_result["avg_state_api_latency_sec"],
                 "perf_metric_type": "LATENCY",
-            }
+            },
+            {
+                "perf_metric_name": "avg_state_api_get_log_latency_sec",
+                "perf_metric_value": state_perf_result["avg_get_log_latency_sec"],
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": "avg_state_api_list_tasks_10000_latency_sec",
+                "perf_metric_value": state_perf_result[
+                    "avg_list_tasks_10000_latency_sec"
+                ],
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": "avg_state_api_list_actors_5000_latency_sec",
+                "perf_metric_value": state_perf_result[
+                    "avg_list_actors_5000_latency_sec"
+                ],
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": "avg_state_api_list_objects_50000_latency_sec",
+                "perf_metric_value": state_perf_result[
+                    "avg_list_objects_50000_latency_sec"
+                ],
+                "perf_metric_type": "LATENCY",
+            },
         ]
 
     if "TEST_OUTPUT_JSON" in os.environ:

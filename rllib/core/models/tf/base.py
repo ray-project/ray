@@ -4,10 +4,8 @@ from typing import Tuple
 
 import numpy as np
 
-from ray.rllib.core.models.base import (
-    Model,
-    ModelConfig,
-)
+from ray.rllib.core.models.base import Model
+from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.specs.checker import (
     check_input_specs,
     is_input_decorated,

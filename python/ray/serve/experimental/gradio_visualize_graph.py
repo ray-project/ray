@@ -1,27 +1,28 @@
+from collections import defaultdict
+from io import BytesIO
+import logging
+from pydoc import locate
+from typing import Any, Dict, Optional
+
 import ray
+from ray import cloudpickle
+from ray.experimental.gradio_utils import type_to_string
+
 from ray.dag import (
     DAGNode,
     InputNode,
     InputAttributeNode,
 )
+from ray.dag.utils import _DAGNodeNameGenerator
+from ray.dag.vis_utils import _dag_to_dot
+
+from ray.serve.handle import RayServeHandle
 from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
 from ray.serve._private.deployment_method_executor_node import (
     DeploymentMethodExecutorNode,
 )
-from ray.serve._private.json_serde import dagnode_from_json
-from ray.dag.utils import _DAGNodeNameGenerator
-from ray.dag.vis_utils import _dag_to_dot
-from ray.serve.handle import RayServeHandle
-from ray.experimental.gradio_utils import type_to_string
-
-from typing import Any, Dict, Optional
-from collections import defaultdict
-import json
-import logging
-from io import BytesIO
-from pydoc import locate
 
 
 logger = logging.getLogger(__name__)
@@ -311,9 +312,9 @@ class GraphVisualizer:
         self._reset_state()
         self.handle = driver_handle
 
-        # Load the root DAG node from handle
-        dag_node_json = ray.get(self.handle.get_dag_node_json.remote())
-        self.dag = json.loads(dag_node_json, object_hook=dagnode_from_json)
+        # Load the root DAG node from handle.
+        pickled_dag_node = ray.get(self.handle.get_pickled_dag_node.remote())
+        self.dag = cloudpickle.loads(pickled_dag_node)
 
         # Get level for each node in dag
         uuid_to_depths = defaultdict(lambda: 0)

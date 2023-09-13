@@ -15,7 +15,12 @@ sudo apt-get update -y \
     && sudo apt-get install -y --no-install-recommends $(cat requirements_debian_byod.txt) \
     && sudo apt-get autoclean
 
+rm -rf /tmp/wrk
+git clone --branch 4.2.0 https://github.com/wg/wrk.git /tmp/wrk
+make -C /tmp/wrk -j
+sudo cp /tmp/wrk/wrk /usr/local/bin/wrk
+
 EOF
 
 COPY "$PIP_REQUIREMENTS" .
-RUN "$HOME"/anaconda3/bin/pip install --no-cache-dir install -r requirements_byod.txt
+RUN "$HOME"/anaconda3/bin/pip install --no-cache-dir -r "${PIP_REQUIREMENTS}"

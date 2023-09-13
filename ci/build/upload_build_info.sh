@@ -3,6 +3,16 @@
 # Cause the script to exit if a single command fails.
 set -ex
 
+readonly PIPELINE_POSTMERGE="0189e759-8c96-4302-b6b5-b4274406bf89"
+readonly PIPELINE_CIV1_BRANCH="0183465b-c6fb-479b-8577-4cfd743b545d"
+if [[
+  "${BUILDKITE_PIPELINE_ID:-}" != "${PIPELINE_POSTMERGE}" && 
+  "${BUILDKITE_PIPELINE_ID:-}" != "${PIPELINE_CIV1_BRANCH}"
+]]; then
+  echo "Skip build info uploading on non-postmerge pipeline."
+  exit 0
+fi
+
 ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
 RAY_DIR=$(cd "${ROOT_DIR}/../../"; pwd)
 
@@ -18,24 +28,6 @@ mkdir -p /tmp/bazel_event_logs
 
 ./ci/build/get_build_info.py > /tmp/bazel_event_logs/metadata.json
 
-if [[ -z "${BUILDKITE-}" ]]; then
-    # Codepath for Github Actions and Travis CI
-    pip install -q awscli
-
-    # Strip the leading "refs/heads/" in the posssible branch tag
-    TRAVIS_BRANCH=${TRAVIS_BRANCH/refs\/heads\//}
-
-    export AWS_ACCESS_KEY_ID=AKIAQQPDA73RF7PSLH5N
-    export AWS_SECRET_ACCESS_KEY=${BAZEL_LOG_BUCKET_ACCESS_KEY}
-    export AWS_DEFAULT_REGION=us-west-2
-
-    DST="s3://ray-travis-logs/bazel_events/$TRAVIS_BRANCH/$TRAVIS_COMMIT/$TRAVIS_JOB_ID"
-    echo "Uploading log to ${DST}"
-
-    aws s3 cp --recursive /tmp/bazel_event_logs "${DST}"
-else
-    # Codepath for Buildkite
-    # Keep cryptography/openssl in sync with `requirements_test.txt`
-    pip install -q -c "${RAY_DIR}/python/requirements.txt" docker aws_requests_auth boto3 cryptography==38.0.1 PyOpenSSL==22.1.0
-    python .buildkite/copy_files.py --destination logs --path /tmp/bazel_event_logs
-fi
+# Keep cryptography/openssl in sync with `requirements/test-requirements.txt`
+pip install -q -c "${RAY_DIR}/python/requirements.txt" docker aws_requests_auth boto3 cryptography==38.0.1 PyOpenSSL==22.1.0
+python .buildkite/copy_files.py --destination logs --path /tmp/bazel_event_logs

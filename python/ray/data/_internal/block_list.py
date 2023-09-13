@@ -3,8 +3,8 @@ from typing import Iterator, List, Optional, Tuple
 
 import numpy as np
 
-from ray.data.block import Block, BlockMetadata
 from ray.data._internal.memory_tracing import trace_allocation
+from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 
 
@@ -32,6 +32,9 @@ class BlockList:
         # Whether the block list is owned by consuming APIs, and if so it can be
         # eagerly deleted after read by the consumer.
         self._owned_by_consumer = owned_by_consumer
+        # This field can be set to indicate the number of estimated output blocks,
+        # since each read task may produce multiple output blocks after splitting.
+        self._estimated_num_blocks = None
 
     def __repr__(self):
         return f"BlockList(owned_by_consumer={self._owned_by_consumer})"
@@ -216,6 +219,10 @@ class BlockList:
     def initial_num_blocks(self) -> int:
         """Returns the number of blocks of this BlockList."""
         return self._num_blocks
+
+    def estimated_num_blocks(self) -> int:
+        """Estimate of `executed_num_blocks()`, without triggering actual execution."""
+        return self._estimated_num_blocks or self._num_blocks
 
     def executed_num_blocks(self) -> int:
         """Returns the number of output blocks after execution.

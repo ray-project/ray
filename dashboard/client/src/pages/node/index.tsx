@@ -1,4 +1,5 @@
 import {
+  Box,
   Button,
   ButtonGroup,
   Grid,
@@ -10,6 +11,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Typography,
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
@@ -21,6 +23,7 @@ import { SearchInput, SearchSelect } from "../../components/SearchComponent";
 import StateCounter from "../../components/StatesCounter";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
+import { HelpInfo } from "../../components/Tooltip";
 import { NodeDetail } from "../../type/node";
 import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
@@ -33,23 +36,87 @@ const useStyles = makeStyles((theme) => ({
     width: "100%",
     position: "relative",
   },
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
 }));
 
+const codeTextStyle = {
+  fontFamily: "Roboto Mono, monospace",
+};
 const columns = [
-  "", // Expand button
-  "Host / Cmd Line",
-  "State",
-  "ID",
-  "IP / PID",
-  "Actions",
-  "CPU Usage",
-  "Memory",
-  "GPU",
-  "GRAM",
-  "Object Store Memory",
-  "Disk(root)",
-  "Sent",
-  "Received",
+  { label: "" }, // Expand button
+  { label: "Host / Worker Process name" },
+  { label: "State" },
+  { label: "ID" },
+  { label: "IP / PID" },
+  { label: "Actions" },
+  {
+    label: "CPU",
+    helpInfo: (
+      <Typography>
+        Hardware CPU usage of a Node or a Worker Process.
+        <br />
+        <br />
+        Node’s CPU usage is calculated against all CPU cores. Worker Process’s
+        CPU usage is calculated against 1 CPU core. As a result, the sum of CPU
+        usage from all Worker Processes is not equal to the Node’s CPU usage.
+      </Typography>
+    ),
+  },
+  {
+    label: "Memory",
+    helpInfo: (
+      <Typography>
+        A Node or a Worker Process's RAM usage. <br />
+        <br />
+        For a Node, Object Store holds up to 30% of RAM by default or a custom
+        value configured by users.
+        <br />
+        <br />
+        RAM is not pre-allocated for Object Store. Once memory is used by and
+        allocated to Object Store, it will hold and not release it until the Ray
+        Cluster is terminated.
+      </Typography>
+    ),
+  },
+  {
+    label: "GPU",
+    helpInfo: (
+      <Typography>
+        Usage of each GPU device. If no GPU usage is detected, here are the
+        potential root causes: <br />
+        1. library gpustsat is not installed. Install gpustat and try again.
+        <br /> 2. non-GPU Ray image is used on this node. Switch to a GPU Ray
+        image and try again. <br />
+        3. AMD GPUs are being used. AMD GPUs are not currently supported by
+        gpustat module. <br />
+        4. gpustat module raises an exception.
+      </Typography>
+    ),
+  },
+  { label: "GRAM" },
+  { label: "Object Store Memory" },
+  {
+    label: "Disk(root)",
+    helpInfo:
+      "For Ray Clusters on Kubernetes, multiple Ray Nodes/Pods may share the same Kubernetes Node's disk, resulting in multiple nodes having the same disk usage.",
+  },
+  { label: "Sent" },
+  { label: "Received" },
+  {
+    label: "Logical Resources",
+    helpInfo: (
+      <Typography>
+        <a href="https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#physical-resources-and-logical-resources">
+          Logical resources usage
+        </a>{" "}
+        (e.g., CPU, memory) for a node. Alternatively, you can run the CLI
+        command <p style={codeTextStyle}>ray status -v </p>
+        to obtain a similar result.
+      </Typography>
+    ),
+  },
 ];
 
 export const brpcLinkChanger = (href: string) => {
@@ -267,9 +334,20 @@ const Nodes = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  {columns.map((col) => (
-                    <TableCell align="center" key={col}>
-                      {col}
+                  {columns.map(({ label, helpInfo }) => (
+                    <TableCell align="center" key={label}>
+                      <Box
+                        display="flex"
+                        justifyContent="center"
+                        alignItems="center"
+                      >
+                        {label}
+                        {helpInfo && (
+                          <HelpInfo className={classes.helpInfo}>
+                            {helpInfo}
+                          </HelpInfo>
+                        )}
+                      </Box>
                     </TableCell>
                   ))}
                 </TableRow>

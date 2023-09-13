@@ -20,6 +20,8 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
 namespace gcs {
@@ -42,12 +44,14 @@ class GcsJobManager : public rpc::JobInfoHandler {
                          std::shared_ptr<GcsPublisher> gcs_publisher,
                          RuntimeEnvManager &runtime_env_manager,
                          GcsFunctionManager &function_manager,
-                         InternalKVInterface &internal_kv)
+                         InternalKVInterface &internal_kv,
+                         rpc::ClientFactoryFn client_factory = nullptr)
       : gcs_table_storage_(std::move(gcs_table_storage)),
         gcs_publisher_(std::move(gcs_publisher)),
         runtime_env_manager_(runtime_env_manager),
         function_manager_(function_manager),
-        internal_kv_(internal_kv) {}
+        internal_kv_(internal_kv),
+        core_worker_clients_(client_factory) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -88,6 +92,10 @@ class GcsJobManager : public rpc::JobInfoHandler {
   ray::RuntimeEnvManager &runtime_env_manager_;
   GcsFunctionManager &function_manager_;
   InternalKVInterface &internal_kv_;
+
+  /// The cached core worker clients which are used to communicate with workers.
+  rpc::CoreWorkerClientPool core_worker_clients_;
+
   void ClearJobInfos(const rpc::JobTableData &job_data);
 
   void MarkJobAsFinished(rpc::JobTableData job_table_data,

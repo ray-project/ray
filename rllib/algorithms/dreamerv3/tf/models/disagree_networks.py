@@ -4,12 +4,14 @@ D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
 
-import tensorflow as tf
-
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 from ray.rllib.algorithms.dreamerv3.tf.models.components.representation_layer import (
     RepresentationLayer,
 )
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+
+_, tf, _ = try_import_tf()
+tfp = try_import_tfp()
 
 
 class DisagreeNetworks(tf.keras.Model):
@@ -21,10 +23,10 @@ class DisagreeNetworks(tf.keras.Model):
     TODO
     """
 
-    def __init__(self, *, num_networks, model_dimension, intrinsic_rewards_scale):
+    def __init__(self, *, num_networks, model_size, intrinsic_rewards_scale):
         super().__init__(name="disagree_networks")
 
-        self.model_dimension = model_dimension
+        self.model_size = model_size
         self.num_networks = num_networks
         self.intrinsic_rewards_scale = intrinsic_rewards_scale
 
@@ -34,22 +36,18 @@ class DisagreeNetworks(tf.keras.Model):
         for _ in range(self.num_networks):
             self.mlps.append(
                 MLP(
-                    model_dimension=self.model_dimension,
+                    model_size=self.model_size,
                     output_layer_size=None,
                     trainable=True,
                 )
             )
             self.representation_layers.append(
-                RepresentationLayer(
-                    model_dimension=self.model_dimension, name="disagree"
-                )
+                RepresentationLayer(model_size=self.model_size, name="disagree")
             )
 
-    @tf.function
     def call(self, inputs, z, a, training=None):
         return self.forward_train(a=a, h=inputs, z=z)
 
-    @tf.function
     def compute_intrinsic_rewards(self, h, z, a):
         forward_train_outs = self.forward_train(a=a, h=h, z=z)
         B = tf.shape(h)[0]
@@ -79,7 +77,6 @@ class DisagreeNetworks(tf.keras.Model):
             "forward_train_outs": forward_train_outs,
         }
 
-    @tf.function
     def forward_train(self, a, h, z):
         HxB = tf.shape(h)[0]
         # Fold z-dims.
@@ -88,7 +85,7 @@ class DisagreeNetworks(tf.keras.Model):
         inputs_ = tf.stop_gradient(tf.concat([h, z, a], axis=-1))
 
         z_predicted_probs_N_HxB = [
-            repr(mlp(inputs_), return_z_probs=True)[1]  # [0]=sample; [1]=returned probs
+            repr(mlp(inputs_))[1]  # [0]=sample; [1]=returned probs
             for mlp, repr in zip(self.mlps, self.representation_layers)
         ]
         # shape=(N, HxB, [num categoricals], [num classes]); N=number of disagree nets.

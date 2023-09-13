@@ -7,7 +7,7 @@ max_workers: 2
 
 head_node_type:
     name: head_node
-    instance_type: n1-standard-16-nvidia-tesla-t4-1 # g3.4xlarge
+    instance_type: n1-standard-16-nvidia-v100-16gb-1
 
 worker_node_types:
     - name: worker_node

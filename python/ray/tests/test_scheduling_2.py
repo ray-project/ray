@@ -21,6 +21,7 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+from ray._private.test_utils import SignalActor
 
 
 @pytest.mark.skipif(
@@ -472,6 +473,29 @@ def test_node_affinity_scheduling_strategy_spill_on_unavailable(ray_start_cluste
     assert target_node_id != soft_node_id
 
 
+def test_node_affinity_scheduling_strategy_fail_on_unavailable(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    a1 = Actor.remote()
+    target_node_id = ray.get(a1.get_node_id.remote())
+
+    a2 = Actor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            target_node_id, soft=False, _fail_on_unavailable=True
+        )
+    ).remote()
+
+    with pytest.raises(ray.exceptions.ActorUnschedulableError):
+        ray.get(a2.get_node_id.remote())
+
+
 @pytest.mark.parametrize("connect_to_client", [True, False])
 def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
@@ -780,6 +804,45 @@ def test_workload_placement_metrics(ray_start_regular):
         ],
     )
     wait_for_condition(placement_metric_condition, timeout=60)
+
+
+def test_negative_resource_availability(shutdown_only):
+    """Test pg scheduling when resource availability is negative."""
+    ray.init(num_cpus=1)
+
+    signal1 = SignalActor.remote()
+    signal2 = SignalActor.remote()
+
+    @ray.remote(num_cpus=0)
+    def child(signal1):
+        ray.get(signal1.wait.remote())
+
+    @ray.remote(num_cpus=1)
+    def parent(signal1, signal2):
+        # Release the CPU resource,
+        # the resource will be acquired by Actor.
+        ray.get(child.remote(signal1))
+        # Re-acquire the CPU resource
+        # the availability should be -1 afterwards.
+        signal2.send.remote()
+        while True:
+            time.sleep(1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    parent.remote(signal1, signal2)
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+    signal1.send.remote()
+    ray.get(signal2.wait.remote())
+    # CPU resource availability should be negative now
+    # and the pg should be pending.
+    pg = placement_group([{"CPU": 1}])
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg.ready(), timeout=2)
 
 
 if __name__ == "__main__":

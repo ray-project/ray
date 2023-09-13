@@ -1,0 +1,29 @@
+# These requirements are used for the CI and CPU-only Docker images so we install CPU only versions of torch.
+# For GPU Docker images, you should install dl-gpu-requirements.txt afterwards.
+
+tensorflow==2.11.0; sys_platform != 'darwin' or platform_machine != 'arm64'
+tensorflow-macos==2.11.0; sys_platform == 'darwin' and platform_machine == 'arm64'
+tensorflow-probability==0.19.0
+tensorflow-datasets
+
+# If you make changes below this line, please also make the corresponding changes to `dl-gpu-requirements.txt`
+# and to `install-dependencies.sh`!
+
+--extra-index-url https://download.pytorch.org/whl/cpu  # for CPU versions of torch, torchvision
+--find-links https://data.pyg.org/whl/torch-1.13.0+cpu.html  # for CPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
+--find-links https://data.pyg.org/whl/torch-2.0.1+cpu.html  # for CPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
+torch==1.13.0; python_version <= '3.7'
+torchmetrics==0.9.3; python_version <= '3.7'
+torchtext==0.14.0; python_version <= '3.7'
+torchvision==0.14.0; python_version <= '3.7'
+
+torch==2.0.1; python_version > '3.7'
+torchmetrics==0.10.3; python_version > '3.7'
+torchtext==0.15.2; python_version > '3.7'
+torchvision==0.15.2; python_version > '3.7'
+
+torch-scatter==2.1.1
+torch-sparse==0.6.17
+torch-cluster==1.6.1
+torch-spline-conv==1.2.2
+torch-geometric==2.3.1

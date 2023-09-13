@@ -10,7 +10,7 @@ The code is Pytorch based. It assumes that the environment is a gym environment,
  
  It should also implement a `get_state`and a `set_state` function.
  
- The model used in AlphaZero trainer should extend `ActorCriticModel` and implement the method `compute_priors_and_value`. 
+ The model used in the AlphaZero Algorithm should extend `ActorCriticModel` and implement the method `compute_priors_and_value`. 
  
 ## Example on CartPole
 

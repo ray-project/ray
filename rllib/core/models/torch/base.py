@@ -4,10 +4,8 @@ from typing import Tuple, Union
 
 import numpy as np
 
-from ray.rllib.core.models.base import (
-    Model,
-    ModelConfig,
-)
+from ray.rllib.core.models.base import Model
+from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.specs.checker import (
     is_input_decorated,
     is_output_decorated,
@@ -35,8 +33,8 @@ class TorchModel(nn.Module, Model, abc.ABC):
 
     .. testcode::
 
+        from ray.rllib.core.models.configs import ModelConfig
         from ray.rllib.core.models.torch.base import TorchModel
-        from ray.rllib.core.models.base import ModelConfig
         import torch
 
         class FlattenModelConfig(ModelConfig):

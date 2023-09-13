@@ -79,6 +79,8 @@ class TaskStatusEvent : public TaskEvent {
  public:
   /// A class that contain data that will be converted to rpc::TaskStateUpdate
   struct TaskStateUpdate {
+    TaskStateUpdate() {}
+
     TaskStateUpdate(const absl::optional<const rpc::RayErrorInfo> &error_info)
         : error_info_(error_info) {}
 
@@ -88,8 +90,10 @@ class TaskStatusEvent : public TaskEvent {
     TaskStateUpdate(const rpc::TaskLogInfo &task_log_info)
         : task_log_info_(task_log_info) {}
 
-    TaskStateUpdate(const std::string &actor_repr_name)
-        : actor_repr_name_(actor_repr_name) {}
+    TaskStateUpdate(const std::string &actor_repr_name, uint32_t pid)
+        : actor_repr_name_(actor_repr_name), pid_(pid) {}
+
+    TaskStateUpdate(uint32_t pid) : pid_(pid) {}
 
    private:
     friend class TaskStatusEvent;
@@ -104,6 +108,8 @@ class TaskStatusEvent : public TaskEvent {
     const absl::optional<rpc::TaskLogInfo> task_log_info_ = absl::nullopt;
     /// Actor task repr name.
     const std::string actor_repr_name_ = "";
+    /// Worker's pid if it's a RUNNING status change.
+    const absl::optional<uint32_t> pid_ = absl::nullopt;
   };
 
   explicit TaskStatusEvent(
@@ -251,14 +257,16 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param gcs_client GCS client
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
 
+  ~TaskEventBufferImpl() override;
+
   void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
-      LOCKS_EXCLUDED(mutex_) override;
+      ABSL_LOCKS_EXCLUDED(mutex_) override;
 
-  void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_) override;
+  void FlushEvents(bool forced) ABSL_LOCKS_EXCLUDED(mutex_) override;
 
-  Status Start(bool auto_flush = true) LOCKS_EXCLUDED(mutex_) override;
+  Status Start(bool auto_flush = true) ABSL_LOCKS_EXCLUDED(mutex_) override;
 
-  void Stop() LOCKS_EXCLUDED(mutex_) override;
+  void Stop() ABSL_LOCKS_EXCLUDED(mutex_) override;
 
   bool Enabled() const override;
 
@@ -314,13 +322,13 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   PeriodicalRunner periodical_runner_;
 
   /// Client to the GCS used to push profile events to it.
-  std::unique_ptr<gcs::GcsClient> gcs_client_ GUARDED_BY(mutex_);
+  std::unique_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
 
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;
 
   /// Circular buffered task events.
-  boost::circular_buffer<std::unique_ptr<TaskEvent>> buffer_ GUARDED_BY(mutex_);
+  boost::circular_buffer<std::unique_ptr<TaskEvent>> buffer_ ABSL_GUARDED_BY(mutex_);
 
   /// Stats counter map.
   CounterMapThreadSafe<TaskEventBufferCounter> stats_counter_;

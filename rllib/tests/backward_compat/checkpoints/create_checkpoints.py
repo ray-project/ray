@@ -17,7 +17,7 @@ config = (
     )
 )
 
-for fw in framework_iterator(config, with_eager_tracing=True):
+for fw in framework_iterator(config):
     algo = config.build()
     results = algo.train()
     algo.save()

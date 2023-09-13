@@ -1,5 +1,6 @@
-import ray
 import numpy as np
+
+import ray
 
 ray.init(num_cpus=8, object_store_memory=4e9)
 

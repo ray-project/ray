@@ -43,7 +43,7 @@ class MBMPOTorchPolicy(MAMLTorchPolicy):
         Args:
             obs_space (gym.spaces.Space): The observation space.
             action_space (gym.spaces.Space): The action space.
-            config: The SAC trainer's config dict.
+            config: The SACConfig object.
 
         Returns:
             ModelV2: The ModelV2 to be used by the Policy. Note: An additional

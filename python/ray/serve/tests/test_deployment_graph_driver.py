@@ -101,21 +101,21 @@ def test_multi_dag(serve_instance):
 
     @serve.deployment
     class D1:
-        def forward(self):
+        def forward(self, *args):
             return "D1"
 
     @serve.deployment
     class D2:
-        def forward(self):
+        def forward(self, *args):
             return "D2"
 
     @serve.deployment
     class D3:
-        def __call__(self):
+        def __call__(self, *args):
             return "D3"
 
     @serve.deployment
-    def D4():
+    def D4(*args):
         return "D4"
 
     d1 = D1.bind()

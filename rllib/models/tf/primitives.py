@@ -1,12 +1,14 @@
 from typing import List
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.deprecation import Deprecated
 
 _, tf, _ = try_import_tf()
 
 # TODO (Kourosh): Find a better hierarchy for the primitives after the POC is done.
 
 
+@Deprecated(error=True)
 class FCNet(tf.keras.Model):
     """A simple fully connected network.
 
@@ -47,6 +49,7 @@ class FCNet(tf.keras.Model):
         return self.network(inputs)
 
 
+@Deprecated(error=True)
 class IdentityNetwork(tf.keras.Model):
     """A network that returns the input as the output."""
 

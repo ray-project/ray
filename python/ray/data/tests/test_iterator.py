@@ -1,8 +1,8 @@
-import pytest
 from typing import Dict
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 import tensorflow as tf
 import torch
 
@@ -37,6 +37,36 @@ def test_basic_dataset(ray_start_regular_shared):
     # stats are stored in an actor.
     # https://github.com/ray-project/ray/issues/31571
     # assert it.stats() == ds.stats()
+
+
+def test_basic_dataset_multi_use_iterator(ray_start_regular_shared):
+    """Tests that the iterable outputted by `iter_batches` can be used
+    multiple times."""
+    ds = ray.data.range(100)
+    it = ds.iterator().iter_batches()
+    for _ in range(2):
+        result = []
+        for batch in it:
+            batch = batch["id"]
+            result += batch.tolist()
+        assert result == list(range(100))
+
+
+def test_basic_dataset_preemption(ray_start_regular_shared):
+    """Tests that the iterable outputted by ``iter_batches``
+    can be used multiple times even if it is preempted during iteration."""
+
+    ds = ray.data.range(100)
+    it = ds.iterator().iter_batches(batch_size=50)
+    for _ in range(2):
+        result = []
+        for i, batch in enumerate(it):
+            if i > 0:
+                break
+            batch = batch["id"]
+            result += batch.tolist()
+
+        assert result == list(range(50))
 
 
 def test_basic_dataset_iter_rows(ray_start_regular_shared):
@@ -141,9 +171,33 @@ def test_tf_conversion_pipeline(ray_start_regular_shared):
 def test_torch_conversion(ray_start_regular_shared):
     ds = ray.data.range(5)
     it = ds.iterator()
+    it.iter_batches = MagicMock()
+
     for batch in it.iter_torch_batches():
         assert isinstance(batch["id"], torch.Tensor)
         assert batch["id"].tolist() == list(range(5))
+
+    # When collate_fn is not specified, check that the default
+    #  `_collate_fn` (handles formatting and Tensor creation)
+    # and `_finalize_fn` (handles host to device data transfer)
+    # are used in `DataIterator.iter_batches()`.
+    iter_batches_calls_kwargs = [a.kwargs for a in it.iter_batches.call_args_list]
+    assert all(
+        callable(kwargs["_collate_fn"]) and callable(kwargs["_finalize_fn"])
+        for kwargs in iter_batches_calls_kwargs
+    ), iter_batches_calls_kwargs
+
+
+def test_torch_multi_use_iterator(ray_start_regular_shared):
+    """Tests that the iterator outputted by `iter_torch_batches` can be used
+    multiple times."""
+    ds = ray.data.range(5)
+    it = ds.iterator().iter_torch_batches()
+
+    for _ in range(2):
+        for batch in it:
+            assert isinstance(batch["id"], torch.Tensor)
+            assert batch["id"].tolist() == list(range(5))
 
 
 def test_torch_conversion_pipeline(ray_start_regular_shared):
@@ -192,10 +246,19 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
         "ray.air._internal.torch_utils.get_device", lambda: torch.device("cuda")
     ):
         assert ray.air._internal.torch_utils.get_device().type == "cuda"
+
+        it.iter_batches = MagicMock()
         for batch in it.iter_torch_batches(collate_fn=collate_fn):
             assert batch.device.type == "cpu"
             assert isinstance(batch, torch.Tensor)
             assert batch.tolist() == list(range(5, 10))
+
+        # When collate_fn is specified, check that`_finalize_fn`
+        # is not used in `DataIterator.iter_batches()`.
+        iter_batches_calls_kwargs = [a.kwargs for a in it.iter_batches.call_args_list]
+        assert all(
+            kwargs["_finalize_fn"] is None for kwargs in iter_batches_calls_kwargs
+        ), iter_batches_calls_kwargs
 
 
 if __name__ == "__main__":

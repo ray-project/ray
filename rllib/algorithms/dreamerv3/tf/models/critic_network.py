@@ -5,12 +5,18 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-import tensorflow as tf
-
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 from ray.rllib.algorithms.dreamerv3.tf.models.components.reward_predictor_layer import (
     RewardPredictorLayer,
 )
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_gru_units,
+    get_num_z_categoricals,
+    get_num_z_classes,
+)
+from ray.rllib.utils.framework import try_import_tf
+
+_, tf, _ = try_import_tf()
 
 
 class CriticNetwork(tf.keras.Model):
@@ -27,7 +33,7 @@ class CriticNetwork(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: Optional[str] = "XS",
+        model_size: Optional[str] = "XS",
         num_buckets: int = 255,
         lower_bound: float = -20.0,
         upper_bound: float = 20.0,
@@ -36,7 +42,7 @@ class CriticNetwork(tf.keras.Model):
         """Initializes a CriticNetwork instance.
 
         Args:
-            model_dimension: The "Model Size" used according to [1] Appendinx B.
+            model_size: The "Model Size" used according to [1] Appendinx B.
                Use None for manually setting the different network sizes.
             num_buckets: The number of buckets to create. Note that the number of
                 possible symlog'd outcomes from the used distribution is
@@ -63,7 +69,7 @@ class CriticNetwork(tf.keras.Model):
         """
         super().__init__(name="critic")
 
-        self.model_dimension = model_dimension
+        self.model_size = model_size
         self.ema_decay = ema_decay
 
         # "Fast" critic network(s) (mlp + reward-pred-layer). This is the network
@@ -72,7 +78,7 @@ class CriticNetwork(tf.keras.Model):
         # the critic loss term such that the weights of this fast critic stay close
         # to the EMA weights (see below).
         self.mlp = MLP(
-            model_dimension=self.model_dimension,
+            model_size=self.model_size,
             output_layer_size=None,
         )
         self.return_layer = RewardPredictorLayer(
@@ -85,7 +91,7 @@ class CriticNetwork(tf.keras.Model):
         # target net, BUT not used to compute anything, just for the
         # weights regularizer term inside the critic loss).
         self.mlp_ema = MLP(
-            model_dimension=self.model_dimension,
+            model_size=self.model_size,
             output_layer_size=None,
             trainable=False,
         )
@@ -96,33 +102,58 @@ class CriticNetwork(tf.keras.Model):
             trainable=False,
         )
 
-    def call(self, h, z, return_logits=False, use_ema=False):
+        # Trace self.call.
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
+        self.call = tf.function(
+            input_signature=[
+                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
+                tf.TensorSpec(
+                    shape=[
+                        None,
+                        get_num_z_categoricals(model_size),
+                        get_num_z_classes(model_size),
+                    ],
+                    dtype=dl_type,
+                ),
+                tf.TensorSpec(shape=[], dtype=tf.bool),
+            ]
+        )(self.call)
+
+    def call(self, h, z, use_ema):
         """Performs a forward pass through the critic network.
 
         Args:
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
-            return_logits: Whether also return (as a second tuple item) the logits
-                computed by the binned return layer (instead of only the value itself).
             use_ema: Whether to use the EMA-copy of the critic instead of the actual
                 critic to perform this computation.
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
-        z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
+        z = tf.reshape(z, shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
+        out.set_shape(
+            [
+                None,
+                (
+                    get_num_z_categoricals(self.model_size)
+                    * get_num_z_classes(self.model_size)
+                    + get_gru_units(self.model_size)
+                ),
+            ]
+        )
 
         if not use_ema:
             # Send h-cat-z through MLP.
             out = self.mlp(out)
             # Return expected return OR (expected return, probs of bucket values).
-            return self.return_layer(out, return_logits=return_logits)
+            return self.return_layer(out)
         else:
             out = self.mlp_ema(out)
-            return self.return_layer_ema(out, return_logits=return_logits)
+            return self.return_layer_ema(out)
 
     def init_ema(self) -> None:
         """Initializes the EMA-copy of the critic from the critic's weights.
@@ -131,8 +162,9 @@ class CriticNetwork(tf.keras.Model):
         """
         vars = self.mlp.trainable_variables + self.return_layer.trainable_variables
         vars_ema = self.mlp_ema.variables + self.return_layer_ema.variables
-        assert len(vars) == len(vars_ema)
+        assert len(vars) == len(vars_ema) and len(vars) > 0
         for var, var_ema in zip(vars, vars_ema):
+            assert var is not var_ema
             var_ema.assign(var)
 
     def update_ema(self) -> None:
@@ -142,6 +174,6 @@ class CriticNetwork(tf.keras.Model):
         """
         vars = self.mlp.trainable_variables + self.return_layer.trainable_variables
         vars_ema = self.mlp_ema.variables + self.return_layer_ema.variables
-        assert len(vars) == len(vars_ema)
+        assert len(vars) == len(vars_ema) and len(vars) > 0
         for var, var_ema in zip(vars, vars_ema):
             var_ema.assign(self.ema_decay * var_ema + (1.0 - self.ema_decay) * var)

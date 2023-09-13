@@ -34,7 +34,7 @@ class ServeRLlibPolicy:
     """Callable class used by Ray Serve to handle async requests.
 
     All the necessary serving logic is implemented in here:
-    - Creation and restoring of the (already trained) RLlib Trainer.
+    - Creation and restoring of the (already trained) RLlib Algorithm.
     - Calls to algo.compute_action upon receiving an action request
       (with a current observation).
     """
@@ -56,7 +56,7 @@ class ServeRLlibPolicy:
 def train_rllib_policy(config: AlgorithmConfig):
     """Trains a DQN on ALE/MsPacman-v5 for n iterations.
 
-    Saves the trained Trainer to disk and returns the checkpoint path.
+    Saves the trained Algorithm to disk and returns the checkpoint path.
 
     Args:
         config: The algo config object for the Algorithm.
@@ -70,34 +70,32 @@ def train_rllib_policy(config: AlgorithmConfig):
     # Train for n iterations, then save, stop, and return the checkpoint path.
     for _ in range(args.train_iters):
         print(algo.train())
-    checkpoint_path = algo.save()
+    checkpoint_result = algo.save()
     algo.stop()
-    return checkpoint_path
+    return checkpoint_result
 
 
 if __name__ == "__main__":
 
-    # Config for the served RLlib Policy/Trainer.
+    # Config for the served RLlib Policy/Algorithm.
     config = DQNConfig().environment("ALE/MsPacman-v5").framework(args.framework)
 
     # Train the Algorithm for some time, then save it and get the checkpoint path.
-    checkpoint_path = train_rllib_policy(config)
+    checkpoint_result = train_rllib_policy(config)
 
     ray.init(num_cpus=8)
 
     # Start Ray serve (create the RLlib Policy service defined by
     # our `ServeRLlibPolicy` class above).
     client = serve.start()
-    client.create_backend("backend", ServeRLlibPolicy, config, checkpoint_path)
+    client.create_backend("backend", ServeRLlibPolicy, config, checkpoint_result)
     client.create_endpoint(
         "endpoint", backend="backend", route="/mspacman-rllib-policy"
     )
 
     # Create the environment that we would like to receive
     # served actions for.
-    env = FrameStack(
-        WarpFrame(gym.make("GymV26Environment-v0", env_id="ALE/MsPacman-v5"), 84), 4
-    )
+    env = FrameStack(WarpFrame(gym.make("ALE/MsPacman-v5"), 84), 4)
     obs, info = env.reset()
 
     while True:

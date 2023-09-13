@@ -1,6 +1,9 @@
 from typing import Any, Tuple
 import queue
 
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
+
 
 class MinibatchBuffer:
     """Ring buffer of recent data batches for minibatch SGD.
@@ -36,6 +39,10 @@ class MinibatchBuffer:
         self.buffers = [None] * size
         self.ttl = [0] * size
         self.idx = 0
+        if log_once("minibatch-buffer-deprecation-warning"):
+            deprecation_warning(
+                old="ray.rllib.execution.minibatch_buffer.MinibatchBuffer"
+            )
 
     def get(self) -> Tuple[Any, bool]:
         """Get a new batch from the internal ring buffer.

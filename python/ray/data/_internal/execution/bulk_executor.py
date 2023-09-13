@@ -1,18 +1,18 @@
-from typing import Dict, List, Iterator, Optional
+from typing import Dict, Iterator, List, Optional
 
 import ray
-from ray.data.context import DataContext
-from ray.data._internal.execution.interfaces import (
-    Executor,
-    ExecutionOptions,
-    OutputIterator,
-    RefBundle,
-    PhysicalOperator,
-)
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    Executor,
+    OutputIterator,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
+from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
 
@@ -62,7 +62,7 @@ class BulkExecutor(Executor):
                 for i, ref_bundles in enumerate(inputs):
                     for r in ref_bundles:
                         op.add_input(r, input_index=i)
-                op.inputs_done()
+                op.all_inputs_done()
                 output = _naive_run_until_complete(op)
             finally:
                 op.shutdown()
@@ -98,16 +98,20 @@ def _naive_run_until_complete(op: PhysicalOperator) -> List[RefBundle]:
         The list of output ref bundles for the operator.
     """
     output = []
-    tasks = op.get_work_refs()
+    tasks = op.get_active_tasks()
     if tasks:
         bar = ProgressBar(op.name, total=op.num_outputs_total())
         while tasks:
+            waitable_to_tasks = {task.get_waitable(): task for task in tasks}
             done, _ = ray.wait(
-                tasks, num_returns=len(tasks), fetch_local=True, timeout=0.1
+                list(waitable_to_tasks.keys()),
+                num_returns=len(tasks),
+                fetch_local=True,
+                timeout=0.1,
             )
             for ready in done:
-                op.notify_work_completed(ready)
-            tasks = op.get_work_refs()
+                waitable_to_tasks[ready].on_waitable_ready()
+            tasks = op.get_active_tasks()
             while op.has_next():
                 bar.update(1)
                 output.append(op.get_next())

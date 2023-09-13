@@ -24,7 +24,8 @@ namespace ray {
 namespace rpc {
 
 #define RAY_AGENT_MANAGER_RPC_HANDLERS \
-  RPC_SERVICE_HANDLER(AgentManagerService, RegisterAgent, -1)
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH(     \
+      AgentManagerService, RegisterAgent, -1, AuthType::NO_AUTH)
 
 /// Implementations of the `AgentManagerGrpcService`, check interface in
 /// `src/ray/protobuf/agent_manager.proto`.
@@ -59,7 +60,8 @@ class AgentManagerGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override {
     RAY_AGENT_MANAGER_RPC_HANDLERS
   }
 

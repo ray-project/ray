@@ -18,12 +18,11 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_location_index.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -62,12 +61,22 @@ class GcsPlacementGroupSchedulerInterface {
       PGSchedulingFailureCallback failure_callback,
       PGSchedulingSuccessfulCallback success_callback) = 0;
 
-  /// Get bundles belong to the specified node.
+  /// Get and remove bundles belong to the specified node.
+  ///
+  /// This is expected to be called on dead node only since it will remove
+  /// the bundles from the node.
   ///
   /// \param node_id ID of the dead node.
   /// \return The bundles belong to the dead node.
+  virtual absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
+  GetAndRemoveBundlesOnNode(const NodeID &node_id) = 0;
+
+  /// Get bundles belong to the specified node.
+  ///
+  /// \param node_id ID of a node.
+  /// \return The bundles belong to the node.
   virtual absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
-      const NodeID &node_id) = 0;
+      const NodeID &node_id) const = 0;
 
   /// Destroy bundle resources from all nodes in the placement group.
   ///
@@ -277,8 +286,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       const GcsNodeManager &gcs_node_manager,
       ClusterResourceScheduler &cluster_resource_scheduler,
-      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-      gcs_syncer::RaySyncer *ray_syncer);
+      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   virtual ~GcsPlacementGroupScheduler() = default;
 
@@ -311,12 +319,22 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param placement_group_id The placement group id scheduling is in progress.
   void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) override;
 
-  /// Get bundles belong to the specified node.
+  /// Get and remove bundles belong to the specified node.
+  ///
+  /// This is expected to be called on dead node only since it will remove
+  /// the bundles from the node.
   ///
   /// \param node_id ID of the dead node.
   /// \return The bundles belong to the dead node.
-  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetAndRemoveBundlesOnNode(
       const NodeID &node_id) override;
+
+  /// Get bundles belong to the specified node.
+  ///
+  /// \param node_id ID of a node.
+  /// \return The bundles belong to the node.
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
+      const NodeID &node_id) const override;
 
   /// Notify raylets to release unused bundles.
   ///
@@ -472,10 +490,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// The nodes which are releasing unused bundles.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
-
-  /// The syncer of resource. This is used to report placement group updates.
-  /// TODO (iycheng): Remove this one from pg once we finish the refactor
-  gcs_syncer::RaySyncer *ray_syncer_;
 
   /// The resources changed listeners.
   std::vector<std::function<void()>> resources_changed_listeners_;

@@ -33,7 +33,7 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.typing import (
-    TrainerConfigDict,
+    AlgorithmConfigDict,
     TensorType,
     TensorStructType,
     TensorShape,
@@ -51,7 +51,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         LearningRateSchedule.__init__(
             self,

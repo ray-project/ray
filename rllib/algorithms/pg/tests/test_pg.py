@@ -74,7 +74,7 @@ class TestPG(unittest.TestCase):
             ),
         )
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
                 "random_dict_env",
@@ -203,7 +203,7 @@ class TestPG(unittest.TestCase):
         )
 
         def _step_n_times(algo, n: int):
-            """Step trainer n times.
+            """Step Algorithm n times.
 
             Returns:
                 learning rate at the end of the execution.

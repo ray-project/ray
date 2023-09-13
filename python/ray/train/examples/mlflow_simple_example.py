@@ -1,4 +1,6 @@
-from ray.air import ScalingConfig, RunConfig, session
+from pathlib import Path
+from ray import train
+from ray.train import ScalingConfig, RunConfig
 from ray.train.torch import TorchTrainer
 from ray.air.integrations.mlflow import MLflowLoggerCallback
 from ray.tune.logger import TBXLoggerCallback
@@ -6,7 +8,7 @@ from ray.tune.logger import TBXLoggerCallback
 
 def train_func():
     for i in range(3):
-        session.report(dict(epoch=i))
+        train.report(dict(epoch=i))
 
 
 trainer = TorchTrainer(
@@ -40,7 +42,7 @@ result = trainer.fit()
 
 # Print the latest run directory and keep note of it.
 # For example: /home/ubuntu/ray_results/TorchTrainer_2022-06-13_20-31-06
-print("Run directory:", result.log_dir.parent)  # TensorBoard is saved in parent dir
+print("Run directory:", Path(result.path).parent)  # TensorBoard is saved in parent dir
 
 # How to visualize the logs
 

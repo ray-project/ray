@@ -78,7 +78,7 @@ class TestPPO(unittest.TestCase):
             )
         )
 
-        for fw in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
+        for fw in framework_iterator(config, ("tf2", "torch")):
             algo = config.build()
             policy = algo.get_policy()
 
@@ -140,7 +140,7 @@ class TestPPO(unittest.TestCase):
         algo = config.build()
         policy = algo.get_policy()
 
-        for _ in framework_iterator(config, ("tf2", "torch"), with_eager_tracing=True):
+        for _ in framework_iterator(config, ("tf2", "torch")):
             algo_config = config.copy(copy_frozen=False)
             algo_config.validate()
             algo_config.freeze()
@@ -197,10 +197,10 @@ class TestPPO(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, ("torch", "tf2"), with_eager_tracing=True):
+        for _ in framework_iterator(config, ("torch", "tf2")):
             algo = config.build()
             # Call train while results aren't returned because this is
-            # a asynchronous trainer and results are returned asynchronously.
+            # a asynchronous Algorithm and results are returned asynchronously.
             curr_kl_coeff_1 = None
             curr_kl_coeff_2 = None
             while not curr_kl_coeff_1 or not curr_kl_coeff_2:

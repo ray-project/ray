@@ -11,7 +11,7 @@ import ray
 
 import ray.util.spark.cluster_init
 from ray.util.spark import setup_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES
-from ray.util.spark.utils import check_port_open
+from ray.util.spark.utils import is_port_in_use
 from pyspark.sql import SparkSession
 import time
 import logging
@@ -28,10 +28,13 @@ def _setup_ray_cluster(*args, **kwds):
         shutdown_ray_cluster()
 
 
-pytestmark = pytest.mark.skipif(
-    not sys.platform.startswith("linux"),
-    reason="Ray on spark only supports running on Linux.",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not sys.platform.startswith("linux"),
+        reason="Ray on spark only supports running on Linux.",
+    ),
+    pytest.mark.timeout(300),
+]
 
 _logger = logging.getLogger(__name__)
 
@@ -59,7 +62,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
         return wr_list
 
     def test_cpu_allocation(self):
-        for num_worker_nodes, num_cpus_per_node, num_worker_nodes_arg in [
+        for num_worker_nodes, num_cpus_worker_node, num_worker_nodes_arg in [
             (
                 self.max_spark_tasks // 2,
                 self.num_cpus_per_spark_task,
@@ -79,14 +82,14 @@ class RayOnSparkCPUClusterTestBase(ABC):
         ]:
             with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes_arg,
-                num_cpus_per_node=num_cpus_per_node,
+                num_cpus_worker_node=num_cpus_worker_node,
                 head_node_options={"include_dashboard": False},
             ):
                 ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_worker_nodes
                 for worker_res in worker_res_list:
-                    assert worker_res["CPU"] == num_cpus_per_node
+                    assert worker_res["CPU"] == num_cpus_worker_node
 
     def test_public_api(self):
         try:
@@ -154,7 +157,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
         time.sleep(2)  # wait ray head node exit.
         # assert ray head node exit by checking head port being closed.
         hostname, port = cluster.address.split(":")
-        assert not check_port_open(hostname, int(port))
+        assert not is_port_in_use(hostname, int(port))
 
     def test_background_spark_job_exit_trigger_ray_head_exit(self):
         with _setup_ray_cluster(num_worker_nodes=self.max_spark_tasks) as cluster:
@@ -166,7 +169,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
             # assert ray head node exit by checking head port being closed.
             hostname, port = cluster.address.split(":")
-            assert not check_port_open(hostname, int(port))
+            assert not is_port_in_use(hostname, int(port))
 
 
 class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):
@@ -217,6 +220,27 @@ class TestSparkLocalCluster:
         futures = [f.remote(i) for i in range(32)]
         results = ray.get(futures)
         assert results == [i * i for i in range(32)]
+
+        shutdown_ray_cluster()
+
+    def test_use_driver_resources(self):
+        setup_ray_cluster(
+            num_worker_nodes=1,
+            num_cpus_head_node=3,
+            num_gpus_head_node=2,
+            head_node_options={"include_dashboard": False},
+        )
+
+        ray.init()
+
+        head_resources_list = []
+        for node in ray.nodes():
+            # exclude dead node and head node (with 0 CPU resource)
+            if node["Alive"] and node["Resources"].get("CPU", 0) == 3:
+                head_resources_list.append(node["Resources"])
+        assert len(head_resources_list) == 1
+        head_resources = head_resources_list[0]
+        assert head_resources.get("GPU", 0) == 2
 
         shutdown_ray_cluster()
 

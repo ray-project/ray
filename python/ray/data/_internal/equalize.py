@@ -1,12 +1,8 @@
-from typing import Tuple, List
-from ray.data._internal.block_list import BlockList
+from typing import List, Tuple
 
-from ray.data._internal.split import _split_at_indices, _calculate_blocks_rows
-from ray.data.block import (
-    Block,
-    BlockPartition,
-    BlockMetadata,
-)
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.split import _calculate_blocks_rows, _split_at_indices
+from ray.data.block import Block, BlockMetadata, BlockPartition
 from ray.types import ObjectRef
 
 

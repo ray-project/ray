@@ -22,7 +22,7 @@ const mockGetServeApplications = jest.mocked(getServeApplications);
 
 describe("ServeApplicationDetailPage", () => {
   it("renders page with deployments and replicas", async () => {
-    expect.assertions(19);
+    expect.assertions(22);
 
     mockUseParams.mockReturnValue({
       applicationName: "home",
@@ -146,18 +146,23 @@ describe("ServeApplicationDetailPage", () => {
     expect(screen.getByText(/test-config: 1/)).toBeVisible();
     expect(screen.getByText(/autoscaling-value: 2/)).toBeVisible();
 
-    // Expand the first deployment
-    await user.click(screen.getAllByTitle("Expand")[0]);
-    await screen.findByText("test-replica-1");
+    // All deployments are already expanded
     expect(screen.getByText("test-replica-1")).toBeVisible();
     expect(screen.getByText("test-replica-2")).toBeVisible();
-    expect(screen.queryByText("test-replica-3")).toBeNull();
+    expect(screen.getByText("test-replica-3")).toBeVisible();
 
     // Collapse the first deployment
-    await user.click(screen.getByTitle("Collapse"));
+    await user.click(screen.getAllByTitle("Collapse")[0]);
     await waitFor(() => screen.queryByText("test-replica-1") === null);
     expect(screen.queryByText("test-replica-1")).toBeNull();
     expect(screen.queryByText("test-replica-2")).toBeNull();
-    expect(screen.queryByText("test-replica-3")).toBeNull();
+    expect(screen.getByText("test-replica-3")).toBeVisible();
+
+    // Expand the first deployment again
+    await user.click(screen.getByTitle("Expand"));
+    await screen.findByText("test-replica-1");
+    expect(screen.getByText("test-replica-1")).toBeVisible();
+    expect(screen.getByText("test-replica-2")).toBeVisible();
+    expect(screen.getByText("test-replica-3")).toBeVisible();
   });
 });

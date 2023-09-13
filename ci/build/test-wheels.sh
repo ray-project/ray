@@ -49,9 +49,7 @@ function retry {
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
   PY_WHEEL_VERSIONS=("37" "38" "39")
-  PY_MMS=("3.7.10"
-          "3.8.10"
-          "3.9.5")
+  PY_MMS=("3.7.10" "3.8.10" "3.9.5")
   wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
   "${ROOT_DIR}"/../suppress_output bash miniconda3.sh -b -p "$HOME/miniconda3"
   export PATH="$HOME/miniconda3/bin:$PATH"
@@ -97,17 +95,10 @@ elif [[ "$platform" == "macosx" ]]; then
 
   if [ "$(uname -m)" = "arm64" ]; then
     PY_WHEEL_VERSIONS=("38" "39" "310")
-    PY_MMS=("3.8"
-            "3.9"
-            "3.10"
-            )
+    PY_MMS=("3.8" "3.9" "3.10")
   else
     PY_WHEEL_VERSIONS=("37" "38" "39" "310")
-    PY_MMS=("3.7"
-            "3.8"
-            "3.9"
-            "3.10"
-            )
+    PY_MMS=("3.7" "3.8" "3.9" "3.10")
   fi
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
@@ -147,14 +138,6 @@ elif [[ "$platform" == "macosx" ]]; then
 
     # Update pip
     "$PIP_CMD" install -U pip
-
-    # Install grpcio
-    if [ "$(uname -m)" = "arm64" ]; then
-      "$PIP_CMD" uninstall -y grpcio || true
-      conda install -y --force-reinstall grpcio || true
-    else
-      "$PIP_CMD" install -q grpcio
-    fi
 
     # Install the wheel.
     "$PIP_CMD" uninstall -y ray

@@ -114,8 +114,9 @@ void GcsWorkerManager::HandleReportWorkerFailure(
             worker_crash_system_error_count_ += 1;
             key = usage::TagKey::WORKER_CRASH_SYSTEM_ERROR;
             count = worker_crash_system_error_count_;
-          } else if (request.worker_failure().exit_type() ==
-                     rpc::WorkerExitType::NODE_OUT_OF_MEMORY) {
+          } else {
+            RAY_CHECK_EQ(request.worker_failure().exit_type(),
+                         rpc::WorkerExitType::NODE_OUT_OF_MEMORY);
             worker_crash_oom_count_ += 1;
             key = usage::TagKey::WORKER_CRASH_OOM;
             count = worker_crash_oom_count_;

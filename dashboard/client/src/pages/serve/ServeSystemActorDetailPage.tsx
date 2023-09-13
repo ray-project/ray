@@ -1,4 +1,4 @@
-import { Typography } from "@material-ui/core";
+import { createStyles, makeStyles, Typography } from "@material-ui/core";
 import React from "react";
 import { useParams } from "react-router-dom";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -24,7 +24,16 @@ import {
   useServeHTTPProxyDetails,
 } from "./hook/useServeApplications";
 
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    root: {
+      padding: theme.spacing(3),
+    },
+  }),
+);
+
 export const ServeHttpProxyDetailPage = () => {
+  const classes = useStyles();
   const { httpProxyId } = useParams();
 
   const { httpProxy, loading } = useServeHTTPProxyDetails(httpProxyId);
@@ -42,7 +51,7 @@ export const ServeHttpProxyDetailPage = () => {
   }
 
   return (
-    <div>
+    <div className={classes.root}>
       <MainNavPageInfo
         pageInfo={
           httpProxy.node_id
@@ -69,6 +78,7 @@ export const ServeHttpProxyDetailPage = () => {
 };
 
 export const ServeControllerDetailPage = () => {
+  const classes = useStyles();
   const { controller, loading } = useServeControllerDetails();
 
   if (loading) {
@@ -80,7 +90,7 @@ export const ServeControllerDetailPage = () => {
   }
 
   return (
-    <div>
+    <div className={classes.root}>
       <MainNavPageInfo
         pageInfo={{
           id: "serveController",
@@ -247,7 +257,7 @@ const ServeSystemActorLogs = ({
 }: ServeSystemActorLogsProps) => {
   const tabs: MultiTabLogViewerTabDetails[] = [
     {
-      title: type === "controller" ? "Controller logs" : "HTTP proxy logs",
+      title: type === "controller" ? "Controller logs" : "proxy logs",
       nodeId: rayletId,
       filename: systemLogFilePath.startsWith("/")
         ? systemLogFilePath.substring(1)

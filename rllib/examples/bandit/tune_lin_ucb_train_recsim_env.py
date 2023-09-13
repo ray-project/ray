@@ -40,7 +40,7 @@ if __name__ == "__main__":
                 "convert_to_discrete_action_space": True,
                 "wrap_for_bandits": True,
             },
-        ).framework(args.framework, eager_tracing=args.framework == "tf2")
+        ).framework(args.framework)
     )
 
     # Actual env timesteps per `train()` call will be
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     # Analyze cumulative regrets of the trials
     frame = pd.DataFrame()
     for result in results:
-        frame = frame.append(result.metrics_dataframe, ignore_index=True)
+        frame = pd.concat([frame, result.metrics_dataframe], ignore_index=True)
     x = frame.groupby("agent_timesteps_total")["episode_reward_mean"].aggregate(
         ["mean", "max", "min", "std"]
     )

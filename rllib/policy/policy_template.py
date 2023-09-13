@@ -21,7 +21,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import add_mixins, NullContextManager
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch, try_import_jax
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -34,7 +34,6 @@ jax, _ = try_import_jax()
 torch, _ = try_import_torch()
 
 
-# TODO: Deprecate in favor of directly sub-classing from TorchPolicy.
 @DeveloperAPI
 def build_policy_class(
     name: str,

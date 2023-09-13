@@ -64,7 +64,6 @@ def framework_iterator(
     config: Optional["AlgorithmConfig"] = None,
     frameworks: Sequence[str] = ("tf2", "tf", "torch"),
     session: bool = False,
-    with_eager_tracing: bool = False,
     time_iterations: Optional[dict] = None,
 ) -> Union[str, Tuple[str, Optional["tf1.Session"]]]:
     """An generator that allows for looping through n frameworks for testing.
@@ -81,8 +80,6 @@ def framework_iterator(
             and yield that as second return value (otherwise yield (fw, None)).
             Also sets a seed (42) on the session to make the test
             deterministic.
-        with_eager_tracing: Include `eager_tracing=True` in the returned
-            configs, when framework=tf2.
         time_iterations: If provided, will write to the given dict (by
             framework key) the times in seconds that each (framework's)
             iteration takes.
@@ -135,33 +132,14 @@ def framework_iterator(
         elif fw == "tf":
             assert not tf1.executing_eagerly()
 
-        # Additionally loop through eager_tracing=True + False, if necessary.
-        if fw == "tf2" and with_eager_tracing:
-            for tracing in [True, False]:
-                if isinstance(config, dict):
-                    config["eager_tracing"] = tracing
-                else:
-                    config.framework(eager_tracing=tracing)
-                print(f"framework={fw} (eager-tracing={tracing})")
-                time_started = time.time()
-                yield fw if session is False else (fw, sess)
-                if time_iterations is not None:
-                    time_total = time.time() - time_started
-                    time_iterations[fw + ("+tracing" if tracing else "")] = time_total
-                    print(f".. took {time_total}sec")
-                if isinstance(config, dict):
-                    config["eager_tracing"] = False
-                else:
-                    config.framework(eager_tracing=False)
         # Yield current framework + tf-session (if necessary).
-        else:
-            print(f"framework={fw}")
-            time_started = time.time()
-            yield fw if session is False else (fw, sess)
-            if time_iterations is not None:
-                time_total = time.time() - time_started
-                time_iterations[fw + ("+tracing" if tracing else "")] = time_total
-                print(f".. took {time_total}sec")
+        print(f"framework={fw}")
+        time_started = time.time()
+        yield fw if session is False else (fw, sess)
+        if time_iterations is not None:
+            time_total = time.time() - time_started
+            time_iterations[fw] = time_total
+            print(f".. took {time_total}sec")
 
         # Exit any context we may have entered.
         if eager_ctx:
@@ -366,8 +344,11 @@ def check_compute_single_action(
                 input_dict[SampleBatch.PREV_ACTIONS] = action_in
                 input_dict[SampleBatch.PREV_REWARDS] = reward_in
             if state_in:
-                for i, s in enumerate(state_in):
-                    input_dict[f"state_in_{i}"] = s
+                if what.config.get("_enable_rl_module_api", False):
+                    input_dict["state_in"] = state_in
+                else:
+                    for i, s in enumerate(state_in):
+                        input_dict[f"state_in_{i}"] = s
             input_dict_batched = SampleBatch(
                 tree.map_structure(lambda s: np.expand_dims(s, 0), input_dict)
             )
@@ -414,8 +395,15 @@ def check_compute_single_action(
         if state_in or full_fetch or what is pol:
             action, state_out, _ = action
         if state_out:
-            for si, so in zip(state_in, state_out):
-                check(list(si.shape), so.shape)
+            for si, so in zip(tree.flatten(state_in), tree.flatten(state_out)):
+                if tf.is_tensor(si):
+                    # If si is a tensor of Dimensions, we need to convert it
+                    # We expect this to be the case for TF RLModules who's initial
+                    # states are Tf Tensors.
+                    si_shape = si.shape.as_list()
+                else:
+                    si_shape = list(si.shape)
+                check(si_shape, so.shape)
 
         if unsquash is None:
             unsquash = what.config["normalize_actions"]
@@ -504,11 +492,7 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
     # Avoids circular import
     from ray.rllib.utils.policy import local_policy_inference
 
-    # TODO(sven): Remove this if-block once gymnasium fully supports Atari envs.
-    if env_name.startswith("ALE/"):
-        env = gym.make("GymV26Environment-v0", env_id=env_name)
-    else:
-        env = gym.make(env_name)
+    env = gym.make(env_name)
 
     # Potentially wrap the env like we do in RolloutWorker
     if is_atari(env):
@@ -670,7 +654,7 @@ def check_train_results(train_results: ResultDict):
 
     is_multi_agent = (
         AlgorithmConfig()
-        .update_from_dict(train_results["config"]["multiagent"])
+        .update_from_dict({"policies": train_results["config"]["policies"]})
         .is_multi_agent()
     )
 
@@ -833,6 +817,12 @@ def run_learning_tests_from_yaml(
     # Keep track of those experiments we still have to run.
     # If an experiment passes, we'll remove it from this dict.
     experiments_to_run = experiments.copy()
+
+    # When running as a release test, use `/mnt/cluster_storage` as the storage path.
+    release_test_storage_path = "/mnt/cluster_storage"
+    if os.path.exists(release_test_storage_path):
+        for k, e in experiments_to_run.items():
+            e["storage_path"] = release_test_storage_path
 
     try:
         ray.init(address="auto")
@@ -1214,7 +1204,7 @@ class ModelChecker:
         # We will pass an observation filled with this one random value through
         # all DL networks (after they have been set to fixed-weights) to compare
         # the computed outputs.
-        self.random_fill_input_value = np.random.uniform(-0.1, 0.1)
+        self.random_fill_input_value = np.random.uniform(-0.01, 0.01)
 
         # Dict of models to check against each other.
         self.models = {}
@@ -1267,7 +1257,7 @@ class ModelChecker:
             )
         return outputs
 
-    def check(self, rtol=None):
+    def check(self):
         """Compares all added Models with each other and possibly raises errors."""
 
         main_key = next(iter(self.models.keys()))
@@ -1279,7 +1269,7 @@ class ModelChecker:
         # Compare dummy outputs by exact values given that all nets received the
         # same input and all nets have the same (dummy) weight values.
         for v in self.output_values.values():
-            check(v, self.output_values[main_key], rtol=rtol or 0.002)
+            check(v, self.output_values[main_key], atol=0.0005)
 
 
 def _get_mean_action_from_algorithm(alg: "Algorithm", obs: np.ndarray) -> np.ndarray:
@@ -1305,7 +1295,6 @@ def test_ckpt_restore(
     config: "AlgorithmConfig",
     env_name: str,
     tf2=False,
-    object_store=False,
     replay_buffer=False,
     run_restored_algorithm=True,
 ):
@@ -1331,77 +1320,69 @@ def test_ckpt_restore(
 
     frameworks = (["tf2"] if tf2 else []) + ["torch", "tf"]
     for fw in framework_iterator(config, frameworks=frameworks):
-        for use_object_store in [False, True] if object_store else [False]:
-            print("use_object_store={}".format(use_object_store))
-            env = gym.make(env_name)
-            alg1 = config.environment(env_name).framework(fw).build()
-            alg2 = config.environment(env_name).build()
+        env = gym.make(env_name)
+        alg1 = config.environment(env_name).framework(fw).build()
+        alg2 = config.environment(env_name).build()
 
-            policy1 = alg1.get_policy()
+        policy1 = alg1.get_policy()
 
-            res = alg1.train()
-            print("current status: " + str(res))
+        res = alg1.train()
+        print("current status: " + str(res))
 
-            # Check optimizer state as well.
-            optim_state = policy1.get_state().get("_optimizer_variables")
+        # Check optimizer state as well.
+        optim_state = policy1.get_state().get("_optimizer_variables")
 
-            if use_object_store:
-                checkpoint = alg1.save_to_object()
+        checkpoint = alg1.save()
+
+        # Test if we can restore multiple times (at least twice, assuming failure
+        # would mainly stem from improperly reused variables)
+        for num_restores in range(2):
+            # Sync the models
+            alg2.restore(checkpoint)
+
+        # Compare optimizer state with re-loaded one.
+        if optim_state:
+            s2 = alg2.get_policy().get_state().get("_optimizer_variables")
+            # Tf -> Compare states 1:1.
+            if fw in ["tf2", "tf"]:
+                check(s2, optim_state)
+            # For torch, optimizers have state_dicts with keys=params,
+            # which are different for the two models (ignore these
+            # different keys, but compare all values nevertheless).
             else:
-                checkpoint = alg1.save()
-
-            # Test if we can restore multiple times (at least twice, assuming failure
-            # would mainly stem from improperly reused variables)
-            for num_restores in range(2):
-                # Sync the models
-                if use_object_store:
-                    alg2.restore_from_object(checkpoint)
-                else:
-                    alg2.restore(checkpoint)
-
-            # Compare optimizer state with re-loaded one.
-            if optim_state:
-                s2 = alg2.get_policy().get_state().get("_optimizer_variables")
-                # Tf -> Compare states 1:1.
-                if fw in ["tf2", "tf"]:
-                    check(s2, optim_state)
-                # For torch, optimizers have state_dicts with keys=params,
-                # which are different for the two models (ignore these
-                # different keys, but compare all values nevertheless).
-                else:
-                    for i, s2_ in enumerate(s2):
-                        check(
-                            list(s2_["state"].values()),
-                            list(optim_state[i]["state"].values()),
-                        )
-
-            # Compare buffer content with restored one.
-            if replay_buffer:
-                data = alg1.local_replay_buffer.replay_buffers[
-                    "default_policy"
-                ]._storage[42 : 42 + 42]
-                new_data = alg2.local_replay_buffer.replay_buffers[
-                    "default_policy"
-                ]._storage[42 : 42 + 42]
-                check(data, new_data)
-
-            for _ in range(1):
-                obs = env.observation_space.sample()
-                a1 = _get_mean_action_from_algorithm(alg1, obs)
-                a2 = _get_mean_action_from_algorithm(alg2, obs)
-                print("Checking computed actions", alg1, obs, a1, a2)
-                if abs(a1 - a2) > 0.1:
-                    raise AssertionError(
-                        "algo={} [a1={} a2={}]".format(str(alg1.__class__), a1, a2)
+                for i, s2_ in enumerate(s2):
+                    check(
+                        list(s2_["state"].values()),
+                        list(optim_state[i]["state"].values()),
                     )
-            # Stop algo 1.
-            alg1.stop()
 
-            if run_restored_algorithm:
-                # Check that algo 2 can still run.
-                print("Starting second run on Algo 2...")
-                alg2.train()
-            alg2.stop()
+        # Compare buffer content with restored one.
+        if replay_buffer:
+            data = alg1.local_replay_buffer.replay_buffers["default_policy"]._storage[
+                42 : 42 + 42
+            ]
+            new_data = alg2.local_replay_buffer.replay_buffers[
+                "default_policy"
+            ]._storage[42 : 42 + 42]
+            check(data, new_data)
+
+        for _ in range(1):
+            obs = env.observation_space.sample()
+            a1 = _get_mean_action_from_algorithm(alg1, obs)
+            a2 = _get_mean_action_from_algorithm(alg2, obs)
+            print("Checking computed actions", alg1, obs, a1, a2)
+            if abs(a1 - a2) > 0.1:
+                raise AssertionError(
+                    "algo={} [a1={} a2={}]".format(str(alg1.__class__), a1, a2)
+                )
+        # Stop algo 1.
+        alg1.stop()
+
+        if run_restored_algorithm:
+            # Check that algo 2 can still run.
+            print("Starting second run on Algo 2...")
+            alg2.train()
+        alg2.stop()
 
 
 def check_supported_spaces(

@@ -4,23 +4,20 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray.data.tests.util import Counter
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
-    PartitionStyle,
-    PathPartitionEncoder,
-    PathPartitionFilter,
     Partitioning,
+    PartitionStyle,
+    PathPartitionFilter,
 )
-
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
-from ray.data.tests.util import extract_values
+from ray.data.tests.test_partitioning import PathPartitionEncoder
+from ray.data.tests.util import Counter, extract_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -47,7 +44,7 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
     values = np.stack(extract_values("data", ds.take(8)))
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     # Check that conversion task is included in stats.
-    assert "FromNumpyRefs" in ds.stats()
+    assert "FromNumpy" in ds.stats()
 
     # Test from single NumPy ndarray.
     if from_ref:
@@ -57,7 +54,7 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
     values = np.stack(extract_values("data", ds.take(4)))
     np.testing.assert_array_equal(values, arr1)
     # Check that conversion task is included in stats.
-    assert "FromNumpyRefs" in ds.stats()
+    assert "FromNumpy" in ds.stats()
 
 
 def test_from_numpy_variable_shaped(ray_start_regular_shared):
@@ -133,7 +130,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
-    ds = ray.data.read_numpy(path)
+    ds = ray.data.read_numpy(path, parallelism=1)
     assert str(ds) == (
         "Dataset(\n"
         "   num_blocks=1,\n"
@@ -149,7 +146,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     with open(os.path.join(path, "foo.txt"), "w") as f:
         f.write("foobar")
 
-    ds = ray.data.read_numpy(path)
+    ds = ray.data.read_numpy(path, parallelism=1)
     assert ds.num_blocks() == 1
     assert ds.count() == 10
     assert str(ds) == (
@@ -189,7 +186,9 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     os.mkdir(path)
     path = os.path.join(path, "test.npy")
     np.save(path, np.expand_dims(np.arange(0, 10), 1))
-    ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
+    ds = ray.data.read_numpy(
+        path, meta_provider=FastFileMetadataProvider(), parallelism=1
+    )
     assert str(ds) == (
         "Dataset(\n"
         "   num_blocks=1,\n"
@@ -277,8 +276,8 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds = ray.data.range_tensor(10, parallelism=2)
     ds._set_uuid("data")
     ds.write_numpy(data_path, filesystem=fs, column="data")
-    file_path1 = os.path.join(data_path, "data_000000.npy")
-    file_path2 = os.path.join(data_path, "data_000001.npy")
+    file_path1 = os.path.join(data_path, "data_000000_000000.npy")
+    file_path2 = os.path.join(data_path, "data_000001_000000.npy")
     if endpoint_url is None:
         arr1 = np.load(file_path1)
         arr2 = np.load(file_path2)
@@ -309,18 +308,18 @@ def test_numpy_write_block_path_provider(
     fs,
     data_path,
     endpoint_url,
-    test_block_write_path_provider,
+    mock_block_write_path_provider,
 ):
     ds = ray.data.range_tensor(10, parallelism=2)
     ds._set_uuid("data")
     ds.write_numpy(
         data_path,
         filesystem=fs,
-        block_path_provider=test_block_write_path_provider,
+        block_path_provider=mock_block_write_path_provider,
         column="data",
     )
-    file_path1 = os.path.join(data_path, "000000_05_data.test.npy")
-    file_path2 = os.path.join(data_path, "000001_05_data.test.npy")
+    file_path1 = os.path.join(data_path, "000000_000000_data.test.npy")
+    file_path2 = os.path.join(data_path, "000001_000000_data.test.npy")
     if endpoint_url is None:
         arr1 = np.load(file_path1)
         arr2 = np.load(file_path2)

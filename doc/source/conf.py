@@ -1,29 +1,41 @@
-# -*- coding: utf-8 -*-
-import json
+from datetime import datetime
 from pathlib import Path
 from importlib import import_module
 import os
 import sys
+from unittest.mock import MagicMock
 from jinja2.filters import FILTERS
 
 sys.path.insert(0, os.path.abspath("."))
-from custom_directives import *
-from datetime import datetime
+from custom_directives import (
+    DownloadAndPreprocessEcosystemDocs,
+    update_context,
+    LinkcheckSummarizer,
+    build_gallery,
+)
 
-
-# Mocking modules allows Sphinx to work without installing Ray.
-mock_modules()
-
-assert (
-    "ray" not in sys.modules
-), "If ray is already imported, we will not render documentation correctly!"
+# Compiled ray modules need to be mocked out; readthedocs doesn't have support for
+# compiling these. See https://readthedocs-lst.readthedocs.io/en/latest/faq.html
+# for more information. Other external dependencies should not be added here.
+# Instead add them to autodoc_mock_imports below.
+mock_modules = [
+    "ray._raylet",
+    "ray.core.generated",
+    "ray.core.generated.common_pb2",
+    "ray.core.generated.runtime_env_common_pb2",
+    "ray.core.generated.gcs_pb2",
+    "ray.core.generated.logging_pb2",
+    "ray.core.generated.ray.protocol.Task",
+    "ray.serve.generated",
+    "ray.serve.generated.serve_pb2",
+    "ray.serve.generated.serve_pb2_grpc",
+]
+sys.modules.update((mod_name, MagicMock()) for mod_name in mock_modules)
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath("../../python/"))
-
-import ray
 
 # -- General configuration ------------------------------------------------
 
@@ -38,6 +50,7 @@ sys.path.append(os.path.abspath("./_ext"))
 
 extensions = [
     "callouts",  # custom extension from _ext folder
+    "queryparamrefs",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
@@ -57,6 +70,7 @@ extensions = [
     "sphinx_tabs.tabs",
     "sphinx_remove_toctrees",
     "sphinx_design",
+    "sphinx.ext.intersphinx",
 ]
 
 # Prune deep toc-trees on demand for smaller html and faster builds.
@@ -102,7 +116,6 @@ myst_enable_extensions = [
     "replacements",
 ]
 
-
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
 # To cache previous runs, set this to "cache".
@@ -127,9 +140,23 @@ copybutton_prompt_is_regexp = True
 # functionality with the `sphinx_tabs_disable_tab_closing` option.
 sphinx_tabs_disable_tab_closing = True
 
-# There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
-# of imports.
-# autodoc_mock_imports = ["ray.experimental.tf_utils"]
+# Special mocking of packaging.version.Version is required when using sphinx;
+# we can't just add this to autodoc_mock_imports, as packaging is imported by
+# sphinx even before it can be mocked. Instead, we patch it here.
+import packaging
+
+Version = packaging.version.Version
+
+
+class MockVersion(Version):
+    def __init__(self, version: str):
+        if isinstance(version, (str, bytes)):
+            super().__init__(version)
+        else:
+            super().__init__("0")
+
+
+packaging.version.Version = MockVersion
 
 # This is used to suppress warnings about explicit "toctree" directives.
 suppress_warnings = ["etoc.toctree"]
@@ -170,11 +197,12 @@ author = "The Ray Team"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
-# built documents.
-from ray import __version__ as version
+# built documents. Retrieve the version using `find_version` rather than importing
+# directly (from ray import __version__) because initializing ray will prevent
+# mocking of certain external dependencies.
+from setup import find_version
 
-# The full version, including alpha/beta/rc tags.
-release = version
+release = find_version("ray", "__init__.py")
 
 language = None
 
@@ -183,6 +211,7 @@ language = None
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
     "templates/*",
+    "cluster/running-applications/doc/ray.*",
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -240,6 +269,10 @@ linkcheck_ignore = [
     "https://dev.mysql.com/doc/connector-python/en/",
     # Returning 522s intermittently.
     "https://lczero.org/",
+    # Returns 429 errors in Linkcheck due to too many requests
+    "https://archive.is/2022.12.16-171259/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12",
+    # Returns 406 but remains accessible
+    "https://www.uber.com/blog/elastic-xgboost-ray/",
 ]
 
 # -- Options for HTML output ----------------------------------------------
@@ -354,29 +387,15 @@ nb_render_priority = {
     ),
 }
 
-tag_mapping = {
-    # Tags for Ray Train examples gallery
-    "trainTorchFashionMnist": "PyTorch,Training",
-    "trainTransformers": "PyTorch,Training,HuggingFace",
-    "trainTensorflowMnist": "TensorFlow,Training",
-    "trainHorovod": "Horovod, PyTorch,Training",
-    "trainMlflow": "MLflow,Training",
-    "trainTuneTensorflow": "TensorFlow,Training,Tuning",
-    "trainTunePyTorch": "PyTorch,Training,Tuning",
-    "trainBenchmark": "PyTorch,Training",
-    "trainLightning": "PyTorch,Lightning,Training",
-    "trackLightning": "PyTorch,Lightning,Training,MLFlow"
-    # TODO add and integrate tags for other libraries.
-    # Tune has a proper example library
-    # Serve, RLlib and AIR could use one.
-}
-
-# Create file with tag mappings for tags.js to use.
-with open("./_static/tag-mapping.json", "w") as f:
-    json.dump(tag_mapping, f)
-
 
 def setup(app):
+    # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
+    # `doctest` doesn't support this flag by default, `sphinx.ext.doctest` raises
+    # warnings when we build the documentation.
+    import doctest
+
+    doctest.register_optionflag("MOCK")
+
     app.connect("html-page-context", update_context)
 
     # Custom CSS
@@ -393,16 +412,14 @@ def setup(app):
         defer="defer",
     )
     app.add_js_file("js/docsearch.js", defer="defer")
-
-    # https://github.com/medmunds/rate-the-docs for allowing users
-    # to give thumbs up / down and feedback on existing docs pages.
-    app.add_js_file("js/rate-the-docs.es.min.js")
+    app.add_js_file("js/csat.js", defer="defer")
 
     # https://github.com/ines/termynal
     app.add_js_file("js/termynal.js", defer="defer")
     app.add_js_file("js/custom.js", defer="defer")
 
     app.add_js_file("js/top-navigation.js", defer="defer")
+    app.add_js_file("js/summit.js", defer="defer")
 
     base_path = Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
@@ -438,3 +455,53 @@ autosummary_filename_map = {
     "ray.serve.deployment": "ray.serve.deployment_decorator",
     "ray.serve.Deployment": "ray.serve.Deployment",
 }
+
+# Mock out external dependencies here.
+autodoc_mock_imports = [
+    "transformers",
+    "horovod",
+    "datasets",
+    "tensorflow",
+    "torch",
+    "torchvision",
+    "lightgbm",
+    "lightgbm_ray",
+    "pytorch_lightning",
+    "xgboost",
+    "xgboost_ray",
+    "wandb",
+    "huggingface",
+    "joblib",
+    "watchfiles",
+    "setproctitle",
+    "gymnasium",
+    "fastapi",
+    "tree",
+    "uvicorn",
+    "starlette",
+    "fsspec",
+    "skimage",
+    "aiohttp",
+]
+
+
+for mock_target in autodoc_mock_imports:
+    assert mock_target not in sys.modules, (
+        f"Problematic mock target ({mock_target}) found; "
+        "autodoc_mock_imports cannot mock modules that have already"
+        "been loaded into sys.modules when the sphinx build starts."
+    )
+
+# Other sphinx docs can be linked to if the appropriate URL to the docs
+# is specified in the `intersphinx_mapping` - for example, types in function signatures
+# that are defined in dependencies can link to their respective documentation.
+intersphinx_mapping = {
+    "sklearn": ("https://scikit-learn.org/stable/", None),
+}
+
+# Ray must not be imported in conf.py because third party modules initialized by
+# `import ray` will no be mocked out correctly. Perform a check here to ensure
+# ray is not imported.
+assert (
+    "ray" not in sys.modules
+), "If ray is already imported, we will not render documentation correctly!"

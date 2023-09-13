@@ -1,15 +1,12 @@
 import itertools
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.execution.interfaces import (
-    RefBundle,
-    PhysicalOperator,
-)
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -62,13 +59,13 @@ class ZipOperator(PhysicalOperator):
         else:
             self._right_buffer.append(refs)
 
-    def inputs_done(self) -> None:
+    def all_inputs_done(self) -> None:
         self._output_buffer, self._stats = self._zip(
             self._left_buffer, self._right_buffer
         )
         self._left_buffer.clear()
         self._right_buffer.clear()
-        super().inputs_done()
+        super().all_inputs_done()
 
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0
@@ -78,9 +75,6 @@ class ZipOperator(PhysicalOperator):
 
     def get_stats(self) -> StatsDict:
         return self._stats
-
-    def get_transformation_fn(self) -> Callable:
-        return self._zip
 
     def _zip(
         self, left_input: List[RefBundle], right_input: List[RefBundle]

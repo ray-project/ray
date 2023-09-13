@@ -1,0 +1,20 @@
+# Searchers
+ax-platform[mysql]==0.2.6; python_version < '3.8'
+ax-platform[mysql]==0.3.2; python_version >= '3.8'
+
+bayesian-optimization==1.4.3
+
+# BOHB
+ConfigSpace==0.7.1
+hpbandster==0.7.4
+
+dragonfly-opt==0.1.7
+flaml==1.1.1
+# Todo: Use version pin again after HEBO is updated on pypi
+git+https://github.com/huawei-noah/HEBO@9a2a674c22518eed35a8b98e5134576741a95410#subdirectory=HEBO
+# HEBO==0.3.4
+hyperopt==0.2.7
+nevergrad==0.4.3.post7
+optuna==3.2.0
+
+tune-sklearn==0.4.6

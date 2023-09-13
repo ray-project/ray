@@ -7,10 +7,8 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Dict, Optional, Set
 
 import ray
-from ray.air._internal.session import Session
-from ray.air.checkpoint import Checkpoint
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.error import TuneError
-from ray.tune.trainable.function_trainable import _StatusReporter
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import PublicAPI, Deprecated
 from ray.util.debug import log_once
@@ -21,13 +19,12 @@ from ray.util.scheduling_strategies import (
 )
 
 if TYPE_CHECKING:
-    from ray.tune.execution.placement_groups import PlacementGroupFactory
+    from ray.tune.trainable.function_trainable import _StatusReporter
+
 
 logger = logging.getLogger(__name__)
 
-_session: Optional[_StatusReporter] = None
-# V2 Session API.
-_session_v2: Optional["_TuneSessionImpl"] = None
+_session: Optional["_StatusReporter"] = None
 
 _deprecation_msg = (
     "`tune.report` and `tune.checkpoint_dir` APIs are deprecated in Ray "
@@ -36,39 +33,31 @@ _deprecation_msg = (
     "The old APIs will be removed in the future. "
 )
 
+_TUNE_REPORT_DEPRECATION_MSG = """`tune.report` is deprecated.
+Use `ray.train.report` instead -- see the example below:
 
-class _TuneSessionImpl(Session):
-    """Session client that function trainable can interact with."""
+from ray import tune     ->     from ray import train
+tune.report(metric=1)    ->     train.report({'metric': 1})"""
 
-    def __init__(self, status_reporter: _StatusReporter):
-        self._status_reporter = status_reporter
 
-    def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
-        self._status_reporter.report(metrics, checkpoint=checkpoint)
+_TUNE_CHECKPOINT_DIR_DEPRECATION_MSG = """`tune.checkpoint_dir` is deprecated.
+Use `ray.train.report` instead -- see the example below:
 
-    @property
-    def loaded_checkpoint(self) -> Optional[Checkpoint]:
-        return self._status_reporter.loaded_checkpoint
+Before
+------
 
-    @property
-    def experiment_name(self) -> str:
-        return self._status_reporter.experiment_name
+with tune.checkpoint_dir(step=1) as checkpoint_dir:
+    torch.save(state_dict, os.path.join(checkpoint_dir, 'model.pt'))
+tune.report(metric=1)
 
-    @property
-    def trial_name(self) -> str:
-        return self._status_reporter.trial_name
+After
+-----
 
-    @property
-    def trial_id(self) -> str:
-        return self._status_reporter.trial_id
+from ray.train import Checkpoint
 
-    @property
-    def trial_resources(self) -> "PlacementGroupFactory":
-        return self._status_reporter.trial_resources
-
-    @property
-    def trial_dir(self) -> str:
-        return self._status_reporter.logdir
+with tempfile.TemporaryDirectory as temp_checkpoint_dir:
+    torch.save(state_dict, os.path.join(temp_checkpoint_dir, 'model.pt'))
+    ray.train.report({'metric': 1}, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir))"""  # noqa: E501
 
 
 @Deprecated(message=_deprecation_msg)
@@ -101,7 +90,6 @@ def get_session():
 def _init(reporter, ignore_reinit_error=True):
     """Initializes the global trial context for this process."""
     global _session
-    global _session_v2
 
     if _session is not None:
         # TODO(ng): would be nice to stack crawl at creation time to report
@@ -135,7 +123,6 @@ def _init(reporter, ignore_reinit_error=True):
         remote_function._task_launch_hook = _tune_task_and_actor_launch_hook
 
     _session = reporter
-    _session_v2 = _TuneSessionImpl(status_reporter=reporter)
 
 
 # Cache of resource dicts that have been checked by the launch hook already.
@@ -210,9 +197,7 @@ def _shutdown():
     """Cleans up the trial and removes it from the global context."""
 
     global _session
-    global _session_v2
     _session = None
-    _session_v2 = None
 
 
 @Deprecated(message=_deprecation_msg)
@@ -237,6 +222,9 @@ def report(_metric=None, **kwargs):
         **kwargs: Any key value pair to be logged by Tune. Any of these
             metrics can be used for early stopping or optimization.
     """
+    if _use_storage_context():
+        raise DeprecationWarning(_TUNE_REPORT_DEPRECATION_MSG)
+
     warnings.warn(
         _deprecation_msg,
         DeprecationWarning,
@@ -301,6 +289,9 @@ def checkpoint_dir(step: int):
 
     .. versionadded:: 0.8.7
     """
+    if _use_storage_context():
+        raise DeprecationWarning(_TUNE_CHECKPOINT_DIR_DEPRECATION_MSG)
+
     warnings.warn(
         _deprecation_msg,
         DeprecationWarning,
@@ -336,6 +327,12 @@ def get_trial_dir():
 
     For function API use only.
     """
+    if _use_storage_context():
+        raise DeprecationWarning(
+            "`tune.get_trial_dir()` is deprecated. "
+            "Use `ray.train.get_context().get_trial_dir()` instead."
+        )
+
     warnings.warn(
         _deprecation_msg,
         DeprecationWarning,
@@ -351,6 +348,12 @@ def get_trial_name():
 
     For function API use only.
     """
+    if _use_storage_context():
+        raise DeprecationWarning(
+            "`tune.get_trial_name()` is deprecated. "
+            "Use `ray.train.get_context().get_trial_name()` instead."
+        )
+
     warnings.warn(
         _deprecation_msg,
         DeprecationWarning,
@@ -366,6 +369,12 @@ def get_trial_id():
 
     For function API use only.
     """
+    if _use_storage_context():
+        raise DeprecationWarning(
+            "`tune.get_trial_id()` is deprecated. "
+            "Use `ray.train.get_context().get_trial_id()` instead."
+        )
+
     warnings.warn(
         _deprecation_msg,
         DeprecationWarning,
@@ -383,6 +392,12 @@ def get_trial_resources():
 
     For function API use only.
     """
+    if _use_storage_context():
+        raise DeprecationWarning(
+            "`tune.get_trial_resources()` is deprecated. "
+            "Use `ray.train.get_context().get_trial_resources()` instead."
+        )
+
     warnings.warn(
         _deprecation_msg,
         DeprecationWarning,

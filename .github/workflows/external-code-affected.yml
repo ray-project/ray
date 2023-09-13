@@ -21,7 +21,7 @@ jobs:
     - name: Check for changes in tracked files
       run: |
         set -xe
-        git clone https://github.com/ray-project/buildkite-ci-pipelines.git ./pipelines 
+        git clone https://github.com/ray-project/rayci.git ./rayci
 
         # Find changed files
         GIT_DIFF=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
@@ -44,7 +44,7 @@ jobs:
             getCommentContentNotChanged,
             parseTrackedFilesToURIs,
             readFileContent
-          } = require('./pipelines/external_code_tracker/track_code');
+          } = require('./rayci/external_code_tracker/track_code');
           
           const fs = require("fs");
           

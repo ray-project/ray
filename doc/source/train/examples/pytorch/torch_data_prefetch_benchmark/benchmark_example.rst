@@ -13,8 +13,6 @@ This functionality can be easily enabled by setting ``auto_transfer=True`` in :f
     from torch.utils.data import DataLoader
     from ray import train
 
-
-
     data_loader = DataLoader(my_dataset, batch_size)
     train_loader = train.torch.prepare_data_loader(
         data_loader=train_loader, move_to_device=True, auto_transfer=True

@@ -13,5 +13,3 @@ Other Examples
   Example of using the function API with a PopulationBasedTraining scheduler.
 - :doc:`/tune/examples/includes/pb2_example`: Example of using the Population-based Bandits (PB2) scheduler.
 - :doc:`/tune/examples/includes/logging_example`: Example of custom loggers and custom trial directory naming.
-- :doc:`/tune/examples/includes/genetic_example`: Optimizing the Michalewicz function using the contributed
-  GeneticSearch algorithm with AsyncHyperBandScheduler.

@@ -6,7 +6,6 @@ from ray.air.config import DatasetConfig
 
 from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors import Chain
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:
@@ -21,10 +20,10 @@ class RayDatasetSpec:
 
     dataset_or_dict: An optional Dataset (or DatasetPipeline) or a dictionary of
         datasets to be sharded across all the training workers, which can be accessed
-        from the training function via ``session.get_dataset_shard()``. Multiple
+        from the training function via ``ray.train.get_dataset_shard()``. Multiple
         Datasets can be passed in as a dictionary that maps each name key to a
         Dataset value, and each Dataset can be accessed from the training function
-        by passing in a `dataset_name` argument to ``session.get_dataset_shard()``.
+        by passing in a `dataset_name` argument to ``ray.train.get_dataset_shard()``.
     dataset_split_fn: An optional callable to specify how the provided ``dataset``
         should be split across the training workers. It is expected to take in two
         arguments. The first one is the ``dataset``, just as is passed in to the
@@ -194,17 +193,10 @@ class DataParallelIngestSpec:
                 )
                 dataset = dataset.window(bytes_per_window=stream_window_size).repeat()
                 # In windowed mode, we re-apply the preprocessor on each iteration.
-                if self.preprocessor or config.per_epoch_preprocessor:
-                    if self.preprocessor is not None:
-                        preprocessor = self.preprocessor
-                        if config.per_epoch_preprocessor is not None:
-                            preprocessor = Chain(
-                                preprocessor, config.per_epoch_preprocessor
-                            )
-                    else:
-                        preprocessor = config.per_epoch_preprocessor
-
-                    dataset = preprocessor._transform_pipeline(dataset)
+                if self.preprocessor is not None:
+                    dataset = self.preprocessor._transform_pipeline(dataset)
+                if config.per_epoch_preprocessor is not None:
+                    dataset = config.per_epoch_preprocessor._transform_pipeline(dataset)
 
                 # Always re-randomize each window; this doesn't help with reducing
                 # cluster hot-spots since we already randomized the based blocks, but

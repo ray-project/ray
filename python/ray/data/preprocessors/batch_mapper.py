@@ -1,11 +1,12 @@
 import sys
-from typing import Dict, Callable, Optional, Union, Any, TYPE_CHECKING
+import warnings
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 import numpy as np
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -15,8 +16,13 @@ else:
 if TYPE_CHECKING:
     import pandas
 
+BATCH_MAPPER_DEPRECATION_MESSAGE = (
+    "The BatchMapper preprocessor is deprecated as of Ray 2.7. "
+    "Instead, transform your Ray Dataset directly using `map_batches`."
+)
 
-@PublicAPI(stability="alpha")
+
+@Deprecated(message=BATCH_MAPPER_DEPRECATION_MESSAGE)
 class BatchMapper(Preprocessor):
     """Apply an arbitrary operation to a dataset.
 
@@ -85,6 +91,10 @@ class BatchMapper(Preprocessor):
         # TODO: Introduce a "zero_copy" format
         # TODO: We should reach consistency of args between BatchMapper and map_batches.
     ):
+
+        warnings.warn(
+            BATCH_MAPPER_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2
+        )
 
         if batch_format not in [
             BatchFormat.PANDAS,

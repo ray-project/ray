@@ -2,7 +2,7 @@
 Decentralized Distributed PPO (DD-PPO)
 ======================================
 
-Unlike APPO or PPO, learning is no longer done centralized in the trainer
+Unlike APPO or PPO, learning is no longer done centralized in the Algorithm
 process. Instead, gradients are computed remotely on each rollout worker and
 all-reduced to sync them at each mini-batch. This allows each worker's GPU
 to be used both for sampling and for training.
@@ -25,6 +25,7 @@ from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.metrics import (
     LEARN_ON_BATCH_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -147,7 +148,7 @@ class DDPPOConfig(PPOConfig):
         Args:
             keep_local_weights_in_sync: Download weights between each training step.
                 This adds a bit of overhead but allows the user to access the weights
-                from the trainer.
+                from the Algorithm.
             torch_distributed_backend: The communication backend for PyTorch
                 distributed.
 
@@ -226,6 +227,12 @@ class DDPPOConfig(PPOConfig):
             return self.rollout_fragment_length
 
 
+@Deprecated(
+    old="rllib/algorithms/ddppo/",
+    new="rllib_contrib/ddppo/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class DDPPO(PPO):
     @classmethod
     @override(PPO)

@@ -15,7 +15,7 @@ def train_model(config):
     # Load data and train model code here...
 
     # Return final stats. You can also return intermediate progress
-    # using ray.air.session.report() if needed.
+    # using ray.train.report() if needed.
     # To return your model, you could write it to storage and return its
     # URI in this dict, or return it as a Tune Checkpoint:
     # https://docs.ray.io/en/latest/tune/tutorials/tune-checkpoints.html

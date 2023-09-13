@@ -1,9 +1,9 @@
-import concurrent.futures
 import logging
 import time
 from functools import wraps
 from threading import RLock
-from typing import Dict, List, Tuple
+from types import ModuleType
+from typing import Any, Dict, List, Optional, Tuple
 
 import googleapiclient
 
@@ -23,6 +23,8 @@ from ray.autoscaler._private.gcp.node import (
     GCPNodeType,
     GCPResource,
 )
+from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
+from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler.node_provider import NodeProvider
 
 logger = logging.getLogger(__name__)
@@ -195,6 +197,7 @@ class GCPNodeProvider(NodeProvider):
                     f"Tried to delete the node with id {node_id} "
                     "but it was already gone."
                 )
+                result = None
             else:
                 raise http_error from None
         return result
@@ -202,16 +205,20 @@ class GCPNodeProvider(NodeProvider):
     @_retry
     def terminate_node(self, node_id: str):
         with self.lock:
-            self._thread_unsafe_terminate_node(node_id)
-
-    def terminate_nodes(self, node_ids: List[str]):
-        if not node_ids:
-            return None
-
-        with self.lock, concurrent.futures.ThreadPoolExecutor() as executor:
-            result = executor.map(self._thread_unsafe_terminate_node, node_ids)
-
-        return list(result)
+            resource = self._get_resource_depending_on_node_name(node_id)
+            try:
+                result = resource.delete_instance(
+                    node_id=node_id,
+                )
+            except googleapiclient.errors.HttpError as http_error:
+                if http_error.resp.status == 404:
+                    logger.warning(
+                        f"Tried to delete the node with id {node_id} "
+                        "but it was already gone."
+                    )
+                else:
+                    raise http_error from None
+            return result
 
     @_retry
     def _get_node(self, node_id: str) -> GCPNode:
@@ -235,3 +242,33 @@ class GCPNodeProvider(NodeProvider):
     @staticmethod
     def bootstrap_config(cluster_config):
         return bootstrap_gcp(cluster_config)
+
+    def get_command_runner(
+        self,
+        log_prefix: str,
+        node_id: str,
+        auth_config: Dict[str, Any],
+        cluster_name: str,
+        process_runner: ModuleType,
+        use_internal_ip: bool,
+        docker_config: Optional[Dict[str, Any]] = None,
+    ) -> CommandRunnerInterface:
+        """Returns a TPU command runner as applicable."""
+        resource = self._get_resource_depending_on_node_name(node_id)
+        instance = resource.get_instance(node_id)
+        common_args = {
+            "docker_config": docker_config,
+            "log_prefix": log_prefix,
+            "node_id": node_id,
+            "auth_config": auth_config,
+            "cluster_name": cluster_name,
+            "process_runner": process_runner,
+            "use_internal_ip": use_internal_ip,
+        }
+        if (
+            GCPNodeType.TPU in self.resources
+            and resource == self.resources[GCPNodeType.TPU]
+        ):
+            return TPUCommandRunner(instance=instance, provider=self, **common_args)
+        else:
+            return super().get_command_runner(**common_args)

@@ -9,14 +9,9 @@ a batch of queries and processes them at once. In particular, we show:
 - How to configure the batch size.
 - How to query the model in Python.
 
-This tutorial should help the following use cases:
+This tutorial is a guide for serving online queries when your model can take advantage of batching. For example, linear regressions and neural networks use CPU and GPU's vectorized instructions to perform computation in parallel. Performing inference with batching can increase the *throughput* of the model as well as *utilization* of the hardware.
 
-- You want to perform offline batch inference on a cluster of machines.
-- You want to serve online queries and your model can take advantage of batching.
-  For example, linear regressions and neural networks use CPU and GPU's
-  vectorized instructions to perform computation in parallel. Performing
-  inference with batching can increase the *throughput* of the model as well as
-  *utilization* of the hardware.
+For _offline_ batch inference with large datasets, see [batch inference with Ray Data](batch_inference_home).
 
 
 ## Define the Deployment
@@ -155,11 +150,14 @@ of the Python API, instead of running `serve run` from the console. Add the foll
 to the Python script `tutorial_batch.py`:
 
 ```python
-handle = serve.run(generator)
+from ray.serve.handle import DeploymentHandle
+
+handle: DeploymentHandle = serve.run(generator).options(use_new_handle_api=True)
+)
 ```
 
 Generally, to enqueue a query, you can call `handle.method.remote(data)`. This call 
-returns immediately with a [Ray ObjectRef](ray-object-refs). You can call `ray.get` to 
+immediately returns a `DeploymentResponse`. You can call `.result()` to 
 retrieve the result. Add the following to the same Python script.
 
 ```python
@@ -177,8 +175,9 @@ input_batch = [
 print("Input batch is", input_batch)
 
 import ray
-result_batch = ray.get([handle.handle_batch.remote(batch) for batch in input_batch])
-print("Result batch is", result_batch)
+responses = [handle.handle_batch.remote(batch) for batch in input_batch]
+results = [r.result() for r in responses]
+print("Result batch is", results)
 ```
 
 Finally, let's run the script.

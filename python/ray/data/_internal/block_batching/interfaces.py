@@ -1,8 +1,9 @@
+import abc
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, List
 
-from ray.types import ObjectRef
 from ray.data.block import Block, DataBatch
+from ray.types import ObjectRef
 
 
 @dataclass
@@ -33,9 +34,14 @@ class CollatedBatch(Batch):
     data: Any
 
 
-class BlockPrefetcher:
+class BlockPrefetcher(metaclass=abc.ABCMeta):
     """Interface for prefetching blocks."""
 
-    def prefetch_blocks(self, blocks: ObjectRef[Block]):
+    @abc.abstractmethod
+    def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
         """Prefetch the provided blocks to this node."""
-        raise NotImplementedError
+        pass
+
+    def stop(self):
+        """Stop prefetching and release resources."""
+        pass

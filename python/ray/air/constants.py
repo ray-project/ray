@@ -75,6 +75,9 @@ EXPR_ERROR_PICKLE_FILE = "error.pkl"
 # File that stores the error file
 EXPR_ERROR_FILE = "error.txt"
 
+# File that stores the checkpoint metadata
+CHECKPOINT_TUNE_METADATA_FILE = ".tune_metadata"
+
 # ==================================================
 #               Environment Variables
 # ==================================================
@@ -89,7 +92,6 @@ COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
 # (avoiding unnecessary serialization if worker is on the same node
 # as Trainable)
 DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
-
 
 # NOTE: When adding a new environment variable, please track it in this list.
 # TODO(ml-team): Most env var constants should get moved here.

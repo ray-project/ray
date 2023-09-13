@@ -233,7 +233,7 @@ Additional client connection options, such as custom HTTP headers and cookies, c
 A full list of options can be found in the :ref:`API Reference <ray-job-submission-sdk-ref>`.
 
 TLS Verification
-~~~~~~~~~
+~~~~~~~~~~~~~~~~~
 By default, any HTTPS client connections will be verified using system certificates found by the underlying ``requests`` and ``aiohttp`` libraries.
 The ``verify`` parameter can be set to override this behavior. For example:
 

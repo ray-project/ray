@@ -123,7 +123,7 @@ class TestSAC(unittest.TestCase):
             ),
         )
 
-        for fw in framework_iterator(config, with_eager_tracing=True):
+        for fw in framework_iterator(config):
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
                 "random_dict_env",
@@ -551,7 +551,7 @@ class TestSAC(unittest.TestCase):
         )
         num_iterations = 1
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             algo = config.build()
             for _ in range(num_iterations):
                 results = algo.train()
