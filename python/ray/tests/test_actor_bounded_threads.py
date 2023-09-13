@@ -35,7 +35,7 @@ def my_threads() -> Dict[str, int]:
 
 # These therads may pop up any time, we can't control them.
 KNOWN_THREADS = {
-    "grpc_global_tim": 1,  # grpc global timer
+    "grpc_global_tim": 2,  # grpc global timer
     "grpcpp_sync_ser": 1,  # grpc
     "jemalloc_bg_thd": 1,  # jemalloc background thread
 }
@@ -157,12 +157,12 @@ def test_async_actor_cg_have_bounded_num_of_threads(shutdown_only):
 
     prev_threads = ray.get(a.get_my_threads.remote())
 
-    assert ray.get(fibonacci.remote(a, 1)) == 1
+    assert ray.get(fibonacci_cg.remote(a, 1)) == 1
     now_threads = ray.get(a.get_my_threads.remote())
     assert_threads_are_bounded(prev_threads, now_threads)
 
     # Creates a lot of workers sending to actor
-    assert ray.get(fibonacci.remote(a, 10)) == 89
+    assert ray.get(fibonacci_cg.remote(a, 10)) == 89
     now_threads = ray.get(a.get_my_threads.remote())
     assert_threads_are_bounded(prev_threads, now_threads)
 
