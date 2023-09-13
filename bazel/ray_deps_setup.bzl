@@ -89,11 +89,11 @@ def ray_deps_setup():
     # This is copied from grpc's bazel/grpc_deps.bzl
     http_archive(
         name = "com_google_protobuf",
-        sha256 = "63c5539a8506dc6bccd352a857cea106e0a389ce047a3ff0a78fe3f8fede410d",
-        strip_prefix = "protobuf-24487dd1045c7f3d64a21f38a3f0c06cc4cf2edb",
+        sha256 = "d594b561fb41bf243233d8f411c7f2b7d913e5c9c1be4ca439baf7e48384c893",
+        strip_prefix = "protobuf-f0dc78d7e6e331b8c6bb2d5283e06aa26883ca7c",
         urls = [
-            # https://github.com/protocolbuffers/protobuf/commits/v21.6
-            "https://github.com/protocolbuffers/protobuf/archive/24487dd1045c7f3d64a21f38a3f0c06cc4cf2edb.tar.gz"
+            # https://github.com/protocolbuffers/protobuf/commits/v21.12
+            "https://github.com/protocolbuffers/protobuf/archive/f0dc78d7e6e331b8c6bb2d5283e06aa26883ca7c.tar.gz"
         ],
         patches = [
             "@com_github_grpc_grpc//third_party:protobuf.patch",
@@ -220,8 +220,11 @@ def ray_deps_setup():
     # This is how diamond dependencies are prevented.
     auto_http_archive(
         name = "com_google_absl",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20220623.1.tar.gz",
-        sha256 = "91ac87d30cc6d79f9ab974c51874a704de9c2647c40f6932597329a282217ba8",
+        sha256 = "9a2b5752d7bfade0bdeee2701de17c9480620f8b237e1964c1b9967c75374906",
+        strip_prefix = "abseil-cpp-20230125.2",
+        urls = [
+            "https://github.com/abseil/abseil-cpp/archive/20230125.2.tar.gz",
+        ],
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
