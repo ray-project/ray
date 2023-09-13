@@ -40,9 +40,9 @@ steps:
     commands:
       - rm ./python/requirements_compiled.txt
       - ./ci/ci.sh compile_pip_dependencies
-      - /bin/bash -c 'mkdir -p /artifact-mount/requirements'
-      - /bin/bash -c 'chmod -R 777 /artifact-mount/requirements'
-      - /bin/bash -c 'cp -f ./python/requirements_compiled.txt /artifact-mount/requirements/'
+      - mkdir -p /artifact-mount/requirements
+      - chmod -R 777 /artifact-mount/requirements
+      - cp -f ./python/requirements_compiled.txt /artifact-mount/requirements/
     depends_on:
       - forge
     job_env: forge
