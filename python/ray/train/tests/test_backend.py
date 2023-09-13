@@ -12,7 +12,7 @@ from ray import train
 from ray.air._internal.util import StartTraceback
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
-# from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
 from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
@@ -26,7 +26,7 @@ from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
-    ENABLE_SHARE_ACCELERATOR_DEVICES_ENV,
+    ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
 )
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
@@ -437,7 +437,7 @@ def test_neuron_core_accelerator_ids(ray_2_node_2_neuron_cores, worker_results):
 
     num_workers, expected_results = worker_results
     # sharing enabled by default
-    os.environ.pop(ENABLE_SHARE_ACCELERATOR_DEVICES_ENV, None)
+    os.environ.pop(ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV, None)
     e = BackendExecutor(
         config,
         num_workers=num_workers,
@@ -475,7 +475,7 @@ def test_neuron_core_accelerator_ids_sharing_disabled(
 
     num_workers, expected_results = worker_results
 
-    os.environ[ENABLE_SHARE_ACCELERATOR_DEVICES_ENV] = "0"
+    os.environ[ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV] = "0"
     e = BackendExecutor(
         config,
         num_workers=num_workers,

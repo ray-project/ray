@@ -86,7 +86,8 @@ def test_worker_with_gpu_ids(ray_start_2_cpus_and_gpus):
     assert len(wg.workers) == 2
     for w in wg.workers:
         gpu_and_accelerator_ids = w.metadata.resource_ids
-        assert len(gpu_and_accelerator_ids) == 2
+        # 2_CPUs, 1_GPU
+        assert len(gpu_and_accelerator_ids) == 3
         gpu_ids = gpu_and_accelerator_ids[ray_constants.GPU]
         for gpu_id in gpu_ids:
             assert gpu_id in [str(i) for i in range(num_gpus)]
@@ -107,7 +108,8 @@ def test_worker_with_neuron_core_accelerator_ids(
     assert len(wg.workers) == 2
     for w in wg.workers:
         gpu_and_accelerator_ids = w.metadata.resource_ids
-        assert len(gpu_and_accelerator_ids) == 2
+        # 2_CPUs, 1_neuron_core
+        assert len(gpu_and_accelerator_ids) == 3
         assert len(gpu_and_accelerator_ids[ray_constants.GPU]) == 0
         neuron_core_ids = gpu_and_accelerator_ids[ray_constants.NEURON_CORES]
         for neuron_core_id in neuron_core_ids:

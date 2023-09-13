@@ -28,8 +28,7 @@ from ray.train.constants import (
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     DISABLE_LAZY_CHECKPOINTING_ENV,
-    ENABLE_SHARE_ACCELERATOR_DEVICES_ENV,
-    SUPPORTED_ACCELERATOR_DEVICES_TO_ENV_VAR,
+    SUPPORTED_ACCELERATOR_DEVICES_TO_CONFIG,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
@@ -159,10 +158,16 @@ class BackendExecutor:
             elif self._additional_resources_per_worker:
                 for (
                     accelerator,
-                    env_var,
-                ) in SUPPORTED_ACCELERATOR_DEVICES_TO_ENV_VAR.items():
-                    if self._share_accelerator_devices_enabled(accelerator):
-                        self._share_resource_ids(accelerator, env_var)
+                    accelerator_config,
+                ) in SUPPORTED_ACCELERATOR_DEVICES_TO_CONFIG.items():
+                    enable_sharing_env = accelerator_config[0]
+                    accelerator_runtime_env_var = accelerator_config[1]
+                    if self._share_accelerator_devices_enabled(
+                        accelerator, enable_sharing_env
+                    ):
+                        self._share_resource_ids(
+                            accelerator, accelerator_runtime_env_var
+                        )
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
             logger.exception(str(exc))
@@ -262,11 +267,9 @@ class BackendExecutor:
     def _share_resource_ids(self, accelerator: str, env_var: str):
         """Sets the given env_var on all workers.
 
-        For each worker, desired will be set to the accelerator ids
-        and visible to all workers on that worker's node.
-
-        This allows workers on the same node to communicate with one
-        another.
+        For each worker, the cores/devices are visible to all the
+        workers on that worker's node.This allows workers on the
+        same node to communicate with one another.
 
         Example:
 
@@ -296,39 +299,41 @@ class BackendExecutor:
         node_id_to_worker_id = defaultdict(set)
         node_id_to_resource_ids = defaultdict(set)
 
-        for worker_id, (node_id, resource_id) in enumerate(node_ids_and_resource_ids):
+        for worker_id, (node_id, resource_ids) in enumerate(node_ids_and_resource_ids):
             node_id_to_worker_id[node_id].add(worker_id)
-            node_id_to_resource_ids[node_id].update(resource_id)
+            node_id_to_resource_ids[node_id].update(resource_ids)
 
         futures = []
-        for node_id, resource_runtime_ids in node_id_to_resource_ids.items():
-            resource_runtime_ids = sorted(resource_runtime_ids)
-            all_resource_runtime_ids = ",".join(resource_runtime_ids)
+        for node_id, resource_ids in node_id_to_resource_ids.items():
+            resource_ids = sorted(resource_ids)
+            all_resource_ids = ",".join(resource_ids)
 
-            def set_resource_runtime_ids():
-                os.environ[env_var] = all_resource_runtime_ids
+            def set_resource_ids():
+                os.environ[env_var] = all_resource_ids
 
             for worker_id in node_id_to_worker_id[node_id]:
                 futures.append(
-                    self.worker_group.execute_single_async(
-                        worker_id, set_resource_runtime_ids
-                    )
+                    self.worker_group.execute_single_async(worker_id, set_resource_ids)
                 )
         ray.get(futures)
 
-    def _share_accelerator_devices_enabled(self, accelerator: str):
-        """Whether to share NEURON_RT_VISIBLE_CORES/TPU_VISIBLE_CHIPS/..
-        on all workers. This is enabled by default if neuron_cores/TPU/.. are
-        requested for workers. User can disable it by configuring the
-        TRAIN_ENABLE_SHARE_ACCELERATOR_DEVICES to "0"
+    def _share_accelerator_devices_enabled(
+        self, accelerator: str, enable_sharing_env: str
+    ):
+        """Whether to share cores/devices on all workers
+        based on enable_sharing_env.
+        For example, user can disable it by configuring the
+        TRAIN_ENABLE_SHARE_ACCELERATOR_DEVICES to "0".
+
+        Args:
+            accelerator: The name of the accelerator.
+            enable_sharing_env: The name of the environment variable
+                to check.
         """
-        return bool(
-            env_integer(
-                ENABLE_SHARE_ACCELERATOR_DEVICES_ENV,
-                self._additional_resources_per_worker.get(accelerator, None)
-                is not None,
-            )
+        has_accelerator_requested = (
+            self._additional_resources_per_worker.get(accelerator, None) is not None
         )
+        return bool(env_integer(enable_sharing_env, has_accelerator_requested))
 
     def _create_rank_world_size_mappings(self) -> List[Dict]:
         """Create rank and world size mappings for workers.

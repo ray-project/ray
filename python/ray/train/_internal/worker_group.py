@@ -44,7 +44,8 @@ class WorkerMetadata:
         node_id: ID of the node this worker is on.
         node_ip: IP address of the node this worker is on.
         hostname: Hostname that this worker is on.
-        resource_ids: Map of GPU IDs, accelerator IDs (AWS NeuronCore, ..).
+        resource_ids: Map of accelerator resources
+        ("GPU", "neuron_cores", ..) to their IDs.
         pid: Process ID of this worker.
     """
 
@@ -86,13 +87,14 @@ def construct_metadata() -> WorkerMetadata:
     node_id = ray.get_runtime_context().get_node_id()
     node_ip = ray.util.get_node_ip_address()
     hostname = socket.gethostname()
+    resource_ids = ray.get_runtime_context().get_resource_ids()
     pid = os.getpid()
 
     return WorkerMetadata(
         node_id=node_id,
         node_ip=node_ip,
         hostname=hostname,
-        resource_ids=ray.get_runtime_context().get_resource_ids(),
+        resource_ids=resource_ids,
         pid=pid,
     )
 
