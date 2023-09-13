@@ -45,8 +45,8 @@ Intermediate
     - :ref:`Fine-tune of Stable Diffusion with DreamBooth and Ray Train <torch_finetune_dreambooth_ex>`
   * - Lightning
     - :ref:`Train with PyTorch Lightning and Ray Data <lightning_advanced_example>`
-  * - Accelerate
-    - :ref:`Fine-tune a text classifier on GLUE Benchmark with Hugging Face Accelerate <train_transformers_accelerate_example>`
+  * - Transformers
+    - :ref:`Fine-tune a Text Classifier on GLUE Benchmark with Hugging Face Accelerate <train_transformers_glue_example>`
 
 
 Advanced
