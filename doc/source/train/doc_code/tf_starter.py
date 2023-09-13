@@ -7,8 +7,8 @@ import tensorflow as tf
 
 from ray import train
 from ray.train import ScalingConfig
-from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.train.tensorflow import TensorflowTrainer
+from ray.train.tensorflow.keras import ReportCheckpointCallback
 
 
 # If using GPUs, set this to True.
