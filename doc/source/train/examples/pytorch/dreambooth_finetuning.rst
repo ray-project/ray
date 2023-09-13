@@ -6,8 +6,7 @@ Fine-tune of Stable Diffusion with DreamBooth and Ray Train
 ===========================================================
 
 This is an intermediate example that shows how to do DreamBooth fine-tuning of a Stable Diffusion model using Ray Train.
-It demonstrates how to use :ref:`Ray Dataset <data>` with PyTorch Lightning in Ray Train.
-If you just want to quickly convert your existing Transformer scripts into Ray Train, you can refer to the :ref:`Getting Started with Transformers <train-pytorch-transformers>`.
+It demonstrates how to use :ref:`Ray Data <data>` with PyTorch Lightning in Ray Train.
 
 
 See the original `DreamBooth project homepage <https://dreambooth.github.io/>`_ for more details on what this fine-tuning method achieves.

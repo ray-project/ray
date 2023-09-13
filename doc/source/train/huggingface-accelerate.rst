@@ -50,7 +50,7 @@ You only need to run your existing training code with a TorchTrainer. You can ex
     Model and data preparation for distributed training is completely handled by the `Accelerator <https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator>`_ 
     object and its `Accelerator.prepare() <https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator.prepare>`_  method.
     
-    Unlike with native PyTorch, PyTorch Lightning, or HuggingFace Transformers, **don't** call any additional Ray Train utilities 
+    Unlike with native PyTorch, PyTorch Lightning, or Hugging Face Transformers, **don't** call any additional Ray Train utilities 
     like :meth:`~ray.train.torch.prepare_model` or :meth:`~ray.train.torch.prepare_data_loader` in your training function. 
 
 Configure Accelerate

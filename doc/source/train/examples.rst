@@ -28,7 +28,7 @@ Beginner
   * - DeepSpeed
     - :ref:`Train with DeepSpeed ZeRO-3 <deepspeed_example>`
   * - TensorFlow
-    - :ref:`Train with TensorFlow MNIST <tensorflow_mnist_example>`
+    - :ref:`Train an MNIST Image Classifier with TensorFlow <tensorflow_mnist_example>`
   * - Horovod
     - :ref:`Train with Horovod and PyTorch <horovod_example>`
 
