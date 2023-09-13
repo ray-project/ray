@@ -526,7 +526,7 @@ def test_idle_node_blocked(ray_start_cluster):
         return True
 
     for x in range(10):
-        async_wait_for_condition(verify_cluster_busy)
+        wait_for_condition(verify_cluster_busy)
         time.sleep(0.1)
 
     # Kill the task
