@@ -110,8 +110,8 @@ To customize the backend setup, you can pass a
 For more configurability, see the :py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` API.
 
 
-Run your training function
---------------------------
+Run a training function
+-----------------------
 
 With a distributed training function and a Ray Train ``Trainer``, you are now
 ready to start training.

@@ -3,7 +3,7 @@
 Get Started with Hugging Face Accelerate
 ========================================
 
-The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your `Accelelate <https://huggingface.co/docs/accelerate>`_  training across a distributed Ray cluster.
+The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your `Accelerate <https://huggingface.co/docs/accelerate>`_  training across a distributed Ray cluster.
 
 You only need to run your existing training code with a TorchTrainer. You can expect the final code to look like this:
 

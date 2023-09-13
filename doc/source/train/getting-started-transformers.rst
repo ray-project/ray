@@ -7,8 +7,8 @@ This tutorial walks through the process of converting an existing Hugging Face T
 
 Learn how to:
 
-1. Configure your training function to report metrics and save checkpoints.
-2. Configure scale and CPU/GPU resource requirements for your training job.
+1. Configure a :ref:`training function <train-overview-training-function>` to report metrics and save checkpoints.
+2. Configure :ref:`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for your training job.
 3. Launch your distributed training job with a :class:`~ray.train.torch.TorchTrainer`.
 
 Quickstart
@@ -28,7 +28,7 @@ For reference, the final code follows:
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
-1. `train_func` is the Python code that executes on each distributed training worker.
+1. `train_func` is the Python code that executes on each distributed training :ref:`worker <train-overview-worker>`.
 2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and computing resources (e.g. GPUs).
 3. :class:`~ray.train.torch.TorchTrainer` launches the distributed training job.
 
@@ -175,7 +175,7 @@ Set up a training function
 --------------------------
 
 First, update your training code to support distributed training. 
-You can begin by wrapping your code in a function:
+You can begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
 
 .. code-block:: python
 

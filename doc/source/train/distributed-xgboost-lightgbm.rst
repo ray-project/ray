@@ -25,7 +25,7 @@ Quickstart
            :end-before: __lightgbm_end__
 
 
-Basic Training with Tree-Based Models in Train
+Basic training with tree-based models in Train
 ----------------------------------------------
 
 Just as in the original `xgboost.train() <https://xgboost.readthedocs.io/en/stable/parameter.html>`__ and
@@ -53,12 +53,12 @@ training parameters are passed as the ``params`` dictionary.
             :end-before: __lightgbm_end__
 
 
-Ray-specific params are passed in through the trainer constructors.
+Trainer constructors pass Ray-specific parameters.
 
 
 .. _train-gbdt-checkpoints:
 
-Save and Load XGBoost and LightGBM Checkpoints
+Save and load XGBoost and LightGBM checkpoints
 ----------------------------------------------
 
 When you train a new tree on every boosting round,
@@ -209,13 +209,13 @@ How to optimize XGBoost memory usage?
 XGBoost uses a compute-optimized datastructure, the ``DMatrix``,
 to hold training data. When converting a dataset to a ``DMatrix``,
 XGBoost creates intermediate copies and ends up
-holding a complete copy of the full data. The data will be converted
-into the local dataformat (on a 64 bit system these are 64 bit floats.)
+holding a complete copy of the full data. XGBoost converts the data
+into the local data format. On a 64-bit system the format is 64-bit floats.
 Depending on the system and original dataset dtype, this matrix can
 thus occupy more memory than the original dataset.
 
 The **peak memory usage** for CPU-based training is at least
-**3x** the dataset size (assuming dtype ``float32`` on a 64bit system)
+**3x** the dataset size, assuming dtype ``float32`` on a 64-bit system,
 plus about **400,000 KiB** for other resources,
 like operating system requirements and storing of intermediate
 results.
