@@ -89,11 +89,11 @@ def ray_deps_setup():
     # This is copied from grpc's bazel/grpc_deps.bzl
     http_archive(
         name = "com_google_protobuf",
-        sha256 = "63c5539a8506dc6bccd352a857cea106e0a389ce047a3ff0a78fe3f8fede410d",
-        strip_prefix = "protobuf-24487dd1045c7f3d64a21f38a3f0c06cc4cf2edb",
+        sha256 = "209385d3c08252e320196b628584c8007f849f9ec8a26c2796a886345ee58bb6",
+        strip_prefix = "protobuf-2dca62f7296e5b49d729f7384f975cecb38382a0",
         urls = [
-            # https://github.com/protocolbuffers/protobuf/commits/v21.6
-            "https://github.com/protocolbuffers/protobuf/archive/24487dd1045c7f3d64a21f38a3f0c06cc4cf2edb.tar.gz"
+            # https://github.com/protocolbuffers/protobuf/commits/v23.1
+            "https://github.com/protocolbuffers/protobuf/archive/2dca62f7296e5b49d729f7384f975cecb38382a0.tar.gz"
         ],
         patches = [
             "@com_github_grpc_grpc//third_party:protobuf.patch",
@@ -240,8 +240,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.50.2.tar.gz",
-        sha256 = "e941752638a92f21e27566903e1eb9b4a6380d70ca5ce91116b4cff6cb8fe2f2",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.55.3.tar.gz",
+        sha256 = "f17d7dac5d02247805670296523942456a2fccfbea247631342bc708ddd4a2e6",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
         ],
