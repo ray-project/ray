@@ -24,6 +24,7 @@ class TorchTrainer(DataParallelTrainer):
        on all workers.
 
     For more details, see:
+
     * :ref:`PyTorch Guide <train-pytorch>`
     * :ref:`PyTorch Lightning Guide <train-pytorch-lightning>`
     * :ref:`Hugging Face Transformers Guide <train-pytorch-transformers>`
