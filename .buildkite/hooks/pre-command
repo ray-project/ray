@@ -18,7 +18,8 @@ if [ -d "/tmp/artifacts" ]; then
       # Need to run in docker to avoid permission issues
       docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/*; rm -rf /artifact-mount/.[!.]*; chown -R 2000 /artifact-mount/' || true
     else
-      echo "Directory already empty, no need to clean up."
+      echo "Directory already empty, no need to clean up. Changing permissions instead."
+      docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'chown -R 2000 /artifact-mount/' || true
     fi
 
     echo "Artifact directory contents after cleanup:"
