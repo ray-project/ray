@@ -292,6 +292,8 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
     } else {
       if (resources.is_draining()) {
         snapshot->set_state(rpc::NodeSnapshot::DRAINING);
+      } else {
+        snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
       }
       snapshot->set_node_activity(resources.node_activity());
     }
