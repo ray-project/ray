@@ -1,4 +1,5 @@
 import base64
+from collections import OrderedDict
 import importlib
 import io
 import zlib
@@ -268,7 +269,9 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
         return gym.spaces.Tuple(spaces=spaces)
 
     def _dict(d: Dict) -> gym.spaces.Discrete:
-        spaces = {k: gym_space_from_dict(sp) for k, sp in d["spaces"].items()}
+        spaces = OrderedDict(
+            {k: gym_space_from_dict(sp) for k, sp in d["spaces"].items()}
+        )
         return gym.spaces.Dict(spaces=spaces)
 
     def _simplex(d: Dict) -> Simplex:
