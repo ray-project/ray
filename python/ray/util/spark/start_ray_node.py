@@ -7,14 +7,13 @@ import fcntl
 import signal
 import logging
 import threading
+import socket
+from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
 from ray.util.spark.cluster_init import (
     RAY_ON_SPARK_COLLECT_LOG_TO_PATH,
     START_RAY_WORKER_NODE,
 )
 from ray.util.spark.databricks_hook import global_mode_enabled
-from ray.util.spark.utils import (
-    _try_clean_temp_dir_at_exit,
-)
 
 
 # Spark on ray implementation does not directly invoke `ray start ...` script to create
@@ -47,8 +46,17 @@ if __name__ == "__main__":
         raise ValueError("Please explicitly set --temp-dir option.")
 
     temp_dir = os.path.normpath(temp_dir)
-    # Clean up the temp dir for global mode
-    if global_mode_enabled() and os.path.exists(temp_dir):
+
+    def running_on_worker_node():
+        return os.environ.get(START_RAY_WORKER_NODE, "false").lower() == "true"
+
+    # Clean up the temp dir on head node for global mode
+    # Worker nodes will clean up their temp dirs when they exit.
+    if (
+        global_mode_enabled()
+        and not running_on_worker_node()
+        and os.path.exists(temp_dir)
+    ):
         shutil.rmtree(temp_dir, ignore_errors=True)
 
     ray_cli_cmd = "ray"
@@ -61,27 +69,70 @@ if __name__ == "__main__":
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
     process = subprocess.Popen([ray_cli_cmd, "start", *arg_list], text=True)
-    # This makes sure that ray node is started
-    for i in range(10):
+    # This makes sure that ray node has created the temp dir for ray node session.
+    for i in range(4):
+        time.sleep(5)
         if os.path.exists(os.path.join(temp_dir, "session_latest")):
             break
-        time.sleep(2)
     ray_session_dir = os.readlink(os.path.join(temp_dir, "session_latest"))
-
-    def running_on_worker_node():
-        return os.environ.get(START_RAY_WORKER_NODE, "false").lower() == "true"
 
     clean_temp_dir_lock = threading.RLock()
 
     def try_clean_temp_dir_at_exit():
         with clean_temp_dir_lock:
-            _try_clean_temp_dir_at_exit(
-                process=process,
-                collect_log_to_path=collect_log_to_path,
-                temp_dir=temp_dir,
-                ray_session_dir=ray_session_dir,
-                lock_fd=lock_fd,
-            )
+            try:
+                # Wait for a while to ensure the children processes of the ray node all
+                # exited.
+                time.sleep(SIGTERM_GRACE_PERIOD_SECONDS + 0.5)
+                if process.poll() is None:
+                    # "ray start ..." command process is still alive. Force to kill it.
+                    process.kill()
+
+                # Release the shared lock, representing current ray node does not
+                # use the temp dir.
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+
+                try:
+                    # acquiring exclusive lock to ensure copy logs and
+                    # removing dir safely.
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    lock_acquired = True
+                except BlockingIOError:
+                    # The file has active shared lock or exclusive lock, representing
+                    # there are other ray nodes running, or other node running cleanup
+                    # temp-dir routine. skip cleaning temp-dir, and skip copy logs to
+                    # destination directory as well.
+                    lock_acquired = False
+
+                if lock_acquired:
+                    # This is the final terminated ray node on current spark worker,
+                    # start copy logs (including all local ray nodes logs)
+                    # to destination.
+                    if collect_log_to_path:
+                        try:
+                            copy_log_dest_path = os.path.join(
+                                collect_log_to_path,
+                                os.path.basename(temp_dir) + "-logs",
+                                socket.gethostname(),
+                            )
+                            shutil.copytree(
+                                os.path.join(ray_session_dir, "logs"),
+                                copy_log_dest_path,
+                            )
+                        except Exception as e:
+                            _logger.warning(
+                                "Collect logs to destination directory failed, "
+                                f"error: {repr(e)}."
+                            )
+
+                    # Start cleaning the temp-dir,
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception:
+                # swallow any exception.
+                pass
+            finally:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                os.close(lock_fd)
 
     def check_parent_alive() -> None:
         orig_parent_id = os.getppid()

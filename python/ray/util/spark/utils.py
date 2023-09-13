@@ -5,11 +5,6 @@ import random
 import threading
 import collections
 import logging
-import time
-import fcntl
-import socket
-import shutil
-from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
 
 _logger = logging.getLogger("ray.util.spark.utils")
 
@@ -414,67 +409,3 @@ def get_spark_task_assigned_physical_gpus(gpu_addr_list):
         return [visible_cuda_dev_list[addr] for addr in gpu_addr_list]
     else:
         return gpu_addr_list
-
-
-def _try_clean_temp_dir_at_exit(
-    process,
-    collect_log_to_path,
-    temp_dir,
-    ray_session_dir,
-    lock_fd=None,
-):
-    if lock_fd is None:
-        lock_file = temp_dir + ".lock"
-        lock_fd = os.open(lock_file, os.O_RDWR | os.O_CREAT | os.O_TRUNC)
-
-    try:
-        # Wait for a while to ensure the children processes of the ray node all
-        # exited.
-        time.sleep(SIGTERM_GRACE_PERIOD_SECONDS + 0.5)
-        if process.poll() is None:
-            # "ray start ..." command process is still alive. Force to kill it.
-            process.kill()
-
-        # Release the shared lock, representing current ray node does not use the
-        # temp dir.
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
-
-        try:
-            # acquiring exclusive lock to ensure copy logs and removing dir safely.
-            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            lock_acquired = True
-        except BlockingIOError:
-            # The file has active shared lock or exclusive lock, representing there
-            # are other ray nodes running, or other node running cleanup temp-dir
-            # routine. skip cleaning temp-dir, and skip copy logs to destination
-            # directory as well.
-            lock_acquired = False
-
-        if lock_acquired:
-            # This is the final terminated ray node on current spark worker,
-            # start copy logs (including all local ray nodes logs) to destination.
-            if collect_log_to_path:
-                try:
-                    copy_log_dest_path = os.path.join(
-                        collect_log_to_path,
-                        os.path.basename(temp_dir) + "-logs",
-                        socket.gethostname(),
-                    )
-                    shutil.copytree(
-                        os.path.join(ray_session_dir, "logs"),
-                        copy_log_dest_path,
-                    )
-                except Exception as e:
-                    _logger.warning(
-                        "Collect logs to destination directory failed, "
-                        f"error: {repr(e)}."
-                    )
-
-            # Start cleaning the temp-dir,
-            shutil.rmtree(temp_dir, ignore_errors=True)
-    except Exception:
-        # swallow any exception.
-        pass
-    finally:
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        os.close(lock_fd)

@@ -33,6 +33,7 @@ from .utils import (
 from .databricks_hook import (
     global_mode_enabled,
     DATABRICKS_RAY_CLUSTER_GLOBAL_MODE,
+    _DATABRICKS_DEFAULT_TMP_ROOT_DIR,
     _get_start_hook,
 )
 
@@ -663,7 +664,9 @@ def _setup_ray_cluster(
                 DATABRICKS_RAY_CLUSTER_GLOBAL_MODE, "false"
             ),
             START_RAY_WORKER_NODE: "true",
-            "RAY_TMPDIR": os.environ.get("RAY_TMPDIR")
+            "RAY_TMPDIR": os.environ.get(
+                "RAY_TMPDIR", _DATABRICKS_DEFAULT_TMP_ROOT_DIR
+            ),
         }
 
         if num_gpus_worker_node > 0:
@@ -1266,11 +1269,18 @@ def shutdown_ray_cluster() -> None:
                 # from saved GLOBAL_RAY_CLUSTER_INFO_FILE file, then shutdown the global
                 # ray cluster.
                 ray_temp_root_dir = _get_start_hook().get_default_temp_root_dir()
-                with open(
-                    os.path.join(ray_temp_root_dir, "ray", GLOBAL_RAY_CLUSTER_INFO_FILE)
-                ) as f:
-                    cluster_info = json.load(f)
-                _active_ray_cluster = RayClusterOnSpark.from_dict(cluster_info)
+                try:
+                    with open(
+                        os.path.join(
+                            ray_temp_root_dir, "ray", GLOBAL_RAY_CLUSTER_INFO_FILE
+                        )
+                    ) as f:
+                        cluster_info = json.load(f)
+                    _active_ray_cluster = RayClusterOnSpark.from_dict(cluster_info)
+                except Exception as e:
+                    raise RuntimeError(
+                        "No active global ray cluster to shut down."
+                    ) from e
             else:
                 raise RuntimeError("No active ray cluster to shut down.")
 
