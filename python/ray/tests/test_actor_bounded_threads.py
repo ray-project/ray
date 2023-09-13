@@ -33,11 +33,12 @@ def my_threads() -> Dict[str, int]:
 # actor should not infinitely go up.
 
 
-# These therads may pop up any time, we can't control them.
+# These therads are from third party code, and may start any time, we can't control
+# them. So we allow them to be any number.
 KNOWN_THREADS = {
-    "grpc_global_tim": 2,  # grpc global timer
-    "grpcpp_sync_ser": 1,  # grpc
-    "jemalloc_bg_thd": 1,  # jemalloc background thread
+    "grpc_global_tim",  # grpc global timer
+    "grpcpp_sync_ser",  # grpc
+    "jemalloc_bg_thd",  # jemalloc background thread
 }
 
 
@@ -46,18 +47,17 @@ def assert_threads_are_bounded(
 ):
     """
     Asserts that the threads did not grow unexpected.
-    Rule: For each (thread_name, count) in now_threads, it must either be in
-    prev_threads, or in KNOWN_THREADS.
+    Rule: For each (thread_name, count) in now_threads, it must either be <= the number
+    in prev_threads, or in KNOWN_THREADS.
     """
     for thread_name, count in now_threads.items():
-        target = max(
-            prev_threads.get(thread_name, 0), KNOWN_THREADS.get(thread_name, 0)
-        )
-        assert count <= target, (
-            f"{thread_name} grows unexpectedly: "
-            f"expected <= {target}, got {count}. "
-            f"prev {prev_threads}, now: {now_threads}"
-        )
+        if thread_name not in KNOWN_THREADS:
+            target = prev_threads.get(thread_name, 0)
+            assert count <= target, (
+                f"{thread_name} grows unexpectedly: "
+                f"expected <= {target}, got {count}. "
+                f"prev {prev_threads}, now: {now_threads}"
+            )
 
 
 # Spawns a lot of workers, each making 1 call to A.
