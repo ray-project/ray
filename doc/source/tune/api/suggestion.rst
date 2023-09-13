@@ -163,7 +163,7 @@ See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 BlendSearch (tune.search.flaml.BlendSearch)
 -------------------------------------------
 
-BlendSearch is an economical hyperparameter optimization algorithm that combines combines local search with global search.
+BlendSearch is an economical hyperparameter optimization algorithm that combines local search with global search.
 It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
 It allows the users to specify a low-cost initial point as input if such point exists.
 
