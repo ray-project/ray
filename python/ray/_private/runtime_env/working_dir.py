@@ -11,8 +11,6 @@ from ray._private.runtime_env.packaging import (
     get_local_dir_from_uri,
     get_uri_for_directory,
     get_uri_for_package,
-    install_wheel_package,
-    is_whl_uri,
     parse_uri,
     upload_package_if_needed,
     upload_package_to_gcs,
@@ -61,7 +59,7 @@ def upload_working_dir_if_needed(
             and not path.endswith(".zip")
             and not path.endswith(".whl")
         ):
-            raise ValueError("Only .zip or .whl files supported for remote URIs.")
+            raise ValueError("Only .zip files supported for remote URIs.")
         return runtime_env
 
     excludes = runtime_env.get("excludes", None)
@@ -163,13 +161,6 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         local_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )
-        if is_whl_uri(uri):
-            wheel_uri = local_dir
-            local_dir = get_local_dir_from_uri(uri, self._resources_dir)
-            await install_wheel_package(
-                wheel_uri=wheel_uri, target_dir=local_dir, logger=logger
-            )
-
         return get_directory_size_bytes(local_dir)
 
     def modify_context(
