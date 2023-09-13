@@ -14,7 +14,7 @@ from ray.rllib.utils.test_utils import (
 class TestBC(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -42,7 +42,6 @@ class TestBC(unittest.TestCase):
                 evaluation_config=bc.BCConfig.overrides(input_="sampler"),
             )
             .offline_data(input_=[data_file])
-            # training(_enable_learner_api=True, use_gae=False)
         )
         num_iterations = 350
         min_reward = 75.0
