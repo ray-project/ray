@@ -615,6 +615,7 @@ ray_cc_library(
     deps = [
         ":reporter_rpc",
         ":stats_metric",
+        "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
 )
 
@@ -1482,6 +1483,21 @@ ray_cc_test(
     name = "metric_exporter_client_test",
     size = "small",
     srcs = ["src/ray/stats/metric_exporter_client_test.cc"],
+    tags = [
+        "stats",
+        "team:core",
+    ],
+    deps = [
+        ":stats_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "metric_exporter_grpc_test",
+    size = "small",
+    srcs = [
+        "src/ray/stats/metric_exporter_grpc_test.cc"],
     tags = [
         "stats",
         "team:core",
