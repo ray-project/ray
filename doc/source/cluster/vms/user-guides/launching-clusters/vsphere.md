@@ -9,7 +9,7 @@ To start a vSphere Ray cluster, you will use the Ray cluster launcher with the V
 If you don't already have a vSphere deployment, you can learn more about it by reading the [vSphere documentation](https://docs.vmware.com/en/VMware-vSphere/index.html). The following prerequisites are needed in order to create Ray clusters.
 * [A vSphere cluster](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vcenter-esxi-management/GUID-F7818000-26E3-4E2A-93D2-FCDCE7114508.html) and [resource pools](https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-resource-management/GUID-60077B40-66FF-4625-934A-641703ED7601.html) to host VMs composing Ray Clusters.
 * A network port group (either for a standard switch or distributed switch) or an NSX segment. VMs connected to this network should be able to obtain IP address via DHCP.
-* A datastore that can be accessed by all the host in the vSphere cluster.
+* A datastore that can be accessed by all the hosts in the vSphere cluster.
 
 Another way to prepare the vSphere environment is with VMware Cloud Foundation (VCF). VCF is a unified software-defined datacenter (SDDC) platform that seamlessly integrates vSphere, vSAN, and NSX into a natively integrated stack, delivering enterprise-ready cloud infrastructure for both private and public cloud environments. If you are using VCF, you can refer to the VCF documentation to  [create workload domains](https://docs.vmware.com/en/VMware-Cloud-Foundation/5.0/vcf-admin/GUID-3A478CF8-AFF8-43D9-9635-4E40A0E372AD.html) for running Ray Clusters. A VCF workload domain comprises one or more vSphere clusters, shared storage like vSAN, and a software-defined network managed by NSX. You can also [create NSX Edge Clusters using VCF](https://docs.vmware.com/en/VMware-Cloud-Foundation/5.0/vcf-admin/GUID-D17D0274-7764-43BD-8252-D9333CA7415A.html) and create segment for Ray VMs network.
 
@@ -19,7 +19,7 @@ The vSphere Ray cluster launcher requires the vSphere environment to have a VM i
 
 You can follow [this document](https://via.vmw.com/frozen-vm-ovf) to create and set up the frozen VM. By default, Ray clusters' head and worker node VMs will be placed in the same resource pool as the frozen VM. When building and deploying the frozen VM, there are a couple of things to note:
 
-* The VM's network adapter should be connected to the port group or NSX segment configured in above section. And the `Connect At Power On` check box should be selected.
+* The VM's network adapter should be connected to the port group or NSX segment configured in the above section. And the `Connect At Power On` check box should be selected.
 * After the frozen VM is built, a private key file (`ray-bootstrap-key.pem`) and a public key file (`ray_bootstrap_public_key.key`) will be generated under the HOME directory of the current user. If you want to deploy Ray clusters from another machine, these files should be copied to that machine's HOME directory to be picked up by the vSphere cluster launcher.
 * An OVF will be generated in the content library. If you want to deploy Ray clusters in other vSphere deployments, you can export the OVF and use it to create the frozen VM, instead of building it again from scratch.
 * The VM should be in powered-on status before you launch Ray clusters.
