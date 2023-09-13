@@ -589,7 +589,7 @@ documentation, sorted alphabetically.
 
     Trainer
         A Trainer is the top-level API to configure a single distributed training job.
-        :ref:`There are built-in Trainers for different frameworks<air-trainer-ref>`,
+        :ref:`There are built-in Trainers for different frameworks<train-api>`,
         like PyTorch, Tensorflow, and XGBoost. Each trainer shares a common interface
         and otherwise defines framework-specific configurations and entrypoints. The
         main job of a trainer is to coordinate N distributed training workers and set
