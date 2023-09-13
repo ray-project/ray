@@ -451,8 +451,10 @@ RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
 /// gRPC channel reconnection related configs to GCS.
 /// Check https://grpc.github.io/grpc/core/group__grpc__arg__keys.html for details
+/// Note: `gcs_grpc_min_reconnect_backoff_ms` is (mis)used by gRPC as the connection
+/// timeout. If your cluster has a high latency, make it to > 4x the latency.
 RAY_CONFIG(int32_t, gcs_grpc_max_reconnect_backoff_ms, 2000)
-RAY_CONFIG(int32_t, gcs_grpc_min_reconnect_backoff_ms, 100)
+RAY_CONFIG(int32_t, gcs_grpc_min_reconnect_backoff_ms, 1000)
 RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 100)
 
 /// Maximum bytes of request queued when RPC failed due to GCS is down.

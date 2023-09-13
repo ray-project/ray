@@ -112,7 +112,6 @@ class Node:
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
-            temp_dir=ray._private.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers",
@@ -410,6 +409,9 @@ class Node:
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
         if self.head:
+            self._ray_params.update_if_absent(
+                temp_dir=ray._private.utils.get_ray_temp_dir()
+            )
             self._temp_dir = self._ray_params.temp_dir
         else:
             if self._ray_params.temp_dir is None:

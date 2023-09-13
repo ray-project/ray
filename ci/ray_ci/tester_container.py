@@ -5,6 +5,7 @@ from typing import List
 
 from ci.ray_ci.utils import shard_tests
 from ci.ray_ci.container import Container
+from ci.ray_ci.utils import logger
 
 
 class TesterContainer(Container):
@@ -22,7 +23,9 @@ class TesterContainer(Container):
         Run tests parallelly in docker.  Return whether all tests pass.
         """
         chunks = [shard_tests(test_targets, parallelism, i) for i in range(parallelism)]
-        runs = [self._run_tests_in_docker(chunk, test_envs) for chunk in chunks]
+        runs = [
+            self._run_tests_in_docker(chunk, test_envs) for chunk in chunks if chunk
+        ]
         exits = [run.wait() for run in runs]
         return all(exit == 0 for exit in exits)
 
@@ -54,6 +57,7 @@ class TesterContainer(Container):
         test_targets: List[str],
         test_envs: List[str],
     ) -> subprocess.Popen:
+        logger.info("Running tests: %s", test_targets)
         commands = []
         if os.environ.get("BUILDKITE_BRANCH", "") == "master":
             commands.extend(
