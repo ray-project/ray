@@ -96,6 +96,7 @@ NodeLaunchData = Tuple[NodeTypeConfigDict, NodeCount, Optional[NodeType]]
 @dataclass
 class AutoscalerSummary:
     active_nodes: Dict[NodeType, int]
+    idle_nodes: Dict[NodeType, int]
     pending_nodes: List[Tuple[NodeIP, NodeType, NodeStatus]]
     pending_launches: Dict[NodeType, int]
     failed_nodes: List[Tuple[NodeIP, NodeType]]

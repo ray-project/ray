@@ -342,6 +342,14 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
   resources_data.set_is_draining(IsLocalNodeDraining());
 
+  std::stringstream node_activity;
+  for (const auto &iter : resources_last_idle_time_) {
+    if (iter.second == absl::nullopt) {
+      node_activity << StringIdMap().Get(iter.first.ToInt()) << " in use." << std::endl;
+    }
+  }
+  resources_data.set_node_activity(node_activity.str());
+
   msg.set_node_id(local_node_id_.Binary());
   msg.set_version(version_);
   msg.set_message_type(message_type);
