@@ -113,7 +113,7 @@ compile_pip_dependencies() {
   pip install --no-cache-dir numpy torch
 
   pip-compile --resolver=backtracking -q \
-     --pip-args --no-deps --strip-extras --no-annotate --no-header -o \
+     --pip-args --no-deps --strip-extras --no-header -o \
     "${WORKSPACE_DIR}/python/$TARGET" \
     "${WORKSPACE_DIR}/python/requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
