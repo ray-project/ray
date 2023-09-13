@@ -257,7 +257,7 @@ const ServeSystemActorLogs = ({
 }: ServeSystemActorLogsProps) => {
   const tabs: MultiTabLogViewerTabDetails[] = [
     {
-      title: type === "controller" ? "Controller logs" : "HTTP proxy logs",
+      title: type === "controller" ? "Controller logs" : "proxy logs",
       nodeId: rayletId,
       filename: systemLogFilePath.startsWith("/")
         ? systemLogFilePath.substring(1)

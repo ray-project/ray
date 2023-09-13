@@ -153,7 +153,7 @@ def make_local_dataset_iterator(
         raise RuntimeError(
             "make_local_dataset_iterator should only be used by the driver "
             "for development and debugging. To consume a dataset from a "
-            "worker or AIR trainer, see "
+            "worker or Ray Train Trainer, see "
             "https://docs.ray.io/en/latest/ray-air/check-ingest.html."
         )
 

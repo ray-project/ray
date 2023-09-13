@@ -32,6 +32,25 @@ class TestReadImages:
         assert isinstance(column_type, ArrowTensorType)
         assert all(record["image"].shape == (32, 32, 3) for record in ds.take())
 
+    @pytest.mark.parametrize("num_threads", [-1, 0, 1, 2, 4])
+    def test_multi_threading(self, ray_start_regular_shared, num_threads, monkeypatch):
+        monkeypatch.setattr(
+            ray.data.datasource.image_datasource.ImageDatasource,
+            "_NUM_THREADS_PER_TASK",
+            num_threads,
+        )
+        ds = ray.data.read_images(
+            "example://image-datasets/simple",
+            parallelism=1,
+            include_paths=True,
+        )
+        paths = [item["path"][-len("image1.jpg") :] for item in ds.take_all()]
+        if num_threads > 1:
+            # If there are more than 1 threads, the order is not guaranteed.
+            paths = sorted(paths)
+        expected_paths = ["image1.jpg", "image2.jpg", "image3.jpg"]
+        assert paths == expected_paths
+
     def test_multiple_paths(self, ray_start_regular_shared):
         ds = ray.data.read_images(
             paths=[
@@ -63,9 +82,9 @@ class TestReadImages:
         if ignore_missing_paths:
             ds = ray.data.read_images(paths, ignore_missing_paths=ignore_missing_paths)
             # example:// directive redirects to /ray/python/ray/data/examples/data
-            assert ds.input_files() == [
-                "/ray/python/ray/data/examples/data/image-datasets/simple/image1.jpg"
-            ]
+            assert len(ds.input_files()) == 1 and ds.input_files()[0].endswith(
+                "ray/data/examples/data/image-datasets/simple/image1.jpg",
+            )
         else:
             with pytest.raises(FileNotFoundError):
                 ds = ray.data.read_images(

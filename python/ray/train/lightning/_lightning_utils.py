@@ -4,14 +4,13 @@ from ray import train
 from ray.air.constants import MODEL_KEY
 from ray.data.dataset import DataIterator
 from ray.util import PublicAPI
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 import logging
 import shutil
 import torch
 import tempfile
-from tempfile import TemporaryDirectory
 from ray.train import Checkpoint
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal.storage import _use_storage_context
 from ray.train.lightning.lightning_checkpoint import (
     LightningCheckpoint,
@@ -57,13 +56,17 @@ def get_worker_root_device():
         return devices
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RayDDPStrategy(DDPStrategy):
     """Subclass of DDPStrategy to ensure compatibility with Ray orchestration.
 
     For a full list of initialization arguments, please refer to:
     https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DDPStrategy.html
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYDDPSTRATEGY, "1")
 
     @property
     def root_device(self) -> torch.device:
@@ -77,13 +80,17 @@ class RayDDPStrategy(DDPStrategy):
         )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RayFSDPStrategy(FSDPStrategy):
     """Subclass of FSDPStrategy to ensure compatibility with Ray orchestration.
 
     For a full list of initialization arguments, please refer to:
     https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYFSDPSTRATEGY, "1")
 
     @property
     def root_device(self) -> torch.device:
@@ -116,13 +123,17 @@ class RayFSDPStrategy(FSDPStrategy):
             return super().lightning_module_state_dict()
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RayDeepSpeedStrategy(DeepSpeedStrategy):
     """Subclass of DeepSpeedStrategy to ensure compatibility with Ray orchestration.
 
     For a full list of initialization arguments, please refer to:
     https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DeepSpeedStrategy.html
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYDEEPSPEEDSTRATEGY, "1")
 
     @property
     def root_device(self) -> torch.device:
@@ -136,9 +147,13 @@ class RayDeepSpeedStrategy(DeepSpeedStrategy):
         )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RayLightningEnvironment(LightningEnvironment):
     """Setup Lightning DDP training environment for Ray cluster."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYLIGHTNINGENVIRONMENT, "1")
 
     def world_size(self) -> int:
         return train.get_context().get_world_size()
@@ -164,7 +179,7 @@ class RayLightningEnvironment(LightningEnvironment):
         pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
     """Prepare the PyTorch Lightning Trainer for distributed execution."""
 
@@ -190,33 +205,47 @@ def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
             f"but got {type(cluster_environment)}!"
         )
 
+    record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_PREPARE_TRAINER, "1")
     return trainer
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RayTrainReportCallback(Callback):
     """A simple callback that reports checkpoints to Ray on train epoch end."""
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.trial_name = train.get_context().get_trial_name()
+        self.local_rank = train.get_context().get_local_rank()
+        self.tmpdir_prefix = os.path.join(tempfile.gettempdir(), self.trial_name)
+        if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
+            shutil.rmtree(self.tmpdir_prefix)
+
+        record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYTRAINREPORTCALLBACK, "1")
+
     def on_train_epoch_end(self, trainer, pl_module) -> None:
-        with TemporaryDirectory() as tmpdir:
-            # Fetch metrics
-            metrics = trainer.callback_metrics
-            metrics = {k: v.item() for k, v in metrics.items()}
+        # Creates a checkpoint dir with fixed name
+        tmpdir = os.path.join(self.tmpdir_prefix, str(trainer.current_epoch))
+        os.makedirs(tmpdir, exist_ok=True)
 
-            # (Optional) Add customized metrics
-            metrics["epoch"] = trainer.current_epoch
-            metrics["step"] = trainer.global_step
+        # Fetch metrics
+        metrics = trainer.callback_metrics
+        metrics = {k: v.item() for k, v in metrics.items()}
 
-            # Save checkpoint to local
-            ckpt_path = os.path.join(tmpdir, "checkpoint.ckpt")
-            trainer.save_checkpoint(ckpt_path, weights_only=False)
+        # (Optional) Add customized metrics
+        metrics["epoch"] = trainer.current_epoch
+        metrics["step"] = trainer.global_step
 
-            # Report to train session
-            if _use_storage_context():
-                checkpoint = NewCheckpoint.from_directory(tmpdir)
-            else:
-                checkpoint = Checkpoint.from_directory(tmpdir)
-            train.report(metrics=metrics, checkpoint=checkpoint)
+        # Save checkpoint to local
+        ckpt_path = os.path.join(tmpdir, "checkpoint.ckpt")
+        trainer.save_checkpoint(ckpt_path, weights_only=False)
+
+        # Report to train session
+        checkpoint = Checkpoint.from_directory(tmpdir)
+        train.report(metrics=metrics, checkpoint=checkpoint)
+
+        if self.local_rank == 0:
+            shutil.rmtree(tmpdir)
 
 
 class RayIterableDataset(IterableDataset):

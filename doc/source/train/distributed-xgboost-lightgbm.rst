@@ -55,6 +55,9 @@ training parameters are passed as the ``params`` dictionary.
 
 Ray-specific params are passed in through the trainer constructors.
 
+
+.. _train-gbdt-checkpoints:
+
 Saving and Loading XGBoost and LightGBM Checkpoints
 ---------------------------------------------------
 
@@ -109,9 +112,6 @@ Here are some examples for common use-cases:
             :language: python
             :start-after: __scaling_cpu_start__
             :end-before: __scaling_cpu_end__
-
-        Note that we pass 0 CPUs for the trainer resources, so that all resources can
-        be allocated to the actual distributed training workers.
 
 
     .. tab-item:: Single-node multi-GPU

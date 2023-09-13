@@ -17,31 +17,12 @@ Function API Checkpointing
 --------------------------
 
 If using Ray Tune's Function API, one can save and load checkpoints in the following manner.
-To create a checkpoint, one can either use :meth:`~ray.train.Checkpoint.from_dict`
-(Checkpoint a dictionary) or :meth:`~ray.train.Checkpoint.from_directory` APIs
-(Checkpoint a directory).
+To create a checkpoint, use the :meth:`~ray.train.Checkpoint.from_directory` APIs.
 
-.. TODO(ml-team): https://github.com/ray-project/ray/issues/33251
-.. warning:: When using ``from_directory``, the content of the checkpoint will be copied and moved
-    to a tune managed folder (<trial_name>/checkpoint_<epoch>). This may cause some inefficiency when
-    checkpoint is synced to driver node or the cloud. We are planning to work on it to address the
-    issue.
-
-.. tab-set::
-
-    .. tab-item:: Checkpoint a dictionary
-
-        .. literalinclude:: /tune/doc_code/trial_checkpoint.py
-            :language: python
-            :start-after: __function_api_checkpointing_start__
-            :end-before: __function_api_checkpointing_end__
-
-    .. tab-item:: Checkpoint a directory
-
-        .. literalinclude:: /tune/doc_code/trial_checkpoint.py
-            :language: python
-            :start-after: __function_api_checkpointing_from_dir_start__
-            :end-before: __function_api_checkpointing_from_dir_end__
+.. literalinclude:: /tune/doc_code/trial_checkpoint.py
+    :language: python
+    :start-after: __function_api_checkpointing_from_dir_start__
+    :end-before: __function_api_checkpointing_from_dir_end__
 
 In the above code snippet:
 
@@ -63,8 +44,6 @@ In the above code snippet:
 
 
 See :class:`here for more information on creating checkpoints <ray.train.Checkpoint>`.
-If using framework-specific trainers from Ray AIR, see :ref:`here <air-trainer-ref>` for
-references to framework-specific checkpoints such as `TensorflowCheckpoint`.
 
 
 .. _tune-class-trainable-checkpointing:

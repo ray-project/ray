@@ -28,60 +28,86 @@ window.addEventListener("scroll", loadVisibleTermynals);
 createTermynals();
 loadVisibleTermynals();
 
-
 // Reintroduce dropdown icons on the sidebar. This is a hack, as we can't
 // programmatically figure out which nav items have children anymore.
 document.addEventListener("DOMContentLoaded", function() {
     let navItems = document.querySelectorAll(".bd-sidenav li");
-    for (let i = 0; i < navItems.length; i++) {
-        let navItem = navItems[i];
-        const stringList = [
-            "User Guides", "Examples",
-            // Ray Core
-            "Ray Core", "Ray Core API",
-            "Ray Clusters", "Deploying on Kubernetes", "Deploying on VMs",
-            "Applications Guide", "Ray Cluster Management API",
-            // Ray AIR
-            "Ray AIR API",
-            // Ray Data
-            "Ray Data", "Ray Data API", "Integrations",
-            // Ray Train
-            "Ray Train", "More Frameworks",
-            "Advanced Topics", "Internals",
-            "Ray Train API",
-            // Ray Tune
-            "Ray Tune", "Ray Tune Examples", "Ray Tune API",
-            // Ray Serve
-            "Ray Serve", "Ray Serve API",
-            "Production Guide", "Advanced Guides",
-            "Deploy Many Models",
-            // Ray RLlib
-            "Ray RLlib", "Ray RLlib API",
-            // More libraries
-            "More Libraries", "Ray Workflows (Alpha)",
-            // Monitoring/debugging
-            "Monitoring and Debugging",
-            // References
-            "References", "Use Cases",
-            // Developer guides
-            "Developer Guides", "Getting Involved / Contributing",
-        ];
 
-        const containsString = stringList.some(str => navItem.innerText ===str);
+    const defaultStyle = {"fontWeight": "bold"}
 
-        if (containsString && ! navItem.classList.contains('current')) {
-            if (navItem.classList.contains('toctree-l1')) {
-                navItem.style.fontWeight = "bold";
-            }
-            const href = navItem.querySelector("a").getAttribute("href");
-            navItem.innerHTML +=
-                '<a href="'+ href +'" style="display: none">'
-                + '<input checked="" class="toctree-checkbox" id="toctree-checkbox-'
-                + i + '" name="toctree-checkbox-' + i + '" type="button"></a>'
-                + '<label for="toctree-checkbox-' + i + '">' +
-                '<i class="fas fa-chevron-down"></i></label>'
-        }
+    const stringList = [
+        {"text": "User Guides"},
+        {"text": "Examples"},
+        // Ray Core
+        {"text": "Ray Core"},
+        {"text": "Ray Core API"},
+        // Ray Cluster
+        {"text": "Ray Clusters"},
+        {"text": "Deploying on Kubernetes"},
+        {"text": "Deploying on VMs"},
+        {"text": "Applications Guide"},
+        {"text": "Ray Cluster Management API"},
+        {"text": "Getting Started with KubeRay"},
+        {"text": "KubeRay Ecosystem"},
+        {"text": "KubeRay Benchmarks"},
+        {"text": "KubeRay Troubleshooting"},
+        // Ray AIR
+        {"text": "Ray AIR API"},
+        // Ray Data
+        {"text": "Ray Data"},
+        {"text": "Ray Data API"},
+        {"text": "Integrations"},
+        // Ray Train
+        {"text": "Ray Train"},
+        {"text": "More Frameworks"},
+        {"text": "Advanced Topics"},
+        {"text": "Internals"},
+        {"text": "Ray Train API"},
+        // Ray Tune
+        {"text": "Ray Tune"},
+        {"text": "Ray Tune Examples"},
+        {"text": "Ray Tune API"},
+        // Ray Serve
+        {"text": "Ray Serve"},
+        {"text": "Ray Serve API"},
+        {"text": "Production Guide"},
+        {"text": "Advanced Guides"},
+        {"text": "Deploy Many Models"},
+        // Ray RLlib
+        {"text": "Ray RLlib"},
+        {"text": "Ray RLlib API"},
+        // More libraries
+        {"text": "More Libraries"},
+        {"text": "Ray Workflows (Alpha)"},
+        // Monitoring/debugging
+        {"text": "Monitoring and Debugging"},
+        // References
+        {"text": "References"},
+        {"text": "Use Cases", "style": {}}, // Don't use default style: https://github.com/ray-project/ray/issues/39172
+        // Developer guides
+        {"text": "Developer Guides"},
+        {"text": "Getting Involved / Contributing"},
+    ];
+
+  Array.from(navItems).filter(
+    item => stringList.some(({text}) => item.innerText === text) && ! item.classList.contains('current')
+  ).forEach((item, i) => {
+    if (item.classList.contains('toctree-l1')) {
+      const { style } = stringList.find(({text}) => item.innerText == text)
+
+      // Set the style on the menu items
+      Object.entries(style ?? defaultStyle).forEach(([key, value]) => {
+        item.style[key] = value
+      })
+
     }
+    item.innerHTML +=
+        `<a href="${item.querySelector("a").getAttribute("href")}" style="display: none">`
+        + '<input checked="" class="toctree-checkbox" id="toctree-checkbox-'
+        + i + '" name="toctree-checkbox-' + i + '" type="button"></a>'
+        + '<label for="toctree-checkbox-' + i + '">' +
+        '<i class="fas fa-chevron-down"></i></label>'
+  })
 });
 
 // Dynamically adjust the height of all panel elements in a gallery to be the same as
@@ -105,7 +131,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
 // Remember the scroll position when the page is unloaded.
 window.onload = function() {
-    let sidebar = document.querySelector("#bd-docs-nav");
+    let sidebar = document.querySelector("#site-navigation");
 
     window.onbeforeunload = function() {
         let scroll = sidebar.scrollTop;
@@ -136,43 +162,4 @@ document.addEventListener("DOMContentLoaded", function() {
                 });
             });
         }
-});
-
-
-function checkForElement() {
-    let element = document.getElementsByClassName('mantine-Modal-root')[0];
-    if (element) {
-        return element
-    } else {
-        setTimeout(checkForElement, 100);
-        return null
-    }
-}
-
-window.addEventListener("load", function(){
-
-    let targetElement = checkForElement();
-
-    try {
-        let observer = new MutationObserver(
-            function (mutationsList, observer) {
-                // Handle the changes in the element
-                mutationsList.forEach(function (mutation) {
-                    // Code to handle the specific type of mutation, like "childList" additions
-                    console.log('Element changed:', mutation);
-                    let inputElement = document.getElementsByClassName("mantine-TextInput-input")[0];
-                    inputElement.placeholder = "Do not include any personal data or confidential information";
-                    let main = document.getElementsByClassName("mantine-Text-root")[1];
-                    main.textContent = "Ray Docs AI - Ask a question"
-                    let left = document.getElementsByClassName("mantine-Text-root")[2];
-                    left.textContent = "results are automated & may be incorrect or contain inappropriate information"
-                });
-            });
-
-        let observerConfig = {childList: true};
-        observer.observe(targetElement, observerConfig);
-    } catch (e) {
-        console.log("could not load kapa widget.");
-        console.log(e);
-    }
 });
