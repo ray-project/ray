@@ -113,7 +113,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             # Note (Kourosh): env_steps is the total number of env_steps that this
             # multi-agent batch is covering. It should be simply inherited from the
             # original multi-agent batch.
-            minibatch = MultiAgentBatch(minibatch, len(self._batch))
+            minibatch = MultiAgentBatch(minibatch, self._minibatch_size)
             yield minibatch
 
 
