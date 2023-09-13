@@ -4,7 +4,6 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 
-from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     Protocol,
@@ -13,6 +12,7 @@ from ray._private.runtime_env.packaging import (
     get_local_dir_from_uri,
     get_uri_for_directory,
     get_uri_for_package,
+    install_wheel_package,
     is_whl_uri,
     package_exists,
     parse_uri,
@@ -172,41 +172,6 @@ class PyModulesPlugin(RuntimeEnvPlugin):
     def get_uris(self, runtime_env: dict) -> List[str]:
         return runtime_env.py_modules()
 
-    async def _unpack_wheel(
-        self,
-        wheel_uri: str,
-        target_uri: str,
-        logger: Optional[logging.Logger] = default_logger,
-    ):
-        """Download and install a wheel URI, and then delete the local wheel file."""
-        module_dir = self._get_local_dir_from_uri(target_uri)
-
-        pip_install_cmd = [
-            "pip",
-            "install",
-            wheel_uri,
-            f"--target={module_dir}",
-        ]
-
-        logger.info(
-            "Running py_modules wheel install command: %s", str(pip_install_cmd)
-        )
-        try:
-            # TODO(architkulkarni): Use `await check_output_cmd` or similar.
-            exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
-        finally:
-            if Path(wheel_uri).exists():
-                Path(wheel_uri).unlink()
-
-            if exit_code != 0:
-                if Path(module_dir).exists():
-                    Path(module_dir).unlink()
-                raise RuntimeError(
-                    f"Failed to install py_modules wheel {wheel_uri}"
-                    f"to {module_dir}:\n{output}"
-                )
-        return module_dir
-
     async def create(
         self,
         uri: str,
@@ -220,8 +185,10 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         )
 
         if is_whl_uri(uri):
-            module_dir = await self._unpack_wheel(
-                wheel_uri=module_dir, target_uri=uri, logger=logger
+            wheel_uri = module_dir
+            module_dir = self._get_local_dir_from_uri(uri)
+            await install_wheel_package(
+                wheel_uri=wheel_uri, target_dir=module_dir, logger=logger
             )
 
         return get_directory_size_bytes(module_dir)

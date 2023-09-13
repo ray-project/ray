@@ -18,6 +18,7 @@ from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
 )
+from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.thirdparty.pathspec import PathSpec
 from ray.experimental.internal_kv import (
     _internal_kv_exists,
@@ -196,7 +197,9 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
 
     if protocol in Protocol.remote_protocols():
         if pkg_uri.endswith(".whl"):
-            # .whl file name can't be modified
+            # .whl file name has a format as explained in
+            # https://peps.python.org/pep-0427/#file-name-convention
+            # so don't modify
             package_name = pkg_uri.split("/")[-1]
         else:
             package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
@@ -732,7 +735,8 @@ async def download_and_unpack_package(
                     with open_file(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
 
-                if Path(pkg_name).suffix == ".zip":
+                pkg_format = Path(pkg_name).suffix
+                if pkg_format == ".zip":
                     unzip_package(
                         package_path=pkg_file,
                         target_dir=local_dir,
@@ -740,8 +744,13 @@ async def download_and_unpack_package(
                         unlink_zip=True,
                         logger=logger,
                     )
-                else:
+                elif pkg_format == ".whl":
                     return str(pkg_file)
+                else:
+                    raise NotImplementedError(
+                        f"Package format {pkg_format} is ",
+                        "not supported for remote protocols",
+                    )
             else:
                 raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -891,3 +900,34 @@ def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
             deleted = True
 
     return deleted
+
+
+async def install_wheel_package(
+    wheel_uri: str,
+    target_dir: str,
+    logger: Optional[logging.Logger] = default_logger,
+) -> None:
+    """Install packages in the wheel URI, and then delete the local wheel file."""
+
+    pip_install_cmd = [
+        "pip",
+        "install",
+        wheel_uri,
+        f"--target={target_dir}",
+    ]
+
+    logger.info("Running py_modules wheel install command: %s", str(pip_install_cmd))
+    try:
+        # TODO(architkulkarni): Use `await check_output_cmd` or similar.
+        exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
+    finally:
+        if Path(wheel_uri).exists():
+            Path(wheel_uri).unlink()
+
+        if exit_code != 0:
+            if Path(target_dir).exists():
+                Path(target_dir).unlink()
+            raise RuntimeError(
+                f"Failed to install py_modules wheel {wheel_uri}"
+                f"to {target_dir}:\n{output}"
+            )
