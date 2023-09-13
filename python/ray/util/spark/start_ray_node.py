@@ -62,7 +62,10 @@ if __name__ == "__main__":
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
     process = subprocess.Popen([ray_cli_cmd, "start", *arg_list], text=True)
     # This makes sure that ray node is started
-    time.sleep(2)
+    for i in range(10):
+        if os.path.exists(os.path.join(temp_dir, "session_latest")):
+            break
+        time.sleep(2)
     ray_session_dir = os.readlink(os.path.join(temp_dir, "session_latest"))
 
     def running_on_worker_node():

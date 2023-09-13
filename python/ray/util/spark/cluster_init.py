@@ -663,6 +663,7 @@ def _setup_ray_cluster(
                 DATABRICKS_RAY_CLUSTER_GLOBAL_MODE, "false"
             ),
             START_RAY_WORKER_NODE: "true",
+            "RAY_TMPDIR": os.environ.get("RAY_TMPDIR")
         }
 
         if num_gpus_worker_node > 0:
