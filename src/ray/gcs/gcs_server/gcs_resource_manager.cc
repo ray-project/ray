@@ -52,6 +52,7 @@ void GcsResourceManager::ConsumeSyncMessage(
           RAY_LOG(ERROR) << "We should not see a node with empty total "
                             "resources. If so, likely the data is corrupted: "
                          << resources.DebugString();
+          return;
         }
         UpdateFromResourceReport(resources);
       },
@@ -168,8 +169,8 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
   }
 }
 
-const absl::flat_hash_map<NodeID, rpc::ResourcesData>
-    &GcsResourceManager::NodeResourceReportView() const {
+const absl::flat_hash_map<NodeID, rpc::ResourcesData> &
+GcsResourceManager::NodeResourceReportView() const {
   return node_resource_usages_;
 }
 
