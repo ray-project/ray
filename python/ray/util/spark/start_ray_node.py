@@ -1,5 +1,6 @@
 import os.path
 import subprocess
+import shutil
 import sys
 import time
 import fcntl
@@ -46,6 +47,9 @@ if __name__ == "__main__":
         raise ValueError("Please explicitly set --temp-dir option.")
 
     temp_dir = os.path.normpath(temp_dir)
+    # Clean up the temp dir for global mode
+    if global_mode_enabled() and os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
     ray_cli_cmd = "ray"
 
@@ -57,18 +61,24 @@ if __name__ == "__main__":
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
     process = subprocess.Popen([ray_cli_cmd, "start", *arg_list], text=True)
+    # This makes sure that ray node is started
+    time.sleep(2)
+    ray_session_dir = os.readlink(os.path.join(temp_dir, "session_latest"))
 
     def running_on_worker_node():
         return os.environ.get(START_RAY_WORKER_NODE, "false").lower() == "true"
 
+    clean_temp_dir_lock = threading.RLock()
+
     def try_clean_temp_dir_at_exit():
-        _try_clean_temp_dir_at_exit(
-            process=process,
-            collect_log_to_path=collect_log_to_path,
-            temp_dir=temp_dir,
-            lock_fd=lock_fd,
-            is_head_node=not running_on_worker_node(),
-        )
+        with clean_temp_dir_lock:
+            _try_clean_temp_dir_at_exit(
+                process=process,
+                collect_log_to_path=collect_log_to_path,
+                temp_dir=temp_dir,
+                ray_session_dir=ray_session_dir,
+                lock_fd=lock_fd,
+            )
 
     def check_parent_alive() -> None:
         orig_parent_id = os.getppid()

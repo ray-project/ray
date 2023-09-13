@@ -29,8 +29,6 @@ from .utils import (
     get_max_num_concurrent_tasks,
     gen_cmd_exec_failure_msg,
     calc_mem_ray_head_node,
-    _try_clean_temp_dir_at_exit,
-    GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE,
 )
 from .databricks_hook import (
     global_mode_enabled,
@@ -135,12 +133,6 @@ class RayClusterOnSpark:
                         "server cannot be found. They can be installed with "
                         "pip install ray[default]."
                     )
-            # ray.init makes sure _global_node is not None
-            ray_session_dir = ray._private.worker._global_node.get_session_dir_path()
-            with open(
-                os.path.join(self.temp_dir, GLOBAL_RAY_CLUSTER_SESSION_NAME_FILE), "w"
-            ) as f:
-                f.write(ray_session_dir)
 
         except Exception:
             self.shutdown()
@@ -229,14 +221,6 @@ class RayClusterOnSpark:
                 # swallow exception.
                 _logger.warning(
                     "An Error occurred during shutdown of ray head node: " f"{repr(e)}"
-                )
-            finally:
-                _try_clean_temp_dir_at_exit(
-                    process=self.head_proc,
-                    collect_log_to_path=os.environ.get(
-                        RAY_ON_SPARK_COLLECT_LOG_TO_PATH
-                    ),
-                    temp_dir=self.temp_dir,
                 )
             self.is_shutdown = True
 
