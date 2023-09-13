@@ -534,8 +534,6 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_, kGCSNodeID.Binary());
   ray_syncer_->Register(
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
-  ray_syncer_->Register(
-      syncer::MessageType::COMMANDS, nullptr, gcs_resource_manager_.get());
   ray_syncer_thread_ = std::make_unique<std::thread>([this]() {
     boost::asio::io_service::work work(ray_syncer_io_context_);
     ray_syncer_io_context_.run();
