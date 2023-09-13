@@ -40,8 +40,8 @@ steps:
     commands:
       - rm ./python/requirements_compiled.txt
       - ./ci/ci.sh compile_pip_dependencies
-      - mkdir -p /tmp/artifacts || true
-      - cp -f ./python/requirements_compiled.txt /tmp/artifacts/
+      - mkdir -p /artifact-mount/requirements
+      - cp -f ./python/requirements_compiled.txt /artifact-mount/requirements/
     depends_on:
       - forge
     job_env: forge
