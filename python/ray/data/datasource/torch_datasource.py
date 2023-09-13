@@ -4,14 +4,18 @@ from typing import TYPE_CHECKING
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import torch
 
 
+@DeveloperAPI
 class TorchDatasource(Datasource):
-    """Torch datasource, for reading `map-style Torch datasets <https://pytorch.org/docs/stable/data.html#map-style-datasets/>`_.
-    This datasource implements a parallel read that partitions the dataset based on input parallelism and creates read tasks for each partitions.
+    """Torch datasource, for reading from `map-style
+    Torch datasets <https://pytorch.org/docs/stable/data.html#map-style-datasets/>`_.
+    This datasource implements a parallel read that partitions the dataset based on
+    input parallelism and creates read tasks for each partitions.
     """
 
     def create_reader(
@@ -33,9 +37,15 @@ class _TorchDatasourceReader(Reader):
         rows = len(self._dataset)
         subsets = None
         if self._shuffle:
-            print(sum([1 / parallelism] * parallelism))
+            lengths = [rows // parallelism] * parallelism
+            remainder = rows - sum(lengths)
+            # spread remainder across lengths
+            for i in range(remainder):
+                lengths[i] += 1
             subsets = torch.utils.data.random_split(
-                self._dataset, [rows // parallelism] * parallelism
+                self._dataset,
+                # use lengths array instead of fractions to avoid floating point error
+                lengths,
             )
         else:
             rows_per_worker = math.ceil(rows / parallelism)
