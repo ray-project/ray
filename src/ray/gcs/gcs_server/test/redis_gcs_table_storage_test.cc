@@ -34,7 +34,8 @@ class RedisGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
     auto redis_client = std::make_unique<gcs::RedisClient>(options);
     RAY_CHECK_OK(redis_client->Connect(io_service_pool_->GetAll()));
     redis_client_ = redis_client.get();
-    store_client_ = std::make_unique<gcs::RedisStoreClient>(std::move(redis_client));
+    store_client_ = std::make_unique<gcs::RedisStoreClient>(std::move(redis_client),
+                                                            *io_service_pool_->Get());
 
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(*store_client_);
   }

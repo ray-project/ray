@@ -36,7 +36,8 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
     if (GetParam() == "redis") {
       auto client = std::make_unique<ray::gcs::RedisClient>(redis_client_options);
       RAY_CHECK_OK(client->Connect(io_service));
-      store_client_ = std::make_unique<ray::gcs::RedisStoreClient>(std::move(client));
+      store_client_ =
+          std::make_unique<ray::gcs::RedisStoreClient>(std::move(client), io_service);
     } else if (GetParam() == "memory") {
       store_client_ = std::make_unique<ray::gcs::InMemoryStoreClient>(io_service);
     }
