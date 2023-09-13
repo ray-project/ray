@@ -530,6 +530,7 @@ if __name__ == "__main__":
             ray_dataset = ray.data.read_datasource(
                 mds_source, paths=args.mosaic_data_root
             )
+            ray_dataset = ray_dataset.map(crop_and_flip_image)
             for i in range(args.num_epochs):
                 iterate(
                     ray_dataset.iter_torch_batches(batch_size=args.batch_size),
