@@ -13,15 +13,15 @@ class BCCatalog(Catalog):
     """The Catalog class used to build models for BC.
 
     BCCatalog provides the following models:
-        - Default Encoder: The encoder used to encode the observations.
-            This is simply the default encoder.
+        - Encoder: The encoder used to encode the observations.
         - Pi Head: The head used for the policy logits.
 
     The default encoder is chosen by RLlib dependent on the observation space.
     See `ray.rllib.core.models.encoders::Encoder` for details. To define the
-    network architecture use the `fcnet_hiddens` and `fcnet_activation`.
+    network architecture use the `model_config_dict[fcnet_hiddens]` and
+    `model_config_dict[fcnet_activation]`.
 
-    To implement custom logic, use the `BCCatalog.build_encoder()` or the
+    To implement custom logic, override `BCCatalog.build_encoder()` or modify the
     `EncoderConfig` at `BCCatalog.encoder_config`.
 
     Any custom head can be built by overriding the `build_pi_head()` method.
@@ -83,7 +83,7 @@ class BCCatalog(Catalog):
         required_output_dim = action_distribution_cls.required_input_dim(
             space=self.action_space, model_config=self._model_config_dict
         )
-        # With the action distributioin class and the number of outputs defined,
+        # With the action distribution class and the number of outputs defined,
         # we can build the config for the policy head.
         pi_head_config_cls = (
             FreeLogStdMLPHeadConfig

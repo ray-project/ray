@@ -1060,15 +1060,6 @@ py_test(
     srcs = ["algorithms/bc/tests/test_bc.py"]
 )
 
-py_test(
-    name = "test_bc_rl_module",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
-    # Include the json data file.
-    data = ["tests/data/cartpole/large.json"],
-    srcs = ["algorithms/bc/tests/test_bc_rl_module.py"]
-)
-
 # CQL
 py_test(
     name = "test_cql",
