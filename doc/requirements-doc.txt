@@ -37,3 +37,8 @@ urllib3 < 1.27
 # For the API docs
 fastapi==0.99.1
 grpcio==1.57.0
+
+# Build dependencies
+mosaicml
+typing-extensions
+horovod

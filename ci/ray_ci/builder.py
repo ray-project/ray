@@ -2,6 +2,7 @@ import click
 
 from ci.ray_ci.builder_container import PYTHON_VERSIONS, BuilderContainer
 from ci.ray_ci.docker_container import DockerContainer
+from ci.ray_ci.doc_builder_container import DocBuilderContainer
 from ci.ray_ci.forge_container import ForgeContainer
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.utils import logger, docker_login
@@ -11,7 +12,7 @@ from ci.ray_ci.utils import logger, docker_login
 @click.argument(
     "artifact_type",
     required=True,
-    type=click.Choice(["wheel", "docker"]),
+    type=click.Choice(["wheel", "doc", "docker"]),
 )
 @click.option(
     "--python-version",
@@ -37,12 +38,17 @@ def main(
         build_docker(python_version)
         return
 
+    if artifact_type == "doc":
+        logger.info("Building ray docs")
+        build_doc()
+        return
+
     raise ValueError(f"Invalid artifact type {artifact_type}")
 
 
 def build_wheel(python_version: str) -> None:
     """
-    Build a wheel artifact
+    Build a wheel artifact.
     """
     BuilderContainer(python_version).run()
     ForgeContainer().upload_wheel()
@@ -50,7 +56,14 @@ def build_wheel(python_version: str) -> None:
 
 def build_docker(python_version: str) -> None:
     """
-    Build a container artifact
+    Build a container artifact.
     """
     BuilderContainer(python_version).run()
     DockerContainer(python_version).run()
+
+
+def build_doc() -> None:
+    """
+    Build a doc artifact.
+    """
+    DocBuilderContainer().run()

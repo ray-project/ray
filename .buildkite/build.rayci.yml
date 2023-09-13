@@ -15,7 +15,6 @@ steps:
       - forge
     job_env: forge
 
-
   - label: ":tapioca: build: jar"
     instance_type: medium
     commands:
@@ -24,6 +23,13 @@ steps:
       - ./ci/build/copy_build_artifacts.sh jar
     depends_on: manylinux
     job_env: manylinux
+
+  - label: ":tapioca: build: doc"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- doc 
+    depends_on: docbuild
+    job_env: docbuild
 
   - label: ":tapioca: build: docker"
     instance_type: medium

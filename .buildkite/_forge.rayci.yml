@@ -20,6 +20,10 @@ steps:
     wanda: ci/docker/base.ml.wanda.yaml
     depends_on: oss-ci-base_test
 
+  - name: docbuild
+    wanda: ci/docker/doc.build.wanda.yaml
+    depends_on: oss-ci-base_build
+
   - name: corebuild
     wanda: ci/docker/core.build.wanda.yaml
     depends_on: oss-ci-base_build
