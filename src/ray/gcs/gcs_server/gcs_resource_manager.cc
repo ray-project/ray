@@ -39,6 +39,8 @@ void GcsResourceManager::ConsumeSyncMessage(
   // Ideally, all public api in GcsResourceManager need to be put into this
   // io context for thread safety.
 
+  // We should only expect RESOURCE_VIEW messages from the syncer for GcsResourceManager.
+  // See GcsServer::InitRaySyncer for syncer registration.
   RAY_CHECK(message->message_type() == syncer::MessageType::RESOURCE_VIEW);
 
   io_context_.dispatch(
@@ -46,9 +48,11 @@ void GcsResourceManager::ConsumeSyncMessage(
         rpc::ResourcesData resources;
         resources.ParseFromString(message->sync_message());
         resources.set_node_id(message->node_id());
-        RAY_CHECK(resources.resources_total_size() > 0)
-            << "We should not see a node with empty total "
-               "resources.";
+        if (resources.resources_total_size() == 0) {
+          RAY_LOG(ERROR) << "We should not see a node with empty total "
+                            "resources. If so, likely the data is corrupted: "
+                         << resources.DebugString();
+        }
         UpdateFromResourceReport(resources);
       },
       "GcsResourceManager::Update");
