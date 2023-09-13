@@ -40,6 +40,7 @@ steps:
     commands:
       - rm ./python/requirements_compiled.txt
       - ./ci/ci.sh compile_pip_dependencies
+      - mkdir -p /tmp/artifacts || true
       - cp -f ./python/requirements_compiled.txt /tmp/artifacts/
     depends_on:
       - forge
