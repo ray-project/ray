@@ -646,7 +646,8 @@ cdef int prepare_resources(
             if (value >= 1 and isinstance(value, float)
                     and not value.is_integer() and str(key) in unit_resources):
                 raise ValueError(
-                    "Unit instance resource quantities >1 must be whole numbers.")
+                    "Unit instance resource (GPU, TPU, Neuron Core) quantities >1 must be whole numbers.",
+                    f"{key} resource with value {value} is invalid.")
             resource_map[0][key.encode("ascii")] = float(value)
     return 0
 

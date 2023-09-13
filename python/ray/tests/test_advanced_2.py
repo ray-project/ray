@@ -187,9 +187,9 @@ def test_fractional_resources(shutdown_only):
     # number of resources greather than 1.
     @ray.remote(num_cpus=1.5, resources={"Custom": 2.5})
     def test_frac_cpu():
-        pass
+        return True
 
-    test_frac_cpu.remote()
+    assert ray.get(test_frac_cpu.remote())
 
     # Unit instance resources (GPU, TPU, neuron_core) throw exceptions
     # for fractional number of resources greater than 1.
