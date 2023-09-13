@@ -38,6 +38,9 @@ steps:
   - label: ":tapioca: build: pip-compile dependencies"
     instance_type: small
     commands:
+      - ls -alp /
+      - ls -alp /artifact-mount
+      - exit 1
       - rm ./python/requirements_compiled.txt
       - ./ci/ci.sh compile_pip_dependencies
       - cp -f ./python/requirements_compiled.txt /artifact-mount/var/
