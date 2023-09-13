@@ -16,10 +16,10 @@ if [ -d "/tmp/artifacts" ]; then
     if [ "$(ls -A /tmp/artifacts)" ]; then
       echo "Directory not empty, cleaning up..."
       # Need to run in docker to avoid permission issues
-      docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/*; rm -rf /artifact-mount/.[!.]*; chown -R 2000 /artifact-mount/' || true
+      docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/*; rm -rf /artifact-mount/.[!.]*; mkdir -p /artifact-mount/var; chown -R 2000 /artifact-mount/' || true
     else
       echo "Directory already empty, no need to clean up. Changing permissions instead."
-      docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'chown -R 2000 /artifact-mount/' || true
+      docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'mkdir -p /artifact-mount/var; chown -R 2000 /artifact-mount/' || true
     fi
 
     echo "Artifact directory contents after cleanup:"
