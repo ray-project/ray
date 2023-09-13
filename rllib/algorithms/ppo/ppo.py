@@ -450,7 +450,12 @@ class PPO(Algorithm):
                 minibatch_size=self.config.sgd_minibatch_size,
                 num_iters=self.config.num_sgd_iter,
             )
+            # TODO: Introduce simpler API for updating Algorithm counters, timers,
+            #  and other metrics.
+            self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
+            self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
+        # TODO: Deprecate PPO w/o learner API.
         elif self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
