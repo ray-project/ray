@@ -254,6 +254,13 @@ void GcsAutoscalerStateManager::GetNodeStates(
     const auto &total = node_resource_data.total.GetResourceMap();
     node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
 
+    if (node_state_proto->total_resources().empty()) {
+      RAY_LOG(ERROR) << "Node " << NodeID::FromBinary(node_state_proto->node_id())
+                     << " has no total resources.";
+      RAY_LOG(ERROR) << "node resource cached: " << node_resource_data.DebugString();
+      RAY_CHECK(false);
+    }
+
     // Add dynamic PG labels.
     const auto &pgs_on_node = gcs_placement_group_manager_.GetBundlesOnNode(
         NodeID::FromBinary(gcs_node_info.node_id()));

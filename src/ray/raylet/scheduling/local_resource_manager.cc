@@ -324,6 +324,12 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
   resources_data.set_is_draining(IsLocalNodeDraining());
 
+  if (resources_data.resources_total().empty()) {
+    RAY_LOG(ERROR) << "resource_data.resources_total() is empty. Resources data are: "
+                   << resources_data.DebugString() << ", and local resources are: "
+                   << local_resources_.total.DebugString();
+  }
+
   msg.set_node_id(local_node_id_.Binary());
   msg.set_version(version_);
   msg.set_message_type(message_type);
