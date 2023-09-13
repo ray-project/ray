@@ -23,6 +23,8 @@ if [ -d "/tmp/artifacts" ]; then
 
     echo "Artifact directory contents after cleanup:"
     find /tmp/artifacts -print || true
+
+    chown -R 2000 /tmp/artifacts
 fi
 
 RAYCI_CHECKOUT_DIR="$(pwd)"
