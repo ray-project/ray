@@ -31,13 +31,15 @@ def canonicalize(stats: str) -> str:
     s0 = re.sub("([a-f\d]{32})", "U", stats)
     # Time expressions.
     s1 = re.sub("[0-9\.]+(ms|us|s)", "T", s0)
+    # Memory expressions.
+    s2 = re.sub("[0-9\.]+(B|MB|GB)", "M", s1)
     # Handle zero values specially so we can check for missing values.
-    s2 = re.sub(" [0]+(\.[0]+)?", " Z", s1)
+    s3 = re.sub(" [0]+(\.[0]+)?", " Z", s2)
     # Other numerics.
-    s3 = re.sub("[0-9]+(\.[0-9]+)?", "N", s2)
+    s4 = re.sub("[0-9]+(\.[0-9]+)?", "N", s3)
     # Replace tabs with spaces.
-    s4 = re.sub("\t", "    ", s3)
-    return s4
+    s5 = re.sub("\t", "    ", s4)
+    return s5
 
 
 def dummy_map_batches(x):
@@ -416,6 +418,8 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      user_time=T,\n"
         "      total_time=T,\n"
         "   ),\n"
+        "   global_bytes_spilled=M,\n"
+        "   global_bytes_restored=M,\n"
         "   parents=[],\n"
         ")"
     )
@@ -474,6 +478,8 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      user_time=T,\n"
         "      total_time=T,\n"
         "   ),\n"
+        "   global_bytes_spilled=M,\n"
+        "   global_bytes_restored=M,\n"
         "   parents=[\n"
         "      DatasetStatsSummary(\n"
         "         dataset_uuid=U,\n"
@@ -505,6 +511,8 @@ def test_dataset__repr__(ray_start_regular_shared):
         "            user_time=T,\n"
         "            total_time=T,\n"
         "         ),\n"
+        "         global_bytes_spilled=M,\n"
+        "         global_bytes_restored=M,\n"
         "         parents=[],\n"
         "      ),\n"
         "   ],\n"
