@@ -4,10 +4,7 @@ from unittest import mock
 
 import pytest
 
-<<<<<<< HEAD
 from ci.ray_ci.container import _DOCKER_ECR_REPO
-=======
->>>>>>> build ml image
 from ci.ray_ci.docker_container import DockerContainer
 from ci.ray_ci.test_base import RayCITestBase
 from ci.ray_ci.utils import RAY_VERSION
@@ -40,7 +37,6 @@ class TestDockerContainer(RayCITestBase):
             container = DockerContainer("py37", "cpu", "ray-ml")
             container.run()
             cmd = self.cmds[-1]
-<<<<<<< HEAD
             assert cmd == (
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-cp37-cp37m-manylinux2014_x86_64.whl "
@@ -48,12 +44,25 @@ class TestDockerContainer(RayCITestBase):
                 "requirements_compiled_py37.txt "
                 "rayproject/ray-ml:123456-py37-cpu"
             )
-=======
-            assert f"ray-{RAY_VERSION}-cp37-cp37m-manylinux2014_x86_64.whl" in cmd
-            assert "rayproject/citemp:123-ray-mlpy37cpubase" in cmd
-            assert "requirements_compiled_py37.txt" in cmd
-            assert "rayproject/ray-ml:123456-py37-cpu" in cmd
->>>>>>> build ml image
+
+    def test_get_image_name(self) -> None:
+        container = DockerContainer("py38", "cpu", "ray")
+        assert container._get_image_names() == [
+            "rayproject/ray:123456-py38-cpu",
+            "rayproject/ray:123456-py38",
+            "rayproject/ray:nightly-py38-cpu",
+            "rayproject/ray:nightly-py38",
+        ]
+
+        container = DockerContainer("py37", "cu118", "ray-ml")
+        assert container._get_image_names() == [
+            "rayproject/ray-ml:123456-py37-cu118",
+            "rayproject/ray-ml:123456-py37-gpu",
+            "rayproject/ray-ml:123456-py37",
+            "rayproject/ray-ml:nightly-py37-cu118",
+            "rayproject/ray-ml:nightly-py37-gpu",
+            "rayproject/ray-ml:nightly-py37",
+        ]
 
 
 if __name__ == "__main__":
