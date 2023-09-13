@@ -251,7 +251,7 @@ Step 3: Create the regularization images
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Create a regularization image set for a class of subjects using the pre-trained
-Stable Diffusion model. This set regularizes the fine-tuning by ensuring that
+Stable Diffusion model. This regularization set ensures that
 the model still produces decent images for random images of the same class,
 rather than just optimize for producing good images of the subject.
 

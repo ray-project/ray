@@ -130,7 +130,6 @@ change anything.
 
 If you require more advanced preprocessing, you may want to consider using Ray Data
 for distributed data ingest. See :ref:`Ray Data with Ray Train <data-ingest-torch>`.
-Because Ray Data is an independent library, you can directly apply most concepts to TensorFlow.
 
 The main difference is that you may want to convert your Ray Data dataset shard to
 a TensorFlow dataset in your training function so that you can use the Keras
