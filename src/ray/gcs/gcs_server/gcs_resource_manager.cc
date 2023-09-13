@@ -38,6 +38,12 @@ void GcsResourceManager::ConsumeSyncMessage(
   // delegate the work to the main thread for thread safety.
   // Ideally, all public api in GcsResourceManager need to be put into this
   // io context for thread safety.
+
+  if (message->message_type() != syncer::MessageType::RESOURCE_VIEW) {
+    // We only care about resource view updates for GCS resource manager for now.
+    return;
+  }
+
   io_context_.dispatch(
       [this, message]() {
         rpc::ResourcesData resources;
