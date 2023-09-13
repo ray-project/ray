@@ -1,8 +1,6 @@
 import math
 from typing import TYPE_CHECKING
 
-import cloudpickle
-
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask
@@ -12,32 +10,32 @@ if TYPE_CHECKING:
 
 
 class TorchDatasource(Datasource):
+    """Torch datasource, for reading `map-style Torch datasets <https://pytorch.org/docs/stable/data.html#map-style-datasets/>`_.
+    This datasource implements a parallel read that partitions the dataset based on input parallelism and creates read tasks for each partitions.
+    """
+
     def create_reader(
         self,
         dataset: "torch.utils.data.Dataset",
-        batch_size: int = 32,
-        random_split: bool = False,
+        shuffle: bool = False,
     ):
-        return _TorchDatasourceReader(dataset, batch_size, random_split)
+        return _TorchDatasourceReader(dataset, shuffle)
 
 
 class _TorchDatasourceReader(Reader):
-    def __init__(
-        self, dataset: "torch.utils.data.Dataset", batch_size: int, random_split: bool
-    ):
+    def __init__(self, dataset: "torch.utils.data.Dataset", shuffle: bool):
         self._dataset = dataset
-        self._batch_size = batch_size
-        self._random_split = random_split
-        self._size = len(cloudpickle.dumps(self._dataset))
+        self._shuffle = shuffle
 
     def get_read_tasks(self, parallelism):
         import torch
 
         rows = len(self._dataset)
         subsets = None
-        if self._random_split:
+        if self._shuffle:
+            print(sum([1 / parallelism] * parallelism))
             subsets = torch.utils.data.random_split(
-                self._dataset, [1 / parallelism] * parallelism
+                self._dataset, [rows // parallelism] * parallelism
             )
         else:
             rows_per_worker = math.ceil(rows / parallelism)
@@ -54,16 +52,15 @@ class _TorchDatasourceReader(Reader):
             num_rows = len(subsets[i])
             meta = BlockMetadata(
                 num_rows=num_rows,
-                size_bytes=self._size * num_rows / rows,
+                size_bytes=None,
                 schema=None,
                 input_files=None,
                 exec_stats=None,
             )
             read_tasks.append(
                 ReadTask(
-                    lambda subset=subsets[i], batch_size=self._batch_size: _read_subset(
+                    lambda subset=subsets[i]: _read_subset(
                         subset,
-                        batch_size,
                     ),
                     metadata=meta,
                 ),
@@ -72,20 +69,11 @@ class _TorchDatasourceReader(Reader):
         return read_tasks
 
     def estimate_inmemory_data_size(self):
-        return self._size
+        return None
 
 
-def _read_subset(subset: "torch.utils.data.Subset", batch_size):
-    import torch
-
-    data_loader = torch.utils.data.DataLoader(
-        subset,
-        # default_collate does not accept `PIL.Image.Image`s
-        collate_fn=lambda x: x,
-        batch_size=batch_size,
-    )
-
-    for batch in data_loader:
+def _read_subset(subset: "torch.utils.data.Subset"):
+    for item in subset:
         builder = DelegatingBlockBuilder()
-        builder.add_batch({"item": batch})
+        builder.add({"item": item})
         yield builder.build()

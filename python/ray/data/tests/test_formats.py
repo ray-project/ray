@@ -197,14 +197,14 @@ def test_from_torch_parallel(shutdown_only, tmp_path):
     torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
     expected_data = list(torch_dataset)
 
-    ray_dataset = ray.data.from_torch(torch_dataset, parallelism=3)
+    ray_dataset = ray.data.from_torch(torch_dataset)
     actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert len(actual_data) == len(expected_data)
     assert Counter([row[1] for row in actual_data]) == Counter(
         [row[1] for row in expected_data]
     )
 
-    ray_dataset = ray.data.from_torch(torch_dataset, parallelism=3, random_split=True)
+    ray_dataset = ray.data.from_torch(torch_dataset, shuffle=True)
     actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert len(actual_data) == len(expected_data)
     assert Counter([row[1] for row in actual_data]) == Counter(

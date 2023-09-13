@@ -2285,13 +2285,10 @@ def from_tf(
 def from_torch(
     dataset: "torch.utils.data.Dataset",
     parallelism: int = -1,
-    random_split: bool = False,
-    batch_size: int = 32,
+    shuffle: bool = False,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
-
-    This function is inefficient. Use it to read small datasets or prototype.
 
     .. warning::
         If your dataset is large, this function may execute slowly or raise an
@@ -2299,8 +2296,11 @@ def from_torch(
         like :meth:`~ray.data.read_images`.
 
     .. note::
-        This function isn't parallelized. It loads the entire dataset into the head
+        For iterable-style datasets, This function is not parallelized. It loads the entire dataset into the head
         node's memory before moving the data to the distributed object store.
+
+    .. note::
+        Parallel read dispatches read tasks to worker nodes. The underlying files of the dataset must be accesible from every node in the cluster.
 
     Examples:
         >>> import ray
@@ -2314,16 +2314,29 @@ def from_torch(
 
     Args:
         dataset: A `Torch Dataset`_.
+        parallelism: The amount of parallelism to use for
+            the dataset. Defaults to -1, which automatically determines the optimal
+            parallelism for your configuration. You should not need to manually set
+            this value in most cases. For details on how the parallelism is
+            automatically determined and guidance on how to tune it, see
+            :ref:`Tuning read parallelism <read_parallelism>`. Parallelism is
+            upper bounded by the total number of rows in the Torch dataset.
+        shuffle: If True, the dataset will be randomly partitioned for a parallel read. Otherwise, the dataset will be partitioned into contiguous blocks.
 
     Returns:
         A :class:`MaterializedDataset` containing the Torch dataset samples.
     """  # noqa: E501
+    import torch
+
+    # There is no efficient way to read a subset of an iterable-style dataset.
+    # Each task will read all elements up until the last in it's subset.
+    if isinstance(dataset, torch.utils.data.IterableDataset):
+        parallelism = 1
     return read_datasource(
         TorchDatasource(),
         dataset=dataset,
         parallelism=parallelism,
-        random_split=random_split,
-        batch_size=batch_size,
+        shuffle=shuffle,
     )
 
 
