@@ -36,11 +36,12 @@ steps:
     job_env: forge
 
   - label: ":tapioca: build: pip-compile dependencies"
-    instance_type: medium
+    instance_type: small
     commands:
       - rm ./python/requirements_compiled.txt
       - ./ci/ci.sh compile_pip_dependencies
-      - mkdir -p /artifact-mount/requirements
+      - sudo mkdir -p /artifact-mount/requirements
+      - sudo chmod 777 /artifact-mount/requirements
       - cp -f ./python/requirements_compiled.txt /artifact-mount/requirements/
     depends_on:
       - forge
