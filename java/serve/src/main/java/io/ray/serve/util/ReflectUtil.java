@@ -182,8 +182,12 @@ public class ReflectUtil {
 
   @SuppressWarnings("unchecked")
   public static <T> List<T> getInstancesByClassNames(String classNames, Class<T> cls)
-      throws ClassNotFoundException, InstantiationException, IllegalAccessException,
-          IllegalArgumentException, InvocationTargetException, NoSuchMethodException,
+      throws ClassNotFoundException,
+          InstantiationException,
+          IllegalAccessException,
+          IllegalArgumentException,
+          InvocationTargetException,
+          NoSuchMethodException,
           SecurityException {
     String[] classNameArray = StringUtils.split(classNames, ";");
     List<T> isntances = new ArrayList<>();
