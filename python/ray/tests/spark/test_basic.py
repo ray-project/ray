@@ -30,8 +30,8 @@ def _setup_ray_cluster(*args, **kwds):
 
 pytestmark = [
     pytest.mark.skipif(
-        not sys.platform.startswith("linux"),
-        reason="Ray on spark only supports running on Linux.",
+        os.name != "posix",
+        reason="Ray on spark only supports running on POSIX system.",
     ),
     pytest.mark.timeout(300),
 ]
@@ -93,8 +93,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
     def test_public_api(self):
         try:
-            ray_temp_root_dir = tempfile.mkdtemp()
-            collect_log_to_path = tempfile.mkdtemp()
+            ray_temp_root_dir = tempfile.mkdtemp(dir="/tmp")
+            collect_log_to_path = tempfile.mkdtemp(dir="/tmp")
             setup_ray_cluster(
                 num_worker_nodes=MAX_NUM_WORKER_NODES,
                 collect_log_to_path=collect_log_to_path,
@@ -223,19 +223,20 @@ class TestSparkLocalCluster:
 
         shutdown_ray_cluster()
 
-    def test_use_driver_resources(self):
+    @pytest.mark.parametrize("autoscale", [False, True])
+    def test_use_driver_resources(self, autoscale):
         setup_ray_cluster(
             num_worker_nodes=1,
             num_cpus_head_node=3,
             num_gpus_head_node=2,
+            object_store_memory_head_node=256*1024*1024,
             head_node_options={"include_dashboard": False},
+            autoscale=autoscale,
         )
 
         ray.init()
-
         head_resources_list = []
         for node in ray.nodes():
-            # exclude dead node and head node (with 0 CPU resource)
             if node["Alive"] and node["Resources"].get("CPU", 0) == 3:
                 head_resources_list.append(node["Resources"])
         assert len(head_resources_list) == 1

@@ -45,9 +45,8 @@ RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
 
 
 def _check_system_environment():
-    # TODO: support macos
-    # if not sys.platform.startswith("linux"):
-    #     raise RuntimeError("Ray on spark only supports running on Linux.")
+    if os.name != "posix":
+        raise RuntimeError("Ray on spark only supports running on POSIX system.")
 
     spark_dependency_error = "ray.util.spark module requires pyspark >= 3.3"
     try:
@@ -464,29 +463,37 @@ def _setup_ray_cluster(
 
     ray_head_ip = socket.gethostbyname(get_spark_application_driver_host(spark))
     ray_head_port = get_random_unused_port(ray_head_ip, min_port=9000, max_port=10000)
+    port_exclude_list = [ray_head_port]
 
     # Make a copy for head_node_options to avoid changing original dict in user code.
     head_node_options = head_node_options.copy()
     include_dashboard = head_node_options.pop("include_dashboard", None)
     ray_dashboard_port = head_node_options.pop("dashboard_port", None)
 
-    if include_dashboard is None or include_dashboard is True:
-        if ray_dashboard_port is None:
-            ray_dashboard_port = get_random_unused_port(
-                ray_head_ip, min_port=9000, max_port=10000, exclude_list=[ray_head_port]
-            )
-        ray_dashboard_agent_port = get_random_unused_port(
-            ray_head_ip,
-            min_port=9000,
-            max_port=10000,
-            exclude_list=[ray_head_port, ray_dashboard_port],
-        )
+    if autoscale:
         spark_job_server_port = get_random_unused_port(
             ray_head_ip,
             min_port=9000,
             max_port=10000,
-            exclude_list=[ray_head_port, ray_dashboard_port, ray_dashboard_agent_port],
+            exclude_list=port_exclude_list,
         )
+        port_exclude_list.append(spark_job_server_port)
+    else:
+        spark_job_server_port = None
+
+    if include_dashboard is None or include_dashboard is True:
+        if ray_dashboard_port is None:
+            ray_dashboard_port = get_random_unused_port(
+                ray_head_ip, min_port=9000, max_port=10000, exclude_list=port_exclude_list
+            )
+            port_exclude_list.append(ray_dashboard_port)
+        ray_dashboard_agent_port = get_random_unused_port(
+            ray_head_ip,
+            min_port=9000,
+            max_port=10000,
+            exclude_list=port_exclude_list,
+        )
+        port_exclude_list.append(ray_dashboard_agent_port)
 
         dashboard_options = [
             "--dashboard-host=0.0.0.0",
@@ -528,10 +535,10 @@ def _setup_ray_cluster(
         )
         autoscaler_cluster = AutoscalingCluster(
             head_resources={
-                "CPU": 0,
-                "GPU": 0,
-                "memory": 128 * 1024 * 1024,
-                "object_store_memory": 128 * 1024 * 1024,
+                "CPU": num_cpus_head_node,
+                "GPU": num_gpus_head_node,
+                "memory": heap_memory_head_node,
+                "object_store_memory": object_store_memory_head_node,
             },
             worker_node_types={
                 "ray.worker": {
@@ -576,16 +583,10 @@ def _setup_ray_cluster(
             "--head",
             f"--node-ip-address={ray_head_ip}",
             f"--port={ray_head_port}",
-            # disallow ray tasks with cpu/gpu requirements from being scheduled on the head
-            # node.
-            "--num-cpus=0",
-            "--num-gpus=0",
-            # limit the memory allocation to the head node (actual usage may increase
-            # beyond this for processing of tasks and actors).
-            f"--memory={128 * 1024 * 1024}",
-            # limit the object store memory allocation to the head node (actual usage
-            # may increase beyond this for processing of tasks and actors).
-            f"--object-store-memory={128 * 1024 * 1024}",
+            f"--num-cpus={num_cpus_head_node}",
+            f"--num-gpus={num_gpus_head_node}",
+            f"--memory={heap_memory_head_node}",
+            f"--object-store-memory={object_store_memory_head_node}",
             *dashboard_options,
             *_convert_ray_node_options(head_node_options),
         ]
