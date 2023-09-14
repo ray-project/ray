@@ -318,7 +318,7 @@ def test_serve_num_replica_idle_node():
 def test_non_corrupted_resources():
     """
     Test that when node's local gc happens due to object store pressure,
-    the message doesn't corrupt the resource view on the gcs.A
+    the message doesn't corrupt the resource view on the gcs.
     See issue https://github.com/ray-project/ray/issues/39644
     """
     num_worker_nodes = 5
