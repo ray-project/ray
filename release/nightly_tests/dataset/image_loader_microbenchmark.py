@@ -35,10 +35,11 @@ def iterate(dataset, label, batch_size, metrics, output_file=None):
     num_rows = 0
     print_at = 1000
     for batch in it:
-        # note(swang): this will be slightly off if batch_size does not divide
-        # evenly into number of images but should be okay for large enough
-        # datasets.
-        num_rows += batch_size
+        if isinstance(batch, tuple) or isinstance(batch, list):
+            batch = batch[0]
+        else:
+            batch = batch["image"]
+        num_rows += batch.shape[0]
         if num_rows >= print_at:
             print(f"Read {num_rows} rows")
             print_at = ((num_rows // 1000) + 1) * 1000
@@ -296,6 +297,42 @@ class S3MosaicDataset(StreamingDataset):
         image = obj["image"]
         label = obj["label"]
         return self.transforms(image), label
+
+
+def build_mosaic_dataloader(mosaic_data_root, batch_size, num_workers=None, tranform=None):
+    # MosaicML StreamingDataset.
+    use_s3 = mosaic_data_root.startswith("s3://")
+
+    if use_s3:
+        MOSAIC_CACHE = "/tmp/mosaic_cache"
+        try:
+            import shutil
+
+            shutil.rmtree(MOSAIC_CACHE)
+        except FileNotFoundError:
+            pass
+        mosaic_ds = S3MosaicDataset(
+            s3_bucket=args.mosaic_data_root,
+            cache_dir=MOSAIC_CACHE,
+            cache_limit="100gb",
+            transforms=transform,
+        )
+        if args.torch_num_workers is None:
+            mosaic_num_workers = os.cpu_count() * 4
+        else:
+            mosaic_num_workers = args.torch_num_workers
+    else:
+        mosaic_ds = MosaicDataset(
+            args.mosaic_data_root, transforms=get_transform(True)
+        )
+        if args.torch_num_workers is None:
+            mosaic_num_workers = os.cpu_count()
+        else:
+            mosaic_num_workers = args.torch_num_workers
+    mosaic_dl = torch.utils.data.DataLoader(
+        mosaic_ds, batch_size=args.batch_size, num_workers=mosaic_num_workers
+    )
+    return mosaic_dl
 
 
 def build_hf_dataloader(
@@ -564,6 +601,7 @@ if __name__ == "__main__":
             )
 
     if args.tf_data_root is not None:
+        # TFRecords dataset.
         tf_dataset = build_tfrecords_tf_dataset(args.tf_data_root, args.batch_size)
         for i in range(args.num_epochs):
             iterate(
@@ -574,6 +612,7 @@ if __name__ == "__main__":
                 args.output_file,
             )
 
+        # TFRecords dataset with Ray Data.
         ray_dataset = ray.data.read_tfrecords(args.tf_data_root)
         ray_dataset = ray_dataset.map_batches(
             decode_crop_and_flip_tf_record_batch,
@@ -594,6 +633,7 @@ if __name__ == "__main__":
             )
 
     if args.parquet_data_root is not None:
+        # HuggingFace Dataset, reading from parquet.
         hf_dataset = build_hf_dataloader(
             args.parquet_data_root,
             args.batch_size,
@@ -610,9 +650,9 @@ if __name__ == "__main__":
                 args.output_file,
             )
 
-        ray_dataset = ray.data.read_parquet(
-            args.parquet_data_root, parallelism=128
-        ).map(decode_image_crop_and_flip)
+        # Ray Data, reading from parquet.
+        ray_dataset = ray.data.read_parquet(args.parquet_data_root)
+        ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
         for i in range(args.num_epochs):
             iterate(
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
@@ -625,37 +665,9 @@ if __name__ == "__main__":
 
     if args.mosaic_data_root is not None:
         # MosaicML StreamingDataset.
-        use_s3 = args.mosaic_data_root.startswith("s3://")
-
-        if use_s3:
-            MOSAIC_CACHE = "/tmp/mosaic_cache"
-            try:
-                import shutil
-
-                shutil.rmtree(MOSAIC_CACHE)
-            except FileNotFoundError:
-                pass
-            mosaic_ds = S3MosaicDataset(
-                s3_bucket=args.mosaic_data_root,
-                cache_dir=MOSAIC_CACHE,
-                cache_limit="1000mb",
-                transforms=get_transform(True),
-            )
-            if args.torch_num_workers is None:
-                mosaic_num_workers = os.cpu_count() * 4
-            else:
-                mosaic_num_workers = args.torch_num_workers
-        else:
-            mosaic_ds = MosaicDataset(
-                args.mosaic_data_root, transforms=get_transform(True)
-            )
-            if args.torch_num_workers is None:
-                mosaic_num_workers = os.cpu_count()
-            else:
-                mosaic_num_workers = args.torch_num_workers
-        mosaic_dl = torch.utils.data.DataLoader(
-            mosaic_ds, batch_size=args.batch_size, num_workers=mosaic_num_workers
-        )
+        mosaic_dl = build_mosaic_dataloader(args.mosaic_data_root,
+            batch_size=args.batch_size, num_workers=args.torch_num_workers,
+            transform=get_transform(True))
         for i in range(args.num_epochs):
             iterate(
                 mosaic_dl, "mosaicml_mds", args.batch_size, metrics, args.output_file
