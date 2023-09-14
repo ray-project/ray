@@ -5,6 +5,7 @@ import random
 import threading
 import collections
 import logging
+import time
 
 
 _logger = logging.getLogger("ray.util.spark.utils")
@@ -87,6 +88,17 @@ def is_port_in_use(host, port):
 
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
         return sock.connect_ex((host, port)) == 0
+
+
+def _wait_service_up(host, port, timeout):
+    beg_time = time.time()
+
+    while time.time() - beg_time < timeout:
+        if is_port_in_use(host, port):
+            return True
+        time.sleep(1)
+
+    return False
 
 
 def get_random_unused_port(

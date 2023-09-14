@@ -28,6 +28,7 @@ from .utils import (
     get_max_num_concurrent_tasks,
     gen_cmd_exec_failure_msg,
     calc_mem_ray_head_node,
+    _wait_service_up,
 )
 from .start_hook_base import RayOnSparkStartHook
 from .databricks_hook import DefaultDatabricksRayOnSparkStartHook
@@ -117,8 +118,13 @@ class RayClusterOnSpark:
         try:
             ray.init(address=self.address)
 
-            if self.ray_dashboard_port is not None and is_port_in_use(
-                self.address.split(":")[0], self.ray_dashboard_port
+            if (
+                self.ray_dashboard_port is not None and
+                _wait_service_up(
+                    self.address.split(":")[0],
+                    self.ray_dashboard_port,
+                    _RAY_DASHBOARD_STARTUP_TIMEOUT,
+                )
             ):
                 self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
             else:
@@ -245,7 +251,8 @@ def _convert_ray_node_options(options):
     return [_convert_ray_node_option(k, v) for k, v in options.items()]
 
 
-_RAY_HEAD_STARTUP_TIMEOUT = 20
+_RAY_HEAD_STARTUP_TIMEOUT = 60
+_RAY_DASHBOARD_STARTUP_TIMEOUT = 60
 _BACKGROUND_JOB_STARTUP_WAIT = int(
     os.environ.get("RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT", "30")
 )
@@ -605,9 +612,7 @@ def _setup_ray_cluster(
         spark_job_server = None
 
     # wait ray head node spin up.
-    time.sleep(_RAY_HEAD_STARTUP_TIMEOUT)
-
-    if not is_port_in_use(ray_head_ip, ray_head_port):
+    if not _wait_service_up(ray_head_ip, ray_head_port, _RAY_HEAD_STARTUP_TIMEOUT):
         if ray_head_proc.poll() is None:
             # Ray head GCS service is down. Kill ray head node.
             ray_head_proc.terminate()
