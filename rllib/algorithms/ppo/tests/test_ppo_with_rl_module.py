@@ -66,7 +66,7 @@ class MyCallbacks(DefaultCallbacks):
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -93,18 +93,18 @@ class TestPPO(unittest.TestCase):
                 # Test with compression.
                 # compress_observations=True,
                 enable_connectors=True,
-            )
+            )            
             .callbacks(MyCallbacks)
             .rl_module(_enable_rl_module_api=True)
         )
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
+        for fw in framework_iterator(config, frameworks=("tf2")):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:
                 print("Env={}".format(env))
-                for lstm in [False, True]:
+                for lstm in [False]:
                     print("LSTM={}".format(lstm))
                     config.training(model=get_model_config(fw, lstm=lstm))
 

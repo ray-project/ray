@@ -23,6 +23,7 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     PPOLearnerHyperparameters,
     LEARNER_RESULTS_KL_KEY,
 )
+from ray.rllib.algorithms.ppo.utils.env_runner import PPOEnvRunner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -33,6 +34,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -141,6 +143,9 @@ class PPOConfig(PGConfig):
         # enable the rl module api by default
         self.rl_module(_enable_rl_module_api=True)
         self.training(_enable_learner_api=True)
+
+        # Use the `EnvRunner API` for RLModules.
+        self.env_runner_cls = PPOEnvRunner
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -359,6 +364,13 @@ class PPOConfig(PGConfig):
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
 
+    @property
+    def share_module_between_env_runner_and_learner(self) -> bool:
+        # If we only have one local Learner (num_learner_workers=0) and only
+        # one local EnvRunner (num_rollout_workers=0), share the RLModule
+        # between these two to avoid having to sync weights, ever.
+        return self.num_learner_workers == 0 and self.num_rollout_workers == 0
+
 
 class UpdateKL:
     """Callback to update the KL based on optimization info.
@@ -394,6 +406,19 @@ class UpdateKL:
 class PPO(Algorithm):
     @classmethod
     @override(Algorithm)
+    def setup(self, config: AlgorithmConfig):
+        super().setup(config)
+
+        # Share RLModule between EnvRunner and single (local) Learner instance.
+        # To avoid possibly expensive weight synching step.
+        if self.config.share_module_between_env_runner_and_learner:
+            assert self.workers.local_worker().module is None
+            self.workers.local_worker().module = self.learner_group._learner.module[
+                DEFAULT_POLICY_ID
+            ]
+
+    @classmethod
+    @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
         return PPOConfig()
 
@@ -403,7 +428,6 @@ class PPO(Algorithm):
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
-
             from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 
             return PPOTorchPolicy
@@ -418,6 +442,7 @@ class PPO(Algorithm):
 
     @ExperimentalAPI
     def training_step(self) -> ResultDict:
+
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             if self.config.count_steps_by == "agent_steps":
@@ -495,7 +520,6 @@ class PPO(Algorithm):
                 self.workers.local_worker().set_weights(weights)
 
         if self.config._enable_learner_api:
-
             kl_dict = {}
             if self.config.use_kl_loss:
                 for pid in policies_to_update:
