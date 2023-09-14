@@ -210,7 +210,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             )
 
             # Test scale down
-            for _ in range(200):
+            for _ in range(60):
                 time.sleep(1)
                 if len(self.get_ray_worker_resources_list()) == 0:
                     break

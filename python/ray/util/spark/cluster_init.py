@@ -435,6 +435,8 @@ def _setup_ray_cluster(
     ray_temp_root_dir: str,
     collect_log_to_path: str,
     autoscale: bool,
+    autoscale_upscaling_speed: float,
+    autoscale_idle_timeout_minutes: float,
 ) -> Type[RayClusterOnSpark]:
     """
     The public API `ray.util.spark.setup_ray_cluster` does some argument
@@ -562,7 +564,9 @@ def _setup_ray_cluster(
                 "worker_node_options": worker_node_options,
                 "collect_log_to_path": collect_log_to_path,
                 "spark_job_server_port": spark_job_server_port,
-            }
+            },
+            upscaling_speed=autoscale_upscaling_speed,
+            idle_timeout_minutes=autoscale_idle_timeout_minutes,
         )
         ray_head_proc, tail_output_deque = autoscaler_cluster.start(
             ray_head_ip,
@@ -791,6 +795,8 @@ def setup_ray_cluster(
     strict_mode: bool = False,
     collect_log_to_path: Optional[str] = None,
     autoscale: bool = False,
+    autoscale_upscaling_speed: Optional[float] = 1.0,
+    autoscale_idle_timeout_minutes: Optional[float] = 1.0,
     **kwargs,
 ) -> str:
     """
@@ -876,6 +882,20 @@ def setup_ray_cluster(
         autoscale: If True, enable autoscaling, the number of initial Ray worker nodes
             is zero, and the maximum number of Ray worker nodes is set to
             `num_worker_nodes`. Default value is False.
+        autoscale_upscaling_speed: If autoscale enabled, it represents the number of nodes
+            allowed to be pending as a multiple of the current number of nodes. The higher
+            the value, the more aggressive upscaling will be. For example, if this is set
+            to 1.0, the cluster can grow in size by at most 100% at any time, so if the
+            cluster currently has 20 nodes, at most 20 pending launches are allowed. The
+            minimum number of pending launches is 5 regardless of this setting.
+            Default value is 1.0, minimum value is 1.0
+        autoscale_idle_timeout_minutes: If autoscale enabled, it represents the number
+            of minutes that need to pass before an idle worker node is removed by the
+            autoscaler. The smaller the value, the more aggressive downscaling will be.
+            Worker nodes are considered idle when they hold no active tasks, actors,
+            or referenced objects (either in-memory or spilled to disk). This parameter
+            does not affect the head node.
+            Default value is 1.0, minimum value is 0
 
     Returns:
         The address of the initiated Ray cluster on spark.
@@ -1137,6 +1157,8 @@ def setup_ray_cluster(
             ray_temp_root_dir=ray_temp_root_dir,
             collect_log_to_path=collect_log_to_path,
             autoscale=autoscale,
+            autoscale_upscaling_speed=autoscale_upscaling_speed,
+            autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
         )
 
         cluster.wait_until_ready()  # NB: this line might raise error.

@@ -24,7 +24,14 @@ class AutoscalingCluster:
     """Create a ray on spark autoscaling cluster.
     """
 
-    def __init__(self, head_resources: dict, worker_node_types: dict, extra_provider_config: dict):
+    def __init__(
+        self,
+        head_resources: dict,
+        worker_node_types: dict,
+        extra_provider_config: dict,
+        upscaling_speed: float,
+        idle_timeout_minutes: float,
+    ):
         """Create the cluster.
 
         Args:
@@ -34,10 +41,14 @@ class AutoscalingCluster:
         self._head_resources = head_resources.copy()
         self._head_resources["NODE_ID_AS_RESOURCE"] = RAY_ON_SPARK_HEAD_NODE_ID
         self._config = self._generate_config(
-            head_resources, worker_node_types, extra_provider_config
+            head_resources, worker_node_types, extra_provider_config,
+            upscaling_speed, idle_timeout_minutes
         )
 
-    def _generate_config(self, head_resources, worker_node_types, extra_provider_config):
+    def _generate_config(
+        self, head_resources, worker_node_types, extra_provider_config,
+        upscaling_speed, idle_timeout_minutes
+    ):
         base_config = yaml.safe_load(
             open(
                 os.path.join(
@@ -54,6 +65,9 @@ class AutoscalingCluster:
             "max_workers": 0,
         }
         custom_config["provider"].update(extra_provider_config)
+
+        custom_config["upscaling_speed"] = upscaling_speed
+        custom_config["idle_timeout_minutes"] = idle_timeout_minutes
 
         return custom_config
 
