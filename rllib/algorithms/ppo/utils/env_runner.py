@@ -85,7 +85,7 @@ class PPOEnvRunner(EnvRunner):
         random_actions: bool = False,
         with_render_data: bool = False,
     ) -> Tuple[List[Episode], List[Episode]]:
-        """Runs and returns a sample (n timesteps or m episodes) on the environment(s)."""
+        """Runs and returns a sample (n timesteps or m episodes) on the env(s)."""
 
         # If not execution details are provided, use self.config.
         if num_timesteps is None and num_episodes is None:
@@ -339,8 +339,8 @@ class PPOEnvRunner(EnvRunner):
                         if eps == num_episodes:
                             break
 
-                        # Reset h-states to the model's initial ones b/c we are starting a
-                        # new episode.
+                        # Reset h-states to the model's initial ones b/c we are starting
+                        # a new episode.
                         for k, v in self.module.get_initial_state().items():
                             states[k][i] = v.numpy()
 
