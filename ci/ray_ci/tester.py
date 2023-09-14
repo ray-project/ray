@@ -7,7 +7,7 @@ import click
 
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.tester_container import TesterContainer
-from ci.ray_ci.utils import shard_tests, docker_login
+from ci.ray_ci.utils import docker_login
 
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
@@ -74,9 +74,9 @@ def main(
     os.chdir(bazel_workspace_dir)
     docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
-    if not build_name:
-        build_name = f"{team}build"
-    container = TesterContainer(build_name)
+    container = _get_container(
+        team, workers, worker_id, parallelism_per_worker, build_name
+    )
     if run_flaky_tests:
         test_targets = _get_flaky_test_targets(team)
     else:
@@ -84,30 +84,26 @@ def main(
             container,
             targets,
             team,
-            workers,
-            worker_id,
             except_tags,
         )
-    success = container.run_tests(test_targets, test_env, parallelism_per_worker)
+    success = container.run_tests(test_targets, test_env)
     sys.exit(0 if success else 1)
 
 
-def _get_test_targets(
-    container: TesterContainer,
-    targets: str,
+def _get_container(
     team: str,
     workers: int,
     worker_id: int,
-    except_tags: Optional[str] = "",
-    yaml_dir: Optional[str] = None,
-) -> List[str]:
-    """
-    Get test targets to run for a particular shard
-    """
-    return shard_tests(
-        _get_all_test_targets(container, targets, team, except_tags, yaml_dir=yaml_dir),
-        workers,
-        worker_id,
+    parallelism_per_worker: int,
+    build_name: Optional[str] = None,
+) -> TesterContainer:
+    return TesterContainer(
+        build_name or f"{team}build",
+        shard_count=workers * parallelism_per_worker,
+        shard_ids=[
+            worker_id * parallelism_per_worker + i
+            for i in range(parallelism_per_worker)
+        ],
     )
 
 
@@ -129,7 +125,7 @@ def _get_all_test_query(targets: List[str], team: str, except_tags: str) -> str:
     return f"{team_query} except ({except_query})"
 
 
-def _get_all_test_targets(
+def _get_test_targets(
     container: TesterContainer,
     targets: str,
     team: str,
