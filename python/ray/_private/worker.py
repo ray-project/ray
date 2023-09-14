@@ -558,6 +558,9 @@ class Worker:
             # when needed.
             # https://github.com/ray-project/ray/issues/35598
             return
+        
+        if not hasattr(self, "core_worker"):
+            return
 
         self.core_worker.record_task_log_start(
             self.get_out_file_path(),
@@ -574,6 +577,9 @@ class Worker:
             # Recording actor task log is expensive and should be enabled only
             # when needed.
             # https://github.com/ray-project/ray/issues/35598
+            return
+
+        if not hasattr(self, "core_worker"):
             return
 
         self.core_worker.record_task_log_end(
