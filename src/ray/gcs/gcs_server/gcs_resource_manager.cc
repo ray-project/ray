@@ -38,23 +38,14 @@ void GcsResourceManager::ConsumeSyncMessage(
   // delegate the work to the main thread for thread safety.
   // Ideally, all public api in GcsResourceManager need to be put into this
   // io context for thread safety.
-
-  // We should only expect RESOURCE_VIEW messages from the syncer for GcsResourceManager.
-  // See GcsServer::InitRaySyncer for syncer registration.
-  RAY_CHECK(message->message_type() == syncer::MessageType::RESOURCE_VIEW);
-
   io_context_.dispatch(
       [this, message]() {
         rpc::ResourcesData resources;
         resources.ParseFromString(message->sync_message());
         resources.set_node_id(message->node_id());
-        if (resources.resources_total_size() == 0) {
-          RAY_LOG(ERROR) << "We should not see a node with empty total "
-                            "resources. If so, likely the data is corrupted: "
-                         << resources.DebugString();
-          return;
-        }
-        UpdateFromResourceReport(resources);
+        UpdateFromResourceReport(resources,
+                                 /* from_resource_view */ message->message_type() ==
+                                     syncer::MessageType::RESOURCE_VIEW);
       },
       "GcsResourceManager::Update");
 }
@@ -135,7 +126,8 @@ void GcsResourceManager::HandleGetAllAvailableResources(
   ++counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST];
 }
 
-void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
+void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data,
+                                                  bool from_resource_view) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
   // When gcs detects task pending, we may receive an local update. But it can be ignored
   // here because gcs' syncer has already broadcast it.
@@ -145,15 +137,20 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
-    if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
-                                              data)) {
-      RAY_LOG(INFO)
-          << "[UpdateFromResourceReport]: received resource usage from unknown node id "
-          << node_id;
+    // TODO: resources reporting is really messy now with gcs actor based scheudling +
+    // v1 autoscaler. We should refactor this.
+    if (from_resource_view) {
+      // We will only update the node's resources if it's from resource view reports.
+      if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
+                                                data)) {
+        RAY_LOG(INFO)
+            << "[UpdateFromResourceReport]: received resource usage from unknown node id "
+            << node_id;
+      }
     }
   }
 
-  UpdateNodeResourceUsage(node_id, data);
+  UpdateNodeResourceUsage(node_id, data, from_resource_view);
 }
 
 void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
@@ -272,7 +269,8 @@ void GcsResourceManager::HandleGetAllResourceUsage(
 }
 
 void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
-                                                 const rpc::ResourcesData &resources) {
+                                                 const rpc::ResourcesData &resources,
+                                                 bool from_resource_view) {
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
     // It will only happen when the node has been deleted.
@@ -280,17 +278,21 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
     // we are guaranteed that no resource usage will be reported.
     return;
   } else {
-    if (resources.resources_total_size() > 0) {
-      (*iter->second.mutable_resources_total()) = resources.resources_total();
+    if (from_resource_view) {
+      if (resources.resources_total_size() > 0) {
+        (*iter->second.mutable_resources_total()) = resources.resources_total();
+      }
+      (*iter->second.mutable_resources_available()) = resources.resources_available();
+      if (resources.resources_normal_task_changed()) {
+        (*iter->second.mutable_resources_normal_task()) =
+            resources.resources_normal_task();
+      }
+    } else {
+      // TODO(rickyx): We should change this to be part of RESOURCE_VIEW.
+      // This is being populated from NodeManager as part of COMMANDS
+      iter->second.set_cluster_full_of_actors_detected(
+          resources.cluster_full_of_actors_detected());
     }
-
-    (*iter->second.mutable_resources_available()) = resources.resources_available();
-
-    if (resources.resources_normal_task_changed()) {
-      (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
-    }
-    iter->second.set_cluster_full_of_actors_detected(
-        resources.cluster_full_of_actors_detected());
   }
 }
 
