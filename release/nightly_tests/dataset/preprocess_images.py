@@ -53,7 +53,10 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Helper script that uses Ray Data to preprocess images into arrays of decoded images."
+        description=(
+            "Helper script that uses Ray Data to preprocess images "
+            "into arrays of decoded images."
+        )
     )
     parser.add_argument(
         "--data-root",

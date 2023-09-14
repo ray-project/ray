@@ -12,6 +12,7 @@ import json
 
 # HF Dataset.
 from datasets import load_dataset
+
 # MosaicML StreamingDataset
 import streaming
 from streaming import LocalDataset, StreamingDataset
@@ -297,7 +298,9 @@ class S3MosaicDataset(StreamingDataset):
         return self.transforms(image), label
 
 
-def build_hf_dataloader(data_root, batch_size, from_images, num_workers=None, transform=None):
+def build_hf_dataloader(
+    data_root, batch_size, from_images, num_workers=None, transform=None
+):
     if num_workers is None:
         num_workers = os.cpu_count()
 
@@ -305,14 +308,22 @@ def build_hf_dataloader(data_root, batch_size, from_images, num_workers=None, tr
 
     def transforms(examples):
         if from_images:
-            examples["image"] = [transform(image.convert("RGB")) for image in examples["image"]]
+            examples["image"] = [
+                transform(image.convert("RGB")) for image in examples["image"]
+            ]
         else:
-            examples["image"] = [transform(Image.frombytes("RGB", (height, width), image))
-                                 for image, height, width in zip(examples["image"], examples["height"], examples["width"])]
+            examples["image"] = [
+                transform(Image.frombytes("RGB", (height, width), image))
+                for image, height, width in zip(
+                    examples["image"], examples["height"], examples["width"]
+                )
+            ]
         return examples
 
     if from_images:
-        dataset = load_dataset("imagefolder", data_dir=data_root, split="train", num_proc=num_workers)
+        dataset = load_dataset(
+            "imagefolder", data_dir=data_root, split="train", num_proc=num_workers
+        )
     else:
         dataset = load_dataset("parquet", data_dir=data_root, split="train")
     if transform is not None:
@@ -332,11 +343,9 @@ def build_hf_dataloader(data_root, batch_size, from_images, num_workers=None, tr
         labels = torch.tensor(labels)
         return {"image": pixel_values, "label": labels}
 
-    return torch.utils.data.DataLoader(dataset,
-                                       collate_fn=collate_fn,
-                                       batch_size=batch_size,
-                                       num_workers=num_workers)
-
+    return torch.utils.data.DataLoader(
+        dataset, collate_fn=collate_fn, batch_size=batch_size, num_workers=num_workers
+    )
 
 
 if __name__ == "__main__":
@@ -350,25 +359,37 @@ if __name__ == "__main__":
         "--data-root",
         default=None,
         type=str,
-        help='Directory path with raw images. Directory structure should be "<data_root>/train/<class>/<image file>"',
+        help=(
+            "Directory path with raw images. Directory structure should be "
+            '"<data_root>/train/<class>/<image file>"'
+        ),
     )
     parser.add_argument(
         "--parquet-data-root",
         default=None,
         type=str,
-        help='Directory path with Parquet files. Directory structure should be "<data_root>/*.parquet"',
+        help=(
+            "Directory path with Parquet files. Directory structure should be "
+            '"<data_root>/*.parquet"'
+        ),
     )
     parser.add_argument(
         "--mosaic-data-root",
         default=None,
         type=str,
-        help='Directory path with MDS files. Directory structure should be "<data_root>/*.mds"',
+        help=(
+            "Directory path with MDS files. Directory structure should be "
+            '"<data_root>/*.mds"'
+        ),
     )
     parser.add_argument(
         "--tf-data-root",
         default=None,
         type=str,
-        help='Directory path with TFRecords files. Directory structure should be "<data_root>/train/<tfrecords files>"',
+        help=(
+            "Directory path with TFRecords files. Directory structure should "
+            'be "<data_root>/train/<tfrecords files>"'
+        ),
     )
     parser.add_argument(
         "--batch-size",
@@ -392,7 +413,10 @@ if __name__ == "__main__":
         "--torch-num-workers",
         default=None,
         type=int,
-        help="Number of workers to pass to torch. By default # CPUs will be used, x4 for S3 datasets.",
+        help=(
+            "Number of workers to pass to torch. By default # CPUs will be "
+            "used, x4 for S3 datasets."
+        ),
     )
     args = parser.parse_args()
 
@@ -423,13 +447,11 @@ if __name__ == "__main__":
 
         # torch, load images.
         torch_resize_transform = torchvision.transforms.Compose(
-                [
-                    torchvision.transforms.Resize(
-                        (DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE)
-                    ),
-                    torchvision.transforms.ToTensor(),
-                ]
-            )
+            [
+                torchvision.transforms.Resize((DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE)),
+                torchvision.transforms.ToTensor(),
+            ]
+        )
         torch_dataset = build_torch_dataset(
             args.data_root,
             args.batch_size,
@@ -441,7 +463,8 @@ if __name__ == "__main__":
 
         # torch, with transform.
         torch_dataset = build_torch_dataset(
-            args.data_root, args.batch_size,
+            args.data_root,
+            args.batch_size,
             num_workers=args.torch_num_workers,
             transform=get_transform(True),
         )
@@ -456,7 +479,8 @@ if __name__ == "__main__":
 
         # HuggingFace Datasets, load images.
         hf_dataset = build_hf_dataloader(
-            args.data_root, args.batch_size,
+            args.data_root,
+            args.batch_size,
             from_images=True,
             num_workers=args.torch_num_workers,
             transform=torch_resize_transform,
@@ -472,7 +496,8 @@ if __name__ == "__main__":
 
         # HuggingFace Datasets, with transform.
         hf_dataset = build_hf_dataloader(
-            args.data_root, args.batch_size,
+            args.data_root,
+            args.batch_size,
             from_images=True,
             num_workers=args.torch_num_workers,
             transform=get_transform(True),
@@ -570,7 +595,8 @@ if __name__ == "__main__":
 
     if args.parquet_data_root is not None:
         hf_dataset = build_hf_dataloader(
-            args.parquet_data_root, args.batch_size,
+            args.parquet_data_root,
+            args.batch_size,
             from_images=False,
             num_workers=args.torch_num_workers,
             transform=get_transform(True),
