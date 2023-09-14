@@ -351,7 +351,7 @@ while True:
 """
 
     try:
-        # This should trigger many COMMANDS messages from TryGlobalGC on GCS.
+        # This should trigger many COMMANDS messages from NodeManager.
         cluster.start(
             _system_config={
                 "debug_dump_period_milliseconds": 10,
