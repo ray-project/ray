@@ -32,7 +32,7 @@ class GcsResourceManagerTest : public ::testing::Test {
         io_service_, cluster_resource_manager_, NodeID::FromRandom());
   }
 
-  void UpdateFromResourceReportSync(
+  void UpdateFromResourceViewSync(
       const NodeID &node_id,
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
@@ -45,7 +45,7 @@ class GcsResourceManagerTest : public ::testing::Test {
                               total_resources,
                               idle_ms,
                               is_draining);
-    gcs_resource_manager_->UpdateFromResourceReport(resources_data);
+    gcs_resource_manager_->UpdateFromResourceView(resources_data);
   }
 
   instrumented_io_context io_service_;
@@ -126,6 +126,56 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
   ASSERT_EQ(get_all_reply3.resource_usage_data().batch().size(), 0);
 }
 
+TEST_F(GcsResourceManagerTest, TestResourceUsageFromDifferentSyncMsgs) {
+  auto node = Mocker::GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 10});
+  gcs_resource_manager_->OnNodeAdd(*node);
+
+  rpc::ResourcesData resources_data;
+  resources_data.set_node_id(node->node_id());
+  resources_data.mutable_resources_total()->insert({"CPU", 5});
+  resources_data.mutable_resources_available()->insert({"CPU", 5});
+  resources_data.set_cluster_full_of_actors_detected(true);
+
+  // Update resource usage from resource view.
+  {
+    gcs_resource_manager_->UpdateFromResourceView(resources_data);
+    ASSERT_EQ(
+        cluster_resource_manager_.GetNodeResources(scheduling::NodeID(node->node_id()))
+            .total.GetResourceMap()
+            .at("CPU"),
+        5);
+
+    ASSERT_FALSE(gcs_resource_manager_->NodeResourceReportView()
+                     .at(NodeID::FromBinary(node->node_id()))
+                     .cluster_full_of_actors_detected());
+  }
+
+  // Update from syncer COMMANDS will not update the resources, but the
+  // cluster_full_of_actors_detected flag. (This is how NodeManager currently
+  // updates potential resources deadlock).
+  {
+    rpc::ResourcesData resources_data;
+    resources_data.set_node_id(node->node_id());
+    resources_data.mutable_resources_total()->insert({"CPU", 10});
+    resources_data.mutable_resources_available()->insert({"CPU", 10});
+    resources_data.set_cluster_full_of_actors_detected(true);
+    gcs_resource_manager_->UpdateFromResourceCommand(resources_data);
+
+    // Still 5 because the syncer COMMANDS message is ignored.
+    ASSERT_EQ(
+        cluster_resource_manager_.GetNodeResources(scheduling::NodeID(node->node_id()))
+            .total.GetResourceMap()
+            .at("CPU"),
+        5);
+
+    // The flag is updated.
+    ASSERT_TRUE(gcs_resource_manager_->NodeResourceReportView()
+                    .at(NodeID::FromBinary(node->node_id()))
+                    .cluster_full_of_actors_detected());
+  }
+}
+
 TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
   auto node = Mocker::GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 10});
@@ -141,7 +191,7 @@ TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
   resources_data.set_node_id(node->node_id());
   resources_data.mutable_resources_total()->insert({"CPU", 5});
   resources_data.mutable_resources_available()->insert({"CPU", 5});
-  gcs_resource_manager_->UpdateFromResourceReport(resources_data);
+  gcs_resource_manager_->UpdateFromResourceView(resources_data);
   ASSERT_EQ(cluster_resource_manager_.GetResourceView().size(), 0);
 }
 
@@ -169,20 +219,20 @@ TEST_F(GcsResourceManagerTest, TestGetDrainingNodes) {
   auto node1 = Mocker::GenNodeInfo();
   node1->mutable_resources_total()->insert({"CPU", 10});
   gcs_resource_manager_->OnNodeAdd(*node1);
-  UpdateFromResourceReportSync(NodeID::FromBinary(node1->node_id()),
-                               {/* available */ {"CPU", 10}},
-                               /* total*/ {{"CPU", 10}},
-                               /* idle_duration_ms */ 8,
-                               /* is_draining */ true);
+  UpdateFromResourceViewSync(NodeID::FromBinary(node1->node_id()),
+                             {/* available */ {"CPU", 10}},
+                             /* total*/ {{"CPU", 10}},
+                             /* idle_duration_ms */ 8,
+                             /* is_draining */ true);
 
   auto node2 = Mocker::GenNodeInfo();
   node2->mutable_resources_total()->insert({"CPU", 1});
   gcs_resource_manager_->OnNodeAdd(*node2);
-  UpdateFromResourceReportSync(NodeID::FromBinary(node2->node_id()),
-                               {/* available */ {"CPU", 1}},
-                               /* total*/ {{"CPU", 1}},
-                               /* idle_duration_ms */ 5,
-                               /* is_draining */ false);
+  UpdateFromResourceViewSync(NodeID::FromBinary(node2->node_id()),
+                             {/* available */ {"CPU", 1}},
+                             /* total*/ {{"CPU", 1}},
+                             /* idle_duration_ms */ 5,
+                             /* is_draining */ false);
 
   rpc::GetDrainingNodesRequest request;
   rpc::GetDrainingNodesReply reply;
