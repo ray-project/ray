@@ -665,7 +665,7 @@ def _setup_ray_cluster(
             ),
             START_RAY_WORKER_NODE: "true",
             "RAY_TMPDIR": os.environ.get(
-                "RAY_TMPDIR", _DATABRICKS_DEFAULT_TMP_ROOT_DIR
+                "RAY_TMPDIR", start_hook.get_default_temp_root_dir()
             ),
         }
 
