@@ -1988,7 +1988,6 @@ def build_julia_worker_command(
     command = [
         sys.executable,
         setup_worker_path,
-        DEFAULT_WORKER_EXECUTABLE,
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",
         "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
