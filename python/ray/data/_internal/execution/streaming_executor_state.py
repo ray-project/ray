@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Deque, Dict, List, Optional, Tuple, Union
 
 import ray
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
@@ -26,6 +27,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
+from ray.data.context import DataContext
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
@@ -40,6 +42,8 @@ DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.25
 
 # Min number of seconds between two autoscaling requests.
 MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 20
+
+logger = DatasetLogger(__name__)
 
 
 @dataclass
@@ -126,6 +130,7 @@ class OpState:
         # Tracks whether `input_done` is called for each input op.
         self.input_done_called = [False] * len(op.input_dependencies)
         self.dependents_completed_called = False
+        self.first_block_size_bytes = None
 
     def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
         """Create progress bars at the given index (line offset in console).
@@ -171,6 +176,8 @@ class OpState:
         self.num_completed_tasks += 1
         if self.progress_bar:
             self.progress_bar.update(1)
+        if self.first_block_size_bytes is None:
+            self._check_first_block_size(ref)
 
     def refresh_progress_bar(self) -> None:
         """Update the console with the latest operator progress."""
@@ -258,6 +265,34 @@ class OpState:
             except IndexError:
                 break  # Concurrent pop from the outqueue by the consumer thread.
         return object_store_memory
+
+    def _check_first_block_size(self, ref: RefBundle):
+        """Checks and logs the size of the first bundle produced by this operator.
+        If the block size exceeds 2 times the target max block size, logs a warning.
+
+        This is used to determine the progress bar's total size.
+        """
+
+        BLOCK_SIZE_TO_MAX_TARGET_RATIO = 2
+
+        first_block_metadata = ref.blocks[0][1]
+        self.first_block_size_bytes = first_block_metadata.size_bytes
+        target_max_block_size = DataContext.get_current().target_max_block_size
+
+        if self.first_block_size_bytes > (
+            BLOCK_SIZE_TO_MAX_TARGET_RATIO * target_max_block_size
+        ):
+            logger.get_logger().warning(
+                f"{self.op.name} in-memory block size of "
+                f"{(self.first_block_size_bytes / 2**20):.2f} MB is significantly "
+                f"larger than the maximium target block size of "
+                f"{(target_max_block_size / 2**20):.2f} MB."
+            )
+        else:
+            logger.get_logger().info(
+                f"{self.op.name} in-memory block size: "
+                f"{(self.first_block_size_bytes / 2**20):.2f} MB"
+            )
 
 
 def build_streaming_topology(

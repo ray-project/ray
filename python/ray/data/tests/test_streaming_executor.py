@@ -1,11 +1,13 @@
 import collections
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -33,6 +35,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -682,6 +685,54 @@ def test_execution_allowed_nothrottle():
         ),
         ExecutionResources(object_store_memory=900),
     )
+
+
+def test__check_first_block_size():
+    # Check that block size of the first block is recorded and reported.
+    logger = DatasetLogger(
+        "ray.data._internal.execution.streaming_executor_state"
+    ).get_logger()
+    with patch.object(logger, "info") as mock_logger:
+        # Generate 1MB and 2MB blocks.
+        inputs = make_ref_bundles(
+            [
+                np.zeros(1024 * 1024, dtype=np.uint8),
+                np.zeros(1024 * 1024 * 2, dtype=np.uint8),
+            ]
+        )
+        o1 = InputDataBuffer(inputs)
+        o2 = MapOperator.create(make_map_transformer(lambda block: block), o1)
+
+        topo, _ = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+        process_completed_tasks(topo)
+        update_operator_states(topo)
+
+        logger_args, logger_kwargs = mock_logger.call_args
+        assert logger_args[0] == ("Input in-memory block size: 1.00 MB")
+
+    # Test case where the block size is much larger than the target max block size.
+    ctx = DataContext.get_current()
+    ctx.target_max_block_size = 1024 * 1024
+
+    with patch.object(logger, "warning") as mock_logger:
+        # Generate a 4 MB block, more than 2 times larger than
+        # the configured max block size of 1 MB.
+        inputs = make_ref_bundles(
+            [
+                np.zeros(1024 * 1024 * 4, dtype=np.uint8),
+            ]
+        )
+        o1 = InputDataBuffer(inputs)
+        o2 = MapOperator.create(make_map_transformer(lambda block: block), o1)
+        topo, _ = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+        process_completed_tasks(topo)
+        update_operator_states(topo)
+
+        logger_args, logger_kwargs = mock_logger.call_args
+        assert logger_args[0] == (
+            "Input in-memory block size of 4.00 MB is significantly larger "
+            "than the maximium target block size of 1.00 MB."
+        )
 
 
 if __name__ == "__main__":
