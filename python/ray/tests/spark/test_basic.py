@@ -18,16 +18,6 @@ import logging
 from contextlib import contextmanager
 
 
-@contextmanager
-def _setup_ray_cluster(*args, **kwds):
-    # Code to acquire resource, e.g.:
-    setup_ray_cluster(*args, **kwds)
-    try:
-        yield ray.util.spark.cluster_init._active_ray_cluster
-    finally:
-        shutdown_ray_cluster()
-
-
 pytestmark = [
     pytest.mark.skipif(
         os.name != "posix",
@@ -35,6 +25,20 @@ pytestmark = [
     ),
     pytest.mark.timeout(300),
 ]
+
+
+def setup_module():
+    os.environ["RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES"] = "2000000000"
+
+
+@contextmanager
+def _setup_ray_cluster(*args, **kwds):
+    setup_ray_cluster(*args, **kwds)
+    try:
+        yield ray.util.spark.cluster_init._active_ray_cluster
+    finally:
+        shutdown_ray_cluster()
+
 
 _logger = logging.getLogger(__name__)
 

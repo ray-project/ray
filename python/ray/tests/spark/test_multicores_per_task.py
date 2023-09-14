@@ -6,11 +6,15 @@ from ray.tests.spark.test_GPU import RayOnSparkGPUClusterTestBase
 
 pytestmark = [
     pytest.mark.skipif(
-        not sys.platform.startswith("linux"),
-        reason="Ray on spark only supports running on Linux.",
+        os.name != "posix",
+        reason="Ray on spark only supports running on POSIX system.",
     ),
     pytest.mark.timeout(300),
 ]
+
+
+def setup_module():
+    os.environ["RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES"] = "2000000000"
 
 
 class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):
