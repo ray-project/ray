@@ -52,7 +52,9 @@ def preprocess_parquet(input_dir, output_dir, target_partition_size=None):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Preprocess images.")  # noqa: E501
+    parser = argparse.ArgumentParser(
+        description="Helper script that uses Ray Data to preprocess images into arrays of decoded images."
+    )
     parser.add_argument(
         "--data-root",
         default="/tmp/imagenet-1gb-data",
@@ -72,7 +74,7 @@ if __name__ == "__main__":
         help="Output directory path for parquet.",
     )
     parser.add_argument(
-        "--max-mb-per-file",
+        "--max-mb-per-parquet-file",
         default=64,
         type=int,
     )
@@ -89,5 +91,5 @@ if __name__ == "__main__":
         preprocess_parquet(
             args.data_root,
             args.parquet_data_root,
-            target_partition_size=args.max_mb_per_file * 1024 * 1024,
+            target_partition_size=args.max_mb_per_parquet_file * 1024 * 1024,
         )

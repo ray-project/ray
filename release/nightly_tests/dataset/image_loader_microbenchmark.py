@@ -10,6 +10,9 @@ from typing import TYPE_CHECKING, Iterator, Callable, Any
 import pandas as pd
 import json
 
+# HF Dataset.
+from datasets import load_dataset
+# MosaicML StreamingDataset
 import streaming
 from streaming import LocalDataset, StreamingDataset
 
@@ -294,34 +297,78 @@ class S3MosaicDataset(StreamingDataset):
         return self.transforms(image), label
 
 
+def build_hf_dataloader(data_root, batch_size, from_images, num_workers=None, transform=None):
+    if num_workers is None:
+        num_workers = os.cpu_count()
+
+    transform = get_transform(True)
+
+    def transforms(examples):
+        if from_images:
+            examples["image"] = [transform(image.convert("RGB")) for image in examples["image"]]
+        else:
+            examples["image"] = [transform(Image.frombytes("RGB", (height, width), image))
+                                 for image, height, width in zip(examples["image"], examples["height"], examples["width"])]
+        return examples
+
+    if from_images:
+        dataset = load_dataset("imagefolder", data_dir=data_root, split="train", num_proc=num_workers)
+    else:
+        dataset = load_dataset("parquet", data_dir=data_root, split="train")
+    if transform is not None:
+        dataset = dataset.with_transform(transforms)
+
+    def collate_fn(examples):
+        images = []
+        labels = []
+        for example in examples:
+            images.append((example["image"]))
+            if "label" in example:
+                labels.append(example["label"])
+            else:
+                labels.append(0)
+
+        pixel_values = torch.stack(images)
+        labels = torch.tensor(labels)
+        return {"image": pixel_values, "label": labels}
+
+    return torch.utils.data.DataLoader(dataset,
+                                       collate_fn=collate_fn,
+                                       batch_size=batch_size,
+                                       num_workers=num_workers)
+
+
+
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Run single-node batch iteration benchmarks."
+    )
 
     parser.add_argument(
         "--data-root",
         default=None,
         type=str,
-        help='Directory path with TFRecords. Filenames should start with "train".',
+        help='Directory path with raw images. Directory structure should be "<data_root>/train/<class>/<image file>"',
     )
     parser.add_argument(
         "--parquet-data-root",
         default=None,
         type=str,
-        help="Directory path with Parquet files.",
+        help='Directory path with Parquet files. Directory structure should be "<data_root>/*.parquet"',
     )
     parser.add_argument(
         "--mosaic-data-root",
         default=None,
         type=str,
-        help="Directory path with MDS files.",
+        help='Directory path with MDS files. Directory structure should be "<data_root>/*.mds"',
     )
     parser.add_argument(
         "--tf-data-root",
         default=None,
         type=str,
-        help="Directory path with TFRecords.",
+        help='Directory path with TFRecords files. Directory structure should be "<data_root>/train/<tfrecords files>"',
     )
     parser.add_argument(
         "--batch-size",
@@ -340,6 +387,12 @@ if __name__ == "__main__":
         default=None,
         type=str,
         help="Output CSV path.",
+    )
+    parser.add_argument(
+        "--torch-num-workers",
+        default=None,
+        type=int,
+        help="Number of workers to pass to torch. By default # CPUs will be used, x4 for S3 datasets.",
     )
     args = parser.parse_args()
 
@@ -369,29 +422,65 @@ if __name__ == "__main__":
             )
 
         # torch, load images.
-        torch_dataset = build_torch_dataset(
-            args.data_root,
-            args.batch_size,
-            transform=torchvision.transforms.Compose(
+        torch_resize_transform = torchvision.transforms.Compose(
                 [
                     torchvision.transforms.Resize(
                         (DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE)
                     ),
                     torchvision.transforms.ToTensor(),
                 ]
-            ),
+            )
+        torch_dataset = build_torch_dataset(
+            args.data_root,
+            args.batch_size,
+            num_workers=args.torch_num_workers,
+            transform=torch_resize_transform,
         )
         for i in range(args.num_epochs):
             iterate(torch_dataset, "torch", args.batch_size, metrics, args.output_file)
 
         # torch, with transform.
         torch_dataset = build_torch_dataset(
-            args.data_root, args.batch_size, transform=get_transform(True)
+            args.data_root, args.batch_size,
+            num_workers=args.torch_num_workers,
+            transform=get_transform(True),
         )
         for i in range(args.num_epochs):
             iterate(
                 torch_dataset,
                 "torch+transform",
+                args.batch_size,
+                metrics,
+                args.output_file,
+            )
+
+        # HuggingFace Datasets, load images.
+        hf_dataset = build_hf_dataloader(
+            args.data_root, args.batch_size,
+            from_images=True,
+            num_workers=args.torch_num_workers,
+            transform=torch_resize_transform,
+        )
+        for i in range(args.num_epochs):
+            iterate(
+                hf_dataset,
+                "HF",
+                args.batch_size,
+                metrics,
+                args.output_file,
+            )
+
+        # HuggingFace Datasets, with transform.
+        hf_dataset = build_hf_dataloader(
+            args.data_root, args.batch_size,
+            from_images=True,
+            num_workers=args.torch_num_workers,
+            transform=get_transform(True),
+        )
+        for i in range(args.num_epochs):
+            iterate(
+                hf_dataset,
+                "HF+transform",
                 args.batch_size,
                 metrics,
                 args.output_file,
@@ -480,6 +569,21 @@ if __name__ == "__main__":
             )
 
     if args.parquet_data_root is not None:
+        hf_dataset = build_hf_dataloader(
+            args.parquet_data_root, args.batch_size,
+            from_images=False,
+            num_workers=args.torch_num_workers,
+            transform=get_transform(True),
+        )
+        for i in range(args.num_epochs):
+            iterate(
+                hf_dataset,
+                "HF_parquet+transform",
+                args.batch_size,
+                metrics,
+                args.output_file,
+            )
+
         ray_dataset = ray.data.read_parquet(
             args.parquet_data_root, parallelism=128
         ).map(decode_image_crop_and_flip)
@@ -511,13 +615,20 @@ if __name__ == "__main__":
                 cache_limit="1000mb",
                 transforms=get_transform(True),
             )
+            if args.torch_num_workers is None:
+                mosaic_num_workers = os.cpu_count() * 4
+            else:
+                mosaic_num_workers = args.torch_num_workers
         else:
             mosaic_ds = MosaicDataset(
                 args.mosaic_data_root, transforms=get_transform(True)
             )
-        num_workers = 64
+            if args.torch_num_workers is None:
+                mosaic_num_workers = os.cpu_count()
+            else:
+                mosaic_num_workers = args.torch_num_workers
         mosaic_dl = torch.utils.data.DataLoader(
-            mosaic_ds, batch_size=args.batch_size, num_workers=num_workers
+            mosaic_ds, batch_size=args.batch_size, num_workers=mosaic_num_workers
         )
         for i in range(args.num_epochs):
             iterate(
@@ -527,6 +638,7 @@ if __name__ == "__main__":
         # ray.data.
         if not use_s3:
             mds_source = MdsDatasource()
+            ray_dataset = ray_dataset.map(crop_and_flip_image)
             ray_dataset = ray.data.read_datasource(
                 mds_source, paths=args.mosaic_data_root
             )
