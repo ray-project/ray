@@ -366,7 +366,6 @@ class PPOEnvRunner(EnvRunner):
         self._needs_initial_reset = True
 
         return done_episodes_to_return
-    
 
     # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
     #  API. Instead Algorithm should compile episode metrics itself via its local
@@ -395,7 +394,7 @@ class PPOEnvRunner(EnvRunner):
         self._ts_since_last_metrics = 0
 
         return metrics
-    
+
     # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
     #  API. Replace by proper state overriding via `EnvRunner.set_state()`
     def set_weights(self, weights, global_vars=None):

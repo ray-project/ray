@@ -93,7 +93,7 @@ class TestPPO(unittest.TestCase):
                 # Test with compression.
                 # compress_observations=True,
                 enable_connectors=True,
-            )            
+            )
             .callbacks(MyCallbacks)
             .rl_module(_enable_rl_module_api=True)
         )
