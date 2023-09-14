@@ -275,7 +275,7 @@ if setup_spec.type == SetupType.RAY:
             else "grpcio",
         ],
         "serve": [
-            "uvicorn",
+            "uvicorn[standard]",
             "requests",
             "starlette",
             "fastapi",
