@@ -31,7 +31,6 @@ from ray.tune.search import Searcher, ConcurrencyLimiter
 from ray.tune.search.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.tests.tune_test_util import TrialResultObserver
-from ray.tune.tests.test_callbacks import StatefulCallback
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -96,92 +95,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()
         self.assertEqual(runner.trial_executor.pre_step, 1)
         self.assertEqual(runner.trial_executor.post_step, 1)
-
-    def testCallbackSaveRestore(self):
-        """Check that experiment state save + restore handles stateful callbacks."""
-        ray.init(num_cpus=2)
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            callbacks=[StatefulCallback()],
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        runner.add_trial(Trial("__fake", stub=True))
-        for i in range(3):
-            runner._callbacks.on_trial_result(
-                iteration=i, trials=None, trial=None, result=None
-            )
-        runner.checkpoint(force=True)
-        callback = StatefulCallback()
-        runner2 = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            callbacks=[callback],
-        )
-        assert callback.counter == 0
-        runner2.resume()
-        assert callback.counter == 3
-
-    def testSearcherCorrectReferencesAfterRestore(self):
-        class FakeDataset:
-            def __init__(self, name):
-                self.name = name
-
-        ray.init(num_cpus=8)
-
-        config = {
-            "param1": {
-                "param2": grid_search(
-                    [FakeDataset("1"), FakeDataset("2"), FakeDataset("3")]
-                ),
-            },
-            "param4": sample_from(lambda: 1),
-            "param5": sample_from(lambda spec: spec.config["param1"]["param2"]),
-        }
-        resolvers = create_resolvers_map()
-        config = inject_placeholders(config, resolvers)
-
-        def create_searcher():
-            search_alg = BasicVariantGenerator()
-            experiment_spec = {
-                "run": "__fake",
-                "stop": {"training_iteration": 2},
-                "config": config,
-            }
-            experiments = [Experiment.from_json("test", experiment_spec)]
-            search_alg.add_configurations(experiments)
-            return search_alg
-
-        searcher = create_searcher()
-
-        restored_config = {
-            "param1": {
-                "param2": grid_search(
-                    [FakeDataset("4"), FakeDataset("5"), FakeDataset("6")]
-                ),
-            },
-            "param4": sample_from(lambda: 8),
-            "param5": sample_from(lambda spec: spec["config"]["param1"]["param2"]),
-        }
-        replaced_resolvers = create_resolvers_map()
-        restored_config = inject_placeholders(restored_config, replaced_resolvers)
-
-        runner = TrialRunner(
-            search_alg=searcher,
-            # Use the new ref map to construct the TrailRunner.
-            placeholder_resolvers=replaced_resolvers,
-            local_checkpoint_dir=self.tmpdir,
-            checkpoint_period=-1,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-
-        for _ in range(3):
-            runner.step()
-
-        assert len(runner.get_trials()) == 3, [t.config for t in runner.get_trials()]
-        for t in runner.get_trials():
-            # Make sure that all the trials carry updated config values.
-            assert t.config["param1"]["param2"].name in ["4", "5", "6"]
-            assert t.config["param4"] == 8
-            assert t.config["param5"].name in ["4", "5", "6"]
 
     def testTrialErrorResumeFalse(self):
         ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
