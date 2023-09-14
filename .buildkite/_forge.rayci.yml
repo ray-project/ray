@@ -5,6 +5,9 @@ steps:
 
   - name: manylinux
     wanda: ci/docker/manylinux.wanda.yaml
+
+  - name: raypy38cu118base
+    wanda: ci/docker/ray.py38.cu118.base.wanda.yaml
   
   - name: oss-ci-base_test
     wanda: ci/docker/base.test.wanda.yaml
@@ -20,6 +23,22 @@ steps:
   - name: corebuild
     wanda: ci/docker/core.build.wanda.yaml
     depends_on: oss-ci-base_build
+
+  - name: data6build
+    wanda: ci/docker/data6.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+
+  - name: data12build
+    wanda: ci/docker/data12.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+
+  - name: datanbuild
+    wanda: ci/docker/datan.build.wanda.yaml
+    depends_on: oss-ci-base_ml
+
+  - name: databbuild
+    wanda: ci/docker/datab.build.wanda.yaml
+    depends_on: oss-ci-base_ml
 
   - name: servebuild
     wanda: ci/docker/serve.build.wanda.yaml

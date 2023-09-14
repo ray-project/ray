@@ -26,11 +26,37 @@ _METADATA_FILE_NAME = ".metadata.json"
 _CHECKPOINT_TEMP_DIR_PREFIX = "checkpoint_tmp_"
 
 
+class _CheckpointMetaClass(type):
+    def __getattr__(self, item):
+        try:
+            return super().__getattribute__(item)
+        except AttributeError as exc:
+            if item in {
+                "from_dict",
+                "to_dict",
+                "from_bytes",
+                "to_bytes",
+                "get_internal_representation",
+            }:
+                raise _get_migration_error(item) from exc
+            elif item in {
+                "from_uri",
+                "to_uri",
+                "uri",
+            }:
+                raise _get_uri_error(item) from exc
+            elif item in {"get_preprocessor", "set_preprocessor"}:
+                raise _get_preprocessor_error(item) from exc
+
+            raise exc
+
+
 @PublicAPI(stability="beta")
-class Checkpoint:
+class Checkpoint(metaclass=_CheckpointMetaClass):
     """A reference to data persisted as a directory in local or remote storage.
 
-    Access checkpoint contents locally using ``checkpoint.to_directory()``.
+    Access the checkpoint contents locally using ``checkpoint.to_directory()``
+    or ``checkpoint.as_directory``.
 
     Example creating a checkpoint using ``Checkpoint.from_directory``:
 
@@ -44,6 +70,17 @@ class Checkpoint:
     Example creating a checkpoint from a remote URI:
 
         >>> checkpoint = Checkpoint("s3://bucket/path/to/checkpoint")
+        >>> checkpoint.filesystem  # doctest: +ELLIPSIS
+        <pyarrow._s3fs.S3FileSystem object...
+        >>> checkpoint.path
+        'bucket/path/to/checkpoint'
+
+    Example creating a checkpoint with a custom filesystem:
+
+        >>> checkpoint = Checkpoint(
+        ...     path="bucket/path/to/checkpoint",
+        ...     filesystem=pyarrow.fs.S3FileSystem(),
+        ... )
         >>> checkpoint.filesystem  # doctest: +ELLIPSIS
         <pyarrow._s3fs.S3FileSystem object...
         >>> checkpoint.path
@@ -122,10 +159,7 @@ class Checkpoint:
         """Create checkpoint object from a local directory.
 
         Args:
-            path: Local directory containing checkpoint data. The caller should not
-                modify the contents of this directory after creating the Checkpoint.
-                If passing this checkpoint to `train.report`, Ray will take control
-                of the checkpoint directory.
+            path: Local directory containing checkpoint data.
 
         Returns:
             A ray.train.Checkpoint object.
@@ -133,11 +167,16 @@ class Checkpoint:
         return cls(path, filesystem=pyarrow.fs.LocalFileSystem())
 
     def to_directory(self, path: Optional[Union[str, os.PathLike]] = None) -> str:
-        """Write checkpoint data to directory.
+        """Write checkpoint data to a local directory.
+
+        *If multiple processes on the same node call this method simultaneously,*
+        only a single process will perform the download, while the others
+        wait for the download to finish. Once the download finishes, all processes
+        receive the same local directory to read from.
 
         Args:
-            path: Target directory to restore data in. If not specified,
-                will create a temporary directory.
+            path: Target directory to download data to. If not specified,
+                this method will use a temporary directory.
 
         Returns:
             str: Directory containing checkpoint data.
@@ -172,17 +211,29 @@ class Checkpoint:
 
     @contextlib.contextmanager
     def as_directory(self) -> Iterator[str]:
-        """Return checkpoint directory path in a context.
+        """Returns checkpoint contents in a local directory as a context.
 
         This function makes checkpoint data available as a directory while avoiding
         unnecessary copies and left-over temporary data.
 
-        If the current path is local, it will return the existing path. If it is
-        not, it will create a temporary directory,
-        which will be deleted after the context is exited.
+        *If the checkpoint points to a local directory*, this method just returns the
+        local directory path without making a copy, and nothing will be cleaned up
+        after exiting the context.
+
+        *If the checkpoint points to a remote directory*, this method will download the
+        checkpoint to a local temporary directory and return the path
+        to the temporary directory.
+
+        *If multiple processes on the same node call this method simultaneously,*
+        only a single process will perform the download, while the others
+        wait for the download to finish. Once the download finishes, all processes
+        receive the same local (temporary) directory to read from.
+
+        Once all processes have finished working with the checkpoint,
+        the temporary directory is cleaned up.
 
         Users should treat the returned checkpoint directory as read-only and avoid
-        changing any data within it, as it might get deleted when exiting the context.
+        changing any data within it, as it may be deleted when exiting the context.
 
         Example:
 
@@ -301,3 +352,50 @@ def _list_existing_del_locks(path: str) -> List[str]:
     then this should return a list of 2 deletion lock files.
     """
     return list(glob.glob(f"{_get_del_lock_path(path, suffix='*')}"))
+
+
+def _get_migration_error(name: str):
+    return AttributeError(
+        f"The new `ray.train.Checkpoint` class does not support `{name}()`. "
+        f"Instead, only directories are supported.\n\n"
+        f"Example to store a dictionary in a checkpoint:\n\n"
+        f"import os, tempfile\n"
+        f"import ray.cloudpickle as pickle\n"
+        f"from ray import train\n"
+        f"from ray.train import Checkpoint\n\n"
+        f"with tempfile.TemporaryDirectory() as checkpoint_dir:\n"
+        f"  with open(os.path.join(checkpoint_dir, 'data.pkl'), 'wb') as fp:\n"
+        f"    pickle.dump({{'data': 'value'}}, fp)\n\n"
+        f"  checkpoint = Checkpoint.from_directory(checkpoint_dir)\n"
+        f"  train.report(..., checkpoint=checkpoint)\n\n"
+        f"Example to load a dictionary from a checkpoint:\n\n"
+        f"if train.get_checkpoint():\n"
+        f"  with train.get_checkpoint().as_directory() as checkpoint_dir:\n"
+        f"    with open(os.path.join(checkpoint_dir, 'data.pkl'), 'rb') as fp:\n"
+        f"      data = pickle.load(fp)"
+    )
+
+
+def _get_uri_error(name: str):
+    return AttributeError(
+        f"The new `ray.train.Checkpoint` class does not support `{name}()`. "
+        f"To create a checkpoint from remote storage, create a `Checkpoint` using its "
+        f"constructor instead of `from_directory`.\n"
+        f'Example: `Checkpoint(path="s3://a/b/c")`.\n'
+        f"Then, access the contents of the checkpoint with "
+        f"`checkpoint.as_directory()` / `checkpoint.to_directory()`.\n"
+        f"To upload data to remote storage, use e.g. `pyarrow.fs.FileSystem` "
+        f"or your client of choice."
+    )
+
+
+def _get_preprocessor_error(name: str):
+    return AttributeError(
+        f"The new `ray.train.Checkpoint` class does not support `{name}()`. "
+        f"To include preprocessor information in checkpoints, "
+        f"pass it as metadata in the <Framework>Trainer constructor.\n"
+        f"Example: `TorchTrainer(..., metadata={{...}})`.\n"
+        f"After training, access it in the checkpoint via `checkpoint.get_metadata()`. "
+        f"See here: https://docs.ray.io/en/master/train/user-guides/"
+        f"data-loading-preprocessing.html#preprocessing-structured-data"
+    )

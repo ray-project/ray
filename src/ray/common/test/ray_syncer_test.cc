@@ -650,12 +650,12 @@ bool CompareViews(const std::vector<SyncerServerTest *> &servers,
       if (!google::protobuf::util::MessageDifferencer::Equals(*v[0], *vv[0])) {
         RAY_LOG(ERROR) << i << ": FAIL RESOURCE: " << v[0] << ", " << vv[0];
         std::string dbg_message;
-        google::protobuf::util::MessageToJsonString(*v[0], &dbg_message);
+        RAY_CHECK(google::protobuf::util::MessageToJsonString(*v[0], &dbg_message).ok());
         RAY_LOG(ERROR) << "server[0] >> "
                        << NodeID::FromBinary(servers[0]->syncer->GetLocalNodeID()) << ": "
                        << dbg_message << " - " << NodeID::FromBinary(v[0]->node_id());
         dbg_message.clear();
-        google::protobuf::util::MessageToJsonString(*vv[0], &dbg_message);
+        RAY_CHECK(google::protobuf::util::MessageToJsonString(*vv[0], &dbg_message).ok());
         RAY_LOG(ERROR) << "server[i] << "
                        << NodeID::FromBinary(servers[i]->syncer->GetLocalNodeID()) << ": "
                        << dbg_message << " - " << NodeID::FromBinary(vv[0]->node_id());

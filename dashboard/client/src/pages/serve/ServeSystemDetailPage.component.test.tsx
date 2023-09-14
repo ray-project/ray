@@ -4,7 +4,7 @@ import { getActor } from "../../service/actor";
 import { getServeApplications } from "../../service/serve";
 import {
   ServeApplicationStatus,
-  ServeDeploymentMode,
+  ServeProxyLocation,
   ServeSystemActorStatus,
 } from "../../type/serve";
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
@@ -35,7 +35,7 @@ describe("ServeSystemDetailPage", () => {
       data: {
         http_options: { host: "1.2.3.4", port: 8000 },
         grpc_options: { port: 9000 },
-        http_proxies: {
+        proxies: {
           foo: {
             node_id: "node:12345",
             status: ServeSystemActorStatus.STARTING,
@@ -46,7 +46,7 @@ describe("ServeSystemDetailPage", () => {
           node_id: "node:12345",
           actor_id: "actor:12345",
         },
-        proxy_location: ServeDeploymentMode.EveryNode,
+        proxy_location: ServeProxyLocation.EveryNode,
         applications: {
           home: {
             name: "home",

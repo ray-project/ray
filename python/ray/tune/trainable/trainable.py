@@ -59,7 +59,7 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.train._internal.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.logger import Logger
@@ -94,18 +94,18 @@ class Trainable:
     By default, Tune will also change the current working directory of this process to
     its corresponding trial-level log directory ``self.logdir``.
     This is designed so that different trials that run on the same physical node won't
-    accidently write to the same location and overstep each other.
+    accidentally write to the same location and overstep each other.
 
     The behavior of changing the working directory can be disabled by setting the
-    flag `chdir_to_trial_dir=False` in `tune.TuneConfig`. This allows access to files
+    `RAY_CHDIR_TO_TRIAL_DIR=0` environment variable. This allows access to files
     in the original working directory, but relative paths should be used for read only
     purposes, and you must make sure that the directory is synced on all nodes if
     running on multiple machines.
 
     The `TUNE_ORIG_WORKING_DIR` environment variable was the original workaround for
     accessing paths relative to the original working directory. This environment
-    variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
-    used instead.
+    variable is deprecated, and the `RAY_CHDIR_TO_TRIAL_DIR` environment variable
+    described above should be used instead.
 
     This class supports checkpointing to and restoring from remote storage.
 
@@ -495,6 +495,7 @@ class Trainable:
         )
         return checkpoint_dir
 
+    @DeveloperAPI
     def save(
         self, checkpoint_dir: Optional[str] = None, prevent_upload: bool = False
     ) -> str:
@@ -871,6 +872,7 @@ class Trainable:
 
         return True
 
+    @Deprecated
     def save_to_object(self):
         raise DeprecationWarning(
             "Trainable.save_to_object() has been removed. "
@@ -884,6 +886,7 @@ class Trainable:
                 checkpoint_node_ip=None,
             )
 
+    @DeveloperAPI
     def restore(
         self,
         checkpoint_path: Union[str, Checkpoint],
@@ -1072,12 +1075,14 @@ class Trainable:
         }
         logger.info("Current state after restoring: %s", state)
 
+    @Deprecated
     def restore_from_object(self, obj):
         raise DeprecationWarning(
             "Trainable.restore_from_object() has been removed. "
             "Use Trainable.restore() instead."
         )
 
+    @Deprecated
     def delete_checkpoint(self, checkpoint_path: Union[str, Checkpoint]):
         """Deletes local copy of checkpoint.
 
