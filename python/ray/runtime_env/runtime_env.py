@@ -255,6 +255,7 @@ class RuntimeEnv(dict):
         "container",
         "excludes",
         "env_vars",
+        "julia_command",
         "_ray_release",
         "_ray_commit",
         "_inject_current_ray",
@@ -313,6 +314,8 @@ class RuntimeEnv(dict):
 
         if runtime_env.get("java_jars"):
             runtime_env["java_jars"] = runtime_env.get("java_jars")
+        if runtime_env.get("julia_command"):
+            runtime_env["julia_command"] = runtime_env.get("julia_command")
 
         self.update(runtime_env)
 
@@ -449,6 +452,11 @@ class RuntimeEnv(dict):
 
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})
+
+    def julia_command(self) -> List[str]:
+        if "julia_command" in self:
+            return list(self["julia_command"])
+        return []
 
     def has_conda(self) -> str:
         if self.get("conda"):

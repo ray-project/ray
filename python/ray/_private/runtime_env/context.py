@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import shlex
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional
@@ -25,6 +26,7 @@ class RuntimeEnvContext:
         resources_dir: Optional[str] = None,
         container: Dict[str, Any] = None,
         java_jars: List[str] = None,
+        julia_command: List[str] = None,
     ):
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
@@ -36,6 +38,7 @@ class RuntimeEnvContext:
         self.resources_dir: str = resources_dir
         self.container = container or {}
         self.java_jars = java_jars or []
+        self.julia_command = julia_command or []
 
     def serialize(self) -> str:
         return json.dumps(self.__dict__)
@@ -47,16 +50,16 @@ class RuntimeEnvContext:
         return RuntimeEnvContext(**json.loads(json_string))
 
     def exec_worker(self, passthrough_args: List[str], language: Language):
-        # TODO(Beacon): remove these when we're done      
+        # TODO(Beacon): remove these when we're done
         logger.debug(f"Worker context env: {self.env_vars}")
         update_envs(self.env_vars)
 
         if language == Language.PYTHON and sys.platform == "win32":
-            executable = self.py_executable
+            command = [self.py_executable]
         elif language == Language.PYTHON:
-            executable = f"exec {self.py_executable}"
+            command = ["exec", self.py_executable]
         elif language == Language.JAVA:
-            executable = "java"
+            command = ["java"]
             ray_jars = os.path.join(get_ray_jars_dir(), "*")
 
             local_java_jars = []
@@ -67,23 +70,15 @@ class RuntimeEnvContext:
             class_path_args = ["-cp", ray_jars + ":" + str(":".join(local_java_jars))]
             passthrough_args = class_path_args + passthrough_args
         elif language == Language.JULIA:
-            executable = "julia"
-            args = [
-                "-e", "'using Ray; start_worker()'",
-                "--"
-            ]
-            # TODO(omus): required to avoid escaping the Julia code. Ideally
-            # this information would be passed in via the serialized runtime
-            # context.
-            executable = " ".join([executable] + args)
+            command = self.julia_command or ["julia", "-e", "using Ray; start_worker()"]
+            command += ["--"]
         elif sys.platform == "win32":
-            executable = ""
+            command = [""]
         else:
-            executable = "exec "
+            command = ["exec"]
 
-        passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
-        exec_command = " ".join([f"{executable}"] + passthrough_args)
-        command_str = " ".join(self.command_prefix + [exec_command])
+        command = self.command_prefix + command + passthrough_args
+        command_str = shlex.join(command)
         # TODO(SongGuyang): We add this env to command for macOS because it doesn't
         # work for the C++ process of `os.execvp`. We should find a better way to
         # fix it.
@@ -98,8 +93,7 @@ class RuntimeEnvContext:
             )
         logger.debug(f"Exec'ing worker with command: {command_str}")
         if sys.platform == "win32":
-            cmd = [*self.command_prefix, executable, *passthrough_args]
-            subprocess.Popen(cmd, shell=True).wait()
+            subprocess.Popen(command, shell=True).wait()
         else:
             # PyCharm will monkey patch the os.execvp at
             # .pycharm_helpers/pydev/_pydev_bundle/pydev_monkey.py
