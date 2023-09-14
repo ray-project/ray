@@ -128,7 +128,8 @@ class Metric:
 
         if len(tags_copy) > 0:
             raise ValueError(f"Unrecognized tag keys: {list(tags_copy.keys())}.")
-
+        if self._name == "serve_deployment_replica_healthy":
+            print(f"metrics recorded: {value}")
         self._metric.record(value, tags=final_tags)
 
     @property
@@ -330,7 +331,7 @@ class Gauge(Metric):
         """
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
-        print("[internal] set gauge", self._name, value, tags)
+        # print("[internal] set gauge", self._name, value, tags)
         self.record(value, tags, _internal=True)
 
     def __reduce__(self):

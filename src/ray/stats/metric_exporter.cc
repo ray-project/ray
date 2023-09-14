@@ -165,6 +165,9 @@ void OpenCensusProtoExporter::ExportViewData(
       for (const auto &row : view_data.double_data()) {
         auto point_proto = make_new_data_point_proto(row.first /*tag_values*/);
         point_proto->set_double_value(row.second);
+        if (measure_descriptor.name() == "serve_deployment_replica_healthy") {
+          RAY_LOG(INFO) << "serve_deployment_replica_healthy sending " << row.second;
+        }
       }
       break;
     case opencensus::stats::ViewData::Type::kInt64:

@@ -177,6 +177,7 @@ class Component:
         for metric in metrics:
             descriptor = metric.metric_descriptor
             name = descriptor.name
+            logger.info(f"[DEBUG] receive metrics: {name}: {metric}")
             label_keys = [label_key.key for label_key in descriptor.label_keys]
 
             if name not in self._metrics:
@@ -184,6 +185,7 @@ class Component:
                     name, descriptor.description, descriptor.unit, label_keys
                 )
             self._metrics[name].record(metric)
+            logger.info(f"[DEBUG] recorded metrics: {name}: {metric}")
 
 
 class OpenCensusProxyCollector:
@@ -423,6 +425,7 @@ class MetricsAgent:
         """Directly record and export stats from the same process."""
         global_tags = global_tags or {}
         with self._lock:
+            #logger.info(f"[DEBUG] records received: {records}")
             if not self.view_manager:
                 return
 
@@ -430,7 +433,9 @@ class MetricsAgent:
                 gauge = record.gauge
                 value = record.value
                 tags = record.tags
+                #logger.info(f"[DEBUG] records processing: {record.gauge.name} {record}")
                 self._record_gauge(gauge, value, {**tags, **global_tags})
+                #logger.info(f"[DEBUG] records procssed: {record.gauge.name} {record}")
 
     def _record_gauge(self, gauge: Gauge, value: float, tags: dict):
         view_data = self.view_manager.get_view(gauge.name)
