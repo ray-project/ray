@@ -245,7 +245,7 @@ def _convert_ray_node_options(options):
     return [_convert_ray_node_option(k, v) for k, v in options.items()]
 
 
-_RAY_HEAD_STARTUP_TIMEOUT = 5
+_RAY_HEAD_STARTUP_TIMEOUT = 20
 _BACKGROUND_JOB_STARTUP_WAIT = int(
     os.environ.get("RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT", "30")
 )
