@@ -35,9 +35,7 @@ from ray.actor import ActorHandle
 
 logger = logging.getLogger(__file__)
 
-FLAG_DISABLE_PROXY = (
-    os.environ.get(SERVE_EXPERIMENTAL_DISABLE_PROXY, "0") == "1"
-)
+FLAG_DISABLE_PROXY = os.environ.get(SERVE_EXPERIMENTAL_DISABLE_PROXY, "0") == "1"
 
 
 def get_deployment(name: str, app_name: str = ""):

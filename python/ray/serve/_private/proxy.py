@@ -1422,9 +1422,7 @@ class ProxyActor:
         grpc_options: Optional[gRPCOptions] = None,
     ):  # noqa: F821
         self.grpc_options = grpc_options or gRPCOptions()
-        configure_component_logger(
-            component_name="proxy", component_id=node_ip_address
-        )
+        configure_component_logger(component_name="proxy", component_id=node_ip_address)
         logger.info(
             f"Proxy actor {ray.get_runtime_context().get_actor_id()} "
             f"starting on node {node_id}."

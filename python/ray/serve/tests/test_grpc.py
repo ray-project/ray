@@ -171,10 +171,7 @@ def test_controller_without_http(serve_start_shutdown):
             return input["a"]
 
     serve.run(DefaultgRPCDriver.bind(D1.bind()))
-    assert (
-        ray.get(serve.context._global_client._controller.get_proxies.remote())
-        == {}
-    )
+    assert ray.get(serve.context._global_client._controller.get_proxies.remote()) == {}
 
 
 @patch("ray.serve._private.api.FLAG_DISABLE_HTTP_PROXY", True)

@@ -389,9 +389,7 @@ class ServeController:
             if self.proxy_state_manager and self.done_recovering_event.is_set():
                 try:
                     proxy_update_start_time = time.time()
-                    self.proxy_state_manager.update(
-                        http_proxy_nodes=self._proxy_nodes
-                    )
+                    self.proxy_state_manager.update(http_proxy_nodes=self._proxy_nodes)
                     self.proxy_update_duration_gauge_s.set(
                         time.time() - proxy_update_start_time
                     )
