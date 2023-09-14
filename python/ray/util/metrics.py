@@ -330,7 +330,7 @@ class Gauge(Metric):
         """
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
-
+        print("[internal] set gauge", self._name, value, tags)
         self.record(value, tags, _internal=True)
 
     def __reduce__(self):

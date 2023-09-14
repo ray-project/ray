@@ -1205,7 +1205,7 @@ class DeploymentState:
 
         self._last_notified_running_replica_infos: List[RunningReplicaInfo] = []
 
-        self._is_set = False
+        self._counter = 1
 
     def should_autoscale(self) -> bool:
         """
@@ -1897,15 +1897,22 @@ class DeploymentState:
         self._replicas.add(ReplicaState.STOPPING, replica)
         self._deployment_scheduler.on_replica_stopping(self._id, replica.replica_tag)
         time.sleep(10)
-        print("[DEBUG]Stopping replica", self.deployment_name, replica.replica_tag, self.app_name)
-        self.health_check_gauge.set(
-            0,
-            tags={
-                "deployment": self.deployment_name,
-                "replica": replica.replica_tag,
-                "application": self.app_name,
-            },
+        print(
+            "[DEBUG]Stopping replica",
+            self.deployment_name,
+            replica.replica_tag,
+            self.app_name,
+            id(self.health_check_gauge)
         )
+        for _ in range(10):
+            self.health_check_gauge.set(
+                0.0,
+                tags={
+                    "deployment": self.deployment_name,
+                    "replica": replica.replica_tag,
+                    "application": self.app_name,
+                },
+            )
         print("[debug]finish set")
 
     def _check_and_update_replicas(self):
@@ -1914,20 +1921,21 @@ class DeploymentState:
         with state container from previous update() cycle to see if any state
         transition happened.
         """
-        
+
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
             if replica.check_health():
                 self._replicas.add(ReplicaState.RUNNING, replica)
-                
-                print("[debug] set health to 1")
+
+                print("[debug] set health to 1", id(self.health_check_gauge))
                 self.health_check_gauge.set(
-                    1,
+                    self._counter,
                     tags={
                         "deployment": self.deployment_name,
                         "replica": replica.replica_tag,
                         "application": self.app_name,
                     },
                 )
+                self._counter += 1
 
             else:
                 app_msg = f" in application '{self.app_name}'" if self.app_name else ""
@@ -1970,7 +1978,6 @@ class DeploymentState:
             len(slow_start_replicas)
             and time.time() - self._prev_startup_warning > SLOW_STARTUP_WARNING_PERIOD_S
         ):
-
             pending_allocation = []
             pending_initialization = []
 
@@ -2282,7 +2289,6 @@ class DeploymentStateManager:
         all_current_placement_group_names: List[str],
         cluster_node_info_cache: ClusterNodeInfoCache,
     ):
-
         self._controller_name = controller_name
         self._detached = detached
         self._kv_store = kv_store
