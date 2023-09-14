@@ -132,67 +132,71 @@ class RayOnSparkNodeProvider(NodeProvider):
     ):
         from ray.util.spark.cluster_init import _append_resources_config
 
-        for _ in range(count):
-            with self.lock:
-                resources = resources.copy()
-                node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                node_id = self.get_next_node_id()
-                resources["NODE_ID_AS_RESOURCE"] = node_id
+        # Note: even if count > 1 , we should only create 1 node in this call
+        #  otherwise some issue happens in my test.
+        with self.lock:
+            resources = resources.copy()
+            node_type = tags[TAG_RAY_USER_NODE_TYPE]
+            # NOTE:
+            #  "NODE_ID_AS_RESOURCE" value must be an integer,
+            #  but `node_id` used by autoscaler must be a string.
+            node_id = str(self.get_next_node_id())
+            resources["NODE_ID_AS_RESOURCE"] = int(node_id)
 
-                conf = self.provider_config
+            conf = self.provider_config
 
-                num_cpus_per_node = resources.pop('CPU')
-                num_gpus_per_node = resources.pop('GPU')
-                heap_memory_per_node = resources.pop('memory')
-                object_store_memory_per_node = resources.pop('object_store_memory')
+            num_cpus_per_node = resources.pop('CPU')
+            num_gpus_per_node = resources.pop('GPU')
+            heap_memory_per_node = resources.pop('memory')
+            object_store_memory_per_node = resources.pop('object_store_memory')
 
-                conf["worker_node_options"] = _append_resources_config(conf["worker_node_options"], resources)
-                response = requests.post(
-                    url=self.server_url + "/create_node",
-                    json={
-                        "spark_job_group_id": self._gen_spark_job_group_id(node_id),
-                        "spark_job_group_desc":
-                            "This job group is for spark job which runs the Ray "
-                            f"cluster worker node {node_id} connecting to ray "
-                            f"head node {self.ray_head_ip}:{self.ray_head_port}",
-                        "using_stage_scheduling": conf["using_stage_scheduling"],
-                        "ray_head_ip": self.ray_head_ip,
-                        "ray_head_port": self.ray_head_port,
-                        "ray_temp_dir": conf["ray_temp_dir"],
-                        "num_cpus_per_node": num_cpus_per_node,
-                        "num_gpus_per_node": num_gpus_per_node,
-                        "heap_memory_per_node": heap_memory_per_node,
-                        "object_store_memory_per_node": object_store_memory_per_node,
-                        "worker_node_options": conf["worker_node_options"],
-                        "collect_log_to_path": conf["collect_log_to_path"],
-                    }
-                )
-                if response.status_code != 200:
-                    raise RuntimeError("Starting ray worker node failed.")
-
-                self._nodes[node_id] = {
-                    "tags": {
-                        TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                        TAG_RAY_USER_NODE_TYPE: node_type,
-                        TAG_RAY_NODE_NAME: node_id,
-                        TAG_RAY_NODE_STATUS: STATUS_SETTING_UP,
-                    },
+            conf["worker_node_options"] = _append_resources_config(conf["worker_node_options"], resources)
+            response = requests.post(
+                url=self.server_url + "/create_node",
+                json={
+                    "spark_job_group_id": self._gen_spark_job_group_id(node_id),
+                    "spark_job_group_desc":
+                        "This job group is for spark job which runs the Ray "
+                        f"cluster worker node {node_id} connecting to ray "
+                        f"head node {self.ray_head_ip}:{self.ray_head_port}",
+                    "using_stage_scheduling": conf["using_stage_scheduling"],
+                    "ray_head_ip": self.ray_head_ip,
+                    "ray_head_port": self.ray_head_port,
+                    "ray_temp_dir": conf["ray_temp_dir"],
+                    "num_cpus_per_node": num_cpus_per_node,
+                    "num_gpus_per_node": num_gpus_per_node,
+                    "heap_memory_per_node": heap_memory_per_node,
+                    "object_store_memory_per_node": object_store_memory_per_node,
+                    "worker_node_options": conf["worker_node_options"],
+                    "collect_log_to_path": conf["collect_log_to_path"],
                 }
+            )
+            if response.status_code != 200:
+                raise RuntimeError("Starting ray worker node failed.")
 
-                def update_node_status(_node_id):
-                    while True:
-                        time.sleep(5)
-                        status = self._query_node_status(_node_id)
-                        if status == "running":
-                            with self.lock:
-                                self._nodes[_node_id]["tags"][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
-                                logger.info(f"node {_node_id} starts running.")
-                        elif status == "terminated":
-                            with self.lock:
-                                self._nodes.pop(_node_id)
-                            break
+            self._nodes[node_id] = {
+                "tags": {
+                    TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+                    TAG_RAY_USER_NODE_TYPE: node_type,
+                    TAG_RAY_NODE_NAME: node_id,
+                    TAG_RAY_NODE_STATUS: STATUS_SETTING_UP,
+                },
+            }
 
-                threading.Thread(target=update_node_status, args=(node_id,)).start()
+            def update_node_status(_node_id):
+                while True:
+                    time.sleep(5)
+                    status = self._query_node_status(_node_id)
+                    if status == "running":
+                        with self.lock:
+                            self._nodes[_node_id]["tags"][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
+                            logger.info(f"node {_node_id} starts running.")
+                    elif status == "terminated":
+                        with self.lock:
+                            self._nodes.pop(_node_id)
+                        break
+
+            threading.Thread(target=update_node_status, args=(node_id,)).start()
 
     def terminate_node(self, node_id):
         with self.lock:

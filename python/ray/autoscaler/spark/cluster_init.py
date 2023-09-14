@@ -54,8 +54,6 @@ class AutoscalingCluster:
             "max_workers": 0,
         }
         custom_config["provider"].update(extra_provider_config)
-        custom_config["idle_timeout_minutes"] = 1.0
-        custom_config["upscaling_speed"] = 1.0
 
         return custom_config
 
@@ -115,7 +113,7 @@ class AutoscalingCluster:
         }
 
         self.ray_head_node_cmd = ray_head_node_cmd
-        
+
         return exec_cmd(
             ray_head_node_cmd,
             synchronous=False,

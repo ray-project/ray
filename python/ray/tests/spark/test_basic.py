@@ -176,7 +176,9 @@ class RayOnSparkCPUClusterTestBase(ABC):
             assert not is_port_in_use(hostname, int(port))
 
     def test_autoscaling(self):
-
+        # TOOD:
+        #  1. test ray task running longer than heartbeat timeout
+        #  2. test ray node with a long starting time
         num_worker_nodes = self.max_spark_tasks
         num_cpus_worker_node = self.num_cpus_per_spark_task
 
