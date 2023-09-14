@@ -155,8 +155,15 @@ class RayClusterOnSpark:
                     len([node for node in ray.nodes() if node["Alive"]]) - 1
                 )  # Minus 1 means excluding the head node.
 
-                if cur_alive_worker_count >= self.num_worker_nodes:
+                if cur_alive_worker_count == self.num_worker_nodes:
                     return
+
+                if cur_alive_worker_count > self.num_worker_nodes:
+                    raise RuntimeError(
+                        "Unexpected error happened, current alive worker count "
+                        f"{cur_alive_worker_count} is greater than requested "
+                        f"worker count {self.num_worker_nodes}."
+                    )
 
                 if cur_alive_worker_count > last_alive_worker_count:
                     last_alive_worker_count = cur_alive_worker_count
