@@ -175,6 +175,46 @@ class RayOnSparkCPUClusterTestBase(ABC):
             hostname, port = cluster.address.split(":")
             assert not is_port_in_use(hostname, int(port))
 
+    def test_autoscaling(self):
+
+        num_worker_nodes = self.max_spark_tasks
+        num_cpus_worker_node = self.num_cpus_per_spark_task
+
+        with _setup_ray_cluster(
+            num_worker_nodes=num_worker_nodes,
+            num_cpus_worker_node=num_cpus_worker_node,
+            head_node_options={"include_dashboard": False},
+            autoscale=True,
+        ):
+            ray.init()
+            worker_res_list = self.get_ray_worker_resources_list()
+            assert len(worker_res_list) == 0
+
+            @ray.remote(num_cpus=num_cpus_worker_node)
+            def f(x):
+                import time
+                time.sleep(5)
+                return x * x
+
+            # Test scale up
+            futures = [f.remote(i) for i in range(8)]
+            results = ray.get(futures)
+            assert results == [i * i for i in range(8)]
+
+            worker_res_list = self.get_ray_worker_resources_list()
+            assert len(worker_res_list) == num_worker_nodes and all(
+                worker_res_list[i]["CPU"] == num_cpus_worker_node
+                for i in range(num_worker_nodes)
+            )
+
+            # Test scale down
+            for _ in range(200):
+                time.sleep(1)
+                if len(self.get_ray_worker_resources_list()) == 0:
+                    break
+            else:
+                assert False, "Ray cluster scales down failed."
+
 
 class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):
     @classmethod

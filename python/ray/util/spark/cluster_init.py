@@ -816,6 +816,8 @@ def setup_ray_cluster(
             To create a spark application that is intended to exclusively run a
             shared ray cluster, it is recommended to set this argument to
             `ray.util.spark.MAX_NUM_WORKER_NODES`.
+            If autoscale=True, then the ray cluster starts with zero worker node,
+            and it can scale up to at most `num_worker_nodes` worker nodes.
         num_cpus_worker_node: Number of cpus available to per-ray worker node, if not
             provided, use spark application configuration 'spark.task.cpus' instead.
             **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x

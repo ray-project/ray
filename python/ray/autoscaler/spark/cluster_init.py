@@ -54,6 +54,9 @@ class AutoscalingCluster:
             "max_workers": 0,
         }
         custom_config["provider"].update(extra_provider_config)
+        custom_config["idle_timeout_minutes"] = 1.0
+        custom_config["upscaling_speed"] = 1.0
+
         return custom_config
 
     def start(

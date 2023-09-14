@@ -139,36 +139,6 @@ class RayOnSparkNodeProvider(NodeProvider):
                 node_id = self.get_next_node_id()
                 resources["NODE_ID_AS_RESOURCE"] = node_id
 
-                """
-                ray_worker_node_cmd = [
-                    sys.executable,
-                    "-m",
-                    "ray.util.spark.start_ray_node",
-                    f"--temp-dir=/tmp/test_worker1",
-                    f"--num-cpus={resources.pop('CPU', 0)}",
-                    f"--num-gpus={resources.pop('GPU', 0)}",
-                    "--block",
-                    "--address=192.168.10.116:3344",
-                    f"--memory={512 * 1024 * 1024}",
-                    f"--object-store-memory={resources.pop('object_store_memory', 512 * 1024 * 1024)}",
-                    f"--min-worker-port={11000}",
-                    f"--max-worker-port={20000}",
-                    f"--resources={json.dumps(resources)}",
-                    # f"--dashboard-agent-listen-port={ray_worker_node_dashboard_agent_port}",
-                    # *_convert_ray_node_options(worker_node_options),
-                ]
-                
-                from ray.util.spark.cluster_init import setup_sigterm_on_parent_death, exec_cmd, RAY_ON_SPARK_COLLECT_LOG_TO_PATH
-                ray_node_proc, tail_output_deque = exec_cmd(
-                    ray_worker_node_cmd,
-                    synchronous=False,
-                    preexec_fn=setup_sigterm_on_parent_death,
-                    extra_env={
-                        RAY_ON_SPARK_COLLECT_LOG_TO_PATH: "",
-                        "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
-                    },
-                )
-                """
                 conf = self.provider_config
 
                 num_cpus_per_node = resources.pop('CPU')
@@ -209,20 +179,20 @@ class RayOnSparkNodeProvider(NodeProvider):
                     },
                 }
 
-                def update_node_status():
+                def update_node_status(_node_id):
                     while True:
                         time.sleep(5)
-                        status = self._query_node_status(node_id)
+                        status = self._query_node_status(_node_id)
                         if status == "running":
                             with self.lock:
-                                self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
-                                logger.info(f"node {node_id} starts running.")
+                                self._nodes[_node_id]["tags"][TAG_RAY_NODE_STATUS] = STATUS_UP_TO_DATE
+                                logger.info(f"node {_node_id} starts running.")
                         elif status == "terminated":
                             with self.lock:
-                                self._nodes.pop(node_id)
+                                self._nodes.pop(_node_id)
                             break
 
-                threading.Thread(target=update_node_status).start()
+                threading.Thread(target=update_node_status, args=(node_id,)).start()
 
     def terminate_node(self, node_id):
         with self.lock:
@@ -239,7 +209,6 @@ class RayOnSparkNodeProvider(NodeProvider):
                 self._nodes.pop(node_id)
             except Exception as e:
                 raise e
-
 
     @staticmethod
     def bootstrap_config(cluster_config):
