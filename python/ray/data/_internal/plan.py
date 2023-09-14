@@ -16,6 +16,7 @@ from typing import (
 )
 
 import ray
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -634,6 +635,17 @@ class ExecutionPlan:
                     logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                         stats_summary_string,
                     )
+
+            # Retrieve memory-related stats from ray.
+            reply = get_memory_info_reply(
+                get_state_from_address(ray.get_runtime_context().gcs_address)
+            )
+            if reply.store_stats.spill_time_total_s > 0:
+                stats.global_bytes_spilled = int(reply.store_stats.spilled_bytes_total)
+            if reply.store_stats.restore_time_total_s > 0:
+                stats.global_bytes_restored = int(
+                    reply.store_stats.restored_bytes_total
+                )
 
             # Set the snapshot to the output of the final stage.
             self._snapshot_blocks = blocks

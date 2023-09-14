@@ -8,7 +8,17 @@ import pickle
 import socket
 import time
 import grpc
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 import uuid
 
 import uvicorn
@@ -112,6 +122,9 @@ RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
     or float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
     or None
 )
+# Controls whether Ray Serve is operating in debug-mode switching off some
+# of the performance optimizations to make troubleshooting easier
+RAY_SERVE_DEBUG_MODE = bool(os.environ.get("RAY_SERVE_DEBUG_MODE", 0))
 
 if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
@@ -1591,13 +1604,14 @@ class HTTPProxyActor:
                 "Please make sure your http-host and http-port are specified correctly."
             )
 
-        # Note(simon): we have to use lower level uvicorn Config and Server
+        # NOTE: We have to use lower level uvicorn Config and Server
         # class because we want to run the server as a coroutine. The only
         # alternative is to call uvicorn.run which is blocking.
         config = uvicorn.Config(
             self.wrapped_http_proxy,
             host=self.host,
             port=self.port,
+            loop=_determine_target_loop(),
             root_path=self.root_path,
             lifespan="off",
             access_log=False,
@@ -1715,3 +1729,19 @@ class HTTPProxyActor:
         """
         if self._uvicorn_server:
             return self._uvicorn_server.config.timeout_keep_alive
+
+
+def _determine_target_loop():
+    """We determine target loop based on whether RAY_SERVE_DEBUG_MODE is enabled:
+
+    - RAY_SERVE_DEBUG_MODE=0 (default): we use "uvloop" (Cython) providing
+                              high-performance, native implementation of the event-loop
+
+    - RAY_SERVE_DEBUG_MODE=1: we fall back to "asyncio" (pure Python) event-loop
+                              implementation that is considerably slower than "uvloop",
+                              but provides for easy access to the source implementation
+    """
+    if RAY_SERVE_DEBUG_MODE:
+        return "asyncio"
+    else:
+        return "uvloop"
