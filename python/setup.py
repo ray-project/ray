@@ -168,6 +168,9 @@ ray_files = [
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
 ]
 
+if sys.platform == "linux":
+    ray_files.append("ray/core/libjemalloc.so")
+
 if BUILD_JAVA or os.path.exists(os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")
 
@@ -271,7 +274,14 @@ if setup_spec.type == SetupType.RAY:
             if sys.platform == "darwin"
             else "grpcio",
         ],
-        "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
+        "serve": [
+            "uvicorn[standard]",
+            "requests",
+            "starlette",
+            "fastapi",
+            "aiorwlock",
+            "watchfiles",
+        ],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
         "observability": [
             "opentelemetry-api",
@@ -283,6 +293,17 @@ if setup_spec.type == SetupType.RAY:
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
         set(setup_spec.extras["serve"] + setup_spec.extras["default"])
+    )
+
+    # Ensure gRPC library exists for Ray Serve gRPC support.
+    setup_spec.extras["serve-grpc"] = list(
+        set(
+            setup_spec.extras["serve"]
+            + [
+                "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+                "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+            ]
+        )
     )
 
     if RAY_EXTRA_CPP:

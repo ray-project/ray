@@ -278,8 +278,9 @@ class CoreWorkerDirectActorTaskSubmitter
     /// notification, in this case we'll wait for a fixed timeout value and then mark it
     /// as failed.
     /// pair key: timestamp in ms when this task should be considered as timeout.
-    /// pair value: task specification
-    std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
+    /// pair value: task specification, and associated task execution status.
+    std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>
+        wait_for_death_info_tasks;
 
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
@@ -323,33 +324,33 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \return Void.
   void PushActorTask(ClientQueue &queue,
                      const TaskSpecification &task_spec,
-                     bool skip_queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                     bool skip_queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void HandlePushTaskReply(const Status &status,
                            const rpc::PushTaskReply &reply,
                            const rpc::Address &addr,
-                           const TaskSpecification &task_spec) LOCKS_EXCLUDED(mu_);
+                           const TaskSpecification &task_spec) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Send all pending tasks for an actor.
   ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.
-  void SendPendingTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void SendPendingTasks(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Resend all previously-received, out-of-order, received tasks for an actor.
   /// When sending these tasks, the tasks will have the flag skip_execution=true.
   ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.
-  void ResendOutOfOrderTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void ResendOutOfOrderTasks(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Disconnect the RPC client for an actor.
-  void DisconnectRpcClient(ClientQueue &queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void DisconnectRpcClient(ClientQueue &queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Fail all in-flight tasks.
   void FailInflightTasks(
       const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
-          &inflight_task_callbacks) LOCKS_EXCLUDED(mu_);
+          &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Pool for producing new core worker clients.
   rpc::CoreWorkerClientPool &core_worker_client_pool_;
@@ -357,7 +358,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Mutex to protect the various maps below.
   mutable absl::Mutex mu_;
 
-  absl::flat_hash_map<ActorID, ClientQueue> client_queues_ GUARDED_BY(mu_);
+  absl::flat_hash_map<ActorID, ClientQueue> client_queues_ ABSL_GUARDED_BY(mu_);
 
   /// Resolve direct call object dependencies.
   LocalDependencyResolver resolver_;

@@ -232,7 +232,7 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
         from ray import train, tune
 
-        def train(config, data=None):
+        def train_fn(config, data=None):
             for sample in data:
                 loss = update_model(sample)
                 train.report(loss=loss)
@@ -240,7 +240,7 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
         data = HugeDataset(download=True)
 
         tuner = Tuner(
-            tune.with_parameters(train, data=data),
+            tune.with_parameters(train_fn, data=data),
             # ...
         )
         tuner.fit()
@@ -307,30 +307,20 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
         trainable_with_params = _Inner
     else:
         # Function trainable
-        use_checkpoint = _detect_checkpoint_function(trainable, partial=True)
+        if _detect_checkpoint_function(trainable, partial=True):
+            from ray.tune.trainable.function_trainable import (
+                _CHECKPOINT_DIR_ARG_DEPRECATION_MSG,
+            )
 
-        def inner(config, checkpoint_dir=None):
+            raise DeprecationWarning(_CHECKPOINT_DIR_ARG_DEPRECATION_MSG)
+
+        def inner(config):
             fn_kwargs = {}
-            if use_checkpoint:
-                default = checkpoint_dir
-                sig = inspect.signature(trainable)
-                if "checkpoint_dir" in sig.parameters:
-                    default = sig.parameters["checkpoint_dir"].default or default
-                fn_kwargs["checkpoint_dir"] = default
-
             for k in keys:
                 fn_kwargs[k] = parameter_registry.get(prefix + k)
             return trainable(config, **fn_kwargs)
 
         trainable_with_params = inner
-
-        # Use correct function signature if no `checkpoint_dir` parameter is set
-        if not use_checkpoint:
-
-            def _inner(config):
-                return inner(config, checkpoint_dir=None)
-
-            trainable_with_params = _inner
 
         if hasattr(trainable, "__mixins__"):
             trainable_with_params.__mixins__ = trainable.__mixins__
@@ -368,7 +358,7 @@ def with_resources(
 
     Args:
         trainable: Trainable to wrap.
-        resources: Resource dict, placement group factory, AIR ``ScalingConfig``
+        resources: Resource dict, placement group factory, ``ScalingConfig``
             or callable that takes in a config dict and returns a placement
             group factory.
 
@@ -379,11 +369,11 @@ def with_resources(
         from ray import tune
         from ray.tune.tuner import Tuner
 
-        def train(config):
+        def train_fn(config):
             return len(ray.get_gpu_ids())  # Returns 2
 
         tuner = Tuner(
-            tune.with_resources(train, resources={"gpu": 2}),
+            tune.with_resources(train_fn, resources={"gpu": 2}),
             # ...
         )
         results = tuner.fit()
@@ -416,16 +406,15 @@ def with_resources(
     if not inspect.isclass(trainable):
         if isinstance(trainable, types.MethodType):
             # Methods cannot set arbitrary attributes, so we have to wrap them
-            use_checkpoint = _detect_checkpoint_function(trainable, partial=True)
-            if use_checkpoint:
+            if _detect_checkpoint_function(trainable, partial=True):
+                from ray.tune.trainable.function_trainable import (
+                    _CHECKPOINT_DIR_ARG_DEPRECATION_MSG,
+                )
 
-                def _trainable(config, checkpoint_dir):
-                    return trainable(config, checkpoint_dir=checkpoint_dir)
+                raise DeprecationWarning(_CHECKPOINT_DIR_ARG_DEPRECATION_MSG)
 
-            else:
-
-                def _trainable(config):
-                    return trainable(config)
+            def _trainable(config):
+                return trainable(config)
 
             _trainable._resources = pgf
             return _trainable

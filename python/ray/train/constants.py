@@ -1,10 +1,5 @@
+import os
 from pathlib import Path
-
-try:
-    TUNE_INSTALLED = True
-    from ray import tune  # noqa: F401
-except ImportError:
-    TUNE_INSTALLED = False
 
 from ray.air.constants import (  # noqa: F401
     EVALUATION_DATASET_KEY,
@@ -16,6 +11,21 @@ from ray.air.constants import (  # noqa: F401
     DISABLE_LAZY_CHECKPOINTING_ENV,
     LAZY_CHECKPOINT_MARKER_FILE,
 )
+
+
+def _get_defaults_results_dir() -> str:
+    return (
+        # This can be overwritten by our libraries
+        os.environ.get("RAY_AIR_LOCAL_CACHE_DIR")
+        # This is a directory provided by Bazel automatically
+        or os.environ.get("TEST_TMPDIR")
+        # This is the old way to specify the results dir
+        # Deprecate: Remove in 2.6
+        or os.environ.get("TUNE_RESULT_DIR")
+        # Default
+        or Path("~/ray_results").expanduser().as_posix()
+    )
+
 
 # Autofilled ray.train.report() metrics. Keys should be consistent with Tune.
 CHECKPOINT_DIR_NAME = "checkpoint_dir_name"
@@ -42,6 +52,8 @@ TRAIN_CHECKPOINT_SUBDIR = "checkpoints"
 # is restarted, the checkpoint_id can continue to increment.
 TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 
+# Deprecated configs can use this value to detect if the user has set it.
+_DEPRECATED_VALUE = "DEPRECATED"
 
 # ==================================================
 #               Environment Variables
@@ -65,6 +77,10 @@ TRAIN_ENABLE_WORKER_SPREAD_ENV = "TRAIN_ENABLE_WORKER_SPREAD"
 
 RAY_AIR_NEW_PERSISTENCE_MODE = "RAY_AIR_NEW_PERSISTENCE_MODE"
 
+# Set this to 0 to disable changing the working directory of each Tune Trainable
+# or Train worker to the trial directory. Defaults to 1.
+RAY_CHDIR_TO_TRIAL_DIR = "RAY_CHDIR_TO_TRIAL_DIR"
+
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
@@ -72,6 +88,7 @@ TRAIN_ENV_VARS = {
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     RAY_AIR_NEW_PERSISTENCE_MODE,
+    RAY_CHDIR_TO_TRIAL_DIR,
 }
 
 # Blacklist virtualized networking.

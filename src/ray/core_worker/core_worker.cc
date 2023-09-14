@@ -1017,6 +1017,10 @@ CoreWorker::GetAllReferenceCounts() const {
   return counts;
 }
 
+std::vector<TaskID> CoreWorker::GetPendingChildrenTasks(const TaskID &task_id) const {
+  return task_manager_->GetPendingChildrenTasks(task_id);
+}
+
 const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
 
 bool CoreWorker::HasOwner(const ObjectID &object_id) const {
@@ -1873,7 +1877,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
     const std::string &debugger_breakpoint,
-    const std::string &serialized_retry_exception_allowlist) {
+    const std::string &serialized_retry_exception_allowlist,
+    const TaskID current_task_id) {
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -1895,7 +1900,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       worker_context_.GetCurrentJobID(),
                       task_id,
                       task_name,
-                      worker_context_.GetCurrentTaskID(),
+                      current_task_id != TaskID::Nil()
+                          ? current_task_id
+                          : worker_context_.GetCurrentTaskID(),
                       next_task_index,
                       GetCallerId(),
                       rpc_address_,
@@ -2170,7 +2177,8 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
                                    const RayFunction &function,
                                    const std::vector<std::unique_ptr<TaskArg>> &args,
                                    const TaskOptions &task_options,
-                                   std::vector<rpc::ObjectReference> &task_returns) {
+                                   std::vector<rpc::ObjectReference> &task_returns,
+                                   const TaskID current_task_id) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
   task_returns.clear();
   if (!direct_actor_submitter_->CheckActorExists(actor_id)) {
@@ -2214,7 +2222,9 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
                       actor_handle->CreationJobID(),
                       actor_task_id,
                       task_name,
-                      worker_context_.GetCurrentTaskID(),
+                      current_task_id != TaskID::Nil()
+                          ? current_task_id
+                          : worker_context_.GetCurrentTaskID(),
                       next_task_index,
                       GetCallerId(),
                       rpc_address_,
@@ -2286,7 +2296,7 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
 
   if (task_spec->IsActorTask()) {
     if (force_kill) {
-      return Status::Invalid("force=True is not supported for actor tasks.");
+      return Status::InvalidArgument("force=True is not supported for actor tasks.");
     }
 
     return direct_actor_submitter_->CancelTask(task_spec.value(), recursive);
@@ -2307,11 +2317,8 @@ Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
                          Status::UnknownError(
                              "Recursive task cancellation failed--check warning logs.")));
     } else if (child_spec->IsActorTask()) {
-      recursive_success = false;
-      recursive_cancellation_status.push_back(std::make_pair(
-          child_id,
-          Status::Invalid(
-              "Actor task cancellation is not supported. The task won't be cancelled.")));
+      auto result = direct_actor_submitter_->CancelTask(child_spec.value(), true);
+      recursive_cancellation_status.push_back(std::make_pair(child_id, result));
     } else {
       auto result =
           direct_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
@@ -2477,6 +2484,11 @@ CoreWorker::ListNamedActorsLocalMode() {
     actors.push_back(std::make_pair(/*namespace=*/"", it->first));
   }
   return std::make_pair(actors, Status::OK());
+}
+
+const std::string CoreWorker::GetActorName() const {
+  absl::MutexLock lock(&mutex_);
+  return actor_manager_->GetActorHandle(actor_id_)->GetName();
 }
 
 const ResourceMappingType CoreWorker::GetResourceIDs() const {
@@ -3699,6 +3711,13 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
     // cancel to task_execution_service_ for threaded actors.
     cancel();
   }
+
+  if (recursive) {
+    auto recursive_cancel = CancelChildren(task_id, force_kill);
+    if (!recursive_cancel.ok()) {
+      RAY_LOG(ERROR) << recursive_cancel.ToString();
+    }
+  };
 }
 
 void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
@@ -3979,7 +3998,7 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
 
 void CoreWorker::GetAsync(const ObjectID &object_id,
                           SetResultCallback success_callback,
-                          void *python_future) {
+                          void *python_user_callback) {
   auto fallback_callback = std::bind(&CoreWorker::PlasmaCallback,
                                      this,
                                      success_callback,
@@ -3987,15 +4006,32 @@ void CoreWorker::GetAsync(const ObjectID &object_id,
                                      std::placeholders::_2,
                                      std::placeholders::_3);
 
-  memory_store_->GetAsync(object_id,
-                          [python_future, success_callback, fallback_callback, object_id](
-                              std::shared_ptr<RayObject> ray_object) {
-                            if (ray_object->IsInPlasmaError()) {
-                              fallback_callback(ray_object, object_id, python_future);
-                            } else {
-                              success_callback(ray_object, object_id, python_future);
-                            }
-                          });
+  memory_store_->GetAsync(
+      object_id,
+      [this,
+       object_id,
+       python_user_callback,
+       success_callback = std::move(success_callback),
+       fallback_callback =
+           std::move(fallback_callback)](std::shared_ptr<RayObject> ray_object) {
+        // Post the callback to the io_service_ to avoid deadlocks.
+        // The user callback can make arbitrary Ray API calls and will be called
+        // immediately when the object is `Put` into the in-memory store. This can
+        // cause deadlocks if the callers of `Put` is holding a lock.
+        io_service_.post(
+            [object_id,
+             python_user_callback,
+             success_callback = std::move(success_callback),
+             fallback_callback = std::move(fallback_callback),
+             ray_object = std::move(ray_object)]() {
+              if (ray_object->IsInPlasmaError()) {
+                fallback_callback(ray_object, object_id, python_user_callback);
+              } else {
+                success_callback(ray_object, object_id, python_user_callback);
+              }
+            },
+            "CoreWorker.GetAsync.Callback");
+      });
 }
 
 void CoreWorker::PlasmaCallback(SetResultCallback success,

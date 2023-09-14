@@ -12,11 +12,12 @@ from ray.serve._private.constants import (
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
 )
 from ray.serve.context import (
-    get_global_client,
-    get_internal_replica_context,
+    _get_global_client,
+    _get_internal_replica_context,
 )
-from ray.serve._private.common import MultiplexedReplicaInfo
-from ray.serve._private.utils import MetricsPusher, record_serve_tag
+from ray.serve._private.common import DeploymentID, MultiplexedReplicaInfo
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve._private.utils import MetricsPusher
 from ray.serve import metrics
 
 
@@ -53,7 +54,7 @@ class _ModelMultiplexWrapper:
                 per replica.
         """
 
-        record_serve_tag("SERVE_MULTIPLEXED_API_USED", "1")
+        ServeUsageTag.MULTIPLEXED_API_USED.record("1")
 
         self.models = OrderedDict()
         self._func: Callable = model_load_func
@@ -93,12 +94,13 @@ class _ModelMultiplexWrapper:
             description="The counter for loaded models on the current replica.",
         )
 
-        context = get_internal_replica_context()
+        context = _get_internal_replica_context()
         if context is None:
             raise RuntimeError(
                 "Fail to retrieve serve replica context, the model multiplexer ",
                 "can only be used within `Deployment`.",
             )
+        self._app_name: str = context.app_name
         self._deployment_name: str = context.deployment
         self._replica_tag: str = context.replica_tag
 
@@ -139,9 +141,9 @@ class _ModelMultiplexWrapper:
                 self.registered_model_gauge.set(1, tags={"model_id": model_id})
 
             if self._push_multiplexed_replica_info:
-                get_global_client().record_multiplexed_replica_info(
+                _get_global_client().record_multiplexed_replica_info(
                     MultiplexedReplicaInfo(
-                        self._deployment_name,
+                        DeploymentID(self._deployment_name, self._app_name),
                         self._replica_tag,
                         self._get_loading_and_loaded_model_ids(),
                     )

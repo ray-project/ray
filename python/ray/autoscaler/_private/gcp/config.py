@@ -13,7 +13,7 @@ from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient import discovery, errors
 
-from ray._private import ray_constants
+from ray._private import accelerator, ray_constants
 from ray.autoscaler._private.gcp.node import MAX_POLLS, POLL_INTERVAL, GCPNodeType
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -65,12 +65,7 @@ def _validate_tpu_config(node: dict):
         )
     if "acceleratorType" in node:
         accelerator_type = node["acceleratorType"]
-        expected_pattern = re.compile(r"^v\d+[a-zA-Z]*-\d+$")
-        if not expected_pattern.match(accelerator_type):
-            raise ValueError(
-                "`acceleratorType` should match v(generation)-(cores/chips)"
-                f"Got {accelerator_type}."
-            )
+        accelerator.assert_tpu_accelerator_type(accelerator_type)
     else:  # "acceleratorConfig" in node
         accelerator_config = node["acceleratorConfig"]
         if "type" not in accelerator_config or "topology" not in accelerator_config:
@@ -143,7 +138,7 @@ def get_node_type(node: dict) -> GCPNodeType:
         "acceleratorType" in node or "acceleratorConfig" in node
     ):
         _validate_tpu_config(node)
-        if _is_single_host_tpu(node):
+        if not _is_single_host_tpu(node):
             # Remove once proper autoscaling support is added.
             logger.warning(
                 "TPU pod detected. Note that while the cluster launcher can create "

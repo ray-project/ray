@@ -151,22 +151,22 @@ class CounterMapThreadSafe {
   CounterMapThreadSafe() = default;
 
   void SetOnChangeCallback(std::function<void(const K &)> on_change)
-      LOCKS_EXCLUDED(mutex_) {
+      ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::WriterMutexLock lock(&mutex_);
     counter_map_.SetOnChangeCallback(std::move(on_change));
   }
 
-  void FlushOnChangeCallbacks() LOCKS_EXCLUDED(mutex_) {
+  void FlushOnChangeCallbacks() ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::WriterMutexLock lock(&mutex_);
     counter_map_.FlushOnChangeCallbacks();
   }
 
-  void Increment(const K &key, int64_t val = 1) LOCKS_EXCLUDED(mutex_) {
+  void Increment(const K &key, int64_t val = 1) ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::WriterMutexLock lock(&mutex_);
     counter_map_.Increment(key, val);
   }
 
-  void Decrement(const K &key, int64_t val = 1) LOCKS_EXCLUDED(mutex_) {
+  void Decrement(const K &key, int64_t val = 1) ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::WriterMutexLock lock(&mutex_);
     counter_map_.Decrement(key, val);
   }
@@ -176,7 +176,8 @@ class CounterMapThreadSafe {
     return counter_map_.Get(key);
   }
 
-  void Swap(const K &old_key, const K &new_key, int64_t val = 1) LOCKS_EXCLUDED(mutex_) {
+  void Swap(const K &old_key, const K &new_key, int64_t val = 1)
+      ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::WriterMutexLock lock(&mutex_);
     counter_map_.Swap(old_key, new_key, val);
   }

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
 from torch.utils.data import Dataset as TorchDataset
 
+from ray import train
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
@@ -19,7 +20,7 @@ from ray.train import DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
-from ray.util import PublicAPI
+from ray.util.annotations import Deprecated
 
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
@@ -71,8 +72,15 @@ if TYPE_CHECKING:
 
 TRAINER_INIT_FN_KEY = "_trainer_init_per_worker"
 
+TRANSFORMERS_TRAINER_DEPRECATION_MESSAGE = (
+    "The TransformersTransformers will be hard deprecated in Ray 2.8. "
+    "Use TorchTrainer instead. "
+    "See https://docs.ray.io/en/releases-2.7.0/train/getting-started-transformers.html#transformerstrainer-migration-guide "  # noqa: E501
+    "for more details."
+)
 
-@PublicAPI(stability="alpha")
+
+@Deprecated(message=TRANSFORMERS_TRAINER_DEPRECATION_MESSAGE, warning=True)
 class TransformersTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Transformers on PyTorch training.
 
@@ -82,7 +90,7 @@ class TransformersTrainer(TorchTrainer):
     configured for distributed PyTorch training. If you have PyTorch >= 1.12.0
     installed, you can also run FSDP training by specifying the ``fsdp`` argument
     in ``TrainingArguments``. DeepSpeed is
-    also supported - see :doc:`/ray-air/examples/gptj_deepspeed_fine_tuning`.
+    also supported - see :doc:`/train/examples/deepspeed/gptj_deepspeed_fine_tuning`.
     For more information on configuring FSDP or DeepSpeed, refer to `Hugging Face
     documentation <https://huggingface.co/docs/transformers/\
 main/en/main_classes/trainer#transformers.TrainingArguments>`__.
@@ -237,9 +245,6 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             dataset and key "evaluation" to denote the evaluation
             dataset. Can only contain a training dataset
             and up to one extra dataset to be used for evaluation.
-            If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be
-            transformed by the ``preprocessor`` if one is provided.
         resume_from_checkpoint: A checkpoint to resume training from.
         metadata: Dict that should be made available in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
@@ -477,7 +482,7 @@ def _huggingface_train_loop_per_worker(config):
 
     trainer.add_callback(TrainReportCallback)
 
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_path:
             trainer.train(resume_from_checkpoint=checkpoint_path)

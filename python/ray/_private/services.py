@@ -51,6 +51,10 @@ GCS_SERVER_EXECUTABLE = os.path.join(
     RAY_PATH, "core", "src", "ray", "gcs", "gcs_server" + EXE_SUFFIX
 )
 
+JEMALLOC_SO = os.path.join(RAY_PATH, "core", "libjemalloc.so")
+
+JEMALLOC_SO = JEMALLOC_SO if os.path.exists(JEMALLOC_SO) else None
+
 # Location of the cpp default worker executables.
 DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp", "default_worker" + EXE_SUFFIX)
 
@@ -211,13 +215,11 @@ def propagate_jemalloc_env_var(
     assert isinstance(jemalloc_comps, list)
     assert process_type is not None
     process_type = process_type.lower()
-    if not jemalloc_path or process_type not in jemalloc_comps:
+    if not jemalloc_path:
         return {}
 
-    env_vars = {
-        "LD_PRELOAD": jemalloc_path,
-    }
-    if jemalloc_conf:
+    env_vars = {"LD_PRELOAD": jemalloc_path, "RAY_LD_PRELOAD": "1"}
+    if process_type in jemalloc_comps and jemalloc_conf:
         env_vars.update({"MALLOC_CONF": jemalloc_conf})
     return env_vars
 
@@ -771,17 +773,21 @@ def start_ray_process(
         logger.info("Detected environment variable '%s'.", gdb_env_var)
         use_gdb = True
     # Jemalloc memory profiling.
-    jemalloc_lib_path = os.environ.get(RAY_JEMALLOC_LIB_PATH)
-    jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF)
-    jemalloc_comps = os.environ.get(RAY_JEMALLOC_PROFILE)
-    jemalloc_comps = [] if not jemalloc_comps else jemalloc_comps.split(",")
-    jemalloc_env_vars = propagate_jemalloc_env_var(
-        jemalloc_path=jemalloc_lib_path,
-        jemalloc_conf=jemalloc_conf,
-        jemalloc_comps=jemalloc_comps,
-        process_type=process_type,
-    )
-    use_jemalloc_mem_profiler = len(jemalloc_env_vars) > 0
+    if os.environ.get("LD_PRELOAD") is None:
+        jemalloc_lib_path = os.environ.get(RAY_JEMALLOC_LIB_PATH, JEMALLOC_SO)
+        jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF)
+        jemalloc_comps = os.environ.get(RAY_JEMALLOC_PROFILE)
+        jemalloc_comps = [] if not jemalloc_comps else jemalloc_comps.split(",")
+        jemalloc_env_vars = propagate_jemalloc_env_var(
+            jemalloc_path=jemalloc_lib_path,
+            jemalloc_conf=jemalloc_conf,
+            jemalloc_comps=jemalloc_comps,
+            process_type=process_type,
+        )
+    else:
+        jemalloc_env_vars = {}
+
+    use_jemalloc_mem_profiler = "MALLOC_CONF" in jemalloc_env_vars
 
     if (
         sum(
@@ -844,12 +850,7 @@ def start_ray_process(
         modified_env["LD_PRELOAD"] = os.environ["PERFTOOLS_PATH"]
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
 
-    if use_jemalloc_mem_profiler:
-        logger.info(
-            f"Jemalloc profiling will be used for {process_type}. "
-            f"env vars: {jemalloc_env_vars}"
-        )
-        modified_env.update(jemalloc_env_vars)
+    modified_env.update(jemalloc_env_vars)
 
     if use_tmux:
         # The command has to be created exactly as below to ensure that it
@@ -1055,8 +1056,10 @@ def start_api_server(
 
     Args:
         include_dashboard: If true, this will load all dashboard-related modules
-            when starting the API server. Otherwise, it will only
-            start the modules that are not relevant to the dashboard.
+            when starting the API server, or fail. If None, it will load all
+            dashboard-related modules conditioned on dependencies being present.
+            Otherwise, it will only start the modules that are not relevant to
+            the dashboard.
         raise_on_failure: If true, this will raise an exception
             if we fail to start the API server. Otherwise it will print
             a warning if we fail to start the API server.
@@ -1124,8 +1127,8 @@ def start_api_server(
         # dashboard inclusion, the install is not minimal.
         if include_dashboard and minimal:
             logger.error(
-                "--include-dashboard was specified, but packages are missing. "
-                "Please check dashboard.err for the specific missing modules."
+                "--include-dashboard is not supported when minimal ray is used."
+                "Download ray[default] to use the dashboard."
             )
             raise Exception("Cannot include dashboard with missing packages.")
 
@@ -1289,6 +1292,25 @@ def start_api_server(
             return None, None
 
 
+def get_address(redis_address):
+    parts = redis_address.split("://", 1)
+    enable_redis_ssl = False
+    if len(parts) == 1:
+        redis_ip_address, redis_port = parts[0].rsplit(":", 1)
+    else:
+        # rediss for SSL
+        if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
+            raise ValueError(
+                f"Invalid redis address {redis_address}."
+                "Expected format is ip:port or redis://ip:port, "
+                "or rediss://ip:port for SSL."
+            )
+        redis_ip_address, redis_port = parts[1].rsplit(":", 1)
+        if parts[0] == "rediss":
+            enable_redis_ssl = True
+    return redis_ip_address, redis_port, enable_redis_ssl
+
+
 def start_gcs_server(
     redis_address: str,
     log_dir: str,
@@ -1334,21 +1356,12 @@ def start_gcs_server(
         f"--session-name={session_name}",
     ]
     if redis_address:
-        parts = redis_address.split("://", 1)
-        enable_redis_ssl = "false"
-        if len(parts) == 1:
-            redis_ip_address, redis_port = parts[0].rsplit(":", 1)
-        else:
-            if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
-                raise ValueError(f"Invalid redis address {redis_address}")
-            redis_ip_address, redis_port = parts[1].rsplit(":", 1)
-            if parts[0] == "rediss":
-                enable_redis_ssl = "true"
+        redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
 
         command += [
             f"--redis_address={redis_ip_address}",
             f"--redis_port={redis_port}",
-            f"--redis_enable_ssl={enable_redis_ssl}",
+            f"--redis_enable_ssl={'true' if enable_redis_ssl else 'false'}",
         ]
     if redis_password:
         command += [f"--redis_password={redis_password}"]
@@ -1989,8 +2002,9 @@ def start_monitor(
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]
-    if gcs_address is not None:
-        command.append(f"--gcs-address={gcs_address}")
+    assert gcs_address is not None
+    command.append(f"--gcs-address={gcs_address}")
+
     if stdout_file is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.

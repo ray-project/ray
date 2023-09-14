@@ -6,7 +6,6 @@ from ray.air.config import DatasetConfig
 
 from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors import Chain
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:
@@ -194,17 +193,10 @@ class DataParallelIngestSpec:
                 )
                 dataset = dataset.window(bytes_per_window=stream_window_size).repeat()
                 # In windowed mode, we re-apply the preprocessor on each iteration.
-                if self.preprocessor or config.per_epoch_preprocessor:
-                    if self.preprocessor is not None:
-                        preprocessor = self.preprocessor
-                        if config.per_epoch_preprocessor is not None:
-                            preprocessor = Chain(
-                                preprocessor, config.per_epoch_preprocessor
-                            )
-                    else:
-                        preprocessor = config.per_epoch_preprocessor
-
-                    dataset = preprocessor._transform_pipeline(dataset)
+                if self.preprocessor is not None:
+                    dataset = self.preprocessor._transform_pipeline(dataset)
+                if config.per_epoch_preprocessor is not None:
+                    dataset = config.per_epoch_preprocessor._transform_pipeline(dataset)
 
                 # Always re-randomize each window; this doesn't help with reducing
                 # cluster hot-spots since we already randomized the based blocks, but

@@ -14,13 +14,13 @@ from ray.data.iterator import _IterableFromIterator
 from ray.data.dataset import MaterializedDataset
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.train import Checkpoint
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal.storage import _use_storage_context
 from ray.train.huggingface.transformers.transformers_checkpoint import (
     TransformersCheckpoint,
     LegacyTransformersCheckpoint,
 )
 from ray.util import PublicAPI
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 logger = logging.getLogger(__name__)
 
@@ -233,7 +233,7 @@ class TrainReportCallback(TrainerCallback):
         self._report()
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RayTrainReportCallback(TrainerCallback):
     """A simple callback to report checkpoints and metrics to Ray Tarin.
 
@@ -264,6 +264,10 @@ class RayTrainReportCallback(TrainerCallback):
 
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        record_extra_usage_tag(TagKey.TRAIN_TRANSFORMERS_RAYTRAINREPORTCALLBACK, "1")
+
     def on_save(self, args, state, control, **kwargs):
         """Event called after a checkpoint save."""
         with TemporaryDirectory() as tmpdir:
@@ -276,10 +280,7 @@ class RayTrainReportCallback(TrainerCallback):
             source_ckpt_path = transformers.trainer.get_last_checkpoint(args.output_dir)
             target_ckpt_path = os.path.join(tmpdir, "checkpoint")
             shutil.copytree(source_ckpt_path, target_ckpt_path)
-            if _use_storage_context():
-                checkpoint = NewCheckpoint.from_directory(tmpdir)
-            else:
-                checkpoint = Checkpoint.from_directory(tmpdir)
+            checkpoint = Checkpoint.from_directory(tmpdir)
 
             # Report latest metrics and checkpoint to Ray Train
             ray.train.report(metrics=metrics, checkpoint=checkpoint)
@@ -296,7 +297,7 @@ class RayTorchIterableDataset(IterableDataset):
         return iter(self.data_iterable)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def prepare_trainer(trainer: "Trainer") -> "Trainer":
     """Prepare your HuggingFace Transformer Trainer for Ray Train.
 
@@ -335,4 +336,5 @@ def prepare_trainer(trainer: "Trainer") -> "Trainer":
 
     trainer.__class__ = RayTransformersTrainer
 
+    record_extra_usage_tag(TagKey.TRAIN_TRANSFORMERS_PREPARE_TRAINER, "1")
     return trainer

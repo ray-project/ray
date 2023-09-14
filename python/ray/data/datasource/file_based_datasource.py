@@ -24,13 +24,13 @@ from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.air._internal.remote_storage import _is_local_windows_path
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
     _check_pyarrow_version,
     _resolve_custom_scheme,
     get_attribute_from_class_name,
+    make_async_gen,
 )
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
@@ -59,6 +59,15 @@ FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
 
 # 16 file size fetches from S3 takes ~1.5 seconds with Arrow's S3FileSystem.
 PATHS_PER_FILE_SIZE_FETCH_TASK = 16
+
+# The errors to retry for opening file.
+OPEN_FILE_RETRY_ON_ERRORS = ["AWS Error SLOW_DOWN"]
+
+# The max retry backoff in seconds for opening file.
+OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
+
+# The max number of attempts for opening file.
+OPEN_FILE_MAX_ATTEMPTS = 10
 
 
 @DeveloperAPI
@@ -218,6 +227,9 @@ class FileBasedDatasource(Datasource):
     # each block to a file.
     _WRITE_FILE_PER_ROW = False
     _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
+    # Number of threads for concurrent reading within each read task.
+    # If zero or negative, reading will be performed in the main thread.
+    _NUM_THREADS_PER_TASK = 0
 
     def _open_input_source(
         self,
@@ -349,7 +361,10 @@ class FileBasedDatasource(Datasource):
                     )
                     write_path = os.path.join(path, filename)
                     logger.get_logger().debug(f"Writing {write_path} file.")
-                    with fs.open_output_stream(write_path, **open_stream_args) as f:
+                    with _open_file_with_retry(
+                        write_path,
+                        lambda: fs.open_output_stream(write_path, **open_stream_args),
+                    ) as f:
                         _write_row_to_file(
                             f,
                             row,
@@ -367,7 +382,10 @@ class FileBasedDatasource(Datasource):
                     file_format=file_format,
                 )
                 logger.get_logger().debug(f"Writing {write_path} file.")
-                with fs.open_output_stream(write_path, **open_stream_args) as f:
+                with _open_file_with_retry(
+                    write_path,
+                    lambda: fs.open_output_stream(write_path, **open_stream_args),
+                ) as f:
                     _write_block_to_file(
                         f,
                         block,
@@ -527,15 +545,12 @@ class _FileBasedDatasourceReader(Reader):
         open_input_source = self._delegate._open_input_source
 
         def read_files(
-            read_paths: List[str],
-            fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
+            read_paths: Iterable[str],
         ) -> Iterable[Block]:
+            nonlocal filesystem, open_stream_args, reader_args, partitioning
+
             DataContext._set_current(ctx)
-            logger.get_logger().debug(f"Reading {len(read_paths)} files.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
-            output_buffer = BlockOutputBuffer(
-                block_udf=None, target_max_block_size=ctx.target_max_block_size
-            )
             for read_path in read_paths:
                 compression = open_stream_args.pop("compression", None)
                 if compression is None:
@@ -571,17 +586,37 @@ class _FileBasedDatasourceReader(Reader):
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
 
-                with open_input_source(fs, read_path, **open_stream_args) as f:
+                with _open_file_with_retry(
+                    read_path,
+                    lambda: open_input_source(fs, read_path, **open_stream_args),
+                ) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         if partitions:
                             data = _add_partitions(data, partitions)
+                        yield data
 
-                        output_buffer.add_block(data)
-                        if output_buffer.has_next():
-                            yield output_buffer.next()
-            output_buffer.finalize()
-            if output_buffer.has_next():
-                yield output_buffer.next()
+        def create_read_task_fn(read_paths, num_threads):
+            def read_task_fn():
+                nonlocal num_threads, read_paths
+
+                if num_threads > 0:
+                    if len(read_paths) < num_threads:
+                        num_threads = len(read_paths)
+
+                    logger.get_logger().debug(
+                        f"Reading {len(read_paths)} files with {num_threads} threads."
+                    )
+
+                    yield from make_async_gen(
+                        iter(read_paths),
+                        read_files,
+                        num_workers=num_threads,
+                    )
+                else:
+                    logger.get_logger().debug(f"Reading {len(read_paths)} files.")
+                    yield from read_files(read_paths)
+
+            return read_task_fn
 
         # fix https://github.com/ray-project/ray/issues/24296
         parallelism = min(parallelism, len(paths))
@@ -599,9 +634,13 @@ class _FileBasedDatasourceReader(Reader):
                 rows_per_file=self._delegate._rows_per_file(),
                 file_sizes=file_sizes,
             )
-            read_task = ReadTask(
-                lambda read_paths=read_paths: read_files(read_paths, filesystem), meta
+
+            read_task_fn = create_read_task_fn(
+                read_paths, self._delegate._NUM_THREADS_PER_TASK
             )
+
+            read_task = ReadTask(read_task_fn, meta)
+
             read_tasks.append(read_task)
 
         return read_tasks
@@ -886,7 +925,6 @@ def _unwrap_arrow_serialization_workaround(kwargs: dict) -> dict:
 def _resolve_kwargs(
     kwargs_fn: Callable[[], Dict[str, Any]], **kwargs
 ) -> Dict[str, Any]:
-
     if kwargs_fn:
         kwarg_overrides = kwargs_fn()
         kwargs.update(kwarg_overrides)
@@ -919,3 +957,44 @@ def _fetch_metadata_parallel(
         fetch_tasks.append(remote_fetch_func.remote(uri_chunk))
     results = metadata_fetch_bar.fetch_until_complete(fetch_tasks)
     yield from itertools.chain.from_iterable(results)
+
+
+def _open_file_with_retry(
+    file_path: str,
+    open_file: Callable[[], "pyarrow.NativeFile"],
+) -> "pyarrow.NativeFile":
+    """Open file with an exponential backoff retry strategy.
+
+    This is to avoid transient task failure with remote storage (such as S3),
+    when the remote storage throttles the requests.
+    """
+    import random
+    import time
+
+    if OPEN_FILE_MAX_ATTEMPTS < 1:
+        raise ValueError(
+            "OPEN_FILE_MAX_ATTEMPTS cannot be negative or 0. Get: "
+            f"{OPEN_FILE_MAX_ATTEMPTS}"
+        )
+
+    for i in range(OPEN_FILE_MAX_ATTEMPTS):
+        try:
+            return open_file()
+        except Exception as e:
+            error_message = str(e)
+            is_retryable = any(
+                [error in error_message for error in OPEN_FILE_RETRY_ON_ERRORS]
+            )
+            if is_retryable and i + 1 < OPEN_FILE_MAX_ATTEMPTS:
+                # Retry with binary expoential backoff with random jitter.
+                backoff = min(
+                    (2 ** (i + 1)) * random.random(),
+                    OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
+                )
+                logger.get_logger().debug(
+                    f"Retrying {i+1} attempts to open file {file_path} after "
+                    f"{backoff} seconds."
+                )
+                time.sleep(backoff)
+            else:
+                raise e from None

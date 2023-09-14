@@ -1,18 +1,16 @@
 import os
 import logging
+import tempfile
 import warnings
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
-from ray import tune
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig
+from ray import train, tune
+from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
 from ray._private.dict import flatten_dict
 
@@ -92,11 +90,6 @@ def _convert_scaling_config_to_ray_params(
     placement_options = {
         "strategy": scaling_config.placement_strategy,
     }
-    # Special case, same as in ScalingConfig.as_placement_group_factory
-    if scaling_config._max_cpu_fraction_per_node is not None:
-        placement_options[
-            "_max_cpu_fraction_per_node"
-        ] = scaling_config._max_cpu_fraction_per_node
     ray_params = ray_params_cls_extended(
         placement_options=placement_options,
         **ray_params_kwargs,
@@ -113,10 +106,8 @@ class GBDTTrainer(BaseTrainer):
 
     Args:
         datasets: Datasets to use for training and validation. Must include a
-            "train" key denoting the training dataset. If a ``preprocessor``
-            is provided and has not already been fit, it will be fit on the training
-            dataset. All datasets will be transformed by the ``preprocessor`` if
-            one is provided. All non-training datasets will be used as separate
+            "train" key denoting the training dataset.
+            All non-training datasets will be used as separate
             validation sets, each reporting a separate metric.
         label_column: Name of the label column. A column with this name
             must be present in the training dataset.
@@ -126,8 +117,6 @@ class GBDTTrainer(BaseTrainer):
         num_boost_round: Target number of boosting iterations (trees in the model).
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
         metadata: Dict that should be made available in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
@@ -145,9 +134,11 @@ class GBDTTrainer(BaseTrainer):
 
     _dmatrix_cls: type
     _ray_params_cls: type
-    _tune_callback_report_cls: type
     _tune_callback_checkpoint_cls: type
-    _default_ray_params: Dict[str, Any] = {"checkpoint_frequency": 1}
+    _default_ray_params: Dict[str, Any] = {
+        "checkpoint_frequency": 1,
+        "checkpoint_at_end": True,
+    }
     _init_model_arg_name: str
     _num_iterations_argument: str = "num_boost_round"
     _default_num_iterations: int = _DEFAULT_NUM_ITERATIONS
@@ -162,7 +153,7 @@ class GBDTTrainer(BaseTrainer):
         num_boost_round: int = _DEFAULT_NUM_ITERATIONS,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        preprocessor: Optional["Preprocessor"] = None,
+        preprocessor: Optional["Preprocessor"] = None,  # Deprecated
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
         **train_kwargs,
@@ -207,6 +198,22 @@ class GBDTTrainer(BaseTrainer):
                         f"which is not present in `datasets`."
                     )
 
+    @classmethod
+    def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
+        # Todo: `trainer_resources` should be configurable. Currently it is silently
+        # ignored. We catch the error here rather than in
+        # `_scaling_config_allowed_keys` because the default of `None` is updated to
+        # `{}` from XGBoost-Ray.
+        if scaling_config.trainer_resources not in [None, {}]:
+            raise ValueError(
+                f"The `trainer_resources` attribute for {cls.__name__} "
+                f"is currently ignored and defaults to `{{}}`. Remove the "
+                f"`trainer_resources` key from your `ScalingConfig` to resolve."
+            )
+        return super(GBDTTrainer, cls)._validate_scaling_config(
+            scaling_config=scaling_config
+        )
+
     def _get_dmatrices(
         self, dmatrix_params: Dict[str, Any]
     ) -> Dict[str, "xgboost_ray.RayDMatrix"]:
@@ -220,7 +227,7 @@ class GBDTTrainer(BaseTrainer):
     def _load_checkpoint(
         self,
         checkpoint: Checkpoint,
-    ) -> Tuple[Any, Optional["Preprocessor"]]:
+    ) -> Any:
         raise NotImplementedError
 
     def _train(self, **kwargs):
@@ -269,9 +276,16 @@ class GBDTTrainer(BaseTrainer):
         for k in list(result_dict):
             result_dict[k] = result_dict[k][-1]
 
-        with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
-            self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
-        tune.report(**result_dict)
+        if getattr(self._tune_callback_checkpoint_cls, "_report_callbacks_cls", None):
+            # Deprecate: Remove in Ray 2.8
+            with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
+                self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
+            tune.report(**result_dict)
+        else:
+            with tempfile.TemporaryDirectory() as checkpoint_dir:
+                self._save_model(model, path=checkpoint_dir)
+                checkpoint = Checkpoint.from_directory(checkpoint_dir)
+                train.report(result_dict, checkpoint=checkpoint)
 
     def training_loop(self) -> None:
         config = self.train_kwargs.copy()
@@ -285,27 +299,22 @@ class GBDTTrainer(BaseTrainer):
 
         init_model = None
         if self.starting_checkpoint:
-            init_model, _ = self._load_checkpoint(self.starting_checkpoint)
+            init_model = self._load_checkpoint(self.starting_checkpoint)
 
         config.setdefault("verbose_eval", False)
         config.setdefault("callbacks", [])
 
         if not any(
-            isinstance(
-                cb, (self._tune_callback_report_cls, self._tune_callback_checkpoint_cls)
-            )
+            isinstance(cb, self._tune_callback_checkpoint_cls)
             for cb in config["callbacks"]
         ):
             # Only add our own callback if it hasn't been added before
             checkpoint_frequency = (
                 self.run_config.checkpoint_config.checkpoint_frequency
             )
-            if checkpoint_frequency > 0:
-                callback = self._tune_callback_checkpoint_cls(
-                    filename=MODEL_KEY, frequency=checkpoint_frequency
-                )
-            else:
-                callback = self._tune_callback_report_cls()
+            callback = self._tune_callback_checkpoint_cls(
+                filename=MODEL_KEY, frequency=checkpoint_frequency
+            )
 
             config["callbacks"] += [callback]
 
@@ -351,15 +360,6 @@ class GBDTTrainer(BaseTrainer):
         default_ray_params = self._default_ray_params
 
         class GBDTTrainable(trainable_cls):
-            def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
-                checkpoint_path = super().save_checkpoint()
-                parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-
-                preprocessor = self._merged_config.get("preprocessor", None)
-                if parent_dir and preprocessor:
-                    save_preprocessor_to_dir(preprocessor, parent_dir)
-                return checkpoint_path
-
             @classmethod
             def default_resource_request(cls, config):
                 # `config["scaling_config"] is a dataclass when passed via the

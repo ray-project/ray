@@ -1,66 +1,17 @@
-import io
 import logging
-import os
-import time
-from contextlib import redirect_stderr
 import tempfile
-from unittest.mock import patch
 
-import pandas as pd
-import numpy as np
 import pytest
 
 import ray
 from ray import train, tune
 from ray.train import Checkpoint, ScalingConfig
 from ray.air.constants import MAX_REPR_LENGTH
-from ray.data.context import DataContext
-from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors import BatchMapper
-from ray.tune.impl import tuner_internal
-from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
 from ray.util.placement_group import get_current_placement_group
-from ray.train._internal.storage import _use_storage_context
 
 logger = logging.getLogger(__name__)
-
-
-@pytest.fixture
-def mock_tuner_internal_logger():
-    class MockLogger:
-        def __init__(self):
-            self.warnings = []
-
-        def warning(self, msg):
-            self.warnings.append(msg)
-
-        def warn(self, msg, **kwargs):
-            self.warnings.append(msg)
-
-        def info(self, msg):
-            print(msg)
-
-        def clear(self):
-            self.warnings = []
-
-    old = tuner_internal.warnings
-    tuner_internal.warnings = MockLogger()
-    yield tuner_internal.warnings
-    # The code after the yield will run as teardown code.
-    tuner_internal.warnings = old
-
-
-class DummyPreprocessor(Preprocessor):
-    def __init__(self):
-        self.fit_counter = 0
-
-    def fit(self, ds):
-        self.fit_counter += 1
-
-    def transform(self, ds):
-        return ds.map(lambda x: {"item": x["item"] + 1})
 
 
 class DummyTrainer(BaseTrainer):
@@ -97,20 +48,6 @@ def test_trainer_fit(ray_start_4_cpus):
     assert result.metrics["my_metric"] == 1
 
 
-def test_preprocess_datasets(ray_start_4_cpus):
-    ctx = DataContext.get_current()
-    ctx.execution_options.preserve_order = True
-
-    def training_loop(self):
-        assert self.datasets["my_dataset"].take_batch()["item"].tolist() == [2, 3, 4]
-
-    datasets = {"my_dataset": ray.data.from_items([1, 2, 3])}
-    trainer = DummyTrainer(
-        training_loop, datasets=datasets, preprocessor=DummyPreprocessor()
-    )
-    trainer.fit()
-
-
 def test_validate_datasets(ray_start_4_cpus):
     with pytest.raises(ValueError) as e:
         DummyTrainer(train_loop=None, datasets=1)
@@ -138,70 +75,20 @@ def test_resources(ray_start_4_cpus):
     trainer.fit()
 
 
-@pytest.mark.parametrize("gen_dataset", [True, False])
-def test_preprocess_fit_on_train(ray_start_4_cpus, gen_dataset):
-    def training_loop(self):
-        # Fit was only called once.
-        assert self.preprocessor.fit_counter == 1
-        # Datasets should all be transformed.
-        assert self.datasets["train"].take_batch()["item"].tolist() == [2, 3, 4]
-        assert self.datasets["my_dataset"].take_batch()["item"].tolist() == [2, 3, 4]
-
-    if gen_dataset:
-        datasets = {
-            "train": lambda: ray.data.from_items([1, 2, 3]),
-            "my_dataset": lambda: ray.data.from_items([1, 2, 3]),
-        }
-    else:
-        datasets = {
-            "train": ray.data.from_items([1, 2, 3]),
-            "my_dataset": ray.data.from_items([1, 2, 3]),
-        }
-    trainer = DummyTrainer(
-        training_loop, datasets=datasets, preprocessor=DummyPreprocessor()
-    )
-    trainer.fit()
-
-
-def test_preprocessor_already_fitted(ray_start_4_cpus):
-    def training_loop(self):
-        # Make sure fit is not called if preprocessor is already fit.
-        assert self.preprocessor.fit_counter == 1
-        # Datasets should all be transformed.
-        assert self.datasets["train"].take_batch()["item"].tolist() == [2, 3, 4]
-        assert self.datasets["my_dataset"].take_batch()["item"].tolist() == [2, 3, 4]
-
-    datasets = {
-        "train": ray.data.from_items([1, 2, 3]),
-        "my_dataset": ray.data.from_items([1, 2, 3]),
-    }
-    preprocessor = DummyPreprocessor()
-    preprocessor.fit(ray.data.from_items([1]))
-    trainer = DummyTrainer(
-        training_loop, datasets=datasets, preprocessor=DummyPreprocessor()
-    )
-    trainer.fit()
-
-
 def test_arg_override(ray_start_4_cpus):
     def check_override(self):
         assert self.scaling_config.num_workers == 1
         # Should do deep update.
         assert not self.custom_arg["outer"]["inner"]
         assert self.custom_arg["outer"]["fixed"] == 1
-        # Should merge with base config.
-        assert self.preprocessor.original
 
         pg = get_current_placement_group()
         assert len(pg.bundle_specs) == 2  # 1 trainer, 1 worker
 
-    preprocessor = DummyPreprocessor()
-    preprocessor.original = True
     scale_config = ScalingConfig(num_workers=4)
     trainer = DummyTrainer(
         check_override,
         custom_arg={"outer": {"inner": True, "fixed": 1}},
-        preprocessor=preprocessor,
         scaling_config=scale_config,
     )
 
@@ -213,105 +100,7 @@ def test_arg_override(ray_start_4_cpus):
     tune.run(trainer.as_trainable(), config=new_config)
 
 
-def test_reserved_cpus(ray_start_4_cpus):
-    def train_loop(self):
-        ray.data.range(10).show()
-
-    # Will deadlock without reserved CPU fraction.
-    scale_config = ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.9)
-    trainer = DummyTrainer(
-        train_loop,
-        scaling_config=scale_config,
-    )
-    tune.run(trainer.as_trainable(), num_samples=4)
-
-    # Needs to request 0 CPU for the trainer otherwise the pg
-    # will require {CPU: 1} * 2 resources, which means
-    # _max_cpu_fraction_per_node == 0.01 cannot schedule it
-    # (because this only allows to have 1 CPU for pg per node).
-    scale_config = ScalingConfig(
-        num_workers=1, _max_cpu_fraction_per_node=0.01, trainer_resources={"CPU": 0}
-    )
-    trainer = DummyTrainer(
-        train_loop,
-        scaling_config=scale_config,
-    )
-    tune.run(trainer.as_trainable(), num_samples=4)
-
-
-@patch("ray.available_resources", ray.cluster_resources)
-def test_reserved_cpu_warnings(ray_start_4_cpus, mock_tuner_internal_logger):
-    # ray.available_resources() is used in the warning logic.
-    # We mock it as it can be stochastic due to garbage collection etc.
-    # The aim of this test is not to check if ray.available_resources()
-    # works correctly, but to test the warning logic.
-
-    def train_loop(config):
-        pass
-
-    # Fraction correctly specified.
-    trainer = DummyTrainer(
-        train_loop,
-        scaling_config=ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.9),
-        datasets={"train": ray.data.range(10)},
-    )
-    trainer.fit()
-    assert not mock_tuner_internal_logger.warnings
-
-    # No datasets, no fraction.
-    trainer = DummyTrainer(
-        train_loop,
-        scaling_config=ScalingConfig(num_workers=1),
-    )
-    trainer.fit()
-    assert not mock_tuner_internal_logger.warnings
-
-    # Should warn.
-    trainer = DummyTrainer(
-        train_loop,
-        scaling_config=ScalingConfig(num_workers=3),
-        datasets={"train": ray.data.range(10)},
-    )
-    trainer.fit()
-    assert (
-        len(mock_tuner_internal_logger.warnings) == 1
-    ), mock_tuner_internal_logger.warnings
-    assert "_max_cpu_fraction_per_node" in mock_tuner_internal_logger.warnings[0]
-    mock_tuner_internal_logger.clear()
-
-    # Warn if num_samples is configured
-    trainer = DummyTrainer(
-        train_loop,
-        scaling_config=ScalingConfig(num_workers=1),
-        datasets={"train": ray.data.range(10)},
-    )
-    tuner = tune.Tuner(trainer, tune_config=tune.TuneConfig(num_samples=3))
-    tuner.fit()
-    assert (
-        len(mock_tuner_internal_logger.warnings) == 1
-    ), mock_tuner_internal_logger.warnings
-    assert "_max_cpu_fraction_per_node" in mock_tuner_internal_logger.warnings[0]
-    mock_tuner_internal_logger.clear()
-
-    # Don't warn if resources * samples < 0.8
-    trainer = DummyTrainer(
-        train_loop,
-        scaling_config=ScalingConfig(num_workers=1, trainer_resources={"CPU": 0}),
-        datasets={"train": ray.data.range(10)},
-    )
-    tuner = tune.Tuner(trainer, tune_config=tune.TuneConfig(num_samples=3))
-    tuner.fit()
-    assert not mock_tuner_internal_logger.warnings
-
-    # Don't warn if Trainer is not used
-    tuner = tune.Tuner(train_loop, tune_config=tune.TuneConfig(num_samples=3))
-    tuner.fit()
-    assert not mock_tuner_internal_logger.warnings
-
-
-def test_reserved_cpu_warnings_no_cpu_usage(
-    ray_start_1_cpu_1_gpu, mock_tuner_internal_logger
-):
+def test_reserved_cpu_warnings_no_cpu_usage(ray_start_1_cpu_1_gpu):
     """Ensure there is no divide by zero error if trial requires no CPUs."""
 
     def train_loop(config):
@@ -325,7 +114,6 @@ def test_reserved_cpu_warnings_no_cpu_usage(
         datasets={"train": ray.data.range(10)},
     )
     trainer.fit()
-    assert not mock_tuner_internal_logger.warnings
 
 
 def test_setup(ray_start_4_cpus):
@@ -338,44 +126,6 @@ def test_setup(ray_start_4_cpus):
 
     trainer = DummyTrainerWithSetup(check_setup)
     trainer.fit()
-
-
-@patch.dict(os.environ, {"RAY_LOG_TO_STDERR": "1"})
-def _is_trainable_name_overriden(trainer: BaseTrainer):
-    trainable = trainer.as_trainable()
-    output = io.StringIO()
-
-    def say(self):
-        logger.warning("say")
-
-    trainable.say = say
-    with redirect_stderr(output):
-        remote_trainable = ray.remote(trainable)
-        remote_actor = remote_trainable.remote()
-        ray.get(remote_actor.say.remote())
-        time.sleep(1)  # make sure logging gets caught
-    output = output.getvalue()
-    print(output)
-    assert trainable().__repr__() in output
-
-
-def test_trainable_name_is_overriden_data_parallel_trainer(ray_start_4_cpus):
-    trainer = DataParallelTrainer(
-        lambda x: x, scaling_config=ScalingConfig(num_workers=1)
-    )
-
-    _is_trainable_name_overriden(trainer)
-
-
-def test_trainable_name_is_overriden_gbdt_trainer(ray_start_4_cpus):
-    trainer = DummyGBDTTrainer(
-        params={},
-        label_column="__values__",
-        datasets={"train": ray.data.from_items([1, 2, 3])},
-        scaling_config=ScalingConfig(num_workers=1),
-    )
-
-    _is_trainable_name_overriden(trainer)
 
 
 def test_repr(ray_start_4_cpus):
@@ -395,63 +145,14 @@ def test_repr(ray_start_4_cpus):
     assert len(representation) < MAX_REPR_LENGTH
 
 
-def test_large_params(ray_start_4_cpus):
-    """Tests if large arguments are can be serialized by the Trainer."""
-    array_size = int(1e8)
-
-    def training_loop(self):
-        checkpoint = self.starting_checkpoint.to_dict()["ckpt"]
-        assert len(checkpoint) == array_size
-
-    checkpoint = Checkpoint.from_dict({"ckpt": np.zeros(shape=array_size)})
-    trainer = DummyTrainer(training_loop, resume_from_checkpoint=checkpoint)
-    trainer.fit()
-
-
-def test_preprocess_datasets_context(ray_start_4_cpus):
-    """Tests if DataContext is propagated to preprocessors."""
-
-    def training_loop(self):
-        assert self.datasets["my_dataset"].take() == [{"a": i} for i in range(2, 5)]
-        train.report(dict(my_metric=1))
-
-    target_max_block_size = 100
-
-    def map_fn(batch):
-        ctx = ray.data.context.DataContext.get_current()
-        assert ctx.target_max_block_size == target_max_block_size
-        return batch + 1
-
-    preprocessor = BatchMapper(map_fn, batch_format="pandas")
-
-    ctx = ray.data.context.DataContext.get_current()
-    ctx.target_max_block_size = target_max_block_size
-
-    datasets = {"my_dataset": ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3]}))}
-    trainer = DummyTrainer(training_loop, datasets=datasets, preprocessor=preprocessor)
-    result = trainer.fit()
-    assert result.metrics["my_metric"] == 1
-
-
 def test_metadata_propagation_base(ray_start_4_cpus):
-    if not _use_storage_context():
-        print("Not implemented in old backend")
-        return
-
-    from ray.train._checkpoint import Checkpoint as NewCheckpoint
-
     class MyTrainer(BaseTrainer):
         def training_loop(self):
             assert train.get_context().get_metadata() == {"a": 1, "b": 1}
             with tempfile.TemporaryDirectory() as path:
-                checkpoint = NewCheckpoint.from_directory(path)
+                checkpoint = Checkpoint.from_directory(path)
                 checkpoint.set_metadata({"b": 2, "c": 3})
-                train.report(
-                    dict(
-                        my_metric=1,
-                    ),
-                    checkpoint=checkpoint,
-                )
+                train.report(dict(my_metric=1), checkpoint=checkpoint)
 
     trainer = MyTrainer(metadata={"a": 1, "b": 1})
     result = trainer.fit()
@@ -460,23 +161,12 @@ def test_metadata_propagation_base(ray_start_4_cpus):
 
 
 def test_metadata_propagation_data_parallel(ray_start_4_cpus):
-    if not _use_storage_context():
-        print("Not implemented in old backend")
-        return
-
-    from ray.train._checkpoint import Checkpoint as NewCheckpoint
-
     def training_loop(self):
         assert train.get_context().get_metadata() == {"a": 1, "b": 1}
         with tempfile.TemporaryDirectory() as path:
-            checkpoint = NewCheckpoint.from_directory(path)
+            checkpoint = Checkpoint.from_directory(path)
             checkpoint.set_metadata({"b": 2, "c": 3})
-            train.report(
-                dict(
-                    my_metric=1,
-                ),
-                checkpoint=checkpoint,
-            )
+            train.report(dict(my_metric=1), checkpoint=checkpoint)
 
     trainer = DummyTrainer(training_loop, metadata={"a": 1, "b": 1})
     result = trainer.fit()
@@ -486,7 +176,5 @@ def test_metadata_propagation_data_parallel(ray_start_4_cpus):
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(sys.argv[1:] + ["-v", "-x", __file__]))

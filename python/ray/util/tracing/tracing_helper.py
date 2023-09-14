@@ -95,7 +95,7 @@ def _is_tracing_enabled() -> bool:
     return _global_is_tracing_enabled
 
 
-def _enbale_tracing():
+def _enable_tracing():
     global _global_is_tracing_enabled, _opentelemetry
     _global_is_tracing_enabled = True
     _opentelemetry = _OpenTelemetryProxy()
@@ -328,7 +328,9 @@ def _inject_tracing_into_function(function):
     future execution of that function will include tracing.
     Use the provided trace context from kwargs.
     """
-    # Add _ray_trace_ctx to function signature
+    if not _is_tracing_enabled():
+        return function
+
     setattr(
         function,
         "__signature__",

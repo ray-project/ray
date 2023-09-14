@@ -22,7 +22,7 @@ and macOS by choosing the option that best matches your use case.
 
         .. code-block:: shell
 
-          pip install -U "ray[air]"
+          pip install -U "ray[data,train,tune,serve]"
 
           # For reinforcement learning support, install RLlib instead.
           # pip install -U "ray[rllib]"
@@ -56,16 +56,16 @@ and macOS by choosing the option that best matches your use case.
             - Core, Tune
           * - `pip install -U "ray[serve]"`
             - Core, Dashboard, Cluster Launcher, Serve
+          * - `pip install -U "ray[serve-grpc]"`
+            - Core, Dashboard, Cluster Launcher, Serve with gRPC support
           * - `pip install -U "ray[rllib]"`
             - Core, Tune, RLlib
-          * - `pip install -U "ray[air]"`
-            - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve
           * - `pip install -U "ray[all]"`
             - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve, RLlib
 
         .. tip::
 
-          You can combine installation extras. 
+          You can combine installation extras.
           For example, to install Ray with Dashboard, Cluster Launcher, and Train support, you can run:
 
           .. code-block:: shell
@@ -365,10 +365,11 @@ To install Ray libraries, use ``pip`` as above or ``conda``/``mamba``.
 
 .. code-block:: bash
 
-  conda install -c conda-forge "ray-air"    # installs Ray + dependencies for Ray AI Runtime
+  conda install -c conda-forge "ray-data"   # installs Ray + dependencies for Ray Data
+  conda install -c conda-forge "ray-train"  # installs Ray + dependencies for Ray Train
   conda install -c conda-forge "ray-tune"   # installs Ray + dependencies for Ray Tune
-  conda install -c conda-forge "ray-rllib"  # installs Ray + dependencies for Ray RLlib
   conda install -c conda-forge "ray-serve"  # installs Ray + dependencies for Ray Serve
+  conda install -c conda-forge "ray-rllib"  # installs Ray + dependencies for Ray RLlib
 
 For a complete list of available ``ray`` libraries on Conda-forge, have a look
 at https://anaconda.org/conda-forge/ray-default

@@ -189,7 +189,7 @@ class GcsRpcClient {
  public:
   /// Constructor. GcsRpcClient is not thread safe.
   ///
-  /// \param[in] address Address of gcs server.
+  // \param[in] address Address of gcs server.
   /// \param[in] port Port of the gcs server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   /// \param[in] gcs_service_failure_detected The function is used to redo subscription

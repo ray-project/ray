@@ -89,6 +89,8 @@ class TensorflowTrainer(DataParallelTrainer):
 
     .. testcode::
 
+        import os
+        import tempfile
         import tensorflow as tf
 
         import ray
@@ -118,13 +120,17 @@ class TensorflowTrainer(DataParallelTrainer):
             )
             for epoch in range(config["num_epochs"]):
                 model.fit(tf_dataset)
-                # You can also use ray.air.integrations.keras.Callback
-                # for reporting and checkpointing instead of reporting manually.
+
+                # Create checkpoint.
+                checkpoint_dir = tempfile.mkdtemp()
+                model.save_weights(
+                    os.path.join(checkpoint_dir, "my_checkpoint")
+                )
+                checkpoint = Checkpoint.from_directory(checkpoint_dir)
+
                 train.report(
                     {},
-                    checkpoint=Checkpoint.from_dict(
-                        dict(epoch=epoch, model=model.get_weights())
-                    ),
+                    checkpoint=checkpoint,
                 )
 
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
@@ -155,9 +161,7 @@ class TensorflowTrainer(DataParallelTrainer):
         run_config: Configuration for the execution of the training run.
         datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
-            dataset. If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be transformed
-            by the ``preprocessor`` if one is provided.
+            dataset.
         resume_from_checkpoint: A checkpoint to resume training from.
         metadata: Dict that should be made available via
             `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`

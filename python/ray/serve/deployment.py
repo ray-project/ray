@@ -10,31 +10,34 @@ from typing import (
     Tuple,
     Union,
 )
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+import warnings
 
-from ray.serve.context import get_global_client
 from ray.dag.dag_node import DAGNodeBase
 from ray.dag.class_node import ClassNode
 from ray.dag.function_node import FunctionNode
-from ray.serve.config import (
-    AutoscalingConfig,
-    DeploymentConfig,
-    ReplicaConfig,
-)
-from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
-from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warning
 from ray.util.annotations import Deprecated, PublicAPI
+
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve.config import AutoscalingConfig
+from ray.serve.context import _get_global_client
+from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
+)
+from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve._private.utils import (
+    DEFAULT,
+    Default,
+    guarded_deprecation_warning,
 )
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class Application(DAGNodeBase):
     """One or more deployments bound with arguments that can be deployed together.
 
@@ -95,7 +98,7 @@ class Application(DAGNodeBase):
         return getattr(self._get_internal_dag_node(), name)
 
 
-@PublicAPI
+@PublicAPI(stability="stable")
 class Deployment:
     """Class (or function) decorated with the `@serve.deployment` decorator.
 
@@ -232,7 +235,7 @@ class Deployment:
             # this deployment is not exposed over HTTP
             return None
 
-        return get_global_client().root_url + self.route_prefix
+        return _get_global_client().root_url + self.route_prefix
 
     def __call__(self):
         raise RuntimeError(
@@ -240,7 +243,6 @@ class Deployment:
             "Use `deployment.deploy() instead.`"
         )
 
-    @PublicAPI(stability="beta")
     def bind(self, *args, **kwargs) -> Application:
         """Bind the arguments to the deployment and return an Application.
 
@@ -286,7 +288,7 @@ class Deployment:
             init_kwargs: kwargs to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
-        record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+        ServeUsageTag.API_VERSION.record("v1")
         self._deploy(*init_args, _blocking=_blocking, **init_kwargs)
 
     # TODO(Sihan) Promote the _deploy to deploy after we fully deprecate the API
@@ -311,9 +313,10 @@ class Deployment:
             ray_actor_options=self._replica_config.ray_actor_options,
             placement_group_bundles=self._replica_config.placement_group_bundles,
             placement_group_strategy=self._replica_config.placement_group_strategy,
+            max_replicas_per_node=self._replica_config.max_replicas_per_node,
         )
 
-        return get_global_client().deploy(
+        return _get_global_client().deploy(
             self._name,
             replica_config=replica_config,
             deployment_config=self._deployment_config,
@@ -334,7 +337,7 @@ class Deployment:
     def _delete(self):
         """Delete this deployment."""
 
-        return get_global_client().delete_deployments([self._name])
+        return _get_global_client().delete_deployments([self._name])
 
     @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
     @Deprecated(message=MIGRATION_MESSAGE)
@@ -371,14 +374,13 @@ class Deployment:
             ServeHandle
         """
 
-        return get_global_client().get_handle(
+        return _get_global_client().get_handle(
             self._name,
             app_name="",
             missing_ok=True,
             sync=sync,
         )
 
-    @PublicAPI
     def options(
         self,
         func_or_class: Optional[Callable] = None,
@@ -391,6 +393,7 @@ class Deployment:
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
         placement_group_strategy: Optional[str] = DEFAULT.VALUE,
+        max_replicas_per_node: Optional[int] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_concurrent_queries: Default[int] = DEFAULT.VALUE,
         autoscaling_config: Default[
@@ -447,6 +450,13 @@ class Deployment:
                 "future!"
             )
 
+        if not _internal and route_prefix is not DEFAULT.VALUE:
+            logger.warning(
+                "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
+                "deprecated. To specify a route prefix for an application, pass it "
+                "into `serve.run` instead."
+            )
+
         if num_replicas not in [DEFAULT.VALUE, None]:
             new_deployment_config.num_replicas = num_replicas
         if user_config is not DEFAULT.VALUE:
@@ -482,6 +492,9 @@ class Deployment:
         if placement_group_strategy is DEFAULT.VALUE:
             placement_group_strategy = self._replica_config.placement_group_strategy
 
+        if max_replicas_per_node is DEFAULT.VALUE:
+            max_replicas_per_node = self._replica_config.max_replicas_per_node
+
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
 
@@ -511,6 +524,7 @@ class Deployment:
             ray_actor_options=ray_actor_options,
             placement_group_bundles=placement_group_bundles,
             placement_group_strategy=placement_group_strategy,
+            max_replicas_per_node=max_replicas_per_node,
         )
 
         return Deployment(
@@ -523,7 +537,12 @@ class Deployment:
             is_driver_deployment=is_driver_deployment,
         )
 
-    @PublicAPI(stability="alpha")
+    @Deprecated(
+        message=(
+            "This was intended for use with the `serve.build` Python API "
+            "(which has been deprecated). Use `.options()` instead."
+        )
+    )
     def set_options(
         self,
         func_or_class: Optional[Callable] = None,
@@ -554,6 +573,11 @@ class Deployment:
         Refer to the @serve.deployment decorator docstring for all non-private
         arguments.
         """
+        if not _internal:
+            warnings.warn(
+                "`.set_options()` is deprecated. "
+                "Use `.options()` or an application builder function instead."
+            )
 
         validated = self.options(
             func_or_class=func_or_class,
@@ -640,6 +664,7 @@ def deployment_to_schema(
         "ray_actor_options": ray_actor_options_schema,
         "placement_group_strategy": d._replica_config.placement_group_strategy,
         "placement_group_bundles": d._replica_config.placement_group_bundles,
+        "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "is_driver_deployment": d._is_driver_deployment,
     }
 
@@ -688,6 +713,11 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         placement_group_strategy = s.placement_group_strategy
 
+    if s.max_replicas_per_node is DEFAULT.VALUE:
+        max_replicas_per_node = None
+    else:
+        max_replicas_per_node = s.max_replicas_per_node
+
     if s.is_driver_deployment is DEFAULT.VALUE:
         is_driver_deployment = False
     else:
@@ -714,6 +744,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         ray_actor_options=ray_actor_options,
         placement_group_bundles=placement_group_bundles,
         placement_group_strategy=placement_group_strategy,
+        max_replicas_per_node=max_replicas_per_node,
     )
 
     return Deployment(

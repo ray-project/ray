@@ -42,7 +42,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class TFPolicy(Policy):
     """An agent policy and loss implemented in TensorFlow.
 
@@ -305,7 +305,6 @@ class TFPolicy(Policy):
         episodes: Optional[List["Episode"]] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
@@ -349,7 +348,6 @@ class TFPolicy(Policy):
         timestep: Optional[int] = None,
         **kwargs,
     ):
-
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
@@ -391,7 +389,6 @@ class TFPolicy(Policy):
         actions_normalized: bool = True,
         **kwargs,
     ) -> TensorType:
-
         if self._log_likelihood is None:
             raise ValueError(
                 "Cannot compute log-prob/likelihood w/o a self._log_likelihood op!"

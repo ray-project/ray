@@ -30,7 +30,7 @@ from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
 from ray.tune.result import _get_defaults_results_dir
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
-from ray.tune.syncer import SyncConfig
+from ray.train import SyncConfig
 from ray.tune.utils import date_str
 from ray.tune.utils.util import _resolve_storage_path, _split_remote_local_path
 from ray.util import log_once
@@ -468,7 +468,7 @@ class Experiment:
 
         Args:
             run_obj: Trainable to run.
-            storage_path: The path to Ray AIR's result storage.
+            storage_path: The path to the specified result storage.
             name: The name of the experiment specified by user.
 
         Returns:
@@ -508,7 +508,7 @@ class Experiment:
     @property
     def remote_path(self) -> Optional[str]:
         if _use_storage_context():
-            return str(self.storage.storage_prefix / self.storage.experiment_fs_path)
+            return self.storage.experiment_fs_path
 
         if not self._legacy_remote_storage_path:
             return None

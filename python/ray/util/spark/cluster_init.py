@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 import sys
@@ -15,7 +16,7 @@ from ray._private.storage import _load_class
 
 from .utils import (
     exec_cmd,
-    check_port_open,
+    is_port_in_use,
     get_random_unused_port,
     get_spark_session,
     get_spark_application_driver_host,
@@ -106,11 +107,13 @@ class RayClusterOnSpark:
             raise RuntimeError(
                 "The ray cluster has been shut down or it failed to start."
             )
+
         try:
-            # connect to the ray cluster.
-            ray_ctx = ray.init(address=self.address)
-            webui_url = ray_ctx.address_info.get("webui_url", None)
-            if webui_url:
+            ray.init(address=self.address)
+
+            if self.ray_dashboard_port is not None and is_port_in_use(
+                self.address.split(":")[0], self.ray_dashboard_port
+            ):
                 self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
             else:
                 try:
@@ -122,11 +125,6 @@ class RayClusterOnSpark:
                         "pip install ray[default]."
                     )
 
-        except Exception:
-            self.shutdown()
-            raise
-
-        try:
             last_alive_worker_count = 0
             last_progress_move_time = time.time()
             while True:
@@ -219,17 +217,17 @@ class RayClusterOnSpark:
         self.shutdown()
 
 
-def _convert_ray_node_option_key(key):
-    return f"--{key.replace('_', '-')}"
+def _convert_ray_node_option(key, value):
+    converted_key = f"--{key.replace('_', '-')}"
+    if key in ["system_config", "resources", "labels"]:
+        return f"{converted_key}={json.dumps(value)}"
+    if value is None:
+        return converted_key
+    return f"{converted_key}={str(value)}"
 
 
 def _convert_ray_node_options(options):
-    return [
-        f"{_convert_ray_node_option_key(k)}"
-        if v is None
-        else f"{_convert_ray_node_option_key(k)}={str(v)}"
-        for k, v in options.items()
-    ]
+    return [_convert_ray_node_option(k, v) for k, v in options.items()]
 
 
 _RAY_HEAD_STARTUP_TIMEOUT = 5
@@ -381,6 +379,22 @@ def _prepare_for_ray_worker_node_startup():
     return worker_port_range_begin, worker_port_range_end
 
 
+def _append_default_spilling_dir_config(head_node_options, object_spilling_dir):
+    if "system_config" not in head_node_options:
+        head_node_options["system_config"] = {}
+    sys_conf = head_node_options["system_config"]
+    if "object_spilling_config" not in sys_conf:
+        sys_conf["object_spilling_config"] = json.dumps(
+            {
+                "type": "filesystem",
+                "params": {
+                    "directory_path": object_spilling_dir,
+                },
+            }
+        )
+    return head_node_options
+
+
 def _setup_ray_cluster(
     *,
     num_worker_nodes: int,
@@ -468,6 +482,12 @@ def _setup_ray_cluster(
         ray_temp_root_dir, f"ray-{ray_head_port}-{cluster_unique_id}"
     )
     os.makedirs(ray_temp_dir, exist_ok=True)
+    object_spilling_dir = os.path.join(ray_temp_dir, "spill")
+    os.makedirs(object_spilling_dir, exist_ok=True)
+
+    head_node_options = _append_default_spilling_dir_config(
+        head_node_options, object_spilling_dir
+    )
 
     ray_head_node_cmd = [
         sys.executable,
@@ -502,7 +522,7 @@ def _setup_ray_cluster(
     # wait ray head node spin up.
     time.sleep(_RAY_HEAD_STARTUP_TIMEOUT)
 
-    if not check_port_open(ray_head_ip, ray_head_port):
+    if not is_port_in_use(ray_head_ip, ray_head_port):
         if ray_head_proc.poll() is None:
             # Ray head GCS service is down. Kill ray head node.
             ray_head_proc.terminate()

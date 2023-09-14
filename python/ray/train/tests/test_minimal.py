@@ -2,10 +2,11 @@ import pytest
 
 import ray
 from ray import train
-from ray.train import Checkpoint, ScalingConfig
+from ray.train import ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 @pytest.fixture
@@ -39,26 +40,23 @@ def test_run(ray_start_4_cpus):
 
     def train_func():
         checkpoint = train.get_checkpoint()
-        train.report(metrics=checkpoint.to_dict(), checkpoint=checkpoint)
-        return checkpoint.to_dict()[key]
+        checkpoint_dict = load_dict_checkpoint(checkpoint)
+        train.report(metrics=checkpoint_dict, checkpoint=checkpoint)
+        return checkpoint_dict[key]
 
-    checkpoint = Checkpoint.from_dict(
-        {
-            # this would be set during checkpoint saving
-            "_current_checkpoint_id": 1,
-            key: value,
-        }
-    )
+    with create_dict_checkpoint({key: value}) as checkpoint:
 
-    trainer = DataParallelTrainer(
-        train_func,
-        backend_config=config,
-        resume_from_checkpoint=checkpoint,
-        scaling_config=ScalingConfig(num_workers=num_workers),
-    )
-    results = trainer.fit()
+        trainer = DataParallelTrainer(
+            train_func,
+            backend_config=config,
+            resume_from_checkpoint=checkpoint,
+            scaling_config=ScalingConfig(num_workers=num_workers),
+        )
+        results = trainer.fit()
 
-    assert results.checkpoint.to_dict()[key] == checkpoint.to_dict()[key]
+        assert load_dict_checkpoint(results.checkpoint) == load_dict_checkpoint(
+            checkpoint
+        )
 
 
 def test_failure():

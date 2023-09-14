@@ -77,6 +77,16 @@ enum TagKey {
   SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED = 21;
   // Whether multuplexed API is was used.
   SERVE_MULTIPLEXED_API_USED = 22;
+  // Whether or not an HTTP proxy was used ("1" if used).
+  SERVE_HTTP_PROXY_USED = 23;
+  // Whether or not an gRPC proxy was used ("1" if used).
+  SERVE_GRPC_PROXY_USED = 24;
+  // Whether the serve.status API was used ("1" if used)
+  SERVE_STATUS_API_USED = 25;
+  // Whether the serve.get_app_handle API was used ("1" if used)
+  SERVE_GET_APP_HANDLE_API_USED = 26;
+  // Whether the serve.get_deployment_handle API was used ("1" if used)
+  SERVE_GET_DEPLOYMENT_HANDLE_API_USED = 27;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of
@@ -161,4 +171,17 @@ enum TagKey {
   // AIR entrypoint
   // One of: "Trainer.fit", "Tuner.fit", "tune.run", "tune.run_experiments"
   AIR_ENTRYPOINT = 508;
+
+  // Train Utilities
+  TRAIN_TORCH_GET_DEVICE = 509;
+  TRAIN_TORCH_PREPARE_MODEL = 510;
+  TRAIN_TORCH_PREPARE_DATALOADER = 511;
+  TRAIN_LIGHTNING_PREPARE_TRAINER = 512;
+  TRAIN_LIGHTNING_RAYTRAINREPORTCALLBACK = 513;
+  TRAIN_LIGHTNING_RAYDDPSTRATEGY = 514;
+  TRAIN_LIGHTNING_RAYFSDPSTRATEGY = 515;
+  TRAIN_LIGHTNING_RAYDEEPSPEEDSTRATEGY = 516;
+  TRAIN_LIGHTNING_RAYLIGHTNINGENVIRONMENT = 517;
+  TRAIN_TRANSFORMERS_PREPARE_TRAINER = 518;
+  TRAIN_TRANSFORMERS_RAYTRAINREPORTCALLBACK = 519;
 }
