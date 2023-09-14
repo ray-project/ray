@@ -459,7 +459,10 @@ class JobSupervisor:
                             "force-killed with SIGKILL."
                         )
                         self._kill_processes(proc_to_kill, signal.SIGKILL)
-                await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
+                return_code = job_process.wait()
+                await self._job_info_client.put_status(
+                    self._job_id, JobStatus.STOPPED, driver_exit_code=return_code
+                )
             else:
                 # Child process finished execution and no stop event is set
                 # at the same time
@@ -472,7 +475,9 @@ class JobSupervisor:
                 )
                 if return_code == 0:
                     await self._job_info_client.put_status(
-                        self._job_id, JobStatus.SUCCEEDED
+                        self._job_id,
+                        JobStatus.SUCCEEDED,
+                        driver_exit_code=return_code,
                     )
                 else:
                     log_tail = self._log_client.get_last_n_log_lines(self._job_id)
@@ -489,16 +494,23 @@ class JobSupervisor:
                             f"failed with exit code {return_code}"
                         )
                     await self._job_info_client.put_status(
-                        self._job_id, JobStatus.FAILED, message=message
+                        self._job_id,
+                        JobStatus.FAILED,
+                        message=message,
+                        driver_exit_code=return_code,
                     )
         except Exception:
             logger.error(
                 "Got unexpected exception while trying to execute driver "
                 f"command. {traceback.format_exc()}"
             )
+            return_code = child_process.returncode
             try:
                 await self._job_info_client.put_status(
-                    self._job_id, JobStatus.FAILED, message=traceback.format_exc()
+                    self._job_id,
+                    JobStatus.FAILED,
+                    message=traceback.format_exc(),
+                    driver_exit_code=return_code,
                 )
             except Exception:
                 logger.error(
