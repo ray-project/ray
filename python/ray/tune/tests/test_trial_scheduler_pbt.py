@@ -2,6 +2,7 @@ import tempfile
 from functools import partial
 from typing import List
 
+import json
 import numpy as np
 import os
 import pickle
@@ -14,10 +15,10 @@ from unittest.mock import MagicMock
 
 
 import ray
-from ray import cloudpickle, tune
-from ray.train import Checkpoint
+from ray import cloudpickle, train, tune
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
+from ray.train import Checkpoint
 from ray.tune import Trainable, Callback
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining
@@ -173,7 +174,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
         )
 
         checkpoint_config = CheckpointConfig(
-            num_to_keep=1,
+            num_to_keep=3,
             checkpoint_frequency=2,
         )
 
@@ -195,32 +196,37 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
 
-        def MockTrainingFuncSync(config, checkpoint_dir=None):
+        def train_fn_sync(config):
             iter = 0
 
-            if checkpoint_dir:
-                checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
-                with open(checkpoint_path, "rb") as fp:
-                    a, iter = pickle.load(fp)
+            checkpoint = train.get_checkpoint()
+            if checkpoint:
+                with checkpoint.as_directory() as checkpoint_dir:
+                    checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
+                    with open(checkpoint_path, "rb") as fp:
+                        a, iter = pickle.load(fp)
 
             a = config["a"]  # Use the new hyperparameter if perturbed.
 
             while True:
                 iter += 1
-                with tune.checkpoint_dir(step=iter) as checkpoint_dir:
+                with tempfile.TemporaryDirectory() as checkpoint_dir:
                     checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, iter), fp)
-                # Different sleep times so that asynch test runs do not
-                # randomly succeed. If well performing trials finish later,
-                # then bad performing trials will already have continued
-                # to train, which is exactly what we want to test when
-                # comparing sync vs. async.
-                time.sleep(a / 20)
-                # Score gets better every iteration.
-                tune.report(mean_accuracy=iter + a, a=a)
+                    # Different sleep times so that asynch test runs do not
+                    # randomly succeed. If well performing trials finish later,
+                    # then bad performing trials will already have continued
+                    # to train, which is exactly what we want to test when
+                    # comparing sync vs. async.
+                    time.sleep(a / 20)
+                    # Score gets better every iteration.
+                    train.report(
+                        {"mean_accuracy": iter + a, "a": a},
+                        checkpoint=Checkpoint.from_directory(checkpoint_dir),
+                    )
 
-        self.MockTrainingFuncSync = MockTrainingFuncSync
+        self.MockTrainingFuncSync = train_fn_sync
 
     def tearDown(self):
         ray.shutdown()
@@ -307,12 +313,13 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
                 return {"score": self.score}
 
             def save_checkpoint(self, checkpoint_dir):
-                checkpoint = Checkpoint.from_dict({"a": self.a})
-                checkpoint.to_directory(path=checkpoint_dir)
+                with open(os.path.join(checkpoint_dir, "checkpoint.json"), "w") as f:
+                    json.dump({"a": self.a}, f)
                 time.sleep(self.saving_time)
 
             def load_checkpoint(self, checkpoint_dir):
-                checkpoint_dict = Checkpoint.from_directory(checkpoint_dir).to_dict()
+                with open(os.path.join(checkpoint_dir, "checkpoint.json"), "r") as f:
+                    checkpoint_dict = json.load(f)
                 self.a = checkpoint_dict["a"]
 
             def reset_config(self, new_config):
@@ -328,9 +335,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
             metric="score",
             mode="max",
             perturbation_interval=perturbation_interval,
-            hyperparam_mutations={
-                "a": tune.uniform(0, 1),
-            },
+            hyperparam_mutations={"a": tune.uniform(0, 1)},
             synch=True,
         )
 
@@ -374,7 +379,8 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         )
         random.seed(100)
         np.random.seed(1000)
-        tuner.fit()
+        results = tuner.fit()
+        assert not results.errors
 
 
 class PopulationBasedTrainingConfigTest(unittest.TestCase):
@@ -392,7 +398,7 @@ class PopulationBasedTrainingConfigTest(unittest.TestCase):
             c2 = config["c"]["c2"]
 
             while True:
-                tune.report(mean_accuracy=a * b * (c1 + c2))
+                train.report({"mean_accuracy": a * b * (c1 + c2)})
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -471,7 +477,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         random.seed(100)
         np.random.seed(1000)
         checkpoint_config = CheckpointConfig(
-            num_to_keep=1,
+            num_to_keep=2,
             checkpoint_score_attribute="min-training_iteration",
             checkpoint_frequency=1,
             checkpoint_at_end=True,
@@ -492,23 +498,27 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         )
 
     def testPermutationContinuationFunc(self):
-        def MockTrainingFunc(config, checkpoint_dir=None):
+        def MockTrainingFunc(config):
             iter = 0
             a = config["a"]
             b = config["b"]
 
-            if checkpoint_dir:
-                checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
-                with open(checkpoint_path, "rb") as fp:
-                    a, b, iter = pickle.load(fp)
+            if train.get_checkpoint():
+                with train.get_checkpoint().as_directory() as checkpoint_dir:
+                    checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
+                    with open(checkpoint_path, "rb") as fp:
+                        a, b, iter = pickle.load(fp)
 
             while True:
                 iter += 1
-                with tune.checkpoint_dir(step=iter) as checkpoint_dir:
+                with tempfile.TemporaryDirectory() as checkpoint_dir:
                     checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, b, iter), fp)
-                tune.report(mean_accuracy=(a - iter) * b)
+                    train.report(
+                        {"mean_accuracy": (a - iter) * b},
+                        checkpoint=Checkpoint.from_directory(checkpoint_dir),
+                    )
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -523,7 +533,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         random.seed(100)
         np.random.seed(1000)
         checkpoint_config = CheckpointConfig(
-            num_to_keep=1,
+            num_to_keep=2,
             checkpoint_score_attribute="min-training_iteration",
         )
         tune.run(
@@ -542,7 +552,9 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         )
 
     def testBurnInPeriod(self):
-        runner, *_ = create_execution_test_objects(tempfile.mkdtemp())
+        tempdir = tempfile.mkdtemp()
+        runner, *_ = create_execution_test_objects(tempdir)
+        storage_context = runner._storage
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -572,10 +584,10 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             def status(self, status):
                 pass
 
-        trial1 = MockTrial("PPO", config=dict(num=1))
-        trial2 = MockTrial("PPO", config=dict(num=2))
-        trial3 = MockTrial("PPO", config=dict(num=3))
-        trial4 = MockTrial("PPO", config=dict(num=4))
+        trial1 = MockTrial("PPO", config=dict(num=1), storage=storage_context)
+        trial2 = MockTrial("PPO", config=dict(num=2), storage=storage_context)
+        trial3 = MockTrial("PPO", config=dict(num=3), storage=storage_context)
+        trial4 = MockTrial("PPO", config=dict(num=4), storage=storage_context)
 
         runner.add_trial(trial1)
         runner.add_trial(trial2)

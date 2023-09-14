@@ -59,7 +59,6 @@ def test_deepspeed_stages(ray_start_6_cpus_4_gpus, tmpdir, stage, test_restore):
                 num_to_keep=3,
                 checkpoint_score_attribute="val_loss",
                 checkpoint_score_order="min",
-                _checkpoint_keep_all_ranks=True,
             ),
         ),
     )

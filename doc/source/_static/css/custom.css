@@ -1,3 +1,21 @@
+/* override default colors used in the Sphinx theme */
+:root {
+    --tabs-color-label-active: #0475DE;
+    --tabs-color-label-hover: #0475DE;
+    --buttons-color-blue: #0475DE;
+    --tabs-color-label-inactive: #9E9E9E;
+    --tabs-color-overline: #e0e0e0;
+    --tabs-color-underline: #e0e0e0;
+    --border-color-gray: #e0e0e0;
+    --background-color-light-gray:#fafafa;
+    --background-color-disabled: #9E9E9E;
+    --pst-color-link: 4, 117, 222;
+    --pst-color-primary: 4, 117, 222;
+    --pst-color-text-secondary: #616161;
+    --blue: #0475DE;
+    --sidebar-top: 5em;
+}
+
 /* Remove flicker for announcement top bar replacement */
 .header-item.announcement {
     background-color: white;
@@ -28,8 +46,10 @@ div.navbar-brand-box {
     * height: to prevent topbar overlap
 */
 #site-navigation {
-    overflow-y: visible;
-    height: 100% !important;
+  overflow-y: auto;
+  height: calc(100vh - var(--sidebar-top));
+  position: sticky;
+  top: var(--sidebar-top) !important;
 }
 
 /* Center the algolia search bar*/
@@ -98,14 +118,11 @@ div.navbar-brand-box {
     overflow-y: scroll !important;
 }
 
-/* Make the TOC on the left scrollable by itself */
-#site-navigation .bd-sidebar__content {
-    height: 80vh;
-    overflow: visible;
+.bd-sidebar__content {
+  overflow-y: unset !important;
 }
+
 .bd-sidebar__top {
-    height: 100%;
-    overflow: visible;
     display: flex;
     flex-direction: column;
 }
@@ -116,9 +133,7 @@ div.navbar-brand-box {
 }
 
 nav.bd-links {
-    overflow-y: auto;
     flex: 1;
-    padding-bottom: 50px;
 }
 
 nav.bd-links::-webkit-scrollbar-thumb {
@@ -490,23 +505,6 @@ footer {
     color: var(--pst-color-text-secondary);
 }
 
-/* override default colors used in the Sphinx theme */
-:root {
-    --tabs-color-label-active: #0475DE;
-    --tabs-color-label-hover: #0475DE;
-    --buttons-color-blue: #0475DE;
-    --tabs-color-label-inactive: #9E9E9E;
-    --tabs-color-overline: #e0e0e0;
-    --tabs-color-underline: #e0e0e0;
-    --border-color-gray: #e0e0e0;
-    --background-color-light-gray:#fafafa;
-    --background-color-disabled: #9E9E9E;
-    --pst-color-link: 4, 117, 222;
-    --pst-color-primary: 4, 117, 222;
-    --pst-color-text-secondary: #616161;
-    --blue: #0475DE;
-}
-
 /* Make the hover color of tag/gallery buttons differ from "active" */
 .tag.btn-outline-primary:hover {
     background-color: rgba(20, 99, 208, 0.62) !important;
@@ -651,19 +649,11 @@ padding: 20px;
   position: absolute;
 }
 
-.mantine-Button-root{
-    bottom: 60px !important;
-}
-
 #kapa-widget-container {
   z-index: 10000 !important;
   position: absolute !important;
 }
 
-.mantine-1sc70ew, .mantine-fp9t1o {
-    width: 100% !important;
-    height: 100% !important;
-}
 
 .searchDiv {
     width: 100%;
@@ -802,4 +792,8 @@ footer.col.footer > p {
 
 #csat-textarea {
   resize: none;
+}
+
+.summit-ad {
+  margin: 1em 0em;
 }

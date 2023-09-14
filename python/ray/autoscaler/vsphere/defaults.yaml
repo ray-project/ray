@@ -14,7 +14,15 @@ upscaling_speed: 1.0
 # This executes all commands on all nodes in the docker container,
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
-docker: {}
+docker:
+    image: "rayproject/ray-ml:latest"
+    # image: rayproject/ray:latest   # use this one if you don't need ML dependencies, it's faster to pull
+    container_name: "ray_container"
+    # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
+    # if no cached version is present.
+    pull_before_run: True
+    run_options:   # Extra options to pass into "docker run"
+        - --ulimit nofile=65536:65536
 
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 5
@@ -23,12 +31,13 @@ idle_timeout_minutes: 5
 provider:
     type: vsphere
 
-    vsphere_config:
-      credentials:
-        admin_user: administrator@vsphere.local
-        admin_password: vc_password
-        server: 10.186.231.56
-      datacenter: Datacenter
+# Credentials configured here will take precedence over credentials set in the
+# environment variables.
+#   vsphere_config:
+#       credentials:
+#           user: vc_username
+#           password: vc_password
+#           server: vc_address
 
 # How Ray will authenticate with newly launched nodes.
 auth:

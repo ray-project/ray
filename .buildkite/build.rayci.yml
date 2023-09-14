@@ -3,17 +3,18 @@ steps:
   - label: ":tapioca: build: wheel {{matrix}}"
     instance_type: medium
     commands:
-      - ./ci/build/build-manylinux-ray.sh
-      - ./ci/build/build-manylinux-wheel.sh {{matrix}}
-      - ./ci/build/copy_build_artifacts.sh wheel
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}}
     matrix:
-      - cp37-cp37m 1.14.5
-      - cp38-cp38 1.14.5
-      - cp39-cp39 1.19.3
-      - cp310-cp310 1.22.0
-      - cp311-cp311 1.22.0
-    depends_on: manylinux
-    job_env: manylinux
+      - py37
+      - py38
+      - py39
+      - py310
+      - py311
+    depends_on: 
+      - manylinux
+      - forge
+    job_env: forge
+
 
   - label: ":tapioca: build: jar"
     instance_type: medium
@@ -23,3 +24,13 @@ steps:
       - ./ci/build/copy_build_artifacts.sh jar
     depends_on: manylinux
     job_env: manylinux
+
+  - label: ":tapioca: build: docker"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version py38
+    depends_on: 
+      - manylinux
+      - forge
+      - raypy38cu118base
+    job_env: forge

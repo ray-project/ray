@@ -1,7 +1,7 @@
 import contextlib
 import io
-import logging
 import os
+import logging
 import platform
 import shutil
 import tarfile
@@ -28,7 +28,7 @@ from ray.air._internal.remote_storage import (
 )
 from ray.air._internal.util import _copy_dir_ignore_conflicts
 from ray.air.constants import PREPROCESSOR_KEY, CHECKPOINT_ID_ATTR
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -48,12 +48,13 @@ _CHECKPOINT_UUID_URI_NAMESPACE = uuid.UUID("627fe696-f135-436f-bc4b-bda0306e0181
 logger = logging.getLogger(__name__)
 
 
+# TODO(justinvyu): [code_removal]
 @dataclass
 class _CheckpointMetadata:
     """Metadata about a checkpoint.
 
     Attributes:
-        checkpoint_type: The checkpoint class. For example, ``LegacyTorchCheckpoint``.
+        checkpoint_type: The checkpoint class.
         checkpoint_state: A dictionary that maps object attributes to their values. When
             you load a serialized checkpoint, restore these values.
     """
@@ -62,9 +63,9 @@ class _CheckpointMetadata:
     checkpoint_state: Dict[str, Any]
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class Checkpoint:
-    """Ray AIR Checkpoint.
+    """[Deprecated] Ray AIR Checkpoint.
 
     An AIR Checkpoint are a common interface for accessing models across
     different AIR components and libraries. A Checkpoint can have its data
@@ -83,7 +84,7 @@ class Checkpoint:
 
     .. code-block:: python
 
-        from ray.train import Checkpoint
+        from ray.air import Checkpoint
 
         # Create checkpoint data dict
         checkpoint_data = {"data": 123}
@@ -165,6 +166,16 @@ class Checkpoint:
         data_dict: Optional[dict] = None,
         uri: Optional[str] = None,
     ):
+        from ray.train._internal.storage import _use_storage_context
+
+        if _use_storage_context():
+            raise DeprecationWarning(
+                "`ray.air.Checkpoint` is deprecated. "
+                "Please use `ray.train.Checkpoint` instead. "
+                "See the `Checkpoint: New API` section in "
+                "https://github.com/ray-project/ray/issues/37868 for a migration guide."
+            )
+
         # First, resolve file:// URIs to local paths
         if uri:
             local_path = _get_local_path(uri)
@@ -268,14 +279,6 @@ class Checkpoint:
 
         In all other cases, this will return None.
 
-        Example:
-
-            >>> from ray.train import Checkpoint
-            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
-            >>> assert checkpoint.path == "s3://some-bucket/some-location"
-            >>> checkpoint = Checkpoint.from_dict({"data": 1})
-            >>> assert checkpoint.path == None
-
         Returns:
             Checkpoint path if this checkpoint is reachable from the current node (e.g.
             cloud storage or locally available directory).
@@ -299,15 +302,7 @@ class Checkpoint:
 
         In all other cases, this will return None. Users can then choose to
         persist to cloud with
-        :meth:`Checkpoint.to_uri() <ray.train.Checkpoint.to_uri>`.
-
-        Example:
-
-            >>> from ray.train import Checkpoint
-            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
-            >>> assert checkpoint.uri == "s3://some-bucket/some-location"
-            >>> checkpoint = Checkpoint.from_dict({"data": 1})
-            >>> assert checkpoint.uri == None
+        :meth:`Checkpoint.to_uri() <ray.air.Checkpoint.to_uri>`.
 
         Returns:
             Checkpoint URI if this URI is reachable from the current node (e.g.
@@ -330,7 +325,7 @@ class Checkpoint:
             data: Data object containing pickled checkpoint data.
 
         Returns:
-            ray.train.Checkpoint: checkpoint object.
+            ray.air.Checkpoint: checkpoint object.
         """
         bytes_data = pickle.loads(data)
         if isinstance(bytes_data, dict):
@@ -359,7 +354,7 @@ class Checkpoint:
             data: Dictionary containing checkpoint data.
 
         Returns:
-            ray.train.Checkpoint: checkpoint object.
+            ray.air.Checkpoint: checkpoint object.
         """
         state = {}
         if _METADATA_KEY in data:
@@ -454,7 +449,7 @@ class Checkpoint:
                 Checkpoint).
 
         Returns:
-            ray.train.Checkpoint: checkpoint object.
+            ray.air.Checkpoint: checkpoint object.
         """
         state = {}
 
@@ -473,17 +468,10 @@ class Checkpoint:
     @classmethod
     @DeveloperAPI
     def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
-        """Create a checkpoint from a generic :class:`ray.train.Checkpoint`.
+        """Create a checkpoint from a generic :class:`ray.air.Checkpoint`.
 
         This method can be used to create a framework-specific checkpoint from a
-        generic :class:`Checkpoint` object.
-
-        Examples:
-            >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
-            >>> checkpoint = LegacyTorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP
-            >>> model = checkpoint.get_model()  # doctest: +SKIP
-            Linear(in_features=1, out_features=1, bias=True)
-        """  # noqa: E501
+        generic :class:`Checkpoint` object."""
         if type(other) is cls:
             return other
 
@@ -714,7 +702,7 @@ class Checkpoint:
             uri: Source location URI to read data from.
 
         Returns:
-            ray.train.Checkpoint: checkpoint object.
+            ray.air.Checkpoint: checkpoint object.
         """
         state = {}
         try:

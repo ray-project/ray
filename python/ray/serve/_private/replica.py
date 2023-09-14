@@ -30,7 +30,7 @@ from ray.serve._private.common import (
     StreamingHTTPRequest,
     gRPCRequest,
 )
-from ray.serve.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
     RECONFIGURE_METHOD,
@@ -156,11 +156,11 @@ def create_replica_wrapper(actor_class_name: str):
             # code will connect to the instance that this deployment is running
             # in.
             ray.serve.context._set_internal_replica_context(
-                deployment_name,
-                replica_tag,
-                controller_name,
-                servable_object=None,
                 app_name=app_name,
+                deployment=deployment_name,
+                replica_tag=replica_tag,
+                servable_object=None,
+                controller_name=controller_name,
             )
 
             assert controller_name, "Must provide a valid controller_name"
@@ -194,11 +194,11 @@ def create_replica_wrapper(actor_class_name: str):
 
                 # Setting the context again to update the servable_object.
                 ray.serve.context._set_internal_replica_context(
-                    deployment_name,
-                    replica_tag,
-                    controller_name,
-                    servable_object=_callable,
                     app_name=app_name,
+                    deployment=deployment_name,
+                    replica_tag=replica_tag,
+                    servable_object=_callable,
+                    controller_name=controller_name,
                 )
 
                 self.replica = RayServeReplica(
@@ -712,7 +712,7 @@ class RayServeReplica:
         # Set request context variables for subsequent handle so that
         # handle can pass the correct request context to subsequent replicas.
         ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(
+            ray.serve.context._RequestContext(
                 request_metadata.route,
                 request_metadata.request_id,
                 self.deployment_id.app,
@@ -738,10 +738,18 @@ class RayServeReplica:
         self.processing_latency_tracker.observe(
             latency_ms, tags={"route": request_metadata.route}
         )
+
+        if user_exception is None:
+            status_str = "OK"
+        elif isinstance(user_exception, asyncio.CancelledError):
+            status_str = "CANCELLED"
+        else:
+            status_str = "ERROR"
+
         logger.info(
             access_log_msg(
                 method=request_metadata.call_method,
-                status="OK" if user_exception is None else "ERROR",
+                status=status_str,
                 latency_ms=latency_ms,
             )
         )

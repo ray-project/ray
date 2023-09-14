@@ -185,9 +185,20 @@ class StateAPIManager:
                 if filter_column not in datum:
                     match = False
                 elif filter_predicate == "=":
-                    match = datum[filter_column] == filter_value
+                    if isinstance(filter_value, str) and isinstance(
+                        datum[filter_column], str
+                    ):
+                        # Case insensitive match for string filter values.
+                        match = datum[filter_column].lower() == filter_value.lower()
+                    else:
+                        match = datum[filter_column] == filter_value
                 elif filter_predicate == "!=":
-                    match = datum[filter_column] != filter_value
+                    if isinstance(filter_value, str) and isinstance(
+                        datum[filter_column], str
+                    ):
+                        match = datum[filter_column].lower() != filter_value.lower()
+                    else:
+                        match = datum[filter_column] != filter_value
                 else:
                     raise ValueError(
                         f"Unsupported filter predicate {filter_predicate} is given. "

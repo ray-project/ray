@@ -261,13 +261,14 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   ~TaskEventBufferImpl() override;
 
-  void AddTaskEvent(std::unique_ptr<TaskEvent> task_event) override;
+  void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
+      ABSL_LOCKS_EXCLUDED(mutex_) override;
 
-  void FlushEvents(bool forced) LOCKS_EXCLUDED(mutex_) override;
+  void FlushEvents(bool forced) ABSL_LOCKS_EXCLUDED(mutex_) override;
 
-  Status Start(bool auto_flush = true) LOCKS_EXCLUDED(mutex_) override;
+  Status Start(bool auto_flush = true) ABSL_LOCKS_EXCLUDED(mutex_) override;
 
-  void Stop() LOCKS_EXCLUDED(mutex_) override;
+  void Stop() ABSL_LOCKS_EXCLUDED(mutex_) override;
 
   bool Enabled() const override;
 
@@ -381,13 +382,13 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   PeriodicalRunner periodical_runner_;
 
   /// Client to the GCS used to push profile events to it.
-  std::unique_ptr<gcs::GcsClient> gcs_client_ GUARDED_BY(mutex_);
+  std::unique_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
 
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;
 
   /// Circular buffered task status events.
-  boost::circular_buffer<std::unique_ptr<TaskEvent>> status_events_ GUARDED_BY(mutex_);
+  boost::circular_buffer<std::unique_ptr<TaskEvent>> status_events_ ABSL_GUARDED_BY(mutex_);
 
   /// Buffered task attempts that were dropped due to status events being dropped.
   /// This will be sent to GCS to surface the dropped task attempts.

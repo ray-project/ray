@@ -22,20 +22,21 @@ from ray.air._internal.remote_storage import (
 from ray.air._internal import usage as air_usage
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
-from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal import session
 from ray.train._internal.storage import (
     _exists_at_fs_path,
     _use_storage_context,
     get_fs_and_path,
 )
+
+from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray._private.dict import merge_dicts
+
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -90,7 +91,7 @@ class BaseTrainer(abc.ABC):
     Note: The base ``BaseTrainer`` class cannot be instantiated directly. Only
     one of its subclasses can be used.
 
-    Note to AIR developers: If a new AIR trainer is added, please update
+    Note to developers: If a new trainer is added, please update
     `air/_internal/usage.py`.
 
     **How does a trainer work?**
@@ -188,7 +189,6 @@ class BaseTrainer(abc.ABC):
 
     _scaling_config_allowed_keys: List[str] = [
         "trainer_resources",
-        "_max_cpu_fraction_per_node",
     ]
     _handles_checkpoint_freq: bool = False
     _handles_checkpoint_at_end: bool = False
@@ -257,8 +257,8 @@ class BaseTrainer(abc.ABC):
             from ray.train.trainer import BaseTrainer
 
             experiment_name = "unique_experiment_name"
-            local_dir = "~/ray_results"
-            experiment_dir = os.path.join(local_dir, experiment_name)
+            storage_path = os.path.expanduser("~/ray_results")
+            experiment_dir = os.path.join(storage_path, experiment_name)
 
             # Define some dummy inputs for demonstration purposes
             datasets = {"train": ray.data.from_items([{"a": i} for i in range(10)])}
@@ -269,15 +269,14 @@ class BaseTrainer(abc.ABC):
 
             if CustomTrainer.can_restore(experiment_dir):
                 trainer = CustomTrainer.restore(
-                    experiment_dir,
-                    datasets=datasets,
+                    experiment_dir, datasets=datasets
                 )
             else:
                 trainer = CustomTrainer(
                     datasets=datasets,
                     run_config=train.RunConfig(
                         name=experiment_name,
-                        local_dir=local_dir,
+                        storage_path=storage_path,
                         # Tip: You can also enable retries on failure for
                         # worker-level fault tolerance
                         failure_config=train.FailureConfig(max_failures=3),
@@ -491,11 +490,8 @@ class BaseTrainer(abc.ABC):
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
-        expected_checkpoint_type = (
-            NewCheckpoint if _use_storage_context() else ray.air.Checkpoint
-        )
         if self.starting_checkpoint is not None and not isinstance(
-            self.starting_checkpoint, expected_checkpoint_type
+            self.starting_checkpoint, Checkpoint
         ):
             raise ValueError(
                 f"`resume_from_checkpoint` should be an instance of "
@@ -587,8 +583,9 @@ class BaseTrainer(abc.ABC):
 
         ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
 
-        You can use the :ref:`Tune Function API functions <tune-function-docstring>`
-        (``train.report()`` and ``train.get_checkpoint()``) inside
+        You can use the :ref:`Ray Train utilities <train-loop-api>`
+        (:func:`train.report() <ray.train.report>` and
+        :func:`train.get_checkpoint() <ray.train.get_checkpoint>`) inside
         this training loop.
 
         Example:
@@ -854,10 +851,10 @@ class BaseTrainer(abc.ABC):
                     )
                 return scaling_config
 
-            def _trainable_func(self, config, reporter, checkpoint_dir):
+            def _trainable_func(self, config):
                 # We ignore the config passed by Tune and instead use the merged
                 # config which includes the initial Trainer args.
-                super()._trainable_func(self._merged_config, reporter, checkpoint_dir)
+                super()._trainable_func(self._merged_config)
 
             @classmethod
             def default_resource_request(cls, config):
