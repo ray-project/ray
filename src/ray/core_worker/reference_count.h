@@ -785,6 +785,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
     /// Whether the task that creates this object is scheduled/executing.
     bool pending_creation = false;
+
+    /// Number of times this object is spilled.
+    int64_t times_spilled = 0;
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;

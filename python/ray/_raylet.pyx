@@ -565,6 +565,7 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
             The size of data + metadata in bytes.
     """
     object_size = c_object_location.GetObjectSize()
+    times_spilled = c_object_location.GetTimesSpilled()
 
     node_ids = set()
     c_node_ids = c_object_location.GetNodeIDs()
@@ -585,6 +586,7 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
     return {
         "node_ids": list(node_ids),
         "object_size": object_size,
+        "times_spilled": times_spilled,
     }
 
 
