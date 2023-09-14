@@ -361,12 +361,12 @@ class ProxyStateManager:
     def get_grpc_config(self) -> gRPCOptions:
         return self._grpc_options
 
-    def get_http_proxy_handles(self) -> Dict[NodeId, ActorHandle]:
+    def get_proxy_handles(self) -> Dict[NodeId, ActorHandle]:
         return {
             node_id: state.actor_handle for node_id, state in self._proxy_states.items()
         }
 
-    def get_http_proxy_names(self) -> Dict[NodeId, str]:
+    def get_proxy_names(self) -> Dict[NodeId, str]:
         return {
             node_id: state.actor_name for node_id, state in self._proxy_states.items()
         }
@@ -377,7 +377,7 @@ class ProxyStateManager:
             for node_id, state in self._proxy_states.items()
         }
 
-    def update(self, http_proxy_nodes: Set[NodeId] = None):
+    def update(self, proxy_nodes: Set[NodeId] = None):
         """Update the state of all HTTP proxies.
 
         Start proxies on all nodes if not already exist and stop the proxies on nodes
@@ -385,12 +385,12 @@ class ProxyStateManager:
         unhealthy proxies.
         """
         # Ensure head node always has a proxy.
-        if http_proxy_nodes is None:
-            http_proxy_nodes = {self._head_node_id}
+        if proxy_nodes is None:
+            proxy_nodes = {self._head_node_id}
         else:
-            http_proxy_nodes.add(self._head_node_id)
+            proxy_nodes.add(self._head_node_id)
 
-        target_nodes = self._get_target_nodes(http_proxy_nodes)
+        target_nodes = self._get_target_nodes(proxy_nodes)
         target_node_ids = {node_id for node_id, _ in target_nodes}
 
         for node_id, proxy_state in self._proxy_states.items():
@@ -400,7 +400,7 @@ class ProxyStateManager:
         self._stop_proxies_if_needed()
         self._start_proxies_if_needed(target_nodes)
 
-    def _get_target_nodes(self, http_proxy_nodes) -> List[Tuple[str, str]]:
+    def _get_target_nodes(self, proxy_nodes) -> List[Tuple[str, str]]:
         """Return the list of (node_id, ip_address) to deploy HTTP servers on."""
         location = self._config.location
 
@@ -410,7 +410,7 @@ class ProxyStateManager:
         target_nodes = [
             (node_id, ip_address)
             for node_id, ip_address in self._cluster_node_info_cache.get_alive_nodes()
-            if node_id in http_proxy_nodes
+            if node_id in proxy_nodes
         ]
 
         if location == DeploymentMode.HeadOnly:

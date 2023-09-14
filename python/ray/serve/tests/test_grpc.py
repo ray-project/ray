@@ -172,7 +172,7 @@ def test_controller_without_http(serve_start_shutdown):
 
     serve.run(DefaultgRPCDriver.bind(D1.bind()))
     assert (
-        ray.get(serve.context._global_client._controller.get_http_proxies.remote())
+        ray.get(serve.context._global_client._controller.get_proxies.remote())
         == {}
     )
 

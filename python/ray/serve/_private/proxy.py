@@ -1423,7 +1423,7 @@ class ProxyActor:
     ):  # noqa: F821
         self.grpc_options = grpc_options or gRPCOptions()
         configure_component_logger(
-            component_name="http_proxy", component_id=node_ip_address
+            component_name="proxy", component_id=node_ip_address
         )
         logger.info(
             f"Proxy actor {ray.get_runtime_context().get_actor_id()} "
@@ -1431,10 +1431,10 @@ class ProxyActor:
         )
 
         configure_component_memory_profiler(
-            component_name="http_proxy", component_id=node_ip_address
+            component_name="proxy", component_id=node_ip_address
         )
         self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-            component_name="http_proxy", component_id=node_ip_address
+            component_name="proxy", component_id=node_ip_address
         )
 
         if http_middlewares is None:

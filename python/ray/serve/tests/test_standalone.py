@@ -567,7 +567,7 @@ def test_no_http(ray_shutdown):
         ]
         assert len(live_actors) == 1
         controller = serve.context._global_client._controller
-        assert len(ray.get(controller.get_http_proxies.remote())) == 0
+        assert len(ray.get(controller.get_proxies.remote())) == 0
 
         # Test that the handle still works.
         @serve.deployment
@@ -651,10 +651,10 @@ def test_fixed_number_proxies(monkeypatch, ray_cluster):
     # Only the controller and two http proxy should be started.
     controller_handle = _get_global_client()._controller
     wait_for_condition(
-        lambda: len(ray.get(controller_handle.get_http_proxies.remote())) == 2
+        lambda: len(ray.get(controller_handle.get_proxies.remote())) == 2
     )
 
-    proxy_names_bytes = ray.get(controller_handle.get_http_proxy_names.remote())
+    proxy_names_bytes = ray.get(controller_handle.get_proxy_names.remote())
     proxy_names = ActorNameList.FromString(proxy_names_bytes)
     assert len(proxy_names.names) == 2
 

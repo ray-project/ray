@@ -110,7 +110,7 @@ class ServeController:
         *,
         http_config: HTTPOptions,
         detached: bool = False,
-        _disable_http_proxy: bool = False,
+        _disable_proxy: bool = False,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
@@ -149,10 +149,10 @@ class ServeController:
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
 
-        if _disable_http_proxy:
-            self.http_proxy_state_manager = None
+        if _disable_proxy:
+            self.proxy_state_manager = None
         else:
-            self.http_proxy_state_manager = ProxyStateManager(
+            self.proxy_state_manager = ProxyStateManager(
                 controller_name,
                 detached,
                 http_config,
@@ -206,9 +206,9 @@ class ServeController:
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
-        # Nodes where http proxy actors should run.
-        self._http_proxy_nodes = set()
-        self._update_http_proxy_nodes()
+        # Nodes where proxy actors should run.
+        self._proxy_nodes = set()
+        self._update_proxy_nodes()
 
         # Track the number of times the controller has started
         metrics.Counter(
@@ -290,36 +290,36 @@ class ServeController:
         }
         return EndpointSet(endpoints=data).SerializeToString()
 
-    def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
-        """Returns a dictionary of node ID to http_proxy actor handles."""
-        if self.http_proxy_state_manager is None:
+    def get_proxies(self) -> Dict[NodeId, ActorHandle]:
+        """Returns a dictionary of node ID to proxy actor handles."""
+        if self.proxy_state_manager is None:
             return {}
-        return self.http_proxy_state_manager.get_http_proxy_handles()
+        return self.proxy_state_manager.get_proxy_handles()
 
-    def get_http_proxy_names(self) -> bytes:
-        """Returns the http_proxy actor name list serialized by protobuf."""
-        if self.http_proxy_state_manager is None:
+    def get_proxy_names(self) -> bytes:
+        """Returns the proxy actor name list serialized by protobuf."""
+        if self.proxy_state_manager is None:
             return None
 
         from ray.serve.generated.serve_pb2 import ActorNameList
 
         actor_name_list = ActorNameList(
-            names=self.http_proxy_state_manager.get_http_proxy_names().values()
+            names=self.proxy_state_manager.get_proxy_names().values()
         )
         return actor_name_list.SerializeToString()
 
-    def _update_http_proxy_nodes(self):
-        """Update the nodes set where http proxy actors should run.
+    def _update_proxy_nodes(self):
+        """Update the nodes set where proxy actors should run.
 
-        Controller decides where http proxy actors should run
+        Controller decides where proxy actors should run
         (head node and nodes with deployment replicas).
         """
-        new_http_proxy_nodes = self.deployment_state_manager.get_active_node_ids()
-        new_http_proxy_nodes = (
-            new_http_proxy_nodes - self.cluster_node_info_cache.get_draining_node_ids()
+        new_proxy_nodes = self.deployment_state_manager.get_active_node_ids()
+        new_proxy_nodes = (
+            new_proxy_nodes - self.cluster_node_info_cache.get_draining_node_ids()
         )
-        new_http_proxy_nodes.add(self._controller_node_id)
-        self._http_proxy_nodes = new_http_proxy_nodes
+        new_proxy_nodes.add(self._controller_node_id)
+        self._proxy_nodes = new_proxy_nodes
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
@@ -377,20 +377,20 @@ class ServeController:
             except Exception:
                 logger.exception("Exception updating application state.")
 
-            # Update the http proxy nodes set before updating the HTTP proxy states,
+            # Update the proxy nodes set before updating the proxy states,
             # so they are more consistent.
             node_update_start_time = time.time()
-            self._update_http_proxy_nodes()
+            self._update_proxy_nodes()
             self.node_update_duration_gauge_s.set(time.time() - node_update_start_time)
 
-            # Don't update http_state until after the done recovering event is set,
+            # Don't update proxy_state until after the done recovering event is set,
             # otherwise we may start a new HTTP proxy but not broadcast it any
             # info about available deployments & their replicas.
-            if self.http_proxy_state_manager and self.done_recovering_event.is_set():
+            if self.proxy_state_manager and self.done_recovering_event.is_set():
                 try:
                     proxy_update_start_time = time.time()
-                    self.http_proxy_state_manager.update(
-                        http_proxy_nodes=self._http_proxy_nodes
+                    self.proxy_state_manager.update(
+                        http_proxy_nodes=self._proxy_nodes
                     )
                     self.proxy_update_duration_gauge_s.set(
                         time.time() - proxy_update_start_time
@@ -484,19 +484,19 @@ class ServeController:
 
     def get_http_config(self) -> HTTPOptions:
         """Return the HTTP proxy configuration."""
-        if self.http_proxy_state_manager is None:
+        if self.proxy_state_manager is None:
             return HTTPOptions()
-        return self.http_proxy_state_manager.get_config()
+        return self.proxy_state_manager.get_config()
 
     def get_grpc_config(self) -> gRPCOptions:
         """Return the gRPC proxy configuration."""
-        if self.http_proxy_state_manager is None:
+        if self.proxy_state_manager is None:
             return gRPCOptions()
-        return self.http_proxy_state_manager.get_grpc_config()
+        return self.proxy_state_manager.get_grpc_config()
 
     def get_root_url(self):
         """Return the root url for the serve instance."""
-        if self.http_proxy_state_manager is None:
+        if self.proxy_state_manager is None:
             return None
         http_config = self.get_http_config()
         if http_config.root_url == "":
@@ -536,23 +536,23 @@ class ServeController:
         self.application_state_manager.shutdown()
         self.deployment_state_manager.shutdown()
         self.endpoint_state.shutdown()
-        if self.http_proxy_state_manager:
-            self.http_proxy_state_manager.shutdown()
+        if self.proxy_state_manager:
+            self.proxy_state_manager.shutdown()
 
         config_checkpoint_deleted = self.config_checkpoint_deleted()
         application_is_shutdown = self.application_state_manager.is_ready_for_shutdown()
         deployment_is_shutdown = self.deployment_state_manager.is_ready_for_shutdown()
         endpoint_is_shutdown = self.endpoint_state.is_ready_for_shutdown()
-        http_state_is_shutdown = (
-            self.http_proxy_state_manager is None
-            or self.http_proxy_state_manager.is_ready_for_shutdown()
+        proxy_state_is_shutdown = (
+            self.proxy_state_manager is None
+            or self.proxy_state_manager.is_ready_for_shutdown()
         )
         if (
             config_checkpoint_deleted
             and application_is_shutdown
             and deployment_is_shutdown
             and endpoint_is_shutdown
-            and http_state_is_shutdown
+            and proxy_state_is_shutdown
         ):
             logger.warning(
                 "All resources have shut down, shutting down controller!",
@@ -581,9 +581,9 @@ class ServeController:
                     "endpoint not yet shutdown",
                     extra={"log_to_stderr": False},
                 )
-            if not http_state_is_shutdown:
+            if not proxy_state_is_shutdown:
                 logger.warning(
-                    "http_state not yet shutdown",
+                    "proxy_state not yet shutdown",
                     extra={"log_to_stderr": False},
                 )
 
@@ -899,8 +899,8 @@ class ServeController:
             proxy_location=http_config.location,
             http_options=http_options,
             grpc_options=grpc_options,
-            proxies=self.http_proxy_state_manager.get_proxy_details()
-            if self.http_proxy_state_manager
+            proxies=self.proxy_state_manager.get_proxy_details()
+            if self.proxy_state_manager
             else None,
             deploy_mode=self.deploy_mode,
             applications=applications,
