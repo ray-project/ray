@@ -192,7 +192,7 @@ def test_from_torch(shutdown_only, tmp_path):
     assert actual_data == expected_data
 
 
-def test_from_torch_parallel(shutdown_only, tmp_path):
+def test_from_torch_parallel(ray_start_regular_shared, tmp_path):
     # parallel read may reorder blocks, cannot directly assert equality on outputs
     torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
     expected_data = list(torch_dataset)
@@ -203,11 +203,6 @@ def test_from_torch_parallel(shutdown_only, tmp_path):
     assert Counter([row[1] for row in actual_data]) == Counter(
         [row[1] for row in expected_data]
     )
-
-
-def test_from_torch_parallel_shuffle(shutdown_only, tmp_path):
-    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
-    expected_data = list(torch_dataset)
 
     ray_dataset = ray.data.from_torch(torch_dataset, shuffle=True)
     actual_data = extract_values("item", list(ray_dataset.take_all()))

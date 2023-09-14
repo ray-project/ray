@@ -83,7 +83,11 @@ class _TorchDatasourceReader(Reader):
 
 
 def _read_subset(subset: "torch.utils.data.Subset"):
-    for item in subset:
+    import torch
+
+    loader = torch.utils.data.DataLoader(subset, collate_fn=lambda x: x, batch_size=32)
+
+    for batch in loader:
         builder = DelegatingBlockBuilder()
-        builder.add({"item": item})
+        builder.add_batch({"item": batch})
         yield builder.build()

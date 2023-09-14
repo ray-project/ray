@@ -2296,7 +2296,10 @@ def from_torch(
         like :meth:`~ray.data.read_images`.
 
     .. note::
-        For iterable-style datasets, This function is not parallelized. It loads the entire dataset into the head
+        This function uses a streaming implementation. The dataset does not need to fit completely into memory.
+
+    .. note::
+        For iterable-style datasets, this function is not parallelized. It loads the entire dataset into the head
         node's memory before moving the data to the distributed object store.
 
     .. note::
@@ -2329,7 +2332,7 @@ def from_torch(
     import torch
 
     # There is no efficient way to read a subset of an iterable-style dataset.
-    # Each task will read all elements up until the last in it's subset.
+    # Each task will read all elements up until the last in its subset.
     if isinstance(dataset, torch.utils.data.IterableDataset):
         parallelism = 1
     return read_datasource(
