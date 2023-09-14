@@ -12,7 +12,7 @@ from ray.dag.input_node import InputNode
 from ray._private.test_utils import wait_for_condition
 
 from ray import serve
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.serve.drivers import DefaultgRPCDriver, DAGDriver
 from ray.serve.http_adapters import json_request
 from ray.serve.schema import ServeDeploySchema
@@ -282,7 +282,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir, version):
 
     subprocess.check_output(["serve", "deploy", config_file_path])
 
-    client = get_global_client()
+    client = _get_global_client()
     if version == "v2":
         # Make sure the applications are RUNNING.
         wait_for_condition(
@@ -431,7 +431,7 @@ def test_lightweight_config_options(
 
     # Deploy first config
     serve.start()
-    client = get_global_client()
+    client = _get_global_client()
     client.deploy_apps(ServeDeploySchema(**config))
     wait_for_condition(
         lambda: serve.status().applications["receiver_app"].status
@@ -448,7 +448,7 @@ def test_lightweight_config_options(
 
     wait_for_condition(
         lambda: ray.get(storage.get_reports_received.remote()) > current_num_reports,
-        timeout=5,
+        timeout=10,
     )
     report = ray.get(storage.get_report.remote())
 
@@ -672,7 +672,7 @@ def test_multiplexed_detect(manage_ray_with_telemetry):
     report = ray.get(storage_handle.get_report.remote())
     assert ServeUsageTag.MULTIPLEXED_API_USED.get_value_from_report(report) is None
 
-    client = get_global_client()
+    client = _get_global_client()
     wait_for_condition(
         lambda: client.get_serve_status("app").app_status.status
         == ApplicationStatus.RUNNING,

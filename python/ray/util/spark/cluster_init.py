@@ -19,7 +19,7 @@ from ray._private.utils import get_user_temp_dir
 
 from .utils import (
     exec_cmd,
-    check_port_open,
+    is_port_in_use,
     get_random_unused_port,
     get_spark_session,
     get_spark_application_driver_host,
@@ -119,11 +119,13 @@ class RayClusterOnSpark:
             raise RuntimeError(
                 "The ray cluster has been shut down or it failed to start."
             )
+
         try:
-            # connect to the ray cluster.
-            ray_ctx = ray.init(address=self.address)
-            webui_url = ray_ctx.address_info.get("webui_url", None)
-            if webui_url:
+            ray.init(address=self.address)
+
+            if self.ray_dashboard_port is not None and is_port_in_use(
+                self.address.split(":")[0], self.ray_dashboard_port
+            ):
                 self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
             else:
                 try:
@@ -135,11 +137,6 @@ class RayClusterOnSpark:
                         "pip install ray[default]."
                     )
 
-        except Exception:
-            self.shutdown()
-            raise
-
-        try:
             last_alive_worker_count = 0
             last_progress_move_time = time.time()
             while True:
@@ -586,7 +583,7 @@ def _setup_ray_cluster(
     # wait ray head node spin up.
     time.sleep(_RAY_HEAD_STARTUP_TIMEOUT)
 
-    if not check_port_open(ray_head_ip, ray_head_port):
+    if not is_port_in_use(ray_head_ip, ray_head_port):
         if ray_head_proc.poll() is None:
             # Ray head GCS service is down. Kill ray head node.
             ray_head_proc.terminate()
