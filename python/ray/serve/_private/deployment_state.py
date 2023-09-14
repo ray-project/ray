@@ -1205,6 +1205,8 @@ class DeploymentState:
 
         self._last_notified_running_replica_infos: List[RunningReplicaInfo] = []
 
+        self._is_set = False
+
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
@@ -1887,13 +1889,15 @@ class DeploymentState:
         2. Change the replica into stopping state.
         3. Set the health replica stats to 0.
         """
-        logger.debug(
+        logger.info(
             f"Adding STOPPING to replica_tag: {replica}, "
             f"deployment_name: {self.deployment_name}, app_name: {self.app_name}"
         )
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
         self._deployment_scheduler.on_replica_stopping(self._id, replica.replica_tag)
+        time.sleep(10)
+        print("[DEBUG]Stopping replica", self.deployment_name, replica.replica_tag, self.app_name)
         self.health_check_gauge.set(
             0,
             tags={
@@ -1902,6 +1906,7 @@ class DeploymentState:
                 "application": self.app_name,
             },
         )
+        print("[debug]finish set")
 
     def _check_and_update_replicas(self):
         """
@@ -1909,10 +1914,12 @@ class DeploymentState:
         with state container from previous update() cycle to see if any state
         transition happened.
         """
-
+        
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
             if replica.check_health():
                 self._replicas.add(ReplicaState.RUNNING, replica)
+                
+                print("[debug] set health to 1")
                 self.health_check_gauge.set(
                     1,
                     tags={
@@ -1921,6 +1928,7 @@ class DeploymentState:
                         "application": self.app_name,
                     },
                 )
+
             else:
                 app_msg = f" in application '{self.app_name}'" if self.app_name else ""
                 logger.warning(

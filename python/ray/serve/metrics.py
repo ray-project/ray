@@ -107,6 +107,7 @@ class Gauge(metrics.Gauge):
         tag values to the tags
         """
         _add_serve_context_tag_values(self._tag_keys, tags)
+        print("set gauge", value, tags)
         super().set(value, tags)
 
 
