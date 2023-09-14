@@ -34,10 +34,15 @@
 
 namespace ray {
 
-/// Encapsulates artifacts that evidence work when present.
+/// Encapsulates non-resource artifacts that evidence work when present.
 enum WorkFootprint {
   NODE_WORKERS = 1,
 };
+
+// Represents artifacts of a node that can be busy or idle.
+// Resources are schedulable, such as gpu or cpu.
+// WorkFootprints are not, such as leased workers on a node.
+using WorkArtifact = std::variant<WorkFootprint, scheduling::ResourceID>;
 
 /// Class manages the resources of the local node.
 /// It is responsible for allocating/deallocating resources for (task) resource request;
@@ -113,13 +118,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
-  void SetWorkFootprint(WorkFootprint item) {
-    resources_last_idle_time_[item] = absl::nullopt;
-  }
-
-  void UnsetWorkFootprint(WorkFootprint item) {
-    resources_last_idle_time_[item] = absl::Now();
-  }
+  void SetBusyFootprint(WorkFootprint item);
+  void SetIdleFootprint(WorkFootprint item);
 
   double GetLocalAvailableCpus() const;
 
@@ -208,9 +208,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   NodeResourceInstances local_resources_;
 
   /// A map storing when the resource was last idle.
-  absl::flat_hash_map<std::variant<WorkFootprint, scheduling::ResourceID>,
-                      absl::optional<absl::Time>>
-      resources_last_idle_time_;
+  absl::flat_hash_map<WorkArtifact, absl::optional<absl::Time>> resources_last_idle_time_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
   std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.

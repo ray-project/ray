@@ -239,7 +239,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   inline void UpdateEmptyLease() {
     if (leased_workers_.empty()) {
-      cluster_resource_scheduler_->GetLocalResourceManager().UnsetWorkFootprint(
+      cluster_resource_scheduler_->GetLocalResourceManager().SetIdleFootprint(
           WorkFootprint::NODE_WORKERS);
     }
   }

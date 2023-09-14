@@ -10,7 +10,7 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.test_utils import async_wait_for_condition, wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray.autoscaler.v2.schema import (
     ClusterStatus,
     LaunchRequest,
@@ -464,20 +464,18 @@ def test_idle_node_blocked(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=1)
 
     stub = _autoscaler_state_service_stub()
 
     # We don't have node id from `add_node` unfortunately.
     def nodes_up():
         nodes = list_nodes()
-        assert len(nodes) == 2
+        assert len(nodes) == 1
         return True
 
     wait_for_condition(nodes_up)
 
-    head_node_id, worker_node_ids = get_node_ids()
-    node_id = worker_node_ids[0]
+    head_node_id = get_node_ids()
 
     def verify_cluster_idle():
         state = get_cluster_resource_state(stub)
@@ -487,26 +485,21 @@ def test_idle_node_blocked(ray_start_cluster):
                 ExpectedNodeState(
                     head_node_id, NodeStatus.IDLE, lambda idle_ms: idle_ms > 0
                 ),
-                ExpectedNodeState(
-                    node_id, NodeStatus.IDLE, lambda idle_ms: idle_ms > 0
-                ),
             ],
         )
         return True
 
-    async_wait_for_condition(verify_cluster_idle)
+    wait_for_condition(verify_cluster_idle)
+
+    # Unschedulable
+    @ray.remote(num_cpus=10000)
+    def f():
+        pass
 
     # Schedule a task running
     @ray.remote(num_cpus=1)
-    def f():
-        while True:
-            pass
-
-    @ray.remote(num_cpus=1)
     def g():
         ray.get(f.remote())
-        while True:
-            pass
 
     t = g.remote()
 
@@ -518,20 +511,17 @@ def test_idle_node_blocked(ray_start_cluster):
                 ExpectedNodeState(
                     head_node_id, NodeStatus.RUNNING, lambda idle_ms: idle_ms == 0
                 ),
-                ExpectedNodeState(
-                    node_id, NodeStatus.RUNNING, lambda idle_ms: idle_ms == 0
-                ),
             ],
         )
         return True
 
     for x in range(10):
-        wait_for_condition(verify_cluster_busy)
         time.sleep(0.1)
+        wait_for_condition(verify_cluster_busy)
 
     # Kill the task
     ray.cancel(t, force=True)
-    async_wait_for_condition(verify_cluster_idle)
+    wait_for_condition(verify_cluster_idle)
 
 
 def test_idle_node_no_resource(ray_start_cluster):
@@ -563,7 +553,7 @@ def test_idle_node_no_resource(ray_start_cluster):
         )
         return True
 
-    async_wait_for_condition(verify_cluster_idle)
+    wait_for_condition(verify_cluster_idle)
 
     # Schedule a task running
     @ray.remote(num_cpus=0)
@@ -585,11 +575,11 @@ def test_idle_node_no_resource(ray_start_cluster):
         )
         return True
 
-    async_wait_for_condition(verify_cluster_busy)
+    wait_for_condition(verify_cluster_busy)
 
     # Kill the task
     ray.cancel(t, force=True)
-    async_wait_for_condition(verify_cluster_idle)
+    wait_for_condition(verify_cluster_idle)
 
 
 def test_get_cluster_status_resources(ray_start_cluster):

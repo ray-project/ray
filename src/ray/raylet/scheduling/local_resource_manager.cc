@@ -114,6 +114,25 @@ void LocalResourceManager::FreeTaskResourceInstances(
     }
   }
 }
+void LocalResourceManager::SetBusyFootprint(WorkFootprint item) {
+  auto prev = resources_last_idle_time_.find(item);
+  if (prev != resources_last_idle_time_.end() && !prev->second.has_value()) {
+    return;
+  }
+  resources_last_idle_time_[item] = absl::nullopt;
+  OnResourceOrStateChanged();
+}
+
+void LocalResourceManager::SetIdleFootprint(WorkFootprint item) {
+  auto prev = resources_last_idle_time_.find(item);
+  bool state_change =
+      prev == resources_last_idle_time_.end() || !prev->second.has_value();
+
+  resources_last_idle_time_[item] = absl::Now();
+  if (state_change) {
+    OnResourceOrStateChanged();
+  }
+}
 
 void LocalResourceManager::AddResourceInstances(
     scheduling::ResourceID resource_id, const std::vector<double> &resource_instances) {
