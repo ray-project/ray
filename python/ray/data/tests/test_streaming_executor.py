@@ -703,7 +703,7 @@ def test__check_first_block_size():
         o1 = InputDataBuffer(inputs)
         o2 = MapOperator.create(make_map_transformer(lambda block: block), o1)
 
-        topo, _ = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+        topo, _ = build_streaming_topology(o2, ExecutionOptions())
         process_completed_tasks(topo)
         update_operator_states(topo)
 
@@ -724,7 +724,7 @@ def test__check_first_block_size():
         )
         o1 = InputDataBuffer(inputs)
         o2 = MapOperator.create(make_map_transformer(lambda block: block), o1)
-        topo, _ = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+        topo, _ = build_streaming_topology(o2, ExecutionOptions())
         process_completed_tasks(topo)
         update_operator_states(topo)
 

@@ -268,10 +268,7 @@ class OpState:
 
     def _check_first_block_size(self, ref: RefBundle):
         """Checks and logs the size of the first bundle produced by this operator.
-        If the block size exceeds 2 times the target max block size, logs a warning.
-
-        This is used to determine the progress bar's total size.
-        """
+        If the block size exceeds 2 times the target max block size, logs a warning."""
 
         BLOCK_SIZE_TO_MAX_TARGET_RATIO = 2
 
