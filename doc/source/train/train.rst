@@ -97,7 +97,7 @@ Get started
             :outline:
             :expand:
 
-            Try Ray Train and Lightning
+            Try Ray Train with Lightning
 
     .. grid-item-card::
 
