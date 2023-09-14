@@ -127,8 +127,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \param from_resource_view Whether the resource report is from resource view, i.e.
   ///   syncer::MessageType::RESOURCE_VIEW.
   void UpdateNodeResourceUsage(const NodeID &node_id,
-                               const rpc::ResourcesData &resources,
-                               bool from_resource_view = true);
+                               const rpc::ResourcesData &resources);
 
   /// Process a new resource report from a node, independent of the rpc handler it came
   /// from.
@@ -136,8 +135,13 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \param data The resource report.
   /// \param from_resource_view Whether the resource report is from resource view, i.e.
   ///   syncer::MessageType::RESOURCE_VIEW.
-  void UpdateFromResourceReport(const rpc::ResourcesData &data,
-                                bool from_resource_view = true);
+  void UpdateFromResourceView(const rpc::ResourcesData &data);
+
+  /// Update the resource usage of a node from syncer COMMANDS
+  ///
+  /// This is currently used for setting cluster full of actors info from syncer.
+  /// \param data The resource report.
+  void UpdateFromResourceCommand(const rpc::ResourcesData &data);
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
