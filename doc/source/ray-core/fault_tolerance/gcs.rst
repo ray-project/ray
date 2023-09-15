@@ -73,7 +73,7 @@ the correct GCS. You need to ensure that at any time, only one GCS is alive.
   and restart it.
 
 
-.. attention::
+.. caution::
 
    Ray currently doesn't support multi-shards Redis DB. Please make sure the Redis DB setup only has one shards.
    Multiple replicas is OK for high-availability.

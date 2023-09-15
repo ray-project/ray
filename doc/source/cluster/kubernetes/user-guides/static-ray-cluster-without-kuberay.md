@@ -120,7 +120,8 @@ metadata. One drawback of this approach is that the head node loses the metadata
 Ray can also write this metadata to an external Redis for reliability and high availability.
 With this setup, the static Ray cluster can recover from head node crashes and tolerate GCS failures without losing connections to worker nodes.
 
-:::{attention}
+:::{admonition} Multi-shards Redis DB is not supported
+:class: caution
 Ray currently doesn't support multi-shards Redis DB. Please make sure the Redis DB setup only has one shards. Multiple replicas is OK for high-availability.
 :::
 
