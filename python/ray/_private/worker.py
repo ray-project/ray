@@ -1754,7 +1754,6 @@ def shutdown(_exiting_interpreter: bool = False):
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
-    logger.info("ded")
 
 
 atexit.register(shutdown, True)
