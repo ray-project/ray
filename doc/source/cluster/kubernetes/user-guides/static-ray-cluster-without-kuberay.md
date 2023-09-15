@@ -58,10 +58,10 @@ namespace, specify the namespace in your kubectl commands:
 
 ! kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.with-fault-tolerance.yaml
 
-# Note that the Ray cluster has fault tolerance enabled by default using the external Redis. 
+# Note that the Ray cluster has fault tolerance enabled by default using the external Redis.
 # Please set the Redis IP address in the config.
 
-# The password is currently set as '' for the external Redis. 
+# The password is currently set as '' for the external Redis.
 # Please download the config file and substitute the real password for the empty string if the external Redis has a password.
 ```
 
@@ -119,6 +119,11 @@ Ray by default uses an internal key-value store, called the Global Control Store
 metadata. One drawback of this approach is that the head node loses the metadata if it crashes.
 Ray can also write this metadata to an external Redis for reliability and high availability.
 With this setup, the static Ray cluster can recover from head node crashes and tolerate GCS failures without losing connections to worker nodes.
+
+:::{attention}
+Ray currently doesn't support multi-shards Redis DB. Please make sure the Redis DB setup only has one shards. Multiple replicas is OK for high-availability.
+:::
+
 
 To use this feature, we need to pass in the `RAY_REDIS_ADDRESS` env var and `--redis-password` in the Ray head node section of [the Kubernetes deployment config file](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.with-fault-tolerance.yaml).
 

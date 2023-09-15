@@ -74,6 +74,10 @@ Below, we explain how to do each of these.
 
 GCS fault tolerance requires an external Redis database. You can choose to host your own Redis database, or you can use one through a third-party vendor. We recommend using a highly-available Redis database for resiliency.
 
+:::{attention}
+Ray currently doesn't support multi-shards Redis DB. Please make sure the Redis DB setup only has one shards. Multiple replicas is OK for high-availability.
+:::
+
 **For development purposes**, you can also host a small Redis database on the same Kubernetes cluster as your Ray cluster. For example, you can add a 1-node Redis cluster by prepending these three Redis objects to your Kubernetes YAML:
 
 (one-node-redis-example)=

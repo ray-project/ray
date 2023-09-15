@@ -71,3 +71,8 @@ the correct GCS. You need to ensure that at any time, only one GCS is alive.
   For other cases, you can use it at your own risk and
   you need to implement additional mechanisms to detect the failure of GCS or the head node
   and restart it.
+
+
+.. attention::
+   Ray currently doesn't support multi-shards Redis DB. Please make sure the Redis DB setup only has one shards.
+   Multiple replicas is OK for high-availability.
