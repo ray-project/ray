@@ -89,9 +89,11 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       node_address_(node_address),
       get_num_cpus_available_(get_num_cpus_available),
       maximum_startup_concurrency_(
-          RayConfig::instance().worker_maximum_startup_concurrency() > 0 ?
-          // Overwrite the maximum concurrency.
-          RayConfig::instance().worker_maximum_startup_concurrency() : maximum_startup_concurrency),
+          RayConfig::instance().worker_maximum_startup_concurrency() > 0
+              ?
+              // Overwrite the maximum concurrency.
+              RayConfig::instance().worker_maximum_startup_concurrency()
+              : maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
       native_library_path_(native_library_path),
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
