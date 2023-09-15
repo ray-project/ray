@@ -224,8 +224,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::function<void()> &on_all_replied);
 
  private:
-  template <typename T>
-  void ReleaseWorker(T &&worker_id) {
+  void ReleaseWorker(const WorkerID &worker_id) {
     leased_workers_.erase(worker_id);
     SetIdleIfLeaseEmpty();
   }
