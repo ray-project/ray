@@ -404,5 +404,62 @@ def test_controller_restore_rllib_callbacks(
     assert "callbacks" in new_trial.config
 
 
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_controller_restore_checkpoint_overwrite(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+):
+    """Check that experiment state checkpoint are not overwritten on continue.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::testCheckpointOverwrite
+    """
+    storage = mock_storage_context()
+
+    def count_checkpoints(cdir):
+        return sum(
+            (fname.startswith("experiment_state") and fname.endswith(".json"))
+            for fname in os.listdir(cdir)
+        )
+
+    tmpdir = storage.experiment_local_path
+    # The Trial `local_dir` must match the TrialRunner `local_checkpoint_dir`
+    # to match the directory structure assumed by `TrialRunner.resume`.
+    # See `test_trial_runner2.TrialRunnerTest2.testPauseResumeCheckpointCount`
+    # for more details.
+    trial = Trial(
+        "__fake",
+        experiment_path=tmpdir,
+        checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+        storage=storage,
+    )
+    runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=storage,
+        checkpoint_period=0,
+    )
+    runner.add_trial(trial)
+    while not trial.status == Trial.RUNNING:
+        runner.step()
+    # force checkpoint
+    runner.checkpoint()
+    # Only one experiment state file
+    assert count_checkpoints(tmpdir) == 1
+
+    runner2 = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=storage,
+        resume="LOCAL",
+    )
+    trial = runner2.get_trials()[0]
+    while not trial.status == Trial.RUNNING:
+        runner2.step()
+    # After resume, we have a new experiment state file in the directory
+    assert count_checkpoints(tmpdir) == 2
+
+    runner2.checkpoint()
+    assert count_checkpoints(tmpdir) == 2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

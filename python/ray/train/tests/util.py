@@ -25,9 +25,9 @@ def load_dict_checkpoint(checkpoint: Checkpoint) -> Dict[str, Any]:
             return ray_pickle.load(f)
 
 
-def mock_storage_context() -> StorageContext:
+def mock_storage_context(exp_name: str = "exp_name") -> StorageContext:
     storage_path = tempfile.mkdtemp()
-    exp_name = "exp_name"
+    exp_name = exp_name
     trial_name = "trial_name"
     storage = StorageContext(
         storage_path=storage_path,

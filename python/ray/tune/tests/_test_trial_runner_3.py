@@ -78,50 +78,6 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(runner.trial_executor.pre_step, 1)
         self.assertEqual(runner.trial_executor.post_step, 1)
 
-    def testCheckpointOverwrite(self):
-        def count_checkpoints(cdir):
-            return sum(
-                (fname.startswith("experiment_state") and fname.endswith(".json"))
-                for fname in os.listdir(cdir)
-            )
-
-        ray.init(num_cpus=2)
-
-        tmpdir = tempfile.mkdtemp()
-        # The Trial `local_dir` must match the TrialRunner `local_checkpoint_dir`
-        # to match the directory structure assumed by `TrialRunner.resume`.
-        # See `test_trial_runner2.TrialRunnerTest2.testPauseResumeCheckpointCount`
-        # for more details.
-        trial = Trial(
-            "__fake",
-            experiment_path=tmpdir,
-            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
-        )
-        runner = TrialRunner(
-            local_checkpoint_dir=tmpdir,
-            checkpoint_period=0,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        runner.add_trial(trial)
-        for _ in range(5):
-            runner.step()
-        # force checkpoint
-        runner.checkpoint()
-        self.assertEqual(count_checkpoints(tmpdir), 1)
-
-        runner2 = TrialRunner(
-            resume="LOCAL",
-            local_checkpoint_dir=tmpdir,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        for _ in range(5):
-            runner2.step()
-        self.assertEqual(count_checkpoints(tmpdir), 2)
-
-        runner2.checkpoint()
-        self.assertEqual(count_checkpoints(tmpdir), 2)
-        shutil.rmtree(tmpdir)
-
     def testCheckpointFreqBuffered(self):
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
         os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
