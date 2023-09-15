@@ -1189,10 +1189,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     }
   };
 
-  if (task_spec.IsActorTask()) {
-    // Code path of actor task.
-    RAY_CHECK(false) << "Direct call shouldn't reach here.";
-  }
+  // Code path of actor task.
+  RAY_CHECK(!task_spec.IsActorTask()) << "Direct call shouldn't reach here.";
 
   bool is_actor_creation = task_spec.IsActorCreationTask();
   std::vector<std::string> dynamic_options{};
