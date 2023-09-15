@@ -113,9 +113,9 @@ public class GcsClient {
     return new ArrayList<>(nodes.values());
   }
 
-  public List<ActorInfo> getAllActorInfo() {
+  public List<ActorInfo> getAllActorInfo(JobId jobId, ActorState actorState) {
     List<ActorInfo> actorInfos = new ArrayList<>();
-    List<byte[]> results = globalStateAccessor.getAllActorInfo();
+    List<byte[]> results = globalStateAccessor.getAllActorInfo(jobId, actorState);
     results.forEach(
         result -> {
           try {
