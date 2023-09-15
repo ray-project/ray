@@ -203,7 +203,7 @@ def test_node_selection(all_nodes):
     ]
 
 
-@patch("ray.serve._private.proxy.ProxyActor", new=MockProxyActor)
+@patch("ray.serve._private.proxy_state.ProxyActor", new=MockProxyActor)
 def test_proxy_state_update_restarts_unhealthy_proxies(ray_shutdown):
     """Test the update method in ProxyStateManager would
        kill and restart unhealthy proxies.
