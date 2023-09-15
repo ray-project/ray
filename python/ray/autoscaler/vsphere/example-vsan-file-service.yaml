@@ -1,5 +1,5 @@
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: default
+cluster_name: vsan-fs
 
 # The maximum number of workers nodes to launch in addition to the head
 # node.
@@ -23,6 +23,7 @@ docker:
     pull_before_run: True
     run_options:   # Extra options to pass into "docker run"
         - --ulimit nofile=65536:65536
+        - -v /mnt/shared_storage/experiment_results:/mnt/shared_storage/experiment_results
 
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 5
@@ -112,7 +113,9 @@ rsync_filter: []
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
 # is setup.
-initialization_commands: []
+initialization_commands:
+    - sudo mkdir -p /mnt/shared_storage/experiment_results
+    - sudo mount <NFS_SERVER_ADDRESS>:<NFS_EXPORT_PATH> /mnt/shared_storage/experiment_results
 
 # List of shell commands to run to set up nodes.
 setup_commands: []
