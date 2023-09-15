@@ -336,11 +336,20 @@ class AbsMax(_AggregateOnKeyBase):
         else:
             self._rs_name = f"abs_max({str(on)})"
 
+        null_merge = _null_wrap_merge(ignore_nulls, max)
+
+        def block_max(block: Block) -> AggType:
+            max_v = BlockAccessor.for_block(block).max(on, ignore_nulls)
+            min_v = BlockAccessor.for_block(block).min(on, ignore_nulls)
+            return max(abs(max_v), abs(min_v))
+
         super().__init__(
             init=_null_wrap_init(lambda k: 0),
-            merge=_null_wrap_merge(ignore_nulls, max),
-            accumulate_row=_null_wrap_accumulate_row(
-                ignore_nulls, on_fn, lambda a, r: max(a, abs(r))
+            merge=null_merge,
+            accumulate_block=_null_wrap_accumulate_block(
+                ignore_nulls,
+                block_max,
+                null_merge,
             ),
             finalize=_null_wrap_finalize(lambda a: a),
             name=(self._rs_name),
