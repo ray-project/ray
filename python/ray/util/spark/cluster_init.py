@@ -535,6 +535,9 @@ def _setup_ray_cluster(
     head_node_options = _append_default_spilling_dir_config(
         head_node_options, object_spilling_dir
     )
+    worker_node_options = _append_default_spilling_dir_config(
+        worker_node_options, object_spilling_dir
+    )
 
     if autoscale:
         from ray.autoscaler._private.spark.spark_job_server import _start_spark_job_server

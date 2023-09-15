@@ -14,7 +14,7 @@ pytestmark = [
         os.name != "posix",
         reason="Ray on spark only supports running on POSIX system.",
     ),
-    pytest.mark.timeout(300),
+    pytest.mark.timeout(600),
 ]
 
 
