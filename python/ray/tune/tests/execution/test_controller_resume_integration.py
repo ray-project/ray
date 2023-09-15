@@ -1,3 +1,6 @@
+import os
+from unittest.mock import patch
+
 import pytest
 import sys
 
@@ -277,6 +280,77 @@ def test_controller_restore_trial_save_restore(
     while not runner2.is_finished():
         runner2.step()
     assert restored_trial.status == Trial.TERMINATED
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_controller_restore_trial_no_checkpoint_save(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+):
+    """Check that non-checkpointing trials *are* saved.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::testTrialNoCheckpointSave
+    """
+    with patch.dict(os.environ, {"TUNE_MAX_PENDING_TRIALS_PG": "1"}):
+        runner = TuneController(
+            resource_manager_factory=lambda: resource_manager_cls(),
+            checkpoint_period=0,
+            storage=STORAGE,
+        )
+
+        runner.add_trial(
+            Trial(
+                "__fake",
+                trial_id="non_checkpoint",
+                stopping_criterion={"training_iteration": 2},
+                storage=STORAGE,
+            )
+        )
+
+        while not all(t.status == Trial.TERMINATED for t in runner.get_trials()):
+            runner.step()
+
+        runner.add_trial(
+            Trial(
+                "__fake",
+                trial_id="checkpoint",
+                checkpoint_config=CheckpointConfig(
+                    checkpoint_at_end=True,
+                ),
+                stopping_criterion={"training_iteration": 2},
+                storage=STORAGE,
+            )
+        )
+
+        while not all(t.status == Trial.TERMINATED for t in runner.get_trials()):
+            runner.step()
+
+        runner.add_trial(
+            Trial(
+                "__fake",
+                trial_id="pending",
+                stopping_criterion={"training_iteration": 2},
+                storage=STORAGE,
+            )
+        )
+
+        old_trials = runner.get_trials()
+        while not old_trials[2].has_reported_at_least_once:
+            runner.step()
+
+        runner2 = TuneController(
+            resource_manager_factory=lambda: resource_manager_cls(),
+            storage=STORAGE,
+            resume="LOCAL",
+        )
+        new_trials = runner2.get_trials()
+        assert len(new_trials) == 3
+        assert runner2.get_trial("non_checkpoint").status == Trial.TERMINATED
+        assert runner2.get_trial("checkpoint").status == Trial.TERMINATED
+        assert runner2.get_trial("pending").status == Trial.PENDING
+        assert runner2.get_trial("pending").has_reported_at_least_once
+        runner2.step()
 
 
 if __name__ == "__main__":

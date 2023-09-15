@@ -93,67 +93,6 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(runner.trial_executor.pre_step, 1)
         self.assertEqual(runner.trial_executor.post_step, 1)
 
-    def testTrialNoCheckpointSave(self):
-        """Check that non-checkpointing trials *are* saved."""
-        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
-
-        ray.init(num_cpus=3)
-
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            checkpoint_period=0,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        runner.add_trial(
-            Trial(
-                "__fake",
-                trial_id="non_checkpoint",
-                stopping_criterion={"training_iteration": 2},
-            )
-        )
-
-        while not all(t.status == Trial.TERMINATED for t in runner.get_trials()):
-            runner.step()
-
-        runner.add_trial(
-            Trial(
-                "__fake",
-                trial_id="checkpoint",
-                checkpoint_config=CheckpointConfig(
-                    checkpoint_at_end=True,
-                ),
-                stopping_criterion={"training_iteration": 2},
-            )
-        )
-
-        while not all(t.status == Trial.TERMINATED for t in runner.get_trials()):
-            runner.step()
-
-        runner.add_trial(
-            Trial(
-                "__fake",
-                trial_id="pending",
-                stopping_criterion={"training_iteration": 2},
-            )
-        )
-
-        old_trials = runner.get_trials()
-        while not old_trials[2].has_reported_at_least_once:
-            runner.step()
-
-        runner2 = TrialRunner(
-            resume="LOCAL",
-            local_checkpoint_dir=self.tmpdir,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        new_trials = runner2.get_trials()
-        self.assertEqual(len(new_trials), 3)
-        self.assertTrue(runner2.get_trial("non_checkpoint").status == Trial.TERMINATED)
-        self.assertTrue(runner2.get_trial("checkpoint").status == Trial.TERMINATED)
-        self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
-        self.assertTrue(runner2.get_trial("pending").has_reported_at_least_once)
-        runner2.step()
-
     def testCheckpointWithFunction(self):
         ray.init(num_cpus=2)
 
