@@ -16,7 +16,23 @@ from ray.tune.experiment import Trial
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.search import BasicVariantGenerator
 
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
+
 STORAGE = mock_storage_context()
+
+
+class _MyCallbacks(DefaultCallbacks):
+    def on_episode_start(
+        self,
+        *,
+        worker,
+        base_env,
+        policies,
+        episode,
+        env_index,
+        **kwargs,
+    ):
+        print("in callback")
 
 
 @pytest.fixture(scope="function")
@@ -351,6 +367,41 @@ def test_controller_restore_trial_no_checkpoint_save(
         assert runner2.get_trial("pending").status == Trial.PENDING
         assert runner2.get_trial("pending").has_reported_at_least_once
         runner2.step()
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_controller_restore_rllib_callbacks(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+):
+    """Check that rllib callbacks are serialized and restored correctly.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::testCheckpointWithFunction
+    """
+    trial = Trial(
+        "__fake",
+        config={"callbacks": _MyCallbacks},
+        checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+        storage=STORAGE,
+    )
+    runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=STORAGE,
+        checkpoint_period=0,
+    )
+    runner.add_trial(trial)
+    for _ in range(5):
+        runner.step()
+    # force checkpoint
+    runner.checkpoint()
+    runner2 = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=STORAGE,
+        resume="LOCAL",
+    )
+    new_trial = runner2.get_trials()[0]
+    assert "callbacks" in new_trial.config
 
 
 if __name__ == "__main__":

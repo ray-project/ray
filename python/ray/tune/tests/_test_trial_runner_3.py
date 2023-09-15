@@ -15,7 +15,6 @@ from ray.train import CheckpointConfig
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 from ray.tune import PlacementGroupFactory
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
@@ -28,20 +27,6 @@ from ray.tune.search import Searcher, ConcurrencyLimiter
 from ray.tune.search.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.tests.tune_test_util import TrialResultObserver
-
-
-class MyCallbacks(DefaultCallbacks):
-    def on_episode_start(
-        self,
-        *,
-        worker,
-        base_env,
-        policies,
-        episode,
-        env_index,
-        **kwargs,
-    ):
-        print("in callback")
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -92,32 +77,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()
         self.assertEqual(runner.trial_executor.pre_step, 1)
         self.assertEqual(runner.trial_executor.post_step, 1)
-
-    def testCheckpointWithFunction(self):
-        ray.init(num_cpus=2)
-
-        trial = Trial(
-            "__fake",
-            config={"callbacks": MyCallbacks},
-            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
-        )
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            checkpoint_period=0,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        runner.add_trial(trial)
-        for _ in range(5):
-            runner.step()
-        # force checkpoint
-        runner.checkpoint()
-        runner2 = TrialRunner(
-            resume="LOCAL",
-            local_checkpoint_dir=self.tmpdir,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        new_trial = runner2.get_trials()[0]
-        self.assertTrue("callbacks" in new_trial.config)
 
     def testCheckpointOverwrite(self):
         def count_checkpoints(cdir):
