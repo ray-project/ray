@@ -20,10 +20,7 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.tune import PlacementGroupFactory
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
-from ray.tune.experiment import Experiment
 from ray.tune.search import BasicVariantGenerator
-from ray.tune.search.sample import sample_from
-from ray.tune.search.variant_generator import grid_search
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.search.repeater import Repeater
@@ -95,40 +92,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()
         self.assertEqual(runner.trial_executor.pre_step, 1)
         self.assertEqual(runner.trial_executor.post_step, 1)
-
-    def testTrialErrorResumeFalse(self):
-        ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        kwargs = {
-            "stopping_criterion": {"training_iteration": 4},
-            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 0}]),
-        }
-        trials = [
-            Trial("__fake", config={"mock_error": True}, **kwargs),
-            Trial("__fake", **kwargs),
-            Trial("__fake", **kwargs),
-        ]
-        for t in trials:
-            runner.add_trial(t)
-
-        while not runner.is_finished():
-            runner.step()
-
-        runner.checkpoint(force=True)
-
-        assert trials[0].status == Trial.ERROR
-        del runner
-
-        new_runner = TrialRunner(
-            resume=True,
-            local_checkpoint_dir=self.tmpdir,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        assert len(new_runner.get_trials()) == 3
-        assert Trial.ERROR in (t.status for t in new_runner.get_trials())
 
     def testTrialErrorResumeTrue(self):
         ray.init(num_cpus=3, local_mode=True, include_dashboard=False)

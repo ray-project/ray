@@ -4,7 +4,7 @@ import sys
 import ray
 from ray import tune
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
-from ray.tune import Experiment
+from ray.tune import Experiment, PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
 
 from ray.train.tests.util import mock_storage_context
@@ -25,7 +25,7 @@ def ray_start_4_cpus_2_gpus_extra():
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_tuner_restore_dataset_references(
+def test_controller_restore_dataset_references(
     ray_start_4_cpus_2_gpus_extra, resource_manager_cls
 ):
     """Check that references to Ray Datasets are replaced on resume.
@@ -96,6 +96,52 @@ def test_tuner_restore_dataset_references(
         assert t.config["param1"]["param2"].name in ["4", "5", "6"]
         assert t.config["param4"] == 8
         assert t.config["param5"].name in ["4", "5", "6"]
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_controller_restore_no_error_resume(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+):
+    """Check that `resume=True` does not resume errored trials.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::testTrialErrorResumeFalse
+    """
+    runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=STORAGE,
+    )
+
+    kwargs = {
+        "stopping_criterion": {"training_iteration": 4},
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 0}]),
+        "storage": STORAGE,
+    }
+    trials = [
+        Trial("__fake", config={"mock_error": True}, **kwargs),
+        Trial("__fake", **kwargs),
+        Trial("__fake", **kwargs),
+    ]
+    for t in trials:
+        runner.add_trial(t)
+
+    while not runner.is_finished():
+        runner.step()
+
+    runner.checkpoint(force=True)
+
+    assert trials[0].status == Trial.ERROR
+    del runner
+
+    new_runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=STORAGE,
+        resume=True,
+    )
+
+    assert len(new_runner.get_trials()) == 3
+    assert Trial.ERROR in (t.status for t in new_runner.get_trials())
 
 
 if __name__ == "__main__":

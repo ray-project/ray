@@ -35,5 +35,6 @@ def mock_storage_context() -> StorageContext:
         trial_dir_name=trial_name,
     )
     storage.storage_local_path = storage_path
+    storage.syncer = None
     os.makedirs(os.path.join(storage_path, exp_name, trial_name), exist_ok=True)
     return storage
