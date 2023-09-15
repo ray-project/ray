@@ -419,6 +419,7 @@ def read_datasource(
     for read_task in read_tasks:
         apply_output_blocks_handling_to_read_task(
             read_task,
+            ctx.target_max_block_size,
             additional_split_factor,
         )
 

@@ -310,12 +310,19 @@ class BlocksToBatchesMapTransformFn(MapTransformFn):
 class BuildOutputBlocksMapTransformFn(MapTransformFn):
     """A MapTransformFn that converts UDF-returned data to output blocks."""
 
-    def __init__(self, input_type: MapTransformFnDataType):
+    def __init__(
+        self, input_type: MapTransformFnDataType, target_max_block_size: Optional[int]
+    ):
         """
         Args:
             input_type: the type of input data.
         """
         self._input_type = input_type
+        self._target_max_block_size = target_max_block_size
+        if self._target_max_block_size is None:
+            self._target_max_block_size = (
+                DataContext.get_current().target_max_block_size
+            )
         super().__init__(
             input_type,
             MapTransformFnDataType.Block,
@@ -332,9 +339,7 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
             iter: the iterable of UDF-returned data, whose type
                 must match self._input_type.
         """
-        output_buffer = BlockOutputBuffer(
-            DataContext.get_current().target_max_block_size
-        )
+        output_buffer = BlockOutputBuffer(self._target_max_block_size)
         if self._input_type == MapTransformFnDataType.Block:
             add_fn = output_buffer.add_block
         elif self._input_type == MapTransformFnDataType.Batch:
@@ -351,25 +356,25 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
             yield output_buffer.next()
 
     @classmethod
-    def for_rows(cls) -> "BuildOutputBlocksMapTransformFn":
+    def for_rows(
+        cls, target_max_block_size: Optional[int]
+    ) -> "BuildOutputBlocksMapTransformFn":
         """Return a BuildOutputBlocksMapTransformFn for row input."""
-        if getattr(cls, "_instance_for_rows", None) is None:
-            cls._instance_for_rows = cls(MapTransformFnDataType.Row)
-        return cls._instance_for_rows
+        return cls(MapTransformFnDataType.Row, target_max_block_size)
 
     @classmethod
-    def for_batches(cls) -> "BuildOutputBlocksMapTransformFn":
+    def for_batches(
+        cls, target_max_block_size: Optional[int]
+    ) -> "BuildOutputBlocksMapTransformFn":
         """Return a BuildOutputBlocksMapTransformFn for batch input."""
-        if getattr(cls, "_instance_for_batches", None) is None:
-            cls._instance_for_batches = cls(MapTransformFnDataType.Batch)
-        return cls._instance_for_batches
+        return cls(MapTransformFnDataType.Batch, target_max_block_size)
 
     @classmethod
-    def for_blocks(cls) -> "BuildOutputBlocksMapTransformFn":
+    def for_blocks(
+        cls, target_max_block_size: Optional[int]
+    ) -> "BuildOutputBlocksMapTransformFn":
         """Return a BuildOutputBlocksMapTransformFn for block input."""
-        if getattr(cls, "_instance_for_blocks", None) is None:
-            cls._instance_for_blocks = cls(MapTransformFnDataType.Block)
-        return cls._instance_for_blocks
+        return cls(MapTransformFnDataType.Block, target_max_block_size)
 
     def __repr__(self) -> str:
         return f"BuildOutputBlocksMapTransformFn(input_type={self._input_type})"

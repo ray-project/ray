@@ -363,7 +363,9 @@ class Dataset:
         """  # noqa: E501
         validate_compute(fn, compute, fn_constructor_args)
 
-        transform_fn = generate_map_rows_fn()
+        transform_fn = generate_map_rows_fn(
+            DataContext.get_current().target_max_block_size
+        )
 
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
@@ -578,7 +580,9 @@ class Dataset:
                     f"CallableClass instance for fn, but got: {fn}"
                 )
 
+        ctx = DataContext.get_current()
         transform_fn = generate_map_batches_fn(
+            target_max_block_size=ctx.target_max_block_size,
             batch_size=batch_size,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
@@ -862,7 +866,9 @@ class Dataset:
         """
         validate_compute(fn, compute, fn_constructor_args)
 
-        transform_fn = generate_flat_map_fn()
+        transform_fn = generate_flat_map_fn(
+            DataContext.get_current().target_max_block_size
+        )
 
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
@@ -929,7 +935,9 @@ class Dataset:
         """
         validate_compute(fn, compute)
 
-        transform_fn = generate_filter_fn()
+        transform_fn = generate_filter_fn(
+            DataContext.get_current().target_max_block_size
+        )
 
         plan = self._plan.with_stage(
             OneToOneStage("Filter", transform_fn, compute, ray_remote_args, fn=fn)

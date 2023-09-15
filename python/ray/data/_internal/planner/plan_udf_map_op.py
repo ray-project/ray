@@ -58,6 +58,7 @@ def plan_udf_map_op(
         transform_fn = _generate_transform_fn_for_map_batches(fn)
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
+            op.target_max_block_size,
             op._batch_size,
             op._batch_format,
             op._zero_copy_batch,
@@ -74,7 +75,7 @@ def plan_udf_map_op(
             raise ValueError(f"Found unknown logical operator during planning: {op}")
 
         map_transformer = _create_map_transformer_for_row_based_map_op(
-            transform_fn, init_fn
+            transform_fn, op.target_max_block_size, init_fn
         )
 
     return MapOperator.create(
@@ -266,6 +267,7 @@ def _generate_transform_fn_for_filter(
 
 def _create_map_transformer_for_map_batches_op(
     batch_fn: MapTransformCallable[DataBatch, DataBatch],
+    target_max_block_size: Optional[int],
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     zero_copy_batch: bool = False,
@@ -282,13 +284,14 @@ def _create_map_transformer_for_map_batches_op(
         # Apply the UDF.
         BatchMapTransformFn(batch_fn),
         # Convert output batches to blocks.
-        BuildOutputBlocksMapTransformFn.for_batches(),
+        BuildOutputBlocksMapTransformFn.for_batches(target_max_block_size),
     ]
     return MapTransformer(transform_fns, init_fn)
 
 
 def _create_map_transformer_for_row_based_map_op(
     row_fn: MapTransformCallable[Row, Row],
+    target_max_block_size: Optional[int],
     init_fn: Optional[Callable[[], None]] = None,
 ) -> MapTransformer:
     """Create a MapTransformer for a row-based map operator
@@ -299,7 +302,7 @@ def _create_map_transformer_for_row_based_map_op(
         # Apply the UDF.
         RowMapTransformFn(row_fn),
         # Convert output rows to blocks.
-        BuildOutputBlocksMapTransformFn.for_rows(),
+        BuildOutputBlocksMapTransformFn.for_rows(target_max_block_size),
     ]
     return MapTransformer(transform_fns, init_fn=init_fn)
 
@@ -307,26 +310,30 @@ def _create_map_transformer_for_row_based_map_op(
 # Following are util functions for the legacy code path.
 
 
-def generate_map_rows_fn() -> (
-    Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]
-):
+def generate_map_rows_fn(
+    target_max_block_size: int,
+) -> (Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]):
     """Generate function to apply the UDF to each record of blocks."""
     context = DataContext.get_current()
 
     def fn(
-        blocks: Iterator[Block], ctx: TaskContext, row_fn: UserDefinedFunction
+        blocks: Iterator[Block],
+        ctx: TaskContext,
+        row_fn: UserDefinedFunction,
     ) -> Iterator[Block]:
         DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_map_rows(row_fn)
-        map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
+        map_transformer = _create_map_transformer_for_row_based_map_op(
+            transform_fn, target_max_block_size
+        )
         yield from map_transformer.apply_transform(blocks, ctx)
 
     return fn
 
 
-def generate_flat_map_fn() -> (
-    Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]
-):
+def generate_flat_map_fn(
+    target_max_block_size: int,
+) -> (Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]):
     """Generate function to apply the UDF to each record of blocks,
     and then flatten results.
     """
@@ -334,19 +341,23 @@ def generate_flat_map_fn() -> (
     context = DataContext.get_current()
 
     def fn(
-        blocks: Iterator[Block], ctx: TaskContext, row_fn: UserDefinedFunction
+        blocks: Iterator[Block],
+        ctx: TaskContext,
+        row_fn: UserDefinedFunction,
     ) -> Iterator[Block]:
         DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_flat_map(row_fn)
-        map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
+        map_transformer = _create_map_transformer_for_row_based_map_op(
+            transform_fn, target_max_block_size
+        )
         yield from map_transformer.apply_transform(blocks, ctx)
 
     return fn
 
 
-def generate_filter_fn() -> (
-    Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]
-):
+def generate_filter_fn(
+    target_max_block_size: int,
+) -> (Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]):
     """Generate function to apply the UDF to each record of blocks,
     and filter out records that do not satisfy the given predicate.
     """
@@ -354,17 +365,22 @@ def generate_filter_fn() -> (
     context = DataContext.get_current()
 
     def fn(
-        blocks: Iterator[Block], ctx: TaskContext, row_fn: UserDefinedFunction
+        blocks: Iterator[Block],
+        ctx: TaskContext,
+        row_fn: UserDefinedFunction,
     ) -> Iterator[Block]:
         DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_filter(row_fn)
-        map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
+        map_transformer = _create_map_transformer_for_row_based_map_op(
+            transform_fn, target_max_block_size
+        )
         yield from map_transformer.apply_transform(blocks, ctx)
 
     return fn
 
 
 def generate_map_batches_fn(
+    target_max_block_size: int,
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     zero_copy_batch: bool = False,
@@ -387,6 +403,7 @@ def generate_map_batches_fn(
         transform_fn = _generate_transform_fn_for_map_batches(_batch_fn)
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
+            target_max_block_size,
             batch_size,
             batch_format,
             zero_copy_batch,

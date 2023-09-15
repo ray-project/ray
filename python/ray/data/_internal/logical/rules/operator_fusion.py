@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 # TODO(Clark): Remove compute dependency once we delete the legacy compute.
 from ray.data._internal.compute import get_compute, is_task_compute
@@ -214,7 +214,11 @@ class OperatorFusionRule(Rule):
         # Otherwise, ops are compatible for fusion.
         return True
 
-    def _get_merged_target_max_block_size(self, up_target_max_block_size: Optional[int], down_target_max_block_size: Optional[int]):
+    def _get_merged_target_max_block_size(
+        self,
+        up_target_max_block_size: Optional[int],
+        down_target_max_block_size: Optional[int],
+    ):
         target_max_block_size = None
         if down_target_max_block_size is not None:
             assert (
@@ -267,8 +271,8 @@ class OperatorFusionRule(Rule):
             min_rows_per_block = down_min_rows_per_block
 
         target_max_block_size = self._get_merged_target_max_block_size(
-        up_logical_op.target_max_block_size,
-        down_logical_op.target_max_block_size)
+            up_logical_op.target_max_block_size, down_logical_op.target_max_block_size
+        )
 
         # We take the downstream op's compute in case we're fusing upstream tasks with a
         # downstream actor pool (e.g. read->map).
@@ -361,8 +365,8 @@ class OperatorFusionRule(Rule):
         input_op = input_deps[0]
 
         target_max_block_size = self._get_merged_target_max_block_size(
-        up_op.target_max_block_size,
-        down_op.target_max_block_size)
+            up_op.target_max_block_size, down_op.target_max_block_size
+        )
 
         op = AllToAllOperator(
             fused_all_to_all_transform_fn,
