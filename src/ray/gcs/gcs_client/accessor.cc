@@ -17,6 +17,7 @@
 #include <future>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/common_protocol.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 
 namespace {
@@ -157,10 +158,25 @@ Status ActorInfoAccessor::AsyncGet(
   return Status::OK();
 }
 
-Status ActorInfoAccessor::AsyncGetAll(
+Status ActorInfoAccessor::AsyncGetAllByFilter(
+    const std::optional<ActorID> &actor_id,
+    const std::optional<JobID> &job_id,
+    const std::optional<std::string> &actor_state_name,
     const MultiItemCallback<rpc::ActorTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting all actor info.";
   rpc::GetAllActorInfoRequest request;
+  if (actor_id) {
+    request.mutable_filters()->set_actor_id(actor_id.value().Binary());
+  }
+  if (job_id) {
+    request.mutable_filters()->set_job_id(job_id.value().Binary());
+  }
+  if (actor_state_name) {
+    rpc::ActorTableData::ActorState actora_sate =
+        StringToActorState(actor_state_name.value());
+    request.mutable_filters()->set_state(actora_sate);
+  }
+
   client_impl_->GetGcsRpcClient().GetAllActorInfo(
       request, [callback](const Status &status, const rpc::GetAllActorInfoReply &reply) {
         callback(status, VectorFromProtobuf(reply.actor_table_data()));
@@ -732,38 +748,26 @@ Status NodeResourceInfoAccessor::AsyncReportResourceUsage(
   return Status::OK();
 }
 
-void NodeResourceInfoAccessor::AsyncReReportResourceUsage() {
-  absl::MutexLock lock(&mutex_);
-  if (cached_resource_usage_.has_resources()) {
-    RAY_LOG(INFO) << "Rereport resource usage.";
-    FillResourceUsageRequest(cached_resource_usage_);
-    client_impl_->GetGcsRpcClient().ReportResourceUsage(
-        cached_resource_usage_,
-        [](const Status &status, const rpc::ReportResourceUsageReply &reply) {});
-  }
-}
-
 void NodeResourceInfoAccessor::FillResourceUsageRequest(
     rpc::ReportResourceUsageRequest &resources) {
   NodeResources cached_resources = *GetLastResourceUsage();
 
   auto resources_data = resources.mutable_resources();
   resources_data->clear_resources_total();
-  for (const auto &resource_pair : cached_resources.total.ToResourceMap()) {
+  for (const auto &resource_pair : cached_resources.total.GetResourceMap()) {
     (*resources_data->mutable_resources_total())[resource_pair.first] =
         resource_pair.second;
   }
 
   resources_data->clear_resources_available();
-  resources_data->set_resources_available_changed(true);
-  for (const auto &resource_pair : cached_resources.available.ToResourceMap()) {
+  for (const auto &resource_pair : cached_resources.available.GetResourceMap()) {
     (*resources_data->mutable_resources_available())[resource_pair.first] =
         resource_pair.second;
   }
 
   resources_data->clear_resource_load();
   resources_data->set_resource_load_changed(true);
-  for (const auto &resource_pair : cached_resources.load.ToResourceMap()) {
+  for (const auto &resource_pair : cached_resources.load.GetResourceMap()) {
     (*resources_data->mutable_resource_load())[resource_pair.first] =
         resource_pair.second;
   }

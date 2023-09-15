@@ -1,6 +1,3 @@
-```{include} /_includes/overview/announcement.md
-```
-
 ```{title} Welcome to Ray!
 ```
 
@@ -310,7 +307,6 @@ ppo_algo.evaluate()
             <img src="_static/img/download.png" width="44px" height="44px" />
             <h3 style="font-size:20px;">Install Ray</h3>
         </div>
-        <p><pre style="border:none; margin:0px;"><code class="nohighlight" style="margin:10px;">pip install -U "ray[air]"</code></pre></p>      
         <p style="font-weight:600; margin-bottom: 0px;">Installation guide ></p>
   </div></a>
   <a class="no-underline" href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Introductory_modules/Quickstart_with_Ray_AIR_Colab.ipynb"  target="_blank" 
@@ -333,7 +329,7 @@ ppo_algo.evaluate()
   <div class="info-box-2">
         <div class="image-header" style="padding:0px;">
             <img src="_static/img/AIR.png" width="32px" height="32px" />
-            <h3 style="font-size:20px; font-weight:600;">Ray AI Runtime Libraries</h3>
+            <h3 style="font-size:20px; font-weight:600;">Ray Libraries</h3>
         </div>
         <p>Scale the entire ML pipeline from data ingest to model serving with high-level Python APIs that integrate with popular ecosystem frameworks.</p>      
         <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-overview/getting-started.html#ray-ai-runtime-libraries-quickstart" target="_blank">Learn more about Ray Libraries></a>

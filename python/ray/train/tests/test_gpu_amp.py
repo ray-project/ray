@@ -1,11 +1,12 @@
 from timeit import default_timer as timer
 
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
+import os
 import torch
 import torchvision
+from tempfile import TemporaryDirectory
 
 import ray.train as train
-from ray.train import ScalingConfig
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 
 
@@ -63,14 +64,15 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
         model = torchvision.models.resnet101()
         model = train.torch.prepare_model(model)
 
-        train.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        with TemporaryDirectory() as tmpdir:
+            torch.save(model, os.path.join(tmpdir, "checkpoint.pt"))
+            train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     trainer = TorchTrainer(
         train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
     )
     results = trainer.fit()
     assert results.checkpoint
-    assert results.checkpoint.get_model()
 
 
 if __name__ == "__main__":

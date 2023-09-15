@@ -298,37 +298,34 @@ class TorchMultiCategorical(Distribution):
     @override(Distribution)
     def sample(self) -> TensorType:
         arr = [cat.sample() for cat in self._cats]
-        sample_ = torch.stack(arr, dim=1)
+        sample_ = torch.stack(arr, dim=-1)
         return sample_
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
         arr = [cat.rsample() for cat in self._cats]
-        sample_ = torch.stack(arr, dim=1)
+        sample_ = torch.stack(arr, dim=-1)
         return sample_
 
     @override(Distribution)
     def logp(self, value: torch.Tensor) -> TensorType:
-        value = torch.unbind(value, dim=1)
+        value = torch.unbind(value, dim=-1)
         logps = torch.stack([cat.logp(act) for cat, act in zip(self._cats, value)])
         return torch.sum(logps, dim=0)
 
     @override(Distribution)
     def entropy(self) -> TensorType:
         return torch.sum(
-            torch.stack([cat.entropy() for cat in self._cats], dim=1), dim=1
+            torch.stack([cat.entropy() for cat in self._cats], dim=-1), dim=-1
         )
 
     @override(Distribution)
     def kl(self, other: Distribution) -> TensorType:
         kls = torch.stack(
-            [
-                torch.distributions.kl.kl_divergence(cat, oth_cat)
-                for cat, oth_cat in zip(self._cats, other.cats)
-            ],
-            dim=1,
+            [cat.kl(oth_cat) for cat, oth_cat in zip(self._cats, other._cats)],
+            dim=-1,
         )
-        return torch.sum(kls, dim=1)
+        return torch.sum(kls, dim=-1)
 
     @staticmethod
     @override(Distribution)
@@ -365,15 +362,15 @@ class TorchMultiCategorical(Distribution):
             temperatures = [1.0] * len(input_lens)
 
         assert (
-            sum(input_lens) == logits.shape[1]
-        ), "input_lens must sum to logits.shape[1]"
+            sum(input_lens) == logits.shape[-1]
+        ), "input_lens must sum to logits.shape[-1]"
         assert len(input_lens) == len(
             temperatures
         ), "input_lens and temperatures must be same length"
 
         categoricals = [
             TorchCategorical(logits=logits)
-            for logits in torch.split(logits, input_lens, dim=1)
+            for logits in torch.split(logits, input_lens, dim=-1)
         ]
 
         return TorchMultiCategorical(categoricals=categoricals)
@@ -428,11 +425,8 @@ class TorchMultiDistribution(Distribution):
             for dist in self._flat_child_distributions:
                 if isinstance(dist, TorchCategorical):
                     split_indices.append(1)
-                elif (
-                    isinstance(dist, TorchMultiCategorical)
-                    and dist.action_space is not None
-                ):
-                    split_indices.append(int(np.prod(dist.action_space.shape)))
+                elif isinstance(dist, TorchMultiCategorical):
+                    split_indices.append(len(dist._cats))
                 else:
                     sample = dist.sample()
                     # Cover Box(shape=()) case.
@@ -537,7 +531,7 @@ class TorchMultiDistribution(Distribution):
 
     def to_deterministic(self) -> "TorchMultiDistribution":
         flat_deterministic_dists = [
-            dist.to_deterministic for dist in self._flat_child_distributions
+            dist.to_deterministic() for dist in self._flat_child_distributions
         ]
         deterministic_dists = tree.unflatten_as(
             self._original_struct, flat_deterministic_dists

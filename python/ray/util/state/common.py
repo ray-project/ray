@@ -34,8 +34,12 @@ try:
     # In pydantic 2, dataclass no longer needs the `init=True` kwarg to
     # generate an __init__ method. Additionally, it will raise an error if
     # it detects `init=True` to be set.
-    is_pydantic_2 = pydantic.__version__.startswith("2")
-
+    # In pydantic <1.9.0, __version__ attribute is missing, issue ref:
+    # https://github.com/pydantic/pydantic/issues/2572, so we need to check
+    # the existence prior to comparison.
+    is_pydantic_2 = hasattr(
+        pydantic, "__version__"
+    ) and pydantic.__version__.startswith("2")
 except ImportError:
     # pydantic is not available in the dashboard.
     # We will use the dataclass from the standard library.

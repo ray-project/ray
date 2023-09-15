@@ -1,20 +1,16 @@
-# 1 g5.16xlarge + 15 g5.4xlarge --> 16 GPUs, 256G RAM on trainer and 64G RAM on workers
+# Autoscale to 16 g5.4xlarge --> 16 A10Gs
+region: us-west1
+allowed_azs: [any]
 head_node_type:
     name: head_node
-    instance_type: g5.16xlarge
-    resources:
-      custom_resources: 
-        large_cpu_mem: 1
+    instance_type: m5.xlarge
 
 worker_node_types:
     - name: worker_node
       instance_type: g5.4xlarge
-      min_workers: 15
-      max_workers: 15
+      min_workers: 0
+      max_workers: 16
       use_spot: false
-      resources:
-        custom_resources: 
-          medium_cpu_mem: 1
 
 aws:
   TagSpecifications:

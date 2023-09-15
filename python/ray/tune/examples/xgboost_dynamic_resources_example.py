@@ -46,7 +46,7 @@ def get_best_model_checkpoint(best_result: "ray.train.Result"):
 
 # our train function needs to be able to checkpoint
 # to work with ResourceChangingScheduler
-def train_breast_cancer(config: dict, checkpoint_dir=None):
+def train_breast_cancer(config: dict):
     # This is a simple training function to be passed into Tune
     # Load dataset
     data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
@@ -59,13 +59,15 @@ def train_breast_cancer(config: dict, checkpoint_dir=None):
     # Checkpointing needs to be set up in order for dynamic
     # resource allocation to work as intended
     xgb_model = None
-    if checkpoint_dir:
+    checkpoint = train.get_checkpoint()
+    if checkpoint:
         xgb_model = xgb.Booster()
-        xgb_model.load_model(os.path.join(checkpoint_dir, CHECKPOINT_FILENAME))
+        with checkpoint.as_directory() as checkpoint_dir:
+            xgb_model.load_model(os.path.join(checkpoint_dir, CHECKPOINT_FILENAME))
 
     # we can obtain current trial resources through
     # `tune.get_trial_resources()`
-    config["nthread"] = int(tune.get_trial_resources().head_cpus)
+    config["nthread"] = int(train.get_context().get_trial_resources().head_cpus)
     print(f"nthreads: {config['nthread']} xgb_model: {xgb_model}")
     # Train the classifier, using the Tune callback
     xgb.train(
@@ -128,10 +130,10 @@ class BreastCancerTrainable(Trainable):
         path = os.path.join(checkpoint_dir, "checkpoint")
         with open(path, "wb") as outputFile:
             pickle.dump((self.config, self.nthread, self.model.save_raw()), outputFile)
-        return path
 
-    def load_checkpoint(self, checkpoint_path):
-        with open(checkpoint_path, "rb") as inputFile:
+    def load_checkpoint(self, checkpoint_dir):
+        path = os.path.join(checkpoint_dir, "checkpoint")
+        with open(path, "rb") as inputFile:
             self.config, self.nthread, raw_model = pickle.load(inputFile)
         self.model = Booster()
         self.model.load_model(bytearray(raw_model))

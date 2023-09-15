@@ -3,7 +3,46 @@ import sys
 from unittest.mock import patch
 from typing import List
 
-from ray_release.byod.build_ray import build_ray
+from ray_release.byod.build_ray import build_ray, _get_py_and_cuda_versions
+from ray_release.test import Test
+
+
+def test__get_py_and_cuda_versions() -> None:
+    assert _get_py_and_cuda_versions(
+        [
+            Test(
+                {
+                    "name": "test01",
+                    "python": "3.9",
+                    "cluster": {
+                        "byod": {
+                            "type": "gpu",
+                        }
+                    },
+                }
+            ),
+            Test(
+                {
+                    "name": "test02",
+                    "python": "3.9",
+                    "cluster": {
+                        "byod": {
+                            "type": "cpu",
+                        }
+                    },
+                }
+            ),
+            Test(
+                {
+                    "name": "test03",
+                    "cluster": {"byod": {}},
+                }
+            ),
+        ]
+    ) == {
+        "py39": {"cu118", "cpu"},
+        "py38": {"cpu"},
+    }
 
 
 def test_build_ray() -> None:
@@ -23,7 +62,7 @@ def test_build_ray() -> None:
         "os.environ",
         {"BUILDKITE_PULL_REQUEST": "false"},
     ):
-        build_ray()
+        build_ray([])
         assert cmds == []
 
     with patch.dict(
@@ -33,9 +72,24 @@ def test_build_ray() -> None:
         "ray_release.byod.build_ray._base_image_exist",
         return_value=True,
     ):
-        build_ray()
+        build_ray(
+            [
+                Test(
+                    {
+                        "name": "test",
+                        "python": "3.9",
+                        "cluster": {
+                            "byod": {
+                                "type": "gpu",
+                            }
+                        },
+                    }
+                ),
+            ]
+        )
         assert cmds[0] == ["buildkite-agent", "pipeline", "upload"]
         assert "oss-ci-build_abcdef" in inputs[0]
+        assert "--py-versions py39 -T cu118" in inputs[0]
 
 
 if __name__ == "__main__":

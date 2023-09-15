@@ -32,6 +32,11 @@ from ray.dashboard.consts import (
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
     RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
 )
+from ray.dashboard.modules.job.tests.conftest import (
+    create_ray_cluster,
+    create_job_manager,
+    _driver_script_path,
+)
 from ray.job_submission import JobStatus
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
 from ray.tests.conftest import call_ray_start  # noqa: F401
@@ -256,13 +261,7 @@ def shared_ray_instance():
     # submissions.
     old_ray_address = os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
 
-    yield ray.init(
-        num_cpus=16,
-        num_gpus=1,
-        resources={"Custom": 1},
-        namespace=TEST_NAMESPACE,
-        log_to_driver=True,
-    )
+    yield create_ray_cluster()
 
     if old_ray_address is not None:
         os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
@@ -271,17 +270,7 @@ def shared_ray_instance():
 @pytest.mark.asyncio
 @pytest.fixture
 async def job_manager(shared_ray_instance, tmp_path):
-    address_info = shared_ray_instance
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
-    yield JobManager(gcs_aio_client, tmp_path)
-
-
-def _driver_script_path(file_name: str) -> str:
-    return os.path.join(
-        os.path.dirname(__file__), "subprocess_driver_scripts", file_name
-    )
+    yield create_job_manager(shared_ray_instance, tmp_path)
 
 
 async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
@@ -592,27 +581,6 @@ class TestRuntimeEnv:
         assert (
             "{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_2_VAR'}}" in logs
         )  # noqa: E501
-
-    async def test_env_var_and_driver_job_config_warning(self, job_manager):
-        """Ensure we got error message from worker.py and job logs
-        if user provided runtime_env in both driver script and submit()
-        """
-        job_id = await job_manager.submit_job(
-            entrypoint=f"python {_driver_script_path('override_env_var.py')}",
-            runtime_env={
-                "env_vars": {"TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"}
-            },
-        )
-
-        await async_wait_for_condition_async_predicate(
-            check_job_succeeded, job_manager=job_manager, job_id=job_id
-        )
-        logs = job_manager.get_job_logs(job_id)
-        token = (
-            "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) are provided"
-        )
-        assert token in logs, logs
-        assert "JOB_1_VAR" in logs
 
     async def test_failed_runtime_env_validation(self, job_manager):
         """Ensure job status is correctly set as failed if job has an invalid

@@ -49,6 +49,11 @@ void OutofOrderActorSubmitQueue::MarkDependencyFailed(uint64_t position) {
   pending_queue_.erase(position);
 }
 
+void OutofOrderActorSubmitQueue::MarkTaskCanceled(uint64_t position) {
+  pending_queue_.erase(position);
+  sending_queue_.erase(position);
+}
+
 void OutofOrderActorSubmitQueue::MarkDependencyResolved(uint64_t position) {
   // move the task from pending_requests queue to sending_requests queue.
   auto it = pending_queue_.find(position);

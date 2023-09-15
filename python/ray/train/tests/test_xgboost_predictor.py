@@ -5,12 +5,12 @@ import pandas as pd
 import pytest
 import xgboost as xgb
 
-from ray.train import Checkpoint
 from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
-from ray.data.preprocessor import Preprocessor
 from ray.train.predictor import TYPE_TO_ENUM
-from ray.train.xgboost import XGBoostCheckpoint, XGBoostPredictor
-from typing import Tuple
+from ray.train.xgboost import (
+    XGBoostCheckpoint,
+    XGBoostPredictor,
+)
 
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
@@ -24,23 +24,12 @@ def get_num_trees(booster: xgb.Booster) -> int:
     return len(data)
 
 
-def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
+def test_xgboost_checkpoint():
     preprocessor = DummyPreprocessor()
 
     checkpoint = XGBoostCheckpoint.from_model(booster=model, preprocessor=preprocessor)
-
-    return checkpoint, preprocessor
-
-
-def test_xgboost_checkpoint():
-    checkpoint, preprocessor = create_checkpoint_preprocessor()
-
-    predictor = XGBoostPredictor(model=model, preprocessor=preprocessor)
-
-    checkpoint_predictor = XGBoostPredictor.from_checkpoint(checkpoint)
-
-    assert get_num_trees(checkpoint_predictor.model) == get_num_trees(predictor.model)
-    assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
+    assert get_num_trees(checkpoint.get_model()) == get_num_trees(model)
+    assert checkpoint.get_preprocessor() == preprocessor
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])

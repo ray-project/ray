@@ -24,14 +24,13 @@ ResultGrid (tune.ResultGrid)
 
 .. _result-docstring:
 
-Result (air.Result)
--------------------
+Result (train.Result)
+---------------------
 
 .. autosummary::
-    :toctree: doc/
     :template: autosummary/class_without_autosummary.rst
 
-    ~air.Result
+    ~train.Result
 
 .. _exp-analysis-docstring:
 

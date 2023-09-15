@@ -48,7 +48,7 @@ py_library(
 # --------------------------------------------------------------------
 py_test(
     name = "test_actor_reuse",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_actor_reuse.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":tune_lib", ":conftest"],
@@ -95,15 +95,6 @@ py_test(
 )
 
 py_test(
-    name = "test_cluster_searcher",
-    size = "large",
-    srcs = ["tests/test_cluster_searcher.py"],
-    data = ["tests/_test_cluster_interrupt_searcher.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_commands",
     size = "medium",
     srcs = ["tests/test_commands.py"],
@@ -137,17 +128,9 @@ py_test(
 
 py_test(
     name = "test_experiment_analysis",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_experiment_analysis.py"],
     deps = [":tune_lib", ":conftest"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_experiment_analysis_mem",
-    size = "medium",
-    srcs = ["tests/test_experiment_analysis_mem.py"],
-    deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )
 
@@ -315,14 +298,6 @@ py_test(
 )
 
 py_test(
-    name = "test_syncer_callback",
-    size = "medium",
-    srcs = ["tests/test_syncer_callback.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_trainable",
     size = "medium",
     srcs = ["tests/test_trainable.py"],
@@ -422,7 +397,7 @@ py_test(
     name = "test_tuner_restore",
     size = "large",
     srcs = ["tests/test_tuner_restore.py"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
     tags = ["team:ml", "exclusive"],
 )
 
@@ -565,7 +540,7 @@ py_test(
     size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "exclude_new_execution"]
+    tags = ["team:ml", "exclusive", "example"]
 )
 
 py_test(
@@ -679,15 +654,6 @@ py_test(
     name = "mnist_pytorch",
     size = "small",
     srcs = ["examples/mnist_pytorch.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "pytorch"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "mnist_pytorch_lightning",
-    size = "medium",
-    srcs = ["examples/mnist_pytorch_lightning.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "pytorch"],
     args = ["--smoke-test"]
@@ -829,14 +795,15 @@ py_test(
 #     args = ["--smoke-test"]
 # )
 
-py_test(
-    name = "pbt_transformers",
-    size = "small",
-    srcs = ["examples/pbt_transformers/pbt_transformers.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
+# pbt_transformers relies on legacy Tune APIs.
+# py_test(
+#     name = "pbt_transformers",
+#     size = "small",
+#     srcs = ["examples/pbt_transformers/pbt_transformers.py"],
+#     deps = [":tune_lib"],
+#     tags = ["team:ml", "exclusive", "example"],
+#     args = ["--smoke-test"]
+# )
 
 
 # Requires GPUs. Add smoke test?

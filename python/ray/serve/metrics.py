@@ -1,7 +1,8 @@
 from ray.util import metrics
 from typing import Tuple, Optional, Dict, List, Union
-from ray.serve import context
+
 import ray
+from ray.serve import context
 
 DEPLOYMENT_TAG = "deployment"
 REPLICA_TAG = "replica"
@@ -15,7 +16,7 @@ def _add_serve_metric_tags(tag_keys: Optional[Tuple[str]] = None) -> Tuple[str]:
         tag_keys = tuple()
 
     # If the context doesn't exist, no serve tag is added.
-    if context.get_internal_replica_context() is None:
+    if context._get_internal_replica_context() is None:
         return tag_keys
     # Check no collision with customer tag
     if DEPLOYMENT_TAG in tag_keys:
@@ -27,7 +28,7 @@ def _add_serve_metric_tags(tag_keys: Optional[Tuple[str]] = None) -> Tuple[str]:
 
     # Get serve tag inserted:
     ray_serve_tags = (DEPLOYMENT_TAG, REPLICA_TAG)
-    if context.get_internal_replica_context().app_name:
+    if context._get_internal_replica_context().app_name:
         ray_serve_tags += (APPLICATION_TAG,)
     if tag_keys:
         tag_keys = ray_serve_tags + tag_keys
@@ -38,7 +39,7 @@ def _add_serve_metric_tags(tag_keys: Optional[Tuple[str]] = None) -> Tuple[str]:
 
 def _add_serve_metric_default_tags(default_tags: Dict[str, str]):
     """Add serve context tags and values to the default_tags"""
-    if context.get_internal_replica_context() is None:
+    if context._get_internal_replica_context() is None:
         return default_tags
     if DEPLOYMENT_TAG in default_tags:
         raise ValueError(f"'{DEPLOYMENT_TAG}' tag is reserved for Ray Serve metrics")
@@ -46,7 +47,8 @@ def _add_serve_metric_default_tags(default_tags: Dict[str, str]):
         raise ValueError(f"'{REPLICA_TAG}' tag is reserved for Ray Serve metrics")
     if APPLICATION_TAG in default_tags:
         raise ValueError(f"'{APPLICATION_TAG}' tag is reserved for Ray Serve metrics")
-    replica_context = context.get_internal_replica_context()
+    replica_context = context._get_internal_replica_context()
+    # TODO(zcin): use replica_context.deployment for deployment tag
     default_tags[DEPLOYMENT_TAG] = replica_context.deployment
     default_tags[REPLICA_TAG] = replica_context.replica_tag
     if replica_context.app_name:

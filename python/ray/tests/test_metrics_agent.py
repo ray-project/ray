@@ -83,9 +83,6 @@ _METRICS = [
     "ray_gcs_actors_count",
 ]
 
-if not ray._raylet.Config.use_ray_syncer():
-    _METRICS.append("ray_outbound_heartbeat_size_kb_sum")
-
 # This list of metrics should be kept in sync with
 # ray/python/ray/autoscaler/_private/prom_metrics.py
 _AUTOSCALER_METRICS = [
