@@ -384,17 +384,17 @@ class ServeController:
             self.node_update_duration_gauge_s.set(time.time() - node_update_start_time)
 
             # Don't update proxy_state until after the done recovering event is set,
-            # otherwise we may start a new HTTP proxy but not broadcast it any
+            # otherwise we may start a new proxy but not broadcast it any
             # info about available deployments & their replicas.
             if self.proxy_state_manager and self.done_recovering_event.is_set():
                 try:
                     proxy_update_start_time = time.time()
-                    self.proxy_state_manager.update(http_proxy_nodes=self._proxy_nodes)
+                    self.proxy_state_manager.update(proxy_nodes=self._proxy_nodes)
                     self.proxy_update_duration_gauge_s.set(
                         time.time() - proxy_update_start_time
                     )
                 except Exception:
-                    logger.exception("Exception updating HTTP state.")
+                    logger.exception("Exception updating proxy state.")
 
             loop_duration = time.time() - loop_start_time
             if loop_duration > 10:
@@ -520,7 +520,7 @@ class ServeController:
 
         This method will only be triggered when `self._shutting_down` is true. It
         deletes the kv store for config checkpoints, sets application state to deleting,
-        delete all deployments, and shuts down all HTTP proxies. Once all these
+        delete all deployments, and shuts down all proxies. Once all these
         resources are released, it then kills the controller actor.
         """
         if not self._shutting_down:
