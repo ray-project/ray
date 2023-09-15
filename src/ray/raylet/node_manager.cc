@@ -1456,7 +1456,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    const rpc::RayException *creation_task_exception) {
   RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
                 << ", has creation task exception = " << std::boolalpha
-                << bool(creation_task_exception == nullptr);
+                << bool(creation_task_exception != nullptr);
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1480,7 +1480,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   dependency_manager_.CancelWaitRequest(worker->WorkerId());
 
   // Erase any lease metadata.
-  leased_workers_.erase(worker->WorkerId());
+  ReleaseWorker(worker->WorkerId());
 
   if (creation_task_exception != nullptr) {
     RAY_LOG(INFO) << "Formatted creation task exception: "
@@ -1907,7 +1907,7 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
   std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
 
   Status status;
-  leased_workers_.erase(worker_id);
+  ReleaseWorker(worker_id);
 
   if (worker) {
     if (request.disconnect_worker()) {
@@ -2005,9 +2005,7 @@ void NodeManager::HandleReleaseUnusedWorkers(rpc::ReleaseUnusedWorkersRequest re
     }
   }
 
-  for (auto &iter : unused_worker_ids) {
-    leased_workers_.erase(iter);
-  }
+  ReleaseWorkers(unused_worker_ids);
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

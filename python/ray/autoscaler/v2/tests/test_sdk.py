@@ -460,6 +460,131 @@ def test_node_state_lifecycle_basic(ray_start_cluster):
     wait_for_condition(verify_cluster_no_node)
 
 
+# We test that a node with only workers blocked on get
+# is considered idle.
+def test_idle_node_blocked(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    stub = _autoscaler_state_service_stub()
+
+    # We don't have node id from `add_node` unfortunately.
+    def nodes_up():
+        nodes = list_nodes()
+        assert len(nodes) == 1
+        return True
+
+    wait_for_condition(nodes_up)
+
+    head_node_id = get_node_ids()
+
+    def verify_cluster_idle():
+        state = get_cluster_resource_state(stub)
+        assert_node_states(
+            state,
+            [
+                ExpectedNodeState(
+                    head_node_id, NodeStatus.IDLE, lambda idle_ms: idle_ms > 0
+                ),
+            ],
+        )
+        return True
+
+    wait_for_condition(verify_cluster_idle)
+
+    # Unschedulable
+    @ray.remote(num_cpus=10000)
+    def f():
+        pass
+
+    # Schedule a task running
+    @ray.remote(num_cpus=1)
+    def g():
+        ray.get(f.remote())
+
+    t = g.remote()
+
+    def verify_cluster_busy():
+        state = get_cluster_resource_state(stub)
+        assert_node_states(
+            state,
+            [
+                ExpectedNodeState(
+                    head_node_id, NodeStatus.RUNNING, lambda idle_ms: idle_ms == 0
+                ),
+            ],
+        )
+        return True
+
+    wait_for_condition(verify_cluster_busy)
+    for _ in range(10):
+        time.sleep(0.5)
+        verify_cluster_busy()
+
+    # Kill the task
+    ray.cancel(t, force=True)
+    wait_for_condition(verify_cluster_idle)
+
+
+def test_idle_node_no_resource(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    stub = _autoscaler_state_service_stub()
+
+    # We don't have node id from `add_node` unfortunately.
+    def nodes_up():
+        nodes = list_nodes()
+        assert len(nodes) == 1
+        return True
+
+    wait_for_condition(nodes_up)
+
+    head_node_id = get_node_ids()
+
+    def verify_cluster_idle():
+        state = get_cluster_resource_state(stub)
+        assert_node_states(
+            state,
+            [
+                ExpectedNodeState(
+                    head_node_id, NodeStatus.IDLE, lambda idle_ms: idle_ms > 0
+                ),
+            ],
+        )
+        return True
+
+    wait_for_condition(verify_cluster_idle)
+
+    # Schedule a task running
+    @ray.remote(num_cpus=0)
+    def f():
+        while True:
+            pass
+
+    t = f.remote()
+
+    def verify_cluster_busy():
+        state = get_cluster_resource_state(stub)
+        assert_node_states(
+            state,
+            [
+                ExpectedNodeState(
+                    head_node_id, NodeStatus.RUNNING, lambda idle_ms: idle_ms == 0
+                ),
+            ],
+        )
+        return True
+
+    wait_for_condition(verify_cluster_busy)
+
+    # Kill the task
+    ray.cancel(t, force=True)
+    wait_for_condition(verify_cluster_idle)
+
+
 def test_get_cluster_status_resources(ray_start_cluster):
     cluster = ray_start_cluster
     # Head node
