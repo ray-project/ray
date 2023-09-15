@@ -1,6 +1,6 @@
 (serve-develop-and-deploy)=
 
-# Develop and Deploy an ML application
+# Develop and Deploy an ML Application
 
 The flow for developing a Ray Serve application locally and deploying it in production covers the following steps:
 
