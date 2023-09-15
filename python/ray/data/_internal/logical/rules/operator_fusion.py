@@ -199,16 +199,13 @@ class OperatorFusionRule(Rule):
         ):
             return False
 
-        # If both of the ops overrode the target max block size, only fuse if
+        # If the upstream op overrode the target max block size, only fuse if
         # they are equal.
-        if (
-            up_logical_op.target_max_block_size is not None
-            and down_logical_op.target_max_block_size is not None
-        ):
-            if (
-                up_logical_op.target_max_block_size
-                != down_logical_op.target_max_block_size
-            ):
+        if up_logical_op.target_max_block_size is not None:
+            down_target_max_block_size = down_logical_op.target_max_block_size
+            if down_target_max_block_size is None:
+                down_target_max_block_size = DataContext.get_current().target_max_block_size
+            if up_logical_op.target_max_block_size != down_target_max_block_size:
                 return False
 
         # Otherwise, ops are compatible for fusion.
@@ -219,24 +216,19 @@ class OperatorFusionRule(Rule):
         up_target_max_block_size: Optional[int],
         down_target_max_block_size: Optional[int],
     ):
-        target_max_block_size = None
-        if down_target_max_block_size is not None:
-            assert (
-                up_target_max_block_size is None
-                or up_target_max_block_size == down_target_max_block_size
-            )
-            target_max_block_size = down_target_max_block_size
-        elif up_target_max_block_size is not None:
+        if up_target_max_block_size is not None:
+            # If the upstream op overrode the target max block size, we can
+            # only merge if the downstream op matches or uses the default.
             assert (
                 down_target_max_block_size is None
                 or down_target_max_block_size == up_target_max_block_size
             )
-            target_max_block_size = up_target_max_block_size
+            return up_target_max_block_size
         else:
-            # We can only merge the target max block sizes if they are
-            # compatible.
-            assert down_target_max_block_size == up_target_max_block_size
-        return target_max_block_size
+            # Upstream op inherits the downstream op's target max block size,
+            # because the downstream op is the one that outputs the final
+            # blocks.
+            return down_target_max_block_size
 
     def _get_fused_map_operator(
         self, down_op: MapOperator, up_op: MapOperator
