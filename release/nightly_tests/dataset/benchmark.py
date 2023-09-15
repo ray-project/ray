@@ -87,6 +87,7 @@ class Benchmark:
     def write_result(self, output_path="/tmp/result.json"):
         test_output_json = os.environ.get("TEST_OUTPUT_JSON", output_path)
         with open(test_output_json, "w") as f:
+            self.result["name"] = self.name
             f.write(json.dumps(self.result))
 
         print(
