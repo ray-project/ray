@@ -263,6 +263,7 @@ def test_new_cluster_new_session_dir(ray_start_cluster):
     cluster.shutdown()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGTERM only on posix")
 def test_ray_init_sigterm_handler():
     TEST_FILENAME = "sigterm.txt"
 
