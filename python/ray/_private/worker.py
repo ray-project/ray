@@ -1477,18 +1477,6 @@ def init(
     else:
         driver_mode = SCRIPT_MODE
 
-    # terminate any signal before connecting driver
-    def sigterm_handler(signum, frame):
-        sys.exit(signum)
-
-    try:
-        ray._private.utils.set_sigterm_handler(sigterm_handler)
-    except ValueError:
-        logger.warning(
-            "Failed to set SIGTERM handler, processes might"
-            "not be cleaned up properly on exit."
-        )
-
     global _global_node
 
     if global_worker.connected:
@@ -1510,6 +1498,18 @@ def init(
 
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
+
+        # terminate any signal before connecting driver
+        def sigterm_handler(signum, frame):
+            sys.exit(signum)
+
+        try:
+            ray._private.utils.set_sigterm_handler(sigterm_handler)
+        except ValueError:
+            logger.warning(
+                "Failed to set SIGTERM handler, processes might "
+                "not be cleaned up properly on exit."
+            )
 
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._private.usage import usage_lib
@@ -1754,6 +1754,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
+    logger.info("ded")
 
 
 atexit.register(shutdown, True)
