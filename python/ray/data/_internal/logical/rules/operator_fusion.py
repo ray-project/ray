@@ -217,22 +217,22 @@ class OperatorFusionRule(Rule):
         up_logical_op = self._op_map.pop(up_op)
 
         # Merge target block sizes.
-        down_target_block_size = (
-            down_logical_op._target_block_size
+        down_min_rows_per_block = (
+            down_logical_op._min_rows_per_block
             if isinstance(down_logical_op, AbstractUDFMap)
             else None
         )
-        up_target_block_size = (
-            up_logical_op._target_block_size
+        up_min_rows_per_block = (
+            up_logical_op._min_rows_per_block
             if isinstance(up_logical_op, AbstractUDFMap)
             else None
         )
-        if down_target_block_size is not None and up_target_block_size is not None:
-            target_block_size = max(down_target_block_size, up_target_block_size)
-        elif up_target_block_size is not None:
-            target_block_size = up_target_block_size
+        if down_min_rows_per_block is not None and up_min_rows_per_block is not None:
+            min_rows_per_block = max(down_min_rows_per_block, up_min_rows_per_block)
+        elif up_min_rows_per_block is not None:
+            min_rows_per_block = up_min_rows_per_block
         else:
-            target_block_size = down_target_block_size
+            min_rows_per_block = down_min_rows_per_block
 
         # We take the downstream op's compute in case we're fusing upstream tasks with a
         # downstream actor pool (e.g. read->map).
@@ -251,7 +251,7 @@ class OperatorFusionRule(Rule):
             input_op,
             name=name,
             compute_strategy=compute,
-            min_rows_per_bundle=target_block_size,
+            min_rows_per_bundle=min_rows_per_block,
             ray_remote_args=ray_remote_args,
         )
 
@@ -272,7 +272,7 @@ class OperatorFusionRule(Rule):
                 down_logical_op._fn_kwargs,
                 down_logical_op._fn_constructor_args,
                 down_logical_op._fn_constructor_kwargs,
-                target_block_size,
+                min_rows_per_block,
                 compute,
                 ray_remote_args,
             )

@@ -312,7 +312,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             input_op,
             name=stage.name,
             compute_strategy=compute,
-            min_rows_per_bundle=stage.target_block_size,
+            min_rows_per_bundle=stage.min_rows_per_block,
             ray_remote_args=stage.ray_remote_args,
         )
     elif isinstance(stage, LimitStage):

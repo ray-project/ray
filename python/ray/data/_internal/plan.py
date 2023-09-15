@@ -915,7 +915,7 @@ class OneToOneStage(Stage):
         block_fn: BlockTransform,
         compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
-        target_block_size: Optional[int] = None,
+        min_rows_per_block: Optional[int] = None,
         fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -926,7 +926,7 @@ class OneToOneStage(Stage):
         self.block_fn = block_fn
         self.compute = compute or TaskPoolStrategy()
         self.ray_remote_args = ray_remote_args or {}
-        self.target_block_size = target_block_size
+        self.min_rows_per_block = min_rows_per_block
         self.fn = fn
         self.fn_args = fn_args
         self.fn_kwargs = fn_kwargs
@@ -994,12 +994,12 @@ class OneToOneStage(Stage):
 
         block_fn1 = prev.block_fn
         block_fn2 = self.block_fn
-        if prev.target_block_size is not None and self.target_block_size is not None:
-            target_block_size = max(prev.target_block_size, self.target_block_size)
-        elif prev.target_block_size is not None:
-            target_block_size = prev.target_block_size
+        if prev.min_rows_per_block is not None and self.min_rows_per_block is not None:
+            min_rows_per_block = max(prev.min_rows_per_block, self.min_rows_per_block)
+        elif prev.min_rows_per_block is not None:
+            min_rows_per_block = prev.min_rows_per_block
         else:
-            target_block_size = self.target_block_size
+            min_rows_per_block = self.min_rows_per_block
 
         def block_fn(
             blocks: Iterable[Block],
@@ -1029,7 +1029,7 @@ class OneToOneStage(Stage):
             block_fn,
             self.compute,
             prev.ray_remote_args,
-            target_block_size=target_block_size,
+            min_rows_per_block=min_rows_per_block,
             fn=self.fn,
             fn_args=fn_args,
             fn_kwargs={},
@@ -1056,7 +1056,7 @@ class OneToOneStage(Stage):
             blocks,
             clear_input_blocks,
             name=self.name,
-            target_block_size=self.target_block_size,
+            min_rows_per_block=self.min_rows_per_block,
             fn=self.fn,
             fn_args=self.fn_args,
             fn_kwargs=self.fn_kwargs,

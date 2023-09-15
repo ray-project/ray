@@ -545,12 +545,12 @@ class Dataset:
         if batch_format == "native":
             logger.warning("The 'native' batch format has been renamed 'default'.")
 
-        target_block_size = None
+        min_rows_per_block = None
         if batch_size is not None and batch_size != "default":
             if batch_size < 1:
                 raise ValueError("Batch size cannot be negative or 0")
             # Enable blocks bundling when batch_size is specified by caller.
-            target_block_size = batch_size
+            min_rows_per_block = batch_size
 
         batch_size = _apply_strict_mode_batch_size(
             batch_size, use_gpu="num_gpus" in ray_remote_args
@@ -598,7 +598,7 @@ class Dataset:
             compute,
             ray_remote_args,
             # TODO(Clark): Add a strict cap here.
-            target_block_size=target_block_size,
+            min_rows_per_block=min_rows_per_block,
             fn=fn,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
@@ -615,7 +615,7 @@ class Dataset:
                 batch_size=batch_size,
                 batch_format=batch_format,
                 zero_copy_batch=zero_copy_batch,
-                target_block_size=target_block_size,
+                min_rows_per_block=min_rows_per_block,
                 fn_args=fn_args,
                 fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
