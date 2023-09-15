@@ -227,17 +227,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   template <typename T>
   void ReleaseWorker(T &&worker_id) {
     leased_workers_.erase(worker_id);
-    UpdateEmptyLease();
+    SetIdleIfLeaseEmpty();
   }
 
-  void ReleaseWorkers(std::vector<WorkerID> &worker_ids) {
+  void ReleaseWorkers(const std::vector<WorkerID> &worker_ids) {
     for (auto &it : worker_ids) {
       leased_workers_.erase(it);
     }
-    UpdateEmptyLease();
+    SetIdleIfLeaseEmpty();
   }
 
-  inline void UpdateEmptyLease() {
+  inline void SetIdleIfLeaseEmpty() {
     if (leased_workers_.empty()) {
       cluster_resource_scheduler_->GetLocalResourceManager().SetIdleFootprint(
           WorkFootprint::NODE_WORKERS);

@@ -118,7 +118,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
+  // Removes idle time for a WorkFootprint, thereby marking it busy.
   void SetBusyFootprint(WorkFootprint item);
+  // Sets the idle time for a WorkFootprint to now.
   void SetIdleFootprint(WorkFootprint item);
 
   double GetLocalAvailableCpus() const;

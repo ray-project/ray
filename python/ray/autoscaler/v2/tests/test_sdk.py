@@ -460,6 +460,8 @@ def test_node_state_lifecycle_basic(ray_start_cluster):
     wait_for_condition(verify_cluster_no_node)
 
 
+# We test that a node with only workers blocked on get
+# is considered idle.
 def test_idle_node_blocked(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
@@ -516,8 +518,8 @@ def test_idle_node_blocked(ray_start_cluster):
         return True
 
     for x in range(10):
-        time.sleep(0.1)
-        wait_for_condition(verify_cluster_busy)
+        verify_cluster_busy()
+        time.sleep(0.5)
 
     # Kill the task
     ray.cancel(t, force=True)
