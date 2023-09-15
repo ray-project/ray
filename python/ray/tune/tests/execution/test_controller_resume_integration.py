@@ -3,6 +3,7 @@ import sys
 
 import ray
 from ray import tune
+from ray.air import CheckpointConfig
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.tune import Experiment, PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
@@ -198,6 +199,84 @@ def test_controller_restore_error_only_resume(
     while not new_runner.is_finished():
         new_runner.step()
     assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_controller_restore_trial_save_restore(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+):
+    """Creates different trials to test runner.checkpoint/restore.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::testTrialSaveRestore
+    """
+    runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        checkpoint_period=0,
+        storage=STORAGE,
+    )
+    trials = [
+        Trial(
+            "__fake",
+            trial_id="trial_terminate",
+            stopping_criterion={"training_iteration": 1},
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+            storage=STORAGE,
+        )
+    ]
+    runner.add_trial(trials[0])
+    while not runner.is_finished():
+        # Start trial, process result, dispatch save and process save.
+        runner.step()
+    assert trials[0].status == Trial.TERMINATED
+
+    trials += [
+        Trial(
+            "__fake",
+            trial_id="trial_fail",
+            stopping_criterion={"training_iteration": 3},
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+            config={"mock_error": True},
+            storage=STORAGE,
+        )
+    ]
+    runner.add_trial(trials[1])
+    while not runner.is_finished():
+        runner.step()
+    assert trials[1].status == Trial.ERROR
+
+    trials += [
+        Trial(
+            "__fake",
+            trial_id="trial_succ",
+            stopping_criterion={"training_iteration": 2},
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+            storage=STORAGE,
+        )
+    ]
+    runner.add_trial(trials[2])
+
+    while not trials[2].status == Trial.RUNNING:
+        runner.step()  # Start trial
+    assert len(runner._get_trial_checkpoints()) == 3
+
+    runner2 = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=STORAGE,
+        resume="LOCAL",
+    )
+    for tid in ["trial_terminate", "trial_fail"]:
+        original_trial = runner.get_trial(tid)
+        restored_trial = runner2.get_trial(tid)
+        assert original_trial.status == restored_trial.status
+
+    restored_trial = runner2.get_trial("trial_succ")
+    assert Trial.PENDING == restored_trial.status
+
+    while not runner2.is_finished():
+        runner2.step()
+    assert restored_trial.status == Trial.TERMINATED
 
 
 if __name__ == "__main__":
