@@ -404,10 +404,10 @@ class UpdateKL:
 
 
 class PPO(Algorithm):
-    @classmethod
+
     @override(Algorithm)
     def setup(self, config: AlgorithmConfig):
-        super().setup(config)
+        super().setup(config=config)
 
         # Share RLModule between EnvRunner and single (local) Learner instance.
         # To avoid possibly expensive weight synching step.

@@ -8,7 +8,7 @@ from collections import defaultdict
 from ray.experimental.tqdm_ray import tqdm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
-from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.utils import _gym_env_creator
@@ -65,7 +65,8 @@ class PPOEnvRunner(EnvRunner):
             policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
             module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
             # TODO (simon): This here is only for single agent.
-            self.module: RLModule = module_spec.build()[DEFAULT_POLICY_ID]
+            # This is a MARL.
+            self.module: MultiAgentRLModule = module_spec.build()#[DEFAULT_POLICY_ID]
 
         # Let us set this as default for PPO.
         self._needs_initial_reset: bool = True
@@ -131,7 +132,7 @@ class PPOEnvRunner(EnvRunner):
         # i.e. for all vector sub_envs.
         initial_states = tree.map_structure(
             lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.module.get_initial_state(),
+            self.module[DEFAULT_POLICY_ID].get_initial_state(),
         )
 
         # Have to reset the env (on all vector sub_envs)
@@ -187,9 +188,9 @@ class PPOEnvRunner(EnvRunner):
                     }
                     # Explore or not.
                     if explore:
-                        outs = self.module.forward_exploration(batch)
+                        outs = self.module[DEFAULT_POLICY_ID].forward_exploration(batch)
                     else:
-                        outs = self.module.forward_infernce(batch)
+                        outs = self.module[DEFAULT_POLICY_ID].forward_inference(batch)
 
                 # If action space is discrete, the RLModule returns one-hot actions.
                 # Convert one-hot actions to integer actions then.
@@ -225,7 +226,7 @@ class PPOEnvRunner(EnvRunner):
                     )
                     # Reset h-states to nthe model's intiial ones b/c we are starting a
                     # new episode.
-                    for k, v in self.module.get_initial_state().items():
+                    for k, v in self.module[DEFAULT_POLICY_ID].get_initial_state().items():
                         states[k][i] = v.numpy()
 
                     done_episodes_to_return.append(self._episodes[i])
@@ -273,7 +274,7 @@ class PPOEnvRunner(EnvRunner):
         # Multiply states n times according to our vector env batch size (num_envs).
         states = tree.map_structure(
             lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.module.get_initial_state(),
+            self.module[DEFAULT_POLICY_ID].get_initial_state(),
         )
 
         render_images = [None] * self.num_envs
@@ -303,9 +304,9 @@ class PPOEnvRunner(EnvRunner):
                     }
 
                     if explore:
-                        outs = self.module.forward_exploration(batch)
+                        outs = self.module[DEFAULT_POLICY_ID].forward_exploration(batch)
                     else:
-                        outs = self.module.forward_inference(batch)
+                        outs = self.module[DEFAULT_POLICY_ID].forward_inference(batch)
 
                     actions = outs[SampleBatch.ACTIONS].numpy()
                     if isinstance(self.env.single_action_space, gym.spaces.Discrete):
@@ -341,7 +342,7 @@ class PPOEnvRunner(EnvRunner):
 
                         # Reset h-states to the model's initial ones b/c we are starting
                         # a new episode.
-                        for k, v in self.module.get_initial_state().items():
+                        for k, v in self.module[DEFAULT_POLICY_ID].get_initial_state().items():
                             states[k][i] = v.numpy()
 
                         episodes[i] = Episode(
@@ -402,7 +403,17 @@ class PPOEnvRunner(EnvRunner):
         if self.module is None:
             assert self.config.share_module_between_env_runner_and_learner
         else:
-            self.module.set_state(weights[DEFAULT_POLICY_ID])
+            self.module.set_state(weights)
+            #self.module[DEFAULT_POLICY_ID].set_state(weights[DEFAULT_POLICY_ID])
+
+    def get_weights(self, modules = None):
+        """Returns the weights of our (single-agent) RLModule."""
+        if self.module is None:
+            assert self.config.share_module_between_env_runner_and_learner
+        else:
+            weights = self.module.get_state(modules)
+            return weights
+            
 
     @override(EnvRunner)
     def assert_healthy(self):
