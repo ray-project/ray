@@ -1,6 +1,7 @@
 import os
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 import sys
 
@@ -459,6 +460,85 @@ def test_controller_restore_checkpoint_overwrite(
 
     runner2.checkpoint()
     assert count_checkpoints(tmpdir) == 2
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_controller_restore_with_dataset(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+):
+    """Test trial runner checkpointing where trials contain Datasets.
+    When possible, a dataset plan should be saved (for read_* APIs).
+    See `Dataset.serialize_lineage` for more information.
+
+    If a dataset cannot be serialized, an experiment checkpoint
+    should still be created. Users can pass in the dataset again by
+    re-specifying the `param_space`.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::
+        testExperimentCheckpointWithDatasets
+    """
+    storage = mock_storage_context()
+
+    # Save some test data to load
+    data_filepath = os.path.join(storage.storage_local_path, "test.csv")
+    pd.DataFrame({"x": list(range(10))}).to_csv(data_filepath)
+
+    def create_trial_config():
+        return {
+            "datasets": {
+                "with_lineage": ray.data.read_csv(data_filepath),
+                "no_lineage": ray.data.from_items([{"x": i} for i in range(10)]),
+            }
+        }
+
+    resolvers = create_resolvers_map()
+    config_with_placeholders = inject_placeholders(create_trial_config(), resolvers)
+    trial = Trial(
+        "__fake",
+        config=config_with_placeholders,
+        storage=STORAGE,
+    )
+    trial.init_local_path()
+    runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=storage,
+        placeholder_resolvers=resolvers,
+    )
+    runner.add_trial(trial)
+    # Req: TrialRunner checkpointing shouldn't error
+    runner.checkpoint(force=True)
+
+    # Manually clear all block refs that may have been created
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    new_runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=storage,
+    )
+    new_runner.resume()
+    [loaded_trial] = new_runner.get_trials()
+    loaded_datasets = loaded_trial.config["datasets"]
+
+    # Req: The deserialized dataset (w/ lineage) should be usable.
+    assert [el["x"] for el in loaded_datasets["with_lineage"].take()] == list(range(10))
+
+    replaced_resolvers = create_resolvers_map()
+    inject_placeholders(create_trial_config(), replaced_resolvers)
+
+    respecified_config_runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=storage,
+        placeholder_resolvers=replaced_resolvers,
+    )
+    respecified_config_runner.resume()
+    [loaded_trial] = respecified_config_runner.get_trials()
+    ray_ds_no_lineage = loaded_trial.config["datasets"]["no_lineage"]
+
+    # Req: The dataset (w/o lineage) can be re-specified and is usable after.
+    assert [el["x"] for el in ray_ds_no_lineage.take()] == list(range(10))
 
 
 if __name__ == "__main__":
