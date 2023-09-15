@@ -1,6 +1,6 @@
 (kuberay-rayservice)=
 
-# RayService
+# Deploy Ray Serve Applications
 
 ## Prerequisites
 
