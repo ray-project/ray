@@ -186,7 +186,10 @@ def test_data_context_propagation(ray_start_4_cpus):
         ctx_worker = DataContext.get_current()
         assert ctx_worker.foo == "bar"
 
-    trainer = DummyTrainer(train_loop=training_loop)
+    trainer = DummyTrainer(
+        train_loop=training_loop,
+        datasets={"train": ray.data.range(10)},
+    )
     trainer.fit()
 
 
