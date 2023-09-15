@@ -41,53 +41,6 @@ class TrialRunnerTest3(unittest.TestCase):
             del os.environ["CUDA_VISIBLE_DEVICES"]
         shutil.rmtree(self.tmpdir)
 
-    def testUserCheckpoint(self):
-        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
-        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
-
-        ray.init(num_cpus=3)
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            checkpoint_period=0,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        # The Trial `local_dir` must match the TrialRunner `local_checkpoint_dir`
-        # to match the directory structure assumed by `TrialRunner.resume`.
-        # See `test_trial_runner2.TrialRunnerTest2.testPauseResumeCheckpointCount`
-        # for more details.
-        runner.add_trial(
-            Trial(
-                "__fake",
-                experiment_path=self.tmpdir,
-                config={"user_checkpoint_freq": 2},
-            )
-        )
-        trials = runner.get_trials()
-
-        runner.step()  # Start trial
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(
-            ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)), 1
-        )
-        runner.step()  # Process result
-        self.assertFalse(trials[0].has_checkpoint())
-        runner.step()  # Process result
-        self.assertFalse(trials[0].has_checkpoint())
-        runner.step()  # Process result, dispatch save
-        runner.step()  # Process save
-        self.assertTrue(trials[0].has_checkpoint())
-
-        runner2 = TrialRunner(
-            resume="LOCAL",
-            local_checkpoint_dir=self.tmpdir,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        runner2.step()  # 5: Start trial and dispatch restore
-        trials2 = runner2.get_trials()
-        self.assertEqual(
-            ray.get(trials2[0].temporary_state.ray_actor.get_info.remote()), 1
-        )
-
     def testUserCheckpointBuffered(self):
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "8"
         os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"

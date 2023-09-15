@@ -414,5 +414,57 @@ def test_checkpoint_at_end_not_buffered(
         assert num_checkpoints(trial) == 1
 
 
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_checkpoint_user_checkpoint(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+):
+    """Test that user checkpoint freq is respected.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::testUserCheckpoint
+    """
+    with mock.patch.dict(
+        os.environ,
+        {"TUNE_RESULT_BUFFER_LENGTH": "1", "TUNE_MAX_PENDING_TRIALS_PG": "1"},
+    ):
+        runner = TuneController(
+            resource_manager_factory=lambda: resource_manager_cls(),
+            storage=STORAGE,
+            checkpoint_period=0,
+        )
+        runner.add_trial(
+            Trial("__fake", config={"user_checkpoint_freq": 2}, storage=STORAGE)
+        )
+        trials = runner.get_trials()
+
+        while not trials[0].status == Trial.RUNNING:
+            runner.step()
+        assert ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)) == 1
+
+        while trials[0].last_result.get(TRAINING_ITERATION, 0) < 1:
+            runner.step()  # Process result
+        assert not trials[0].has_checkpoint()
+        while trials[0].last_result.get(TRAINING_ITERATION, 99) < 2:
+            runner.step()  # Process result
+        assert not trials[0].has_checkpoint()
+
+        while trials[0].last_result.get(TRAINING_ITERATION, 99) < 3:
+            runner.step()  # Process result
+        runner.step()
+
+        assert trials[0].has_checkpoint()
+
+        runner2 = TuneController(
+            resource_manager_factory=lambda: resource_manager_cls(),
+            storage=STORAGE,
+            resume="LOCAL",
+        )
+        trials2 = runner2.get_trials()
+        while not trials2[0].status == Trial.RUNNING:
+            runner2.step()
+        assert ray.get(trials2[0].temporary_state.ray_actor.get_info.remote()) == 1
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
