@@ -1,16 +1,7 @@
-import time
-import logging
-import os
-import shutil
 import sys
-import tempfile
 import unittest
-from unittest.mock import patch
-
-from freezegun import freeze_time
 
 import ray
-from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
 from ray.rllib import _register_all
 
 from ray.tune.search import BasicVariantGenerator
@@ -18,108 +9,6 @@ from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.search.repeater import Repeater
 from ray.tune.search import Searcher, ConcurrencyLimiter
 from ray.tune.search.search_generator import SearchGenerator
-from ray.tune.syncer import SyncConfig
-
-
-class TrialRunnerTest3(unittest.TestCase):
-    def _resourceManager(self):
-        return PlacementGroupResourceManager()
-
-    def setUp(self):
-        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"  # Reset default
-
-        self.tmpdir = tempfile.mkdtemp()
-
-    def tearDown(self):
-        ray.shutdown()
-        _register_all()  # re-register the evicted objects
-        if "CUDA_VISIBLE_DEVICES" in os.environ:
-            del os.environ["CUDA_VISIBLE_DEVICES"]
-        shutil.rmtree(self.tmpdir)
-
-    def getHangingSyncer(self, sync_period: float, sync_timeout: float):
-        def _hanging_sync_up_command(*args, **kwargs):
-            time.sleep(200)
-
-        from ray.tune.syncer import _DefaultSyncer
-
-        class HangingSyncer(_DefaultSyncer):
-            def __init__(self, sync_period: float, sync_timeout: float):
-                super(HangingSyncer, self).__init__(
-                    sync_period=sync_period, sync_timeout=sync_timeout
-                )
-                self.sync_up_counter = 0
-
-            def sync_up(
-                self, local_dir: str, remote_dir: str, exclude: list = None
-            ) -> bool:
-                self.sync_up_counter += 1
-                super(HangingSyncer, self).sync_up(local_dir, remote_dir, exclude)
-
-            def _sync_up_command(self, local_path: str, uri: str, exclude: list = None):
-                return _hanging_sync_up_command, {}
-
-        return HangingSyncer(sync_period=sync_period, sync_timeout=sync_timeout)
-
-    def testForcedCloudCheckpointSyncTimeout(self):
-        """Test that trial runner experiment checkpointing with forced cloud syncing
-        times out correctly when the sync process hangs."""
-        ray.init(num_cpus=3)
-
-        syncer = self.getHangingSyncer(sync_period=60, sync_timeout=0.5)
-        runner = TrialRunner(
-            experiment_path="fake://somewhere/exp",
-            sync_config=SyncConfig(syncer=syncer),
-        )
-        # Checkpoint for the first time starts the first sync in the background
-        runner.checkpoint(force=True)
-        assert syncer.sync_up_counter == 1
-
-        buffer = []
-        logger = logging.getLogger("ray.tune.execution.experiment_state")
-        with patch.object(logger, "warning", lambda x: buffer.append(x)):
-            # The second checkpoint will log a warning about the previous sync
-            # timing out. Then, it will launch a new sync process in the background.
-            runner.checkpoint(force=True)
-        assert any("timed out" in x for x in buffer)
-        assert syncer.sync_up_counter == 2
-
-    def testPeriodicCloudCheckpointSyncTimeout(self):
-        """Test that trial runner experiment checkpointing with the default periodic
-        cloud syncing times out and retries correctly when the sync process hangs."""
-        ray.init(num_cpus=3)
-
-        sync_period = 60
-        syncer = self.getHangingSyncer(sync_period=sync_period, sync_timeout=0.5)
-        runner = TrialRunner(
-            experiment_path="fake://somewhere/exp",
-            sync_config=SyncConfig(syncer=syncer),
-        )
-
-        with freeze_time() as frozen:
-            runner.checkpoint()
-            assert syncer.sync_up_counter == 1
-
-            frozen.tick(sync_period / 2)
-            # Cloud sync has already timed out, but we shouldn't retry until
-            # the next sync_period
-            runner.checkpoint()
-            assert syncer.sync_up_counter == 1
-
-            frozen.tick(sync_period / 2)
-            # We've now reached the sync_period - a new sync process should be
-            # started, with the old one timing out
-            buffer = []
-            logger = logging.getLogger("ray.tune.syncer")
-            with patch.object(logger, "warning", lambda x: buffer.append(x)):
-                runner.checkpoint()
-            assert any("did not finish running within the timeout" in x for x in buffer)
-            assert syncer.sync_up_counter == 2
-
-
-class FixedResourceTrialRunnerTest3(TrialRunnerTest3):
-    def _resourceManager(self):
-        return FixedResourceManager()
 
 
 class SearchAlgorithmTest(unittest.TestCase):

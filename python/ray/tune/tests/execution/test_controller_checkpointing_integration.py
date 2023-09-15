@@ -11,6 +11,7 @@ import time
 from functools import partial
 
 import ray
+from freezegun import freeze_time
 from ray.train import CheckpointConfig
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.air.constants import TRAINING_ITERATION
@@ -675,6 +676,60 @@ def test_checkpoint_forced_cloud_sync_timeout(
             # timing out. Then, it will launch a new sync process in the background.
             runner.checkpoint(force=True)
         assert any("timed out" in x for x in buffer)
+        assert sync_up_cmd.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_checkpoint_periodic_cloud_sync_timeout(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+):
+    """Test that trial runner experiment checkpointing with the default periodic
+    cloud syncing times out and retries correctly when the sync process hangs.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::
+        testPeriodicCloudCheckpointSyncTimeout
+    """
+    storage = mock_storage_context(delete_syncer=False)
+
+    storage.syncer.sync_period = 60
+    storage.syncer.sync_timeout = 0.5
+
+    def _hanging_sync_up_command(*args, **kwargs):
+        time.sleep(200)
+
+    def _sync_up_command(self, local_path: str, uri: str, exclude=None):
+        return _hanging_sync_up_command, {}
+
+    with mock.patch.object(
+        storage.syncer, "_sync_up_command"
+    ) as sync_up_cmd, freeze_time() as frozen:
+        sync_up_cmd.side_effect = partial(_sync_up_command, storage.syncer)
+        runner = TuneController(
+            resource_manager_factory=lambda: resource_manager_cls(),
+            storage=storage,
+        )
+
+        runner.checkpoint()
+        assert sync_up_cmd.call_count == 1
+
+        frozen.tick(storage.syncer.sync_period / 2)
+        # Cloud sync has already timed out, but we shouldn't retry until
+        # the next sync_period
+        runner.checkpoint()
+        assert sync_up_cmd.call_count == 1
+
+        frozen.tick(storage.syncer.sync_period / 2)
+        # We've now reached the sync_period - a new sync process should be
+        # started, with the old one timing out
+        buffer = []
+        logger = logging.getLogger("ray.train._internal.syncer")
+        with mock.patch.object(logger, "warning", lambda x: buffer.append(x)):
+            runner.checkpoint()
+        assert any(
+            "did not finish running within the timeout" in x for x in buffer
+        ), buffer
         assert sync_up_cmd.call_count == 2
 
 
