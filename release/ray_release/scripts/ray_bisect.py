@@ -177,10 +177,9 @@ def _trigger_test_run(
     python_version = DEFAULT_PYTHON_VERSION
     if "python" in test:
         python_version = parse_python_version(test["python"])
-    if test.is_byod_cluster():
-        os.environ["COMMIT_TO_TEST"] = commit
-        build_anyscale_base_byod_images([test])
-        build_anyscale_custom_byod_image(test)
+    os.environ["COMMIT_TO_TEST"] = commit
+    build_anyscale_base_byod_images([test])
+    build_anyscale_custom_byod_image(test)
     ray_wheels_url = find_and_wait_for_ray_wheels_url(
         commit, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT, python_version=python_version
     )

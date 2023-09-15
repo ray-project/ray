@@ -9,9 +9,11 @@ import unittest
 from unittest.mock import patch
 
 from ray_release.alerts.handle import result_to_handle_map
+from ray_release.bazel import bazel_runfile
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
+from ray_release.configs.global_config import init_global_config
 from ray_release.test import Test
 from ray_release.exception import (
     ReleaseTestConfigError,
@@ -43,6 +45,8 @@ from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ExitCode
 from ray_release.tests.utils import MockSDK, APIDict
+
+init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
 
 def _fail_on_call(error_type: Type[Exception] = RuntimeError, message: str = "Fail"):
@@ -161,13 +165,13 @@ class GlueTest(unittest.TestCase):
                 wait_for_nodes=dict(num_nodes=4, timeout=40),
             ),
             working_dir=self.tempdir,
-            cluster=dict(
-                cluster_env="cluster_env.yaml", cluster_compute="cluster_compute.yaml"
-            ),
+            cluster=dict(byod={}, cluster_compute="cluster_compute.yaml"),
             alert="unit_test_alerter",
         )
         self.anyscale_project = "prj_unit12345678"
         self.ray_wheels_url = "http://mock.wheels/"
+        os.environ["BUILDKITE_COMMIT"] = "123456"
+        os.environ["BUILDKITE_BRANCH"] = "master"
 
     def tearDown(self) -> None:
         shutil.rmtree(self.tempdir)
@@ -237,35 +241,6 @@ class GlueTest(unittest.TestCase):
             ray_wheels_url=self.ray_wheels_url,
             **kwargs
         )
-
-    def testInvalidClusterEnv(self):
-        result = Result()
-
-        # Any ReleaseTestConfigError
-        with patch(
-            "ray_release.glue.load_test_cluster_env",
-            _fail_on_call(ReleaseTestConfigError),
-        ), self.assertRaises(ReleaseTestConfigError):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
-
-        # Fails because file not found
-        os.unlink(os.path.join(self.tempdir, "cluster_env.yaml"))
-        with self.assertRaisesRegex(ReleaseTestConfigError, "Path not found"):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
-
-        # Fails because invalid jinja template
-        self.writeClusterEnv("{{ INVALID")
-        with self.assertRaisesRegex(ReleaseTestConfigError, "yaml template"):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
-
-        # Fails because invalid json
-        self.writeClusterEnv("{'test': true, 'fail}")
-        with self.assertRaisesRegex(ReleaseTestConfigError, "quoted scalar"):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
 
     def testInvalidClusterCompute(self):
         result = Result()

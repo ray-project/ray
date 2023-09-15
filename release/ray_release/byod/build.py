@@ -110,8 +110,6 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     to_be_built = {}
     built = set()
     for test in tests:
-        if not test.is_byod_cluster():
-            continue
         to_be_built[test.get_anyscale_base_byod_image()] = test
 
     env = os.environ.copy()

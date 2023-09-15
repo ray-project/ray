@@ -120,42 +120,28 @@ class Test(dict):
         """
         return self.get("env") == "gce"
 
-    def is_byod_cluster(self) -> bool:
-        """
-        Returns whether this test is running on a BYOD cluster.
-        """
-        return self["cluster"].get("byod") is not None
-
     def get_byod_type(self) -> Optional[str]:
         """
         Returns the type of the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return None
         return self["cluster"]["byod"].get("type", "cpu")
 
     def get_byod_post_build_script(self) -> Optional[str]:
         """
         Returns the post-build script for the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return None
         return self["cluster"]["byod"].get("post_build_script")
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """
         Returns the runtime environment variables for the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return {}
         return _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
 
     def get_byod_pips(self) -> List[str]:
         """
         Returns the list of pips for the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return []
         return self["cluster"]["byod"].get("pip", [])
 
     def get_name(self) -> str:
