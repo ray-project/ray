@@ -10,18 +10,15 @@ from unittest.mock import patch
 from freezegun import freeze_time
 
 import ray
-from ray.train import CheckpointConfig
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
 from ray.rllib import _register_all
 
-from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.search import BasicVariantGenerator
-from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.search.repeater import Repeater
 from ray.tune.search import Searcher, ConcurrencyLimiter
 from ray.tune.search.search_generator import SearchGenerator
-from ray.tune.syncer import SyncConfig, Syncer
+from ray.tune.syncer import SyncConfig
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -39,77 +36,6 @@ class TrialRunnerTest3(unittest.TestCase):
         if "CUDA_VISIBLE_DEVICES" in os.environ:
             del os.environ["CUDA_VISIBLE_DEVICES"]
         shutil.rmtree(self.tmpdir)
-
-    @patch.dict(
-        os.environ, {"TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S": "2"}
-    )
-    def testCloudCheckpointForceWithNumToKeep(self):
-        """Test that cloud syncing is forced if one of the trials has made more
-        than num_to_keep checkpoints since last sync."""
-        ray.init(num_cpus=3)
-
-        class CustomSyncer(Syncer):
-            def __init__(self, sync_period: float = float("inf")):
-                super(CustomSyncer, self).__init__(sync_period=sync_period)
-                self._sync_status = {}
-                self.sync_up_counter = 0
-
-            def sync_up(
-                self, local_dir: str, remote_dir: str, exclude: list = None
-            ) -> bool:
-                self.sync_up_counter += 1
-                return True
-
-            def sync_down(
-                self, remote_dir: str, local_dir: str, exclude: list = None
-            ) -> bool:
-                return True
-
-            def delete(self, remote_dir: str) -> bool:
-                pass
-
-        num_to_keep = 2
-        checkpoint_config = CheckpointConfig(
-            num_to_keep=num_to_keep, checkpoint_frequency=1
-        )
-        syncer = CustomSyncer()
-
-        runner = TrialRunner(
-            experiment_path="fake://somewhere",
-            sync_config=SyncConfig(syncer=syncer),
-            trial_checkpoint_config=checkpoint_config,
-            checkpoint_period=100,  # Only rely on forced syncing
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-
-        class CheckpointingTrial(Trial):
-            def should_checkpoint(self):
-                return True
-
-        trial = CheckpointingTrial(
-            "__fake",
-            checkpoint_config=checkpoint_config,
-            stopping_criterion={"training_iteration": 10},
-        )
-        runner.add_trial(trial)
-
-        # also check if the warning is printed
-        buffer = []
-        from ray.tune.execution.experiment_state import logger
-
-        with patch.object(logger, "warning", lambda x: buffer.append(x)):
-            while not runner.is_finished():
-                runner.step()
-        assert any("syncing has been triggered multiple" in x for x in buffer)
-
-        # We should sync 6 times:
-        # The first checkpoint happens when the experiment starts,
-        # since no checkpoints have happened yet
-        # (This corresponds to the new_trial event in the runner loop)
-        # Then, every num_to_keep=2 checkpoints, we should perform a forced checkpoint
-        # which results in 5 more checkpoints (running for 10 iterations),
-        # giving a total of 6
-        assert syncer.sync_up_counter == 6
 
     def getHangingSyncer(self, sync_period: float, sync_timeout: float):
         def _hanging_sync_up_command(*args, **kwargs):
