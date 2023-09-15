@@ -143,6 +143,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         map_transformer,
         inputs,
         name=op.name,
+        target_max_block_size=None,
         ray_remote_args=op._ray_remote_args,
     )
 

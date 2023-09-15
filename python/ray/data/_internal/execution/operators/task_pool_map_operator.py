@@ -20,6 +20,7 @@ class TaskPoolMapOperator(MapOperator):
         self,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        target_max_block_size: Optional[int],
         name: str = "TaskPoolMap",
         min_rows_per_bundle: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -30,6 +31,8 @@ class TaskPoolMapOperator(MapOperator):
             transform_fn: The function to apply to each ref bundle input.
             input_op: Operator generating input data for this op.
             name: The name of this operator.
+            target_max_block_size: The target maximum number of bytes to
+                include in an output block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -37,7 +40,12 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
-            map_transformer, input_op, name, min_rows_per_bundle, ray_remote_args
+            map_transformer,
+            input_op,
+            name,
+            target_max_block_size,
+            min_rows_per_bundle,
+            ray_remote_args,
         )
 
     def _add_bundled_input(self, bundle: RefBundle):

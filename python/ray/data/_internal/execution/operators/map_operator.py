@@ -48,6 +48,7 @@ class MapOperator(OneToOneOperator, ABC):
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
         name: str,
+        target_max_block_size: Optional[int],
         min_rows_per_bundle: Optional[int],
         ray_remote_args: Optional[Dict[str, Any]],
     ):
@@ -80,13 +81,14 @@ class MapOperator(OneToOneOperator, ABC):
         # When the streaming generator ref is GC'ed, the objects it generated
         # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
         self._finished_streaming_gens: List[StreamingObjectRefGenerator] = []
-        super().__init__(name, input_op)
+        super().__init__(name, input_op, target_max_block_size)
 
     @classmethod
     def create(
         cls,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        target_max_block_size: Optional[int],
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
@@ -107,6 +109,8 @@ class MapOperator(OneToOneOperator, ABC):
             init_fn: The callable class to instantiate if using ActorPoolMapOperator.
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
+            target_max_block_size: The target maximum number of bytes to
+                include in an output block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -125,6 +129,7 @@ class MapOperator(OneToOneOperator, ABC):
                 map_transformer,
                 input_op,
                 name=name,
+                target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
                 ray_remote_args=ray_remote_args,
             )
@@ -145,6 +150,7 @@ class MapOperator(OneToOneOperator, ABC):
                 input_op,
                 autoscaling_policy=autoscaling_policy,
                 name=name,
+                target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
                 ray_remote_args=ray_remote_args,
             )

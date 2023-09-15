@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 # TODO(Clark): Remove compute dependency once we delete the legacy compute.
 from ray.data._internal.compute import get_compute, is_task_compute
@@ -199,8 +199,40 @@ class OperatorFusionRule(Rule):
         ):
             return False
 
+        # If both of the ops overrode the target max block size, only fuse if
+        # they are equal.
+        if (
+            up_logical_op.target_max_block_size is not None
+            and down_logical_op.target_max_block_size is not None
+        ):
+            if (
+                up_logical_op.target_max_block_size
+                != down_logical_op.target_max_block_size
+            ):
+                return False
+
         # Otherwise, ops are compatible for fusion.
         return True
+
+    def _get_merged_target_max_block_size(self, up_target_max_block_size: Optional[int], down_target_max_block_size: Optional[int]):
+        target_max_block_size = None
+        if down_target_max_block_size is not None:
+            assert (
+                up_target_max_block_size is None
+                or up_target_max_block_size == down_target_max_block_size
+            )
+            target_max_block_size = down_target_max_block_size
+        elif up_target_max_block_size is not None:
+            assert (
+                down_target_max_block_size is None
+                or down_target_max_block_size == up_target_max_block_size
+            )
+            target_max_block_size = up_target_max_block_size
+        else:
+            # We can only merge the target max block sizes if they are
+            # compatible.
+            assert down_target_max_block_size == up_target_max_block_size
+        return target_max_block_size
 
     def _get_fused_map_operator(
         self, down_op: MapOperator, up_op: MapOperator
@@ -216,7 +248,7 @@ class OperatorFusionRule(Rule):
         down_logical_op = self._op_map.pop(down_op)
         up_logical_op = self._op_map.pop(up_op)
 
-        # Merge target block sizes.
+        # Merge minimum block sizes.
         down_min_rows_per_block = (
             down_logical_op._min_rows_per_block
             if isinstance(down_logical_op, AbstractUDFMap)
@@ -234,6 +266,10 @@ class OperatorFusionRule(Rule):
         else:
             min_rows_per_block = down_min_rows_per_block
 
+        target_max_block_size = self._get_merged_target_max_block_size(
+        up_logical_op.target_max_block_size,
+        down_logical_op.target_max_block_size)
+
         # We take the downstream op's compute in case we're fusing upstream tasks with a
         # downstream actor pool (e.g. read->map).
         compute = None
@@ -249,6 +285,7 @@ class OperatorFusionRule(Rule):
         op = MapOperator.create(
             up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
             input_op,
+            target_max_block_size=target_max_block_size,
             name=name,
             compute_strategy=compute,
             min_rows_per_bundle=min_rows_per_block,
@@ -323,9 +360,14 @@ class OperatorFusionRule(Rule):
         assert len(input_deps) == 1
         input_op = input_deps[0]
 
+        target_max_block_size = self._get_merged_target_max_block_size(
+        up_op.target_max_block_size,
+        down_op.target_max_block_size)
+
         op = AllToAllOperator(
             fused_all_to_all_transform_fn,
             input_op,
+            target_max_block_size=target_max_block_size,
             num_outputs=down_op._num_outputs,
             # Transfer over the existing sub-progress bars from
             # the AllToAllOperator (if any) into the fused operator.

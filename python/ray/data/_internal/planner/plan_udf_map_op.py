@@ -81,6 +81,7 @@ def plan_udf_map_op(
         map_transformer,
         input_physical_dag,
         name=op.name,
+        target_max_block_size=None,
         compute_strategy=compute,
         min_rows_per_bundle=op._min_rows_per_block,
         ray_remote_args=op._ray_remote_args,

@@ -41,7 +41,7 @@ class InputDataBuffer(PhysicalOperator):
             self._input_data_factory = input_data_factory
             self._is_input_initialized = False
         self._num_output_blocks = num_output_blocks
-        super().__init__("Input", [])
+        super().__init__("Input", [], target_max_block_size=None)
 
     def start(self, options: ExecutionOptions) -> None:
         if not self._is_input_initialized:

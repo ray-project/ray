@@ -1,4 +1,4 @@
-from typing import Iterator, List
+from typing import Iterator, List, Optional
 
 
 class Operator:
@@ -7,13 +7,20 @@ class Operator:
     Operators live on the driver side of the Dataset only.
     """
 
-    def __init__(self, name: str, input_dependencies: List["Operator"]):
+    def __init__(
+        self,
+        name: str,
+        input_dependencies: List["Operator"],
+        target_max_block_size: Optional[int],
+    ):
         self._name = name
         self._input_dependencies = input_dependencies
         self._output_dependencies = []
         for x in input_dependencies:
             assert isinstance(x, Operator), x
             x._output_dependencies.append(self)
+
+        self._target_max_block_size = target_max_block_size
 
     @property
     def name(self) -> str:
@@ -34,6 +41,14 @@ class Operator:
             self, "_output_dependencies"
         ), "Operator.__init__() was not called."
         return self._output_dependencies
+
+    @property
+    def target_max_block_size(self) -> Optional[int]:
+        """
+        Target max block size output by this operator. If this returns None,
+        then the default from DataContext should be used.
+        """
+        return self._target_max_block_size
 
     def post_order_iter(self) -> Iterator["Operator"]:
         """Depth-first traversal of this operator and its input dependencies."""

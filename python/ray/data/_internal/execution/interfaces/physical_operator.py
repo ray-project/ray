@@ -147,8 +147,13 @@ class PhysicalOperator(Operator):
     be interleaved.
     """
 
-    def __init__(self, name: str, input_dependencies: List["PhysicalOperator"]):
-        super().__init__(name, input_dependencies)
+    def __init__(
+        self,
+        name: str,
+        input_dependencies: List["PhysicalOperator"],
+        target_max_block_size: Optional[int],
+    ):
+        super().__init__(name, input_dependencies, target_max_block_size)
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies

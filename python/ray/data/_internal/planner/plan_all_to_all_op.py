@@ -42,6 +42,7 @@ def plan_all_to_all_op(
     return AllToAllOperator(
         fn,
         input_physical_dag,
+        target_max_block_size=op.target_max_block_size,
         num_outputs=op._num_outputs,
         sub_progress_bar_names=op._sub_progress_bar_names,
         name=op.name,
