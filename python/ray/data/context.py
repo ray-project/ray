@@ -19,9 +19,20 @@ _context_lock = threading.Lock()
 # a risk of triggering spilling. This is used to generate user warnings only.
 ESTIMATED_SAFE_MEMORY_FRACTION = 0.25
 
-# The max target block size in bytes for reads and transformations.
+# The max target block size in bytes for reads and transformations.  We choose
+# 128MiB: With streaming execution and num_cpus many concurrent tasks, the
+# memory footprint will be about 2 * num_cpus * target_max_block_size ~= RAM *
+# DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION * 0.3 (default object store memory
+# fraction set by Ray core), assuming typical memory:core ratio of 4:1.
+DEFAULT_TARGET_MAX_BLOCK_SIZE = 128 * 1024 * 1024
+
+# The max target block size in bytes for shuffle ops (random_shuffle, sort,
+# repartition). Set a higher target block size because we have to materialize
+# all input blocks anyway, so there is no performance advantage to having
+# smaller blocks. Setting a larger block size allows avoiding overhead from an
+# excessive number of partitions.
 # We choose 512MiB as 8x less than the typical memory:core ratio of 4:1.
-DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
+DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
 
 # Dataset will avoid creating blocks smaller than this size in bytes on read.
 # This takes precedence over DEFAULT_MIN_PARALLELISM.
@@ -145,6 +156,7 @@ class DataContext:
     def __init__(
         self,
         target_max_block_size: int,
+        target_shuffle_max_block_size: int,
         target_min_block_size: int,
         streaming_read_buffer_size: int,
         enable_pandas_block: bool,
@@ -176,6 +188,7 @@ class DataContext:
     ):
         """Private constructor (use get_current() instead)."""
         self.target_max_block_size = target_max_block_size
+        self.target_shuffle_max_block_size = target_shuffle_max_block_size
         self.target_min_block_size = target_min_block_size
         self.streaming_read_buffer_size = streaming_read_buffer_size
         self.enable_pandas_block = enable_pandas_block
@@ -222,6 +235,7 @@ class DataContext:
             if _default_context is None:
                 _default_context = DataContext(
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
+                    target_shuffle_max_block_size=DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE,
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
                     streaming_read_buffer_size=DEFAULT_STREAMING_READ_BUFFER_SIZE,
                     enable_pandas_block=DEFAULT_ENABLE_PANDAS_BLOCK,

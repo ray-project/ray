@@ -27,6 +27,8 @@ class OneToOneOperator(PhysicalOperator):
         Args:
             input_op: Operator generating input data for this op.
             name: The name of this operator.
+            target_max_block_size: The target maximum number of bytes to
+                include in an output block.
         """
         super().__init__(name, [input_op], target_max_block_size)
 

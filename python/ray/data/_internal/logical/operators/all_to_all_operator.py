@@ -6,6 +6,7 @@ from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpe
 from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
 from ray.data._internal.sort import SortKey
 from ray.data.aggregate import AggregateFn
+from ray.data.context import DataContext
 
 
 class AbstractAllToAll(LogicalOperator):
@@ -17,6 +18,7 @@ class AbstractAllToAll(LogicalOperator):
         self,
         name: str,
         input_op: LogicalOperator,
+        target_max_block_size: Optional[int],
         num_outputs: Optional[int] = None,
         sub_progress_bar_names: Optional[List[str]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -27,11 +29,13 @@ class AbstractAllToAll(LogicalOperator):
                 inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
+            target_max_block_size: The target maximum number of bytes to
+                include in an output block.
             num_outputs: The number of expected output bundles outputted by this
                 operator.
             ray_remote_args: Args to provide to ray.remote.
         """
-        super().__init__(name, [input_op])
+        super().__init__(name, [input_op], target_max_block_size)
         self._num_outputs = num_outputs
         self._ray_remote_args = ray_remote_args or {}
         self._sub_progress_bar_names = sub_progress_bar_names
@@ -48,6 +52,9 @@ class RandomizeBlocks(AbstractAllToAll):
         super().__init__(
             "RandomizeBlockOrder",
             input_op,
+            # Randomize block order does not actually compute anything, so we
+            # want to inherit the upstream op's target max block size.
+            target_max_block_size=None,
         )
         self._seed = seed
 
@@ -66,6 +73,9 @@ class RandomShuffle(AbstractAllToAll):
         super().__init__(
             name,
             input_op,
+            target_max_block_size=(
+                DataContext.get_current().target_shuffle_max_block_size
+            ),
             num_outputs=num_outputs,
             sub_progress_bar_names=[
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
@@ -97,6 +107,9 @@ class Repartition(AbstractAllToAll):
         super().__init__(
             "Repartition",
             input_op,
+            # Repartition does not actually compute anything, so we want to
+            # inherit the upstream op's target max block size.
+            target_max_block_size=None,
             num_outputs=num_outputs,
             sub_progress_bar_names=sub_progress_bar_names,
         )
@@ -114,6 +127,9 @@ class Sort(AbstractAllToAll):
         super().__init__(
             "Sort",
             input_op,
+            target_max_block_size=(
+                DataContext.get_current().target_shuffle_max_block_size
+            ),
             sub_progress_bar_names=[
                 SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
@@ -135,6 +151,9 @@ class Aggregate(AbstractAllToAll):
         super().__init__(
             "Aggregate",
             input_op,
+            target_max_block_size=(
+                DataContext.get_current().target_shuffle_max_block_size
+            ),
             sub_progress_bar_names=[
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
