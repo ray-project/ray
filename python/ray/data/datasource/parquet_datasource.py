@@ -34,7 +34,7 @@ PARALLELIZE_META_FETCH_THRESHOLD = 24
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
-PARQUET_READER_ROW_BATCH_SIZE = 100000
+PARQUET_READER_ROW_BATCH_SIZE = 10_000
 FILE_READING_RETRY = 8
 
 # The default size multiplier for reading Parquet data source in Arrow.
@@ -318,18 +318,18 @@ class _ParquetDatasourceReader(Reader):
                 row_size = meta.size_bytes / meta.num_rows
                 # Make sure the row batch size is small enough that block splitting
                 # is still effective.
-                max_parquet_reader_row_batch_size = (
+                max_parquet_reader_row_batch_size_bytes = (
                     DataContext.get_current().target_max_block_size // 10
                 )
-                default_read_batch_size = max(
+                default_read_batch_size_rows = max(
                     1,
                     min(
                         PARQUET_READER_ROW_BATCH_SIZE,
-                        max_parquet_reader_row_batch_size // row_size,
+                        max_parquet_reader_row_batch_size_bytes // row_size,
                     ),
                 )
             else:
-                default_read_batch_size = PARQUET_READER_ROW_BATCH_SIZE
+                default_read_batch_size_rows = PARQUET_READER_ROW_BATCH_SIZE
             block_udf, reader_args, columns, schema = (
                 self._block_udf,
                 self._reader_args,
@@ -341,7 +341,7 @@ class _ParquetDatasourceReader(Reader):
                     lambda f=fragments: _read_fragments(
                         block_udf,
                         reader_args,
-                        default_read_batch_size,
+                        default_read_batch_size_rows,
                         columns,
                         schema,
                         f,
@@ -407,7 +407,7 @@ class _ParquetDatasourceReader(Reader):
 def _read_fragments(
     block_udf,
     reader_args,
-    default_read_batch_size,
+    default_read_batch_size_rows,
     columns,
     schema,
     serialized_fragments: List[_SerializedFragment],
@@ -428,7 +428,7 @@ def _read_fragments(
 
     logger.debug(f"Reading {len(fragments)} parquet fragments")
     use_threads = reader_args.pop("use_threads", False)
-    batch_size = reader_args.pop("batch_size", default_read_batch_size)
+    batch_size = reader_args.pop("batch_size", default_read_batch_size_rows)
     for fragment in fragments:
         part = _get_partition_keys(fragment.partition_expression)
         batches = fragment.to_batches(

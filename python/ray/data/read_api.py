@@ -386,6 +386,8 @@ def read_datasource(
     # Compute the number of blocks the read will return. If the number of blocks is
     # expected to be less than the requested parallelism, boost the number of blocks
     # by adding an additional split into `k` pieces to each read task.
+    # TODO(swang): We should remove this codepath in favor of setting
+    # target_max_block_size on the read op.
     additional_split_factor = None
     if read_tasks:
         if inmemory_size:
