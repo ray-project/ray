@@ -1,5 +1,6 @@
 import json
 import os
+from unittest import mock
 
 import pytest
 import sys
@@ -294,6 +295,57 @@ def test_checkpoint_num_to_keep(
 
     assert "checkpoint_000002" not in cp_dirs
     assert "checkpoint_000003" not in cp_dirs
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_checkpoint_freq_buffered(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+):
+    """Test that trial checkpoints are a lower bound for buffered training iterations.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::testCheckpointFreqBuffered
+    """
+    with mock.patch.dict(
+        os.environ,
+        {"TUNE_RESULT_BUFFER_LENGTH": "7", "TUNE_RESULT_BUFFER_MIN_TIME_S": "1"},
+    ):
+
+        def num_checkpoints(trial):
+            return sum(
+                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
+            )
+
+        trial = Trial(
+            "__fake",
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
+            storage=STORAGE,
+        )
+        runner = TuneController(
+            resource_manager_factory=lambda: resource_manager_cls(),
+            storage=STORAGE,
+            checkpoint_period=0,
+        )
+        runner.add_trial(trial)
+
+        while not trial.is_saving:
+            runner.step()
+        runner.step()
+        assert trial.last_result[TRAINING_ITERATION] == 3
+        assert num_checkpoints(trial) == 1
+
+        while not trial.is_saving:
+            runner.step()
+        runner.step()
+        assert trial.last_result[TRAINING_ITERATION] == 6
+        assert num_checkpoints(trial) == 2
+
+        while not trial.is_saving:
+            runner.step()
+        runner.step()
+        assert trial.last_result[TRAINING_ITERATION] == 9
+        assert num_checkpoints(trial) == 3
 
 
 if __name__ == "__main__":

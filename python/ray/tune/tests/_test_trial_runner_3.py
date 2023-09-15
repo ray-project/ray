@@ -15,7 +15,6 @@ from ray.air.execution import PlacementGroupResourceManager, FixedResourceManage
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
 
-from ray.tune import PlacementGroupFactory
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.experiment import Trial
@@ -42,76 +41,6 @@ class TrialRunnerTest3(unittest.TestCase):
         if "CUDA_VISIBLE_DEVICES" in os.environ:
             del os.environ["CUDA_VISIBLE_DEVICES"]
         shutil.rmtree(self.tmpdir)
-
-    def testStepHook(self):
-        ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner(
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager())
-        )
-
-        def on_step_begin(self):
-            self._resource_updater.update_avail_resources()
-            cnt = self.pre_step if hasattr(self, "pre_step") else 0
-            self.pre_step = cnt + 1
-
-        def on_step_end(self, search_ended: bool = False):
-            cnt = self.pre_step if hasattr(self, "post_step") else 0
-            self.post_step = 1 + cnt
-
-        import types
-
-        runner.trial_executor.on_step_begin = types.MethodType(
-            on_step_begin, runner.trial_executor
-        )
-        runner.trial_executor.on_step_end = types.MethodType(
-            on_step_end, runner.trial_executor
-        )
-
-        kwargs = {
-            "stopping_criterion": {"training_iteration": 5},
-            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
-        }
-        runner.add_trial(Trial("__fake", **kwargs))
-        runner.step()
-        self.assertEqual(runner.trial_executor.pre_step, 1)
-        self.assertEqual(runner.trial_executor.post_step, 1)
-
-    def testCheckpointFreqBuffered(self):
-        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
-        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
-
-        def num_checkpoints(trial):
-            return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
-            )
-
-        ray.init(num_cpus=2)
-
-        trial = Trial(
-            "__fake", checkpoint_config=CheckpointConfig(checkpoint_frequency=3)
-        )
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            checkpoint_period=0,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        runner.add_trial(trial)
-
-        while not trial._last_result:
-            runner.step()  # start and run until first result
-        runner.step()  # process save
-        self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
-        self.assertEqual(num_checkpoints(trial), 1)
-
-        runner.step()  # run iteration 4-6
-        runner.step()  # process save
-        self.assertEqual(trial.last_result[TRAINING_ITERATION], 6)
-        self.assertEqual(num_checkpoints(trial), 2)
-
-        runner.step()  # run iteration 7-9
-        runner.step()  # process save
-        self.assertEqual(trial.last_result[TRAINING_ITERATION], 9)
-        self.assertEqual(num_checkpoints(trial), 3)
 
     def testCheckpointAtEndNotBuffered(self):
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
