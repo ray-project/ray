@@ -32,6 +32,13 @@ py_test_module_list(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test_module_list(
+    files = glob(["tests/anyscale/test_*.py"]),
+    size = "small",
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 py_test(
     name = "test_formats",
     size = "medium",
@@ -213,7 +220,7 @@ py_test(
     name = "test_map",
     size = "large",
     srcs = ["tests/test_map.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "manual"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
