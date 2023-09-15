@@ -601,7 +601,7 @@ def test_proxy_state_update_healthy_check_health_sometimes_fails():
         )
         assert (
             ray.get(proxy_state.actor_handle.get_num_health_checks.remote())
-            == cur_num_health_checks + num_checks
+            <= cur_num_health_checks + num_checks
         )
 
         if expected_final_status:

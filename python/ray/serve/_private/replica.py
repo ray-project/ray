@@ -720,7 +720,6 @@ class RayServeReplica:
             )
         )
 
-
         logger.info(
             f"Started executing request {request_metadata.request_id}",
             extra={"log_to_stderr": False},
