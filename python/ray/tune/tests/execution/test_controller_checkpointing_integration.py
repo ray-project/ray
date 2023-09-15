@@ -20,7 +20,7 @@ from ray.tune.schedulers import FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
 
 from ray.train.tests.util import mock_storage_context
-
+from ray.tune.tests.tune_test_util import TrialResultObserver
 
 STORAGE = mock_storage_context()
 
@@ -346,6 +346,72 @@ def test_checkpoint_freq_buffered(
         runner.step()
         assert trial.last_result[TRAINING_ITERATION] == 9
         assert num_checkpoints(trial) == 3
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_checkpoint_at_end_not_buffered(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+):
+    """Test that trials with `checkpoint_at_end=True` are never buffered.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::testCheckpointAtEndNotBuffered
+    """
+    with mock.patch.dict(
+        os.environ,
+        {"TUNE_RESULT_BUFFER_LENGTH": "7", "TUNE_RESULT_BUFFER_MIN_TIME_S": "0.5"},
+    ):
+
+        def num_checkpoints(trial):
+            return sum(
+                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
+            )
+
+        trial = Trial(
+            "__fake",
+            checkpoint_config=CheckpointConfig(
+                checkpoint_at_end=True,
+            ),
+            stopping_criterion={"training_iteration": 4},
+            storage=STORAGE,
+        )
+        observer = TrialResultObserver()
+        runner = TuneController(
+            resource_manager_factory=lambda: resource_manager_cls(),
+            storage=STORAGE,
+            callbacks=[observer],
+        )
+        runner.add_trial(trial)
+
+        while not observer.just_received_a_result():
+            runner.step()
+        assert trial.last_result[TRAINING_ITERATION] == 1
+        assert num_checkpoints(trial) == 0
+
+        while True:
+            runner.step()
+            if observer.just_received_a_result():
+                break
+        assert trial.last_result[TRAINING_ITERATION] == 2
+        assert num_checkpoints(trial) == 0
+
+        while True:
+            runner.step()
+            if observer.just_received_a_result():
+                break
+        assert trial.last_result[TRAINING_ITERATION] == 3
+        assert num_checkpoints(trial) == 0
+
+        while True:
+            runner.step()
+            if observer.just_received_a_result():
+                break
+        assert trial.last_result[TRAINING_ITERATION] == 4
+
+        while not runner.is_finished():
+            runner.step()
+        assert num_checkpoints(trial) == 1
 
 
 if __name__ == "__main__":

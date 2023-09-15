@@ -23,7 +23,6 @@ from ray.tune.search.repeater import Repeater
 from ray.tune.search import Searcher, ConcurrencyLimiter
 from ray.tune.search.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig, Syncer
-from ray.tune.tests.tune_test_util import TrialResultObserver
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -41,64 +40,6 @@ class TrialRunnerTest3(unittest.TestCase):
         if "CUDA_VISIBLE_DEVICES" in os.environ:
             del os.environ["CUDA_VISIBLE_DEVICES"]
         shutil.rmtree(self.tmpdir)
-
-    def testCheckpointAtEndNotBuffered(self):
-        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
-        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "0.5"
-
-        def num_checkpoints(trial):
-            return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
-            )
-
-        ray.init(num_cpus=2)
-
-        trial = Trial(
-            "__fake",
-            checkpoint_config=CheckpointConfig(
-                checkpoint_at_end=True,
-            ),
-            stopping_criterion={"training_iteration": 4},
-        )
-        observer = TrialResultObserver()
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            checkpoint_period=0,
-            trial_executor=RayTrialExecutor(
-                result_buffer_length=7, resource_manager=self._resourceManager()
-            ),
-            callbacks=[observer],
-        )
-        runner.add_trial(trial)
-
-        while not observer.just_received_a_result():
-            runner.step()
-        self.assertEqual(trial.last_result[TRAINING_ITERATION], 1)
-        self.assertEqual(num_checkpoints(trial), 0)
-
-        while True:
-            runner.step()
-            if observer.just_received_a_result():
-                break
-        self.assertEqual(trial.last_result[TRAINING_ITERATION], 2)
-        self.assertEqual(num_checkpoints(trial), 0)
-
-        while True:
-            runner.step()
-            if observer.just_received_a_result():
-                break
-        self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
-        self.assertEqual(num_checkpoints(trial), 0)
-
-        while True:
-            runner.step()
-            if observer.just_received_a_result():
-                break
-        self.assertEqual(trial.last_result[TRAINING_ITERATION], 4)
-
-        while not runner.is_finished():
-            runner.step()
-        self.assertEqual(num_checkpoints(trial), 1)
 
     def testUserCheckpoint(self):
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
