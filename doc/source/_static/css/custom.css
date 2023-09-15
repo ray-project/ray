@@ -797,3 +797,8 @@ footer.col.footer > p {
 .summit-ad {
   margin: 1em 0em;
 }
+
+/* Make line numbers unselectable; overrides some browser-specific settings */
+span.linenos {
+  user-select: none !important;
+}
