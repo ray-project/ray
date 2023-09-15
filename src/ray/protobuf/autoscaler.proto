@@ -139,7 +139,7 @@ message NodeState {
   // The instance type name, e.g. p3.2xlarge
   string instance_type_name = 11;
 
-  // The activity of the node.
+  // Observability debug string describing why the node is not idle.
   string node_activity = 12;
 }
 

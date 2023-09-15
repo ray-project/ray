@@ -143,6 +143,9 @@ class DataOrganizer:
         node_info["raylet"] = node_stats
         node_info["raylet"].update(ray_stats)
 
+        # Potentially print here instead (TODO)
+        node_info["status"] = node["status"]
+
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
         # Add "is_head_node" field

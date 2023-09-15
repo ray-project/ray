@@ -286,16 +286,17 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
   if (auto maybe_node_info = gcs_node_manager_.GetAliveNode(node_id);
       maybe_node_info != absl::nullopt) {
     auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
+
     if (resources.idle_duration_ms() > 0) {
       snapshot->set_state(rpc::NodeSnapshot::IDLE);
       snapshot->set_idle_duration_ms(resources.idle_duration_ms());
     } else {
-      if (resources.is_draining()) {
-        snapshot->set_state(rpc::NodeSnapshot::DRAINING);
-      } else {
-        snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
-      }
       snapshot->set_node_activity(resources.node_activity());
+    }
+    if (resources.is_draining()) {
+      snapshot->set_state(rpc::NodeSnapshot::DRAINING);
+    } else {
+      snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
     }
   }
 
@@ -305,15 +306,18 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
     // If the node is not registered to GCS,
     // we are guaranteed that no resource usage will be reported.
     return;
-  }
-  if (resources.resources_total_size() > 0) {
-    (*iter->second.mutable_resources_total()) = resources.resources_total();
-  }
+  } else {
+    if (resources.resources_total_size() > 0) {
+      (*iter->second.mutable_resources_total()) = resources.resources_total();
+    }
 
-  (*iter->second.mutable_resources_available()) = resources.resources_available();
+    (*iter->second.mutable_resources_available()) = resources.resources_available();
 
-  if (resources.resources_normal_task_changed()) {
-    (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
+    if (resources.resources_normal_task_changed()) {
+      (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
+    }
+    iter->second.set_cluster_full_of_actors_detected(
+        resources.cluster_full_of_actors_detected());
   }
 }
 

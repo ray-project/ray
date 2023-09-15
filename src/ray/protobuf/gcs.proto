@@ -303,7 +303,7 @@ message NodeSnapshot {
   State state = 1;
   // How long the node has been idle.
   int64 idle_duration_ms = 2;
-  // Why the node is not idle.
+  // Observability string describing why the node is not idle.
   string node_activity = 3;
 } 
 
