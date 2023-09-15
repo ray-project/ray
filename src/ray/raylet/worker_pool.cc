@@ -105,7 +105,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
         RayConfig::instance().worker_maximum_startup_concurrency();
   }
 
-  RAY_CHECK(maximum_startup_concurrency > 0);
+  RAY_CHECK(maximum_startup_concurrency_ > 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
   // metric not existing at all).
@@ -122,7 +122,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
-    state.multiple_for_warning = maximum_startup_concurrency;
+    state.multiple_for_warning = maximum_startup_concurrency_;
     // Set worker command for this language.
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
