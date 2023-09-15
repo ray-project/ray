@@ -257,6 +257,7 @@ class TestSparkLocalCluster:
         setup_ray_cluster(
             num_worker_nodes=2,
             head_node_options={"include_dashboard": False},
+            collect_log_to_path="/tmp/ray_log_collect",
         )
 
         ray.init()

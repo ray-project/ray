@@ -251,7 +251,7 @@ def _convert_ray_node_options(options):
     return [_convert_ray_node_option(k, v) for k, v in options.items()]
 
 
-_RAY_HEAD_STARTUP_TIMEOUT = 60
+_RAY_HEAD_STARTUP_TIMEOUT = 20
 _RAY_DASHBOARD_STARTUP_TIMEOUT = 60
 _BACKGROUND_JOB_STARTUP_WAIT = int(
     os.environ.get("RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT", "30")
@@ -612,7 +612,9 @@ def _setup_ray_cluster(
         spark_job_server = None
 
     # wait ray head node spin up.
-    if not _wait_service_up(ray_head_ip, ray_head_port, _RAY_HEAD_STARTUP_TIMEOUT):
+    time.sleep(_RAY_HEAD_STARTUP_TIMEOUT)
+
+    if not is_port_in_use(ray_head_ip, ray_head_port):
         if ray_head_proc.poll() is None:
             # Ray head GCS service is down. Kill ray head node.
             ray_head_proc.terminate()
