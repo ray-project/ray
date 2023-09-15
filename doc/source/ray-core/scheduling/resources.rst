@@ -197,4 +197,4 @@ The precision of the fractional resource requirement is 0.0001 so you should avo
 
 .. note::
   Unit resource requirements that are greater than 1, 
-  it needs to be a whole number (e.g. ``num_gpus=1.5`` is invalid).
+  need to be whole numbers. For example,  ``num_gpus=1.5`` is invalid. This restriction applies to resources that the scheduler assigns using IDs such as GPU, TPU, and Neuron Core.
