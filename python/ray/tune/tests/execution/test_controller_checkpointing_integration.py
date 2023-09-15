@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import tempfile
 from unittest import mock
@@ -6,6 +7,8 @@ from unittest import mock
 import pytest
 import sys
 import time
+
+from functools import partial
 
 import ray
 from ray.train import CheckpointConfig
@@ -629,6 +632,50 @@ def test_checkpoint_force_with_num_to_keep(
         # which results in 5 more checkpoints (running for 10 iterations),
         # giving a total of 6
         assert sync_up.call_count == 6
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_checkpoint_forced_cloud_sync_timeout(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+):
+    """Test that trial runner experiment checkpointing with forced cloud syncing
+    times out correctly when the sync process hangs.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::
+        testForcedCloudCheckpointSyncTimeout
+    """
+    storage = mock_storage_context(delete_syncer=False)
+
+    storage.syncer.sync_period = 60
+    storage.syncer.sync_timeout = 0.001
+
+    def _hanging_sync_up_command(*args, **kwargs):
+        time.sleep(200)
+
+    def _sync_up_command(self, local_path: str, uri: str, exclude=None):
+        return _hanging_sync_up_command, {}
+
+    with mock.patch.object(storage.syncer, "_sync_up_command") as sync_up_cmd:
+        sync_up_cmd.side_effect = partial(_sync_up_command, storage.syncer)
+        runner = TuneController(
+            resource_manager_factory=lambda: resource_manager_cls(),
+            storage=storage,
+        )
+
+        # Checkpoint for the first time starts the first sync in the background
+        runner.checkpoint(force=True)
+        assert sync_up_cmd.call_count == 1
+
+        buffer = []
+        logger = logging.getLogger("ray.tune.execution.experiment_state")
+        with mock.patch.object(logger, "warning", lambda x: buffer.append(x)):
+            # The second checkpoint will log a warning about the previous sync
+            # timing out. Then, it will launch a new sync process in the background.
+            runner.checkpoint(force=True)
+        assert any("timed out" in x for x in buffer)
+        assert sync_up_cmd.call_count == 2
 
 
 if __name__ == "__main__":
