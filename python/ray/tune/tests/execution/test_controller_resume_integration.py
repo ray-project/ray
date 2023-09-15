@@ -144,5 +144,61 @@ def test_controller_restore_no_error_resume(
     assert Trial.ERROR in (t.status for t in new_runner.get_trials())
 
 
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_controller_restore_error_only_resume(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+):
+    """Check that `resume=ERRORED_ONLY` only resumes errored trials.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::testTrialErrorResumeTrue
+    """
+    runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=STORAGE,
+    )
+    kwargs = {
+        "stopping_criterion": {"training_iteration": 4},
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 0}]),
+        "storage": STORAGE,
+    }
+    trials = [
+        Trial("__fake", config={"mock_error": True}, **kwargs),
+        Trial("__fake", **kwargs),
+        Trial("__fake", **kwargs),
+    ]
+    for t in trials:
+        runner.add_trial(t)
+
+    while not runner.is_finished():
+        runner.step()
+
+    runner.checkpoint(force=True)
+
+    assert trials[0].status == Trial.ERROR
+    del runner
+
+    new_runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=STORAGE,
+        resume="ERRORED_ONLY",
+    )
+
+    assert len(new_runner.get_trials()) == 3
+    assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
+    # The below is just a check for standard behavior.
+    disable_error = False
+    for t in new_runner.get_trials():
+        if t.config.get("mock_error"):
+            t.config["mock_error"] = False
+            disable_error = True
+    assert disable_error
+
+    while not new_runner.is_finished():
+        new_runner.step()
+    assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

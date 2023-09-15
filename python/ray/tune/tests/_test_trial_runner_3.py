@@ -93,51 +93,6 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(runner.trial_executor.pre_step, 1)
         self.assertEqual(runner.trial_executor.post_step, 1)
 
-    def testTrialErrorResumeTrue(self):
-        ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        kwargs = {
-            "stopping_criterion": {"training_iteration": 4},
-            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 0}]),
-        }
-        trials = [
-            Trial("__fake", config={"mock_error": True}, **kwargs),
-            Trial("__fake", **kwargs),
-            Trial("__fake", **kwargs),
-        ]
-        for t in trials:
-            runner.add_trial(t)
-
-        while not runner.is_finished():
-            runner.step()
-
-        runner.checkpoint(force=True)
-
-        assert trials[0].status == Trial.ERROR
-        del runner
-
-        new_runner = TrialRunner(
-            resume="ERRORED_ONLY",
-            local_checkpoint_dir=self.tmpdir,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        assert len(new_runner.get_trials()) == 3
-        assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
-        # The below is just a check for standard behavior.
-        disable_error = False
-        for t in new_runner.get_trials():
-            if t.config.get("mock_error"):
-                t.config["mock_error"] = False
-                disable_error = True
-        assert disable_error
-
-        while not new_runner.is_finished():
-            new_runner.step()
-        assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
-
     def testTrialSaveRestore(self):
         """Creates different trials to test runner.checkpoint/restore."""
         ray.init(num_cpus=3)
