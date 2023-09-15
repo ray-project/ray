@@ -66,7 +66,7 @@ class PPOEnvRunner(EnvRunner):
             module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
             # TODO (simon): This here is only for single agent.
             # This is a MARL.
-            self.module: MultiAgentRLModule = module_spec.build()#[DEFAULT_POLICY_ID]
+            self.module: MultiAgentRLModule = module_spec.build()  # [DEFAULT_POLICY_ID]
 
         # Let us set this as default for PPO.
         self._needs_initial_reset: bool = True
@@ -226,7 +226,9 @@ class PPOEnvRunner(EnvRunner):
                     )
                     # Reset h-states to nthe model's intiial ones b/c we are starting a
                     # new episode.
-                    for k, v in self.module[DEFAULT_POLICY_ID].get_initial_state().items():
+                    for k, v in (
+                        self.module[DEFAULT_POLICY_ID].get_initial_state().items()
+                    ):
                         states[k][i] = v.numpy()
 
                     done_episodes_to_return.append(self._episodes[i])
@@ -342,7 +344,9 @@ class PPOEnvRunner(EnvRunner):
 
                         # Reset h-states to the model's initial ones b/c we are starting
                         # a new episode.
-                        for k, v in self.module[DEFAULT_POLICY_ID].get_initial_state().items():
+                        for k, v in (
+                            self.module[DEFAULT_POLICY_ID].get_initial_state().items()
+                        ):
                             states[k][i] = v.numpy()
 
                         episodes[i] = Episode(
@@ -404,16 +408,15 @@ class PPOEnvRunner(EnvRunner):
             assert self.config.share_module_between_env_runner_and_learner
         else:
             self.module.set_state(weights)
-            #self.module[DEFAULT_POLICY_ID].set_state(weights[DEFAULT_POLICY_ID])
+            # self.module[DEFAULT_POLICY_ID].set_state(weights[DEFAULT_POLICY_ID])
 
-    def get_weights(self, modules = None):
+    def get_weights(self, modules=None):
         """Returns the weights of our (single-agent) RLModule."""
         if self.module is None:
             assert self.config.share_module_between_env_runner_and_learner
         else:
             weights = self.module.get_state(modules)
             return weights
-            
 
     @override(EnvRunner)
     def assert_healthy(self):

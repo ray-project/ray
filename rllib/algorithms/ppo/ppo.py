@@ -404,7 +404,6 @@ class UpdateKL:
 
 
 class PPO(Algorithm):
-
     @override(Algorithm)
     def setup(self, config: AlgorithmConfig):
         super().setup(config=config)
