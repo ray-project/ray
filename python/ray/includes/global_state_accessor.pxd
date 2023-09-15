@@ -78,15 +78,16 @@ cdef extern from * namespace "ray::gcs" nogil:
 
       instrumented_io_context io_service;
 
-      auto redis_client = std::make_shared<RedisClient>(options);
+      auto redis_client = std::make_unique<RedisClient>(options);
       auto status = redis_client->Connect(io_service);
       if(!status.ok()) {
         RAY_LOG(ERROR) << "Failed to connect to redis: " << status.ToString();
         return false;
       }
 
-      auto cli = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(std::move(redis_client)));
+      auto store_client =
+          std::make_unique<RedisStoreClient>(std::move(redis_client), io_service);
+      auto cli = std::make_unique<StoreClientInternalKV>(*store_client);
 
       bool ret_val = false;
       cli->Get("session", key, [&](std::optional<std::string> result) {
