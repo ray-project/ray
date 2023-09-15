@@ -69,7 +69,7 @@ def test_jemalloc_env_var_propagate():
     When the shared library is specified
     """
     library_path = "/abc"
-    expected = {"LD_PRELOAD": library_path, "RAY_LD_PRELOAD": "1"}
+    expected = {"LD_PRELOAD": library_path}
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf="",
@@ -100,11 +100,7 @@ def test_jemalloc_env_var_propagate():
     """
     library_path = "/abc"
     malloc_conf = "a,b,c"
-    expected = {
-        "LD_PRELOAD": library_path,
-        "MALLOC_CONF": malloc_conf,
-        "RAY_LD_PRELOAD": "1",
-    }
+    expected = {"LD_PRELOAD": library_path, "MALLOC_CONF": malloc_conf}
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf=malloc_conf,
