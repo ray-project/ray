@@ -464,7 +464,7 @@ class ApplicationState:
         try:
             args, err = ray.get(self._build_app_task_info.obj_ref)
             if err is None:
-                logger.info(f"Deploy task for app '{self._name}' ran successfully.")
+                logger.info(f"Built application '{self._name}' successfully.")
             else:
                 return (
                     None,
