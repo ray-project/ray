@@ -52,8 +52,9 @@ auth:
 # The node config specifies the launch config and physical instance type.
 available_node_types:
     ray.head.default:
-        # For example, {"CPU": 4, "Memory": 8192}
-        resources: {}
+        # The node type's CPU and GPU resources are by default the same as the frozen VM.
+        # You can override the resources here.
+        resources: {"CPU": 2}
         node_config:
             # The resource pool where the head node should live, if unset, will be
             # the frozen VM's resource pool.
@@ -67,8 +68,9 @@ available_node_types:
         # The minimum number of nodes of this type to launch.
         # This number should be >= 0.
         min_workers: 0
-        # For example, {"CPU": 4, "Memory": 8192}
-        resources: {}
+        # The node type's CPU and GPU resources are by default the same as the frozen VM.
+        # You can override the resources here.
+        resources: {"CPU": 2}
         node_config:
             # The resource pool where the worker node should live, if unset, will be
             # the frozen VM's resource pool.
@@ -116,7 +118,8 @@ initialization_commands: []
 setup_commands: []
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands: []
+head_setup_commands:
+    - pip install 'git+https://github.com/vmware/vsphere-automation-sdk-python.git'
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
