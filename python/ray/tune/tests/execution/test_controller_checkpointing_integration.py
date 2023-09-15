@@ -1,9 +1,11 @@
 import json
 import os
+import tempfile
 from unittest import mock
 
 import pytest
 import sys
+import time
 
 import ray
 from ray.train import CheckpointConfig
@@ -530,6 +532,39 @@ def test_checkpoint_user_checkpoint_buffered(
         runner.step()
         assert trials[0].has_checkpoint()
         assert num_checkpoints(trials[0]) == 2
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_checkpoint_auto_period(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+):
+    """Test that the checkpoint auto period is adjusted when syncing takes a long time.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::testCheckpointAutoPeriod
+    """
+    storage = mock_storage_context(delete_syncer=False)
+
+    with mock.patch.object(
+        storage.syncer, "sync_up"
+    ) as sync_up, tempfile.TemporaryDirectory() as local_dir:
+        storage.storage_local_path = local_dir
+        sync_up.side_effect = lambda *a, **kw: time.sleep(2)
+
+        runner = TuneController(
+            resource_manager_factory=lambda: resource_manager_cls(),
+            storage=storage,
+            checkpoint_period="auto",
+        )
+
+        runner.add_trial(
+            Trial("__fake", config={"user_checkpoint_freq": 1}, storage=storage)
+        )
+
+        runner.step()  # Run one step, this will trigger checkpointing
+
+        assert runner._checkpoint_manager._checkpoint_period > 38.0
 
 
 if __name__ == "__main__":

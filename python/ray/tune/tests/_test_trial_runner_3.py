@@ -40,43 +40,6 @@ class TrialRunnerTest3(unittest.TestCase):
             del os.environ["CUDA_VISIBLE_DEVICES"]
         shutil.rmtree(self.tmpdir)
 
-    def testCheckpointAutoPeriod(self):
-        ray.init(num_cpus=3)
-
-        # This makes checkpointing take 2 seconds.
-
-        class CustomSyncer(Syncer):
-            def __init__(self, sync_period: float = 300.0):
-                super(CustomSyncer, self).__init__(sync_period=sync_period)
-                self._sync_status = {}
-
-            def sync_up(
-                self, local_dir: str, remote_dir: str, exclude: list = None
-            ) -> bool:
-                time.sleep(2)
-                return True
-
-            def sync_down(
-                self, remote_dir: str, local_dir: str, exclude: list = None
-            ) -> bool:
-                time.sleep(2)
-                return True
-
-            def delete(self, remote_dir: str) -> bool:
-                pass
-
-        runner = TrialRunner(
-            checkpoint_period="auto",
-            experiment_path="fake://somewhere/exp",
-            sync_config=SyncConfig(syncer=CustomSyncer(), sync_period=0),
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
-
-        runner.step()  # Run one step, this will trigger checkpointing
-
-        self.assertGreaterEqual(runner._checkpoint_manager._checkpoint_period, 38.0)
-
     @patch.dict(
         os.environ, {"TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S": "2"}
     )
