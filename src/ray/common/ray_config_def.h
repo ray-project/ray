@@ -519,6 +519,17 @@ RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
 
+/// Comma separated list of components we enable grpc metrics collection for.
+/// Only effective if `enable_metrics_collection` is also true. Will have some performance
+/// degredations.
+///
+/// Valid fields: "gcs".
+/// TODO: it only works for gcs now. The goal is to do "gcs,core_worker,raylet.". The
+/// problem is we need this config field *before* any grpc call, but raylet and
+/// core_worker received configs from gcs and raylet respectively, so the configs are only
+/// available *after* a grpc call.
+RAY_CONFIG(std::string, enable_grpc_metrics_collection_for, "")
+
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 

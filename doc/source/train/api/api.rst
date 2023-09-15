@@ -1,5 +1,4 @@
 .. _train-api:
-.. _air-trainer-ref:
 
 Ray Train API
 =============
