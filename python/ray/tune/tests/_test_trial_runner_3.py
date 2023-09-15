@@ -12,7 +12,6 @@ from freezegun import freeze_time
 import ray
 from ray.train import CheckpointConfig
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
-from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
 
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
@@ -40,59 +39,6 @@ class TrialRunnerTest3(unittest.TestCase):
         if "CUDA_VISIBLE_DEVICES" in os.environ:
             del os.environ["CUDA_VISIBLE_DEVICES"]
         shutil.rmtree(self.tmpdir)
-
-    def testUserCheckpointBuffered(self):
-        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "8"
-        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
-
-        def num_checkpoints(trial):
-            return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
-            )
-
-        ray.init(num_cpus=3)
-        runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            checkpoint_period=0,
-            trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
-        )
-        runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 10}))
-        trials = runner.get_trials()
-
-        runner.step()  # Start trial, schedule 1-8
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(
-            ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)), 1
-        )
-        self.assertEqual(num_checkpoints(trials[0]), 0)
-
-        runner.step()  # Process results 0-8, schedule 9-11 (CP)
-        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 8)
-        self.assertFalse(trials[0].has_checkpoint())
-        self.assertEqual(num_checkpoints(trials[0]), 0)
-
-        runner.step()  # Process results 9-11
-        runner.step()  # handle CP, schedule 12-19
-        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 11)
-        self.assertTrue(trials[0].has_checkpoint())
-        self.assertEqual(num_checkpoints(trials[0]), 1)
-
-        runner.step()  # Process results 12-19, schedule 20-21
-        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 19)
-        self.assertTrue(trials[0].has_checkpoint())
-        self.assertEqual(num_checkpoints(trials[0]), 1)
-
-        runner.step()  # Process results 20-21
-        runner.step()  # handle CP, schedule 21-29
-        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 21)
-        self.assertTrue(trials[0].has_checkpoint())
-        self.assertEqual(num_checkpoints(trials[0]), 2)
-
-        runner.step()  # Process results 21-29, schedule 30-31
-        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 29)
-        self.assertTrue(trials[0].has_checkpoint())
-        self.assertTrue(trials[0].has_checkpoint())
-        self.assertEqual(num_checkpoints(trials[0]), 2)
 
     def testCheckpointAutoPeriod(self):
         ray.init(num_cpus=3)

@@ -466,5 +466,71 @@ def test_checkpoint_user_checkpoint(
         assert ray.get(trials2[0].temporary_state.ray_actor.get_info.remote()) == 1
 
 
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_checkpoint_user_checkpoint_buffered(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+):
+    """Test that user checkpoint freq is respected with buffered training.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::testUserCheckpointBuffered
+    """
+
+    def num_checkpoints(trial):
+        return sum(
+            item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
+        )
+
+    with mock.patch.dict(
+        os.environ,
+        {"TUNE_RESULT_BUFFER_LENGTH": "8", "TUNE_RESULT_BUFFER_MIN_TIME_S": "1"},
+    ):
+        runner = TuneController(
+            resource_manager_factory=lambda: resource_manager_cls(),
+            storage=STORAGE,
+            checkpoint_period=0,
+        )
+        runner.add_trial(
+            Trial("__fake", config={"user_checkpoint_freq": 10}, storage=STORAGE)
+        )
+        trials = runner.get_trials()
+
+        while trials[0].status != Trial.RUNNING:
+            runner.step()
+        assert ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)) == 1
+        assert num_checkpoints(trials[0]) == 0
+
+        while trials[0].last_result.get(TRAINING_ITERATION, 0) < 8:
+            runner.step()
+
+        assert not trials[0].has_checkpoint()
+        assert num_checkpoints(trials[0]) == 0
+
+        while trials[0].last_result.get(TRAINING_ITERATION) < 11:
+            runner.step()
+        runner.step()
+        assert trials[0].has_checkpoint()
+        assert num_checkpoints(trials[0]) == 1
+
+        while trials[0].last_result.get(TRAINING_ITERATION) < 19:
+            runner.step()
+        runner.step()
+        assert trials[0].has_checkpoint()
+        assert num_checkpoints(trials[0]) == 1
+
+        while trials[0].last_result.get(TRAINING_ITERATION) < 21:
+            runner.step()
+        runner.step()
+        assert trials[0].has_checkpoint()
+        assert num_checkpoints(trials[0]) == 2
+
+        while trials[0].last_result.get(TRAINING_ITERATION) < 29:
+            runner.step()
+        runner.step()
+        assert trials[0].has_checkpoint()
+        assert num_checkpoints(trials[0]) == 2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
