@@ -193,7 +193,7 @@ The precision of the fractional resource requirement is 0.0001 so you should avo
 .. tip::
 
   Besides resource requirements, you can also specify an environment for a task or actor to run in,
-  which can include Python packages, local files, environment variables, and more---see :ref:`Runtime Environments <runtime-environments>` for details.
+  which can include Python packages, local files, environment variables, and more. See :ref:`Runtime Environments <runtime-environments>` for details.
 
 .. note::
   Unit resource requirements that are greater than 1, 
