@@ -149,23 +149,3 @@ class MockGcsTableStorage : public GcsTableStorage {
 
 }  // namespace gcs
 }  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockRedisGcsTableStorage : public RedisGcsTableStorage {
- public:
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockInMemoryGcsTableStorage : public InMemoryGcsTableStorage {
- public:
-};
-
-}  // namespace gcs
-}  // namespace ray

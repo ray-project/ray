@@ -25,15 +25,15 @@ template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Put(const Key &key,
                                 const Data &value,
                                 const StatusCallback &callback) {
-  return store_client_->AsyncPut(table_name_,
-                                 key.Binary(),
-                                 value.SerializeAsString(),
-                                 /*overwrite*/ true,
-                                 [callback](auto) {
-                                   if (callback) {
-                                     callback(Status::OK());
-                                   }
-                                 });
+  return store_client_.AsyncPut(table_name_,
+                                key.Binary(),
+                                value.SerializeAsString(),
+                                /*overwrite*/ true,
+                                [callback](auto) {
+                                  if (callback) {
+                                    callback(Status::OK());
+                                  }
+                                });
 }
 
 template <typename Key, typename Data>
@@ -52,7 +52,7 @@ Status GcsTable<Key, Data>::Get(const Key &key,
     }
     callback(status, value);
   };
-  return store_client_->AsyncGet(table_name_, key.Binary(), on_done);
+  return store_client_.AsyncGet(table_name_, key.Binary(), on_done);
 }
 
 template <typename Key, typename Data>
@@ -69,12 +69,12 @@ Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
     }
     callback(std::move(values));
   };
-  return store_client_->AsyncGetAll(table_name_, on_done);
+  return store_client_.AsyncGetAll(table_name_, on_done);
 }
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Delete(const Key &key, const StatusCallback &callback) {
-  return store_client_->AsyncDelete(table_name_, key.Binary(), [callback](auto) {
+  return store_client_.AsyncDelete(table_name_, key.Binary(), [callback](auto) {
     if (callback) {
       callback(Status::OK());
     }
@@ -89,7 +89,7 @@ Status GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
   for (auto &key : keys) {
     keys_to_delete.emplace_back(std::move(key.Binary()));
   }
-  return this->store_client_->AsyncBatchDelete(
+  return this->store_client_.AsyncBatchDelete(
       this->table_name_, keys_to_delete, [callback](auto) {
         if (callback) {
           callback(Status::OK());
@@ -105,16 +105,16 @@ Status GcsTableWithJobId<Key, Data>::Put(const Key &key,
     absl::MutexLock lock(&mutex_);
     index_[GetJobIdFromKey(key)].insert(key);
   }
-  return this->store_client_->AsyncPut(this->table_name_,
-                                       key.Binary(),
-                                       value.SerializeAsString(),
-                                       /*overwrite*/ true,
-                                       [callback](auto) {
-                                         if (!callback) {
-                                           return;
-                                         }
-                                         callback(Status::OK());
-                                       });
+  return this->store_client_.AsyncPut(this->table_name_,
+                                      key.Binary(),
+                                      value.SerializeAsString(),
+                                      /*overwrite*/ true,
+                                      [callback](auto) {
+                                        if (!callback) {
+                                          return;
+                                        }
+                                        callback(Status::OK());
+                                      });
 }
 
 template <typename Key, typename Data>
@@ -140,7 +140,7 @@ Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
     }
     callback(std::move(values));
   };
-  return this->store_client_->AsyncMultiGet(this->table_name_, keys, on_done);
+  return this->store_client_.AsyncMultiGet(this->table_name_, keys, on_done);
 }
 
 template <typename Key, typename Data>
@@ -170,7 +170,7 @@ Status GcsTableWithJobId<Key, Data>::BatchDelete(const std::vector<Key> &keys,
   for (auto key : keys) {
     keys_to_delete.push_back(key.Binary());
   }
-  return this->store_client_->AsyncBatchDelete(
+  return this->store_client_.AsyncBatchDelete(
       this->table_name_, keys_to_delete, [this, callback, keys](auto) {
         {
           absl::MutexLock lock(&mutex_);
