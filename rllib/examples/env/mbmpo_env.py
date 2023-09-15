@@ -1,5 +1,5 @@
-from gymnasium.envs.classic_control import PendulumEnv, CartPoleEnv
 import numpy as np
+import gymnasium as gym
 
 # MuJoCo may not be installed.
 HalfCheetahEnv = HopperEnv = None
@@ -10,12 +10,20 @@ except Exception:
     pass
 
 
-class CartPoleWrapper(CartPoleEnv):
+class CartPoleWrapper(gym.Wrapper):
     """Wrapper for the CartPole-v1 environment.
 
     Adds an additional `reward` method for some model-based RL algos (e.g.
     MB-MPO).
     """
+
+    # This is required by MB-MPO's model vector env so that it knows how many
+    # steps to simulate the env for.
+    _max_episode_steps = 500
+
+    def __init__(self, **kwargs):
+        env = gym.make("CartPole-v1", **kwargs)
+        gym.Wrapper.__init__(self, env)
 
     def reward(self, obs, action, obs_next):
         # obs = batch * [pos, vel, angle, rotation_rate]
@@ -34,12 +42,20 @@ class CartPoleWrapper(CartPoleEnv):
         return rew
 
 
-class PendulumWrapper(PendulumEnv):
+class PendulumWrapper(gym.Wrapper):
     """Wrapper for the Pendulum-v1 environment.
 
     Adds an additional `reward` method for some model-based RL algos (e.g.
     MB-MPO).
     """
+
+    # This is required by MB-MPO's model vector env so that it knows how many
+    # steps to simulate the env for.
+    _max_episode_steps = 200
+
+    def __init__(self, **kwargs):
+        env = gym.make("Pendulum-v1", **kwargs)
+        gym.Wrapper.__init__(self, env)
 
     def reward(self, obs, action, obs_next):
         # obs = [cos(theta), sin(theta), dtheta/dt]
@@ -85,6 +101,10 @@ class HopperWrapper(HopperEnv or object):
     Adds an additional `reward` method for some model-based RL algos (e.g.
     MB-MPO).
     """
+
+    # This is required by MB-MPO's model vector env so that it knows how many
+    # steps to simulate the env for.
+    _max_episode_steps = 1000
 
     def reward(self, obs, action, obs_next):
         alive_bonus = 1.0
