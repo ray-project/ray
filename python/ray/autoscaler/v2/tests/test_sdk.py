@@ -517,9 +517,10 @@ def test_idle_node_blocked(ray_start_cluster):
         )
         return True
 
-    for x in range(10):
-        verify_cluster_busy()
+    wait_for_condition(verify_cluster_busy)
+    for _ in range(10):
         time.sleep(0.5)
+        verify_cluster_busy()
 
     # Kill the task
     ray.cancel(t, force=True)
