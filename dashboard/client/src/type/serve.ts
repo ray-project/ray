@@ -104,7 +104,7 @@ export type ServeSystemActor = {
   log_file_path: string | null;
 };
 
-export type ServeHttpProxy = {
+export type ServeProxy = {
   status: ServeSystemActorStatus;
 } & ServeSystemActor;
 
@@ -121,7 +121,7 @@ export type ServeApplicationsRsp = {
   proxy_location: ServeProxyLocation;
   controller_info: ServeSystemActor;
   proxies: {
-    [name: string]: ServeHttpProxy;
+    [name: string]: ServeProxy;
   } | null;
   applications: {
     [name: string]: ServeApplication;

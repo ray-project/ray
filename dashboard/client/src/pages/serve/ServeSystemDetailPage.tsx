@@ -23,9 +23,9 @@ export const ServeSystemDetailPage = () => {
 
   const {
     serveDetails,
-    httpProxies,
-    httpProxiesPage,
-    setHttpProxiesPage,
+    proxies,
+    proxiesPage,
+    setProxiesPage,
     error,
   } = useServeApplications();
 
@@ -53,9 +53,9 @@ export const ServeSystemDetailPage = () => {
       ) : (
         <ServeSystemDetails
           serveDetails={serveDetails}
-          httpProxies={httpProxies}
-          page={httpProxiesPage}
-          setPage={setHttpProxiesPage}
+          proxies={proxies}
+          page={proxiesPage}
+          setPage={setProxiesPage}
         />
       )}
     </div>
