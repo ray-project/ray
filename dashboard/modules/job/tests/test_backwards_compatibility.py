@@ -76,11 +76,12 @@ def test_error_message():
     )
     wait_for_condition(lambda: client.get_job_status(job_id) == JobStatus.SUCCEEDED)
 
-    # `entrypoint_num_cpus`, `entrypoint_num_gpus`, and `entrypoint_resources`
+    # `entrypoint_num_cpus`, `entrypoint_num_gpus`, `entrypoint_memory`, and `entrypoint_resources`
     # are not supported in ray<2.2.0.
     for unsupported_submit_kwargs in [
         {"entrypoint_num_cpus": 1},
         {"entrypoint_num_gpus": 1},
+        {"entrypoint_memory", 1},
         {"entrypoint_resources": {"custom": 1}},
     ]:
         with pytest.raises(
