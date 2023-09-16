@@ -64,7 +64,7 @@ def test_submit_job_with_resources(shutdown_only):
         include_dashboard=True,
         num_cpus=1,
         num_gpus=1,
-        memory=70,
+        memory=256,
         resources={"Custom": 1},
         dashboard_port=8269,
     )
