@@ -88,7 +88,7 @@ class JobInfo:
     entrypoint_num_cpus: Optional[Union[int, float]] = None
     #: The number of GPUs to reserve for the entrypoint command.
     entrypoint_num_gpus: Optional[Union[int, float]] = None
-    #: The amount of memory (as percent of "available memory" when ray runtime starts)
+    #: The amount of memory resource in bytes rounded down to the nearest integer
     # to reserve for the entrypoint command.
     entrypoint_memory: Optional[Union[int, float]] = None
     #: The quantity of various custom resources to reserve for the entrypoint command.
@@ -338,7 +338,7 @@ class JobSubmitRequest:
     # of the entrypoint command, separately from any Ray tasks or actors
     # that are created by it.
     entrypoint_num_gpus: Optional[Union[int, float]] = None
-    # The amount of memory (as percent of "available memory" when ray runtime starts)
+    # The amount of memory resource in bytes rounded down to the nearest integer
     # to reserve for the execution of the entrypoint command, separately from any Ray
     # tasks or actors that are created by it.
     entrypoint_memory: Optional[Union[int, float]] = None
