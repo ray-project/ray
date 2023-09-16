@@ -394,7 +394,6 @@ class TestSubmit:
                 entrypoint_resources=None,
             )
 
-
     @pytest.mark.parametrize(
         "resources",
         [

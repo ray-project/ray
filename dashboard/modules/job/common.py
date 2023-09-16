@@ -408,7 +408,7 @@ class JobSubmitRequest:
         ):
             raise TypeError(
                 "entrypoint_memory must be a number, "
-                f"got {type(self.entrypoint_memory)}" 
+                f"got {type(self.entrypoint_memory)}"
             )
 
         if self.entrypoint_resources is not None:

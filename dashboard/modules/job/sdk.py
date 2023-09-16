@@ -191,7 +191,12 @@ class JobSubmissionClient(SubmissionClient):
                 "job_id kwarg is deprecated. Please use submission_id instead."
             )
 
-        if entrypoint_num_cpus or entrypoint_num_gpus or entrypoint_memory or entrypoint_resources:
+        if (
+            entrypoint_num_cpus
+            or entrypoint_num_gpus
+            or entrypoint_memory
+            or entrypoint_resources
+        ):
             self._check_connection_and_version(
                 min_version="2.2",
                 version_error_message="`entrypoint_num_cpus`, `entrypoint_num_gpus`, "
