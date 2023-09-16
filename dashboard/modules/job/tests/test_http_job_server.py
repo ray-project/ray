@@ -64,6 +64,7 @@ def test_submit_job_with_resources(shutdown_only):
         include_dashboard=True,
         num_cpus=1,
         num_gpus=1,
+        memory=70,
         resources={"Custom": 1},
         dashboard_port=8269,
     )
@@ -73,6 +74,7 @@ def test_submit_job_with_resources(shutdown_only):
     for kwargs in [
         {"entrypoint_num_cpus": 2},
         {"entrypoint_num_gpus": 2},
+        {"entrypoint_memory": 256},
         {"entrypoint_resources": {"Custom": 2}},
     ]:
         job_id = client.submit_job(entrypoint="echo hello", **kwargs)
@@ -84,6 +86,7 @@ def test_submit_job_with_resources(shutdown_only):
         entrypoint="echo hello",
         entrypoint_num_cpus=1,
         entrypoint_num_gpus=1,
+        entrypoint_memory=256,
         entrypoint_resources={"Custom": 1},
     )
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=10)
