@@ -176,6 +176,13 @@ def job_cli_group():
     "separately from any tasks or actors that are launched by it",
 )
 @click.option(
+    "--entrypoint-memory",
+    required=False,
+    type=float,
+    help="the amount of memory to reserve (as percent of 'available memory' when ray runtime starts)"
+    "for the entrypoint command, separately from any tasks or actors that are launched by it",
+)
+@click.option(
     "--entrypoint-resources",
     required=False,
     type=str,
