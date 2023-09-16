@@ -380,6 +380,8 @@ message JobsAPIInfo {
   // The node id that driver running on. It will be None only when the job status
   // is PENDING, and this field will not be deleted or modified even if the driver dies
   optional string driver_node_id = 13;
+  // The amount of reservable memory resource in bytes for the entrypoint command.
+  optional double entrypoint_memory = 14;
 }
 
 message WorkerTableData {
