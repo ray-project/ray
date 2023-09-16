@@ -333,6 +333,10 @@ class JobSubmitRequest:
     # of the entrypoint command, separately from any Ray tasks or actors
     # that are created by it.
     entrypoint_num_gpus: Optional[Union[int, float]] = None
+    # The quantity of memory to reserve for the execution
+    # of the entrypoint command, separately from any Ray tasks or actors
+    # that are created by it.
+    entrypoint_memory: Optional[Union[int, float]] = None
     # The quantity of various custom resources
     # to reserve for the entrypoint command, separately from any Ray tasks
     # or actors that are created by it.
@@ -392,6 +396,14 @@ class JobSubmitRequest:
             raise TypeError(
                 "entrypoint_num_gpus must be a number, "
                 f"got {type(self.entrypoint_num_gpus)}"
+            )
+
+        if self.entrypoint_memory is not None and not isinstance(
+            self.entrypoint_memory, (int, float)
+        ):
+            raise TypeError(
+                "entrypoint_memory must be a number, "
+                f"got {type(self.entrypoint_memory)}" 
             )
 
         if self.entrypoint_resources is not None:

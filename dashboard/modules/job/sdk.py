@@ -137,6 +137,7 @@ class JobSubmissionClient(SubmissionClient):
         submission_id: Optional[str] = None,
         entrypoint_num_cpus: Optional[Union[int, float]] = None,
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
+        entrypoint_memory: Optional[Union[int, float]] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
     ) -> str:
         """Submit and execute a job asynchronously.
@@ -170,6 +171,9 @@ class JobSubmissionClient(SubmissionClient):
             entrypoint_num_gpus: The quantity of GPUs to reserve for the execution
                 of the entrypoint command, separately from any tasks or actors launched
                 by it. Defaults to 0.
+            entrypoint_memory: The quantity of memory to reserve for the
+                execution of the entrypoint command, separately from any tasks or
+                actors launched by it. Defaults to 0.
             entrypoint_resources: The quantity of custom resources to reserve for the
                 execution of the entrypoint command, separately from any tasks or
                 actors launched by it.
@@ -187,11 +191,11 @@ class JobSubmissionClient(SubmissionClient):
                 "job_id kwarg is deprecated. Please use submission_id instead."
             )
 
-        if entrypoint_num_cpus or entrypoint_num_gpus or entrypoint_resources:
+        if entrypoint_num_cpus or entrypoint_num_gpus or entrypoint_memory or entrypoint_resources:
             self._check_connection_and_version(
                 min_version="2.2",
                 version_error_message="`entrypoint_num_cpus`, `entrypoint_num_gpus`, "
-                "and `entrypoint_resources` kwargs "
+                "`entrypoint_memory`, and `entrypoint_resources` kwargs "
                 "are not supported on the Ray cluster. Please ensure the cluster is "
                 "running Ray 2.2 or higher.",
             )
@@ -214,6 +218,7 @@ class JobSubmissionClient(SubmissionClient):
             metadata=metadata,
             entrypoint_num_cpus=entrypoint_num_cpus,
             entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
         )
 
