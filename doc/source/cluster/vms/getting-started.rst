@@ -69,7 +69,7 @@ Before we start, you will need to install some Python dependencies as follows:
 
             .. code-block:: shell
 
-                $ pip install -U "ray[default]" vsphere-automation-sdk-python
+                $ pip install -U "ray[default]" "git+https://github.com/vmware/vsphere-automation-sdk-python.git"
 
             vSphere Cluster Launcher Maintainers (GitHub handles): @vinodkri, @LaynePeng
 
