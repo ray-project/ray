@@ -941,7 +941,7 @@ class JobManager:
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=entrypoint_num_cpus,
                 num_gpus=entrypoint_num_gpus,
-                num_memory=entrypoint_memory,
+                memory=entrypoint_memory,
                 resources=entrypoint_resources,
                 scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(
