@@ -29,7 +29,7 @@ Tuner Configuration
 
 .. seealso::
 
-    The `Tuner` constructor also takes in a :class:`air.RunConfig <ray.train.RunConfig>`.
+    The `Tuner` constructor also takes in a :class:`RunConfig <ray.train.RunConfig>`.
 
 Restoring a Tuner
 ~~~~~~~~~~~~~~~~~

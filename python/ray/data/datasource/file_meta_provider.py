@@ -220,7 +220,7 @@ class ParquetMetadataProvider(FileMetadataProvider):
         paths: List[str],
         schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
+        num_fragments: int,
         prefetched_metadata: Optional[List[Any]],
     ) -> BlockMetadata:
         """Resolves and returns block metadata for files of a single dataset block.
@@ -229,10 +229,11 @@ class ParquetMetadataProvider(FileMetadataProvider):
             paths: The file paths for a single dataset block.
             schema: The user-provided or inferred schema for the given file
                 paths, if any.
-            pieces: The Parquet file fragments derived from the input file paths.
+            num_fragments: The number of Parquet file fragments derived from the input
+                file paths.
             prefetched_metadata: Metadata previously returned from
                 `prefetch_file_metadata()` for each file fragment, where
-                `prefetched_metadata[i]` contains the metadata for `pieces[i]`.
+                `prefetched_metadata[i]` contains the metadata for `fragments[i]`.
 
         Returns:
             BlockMetadata aggregated across the given file paths.
@@ -241,7 +242,7 @@ class ParquetMetadataProvider(FileMetadataProvider):
 
     def prefetch_file_metadata(
         self,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
+        fragments: List["pyarrow.dataset.ParquetFileFragment"],
         **ray_remote_args,
     ) -> Optional[List[Any]]:
         """Pre-fetches file metadata for all Parquet file fragments in a single batch.
@@ -254,12 +255,12 @@ class ParquetMetadataProvider(FileMetadataProvider):
         override this method.
 
         Args:
-            pieces: The Parquet file fragments to fetch metadata for.
+            fragments: The Parquet file fragments to fetch metadata for.
 
         Returns:
             Metadata resolved for each input file fragment, or `None`. Metadata
             must be returned in the same order as all input file fragments, such
-            that `metadata[i]` always contains the metadata for `pieces[i]`.
+            that `metadata[i]` always contains the metadata for `fragments[i]`.
         """
         return None
 
@@ -277,11 +278,14 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         paths: List[str],
         schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
+        num_fragments: int,
         prefetched_metadata: Optional[List["pyarrow.parquet.FileMetaData"]],
     ) -> BlockMetadata:
-        if prefetched_metadata is not None and len(prefetched_metadata) == len(pieces):
-            # Piece metadata was available, construct a normal
+        if (
+            prefetched_metadata is not None
+            and len(prefetched_metadata) == num_fragments
+        ):
+            # Fragment metadata was available, construct a normal
             # BlockMetadata.
             block_metadata = BlockMetadata(
                 num_rows=sum(m.num_rows for m in prefetched_metadata),
@@ -294,7 +298,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
                 exec_stats=None,
             )  # Exec stats filled in later.
         else:
-            # Piece metadata was not available, construct an empty
+            # Fragment metadata was not available, construct an empty
             # BlockMetadata.
             block_metadata = BlockMetadata(
                 num_rows=None,
@@ -307,32 +311,32 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
 
     def prefetch_file_metadata(
         self,
-        pieces: List["pyarrow.dataset.ParquetFileFragment"],
+        fragments: List["pyarrow.dataset.ParquetFileFragment"],
         **ray_remote_args,
     ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
         from ray.data.datasource.file_based_datasource import _fetch_metadata_parallel
         from ray.data.datasource.parquet_datasource import (
+            FRAGMENTS_PER_META_FETCH,
             PARALLELIZE_META_FETCH_THRESHOLD,
-            PIECES_PER_META_FETCH,
             _fetch_metadata,
             _fetch_metadata_serialization_wrapper,
-            _SerializedPiece,
+            _SerializedFragment,
         )
 
-        if len(pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
+        if len(fragments) > PARALLELIZE_META_FETCH_THRESHOLD:
             # Wrap Parquet fragments in serialization workaround.
-            pieces = [_SerializedPiece(piece) for piece in pieces]
+            fragments = [_SerializedFragment(fragment) for fragment in fragments]
             # Fetch Parquet metadata in parallel using Ray tasks.
             return list(
                 _fetch_metadata_parallel(
-                    pieces,
+                    fragments,
                     _fetch_metadata_serialization_wrapper,
-                    PIECES_PER_META_FETCH,
+                    FRAGMENTS_PER_META_FETCH,
                     **ray_remote_args,
                 )
             )
         else:
-            return _fetch_metadata(pieces)
+            return _fetch_metadata(fragments)
 
 
 def _handle_read_os_error(error: OSError, paths: Union[str, List[str]]) -> str:
@@ -414,12 +418,6 @@ def _expand_paths(
             )
         # 3. Parallelization case.
         else:
-            logger.warning(
-                f"Expanding {len(paths)} path(s). This may be a HIGH LATENCY "
-                f"operation on some cloud storage services. Moving all the "
-                "paths to a common parent directory will lead to faster "
-                "metadata fetching."
-            )
             # Parallelize requests via Ray tasks.
             yield from _get_file_infos_parallel(paths, filesystem, ignore_missing_paths)
 
@@ -445,13 +443,30 @@ def _get_file_infos_common_path_prefix(
     ):
         if path in path_to_size:
             path_to_size[path] = file_size
-    # Iterate over `paths` to yield each path in original order.
-    # NOTE: do not iterate over `path_to_size` because the dictionary skips duplicated
-    # path, while `paths` might contain duplicated path if one wants to read same file
-    # multiple times.
+
+    # Check if all `paths` have file size metadata.
+    # If any of paths has no file size, fall back to get files metadata in parallel.
+    # This can happen when path is a directory, but not a file.
+    have_missing_path = False
     for path in paths:
-        assert path in path_to_size
-        yield path, path_to_size[path]
+        if path not in path_to_size:
+            logger.debug(
+                f"Finding path {path} not have file size metadata. "
+                "Fall back to get files metadata in parallel for all paths."
+            )
+            have_missing_path = True
+            break
+
+    if have_missing_path:
+        # Parallelize requests via Ray tasks.
+        yield from _get_file_infos_parallel(paths, filesystem, ignore_missing_paths)
+    else:
+        # Iterate over `paths` to yield each path in original order.
+        # NOTE: do not iterate over `path_to_size` because the dictionary skips
+        # duplicated path, while `paths` might contain duplicated path if one wants
+        # to read same file multiple times.
+        for path in paths:
+            yield path, path_to_size[path]
 
 
 def _get_file_infos_parallel(
@@ -464,6 +479,13 @@ def _get_file_infos_parallel(
         _fetch_metadata_parallel,
         _unwrap_s3_serialization_workaround,
         _wrap_s3_serialization_workaround,
+    )
+
+    logger.warning(
+        f"Expanding {len(paths)} path(s). This may be a HIGH LATENCY "
+        f"operation on some cloud storage services. Moving all the "
+        "paths to a common parent directory will lead to faster "
+        "metadata fetching."
     )
 
     # Capture the filesystem in the fetcher func closure, but wrap it in our

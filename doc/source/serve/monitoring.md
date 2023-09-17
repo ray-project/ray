@@ -5,6 +5,7 @@
 This section helps you debug and monitor your Serve applications by:
 
 * viewing the Ray dashboard
+* viewing the `serve status` output
 * using Ray logging and Loki
 * inspecting built-in Ray Serve metrics
 * exporting metrics into Arize platform
@@ -14,7 +15,7 @@ This section helps you debug and monitor your Serve applications by:
 You can use the Ray dashboard to get a high-level overview of your Ray cluster and Ray Serve application's states.
 This includes details such as:
 * the number of deployment replicas currently running
-* logs for your Serve controller, deployment replicas, and HTTP proxies
+* logs for your Serve controller, deployment replicas, and proxies
 * the Ray nodes (i.e. machines) running in your Ray cluster.
 
 You can access the Ray dashboard at port 8265 at your cluster's URI.
@@ -46,6 +47,111 @@ To learn more about the Serve controller actor, the HTTP proxy actor(s), the dep
 
 For a detailed overview of the Ray dashboard, see the [dashboard documentation](observability-getting-started).
 
+(serve-in-production-inspecting)=
+
+## Inspect applications with the Serve CLI
+
+Two Serve CLI commands help you inspect a Serve application in production: `serve config` and `serve status`.
+If you have a remote cluster, `serve config` and `serve status` also has an `--address/-a` argument to access the cluster. See [VM deployment](serve-in-production-remote-cluster) for more information on this argument.
+
+`serve config` gets the latest config file that the Ray Cluster received. This config file represents the Serve application's goal state. The Ray Cluster constantly strives to reach and maintain this state by deploying deployments, and recovering failed replicas, and performing other relevant actions.
+
+Using the `serve_config.yaml` example from [the production guide](production-config-yaml):
+
+```console
+$ ray start --head
+$ serve deploy serve_config.yaml
+...
+
+$ serve config
+name: default
+route_prefix: /
+import_path: text_ml:app
+runtime_env:
+  pip:
+    - torch
+    - transformers
+deployments:
+- name: Translator
+  num_replicas: 1
+  user_config:
+    language: french
+- name: Summarizer
+  num_replicas: 1
+```
+
+`serve status` gets your Serve application's current status. This command reports the status of the `proxies` and the `applications` running on the Ray cluster.
+
+`proxies` lists each proxy's status. Each proxy is identified by the node ID of the node that it runs on. A proxy has three possible statuses:
+* `STARTING`: The proxy is starting up and is not yet ready to serve requests.
+* `HEALTHY`: The proxy is capable of serving requests. It is behaving normally.
+* `UNHEALTHY`: The proxy has failed its health-checks. It will be killed, and a new proxy will be started on that node.
+* `DRAINING`: The proxy is healthy but is closed to new requests. It may contain pending requests that are still being processed.
+* `DRAINED`: The proxy is closed to new requests. There are no pending requests.
+
+`applications` contains a list of applications, their overall statuses, and their deployments' statuses. Each entry in `applications` maps an application's name to four fields:
+* `status`: A Serve application has four possible overall statuses:
+    * `"NOT_STARTED"`: No application has been deployed on this cluster.
+    * `"DEPLOYING"`: The application is currently carrying out a `serve deploy` request. It is deploying new deployments or updating existing ones.
+    * `"RUNNING"`: The application is at steady-state. It has finished executing any previous `serve deploy` requests, and is attempting to maintain the goal state set by the latest `serve deploy` request.
+    * `"DEPLOY_FAILED"`: The latest `serve deploy` request has failed.
+* `message`: Provides context on the current status.
+* `deployment_timestamp`: A UNIX timestamp of when Serve received the last `serve deploy` request. The timestamp is calculated using the `ServeController`'s local clock.
+* `deployments`: A list of entries representing each deployment's status. Each entry maps a deployment's name to three fields:
+    * `status`: A Serve deployment has three possible statuses:
+        * `"UPDATING"`: The deployment is updating to meet the goal state set by a previous `deploy` request.
+        * `"HEALTHY"`: The deployment achieved the latest requests goal state.
+        * `"UNHEALTHY"`: The deployment has either failed to update, or has updated and has become unhealthy afterwards. This condition may be due to an error in the deployment's constructor, a crashed replica, or a general system or machine error.
+    * `replica_states`: A list of the replicas' states and the number of replicas in that state. Each replica has five possible states:
+        * `STARTING`: The replica is starting and not yet ready to serve requests.
+        * `UPDATING`: The replica is undergoing a `reconfigure` update.
+        * `RECOVERING`: The replica is recovering its state.
+        * `RUNNING`: The replica is running normally and able to serve requests.
+        * `STOPPING`: The replica is being stopped.
+    * `message`: Provides context on the current status.
+
+Use the `serve status` command to inspect your deployments after they are deployed and throughout their lifetime.
+
+Using the `serve_config.yaml` example from [an earlier section](production-config-yaml):
+
+```console
+$ ray start --head
+$ serve deploy serve_config.yaml
+...
+
+$ serve status
+proxies:
+  cef533a072b0f03bf92a6b98cb4eb9153b7b7c7b7f15954feb2f38ec: HEALTHY
+applications:
+  default:
+    status: RUNNING
+    message: ''
+    last_deployed_time_s: 1694041157.2211847
+    deployments:
+      Translator:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      Summarizer:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+```
+
+For Kubernetes deployments with KubeRay, tighter integrations of `serve status` with Kubernetes are available. See [Getting the status of Serve applications in Kubernetes](serve-getting-status-kubernetes).
+
+## Get application details in Python
+
+Call the `serve.status()` API to get Serve application details in Python. `serve.status()` returns the same information as the `serve status` CLI command inside a `dataclass`. Use this method inside a deployment or a Ray driver script to obtain live information about the Serve applications on the Ray cluster. For example, this `monitoring_app` reports all the `RUNNING` Serve applications on the cluster:
+
+```{literalinclude} doc_code/monitoring/monitor_deployment.py
+:start-after: __monitor_start__
+:end-before: __monitor_end__
+:language: python
+```
+
 (serve-logging)=
 ## Ray logging
 
@@ -53,7 +159,7 @@ To understand system-level behavior and to surface application-level details dur
 
 Ray Serve uses Python's standard `logging` module with a logger named `"ray.serve"`.
 By default, logs are emitted from actors both to `stderr` and on disk on each node at `/tmp/ray/session_latest/logs/serve/`.
-This includes both system-level logs from the Serve controller and HTTP proxy as well as access logs and custom user logs produced from within deployment replicas.
+This includes both system-level logs from the Serve controller and proxy as well as access logs and custom user logs produced from within deployment replicas.
 
 In development, logs are streamed to the driver Ray program (the Python script that calls `serve.run()` or the `serve run` CLI command), so it's convenient to keep the driver running while debugging.
 
@@ -86,7 +192,7 @@ $ serve run monitoring:say_hello
 (ServeController pid=63881)
 ```
 
-These messages are logs from Ray Serve [actors](actor-guide). They describe which actor (Serve controller, HTTP proxy, or deployment replica) created the log and what its process ID is (which is useful when distinguishing between different deployment replicas or HTTP proxies). The rest of these log messages are the actual log statements generated by the actor.
+These messages are logs from Ray Serve [actors](actor-guide). They describe which actor (Serve controller, proxy, or deployment replica) created the log and what its process ID is (which is useful when distinguishing between different deployment replicas or proxies). The rest of these log messages are the actual log statements generated by the actor.
 
 While `serve run` is running, we can query the deployment in a separate terminal window:
 
@@ -255,7 +361,7 @@ failed requests through the [Ray metrics monitoring infrastructure](dash-metrics
 
 :::{note}
 Different metrics are collected when Deployments are called
-via Python `ServeHandle` and when they are called via HTTP.
+via Python `DeploymentHandle` and when they are called via HTTP.
 
 See the list of metrics below marked for each.
 :::
@@ -311,27 +417,51 @@ The following metrics are exposed by Ray Serve:
      - * route
        * method
        * application
+       * status_code
      - The number of HTTP requests processed.
+   * - ``ray_serve_num_grpc_requests`` [*]
+     - * route
+       * method
+       * application
+       * status_code
+     - The number of gRPC requests processed.
    * - ``ray_serve_num_http_error_requests`` [*]
      - * route
        * error_code
        * method
      - The number of non-200 HTTP responses.
+   * - ``ray_serve_num_grpc_error_requests`` [*]
+     - * route
+       * error_code
+       * method
+     - The number of non-OK gRPC responses.
    * - ``ray_serve_num_ongoing_http_requests`` [*]
      - * node_id
        * node_ip_address
      - The number of ongoing requests in the HTTP Proxy.
+   * - ``ray_serve_num_ongoing_grpc_requests`` [*]
+     - * node_id
+       * node_ip_address
+     - The number of ongoing requests in the gRPC Proxy.
    * - ``ray_serve_num_router_requests`` [*]
      - * deployment
        * route
        * application
      - The number of requests processed by the router.
+   * - ``ray_serve_num_scheduling_tasks`` [*][†]
+     - * deployment
+       * actor_id
+     - The number of request scheduling tasks in the router.
+   * - ``ray_serve_num_scheduling_tasks_in_backoff`` [*][†]
+     - * deployment
+       * actor_id
+     - The number of request scheduling tasks in the router that are undergoing backoff.
    * - ``ray_serve_handle_request_counter`` [**]
      - * handle
        * deployment
        * route
        * application
-     - The number of requests processed by this ServeHandle.
+     - The number of requests processed by this DeploymentHandle.
    * - ``ray_serve_deployment_queued_queries`` [*]
      - * deployment
        * route
@@ -343,10 +473,25 @@ The following metrics are exposed by Ray Serve:
        * route
        * application
      - The number of non-200 HTTP responses returned by each deployment.
-   * - ``ray_serve_http_request_latency_ms`` [*]
-     - * route
+   * - ``ray_serve_num_deployment_grpc_error_requests`` [*]
+     - * deployment
+       * error_code
+       * method
+       * route
        * application
+     - The number of non-OK gRPC responses returned by each deployment.
+   * - ``ray_serve_http_request_latency_ms`` [*]
+     - * method
+       * route
+       * application
+       * status_code
      - The end-to-end latency of HTTP requests (measured from the Serve HTTP proxy).
+   * - ``ray_serve_grpc_request_latency_ms`` [*]
+     - * method
+       * route
+       * application
+       * status_code
+     - The end-to-end latency of gRPC requests (measured from the Serve gRPC proxy).
    * - ``ray_serve_multiplexed_model_load_latency_ms``
      - * deployment
        * replica
@@ -384,8 +529,10 @@ The following metrics are exposed by Ray Serve:
        * application
      - The number of calls to get a multiplexed model.
 ```
-[*] - only available when using HTTP calls
-[**] - only available when using Python `ServeHandle` calls
+
+[*] - only available when using proxy calls</br>
+[**] - only available when using Python `DeploymentHandle` calls</br>
+[†] - developer metrics for advanced usage; may change in future releases
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 

@@ -18,7 +18,8 @@ py_library(
         ["*.py"],
         exclude = [
             "test_*.py",
-            "ray_ci.py",
+            "test_in_docker.py",
+            "build_in_docker.py",
         ],
     ),
     visibility = ["//visibility:private"],
@@ -28,22 +29,50 @@ py_library(
     ],
 )
 
+py_library(
+    name = "ray_ci_lib_test",
+    srcs = ["test_base.py"],
+    visibility = ["//visibility:private"],
+)
+
 py_binary(
-    name = "ray_ci",
-    srcs = ["ray_ci.py"],
+    name = "test_in_docker",
+    srcs = ["test_in_docker.py"],
+    deps = [":ray_ci_lib"],
+)
+
+py_binary(
+    name = "build_in_docker",
+    srcs = ["build_in_docker.py"],
     deps = [":ray_ci_lib"],
 )
 
 py_test(
-    name = "test_runner",
+    name = "test_container",
     size = "small",
-    srcs = ["test_runner.py"],
+    srcs = ["test_container.py"],
     tags = [
         "ci_unit",
         "team:ci",
     ],
     deps = [
         ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_tester",
+    size = "small",
+    srcs = ["test_tester.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
         ci_require("pytest"),
     ],
 )
@@ -59,20 +88,37 @@ py_test(
     ],
     deps = [
         ":ray_ci_lib",
+        ":ray_ci_lib_test",
         ci_require("pytest"),
     ],
 )
 
 py_test(
-    name = "test_container",
+    name = "test_tester_container",
     size = "small",
-    srcs = ["test_container.py"],
+    srcs = ["test_tester_container.py"],
     tags = [
         "ci_unit",
         "team:ci",
     ],
     deps = [
         ":ray_ci_lib",
+        ":ray_ci_lib_test",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_docker_container",
+    size = "small",
+    srcs = ["test_docker_container.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ":ray_ci_lib_test",
         ci_require("pytest"),
     ],
 )
@@ -88,6 +134,7 @@ py_test(
     ],
     deps = [
         ":ray_ci_lib",
+        ":ray_ci_lib_test",
         ci_require("pytest"),
     ],
 )

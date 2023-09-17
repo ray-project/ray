@@ -519,6 +519,10 @@ ray::Status NodeManager::RegisterGcs() {
         [this] { local_object_manager_.FlushFreeObjects(); },
         RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.flush_free_objects");
+    periodical_runner_.RunFnPeriodically(
+        [this] { SpillIfOverPrimaryObjectsThreshold(); },
+        RayConfig::instance().free_objects_period_milliseconds(),
+        "NodeManager.deadline_timer.spill_objects_when_over_threshold");
   }
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
@@ -550,15 +554,18 @@ ray::Status NodeManager::RegisterGcs() {
         checking = true;
         RAY_CHECK_OK(gcs_client_->Nodes().AsyncCheckSelfAlive(
             // capture checking ptr here because vs17 fail to compile
-            [checking_ptr = &checking](auto status, auto alive) mutable {
-              if (status.ok()) {
-                if (!alive) {
-                  // GCS think this raylet is dead. Fail the node
-                  RAY_LOG(FATAL)
-                      << "GCS consider this node to be dead. This may happen when "
-                      << "GCS is not backed by a DB and restarted or there is data loss "
-                      << "in the DB.";
-                }
+            [this, checking_ptr = &checking](auto status, auto alive) mutable {
+              if ((status.ok() && !alive)) {
+                // GCS think this raylet is dead. Fail the node
+                RAY_LOG(FATAL)
+                    << "GCS consider this node to be dead. This may happen when "
+                    << "GCS is not backed by a DB and restarted or there is data loss "
+                    << "in the DB.";
+              } else if (status.IsAuthError()) {
+                RAY_LOG(FATAL)
+                    << "GCS returned an authentication error. This may happen when "
+                    << "GCS is not backed by a DB and restarted or there is data loss "
+                    << "in the DB. Local cluster ID: " << gcs_client_->GetClusterId();
               }
               *checking_ptr = false;
             },
@@ -1449,7 +1456,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    const rpc::RayException *creation_task_exception) {
   RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
                 << ", has creation task exception = " << std::boolalpha
-                << bool(creation_task_exception == nullptr);
+                << bool(creation_task_exception != nullptr);
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1473,7 +1480,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   dependency_manager_.CancelWaitRequest(worker->WorkerId());
 
   // Erase any lease metadata.
-  leased_workers_.erase(worker->WorkerId());
+  ReleaseWorker(worker->WorkerId());
 
   if (creation_task_exception != nullptr) {
     RAY_LOG(INFO) << "Formatted creation task exception: "
@@ -1900,7 +1907,7 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
   std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
 
   Status status;
-  leased_workers_.erase(worker_id);
+  ReleaseWorker(worker_id);
 
   if (worker) {
     if (request.disconnect_worker()) {
@@ -1998,9 +2005,7 @@ void NodeManager::HandleReleaseUnusedWorkers(rpc::ReleaseUnusedWorkersRequest re
     }
   }
 
-  for (auto &iter : unused_worker_ids) {
-    leased_workers_.erase(iter);
-  }
+  ReleaseWorkers(unused_worker_ids);
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -2188,6 +2193,19 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
   }
 }
 
+void NodeManager::SpillIfOverPrimaryObjectsThreshold() {
+  // Trigger object spilling if current usage is above the specified threshold.
+  const float allocated_percentage =
+      static_cast<float>(local_object_manager_.GetPrimaryBytes()) /
+      object_manager_.GetMemoryCapacity();
+  if (allocated_percentage >= RayConfig::instance().object_spilling_threshold()) {
+    RAY_LOG(INFO) << "Triggering object spilling because current usage "
+                  << allocated_percentage * 100 << "% is above threshold "
+                  << RayConfig::instance().object_spilling_threshold() * 100 << "%.";
+    local_object_manager_.SpillObjectUptoMaxThroughput();
+  }
+}
+
 void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
   const ObjectID &object_id = object_info.object_id;
   // Notify the task dependency manager that this object is local.
@@ -2220,6 +2238,10 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
           }
         });
   }
+
+  // An object was created so we may be over the spill
+  // threshold now.
+  SpillIfOverPrimaryObjectsThreshold();
 }
 
 bool NodeManager::IsActorCreationTask(const TaskID &task_id) {

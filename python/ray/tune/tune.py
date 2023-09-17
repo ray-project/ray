@@ -28,8 +28,11 @@ from ray.air import CheckpointConfig
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
+from ray.train import SyncConfig
+from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _DEPRECATED_VALUE
 from ray.train._internal.storage import _use_storage_context
 from ray.tune.analysis import ExperimentAnalysis
+from ray.tune.analysis.experiment_analysis import LegacyExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
@@ -76,7 +79,6 @@ from ray.tune.search.util import (
     _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
 from ray.tune.search.variant_generator import _has_unresolved_values
-from ray.tune.syncer import SyncConfig
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.utils.callback import _create_default_callbacks
@@ -270,8 +272,6 @@ def _resolve_and_validate_storage_path(
                 "Using configured Ray storage URI as storage path: " f"{remote_path}"
             )
 
-    sync_config.validate_upload_dir(remote_path)
-
     if not local_path:
         local_path = _get_defaults_results_dir()
 
@@ -313,7 +313,6 @@ def run(
     log_to_file: bool = False,
     trial_name_creator: Optional[Callable[[Trial], str]] = None,
     trial_dirname_creator: Optional[Callable[[Trial], str]] = None,
-    chdir_to_trial_dir: bool = True,
     sync_config: Optional[SyncConfig] = None,
     export_formats: Optional[Sequence] = None,
     max_failures: int = 0,
@@ -330,8 +329,7 @@ def run(
     checkpoint_score_attr: Optional[str] = None,  # Deprecated (2.7)
     checkpoint_freq: int = 0,  # Deprecated (2.7)
     checkpoint_at_end: bool = False,  # Deprecated (2.7)
-    checkpoint_keep_all_ranks: bool = False,  # Deprecated (2.7)
-    checkpoint_upload_from_workers: bool = False,  # Deprecated (2.7)
+    chdir_to_trial_dir: bool = _DEPRECATED_VALUE,  # Deprecated (2.8)
     local_dir: Optional[str] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
@@ -459,15 +457,15 @@ def run(
             unique identifier (such as `Trial.trial_id`) is used in each trial's
             directory name. Otherwise, trials could overwrite artifacts and checkpoints
             of other trials. The return value cannot be a path.
-        chdir_to_trial_dir: Whether to change the working directory of each worker
+        chdir_to_trial_dir: Deprecated. Use `RAY_CHDIR_TO_TRIAL_DIR=0` instead.
+            Whether to change the working directory of each worker
             to its corresponding trial directory. Defaults to `True` to prevent
             contention between workers saving trial-level outputs.
             If set to `False`, files are accessible with paths relative to the
             original working directory. However, all workers on the same node now
             share the same working directory, so be sure to use
             `ray.train.get_context().get_trial_dir()` as the path to save any outputs.
-        sync_config: Configuration object for syncing. See
-            tune.SyncConfig.
+        sync_config: Configuration object for syncing. See train.SyncConfig.
         export_formats: List of formats that exported at the end of
             the experiment. Default is None.
         max_failures: Try to recover a trial at least this many times.
@@ -514,8 +512,7 @@ def run(
         callbacks: List of callbacks that will be called at different
             times in the training loop. Must be instances of the
             ``ray.tune.callback.Callback`` class. If not passed,
-            `LoggerCallback` and `SyncerCallback` callbacks are automatically
-            added.
+            `LoggerCallback` (json/csv/tensorboard) callbacks are automatically added.
         max_concurrent_trials: Maximum number of trials to run
             concurrently. Must be non-negative. If None or 0, no limit will
             be applied. This is achieved by wrapping the ``search_alg`` in
@@ -680,7 +677,11 @@ def run(
     if _use_storage_context():
         local_path, remote_path = None, None
         sync_config = sync_config or SyncConfig()
-        # TODO(justinvyu): Fix telemetry for the new persistence.
+
+        # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
+        # For now, keep accepting both options.
+        if local_dir is not None:
+            os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_dir
     else:
         (
             storage_path,
@@ -741,22 +742,17 @@ def run(
             DeprecationWarning,
         )
         checkpoint_config.checkpoint_at_end = checkpoint_at_end
-    if checkpoint_keep_all_ranks:
+
+    if chdir_to_trial_dir != _DEPRECATED_VALUE:
         warnings.warn(
-            "checkpoint_keep_all_ranks is deprecated and will be removed. "
-            "use checkpoint_config._checkpoint_keep_all_ranks instead.",
+            "`chdir_to_trial_dir` is deprecated and will be removed. "
+            f"Use the {RAY_CHDIR_TO_TRIAL_DIR} environment variable instead. "
+            "Set it to 0 to disable the default behavior of changing the "
+            "working directory.",
             DeprecationWarning,
         )
-        checkpoint_config._checkpoint_keep_all_ranks = checkpoint_keep_all_ranks
-    if checkpoint_upload_from_workers:
-        warnings.warn(
-            "checkpoint_upload_from_workers is deprecated and will be removed. "
-            "use checkpoint_config._checkpoint_upload_from_workers instead.",
-            DeprecationWarning,
-        )
-        checkpoint_config._checkpoint_upload_from_workers = (
-            checkpoint_upload_from_workers
-        )
+        if chdir_to_trial_dir is False:
+            os.environ[RAY_CHDIR_TO_TRIAL_DIR] = "0"
 
     if num_samples == -1:
         num_samples = sys.maxsize
@@ -956,6 +952,9 @@ def run(
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
+    if _use_storage_context():
+        air_usage.tag_storage_type(experiments[0].storage)
+
     # NOTE: Report callback telemetry before populating the list with default callbacks.
     # This tracks user-specified callback usage.
     air_usage.tag_callbacks(callbacks)
@@ -963,7 +962,6 @@ def run(
     # Create default logging + syncer callbacks
     callbacks = _create_default_callbacks(
         callbacks,
-        sync_config=sync_config,
         air_verbosity=air_verbosity,
         entrypoint=_entrypoint,
         config=config,
@@ -986,7 +984,7 @@ def run(
                 "To enable trials to use GPUs, wrap `train_func` with "
                 "`tune.with_resources(train_func, resources_per_trial={'gpu': 1})` "
                 "which allows Tune to expose 1 GPU to each trial. "
-                "For Ray AIR Trainers, you can specify GPU resources "
+                "For Ray Train Trainers, you can specify GPU resources "
                 "through `ScalingConfig(use_gpu=True)`. "
                 "You can also override "
                 "`Trainable.default_resource_request` if using the "
@@ -1019,7 +1017,6 @@ def run(
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
         reuse_actors=reuse_actors,
-        chdir_to_trial_dir=chdir_to_trial_dir,
         storage=experiments[0].storage,
         _trainer_api=_entrypoint == AirEntrypoint.TRAINER,
     )
@@ -1164,22 +1161,21 @@ def run(
             )
 
     if _use_storage_context():
-        # TODO(justinvyu): Leave refactoring the ExperimentAnalysis to use
-        # StorageContext for a follow-up PR.
-        # Just plug in the "remote_storage_path" for now.
-        remote_path = experiments[0].storage.storage_path
-
-    experiment_checkpoint = runner.experiment_state_path
-
-    ea = ExperimentAnalysis(
-        experiment_checkpoint,
-        trials=all_trials,
-        default_metric=metric,
-        default_mode=mode,
-        remote_storage_path=remote_path,
-    )
-
-    return ea
+        return ExperimentAnalysis(
+            experiment_checkpoint_path=runner.experiment_path,
+            default_metric=metric,
+            default_mode=mode,
+            trials=all_trials,
+            storage_filesystem=experiments[0].storage.storage_filesystem,
+        )
+    else:
+        return LegacyExperimentAnalysis(
+            runner.experiment_state_path,
+            trials=all_trials,
+            default_metric=metric,
+            default_mode=mode,
+            remote_storage_path=remote_path,
+        )
 
 
 @PublicAPI

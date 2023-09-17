@@ -3,6 +3,7 @@ try:
     import pandas  # noqa: F401
     import requests  # noqa: F401
     import pyarrow  # noqa: F401
+    import fsspec  # noqa: F401
 except ImportError as exc:
     raise ImportError(
         "Can't import ray.tune as some dependencies are missing. "
@@ -56,6 +57,7 @@ from ray.tune.result_grid import ResultGrid
 from ray.tune.tuner import Tuner
 from ray.tune.tune_config import TuneConfig
 
+
 __all__ = [
     "Trainable",
     "Callback",
@@ -92,11 +94,12 @@ __all__ = [
     "get_trial_resources",
     "is_session_enabled",
     "checkpoint_dir",
-    "SyncConfig",
     "ResultGrid",
     "create_searcher",
     "create_scheduler",
     "PlacementGroupFactory",
     "Tuner",
     "TuneConfig",
+    # TODO(justinvyu): [Deprecated]
+    "SyncConfig",
 ]

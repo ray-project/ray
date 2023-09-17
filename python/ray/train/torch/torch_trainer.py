@@ -1,8 +1,6 @@
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig
-from ray.train import DataConfig
+from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch.config import TorchConfig
 from ray.train.trainer import GenDataset
@@ -12,7 +10,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class TorchTrainer(DataParallelTrainer):
     """A Trainer for data parallel PyTorch training.
 
@@ -154,9 +152,9 @@ class TorchTrainer(DataParallelTrainer):
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
             and ``use_gpu`` determines whether or not each process should use GPUs.
-            See :class:`~ray.air.ScalingConfig` for more info.
+            See :class:`~ray.train.ScalingConfig` for more info.
         run_config: The configuration for the execution of the training run.
-            See :class:`~ray.air.RunConfig` for more info.
+            See :class:`~ray.train.RunConfig` for more info.
         datasets: The Ray Datasets to ingest for training.
             Datasets are keyed by name (``{name: dataset}``).
             Each dataset can be accessed from within the ``train_loop_per_worker``
@@ -164,13 +162,14 @@ class TorchTrainer(DataParallelTrainer):
             Sharding and additional configuration can be done by
             passing in a ``dataset_config``.
         dataset_config: The configuration for ingesting the input ``datasets``.
-            By default:
-
-            - The ``"train"`` Dataset is split equally across workers.
-            - All other Datasets are **not** split.
+            By default, all the Ray Dataset are split equally across workers.
+            See :class:`~ray.train.DataConfig` for more details.
         resume_from_checkpoint: A checkpoint to resume training from.
             This checkpoint can be accessed from within ``train_loop_per_worker``
             by calling ``ray.train.get_checkpoint()``.
+        metadata: Dict that should be made available via
+            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -183,6 +182,7 @@ class TorchTrainer(DataParallelTrainer):
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         dataset_config: Optional[DataConfig] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
         # Deprecated.
         preprocessor: Optional["Preprocessor"] = None,
@@ -200,4 +200,5 @@ class TorchTrainer(DataParallelTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )

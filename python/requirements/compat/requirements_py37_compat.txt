@@ -15,8 +15,8 @@ torchvision==0.14.0
 pytorch-lightning==1.6.5
 
 # Upstream libraries
-lightgbm_ray==0.1.8
-xgboost_ray==0.1.15
+xgboost_ray==0.1.18
+lightgbm_ray==0.1.9
 
 # Datasets
 pyarrow==6.0.1

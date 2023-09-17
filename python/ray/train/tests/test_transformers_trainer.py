@@ -9,11 +9,7 @@ from transformers import (
 )
 
 import ray.data
-from ray.train.huggingface import (
-    TransformersPredictor,
-    TransformersTrainer,
-    LegacyTransformersCheckpoint,
-)
+from ray.train.huggingface import TransformersTrainer
 from ray.train.trainer import TrainingFailedError
 from ray.train import ScalingConfig
 from ray.train.tests._huggingface_data import train_data, validation_data
@@ -90,33 +86,6 @@ def train_function_local_dataset(train_dataset, eval_dataset=None, **config):
     return train_function(train_dataset, eval_dataset, **config)
 
 
-def test_deprecations(ray_start_4_cpus):
-    """Tests that soft deprecations warn but still can be used"""
-    from ray.train.huggingface import (
-        HuggingFaceCheckpoint,
-        HuggingFacePredictor,
-        HuggingFaceTrainer,
-    )
-
-    ray_train = ray.data.from_pandas(train_df)
-    ray_validation = ray.data.from_pandas(validation_df)
-
-    with pytest.warns(DeprecationWarning):
-        obj = HuggingFaceCheckpoint.from_dict({"foo": "bar"})
-    assert isinstance(obj, LegacyTransformersCheckpoint)
-
-    with pytest.warns(DeprecationWarning):
-        obj = HuggingFacePredictor()
-    assert isinstance(obj, TransformersPredictor)
-
-    with pytest.warns(DeprecationWarning):
-        obj = HuggingFaceTrainer(
-            train_function,
-            datasets={"train": ray_train, "evaluation": ray_validation},
-        )
-    assert isinstance(obj, TransformersTrainer)
-
-
 @pytest.mark.parametrize("save_strategy", ["no", "epoch"])
 def test_e2e(ray_start_4_cpus, save_strategy):
     ray_train = ray.data.from_pandas(train_df)
@@ -133,7 +102,6 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result.metrics["epoch"] == 4
     assert result.metrics["training_iteration"] == 4
     assert result.checkpoint
-    assert isinstance(result.checkpoint, LegacyTransformersCheckpoint)
     assert "eval_loss" in result.metrics
 
     trainer2 = TransformersTrainer(
@@ -151,7 +119,6 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result2.metrics["epoch"] == 5
     assert result2.metrics["training_iteration"] == 1
     assert result2.checkpoint
-    assert isinstance(result2.checkpoint, LegacyTransformersCheckpoint)
     assert "eval_loss" in result2.metrics
 
 
@@ -167,7 +134,6 @@ def test_training_local_dataset(ray_start_4_cpus):
     assert result.metrics["epoch"] == 1
     assert result.metrics["training_iteration"] == 1
     assert result.checkpoint
-    assert isinstance(result.checkpoint, LegacyTransformersCheckpoint)
     assert "eval_loss" in result.metrics
 
 

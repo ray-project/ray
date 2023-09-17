@@ -45,6 +45,7 @@ class AnyscaleJobManager:
         self._last_job_result = None
         self._last_logs = None
         self.cluster_startup_timeout = 600
+        self._duration = None
 
     def _run_job(
         self,
@@ -248,8 +249,8 @@ class AnyscaleJobManager:
             retcode = -4
         else:
             retcode = job_status_to_return_code[status]
-        duration = time.time() - self.start_time
-        return retcode, duration
+        self._duration = time.time() - self.start_time
+        return retcode, self._duration
 
     def run_and_wait(
         self,
@@ -274,25 +275,25 @@ class AnyscaleJobManager:
         Obtain any ray logs that contain keywords that indicate a crash, such as
         ERROR or Traceback
         """
-        tmpdir = tempfile.mktemp()
-        try:
-            subprocess.check_output(
-                [
-                    "anyscale",
-                    "logs",
-                    "cluster",
-                    "--id",
-                    self.cluster_manager.cluster_id,
-                    "--head-only",
-                    "--download",
-                    "--download-dir",
-                    tmpdir,
-                ]
-            )
-        except Exception as e:
-            logger.log(f"Failed to download logs from anyscale {e}")
-            return None
-        return AnyscaleJobManager._find_job_driver_and_ray_error_logs(tmpdir)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                subprocess.check_output(
+                    [
+                        "anyscale",
+                        "logs",
+                        "cluster",
+                        "--id",
+                        self.cluster_manager.cluster_id,
+                        "--head-only",
+                        "--download",
+                        "--download-dir",
+                        tmpdir,
+                    ]
+                )
+            except Exception as e:
+                logger.exception(f"Failed to download logs from anyscale {e}")
+                return None, None
+            return AnyscaleJobManager._find_job_driver_and_ray_error_logs(tmpdir)
 
     @staticmethod
     def _find_job_driver_and_ray_error_logs(
@@ -336,6 +337,10 @@ class AnyscaleJobManager:
 
         if self._last_logs:
             return self._last_logs
+
+        # Skip loading logs when the job ran for too long and collected too much logs.
+        if self._duration is not None and self._duration > 4 * 3_600:
+            return None
 
         def _get_logs():
             job_driver_log, ray_error_log = self._get_ray_logs()

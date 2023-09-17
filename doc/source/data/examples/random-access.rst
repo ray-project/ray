@@ -36,7 +36,7 @@ Similar to Dataset, a RandomAccessDataset can be passed to and used from any Ray
 Architecture
 ------------
 
-RandomAccessDataset spreads its workers evenly across the cluster. Each worker fetches and pins in shared memory all blocks of the sorted source data found on its node. In addition, it is ensured that each block is assigned to at least one worker. A central index of block to key-range assignments is computed, which is used to serve lookups.
+RandomAccessDataset spreads its workers evenly across the cluster. Each worker fetches and pins in shared memory all blocks of the sorted source data found on its node. In addition, it's ensured that each block is assigned to at least one worker. A central index of block to key-range assignments is computed, which is used to serve lookups.
 
 Lookups occur as follows:
 
@@ -44,16 +44,16 @@ Lookups occur as follows:
 * Second, an actor that has the block pinned is selected (this is done randomly).
 * A method call is sent to the actor, which then performs binary search to locate the record for the key.
 
-This means that each random lookup costs ~1 network RTT as well as a small amount of computation on both the client and server side.
+This means that each random lookup costs ~1 network round-trip time, as well as a small amount of computation on both the client and server side.
 
 Performance
 -----------
 
-Since actor communication goes directly from worker to worker in Ray, the throughput of a RandomAccessDataset scales linearly with the number of workers available. As a rough measure, a single worker can provide ~2k individual gets/s and serve ~10k records/s for multigets, and this scales linearly as you increase the number of clients and workers for a single RandomAccessDataset. Large workloads may require hundreds of workers for sufficient throughput. You will also generally want more workers than clients, since the client does less computation than worker actors do.
+Since actor communication goes directly from worker to worker in Ray, the throughput of a RandomAccessDataset scales linearly with the number of workers available. As a rough measure, a single worker can provide ~2k individual gets/s and serve ~10k records/s for multigets, and this scales linearly as you increase the number of clients and workers for a single RandomAccessDataset. Large workloads may require hundreds of workers for sufficient throughput. You also generally want more workers than clients, since the client does less computation than worker actors do.
 
-To debug performance problems, use ``random_access_ds.stats()``. This will return a string showing the actor-side measured latencies as well as the distribution of data blocks and queries across the actors. Load imbalances can cause bottlenecks as certain actors receive more requests than others. Ensure that load is evenly distributed across the key space to avoid this.
+To debug performance problems, use ``random_access_ds.stats()``. This returns a string showing the actor-side measured latencies as well as the distribution of data blocks and queries across the actors. Load imbalances can cause bottlenecks as certain actors receive more requests than others. Ensure that load is evenly distributed across the key space to avoid this.
 
-It is important to note that the client (Ray worker process) can also be a bottleneck. To scale past the throughput of a single client, use multiple tasks to gather the data, for example:
+It's important to note that the client (Ray worker process) can also be a bottleneck. To scale past the throughput of a single client, use multiple tasks to gather the data, for example:
 
 .. testcode::
 
@@ -81,4 +81,4 @@ It is important to note that the client (Ray worker process) can also be a bottl
 Fault Tolerance
 ---------------
 
-Currently, RandomAccessDataset is not fault-tolerant. Losing any of the worker actors invalidates the dataset, and it must be re-created from the source data.
+Currently, RandomAccessDataset isn't fault-tolerant. Losing any of the worker actors invalidates the dataset, and it must be re-created from the source data.

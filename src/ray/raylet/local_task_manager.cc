@@ -872,6 +872,8 @@ void LocalTaskManager::Dispatch(
 
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
+  cluster_resource_scheduler_->GetLocalResourceManager().SetBusyFootprint(
+      WorkFootprint::NODE_WORKERS);
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;
@@ -977,12 +979,8 @@ bool LocalTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
   if (worker->GetAllocatedInstances() != nullptr) {
     if (worker->GetAllocatedInstances()->Has(ResourceID::CPU())) {
       auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
-      std::vector<double> overflow_cpu_instances =
-          cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
-              ResourceID::CPU(), cpu_instances);
-      for (unsigned int i = 0; i < overflow_cpu_instances.size(); i++) {
-        RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
-      }
+      cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
+          ResourceID::CPU(), cpu_instances);
       worker->MarkBlocked();
       return true;
     }

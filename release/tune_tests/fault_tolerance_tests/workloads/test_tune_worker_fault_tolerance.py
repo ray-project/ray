@@ -29,8 +29,7 @@ import gc
 
 import ray
 from ray import train
-from ray.train import RunConfig, FailureConfig, CheckpointConfig
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint, RunConfig, FailureConfig, CheckpointConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -86,6 +85,7 @@ def main(bucket_uri: str):
     )
     results = tuner.fit()
     print("Fitted:", results)
+
     del instance_killer
     print("Deleted instance killer")
     gc.collect()

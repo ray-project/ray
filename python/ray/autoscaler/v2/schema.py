@@ -49,6 +49,21 @@ class NodeInfo:
     # Descriptive details.
     details: Optional[str] = None
 
+    def total_resources(self) -> Dict[str, float]:
+        if self.resource_usage is None:
+            return {}
+        return {r.resource_name: r.total for r in self.resource_usage.usage}
+
+    def available_resources(self) -> Dict[str, float]:
+        if self.resource_usage is None:
+            return {}
+        return {r.resource_name: r.total - r.used for r in self.resource_usage.usage}
+
+    def used_resources(self) -> Dict[str, float]:
+        if self.resource_usage is None:
+            return {}
+        return {r.resource_name: r.used for r in self.resource_usage.usage}
+
 
 @dataclass
 class LaunchRequest:
@@ -180,6 +195,12 @@ class ClusterStatus:
     )
     # Query metics
     stats: Stats = field(default_factory=Stats)
+
+    def total_resources(self) -> Dict[str, float]:
+        return {r.resource_name: r.total for r in self.cluster_resource_usage}
+
+    def available_resources(self) -> Dict[str, float]:
+        return {r.resource_name: r.total - r.used for r in self.cluster_resource_usage}
 
     # TODO(rickyx): we don't show infeasible requests as of now.
     # (They will just be pending forever as part of the demands)

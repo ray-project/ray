@@ -236,6 +236,7 @@ py_test(
     srcs = test_srcs,
     env = {
         "IS_SMOKE_TEST": "1",
+        "RAY_AIR_NEW_PERSISTENCE_MODE": "1",
     },
     main = "golden_notebook_tests/workloads/torch_tune_serve_test.py",
     tags = [

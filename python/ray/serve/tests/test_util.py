@@ -89,7 +89,7 @@ def decorated_f(*args):
     return "reached decorated_f"
 
 
-@ray.remote
+@serve.deployment
 class DecoratedActor:
     def __call__(self, *args):
         return "reached decorated_actor"
@@ -142,7 +142,7 @@ class TestGetDeploymentImportPath:
         )
 
     def test_get_import_path_nested_actor(self):
-        d = serve.deployment(name="actor")(DecoratedActor)
+        d = DecoratedActor.options(name="actor")
 
         # CI may change the parent path, so check only that the suffix matches.
         assert get_deployment_import_path(d).endswith(
