@@ -1068,6 +1068,14 @@ def setup_ray_cluster(
     )
 
     if num_worker_nodes == MAX_NUM_WORKER_NODES:
+        if autoscale:
+            raise ValueError(
+                "If you set autoscale=True, you cannot set `num_worker_nodes` to "
+                "`MAX_NUM_WORKER_NODES`, instead, you should set `num_worker_nodes` "
+                "to the number that represents the upper bound of the ray worker "
+                "nodes number."
+            )
+
         # num_worker_nodes=MAX_NUM_WORKER_NODES represents using all available
         # spark task slots
         num_worker_nodes = get_max_num_concurrent_tasks(spark.sparkContext, res_profile)
