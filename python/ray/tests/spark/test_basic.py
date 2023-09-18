@@ -11,7 +11,10 @@ import ray
 
 import ray.util.spark.cluster_init
 from ray.util.spark import setup_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES
-from ray.util.spark.utils import is_port_in_use
+from ray.util.spark.utils import (
+    is_port_in_use,
+    _calc_mem_per_ray_worker_node,
+)
 from pyspark.sql import SparkSession
 import time
 import logging
@@ -27,8 +30,17 @@ pytestmark = [
 ]
 
 
+_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES = 2000000000
+_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES = 10000000000
+
+
+def _setup_ray_on_spark_envs():
+    os.environ["RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES"] = str(_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES)
+    os.environ["RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES"] = str(_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES)
+
+
 def setup_module():
-    os.environ["RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES"] = "2000000000"
+    _setup_ray_on_spark_envs()
 
 
 @contextmanager
@@ -176,13 +188,11 @@ class RayOnSparkCPUClusterTestBase(ABC):
             assert not is_port_in_use(hostname, int(port))
 
     def test_autoscaling(self):
-        # TODO:
-        #  1. test ray task running a long time
-        #  2. test ray node with a long launching time
         for num_worker_nodes, num_cpus_worker_node in [
             (self.max_spark_tasks, self.num_cpus_per_spark_task),
             (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2),
         ]:
+            print(f"num_worker_nodes={num_worker_nodes}, num_cpus_worker_node={num_cpus_worker_node}")
             with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes,
                 num_cpus_worker_node=num_cpus_worker_node,
@@ -206,10 +216,21 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 assert results == [i * i for i in range(8)]
 
                 worker_res_list = self.get_ray_worker_resources_list()
+                mem_per_worker, object_store_mem_per_worker, _ = _calc_mem_per_ray_worker_node(
+                    num_task_slots=num_worker_nodes,
+                    physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
+                    shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                    configured_object_store_bytes=None,
+                )
+
                 assert len(worker_res_list) == num_worker_nodes and all(
                     worker_res_list[i]["CPU"] == num_cpus_worker_node
+                    # and worker_res_list[i]["memory"] == mem_per_worker
+                    # and worker_res_list[i]["object_store_memory"] == object_store_mem_per_worker
                     for i in range(num_worker_nodes)
                 )
+
+                print(f"==================\nmemory={worker_res_list[0]['memory']}, mem_per_worker={mem_per_worker}, objectstore-mem={worker_res_list[0]['object_store_memory']}, object_store_mem_per_worker={object_store_mem_per_worker}")
 
                 # Test scale down
                 for _ in range(60):

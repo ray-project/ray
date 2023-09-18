@@ -406,7 +406,7 @@ pyro-ppl==1.8.6
 pyro4==4.82
 pyrsistent==0.19.3
 pysocks==1.7.1
-pyspark==3.3.1
+pyspark==3.4.1
 pytest==7.0.1
 pytest-asyncio==0.16.0
 pytest-docker-tools==3.1.3

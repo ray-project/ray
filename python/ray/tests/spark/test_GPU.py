@@ -5,7 +5,11 @@ import time
 import functools
 from abc import ABC
 from pyspark.sql import SparkSession
-from ray.tests.spark.test_basic import RayOnSparkCPUClusterTestBase, _setup_ray_cluster
+from ray.tests.spark.test_basic import (
+    RayOnSparkCPUClusterTestBase,
+    _setup_ray_cluster,
+    _setup_ray_on_spark_envs,
+)
 
 import ray
 
@@ -19,7 +23,7 @@ pytestmark = [
 
 
 def setup_module():
-    os.environ["RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES"] = "2000000000"
+    _setup_ray_on_spark_envs()
 
 
 class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):

@@ -2,6 +2,7 @@ import sys
 import pytest
 import os
 from pyspark.sql import SparkSession
+from ray.tests.spark.test_basic import _setup_ray_on_spark_envs
 from ray.tests.spark.test_GPU import RayOnSparkGPUClusterTestBase
 
 pytestmark = [
@@ -14,7 +15,7 @@ pytestmark = [
 
 
 def setup_module():
-    os.environ["RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES"] = "2000000000"
+    _setup_ray_on_spark_envs()
 
 
 class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):
