@@ -26,9 +26,7 @@ RayConfig &RayConfig::instance() {
   return config;
 }
 
-RayConfig::RayConfig() {
-  initialize("");
-}
+RayConfig::RayConfig() { initialize(""); }
 
 void RayConfig::initialize(const std::string &config_list) {
 #define RAY_CONFIG(type, name, default_value) \
