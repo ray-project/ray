@@ -96,8 +96,11 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 self.max_spark_tasks // 2 + 1,
             ),  # Test case: requesting resources exceeding all cluster resources
         ]:
+            num_ray_task_slots = (
+                self.max_spark_tasks // (num_cpus_worker_node // self.num_cpus_per_spark_task)
+            )
             mem_per_worker, object_store_mem_per_worker, _ = _calc_mem_per_ray_worker_node(
-                num_task_slots=num_worker_nodes,
+                num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
                 configured_object_store_bytes=None,
@@ -202,6 +205,16 @@ class RayOnSparkCPUClusterTestBase(ABC):
             (self.max_spark_tasks, self.num_cpus_per_spark_task),
             (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2),
         ]:
+            num_ray_task_slots = (
+                self.max_spark_tasks // (num_cpus_worker_node // self.num_cpus_per_spark_task)
+            )
+            mem_per_worker, object_store_mem_per_worker, _ = _calc_mem_per_ray_worker_node(
+                num_task_slots=num_ray_task_slots,
+                physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
+                shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                configured_object_store_bytes=None,
+            )
+
             with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes,
                 num_cpus_worker_node=num_cpus_worker_node,
@@ -225,13 +238,6 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 assert results == [i * i for i in range(8)]
 
                 worker_res_list = self.get_ray_worker_resources_list()
-                mem_per_worker, object_store_mem_per_worker, _ = _calc_mem_per_ray_worker_node(
-                    num_task_slots=num_worker_nodes,
-                    physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
-                    shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
-                    configured_object_store_bytes=None,
-                )
-
                 assert len(worker_res_list) == num_worker_nodes and all(
                     worker_res_list[i]["CPU"] == num_cpus_worker_node
                     and worker_res_list[i]["memory"] == mem_per_worker
