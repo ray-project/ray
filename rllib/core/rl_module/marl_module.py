@@ -156,23 +156,6 @@ class MultiAgentRLModule(RLModule):
             self._check_module_exists(module_id)
         del self._rl_modules[module_id]
 
-    def foreach_module(
-        self, func: Callable[[RLModule, ModuleID, Optional[Any]], T], **kwargs
-    ) -> List[T]:
-        """Calls the given function with each (module, module_id).
-
-        Args:
-            func: The function to call with each (module, module_id) tuple.
-
-        Returns:
-            The lsit of return values of all calls to
-            `func([module, module_id, **kwargs])`.
-        """
-        return [
-            func(module, module_id, **kwargs)
-            for module_id, module in self._rl_modules.items()
-        ]
-
     def __getitem__(self, module_id: ModuleID) -> RLModule:
         """Returns the module with the given module ID.
 
