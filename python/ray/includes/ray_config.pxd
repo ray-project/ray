@@ -92,3 +92,7 @@ cdef extern from "ray/common/ray_config.h" nogil:
         int64_t grpc_client_keepalive_timeout_ms() const
 
         c_bool enable_autoscaler_v2() const
+
+        int64_t nums_py_gcs_reconnect_retry() const
+
+        int64_t py_gcs_connect_timeout_s() const

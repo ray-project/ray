@@ -2388,7 +2388,10 @@ cdef class GcsClient:
         object _nums_reconnect_retry
         CClusterID cluster_id
 
-    def __cinit__(self, address, nums_reconnect_retry=5, cluster_id=None):
+    def __cinit__(self, address,
+                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
+                  ),
+                  cluster_id=None):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
@@ -2399,7 +2402,7 @@ cdef class GcsClient:
         else:
             c_cluster_id = cluster_id
             self.cluster_id = CClusterID.FromHex(c_cluster_id)
-        self._connect(5)
+        self._connect(RayConfig.instance().py_gcs_connect_timeout_s())
 
     def _connect(self, timeout_s=None):
         cdef:
