@@ -36,4 +36,4 @@ urllib3 < 1.27
 
 # For the API docs
 fastapi==0.99.1
-grpc==1.54.2
+grpcio==1.54.2
