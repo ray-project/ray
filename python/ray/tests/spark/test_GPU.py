@@ -9,7 +9,10 @@ from ray.tests.spark.test_basic import (
     RayOnSparkCPUClusterTestBase,
     _setup_ray_cluster,
     _setup_ray_on_spark_envs,
+    _RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
+    _RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
 )
+from ray.util.spark.utils import _calc_mem_per_ray_worker_node
 
 import ray
 
@@ -87,6 +90,58 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                 assert sorted(merged_results) == list(
                     range(num_gpus_worker_node * num_worker_nodes)
                 )
+
+    def test_gpu_autoscaling(self):
+        for num_worker_nodes, num_cpus_worker_node, num_gpus_worker_node in [
+            (self.max_spark_tasks, self.num_cpus_per_spark_task, self.num_gpus_per_spark_task),
+            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2, self.num_gpus_per_spark_task * 2),
+        ]:
+            with _setup_ray_cluster(
+                num_worker_nodes=num_worker_nodes,
+                num_cpus_worker_node=num_cpus_worker_node,
+                num_gpus_worker_node=num_gpus_worker_node,
+                head_node_options={"include_dashboard": False},
+                autoscale=True,
+                autoscale_idle_timeout_minutes=0.1,
+            ):
+                ray.init()
+                worker_res_list = self.get_ray_worker_resources_list()
+                assert len(worker_res_list) == 0
+
+                @ray.remote(num_cpus=num_cpus_worker_node, num_gpus=num_gpus_worker_node)
+                def f(x):
+                    import time
+                    time.sleep(5)
+                    return x * x
+
+                # Test scale up
+                futures = [f.remote(i) for i in range(8)]
+                results = ray.get(futures)
+                assert results == [i * i for i in range(8)]
+
+                worker_res_list = self.get_ray_worker_resources_list()
+                mem_per_worker, object_store_mem_per_worker, _ = _calc_mem_per_ray_worker_node(
+                    num_task_slots=num_worker_nodes,
+                    physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
+                    shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                    configured_object_store_bytes=None,
+                )
+
+                assert len(worker_res_list) == num_worker_nodes and all(
+                    worker_res_list[i]["CPU"] == num_cpus_worker_node
+                    and worker_res_list[i]["GPU"] == num_gpus_worker_node
+                    and worker_res_list[i]["memory"] == mem_per_worker
+                    and worker_res_list[i]["object_store_memory"] == object_store_mem_per_worker
+                    for i in range(num_worker_nodes)
+                )
+
+                # Test scale down
+                for _ in range(60):
+                    time.sleep(1)
+                    if len(self.get_ray_worker_resources_list()) == 0:
+                        break
+                else:
+                    assert False, "Ray cluster scales down failed."
 
 
 class TestBasicSparkGPUCluster(RayOnSparkGPUClusterTestBase):

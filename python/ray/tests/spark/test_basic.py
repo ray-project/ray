@@ -96,6 +96,12 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 self.max_spark_tasks // 2 + 1,
             ),  # Test case: requesting resources exceeding all cluster resources
         ]:
+            mem_per_worker, object_store_mem_per_worker, _ = _calc_mem_per_ray_worker_node(
+                num_task_slots=num_worker_nodes,
+                physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
+                shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                configured_object_store_bytes=None,
+            )
             with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes_arg,
                 num_cpus_worker_node=num_cpus_worker_node,
@@ -105,7 +111,11 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_worker_nodes
                 for worker_res in worker_res_list:
-                    assert worker_res["CPU"] == num_cpus_worker_node
+                    assert (
+                        worker_res["CPU"] == num_cpus_worker_node
+                        and worker_res["memory"] == mem_per_worker
+                        and worker_res["object_store_memory"] == object_store_mem_per_worker
+                    )
 
     def test_public_api(self):
         try:
@@ -192,7 +202,6 @@ class RayOnSparkCPUClusterTestBase(ABC):
             (self.max_spark_tasks, self.num_cpus_per_spark_task),
             (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2),
         ]:
-            print(f"num_worker_nodes={num_worker_nodes}, num_cpus_worker_node={num_cpus_worker_node}")
             with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes,
                 num_cpus_worker_node=num_cpus_worker_node,
@@ -225,12 +234,10 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
                 assert len(worker_res_list) == num_worker_nodes and all(
                     worker_res_list[i]["CPU"] == num_cpus_worker_node
-                    # and worker_res_list[i]["memory"] == mem_per_worker
-                    # and worker_res_list[i]["object_store_memory"] == object_store_mem_per_worker
+                    and worker_res_list[i]["memory"] == mem_per_worker
+                    and worker_res_list[i]["object_store_memory"] == object_store_mem_per_worker
                     for i in range(num_worker_nodes)
                 )
-
-                print(f"==================\nmemory={worker_res_list[0]['memory']}, mem_per_worker={mem_per_worker}, objectstore-mem={worker_res_list[0]['object_store_memory']}, object_store_mem_per_worker={object_store_mem_per_worker}")
 
                 # Test scale down
                 for _ in range(60):
