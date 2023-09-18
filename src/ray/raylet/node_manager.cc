@@ -394,7 +394,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
 
   periodical_runner_.RunFnPeriodically(
       [this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); },
-      RayConfig::instance().worker_cap_initial_backoff_delay_ms());
+      RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
+      "NodeManager.ScheduleAndDispatchTasks");
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
@@ -421,7 +422,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   worker_pool_.SetRuntimeEnvAgentClient(runtime_env_agent_client_);
   worker_pool_.Start();
   periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
-                                       RayConfig::instance().task_failure_entry_ttl_ms());
+                                       RayConfig::instance().task_failure_entry_ttl_ms(),
+                                       "NodeManager.GCTaskFailureReason");
 }
 
 ray::Status NodeManager::RegisterGcs() {
