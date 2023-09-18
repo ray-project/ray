@@ -162,9 +162,9 @@ cdef class Config:
         return RayConfig.instance().enable_autoscaler_v2()
 
     @staticmethod
-    def nums_gcs_reconnect_retry():
-        return RayConfig.instance().nums_gcs_reconnect_retry()
+    def nums_py_gcs_reconnect_retry():
+        return RayConfig.instance().nums_py_gcs_reconnect_retry()
 
     @staticmethod
-    def gcs_connect_timeout_s():
-        return RayConfig.instance().gcs_connect_timeout_s()
+    def py_gcs_connect_timeout_s():
+        return RayConfig.instance().py_gcs_connect_timeout_s()
