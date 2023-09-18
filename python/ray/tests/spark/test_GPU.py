@@ -66,9 +66,19 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                 ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_worker_nodes
+
+                mem_per_worker, object_store_mem_per_worker, _ = _calc_mem_per_ray_worker_node(
+                    num_task_slots=num_worker_nodes,
+                    physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
+                    shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
+                    configured_object_store_bytes=None,
+                )
+
                 for worker_res in worker_res_list:
                     assert worker_res["CPU"] == num_cpus_worker_node
                     assert worker_res["GPU"] == num_gpus_worker_node
+                    assert worker_res["memory"] == mem_per_worker
+                    assert worker_res["object_store_memory"] == object_store_mem_per_worker
 
                 @ray.remote(
                     num_cpus=num_cpus_worker_node, num_gpus=num_gpus_worker_node
