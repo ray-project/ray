@@ -274,7 +274,7 @@ class WorkerSet:
                         mid,
                         m.config.observation_space,
                         m.config.action_space,
-                    )
+                    ),
                 )
             )
         else:

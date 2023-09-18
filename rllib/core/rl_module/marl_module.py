@@ -3,10 +3,8 @@ import pathlib
 import pprint
 from typing import (
     Any,
-    Callable,
     Dict,
     KeysView,
-    List,
     Mapping,
     Optional,
     Set,
@@ -31,7 +29,6 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
-from ray.rllib.utils.typing import T
 
 ModuleID = str
 

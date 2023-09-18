@@ -93,7 +93,12 @@ class PPOEnvRunner(EnvRunner):
         # If not execution details are provided, use self.config.
         if num_timesteps is None and num_episodes is None:
             if self.config.batch_mode == "truncate_episodes":
-                num_timesteps = self.config.get_rollout_fragment_length(worker_index=self.worker_index) * self.num_envs
+                num_timesteps = (
+                    self.config.get_rollout_fragment_length(
+                        worker_index=self.worker_index
+                    )
+                    * self.num_envs
+                )
             else:
                 num_episodes = self.num_envs
 
@@ -191,18 +196,14 @@ class PPOEnvRunner(EnvRunner):
                 # Explore or not.
                 if explore:
                     # TODO (simon) Implement this for MARL.
-                    fwd_out = self.module[DEFAULT_POLICY_ID].forward_exploration(
-                        batch
-                    )
+                    fwd_out = self.module[DEFAULT_POLICY_ID].forward_exploration(batch)
                     # `self.module` is a MARL module.
                     action_dist_cls = foreach_module(
                         self.module,
                         lambda m, mid: (mid, m.get_exploration_action_dist_cls()),
                     )
                 else:
-                    fwd_out = self.module[DEFAULT_POLICY_ID].forward_inference(
-                        batch
-                    )
+                    fwd_out = self.module[DEFAULT_POLICY_ID].forward_inference(batch)
                     # `self.module` is a MARL module.
                     action_dist_cls = foreach_module(
                         self.module,
@@ -216,9 +217,7 @@ class PPOEnvRunner(EnvRunner):
 
                 actions = action_dist.sample().numpy()
                 if STATE_OUT in fwd_out:
-                    states = tree.map_structure(
-                        lambda s: s.numpy(), fwd_out[STATE_OUT]
-                    )
+                    states = tree.map_structure(lambda s: s.numpy(), fwd_out[STATE_OUT])
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
@@ -258,7 +257,7 @@ class PPOEnvRunner(EnvRunner):
                     self._episodes[i].add_timestep(
                         obs[i],
                         actions[i],
-                        rewards[i],                        
+                        rewards[i],
                         state=s,
                     )
 
@@ -325,7 +324,7 @@ class PPOEnvRunner(EnvRunner):
                     }
 
                     if explore:
-                         # TODO (simon) Implement this for MARL.
+                        # TODO (simon) Implement this for MARL.
                         fwd_out = self.module[DEFAULT_POLICY_ID].forward_exploration(
                             batch
                         )
@@ -335,7 +334,7 @@ class PPOEnvRunner(EnvRunner):
                             lambda m, mid: (mid, m.get_exploration_action_dist_cls()),
                         )
                     else:
-                         # TODO (simon) Implement this for MARL.
+                        # TODO (simon) Implement this for MARL.
                         fwd_out = self.module[DEFAULT_POLICY_ID].forward_inference(
                             batch
                         )
@@ -345,12 +344,18 @@ class PPOEnvRunner(EnvRunner):
                             lambda m, mid: (mid, m.get_inference_action_dist_cls()),
                         )
 
-                    action_dist_cls = {mid: dist_cls for mid, dist_cls in action_dist_cls}
-                    action_dist = action_dist_cls[DEFAULT_POLICY_ID].from_logits(fwd_out[SampleBatch.ACTION_DIST_INPUTS])
+                    action_dist_cls = {
+                        mid: dist_cls for mid, dist_cls in action_dist_cls
+                    }
+                    action_dist = action_dist_cls[DEFAULT_POLICY_ID].from_logits(
+                        fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                    )
                     actions = action_dist.sample().numpy()
 
                     if STATE_OUT in fwd_out:
-                        states = tree.map_structure(lambda s: s.numpy(), fwd_out[STATE_OUT])
+                        states = tree.map_structure(
+                            lambda s: s.numpy(), fwd_out[STATE_OUT]
+                        )
 
                 obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
                 if with_render_data:
