@@ -1,9 +1,4 @@
 import pytest
-import sys
-import unittest
-
-import ray
-from ray.rllib import _register_all
 
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.search.repeater import Repeater
