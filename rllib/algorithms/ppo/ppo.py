@@ -34,7 +34,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import concat_samples, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -444,16 +444,35 @@ class PPO(Algorithm):
 
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
-            if self.config.count_steps_by == "agent_steps":
-                train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers,
-                    max_agent_steps=self.config.train_batch_size,
-                )
-            else:
-                train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers, max_env_steps=self.config.train_batch_size
-                )
+            train_samples = self.workers.foreach_worker(lambda w: w.sample())
+            # if self.config.count_steps_by == "agent_steps":
+            #     train_batch = synchronous_parallel_sample(
+            #         worker_set=self.workers,
+            #         max_agent_steps=self.config.train_batch_size,
+            #     )
+            # else:
+            #     train_batch = synchronous_parallel_sample(
+            #         worker_set=self.workers, max_env_steps=self.config.train_batch_size
+            #     )
+            train_batches = []
+            for sample in train_samples:
+                # Each sample contains two lists: completed episodes and truncated 
+                # episodes. 
+                # Convert completed episodes to `SampleBatch`es.
+                for episode in sample[0]:
+                    train_batches.append(episode.to_sample_batch())
+                # Convert truncated episodes to `SampleBatch`es. Here we have to 
+                # convert data to numpy arrays, because the `_Episode.validate()`
+                # function does it for completed episodes and data must be shaped
+                # equally to concatenate `SampleBatch`es.
+                for episode in sample[1]:
+                    episode.observations = np.array(episode.observations)
+                    episode.actions = np.array(episode.actions)
+                    episode.rewards = np.array(episode.rewards)
+                    episode.render_images = np.array(episode.render_images, dtype=np.uint8)
+                    train_batches.append(episode.to_sample_batch())
 
+        train_batch = concat_samples(train_batches)
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
@@ -467,7 +486,10 @@ class PPO(Algorithm):
             # TODO (Kourosh) Do this inside the Learner so that we don't have to do
             #  this back and forth communication between driver and the remote
             #  learner actors.
-            is_module_trainable = self.workers.local_worker().is_policy_to_train
+            # TODO (sven): What's the plan for multi-agent setups when the 
+            # policy is gone?
+            is_module_trainable = lambda mid, batch: True
+            # is_module_trainable = self.workers.local_worker().is_policy_to_train
             self.learner_group.set_is_module_trainable(is_module_trainable)
             train_results = self.learner_group.update(
                 train_batch,
