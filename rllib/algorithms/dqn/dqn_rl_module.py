@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Type
+from typing import Type
 
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.specs.typing import SpecType
@@ -20,15 +20,7 @@ class DQNRLModule(RLModule, abc.ABC):
 
         # Build target network as a copy of the q network.
         self.target_encoder = catalog.build_encoder(framework=self.framework)
-        # TODO (simon): This is TF specific. See, if this can be made
-        # framework agnostic or needs to move into the framework modules.
-        for q_var, target_var in zip(self.q_encoder, self.target_encoder):
-            target_var.assign(q_var)
         self.target = catalog.build_q_head(framework=self.framework)
-        # TODO (simon): This is TF specific. See, if this can be made
-        # framework agnostic or needs to move into the framework modules.
-        for q_var, target_var in zip(self.q, self.target):
-            target_var.assign(q_var)
         # We do not want to train this network.
         self.target_encoder.trainable = False
         self.target.trainable = False
@@ -54,11 +46,12 @@ class DQNRLModule(RLModule, abc.ABC):
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecType:
+        # TODO (simon): For RNN it needs the state.
         return self.input_specs_exploration()
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecType:
-        return [SampleBatch.ACTIONS]
+        return self.output_specs_exploration()
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
@@ -66,4 +59,13 @@ class DQNRLModule(RLModule, abc.ABC):
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        pass
+        return [SampleBatch.ACTIONS]
+
+    @override(RLModule)
+    def input_specs_train(self) -> SpecType:
+        return self.input_specs_exploration()
+
+    @override(RLModule)
+    def output_specs_train(self) -> SpecType:
+        # TODO (simon): Here it needs the q values.
+        return [SampleBatch.ACTIONS]
