@@ -483,7 +483,7 @@ class Dataset:
                 entire blocks as batches (blocks may contain different numbers of rows).
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
-                to a given map task. Default batch_size is 4096 with "default".
+                to a given map task. Default batch_size is 1024 with "default".
             compute: Either "tasks" (default) to use Ray Tasks or an
                 :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
