@@ -1,0 +1,19 @@
+# Cartpole-v0 with REDQ. Solve the problem within 50k samples
+cartpole-redq:
+    env: CartPole-v0
+    run: REDQ
+    stop:
+        timesteps_total: 50000
+    config:
+        framework: torch
+        gamma: 0.99
+        tau: 0.005
+        train_batch_size: 32
+        target_network_update_freq: 1
+        num_steps_sampled_before_learning_starts: 500
+        ensemble_size: 4
+        q_fcn_aggregator: min
+        optimization:
+          actor_learning_rate: 0.005
+          critic_learning_rate: 0.005
+          entropy_learning_rate: 0.0005
