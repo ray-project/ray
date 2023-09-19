@@ -29,16 +29,16 @@ pip install -e '.[development]'
 ## Usage
 
 
-For the discrete REDQ implementation use [CartPole-v0 Example](examples/test_cartpole.py) and run
+For the discrete REDQ implementation use [CartPole-v0 Example](examples/run_cartpole.py) and run
 
 ```bash
 cd examples
-python test_cartpole.py
+python run_cartpole.py
 ```
 
-For the continuous REDQ implementation use [Pendulum-v1 Example](examples/test_cartpole.py) and run
+For the continuous REDQ implementation use [Pendulum-v1 Example](examples/run_pendulum.py) and run
 
 ```bash
 cd examples
-python test_pendulum.py
+python run_pendulum.py
 ```

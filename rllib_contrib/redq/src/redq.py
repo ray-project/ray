@@ -94,7 +94,7 @@ class REDQConfig(SACConfig):
 
 
 class REDQ(DQN):
-    "A REDQ implementation based on SAC."
+    """A REDQ implementation based on SAC."""
 
     def __init__(self, *args, **kwargs):
         self._allow_unknown_subkeys += ["policy_model_config", "q_model_config"]

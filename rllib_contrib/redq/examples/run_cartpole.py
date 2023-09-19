@@ -1,17 +1,11 @@
 import pprint
 
-import yaml
 from redq import REDQ
 
 import ray
 from ray import air, tune
 
 if __name__ == "__main__":
-
-    config_file_path = "tuned_examples/cartpole-redq.yaml"
-    with open(config_file_path, "r") as file:
-        config_file = yaml.safe_load(file)
-        config_file = [*config_file.values()][0]
 
     max_concurrent_trials, num_samples, num_gpus = 1, 1, 1
     ray.init(num_gpus=num_gpus)

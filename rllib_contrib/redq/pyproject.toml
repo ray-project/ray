@@ -15,4 +15,4 @@ requires-python = ">=3.7, <=3.10"
 dependencies = ["gym[accept-rom-license]", "gymnasium[accept-rom-license, atari]==0.28.1", "ray[rllib]==2.7.0"]
 
 [project.optional-dependencies]
-development = ["pytest>=7.2.2", "pre-commit==2.21.0", "torch==1.13.1"]
+development = ["pytest>=7.2.2", "torch==1.13.1"]
