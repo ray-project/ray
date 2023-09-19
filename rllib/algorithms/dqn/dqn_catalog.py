@@ -1,10 +1,10 @@
 # __sphinx_doc_begin__
 import gymnasium as gym
 
-from ray.rllib.core.models.base import ActorCriticEncoder, Encoder, Model
+from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import MLPHeadConfig
-from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 
 class DQNCatalog(Catalog):
@@ -25,9 +25,7 @@ class DQNCatalog(Catalog):
         )
 
         self.q_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
-        self.q_head_activation = self._model_config_dict[
-            "post_fcnet_activation"
-        ]
+        self.q_head_activation = self._model_config_dict["post_fcnet_activation"]
 
         # For the q function we know the number of output nodes to be the number of
         # possible actions in the action space.
@@ -44,5 +42,6 @@ class DQNCatalog(Catalog):
         """Builds the Q function head."""
 
         return self.q_and_target_head_config.build(framework=framework)
+
 
 # __sphinx_doc_end__

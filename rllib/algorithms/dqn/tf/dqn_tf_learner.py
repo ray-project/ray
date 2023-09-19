@@ -19,5 +19,5 @@ class DQNTfLearner(TfLearner):
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
-        
+
         pass

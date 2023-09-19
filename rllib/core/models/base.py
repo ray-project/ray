@@ -432,6 +432,7 @@ class StatefulActorCriticEncoder(Encoder):
 
         return outputs
 
+
 @DeveloperAPI
 def tokenize(tokenizer: Encoder, inputs: dict, framework: str) -> dict:
     """Tokenizes the observations from the input dict.

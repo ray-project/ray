@@ -10,6 +10,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 
 _, tf, _ = try_import_tf()
 
+
 class DQNTfRLModule(TfRLModule, DQNRLModule):
     @override
     def setup(self) -> None:
@@ -56,13 +57,14 @@ class DQNTfRLModule(TfRLModule, DQNRLModule):
         random_actions = tf.squeeze(tf.random.categorical(q_outs, 1))
         B = tf.shape(q_outs)
         randomize = (
-            tf.random.uniform(tf.stack([B]), minval=0.0, maxval=1.0, dtype=tf.float32) < epsilon
+            tf.random.uniform(tf.stack([B]), minval=0.0, maxval=1.0, dtype=tf.float32)
+            < epsilon
         )
         actions = tf.where(randomize, random_actions, exploitation_actions)
         output[SampleBatch.ACTIONS] = actions
 
         return output
-    
+
     @override(TfRLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
@@ -75,16 +77,18 @@ class DQNTfRLModule(TfRLModule, DQNRLModule):
 
         # TODO (simon): Either override the `Encoder` for the target
         # or override the `input_specs_train` for the `target_encoder`
-        # to accept the `SampleBatch.NEXT_OBS` instead of the 
+        # to accept the `SampleBatch.NEXT_OBS` instead of the
         # `SampleBatch.OBS`.
 
+        output["q_values"] = q_outs
+        return output
 
-    # TODO (kourosh, avnish): I see that there is an 
+    # TODO (kourosh, avnish): I see that there is an
     # 'RLModuleWIthTargetNetworksInterface`. That one calls in the `Learner`
-    # the get_target_network_pairs and updates the weights of the target 
-    # inside the learner. 
+    # the get_target_network_pairs and updates the weights of the target
+    # inside the learner.
     # This here could be called in the learner and contains already the
-    # framwork-specific logic how to do it. What's your opinion on it? 
+    # framwork-specific logic how to do it. What's your opinion on it?
     def update_target_network(self):
         """Updates (framework-specifically) the weights of the target network."""
         self.target_encoder.set_weights(self.q_encoder.get_weigths())
