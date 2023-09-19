@@ -13,11 +13,26 @@ class DQNRLModule(RLModule, abc.ABC):
     def setup(self):
         catalog: Catalog = self.config.get_catalog()
 
-        # Build models from catalog.
-        self.encoder = catalog.build_q_and_target_encoder(framework=self.framework)
+        # Build q network.
+        self.q_encoder = catalog.build_encoder(framework=self.framework)
         self.q = catalog.build_q_head(framework=self.framework)
-        self.target = catalog.build_target_head(framework=self.framework)
 
+        # Build target network as a copy of the q network.
+        self.target_encoder = catalog.build_encoder(framework=self.framework)
+        # TODO (simon): This is TF specific. See, if this can be made 
+        # framework agnostic or needs to move into the framework modules.
+        for q_var, target_var in zip(self.q_encoder, self.target_encoder):
+            target_var.assign(q_var)
+        self.target = catalog.build_q_head(framework=self.framework)
+        # TODO (simon): This is TF specific. See, if this can be made 
+        # framework agnostic or needs to move into the framework modules.
+        for q_var, target_var in zip(self.q, self.target):
+            target_var.assign(q_var)
+        # We do not want to train this network.
+        self.target_encoder.trainable = False
+        self.target.trainable = False
+        
+        # Get action distribution class.
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
 
     def get_train_action_cls(self) -> Type[Distribution]:
