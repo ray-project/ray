@@ -52,7 +52,7 @@ Analyze your results on TensorBoard by starting TensorBoard on the remote head m
     ray exec tune-default.yaml 'tensorboard --logdir=~/ray_results/ --port 6006' --port-forward 6006
 
 
-Note that you can customize the directory of results by specifying: ``air.RunConfig(storage_path=..)``, taken in by ``Tuner``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
+Note that you can customize the directory of results by specifying: ``RunConfig(storage_path=..)``, taken in by ``Tuner``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
 
 
 Running a Distributed Tune Experiment
@@ -102,7 +102,7 @@ Storage Options in a Distributed Tune Run
 
 In a distributed experiment, you should try to use :ref:`cloud checkpointing <tune-cloud-checkpointing>` to
 reduce synchronization overhead. For this, you just have to specify a remote ``storage_path`` in the
-:class:`air.RunConfig <ray.air.RunConfig>`.
+:class:`RunConfig <ray.train.RunConfig>`.
 
 `my_trainable` is a user-defined :ref:`Tune Trainable <tune_60_seconds_trainables>` in the following example:
 
@@ -212,7 +212,7 @@ To summarize, here are the commands to run:
 
 You should see Tune eventually continue the trials on a different worker node. See the :ref:`Fault Tolerance <tune-fault-tol>` section for more details.
 
-You can also specify ``storage_path=...``, as part of ``air.RunConfig``, which is taken in by ``Tuner``, to upload results to cloud storage like S3, allowing you to persist results in case you want to start and stop your cluster automatically.
+You can also specify ``storage_path=...``, as part of ``RunConfig``, which is taken in by ``Tuner``, to upload results to cloud storage like S3, allowing you to persist results in case you want to start and stop your cluster automatically.
 
 .. _tune-fault-tol:
 
@@ -254,7 +254,7 @@ Below are some commonly used commands for submitting experiments. Please see the
 
     # Start a cluster and run an experiment in a detached tmux session,
     # and shut down the cluster as soon as the experiment completes.
-    # In `tune_experiment.py`, set `air.RunConfig(storage_path="s3://...")`
+    # In `tune_experiment.py`, set `RunConfig(storage_path="s3://...")`
     # to persist results
     $ ray submit CLUSTER.YAML --tmux --start --stop tune_experiment.py -- --address=localhost:6379
 
