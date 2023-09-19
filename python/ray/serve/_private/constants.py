@@ -108,7 +108,7 @@ PROXY_HEALTH_CHECK_PERIOD_S = (
     float(os.environ.get("RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S", "10")) or 10
 )
 PROXY_READY_CHECK_TIMEOUT_S = (
-    float(os.environ.get("RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", "5")) or 5
+    float(os.environ.get("RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", "60")) or 60
 )
 
 #: Number of times in a row that a HTTP proxy must fail the health check before
