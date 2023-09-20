@@ -375,6 +375,7 @@ class DatasetStatsSummary:
             out.
             include_parent: If true, also include parent stats summary; otherwise, only
             log stats of the latest stage.
+            add_global_stats: If true, includes global stats to this summary.
         Returns:
             String with summary statistics for executing the Dataset.
         """

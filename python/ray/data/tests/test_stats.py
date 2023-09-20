@@ -1333,6 +1333,16 @@ Dataset memory:
     # Around 100MB should be spilled (200MB - 100MB)
     assert ds._plan.stats().dataset_bytes_spilled > 100e6
 
+    ds = (
+        ray.data.range_tensor(1000, shape=(80, 80, 4), parallelism=100)
+        .map_batches(lambda x: x)
+        .limit(1000)
+        .map_batches(lambda x: x)
+        .materialize()
+    )
+    # two map_batches operators, twice the spillage
+    assert ds._plan.stats().dataset_bytes_spilled > 200e6
+
 
 if __name__ == "__main__":
     import sys
