@@ -3,11 +3,14 @@ from asyncio.events import AbstractEventLoop
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
+from functools import wraps
 import logging
 import os
 import random
+import sys
 from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
 from ray._private.utils import get_or_create_event_loop
+from ray.util import metrics
 
 from ray.serve._private.common import ReplicaName
 from ray.serve.generated.serve_pb2 import (
@@ -193,6 +196,7 @@ class LongPollHost:
         listen_for_change_request_timeout_s: Tuple[
             int, int
         ] = LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S,
+        long_poll_host_name_metrics_tag: str = "",
     ):
         # Map object_key -> int
         self.snapshot_ids: DefaultDict[KeyType, int] = defaultdict(
@@ -206,6 +210,11 @@ class LongPollHost:
         )
 
         self._listen_for_change_request_timeout_s = listen_for_change_request_timeout_s
+        self.bytes_sent_counter = metrics.Counter(
+            "serve_long_poll_host_bytes_sent",
+            description="The number of bytes sent by the long poll host.",
+            tag_keys=("long_poll_host_name",),
+        ).set_default_tags({"long_poll_host_name": long_poll_host_name_metrics_tag})
 
     def _get_num_notifier_events(self, key: Optional[KeyType] = None):
         """Used for testing."""
@@ -214,6 +223,22 @@ class LongPollHost:
         else:
             return sum(len(events) for events in self.notifier_events.values())
 
+    async def count_bytes_returned(listen_for_change_func):
+        """Decorator that counts the bytes returned by listen_for_change().
+
+        Increments the ray_serve_long_poll_host_bytes_sent counter by the
+        number of bytes returned.
+        """
+
+        @wraps
+        async def count_bytes(self, *args, **kwargs):
+            objects = await listen_for_change_func(self, *args, **kwargs)
+            self.bytes_sent_counter.inc(value=sys.getsizeof(objects))
+            return objects
+
+        return count_bytes
+
+    @count_bytes_returned
     async def listen_for_change(
         self,
         keys_to_snapshot_ids: Dict[KeyType, int],
