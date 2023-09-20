@@ -71,7 +71,7 @@ Before we start, you will need to install some Python dependencies as follows:
 
                 $ pip install -U "ray[default]" "git+https://github.com/vmware/vsphere-automation-sdk-python.git"
 
-            vSphere Cluster Launcher Maintainers (GitHub handles): @vinodkri, @LaynePeng
+            vSphere Cluster Launcher Maintainers (GitHub handles): @LaynePeng, @roshankathawate, @JingChen23
 
 
 Next, if you're not set up to use your cloud provider from the command line, you'll have to configure your credentials:
