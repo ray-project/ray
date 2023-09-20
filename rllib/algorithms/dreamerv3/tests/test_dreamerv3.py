@@ -66,7 +66,7 @@ class TestDreamerV3(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config, frameworks="tf2"):
-            for env in ["FrozenLake-v1", "CartPole-v1", "ALE/MsPacman-v5"]:
+            for env in ["Pendulum-v1", "FrozenLake-v1", "CartPole-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 # Add one-hot observations for FrozenLake env.
                 if env == "FrozenLake-v1":
@@ -98,12 +98,17 @@ class TestDreamerV3(unittest.TestCase):
                     timesteps_burn_in=5,
                     timesteps_H=45,
                     observations=sample["obs"][:1],  # B=1
-                    actions=one_hot(sample["actions"], depth=act_space.n,)[
-                        :1
-                    ],  # B=1
+                    actions=(
+                        one_hot(sample["actions"], depth=act_space.n,)
+                        if isinstance(act_space, gym.spaces.Discrete)
+                        else sample["actions"]
+                    )[:1],  # B=1
                 )
                 self.assertTrue(
-                    dream["actions_dreamed_t0_to_H_BxT"].shape == (46, 1, act_space.n)
+                    dream["actions_dreamed_t0_to_H_BxT"].shape == (46, 1) + (
+                        (act_space.n,) if isinstance(act_space, gym.spaces.Discrete)
+                        else tuple(act_space.shape)
+                    )
                 )
                 self.assertTrue(dream["continues_dreamed_t0_to_H_BxT"].shape == (46, 1))
                 self.assertTrue(
@@ -114,8 +119,6 @@ class TestDreamerV3(unittest.TestCase):
 
     def test_dreamerv3_dreamer_model_sizes(self):
         """Tests, whether the different model sizes match the ones reported in [1]."""
-
-        return True  # disable for now
 
         # For Atari, these are the exact numbers from the repo ([3]).
         # However, for CartPole + size "S" and "M", the author's original code will not
