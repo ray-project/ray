@@ -2,9 +2,8 @@ import pickle
 from typing import Generator
 from unittest.mock import MagicMock
 
-import pytest
-
 import grpc
+import pytest
 
 from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.proxy_request_response import (

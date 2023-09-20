@@ -11,9 +11,8 @@ from typing import Callable, Dict
 import aiohttp
 import numpy as np
 import pandas as pd
-from starlette.requests import Request
-
 from grpc import aio
+from starlette.requests import Request
 
 import ray
 from ray import serve

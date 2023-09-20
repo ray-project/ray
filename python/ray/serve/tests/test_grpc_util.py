@@ -1,9 +1,8 @@
 from typing import Callable
 
+import grpc
 import pytest
 from google.protobuf.any_pb2 import Any as AnyProto
-
-import grpc
 
 from ray.serve._private.grpc_util import (
     DummyServicer,

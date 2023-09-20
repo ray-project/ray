@@ -4,9 +4,8 @@ import sys
 from typing import AsyncGenerator
 from unittest.mock import ANY, MagicMock, patch
 
-import pytest
-
 import grpc
+import pytest
 
 import ray
 from ray import serve

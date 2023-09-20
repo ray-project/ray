@@ -3,11 +3,10 @@ from functools import partial
 from multiprocessing import Pool
 from typing import DefaultDict, Dict, List
 
+import grpc
 import pytest
 import requests
 from fastapi import FastAPI
-
-import grpc
 
 import ray
 import ray.util.state as state_api
