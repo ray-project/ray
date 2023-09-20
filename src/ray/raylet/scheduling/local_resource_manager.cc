@@ -349,15 +349,14 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
       if (iter.first.index() == 0) {
         switch (std::get<WorkFootprint>(iter.first)) {
         case WorkFootprint::NODE_WORKERS:
-          node_activity << "Node currently has leased workers." << std::endl;
+          node_activity << " Node currently has leased workers." << std::endl;
           break;
         default:
           UNREACHABLE;
         }
         // If it is a ResourceID
       } else {
-        node_activity << "Resource: "
-                      << StringIdMap().Get(std::get<ResourceID>(iter.first).ToInt())
+        node_activity << " Resource: " << std::get<ResourceID>(iter.first).Binary()
                       << " is currently in use." << std::endl;
       }
     }

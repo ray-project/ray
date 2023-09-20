@@ -791,10 +791,31 @@ def format_info_string(
             header += "Autoscaler iteration time: " f"{autoscaler_update_time:3f}s\n"
 
     available_node_report_lines = []
-    for node_type, count in autoscaler_summary.active_nodes.items():
-        line = f" {count} {node_type}"
-        available_node_report_lines.append(line)
-    available_node_report = "\n".join(available_node_report_lines)
+    if not autoscaler_summary.active_nodes:
+        available_node_report = " (no active nodes)"
+    else:
+        for node_type, count in autoscaler_summary.active_nodes.items():
+            line = f" {count} {node_type}"
+            available_node_report_lines.append(line)
+        available_node_report = "\n".join(available_node_report_lines)
+
+    if not autoscaler_summary.idle_nodes:
+        idle_node_report = " (no idle nodes)"
+    else:
+        idle_node_report_lines = []
+        for node_type, count in autoscaler_summary.idle_nodes.items():
+            line = f" {count} {node_type}"
+            idle_node_report_lines.append(line)
+        idle_node_report = "\n".join(idle_node_report_lines)
+
+    if not autoscaler_summary.node_activity:
+        activity_report = "(no activity)"
+    else:
+        activity_report_lines = []
+        for node_ip, node_type, reason in autoscaler_summary.node_activity:
+            activity_report_lines.append(f"Node: {node_ip} ({node_type})")
+            activity_report_lines.append(f"{reason}\n")
+        activity_report = "\n".join(activity_report_lines)
 
     pending_lines = []
     for node_type, count in autoscaler_summary.pending_launches.items():
@@ -846,12 +867,18 @@ def format_info_string(
 
     usage_report = get_usage_report(lm_summary, verbose)
     demand_report = get_demand_report(lm_summary)
-
     formatted_output = f"""{header}
 Node status
 {separator}
-Healthy:
-{available_node_report}
+Active:
+{available_node_report}"""
+
+    if not autoscaler_summary.legacy:
+        formatted_output += f"""
+Idle:
+{idle_node_report}"""
+
+    formatted_output += f"""
 Pending:
 {pending_report}
 {failure_report}
@@ -863,10 +890,19 @@ Resources
 {"Total " if verbose else ""}Demands:
 {demand_report}"""
 
-    if verbose and lm_summary.usage_by_node:
-        formatted_output += get_per_node_breakdown(
-            lm_summary, autoscaler_summary.node_type_mapping, verbose
-        )
+    if verbose:
+        if lm_summary.usage_by_node:
+            formatted_output += get_per_node_breakdown(
+                lm_summary, autoscaler_summary.node_type_mapping, verbose
+            )
+        else:
+            formatted_output += "\n"
+
+        if not autoscaler_summary.legacy:
+            formatted_output += f"""
+Node Activity
+{separator}
+{activity_report}"""
 
     return formatted_output.strip()
 

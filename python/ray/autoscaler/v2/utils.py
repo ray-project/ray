@@ -104,7 +104,7 @@ class ClusterStatusFormatter:
 
         # From IP to node type name.
         node_type_mapping = {}
-        for node in data.healthy_nodes:
+        for node in chain(data.active_nodes, data.idle_nodes):
             node_type_mapping[node.ip_address] = node.ray_node_type_name
 
         # Transform failed launches to node_availability_summary
@@ -126,6 +126,11 @@ class ClusterStatusFormatter:
             node_availabilities=node_availabilities
         )
 
+        node_activity = [
+            (node.node_ip, node.ray_node_type_name, node.node_activity)
+            for node in data.active_nodes
+        ]
+
         return AutoscalerSummary(
             active_nodes=active_nodes,
             idle_nodes=idle_nodes,
@@ -135,6 +140,7 @@ class ClusterStatusFormatter:
             pending_resources={},  # NOTE: This is not used in ray status.
             node_type_mapping=node_type_mapping,
             node_availability_summary=node_availabilities,
+            node_activity=node_activity,
         )
 
     @classmethod
@@ -547,7 +553,6 @@ def is_autoscaler_v2() -> bool:
         # While this short-circuit may allow client-server inconsistency
         # (e.g. client running v1, while server running v2), it's currently
         # not possible with existing use-cases.
-        print("vct yes @@@@")
         return True
 
     global cached_is_autoscaler_v2
