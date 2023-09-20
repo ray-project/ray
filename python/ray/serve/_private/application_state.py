@@ -371,9 +371,7 @@ class ApplicationState:
             self._set_target_state_deployment_infos(None)
 
             # Kick off new build app task
-            logger.info(
-                f"Starting build_serve_application task for application '{self._name}'."
-            )
+            logger.info(f"Building application '{self._name}'.")
             build_app_obj_ref = build_serve_application.options(
                 runtime_env=self._target_state.config.runtime_env
             ).remote(
