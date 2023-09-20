@@ -7,10 +7,19 @@ import ray
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_execution_optimizer import _check_usage_record
 
+# To run tests locally, make sure you install mongodb
+# and start a local service:
+# sudo apt-get install -y mongodb
+# sudo service mongodb start
+
 
 # RayDP tests require Ray Java. Make sure ray jar is built before running this test.
 @pytest.fixture(scope="function")
 def spark(request):
+    # This test has only been tested for the following versions:
+    pytest.importorskip("pyarrow", minversion="12.0.0")
+    pytest.importorskip("pymongoarrow", minversion="1.0.0")
+
     ray.init(num_cpus=2, include_dashboard=False)
     spark_session = raydp.init_spark("test", 1, 1, "500M")
 
