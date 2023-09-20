@@ -46,11 +46,11 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name databbuild
-        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
+        --build-name data12build
+        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=0
         --except-tags data_integration,doctest
-    depends_on: databbuild
-    job_env: databbuild
+    depends_on: data12build
+    job_env: data12build
 
   - label: ":database: data: flaky tests"
     instance_type: medium
