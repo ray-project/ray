@@ -3,4 +3,4 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 
 
 class BCTorchRLModule(TorchRLModule, BCRLModule):
-    framework: str = "torch"
+    pass

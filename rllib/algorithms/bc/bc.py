@@ -144,6 +144,13 @@ class BC(MARWIL):
             return super().training_step()
         else:
             # Implement logic using RLModule and Learner API.
+            # TODO (sven): Remove RolloutWorkers/EnvRunners for
+            # datasets. Use RolloutWorker/EnvRunner only for
+            # env stepping.
+            # TODO (simon): Take care of sampler metrics: right
+            # now all rewards are `nan`, which possibly confuses
+            # the user that sth. is not right, although it is as
+            # we do not step the env.
             with self._timers[SAMPLE_TIMER]:
                 # Sampling from offline data.
                 if self.config.count_steps_by == "agent_steps":
@@ -183,8 +190,8 @@ class BC(MARWIL):
                         policies=policies_to_update,
                         global_vars=global_vars,
                     )
+                # Get weights from Learner to local worker.
                 else:
-                    # Get weights from Learner to local worker.
                     self.workers.local_worker().set_weights(
                         self.learner_group.get_weights()
                     )

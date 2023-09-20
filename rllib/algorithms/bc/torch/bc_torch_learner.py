@@ -30,10 +30,16 @@ class BCTorchLearner(TorchLearner):
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
+        # In the RNN case, we expect incoming tensors to be padded to the maximum
+        # sequence length. We infer the max sequence length from the actions
+        # tensor.
+        # TODO (sven): Unify format requirement and handling thereof.
+        # - If an episode ends in the middle of a row, insert an initial state
+        #  instead of zero-padding.
+        # - New field in the batch dict "is_first" (shape=(B, T)) indicates at
+        #  which positions to insert these initial states.
+        # This removes special reduction and only needs torch.mean().
         if self.module[module_id].is_stateful():
-            # In the RNN case, we expect incoming tensors to be padded to the maximum
-            # sequence length. We infer the max sequence length from the actions
-            # tensor.
             maxlen = torch.max(batch[SampleBatch.SEQ_LENS])
             mask = sequence_mask(batch[SampleBatch.SEQ_LENS], maxlen=maxlen)
             num_valid = torch.sum(mask)
@@ -41,8 +47,8 @@ class BCTorchLearner(TorchLearner):
             def possibly_masked_mean(t):
                 return torch.sum(t[mask]) / num_valid
 
+        # non-RNN case: use simple mean.
         else:
-            # non-RNN case: use simple mean.
             mask = None
             possibly_masked_mean = torch.mean
 

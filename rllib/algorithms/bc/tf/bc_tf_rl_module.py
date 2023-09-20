@@ -3,4 +3,4 @@ from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 
 
 class BCTfRLModule(TfRLModule, BCRLModule):
-    framework: str = "tf2"
+    pass

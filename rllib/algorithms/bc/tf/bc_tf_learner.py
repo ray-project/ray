@@ -32,18 +32,24 @@ class BCTfLearner(TfLearner):
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
+        # In the RNN case, we expect incoming tensors to be padded to the maximum
+        # sequence length. We infer the max sequence length from the actions
+        # tensor.
+        # TODO (sven): Unify format requirement and handling thereof.
+        # - If an episode ends in the middle of a row, insert an initial state
+        #  instead of zero-padding.
+        # - New field in the batch dict "is_first" (shape=(B, T)) indicates at
+        #  which positions to insert these initial states.
+        # This removes special reduction and only needs tf.reduce_mean().
         if self.module[module_id].is_stateful():
-            # In the RNN case, we expect incoming tensors to be padded to the maximum
-            # sequence length. We infer the max sequence length from the actions
-            # tensor.
             maxlen = tf.math.reduce_max(batch[SampleBatch.SEQ_LENS])
             mask = tf.sequence_mask(batch[SampleBatch.SEQ_LENS], maxlen)
 
             def possibly_masked_mean(t):
                 return tf.reduce_mean(tf.boolean_mask(t, mask))
 
+        # non-RNN case: use simple mean.
         else:
-            # non-RNN case: use simple mean.
             possibly_masked_mean = tf.reduce_mean
 
         action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
