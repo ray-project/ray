@@ -197,7 +197,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
 
     if protocol in Protocol.remote_protocols():
         if pkg_uri.endswith(".whl"):
-            # .whl file name has a format as explained in
+            # Don't modify the .whl filename. See
             # https://peps.python.org/pep-0427/#file-name-convention
             # so don't modify
             package_name = pkg_uri.split("/")[-1]
