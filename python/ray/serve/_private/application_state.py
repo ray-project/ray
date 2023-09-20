@@ -151,10 +151,10 @@ class ApplicationState:
     def status(self) -> ApplicationStatus:
         """Status of the application.
 
-        DEPLOYING: The deploy task is still running, or the deployments
+        DEPLOYING: The build task is still running, or the deployments
             have started deploying but aren't healthy yet.
         RUNNING: All deployments are healthy.
-        DEPLOY_FAILED: The deploy task failed or one or more deployments
+        DEPLOY_FAILED: The build task failed or one or more deployments
             became unhealthy in the process of deploying
         UNHEALTHY: While the application was running, one or more
             deployments transition from healthy to unhealthy.
@@ -199,9 +199,9 @@ class ApplicationState:
     ):
         """Set application target state.
 
-        While waiting for deploy task to finish, this should be
+        While waiting for build task to finish, this should be
             (None, False)
-        When deploy task has finished and during normal operation, this should be
+        When build task has finished and during normal operation, this should be
             (target_deployments, False)
         When a request to delete the application has been received, this should be
             ({}, True)
