@@ -9,7 +9,6 @@ steps:
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data6build
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
-        --except-tags doctest
     depends_on: data6build
     job_env: forge
 
@@ -22,7 +21,6 @@ steps:
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data12build
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
-        --except-tags doctest
     depends_on: data12build
     job_env: forge
 
@@ -35,7 +33,6 @@ steps:
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datanbuild
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
-        --except-tags doctest
     depends_on: datanbuild
     job_env: forge
 
@@ -48,7 +45,6 @@ steps:
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name databbuild
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
-        --except-tags doctest
     depends_on: databbuild
     job_env: forge
 

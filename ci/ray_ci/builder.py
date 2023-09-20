@@ -73,3 +73,10 @@ def build_docker(python_version: str, platform: str, image_type: str) -> None:
     """
     BuilderContainer(python_version).run()
     DockerContainer(python_version).run()
+
+
+def build_doc() -> None:
+    """
+    Build a doc artifact.
+    """
+    DocBuilderContainer().run()

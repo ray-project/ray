@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import List
 from tempfile import TemporaryDirectory
 from unittest import mock
 
@@ -8,9 +9,10 @@ import pytest
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.tester import (
     _get_container,
-    _get_all_test_query,
-    _get_test_targets,
-    _get_flaky_test_targets,
+    _get_test_by_tag_query,
+    _get_tests,
+    _get_flaky_tests,
+    TestType,
 )
 
 
@@ -26,44 +28,57 @@ def test_get_container() -> None:
 
 
 def test_get_test_targets() -> None:
-    _TEST_YAML = "flaky_tests: [//python/ray/tests:flaky_test_01]"
+    _TEST_YAML = "flaky_tests: [//python/ray/tests/team:core_flaky_test_01]"
+
+    def _mock_get_tests_by_tag(
+        _: TesterContainer,
+        targets: List[str],
+        tag: str,
+    ) -> List[str]:
+        return [target for target in targets if tag.replace("\\\\b", "") in target]
 
     with TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "core.tests.yml"), "w") as f:
             f.write(_TEST_YAML)
 
         test_targets = [
-            "//python/ray/tests:good_test_01",
-            "//python/ray/tests:good_test_02",
-            "//python/ray/tests:good_test_03",
-            "//python/ray/tests:flaky_test_01",
-            "",
+            "//python/ray/tests/team:core_xcommit_test",
+            "//python/ray/tests/team:core_manual_test",
+            "//python/ray/tests/team:core_debug_tests",
+            "//python/ray/tests/team:core_asan_tests",
+            "//python/ray/tests/team:core_test",
+            "//python/ray/tests/team:data_test",
+            "//python/ray/tests/team:core_flaky_test_01",
         ]
         with mock.patch(
-            "subprocess.check_output",
-            return_value="\n".join(test_targets).encode("utf-8"),
+            "ci.ray_ci.tester._get_tests_by_tag",
+            side_effect=_mock_get_tests_by_tag,
         ), mock.patch(
             "ci.ray_ci.tester_container.TesterContainer.install_ray",
             return_value=None,
         ):
-            assert _get_test_targets(
+            # get debug tests
+            assert _get_tests(
                 TesterContainer("core"),
-                "targets",
+                test_targets,
+                "core",
+                test_type=TestType.DEBUG.value,
+                yaml_dir=tmp,
+            ) == ["//python/ray/tests/team:core_debug_tests"]
+
+            # get normal tests
+            assert _get_tests(
+                TesterContainer("core"),
+                test_targets,
                 "core",
                 yaml_dir=tmp,
-            ) == [
-                "//python/ray/tests:good_test_01",
-                "//python/ray/tests:good_test_02",
-                "//python/ray/tests:good_test_03",
-            ]
+            ) == ["//python/ray/tests/team:core_test"]
 
 
-def test_get_all_test_query() -> None:
-    assert _get_all_test_query(["a", "b"], "core", "") == (
+def test_get_test_by_tag_query() -> None:
+    team = "core"
+    assert _get_test_by_tag_query(["a", "b"], f"team:{team}\\\\b") == (
         "attr(tags, 'team:core\\\\b', tests(a) union tests(b))"
-    )
-    assert _get_all_test_query(["a"], "core", "tag") == (
-        "attr(tags, 'team:core\\\\b', tests(a)) except (attr(tags, tag, tests(a)))"
     )
 
 
@@ -73,7 +88,7 @@ def test_get_flaky_test_targets() -> None:
     with TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "core.tests.yml"), "w") as f:
             f.write(_TEST_YAML)
-        assert _get_flaky_test_targets("core", yaml_dir=tmp) == ["//target"]
+        assert _get_flaky_tests("core", yaml_dir=tmp) == ["//target"]
 
 
 if __name__ == "__main__":
