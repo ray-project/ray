@@ -17,11 +17,13 @@ DEF kMessagePackOffset = 9
 cdef extern from "ray/util/memory.h" namespace "ray" nogil:
     cdef int DEFAULT_MEMCOPY_THREADS
 
-    void parallel_memcopy(uint8_t* dst, const uint8_t* src, int64_t nbytes,
-                          uintptr_t block_size)
+    void parallel_memcopy_with_default_threads(uint8_t* dst,
+                                               const uint8_t* src,
+                                               int64_t nbytes,
+                                               uintptr_t block_size)
 
-    void parallel_memcopy_legacy(uint8_t* dst, const uint8_t* src, int64_t nbytes,
-                                 uintptr_t block_size, int num_threads)
+    void parallel_memcopy(uint8_t* dst, const uint8_t* src, int64_t nbytes,
+                          uintptr_t block_size, int num_threads)
 
 cdef extern from "google/protobuf/repeated_field.h" nogil:
     cdef cppclass RepeatedField[Element]:
@@ -382,10 +384,10 @@ cdef class Pickle5Writer:
             with nogil:
                 if (memcopy_threads > 1 and
                         buffer_len > kMemcopyDefaultThreshold):
-                    parallel_memcopy_legacy(ptr + buffer_addr,
-                                            <const uint8_t*> self.buffers[i].buf,
-                                            buffer_len,
-                                            kMemcopyDefaultBlocksize, memcopy_threads)
+                    parallel_memcopy(ptr + buffer_addr,
+                                     <const uint8_t*> self.buffers[i].buf,
+                                     buffer_len,
+                                     kMemcopyDefaultBlocksize, memcopy_threads)
                 else:
                     memcpy(ptr + buffer_addr, self.buffers[i].buf, buffer_len)
 
@@ -533,8 +535,9 @@ cdef class RawSerializedObject(SerializedObject):
         with nogil:
             if (DEFAULT_MEMCOPY_THREADS > 1 and
                     self._total_bytes > kMemcopyDefaultThreshold):
-                parallel_memcopy(&buffer[0],
-                                 self.value_ptr,
-                                 self._total_bytes, kMemcopyDefaultBlocksize)
+                parallel_memcopy_with_default_threads(&buffer[0],
+                                                      self.value_ptr,
+                                                      self._total_bytes,
+                                                      kMemcopyDefaultBlocksize)
             else:
                 memcpy(&buffer[0], self.value_ptr, self._total_bytes)

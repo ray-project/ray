@@ -25,20 +25,20 @@ uint8_t *pointer_logical_and(const uint8_t *address, uintptr_t bits) {
   return reinterpret_cast<uint8_t *>(value & bits);
 }
 
+void parallel_memcopy_with_default_threads(uint8_t *dst,
+                                           const uint8_t *src,
+                                           int64_t nbytes,
+                                           uintptr_t block_size) {
+  parallel_memcopy(dst, src, nbytes, block_size, DEFAULT_MEMCOPY_THREADS);
+}
+
 void parallel_memcopy(uint8_t *dst,
                       const uint8_t *src,
                       int64_t nbytes,
-                      uintptr_t block_size) {
-  parallel_memcopy_legacy(dst, src, nbytes, block_size, DEFAULT_MEMCOPY_THREADS);
-}
-
-void parallel_memcopy_legacy(uint8_t *dst,
-                             const uint8_t *src,
-                             int64_t nbytes,
-                             uintptr_t block_size,
-                             int num_threads) {
+                      uintptr_t block_size,
+                      int num_threads) {
   // Store futures for synchronization
-  std::vector<std::future<void>> futures;
+  std::vector<std::future<void>> futures(num_threads);
 
   uint8_t *left = pointer_logical_and(src + block_size - 1, ~(block_size - 1));
   uint8_t *right = pointer_logical_and(src + nbytes, ~(block_size - 1));
@@ -59,10 +59,9 @@ void parallel_memcopy_legacy(uint8_t *dst,
 
   // Start all threads first and handle leftovers while threads run.
   for (int i = 0; i < num_threads; i++) {
-    futures.emplace_back(
-        std::async(std::launch::async, [dst, prefix, left, chunk_size, i]() {
-          std::memcpy(dst + prefix + i * chunk_size, left + i * chunk_size, chunk_size);
-        }));
+    futures[i] = std::async(std::launch::async, [dst, prefix, left, chunk_size, i]() {
+      std::memcpy(dst + prefix + i * chunk_size, left + i * chunk_size, chunk_size);
+    });
   }
 
   std::memcpy(dst, src, prefix);
