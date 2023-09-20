@@ -392,7 +392,10 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/install-java.sh
-    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=9.* ARROW_MONGO_VERSION=0.5.* ./ci/env/install-dependencies.sh
+    # Note: pyarrow and pymongoarrow versions should stay compatible, based on
+    # requirements for the corresponding pymongoarrow version here:
+    # https://github.com/mongodb-labs/mongo-arrow/blob/1.0.2/bindings/python/pyproject.toml#L7
+    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=12.* ARROW_MONGO_VERSION=1.0.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - sudo apt-get purge -y mongodb*
     - sudo apt-get install -y mongodb
