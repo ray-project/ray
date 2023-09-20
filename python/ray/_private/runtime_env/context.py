@@ -77,8 +77,9 @@ class RuntimeEnvContext:
         else:
             command = ["exec"]
 
+        # Avoid escaping `command_prefix`
+        command_str = " ".join(self.command_prefix + [shlex.join(command + passthrough_args)])
         command = self.command_prefix + command + passthrough_args
-        command_str = shlex.join(command)
         # TODO(SongGuyang): We add this env to command for macOS because it doesn't
         # work for the C++ process of `os.execvp`. We should find a better way to
         # fix it.
