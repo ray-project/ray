@@ -140,7 +140,7 @@ def _get_all_test_targets(
     """
 
     test_targets = (
-        container.run_script(
+        container.run_script_with_output(
             [
                 f'bazel query "{_get_all_test_query(targets, team, except_tags)}"',
             ]
