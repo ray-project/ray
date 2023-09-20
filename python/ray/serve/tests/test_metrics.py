@@ -1,5 +1,6 @@
 import grpc
 import os
+import sys
 from functools import partial
 from multiprocessing import Pool
 from typing import List, Dict, DefaultDict
@@ -27,6 +28,11 @@ from ray.serve.tests.utils import (
     ping_fruit_stand,
 )
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
+
+from ray.serve._private.long_poll import (
+    LongPollHost,
+    UpdatedObject,
+)
 
 
 @pytest.fixture
@@ -1089,26 +1095,16 @@ def test_queued_queries_disconnected(serve_start_shutdown):
 
     print("Deployed hang_on_first_request deployment.")
 
-    def check_metric(metric: str, expected: float) -> bool:
-        metrics = requests.get("http://127.0.0.1:9999").text
-        metric_value = -1
-        for line in metrics.split("\n"):
-            if metric in line:
-                metric_value = line.split(" ")[-1]
-
-        assert float(metric_value) == expected
-        return True
-
     if RAY_SERVE_ENABLE_NEW_ROUTING:
         wait_for_condition(
-            check_metric,
+            check_metric_float_eq,
             timeout=15,
             metric="ray_serve_num_scheduling_tasks",
             expected=0,
         )
         print("ray_serve_num_scheduling_tasks updated successfully.")
         wait_for_condition(
-            check_metric,
+            check_metric_float_eq,
             timeout=15,
             metric="serve_num_scheduling_tasks_in_backoff",
             expected=0,
@@ -1124,14 +1120,14 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     if RAY_SERVE_ENABLE_NEW_ROUTING:
         # No scheduling tasks should be running once the first request is assigned.
         wait_for_condition(
-            check_metric,
+            check_metric_float_eq,
             timeout=15,
             metric="ray_serve_num_scheduling_tasks",
             expected=0,
         )
         print("ray_serve_num_scheduling_tasks updated successfully.")
         wait_for_condition(
-            check_metric,
+            check_metric_float_eq,
             timeout=15,
             metric="serve_num_scheduling_tasks_in_backoff",
             expected=0,
@@ -1147,7 +1143,7 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     wait_for_condition(lambda: first_request_executing(fut), timeout=5)
     print("Executed first request.")
     wait_for_condition(
-        check_metric,
+        check_metric_float_eq,
         timeout=15,
         metric="ray_serve_num_ongoing_http_requests",
         expected=1,
@@ -1161,14 +1157,14 @@ def test_queued_queries_disconnected(serve_start_shutdown):
 
     # First request should be processing. All others should be queued.
     wait_for_condition(
-        check_metric,
+        check_metric_float_eq,
         timeout=15,
         metric="ray_serve_deployment_queued_queries",
         expected=num_requests,
     )
     print("ray_serve_deployment_queued_queries updated successfully.")
     wait_for_condition(
-        check_metric,
+        check_metric_float_eq,
         timeout=15,
         metric="ray_serve_num_ongoing_http_requests",
         expected=num_requests + 1,
@@ -1179,14 +1175,14 @@ def test_queued_queries_disconnected(serve_start_shutdown):
         # There should be 2 scheduling tasks (which is the max, since
         # 2 = 2 * 1 replica) that are attempting to schedule the hanging requests.
         wait_for_condition(
-            check_metric,
+            check_metric_float_eq,
             timeout=15,
             metric="ray_serve_num_scheduling_tasks",
             expected=2,
         )
         print("ray_serve_num_scheduling_tasks updated successfully.")
         wait_for_condition(
-            check_metric,
+            check_metric_float_eq,
             timeout=15,
             metric="serve_num_scheduling_tasks_in_backoff",
             expected=2,
@@ -1198,7 +1194,7 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     print("Terminated all requests.")
 
     wait_for_condition(
-        check_metric,
+        check_metric_float_eq,
         timeout=15,
         metric="ray_serve_deployment_queued_queries",
         expected=0,
@@ -1207,7 +1203,7 @@ def test_queued_queries_disconnected(serve_start_shutdown):
 
     # Task should get cancelled.
     wait_for_condition(
-        check_metric,
+        check_metric_float_eq,
         timeout=15,
         metric="ray_serve_num_ongoing_http_requests",
         expected=0,
@@ -1216,19 +1212,88 @@ def test_queued_queries_disconnected(serve_start_shutdown):
 
     if RAY_SERVE_ENABLE_NEW_ROUTING:
         wait_for_condition(
-            check_metric,
+            check_metric_float_eq,
             timeout=15,
             metric="ray_serve_num_scheduling_tasks",
             expected=0,
         )
         print("ray_serve_num_scheduling_tasks updated successfully.")
         wait_for_condition(
-            check_metric,
+            check_metric_float_eq,
             timeout=15,
             metric="serve_num_scheduling_tasks_in_backoff",
             expected=0,
         )
         print("serve_num_scheduling_tasks_in_backoff updated successfully.")
+
+
+def test_long_poll_host_bytes_counted(serve_instance):
+    """Check that the bytes sent by the long_poll are counted."""
+
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(0.01, 0.01)
+    )
+
+    # Write a value.
+    ray.get(host.notify_changed.remote("key_1", 999))
+    object_ref = host.listen_for_change.remote({"key_1": -1})
+
+    # Check that the result's size is reported.
+    result_1: Dict[str, UpdatedObject] = ray.get(object_ref)
+    result_1_size = sys.getsizeof(result_1)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="serve_long_poll_host_bytes_sent",
+        expected=result_1_size,
+    )
+
+    # Write two new values.
+    ray.get(host.notify_changed.remote("key_2", 1000))
+    object_ref = host.listen_for_change.remote(
+        {"key_1": result_1["key_1"].snapshot_id, "key_2": -1}
+    )
+
+    # Check that the next result's size is added to the first result.
+    result_2: Dict[str, UpdatedObject] = ray.get(object_ref)
+    result_2_size = sys.getsizeof(result_2)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="serve_long_poll_host_bytes_sent",
+        expected=result_2_size + result_1_size,
+    )
+
+    # Check that a timeout result is counted in the bytes sent by the host.
+    object_ref = host.listen_for_change.remote({"key_2": result_2["key_2"].snapshot_id})
+    timeout_result = ray.get(object_ref)
+    timeout_result_size = sys.getsizeof(timeout_result)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="serve_long_poll_host_bytes_sent",
+        expected=timeout_result_size + result_2_size + result_1_size,
+    )
+
+
+def get_metric_float(metric: str) -> float:
+    """Gets the float value of metric.
+
+    Fails if metric is not available or is not a float.
+    """
+
+    metrics = requests.get("http://127.0.0.1:9999").text
+    metric_value = -1
+    for line in metrics.split("\n"):
+        if metric in line:
+            metric_value = line.split(" ")[-1]
+    return metric_value
+
+
+def check_metric_float_eq(metric: str, expected: float) -> bool:
+    metric_value = get_metric_float(metric)
+    assert float(metric_value) == expected
+    return True
 
 
 def test_actor_summary(serve_instance):
@@ -1288,6 +1353,4 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", "-s", __file__]))
