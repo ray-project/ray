@@ -230,7 +230,7 @@ class LongPollHost:
         number of bytes returned.
         """
 
-        @wraps
+        @wraps(listen_for_change_func)
         async def count_bytes(self, *args, **kwargs):
             objects = await listen_for_change_func(self, *args, **kwargs)
             self.bytes_sent_counter.inc(value=sys.getsizeof(objects))
