@@ -9,4 +9,5 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 "$SCRIPT_DIR"/install-minimal.sh
 
 # Installs default dependencies
+python -m pip install gpustat=1.1.1
 python -m pip install -U "ray[default]"
