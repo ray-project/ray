@@ -223,7 +223,7 @@ class LongPollHost:
         else:
             return sum(len(events) for events in self.notifier_events.values())
 
-    async def count_bytes_returned(listen_for_change_func):
+    def count_bytes_returned(listen_for_change_func):
         """Decorator that counts the bytes returned by listen_for_change().
 
         Increments the ray_serve_long_poll_host_bytes_sent counter by the
