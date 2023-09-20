@@ -1,5 +1,6 @@
 import os
 import sys
+from enum import Enum
 from typing import List, Optional
 
 import yaml
@@ -11,6 +12,15 @@ from ci.ray_ci.utils import docker_login
 
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+
+
+class TestType(Enum):
+    DEBUG = "debug_tests"
+    ASAN = "asan_tests"
+    POST_WHEEL = "post_wheel_build"
+    KUBERAY = "kuberay_operator"
+    SPARK_PLUGIN = "spark_plugin_tests"
+    DOC = "doctest"
 
 
 @click.command()
@@ -35,12 +45,6 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=("Number of concurrent test jobs to run per worker."),
 )
 @click.option(
-    "--except-tags",
-    default="",
-    type=str,
-    help=("Except tests with the given tags."),
-)
-@click.option(
     "--run-flaky-tests",
     is_flag=True,
     show_default=True,
@@ -54,6 +58,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help="Environment variables to set for the test.",
 )
 @click.option(
+    "--test-type",
+    default=None,
+    type=click.Choice([t.value for t in TestType]),
+)
+@click.option(
     "--build-name",
     type=str,
     help="Name of the build used to run tests",
@@ -64,9 +73,9 @@ def main(
     workers: int,
     worker_id: int,
     parallelism_per_worker: int,
-    except_tags: str,
     run_flaky_tests: bool,
     test_env: List[str],
+    test_type: Optional[str],
     build_name: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
@@ -78,13 +87,13 @@ def main(
         team, workers, worker_id, parallelism_per_worker, build_name
     )
     if run_flaky_tests:
-        test_targets = _get_flaky_test_targets(team)
+        test_targets = _get_flaky_tests(team)
     else:
-        test_targets = _get_test_targets(
+        test_targets = _get_tests(
             container,
             targets,
             team,
-            except_tags,
+            test_type,
         )
     success = container.run_tests(test_targets, test_env)
     sys.exit(0 if success else 1)
@@ -107,50 +116,61 @@ def _get_container(
     )
 
 
-def _get_all_test_query(targets: List[str], team: str, except_tags: str) -> str:
-    """
-    Get all test targets that are owned by a particular team, except those that
-    have the given tags
-    """
+def _get_test_by_tag_query(targets: List[str], tag: str) -> str:
     test_query = " union ".join([f"tests({target})" for target in targets])
-    team_query = f"attr(tags, 'team:{team}\\\\b', {test_query})"
-    if not except_tags:
-        # return all tests owned by the team if no except_tags are given
-        return team_query
-
-    # otherwise exclude tests with the given tags
-    except_query = " union ".join(
-        [f"attr(tags, {t}, {test_query})" for t in except_tags.split(",")]
-    )
-    return f"{team_query} except ({except_query})"
+    return f"attr(tags, '{tag}', {test_query})"
 
 
-def _get_test_targets(
+def _get_tests_by_tag(
     container: TesterContainer,
-    targets: str,
-    team: str,
-    except_tags: Optional[str] = "",
-    yaml_dir: Optional[str] = None,
+    targets: List[str],
+    tag: str,
 ) -> List[str]:
-    """
-    Get all test targets that are not flaky
-    """
-
-    test_targets = (
+    test_query = _get_test_by_tag_query(targets, tag)
+    return (
         container.run_script_with_output(
             [
-                f'bazel query "{_get_all_test_query(targets, team, except_tags)}"',
+                f'bazel query "{test_query}"',
             ]
         )
         .decode("utf-8")
         .split("\n")
     )
-    flaky_tests = _get_flaky_test_targets(team, yaml_dir)
-
-    return [test for test in test_targets if test and test not in flaky_tests]
 
 
-def _get_flaky_test_targets(team: str, yaml_dir: Optional[str] = None) -> List[str]:
+def _get_tests(
+    container: TesterContainer,
+    targets: str,
+    team: str,
+    test_type: Optional[str] = None,
+    yaml_dir: Optional[str] = None,
+) -> List[str]:
+    """
+    Get all test targets that are not flaky
+    """
+    all_tests = _get_tests_by_tag(container, targets, f"team:{team}\\\\b")
+    included = all_tests
+    excluded = []
+
+    # exclude flaky, manual and civ1 tests by default
+    excluded += _get_flaky_tests(team, yaml_dir)
+    excluded += _get_tests_by_tag(container, targets, "xcommit")
+    excluded += _get_tests_by_tag(container, targets, "manual")
+
+    if test_type:
+        # if test type is defined, only include tests that particular types (e.g. debug)
+        type_tests = _get_tests_by_tag(container, targets, test_type)
+        included = type_tests
+    else:
+        # otherwise, exclude tests of all types (e.g. debug, asan)
+        for test_type in TestType:
+            type_tests = _get_tests_by_tag(container, targets, test_type.value)
+            excluded += type_tests
+
+    return [test for test in all_tests if test in included and test not in excluded]
+
+
+def _get_flaky_tests(team: str, yaml_dir: Optional[str] = None) -> List[str]:
     """
     Get all test targets that are flaky
     """
