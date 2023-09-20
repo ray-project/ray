@@ -48,9 +48,8 @@ class MosaicTrainer(TorchTrainer):
         from composer.algorithms import LabelSmoothing
 
         import ray
-        from ray.air.config import ScalingConfig
         import ray.train as train
-        from ray.air import session
+        from ray.train import ScalingConfig
         from ray.train.mosaic import MosaicTrainer
 
         def trainer_init_per_worker(config):
@@ -138,8 +137,6 @@ class MosaicTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A MosiacCheckpoint to resume training from.
     """
 
@@ -156,6 +153,12 @@ class MosaicTrainer(TorchTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+
+        warnings.warn(
+            "This MosaicTrainer will be deprecated in Ray 2.8. "
+            "It is recommended to use the TorchTrainer instead.",
+            DeprecationWarning,
+        )
 
         self._validate_trainer_init_per_worker(
             trainer_init_per_worker, "trainer_init_per_worker"
@@ -224,7 +227,7 @@ class MosaicTrainer(TorchTrainer):
         if config is not None and "loggers" in config:
             warnings.warn(
                 "Composer's Loggers (any subclass of LoggerDestination) are \
-                not supported for MosaicComposer. Use Ray AIR provided loggers instead"
+                not supported for MosaicComposer. Use Ray provided loggers instead"
             )
 
 

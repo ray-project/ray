@@ -144,9 +144,11 @@ You can specify a runtime environment for your whole job, whether running a scri
 
 .. warning::
 
-    If using the Ray Jobs API (either the Python SDK or the CLI), specify the ``runtime_env`` argument in the ``submit_job`` call or the ``ray job submit``, not in the ``ray.init()`` call in the entrypoint script (in this example, ``my_ray_script.py``).
+    Specifying the ``runtime_env`` argument in the ``submit_job`` or ``ray job submit`` call ensures the runtime environment is installed on the cluster before the entrypoint script is run.
 
-    This ensures the runtime environment is installed on the cluster before the entrypoint script is run.
+    If ``runtime_env`` is specified from ``ray.init(runtime_env=...)``, the runtime env is only applied to all children Tasks and Actors, not the entrypoint script (Driver) itself.
+
+    If ``runtime_env`` is specified by both ``ray job submit`` and ``ray.init``, the runtime environments are merged. See :ref:`Runtime Environment Specified by Both Job and Driver <runtime-environments-job-conflict>` for more details.
 
 .. note::
 
@@ -266,6 +268,7 @@ However, using runtime environments you can dynamically specify packages to be a
 
 
 You may also specify your ``pip`` dependencies either via a Python list or a local ``requirements.txt`` file.
+Consider specifying a ``requirements.txt`` file when your ``pip install`` command requires options such as ``--extra-index-url`` or ``--find-links``; see `<https://pip.pypa.io/en/stable/reference/requirements-file-format/#>`_ for details.
 Alternatively, you can specify a ``conda`` environment, either as a Python dictionary or via a local ``environment.yml`` file.  This conda environment can include ``pip`` packages.
 For details, head to the :ref:`API Reference <runtime-environments-api-ref>`.
 
@@ -406,11 +409,13 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   no need to include ``os.environ`` or similar in the ``env_vars`` field.
   By default, these environment variables override the same name environment variables on the cluster.
   You can also reference existing environment variables using ${ENV_VAR} to achieve the appending behavior.
-  Only PATH, LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, and LD_PRELOAD are supported. See below for an example:
+  If the environment variable doesn't exist, it becomes an empty string `""`.
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
 
   - Example: ``{"LD_LIBRARY_PATH": "${LD_LIBRARY_PATH}:/home/admin/my_lib"}``
+
+  - Non-existant variable example: ``{"ENV_VAR_NOT_EXIST": "${ENV_VAR_NOT_EXIST}:/home/admin/my_lib"}`` -> ``ENV_VAR_NOT_EXIST=":/home/admin/my_lib"``.
 
 - ``container`` (dict): Require a given (Docker) image, and the worker process will run in a container with this image.
   The `worker_path` is the default_worker.py path. It is required only if ray installation directory in the container is different from raylet host.
@@ -442,14 +447,81 @@ Caching and Garbage Collection
 """"""""""""""""""""""""""""""
 Runtime environment resources on each node (such as conda environments, pip packages, or downloaded ``working_dir`` or ``py_modules`` directories) will be cached on the cluster to enable quick reuse across different runtime environments within a job.  Each field (``working_dir``, ``py_modules``, etc.) has its own cache whose size defaults to 10 GB.  To change this default, you may set the environment variable ``RAY_RUNTIME_ENV_<field>_CACHE_SIZE_GB`` on each node in your cluster before starting Ray e.g. ``export RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB=1.5``.
 
-When the cache size limit is exceeded, resources not currently used by any actor, task or job will be deleted.
+When the cache size limit is exceeded, resources not currently used by any Actor, Task or Job are deleted.
+
+.. _runtime-environments-job-conflict:
+
+Runtime Environment Specified by Both Job and Driver
+""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+When running an entrypoint script (Driver), the runtime environment can be specified via `ray.init(runtime_env=...)` or `ray job submit --runtime-env` (See :ref:`Specifying a Runtime Environment Per-Job <rte-per-job>` for more details).
+
+- If the runtime environment is specified by ``ray job submit --runtime-env=...``, the runtime environments are applied to the entrypoint script (Driver) and all the tasks and actors created from it.
+- If the runtime environment is specified by ``ray.init(runtime_env=...)``, the runtime environments are applied to all the tasks and actors, but not the entrypoint script (Driver) itself.
+
+Since ``ray job submit`` submits a Driver (that calls ``ray.init``), sometimes runtime environments are specified by both of them. When both the Ray Job and Driver specify runtime environments, their runtime environments are merged if there's no conflict.
+It means the driver script uses the runtime environment specified by `ray job submit`, and all the tasks and actors are going to use the merged runtime environment.
+Ray raises an exception if the runtime environments conflict.
+
+* The ``runtime_env["env_vars"]`` of `ray job submit --runtime-env=...` is merged with the ``runtime_env["env_vars"]`` of `ray.init(runtime_env=...)`.
+  Note that each individual env_var keys are merged.
+  If the environment variables conflict, Ray raises an exception.
+* Every other field in the ``runtime_env`` will be merged. If any key conflicts, it raises an exception.
+
+Example:
+
+.. testcode::
+
+  # `ray job submit --runtime_env=...`
+  {"pip": ["requests", "chess"],
+  "env_vars": {"A": "a", "B": "b"}}
+
+  # ray.init(runtime_env=...)
+  {"env_vars": {"C": "c"}}
+
+  # Driver's actual `runtime_env` (merged with Job's)
+  {"pip": ["requests", "chess"],
+  "env_vars": {"A": "a", "B": "b", "C": "c"}}
+
+Conflict Example:
+
+.. testcode::
+
+  # Example 1, env_vars conflicts
+  # `ray job submit --runtime_env=...`
+  {"pip": ["requests", "chess"],
+  "env_vars": {"C": "a", "B": "b"}}
+
+  # ray.init(runtime_env=...)
+  {"env_vars": {"C": "c"}}
+
+  # Ray raises an exception because the "C" env var conflicts.
+
+  # Example 2, other field (e.g., pip) conflicts
+  # `ray job submit --runtime_env=...`
+  {"pip": ["requests", "chess"]}
+
+  # ray.init(runtime_env=...)
+  {"pip": ["torch"]}
+
+  # Ray raises an exception because "pip" conflicts.
+
+You can set an environment variable `RAY_OVERRIDE_JOB_RUNTIME_ENV=1`
+to avoid raising an exception upon a conflict. In this case, the runtime environments
+are inherited in the same way as :ref:`Driver and Task and Actor both specify
+runtime environments <runtime-environments-inheritance>`, where ``ray job submit``
+is a parent and ``ray.init`` is a child.
+
+.. _runtime-environments-inheritance:
 
 Inheritance
 """""""""""
 
-The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor once set, unless it is overridden.
+.. _runtime-env-driver-to-task-inheritance:
 
-If an actor or task specifies a new ``runtime_env``, it will override the parent’s ``runtime_env`` (i.e., the parent actor/task's ``runtime_env``, or the job's ``runtime_env`` if there is no parent actor or task) as follows:
+The runtime environment is inheritable, so it applies to all Tasks and Actors within a Job and all child Tasks and Actors of a Task or Actor once set, unless it is overridden.
+
+If an Actor or Task specifies a new ``runtime_env``, it overrides the parent’s ``runtime_env`` (i.e., the parent Actor's or Task's ``runtime_env``, or the Job's ``runtime_env`` if Actor or Task doesn't have a parent) as follows:
 
 * The ``runtime_env["env_vars"]`` field will be merged with the ``runtime_env["env_vars"]`` field of the parent.
   This allows for environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.

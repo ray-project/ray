@@ -19,7 +19,7 @@ of CPUs (cores) on your machine.
     results = tuner.fit()
 
 You can override this per trial resources with :func:`tune.with_resources <ray.tune.with_resources>`. Here you can
-specify your resource requests using either a dictionary, a :class:`~ray.air.config.ScalingConfig`, or a
+specify your resource requests using either a dictionary, a :class:`~ray.train.ScalingConfig`, or a
 :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>`
 object. In any case, Ray Tune will try to start a placement group for each trial.
 
@@ -66,7 +66,7 @@ Even if the trial cannot be scheduled right now, Ray Tune will still try to star
 :ref:`autoscaling behavior <cluster-index>` if you're using the Ray cluster launcher.
 
 .. warning::
-    ``tune.with_resources`` cannot be used with :ref:`Ray Train Trainers <train-getting-started>`. If you are passing a Trainer to a Tuner, specify the resource requirements in the Trainer instance using :class:`~ray.air.config.ScalingConfig`. The general principles outlined below still apply.
+    ``tune.with_resources`` cannot be used with :ref:`Ray Train Trainers <train-docs>`. If you are passing a Trainer to a Tuner, specify the resource requirements in the Trainer instance using :class:`~ray.train.ScalingConfig`. The general principles outlined below still apply.
 
 It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
 
@@ -113,7 +113,7 @@ You can find an example of this in the :doc:`Keras MNIST example </tune/examples
 
 **Troubleshooting**: Occasionally, you may run into GPU memory issues when running a new trial. This may be
 due to the previous trial not cleaning up its GPU state fast enough. To avoid this,
-you can use ``tune.utils.wait_for_gpu`` - see :ref:`docstring <tune-util-ref>`.
+you can use :func:`tune.utils.wait_for_gpu <ray.tune.utils.wait_for_gpu>`.
 
 How to run distributed tuning on a cluster?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

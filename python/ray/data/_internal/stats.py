@@ -265,6 +265,10 @@ class DatasetStats:
         self.iter_blocks_remote: int = 0
         self.iter_unknown_location: int = 0
 
+        # Memory usage stats
+        self.global_bytes_spilled: int = 0
+        self.global_bytes_restored: int = 0
+
     @property
     def stats_actor(self):
         return _get_or_create_stats_actor()
@@ -291,16 +295,12 @@ class DatasetStats:
             ac = self.stats_actor
             # TODO(chengsu): this is a super hack, clean it up.
             stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
-            if DataContext.get_current().block_splitting_enabled:
-                # Only populate stats when stats from all read tasks are ready at
-                # stats actor.
-                if len(stats_map.items()) == len(self.stages["Read"]):
-                    self.stages["Read"] = []
-                    for _, blocks_metadata in sorted(stats_map.items()):
-                        self.stages["Read"] += blocks_metadata
-            else:
-                for i, metadata in stats_map.items():
-                    self.stages["Read"][i] = metadata[0]
+            # Only populate stats when stats from all read tasks are ready at
+            # stats actor.
+            if len(stats_map.items()) == len(self.stages["Read"]):
+                self.stages["Read"] = []
+                for _, blocks_metadata in sorted(stats_map.items()):
+                    self.stages["Read"] += blocks_metadata
 
         stages_stats = []
         is_substage = len(self.stages) > 1
@@ -340,6 +340,8 @@ class DatasetStats:
             self.time_total_s,
             self.base_name,
             self.extra_metrics,
+            self.global_bytes_spilled,
+            self.global_bytes_restored,
         )
 
 
@@ -354,9 +356,14 @@ class DatasetStatsSummary:
     time_total_s: float
     base_name: str
     extra_metrics: Dict[str, Any]
+    global_bytes_spilled: int
+    global_bytes_restored: int
 
     def to_string(
-        self, already_printed: Optional[Set[str]] = None, include_parent: bool = True
+        self,
+        already_printed: Optional[Set[str]] = None,
+        include_parent: bool = True,
+        add_global_stats=True,
     ) -> str:
         """Return a human-readable summary of this Dataset's stats.
 
@@ -374,7 +381,7 @@ class DatasetStatsSummary:
         out = ""
         if self.parents and include_parent:
             for p in self.parents:
-                parent_sum = p.to_string(already_printed)
+                parent_sum = p.to_string(already_printed, add_global_stats=False)
                 if parent_sum:
                     out += parent_sum
                     out += "\n"
@@ -411,6 +418,18 @@ class DatasetStatsSummary:
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         out += str(self.iter_stats)
+
+        mb_spilled = round(self.global_bytes_spilled / 1e6)
+        mb_restored = round(self.global_bytes_restored / 1e6)
+        if (
+            len(self.stages_stats) > 0
+            and add_global_stats
+            and (mb_spilled or mb_restored)
+        ):
+            out += "\nCluster memory:\n"
+            out += "* Spilled to disk: {}MB\n".format(mb_spilled)
+            out += "* Restored from disk: {}MB\n".format(mb_restored)
+
         return out
 
     def __repr__(self, level=0) -> str:
@@ -434,6 +453,8 @@ class DatasetStatsSummary:
             f"{indent}   extra_metrics={{{extra_metrics}}},\n"
             f"{indent}   stage_stats=[{stage_stats}],\n"
             f"{indent}   iter_stats={self.iter_stats.__repr__(level+1)},\n"
+            f"{indent}   global_bytes_spilled={self.global_bytes_spilled / 1e6}MB,\n"
+            f"{indent}   global_bytes_restored={self.global_bytes_restored / 1e6}MB,\n"
             f"{indent}   parents=[{parent_stats}],\n"
             f"{indent})"
         )
@@ -452,6 +473,9 @@ class DatasetStatsSummary:
     def get_max_heap_memory(self) -> float:
         parent_memory = [p.get_max_heap_memory() for p in self.parents]
         parent_max = max(parent_memory) if parent_memory else 0
+        if not self.stages_stats:
+            return parent_max
+
         return max(
             parent_max,
             *[ss.memory.get("max", 0) for ss in self.stages_stats],

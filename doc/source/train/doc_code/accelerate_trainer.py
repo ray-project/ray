@@ -1,12 +1,15 @@
+import os
+import tempfile
+
 import torch
 import torch.nn as nn
 
 from accelerate import Accelerator
 
 import ray
-from ray.air import session, Checkpoint
+from ray import train
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.huggingface import AccelerateTrainer
-from ray.air.config import ScalingConfig
 
 
 # If using GPUs, set this to True.
@@ -32,7 +35,7 @@ class NeuralNetwork(nn.Module):
 
 def train_loop_per_worker():
     accelerator = Accelerator()
-    dataset_shard = session.get_dataset_shard("train")
+    dataset_shard = train.get_dataset_shard("train")
     model = NeuralNetwork()
     loss_fn = nn.MSELoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
@@ -51,12 +54,15 @@ def train_loop_per_worker():
             optimizer.step()
             print(f"epoch: {epoch}, loss: {loss.item()}")
 
-        session.report(
-            {},
-            checkpoint=Checkpoint.from_dict(
-                dict(epoch=epoch, model=accelerator.unwrap_model(model).state_dict())
-            ),
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(
+                accelerator.unwrap_model(model).state_dict(),
+                os.path.join(tmpdir, "model.pt"),
+            )
+            train.report(
+                metrics={"epoch": epoch, "loss": loss.item()},
+                checkpoint=Checkpoint.from_directory(tmpdir),
+            )
 
 
 train_dataset = ray.data.from_items([{"x": x, "y": 2 * x + 1} for x in range(200)])

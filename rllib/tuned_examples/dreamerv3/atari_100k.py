@@ -58,11 +58,5 @@ config = (
         model_size="S",
         training_ratio=1024,
         batch_size_B=16 * (num_gpus or 1),
-        model={
-            "batch_length_T": 64,
-            "horizon_H": 15,
-            "gamma": 0.997,
-            "model_size": "S",
-        },
     )
 )

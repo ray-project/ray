@@ -1413,12 +1413,6 @@ def test_unsupported_pyarrow_versions_check_disabled(
     except ImportError as e:
         pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
 
-    # Test read_parquet.
-    try:
-        ray.data.read_parquet("example://iris.parquet").take_all()
-    except ImportError as e:
-        pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
-
     # Test from_numpy (we use Arrow for representing the tensors).
     try:
         ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
@@ -1567,7 +1561,9 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
     ds1 = ray.data.read_datasource(FlakyCSVDatasource(), parallelism=1, paths=path1)
     ds1.write_datasource(FlakyCSVDatasource(), path=local_path, dataset_uuid="data")
     assert df1.equals(
-        pd.read_csv(os.path.join(local_path, "data_000000.csv"), storage_options={})
+        pd.read_csv(
+            os.path.join(local_path, "data_000000_000000.csv"), storage_options={}
+        )
     )
 
     counter = Counter.remote()

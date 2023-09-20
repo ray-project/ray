@@ -12,11 +12,11 @@ Ray Serve's **deployment graph API** lets you specify how to route requests thro
 
 ## Binding Deployments
 
-The basic building block for all deployment graphs is the `DeploymentNode`. One type of `DeploymentNode` is the `ClassNode`. You can create `ClassNodes` by binding class-based deployments to their constructor's arguments with the `bind` method. This may sound familiar because you've already been doing this whenever you bind and run class-based deployments, such as in the [Calling Deployments using ServeHandles](serve-model-composition-serve-handles) section.
+The basic building block for all deployment graphs is the `DeploymentNode`. One type of `DeploymentNode` is the `ClassNode`. You can create `ClassNodes` by binding class-based deployments to their constructor's arguments with the `bind` method. This binding may sound familiar because you do it whenever you bind and run class-based deployments, such as [calling deployments using DeploymentHandles](serve-model-composition-deployment-handles) section.
 
 As another example:
 
-```{literalinclude} ../doc_code/model_composition/class_nodes.py
+```{literalinclude} ../doc_code/model_composition/language_example.py
 :start-after: __echo_class_start__
 :end-before: __echo_class_end__
 :language: python
@@ -44,9 +44,9 @@ You can try this example out using the `serve run` CLI:
 $ serve run echo:foo_node
 ```
 
-Here's a client script that can send requests to your node:
+This client script that can send requests to your node:
 
-```{literalinclude} ../doc_code/model_composition/class_nodes.py
+```{literalinclude} ../doc_code/model_composition/language_example.py
 :start-after: __echo_client_start__
 :end-before: __echo_client_end__
 :language: python
@@ -112,10 +112,10 @@ To run the call graph, you need to use a driver. Drivers are deployments that pr
 graph = DAGDriver.bind(add_3_output)
 ```
 
-Generally, the `DAGDriver` needs to be bound to the `FunctionNode` or `MethodNode` representing the final output of a graph. This `bind` call returns a `ClassNode` that you can run in `serve.run` or `serve run`. Running this `ClassNode` also deploys the rest of the graph's deployments.
+Generally, you need to bind the `DAGDriver` to the `FunctionNode` or `MethodNode` representing the final output of a graph. This `bind` call returns a `ClassNode` that you can run in `serve.run` or `serve run`. Running this `ClassNode` also deploys the rest of the graph's deployments.
 
 :::{note}
-The `DAGDriver` can also be bound to `ClassNodes`. This is useful if you construct a deployment graph where `ClassNodes` invoke other `ClassNodes`' methods. In this case, you should pass in the "root" `ClassNode` to `DAGDriver` (i.e. the one that you would otherwise pass into `serve.run`). Check out the [Calling Deployments using ServeHandles](serve-model-composition-serve-handles) section for more info.
+You can also bind the `DAGDriver` to `ClassNodes`. This approach is useful if you construct a deployment graph where `ClassNodes` invoke other `ClassNodes`' methods. In this case, you should pass in the "root" `ClassNode` to `DAGDriver` (that is, the one that you would otherwise pass into `serve.run`). See [Calling Deployments using DeploymentHandles](serve-model-composition-deployment-handles) for more information.
 :::
 
 You can test this example using this client script:
@@ -145,7 +145,7 @@ $ python arithmetic_client.py
 
 Ray Serve provides the `DAGDriver`, which routes HTTP requests through your call graph. As mentioned in [the call graph section](deployment-graph-call-graph), the `DAGDriver` takes in a `DeploymentNode` and it produces a `ClassNode` that you can run.
 
-The `DAGDriver` also has an optional keyword argument: `http_adapter`. [HTTP adapters](serve-http-adapters) are functions that get run on the HTTP request before it's passed into the graph. Ray Serve provides a handful of these adapters, so you can rely on them to conveniently handle the HTTP parsing while focusing your attention on the graph itself.
+The `DAGDriver` also has an optional keyword argument: `http_adapter`. HTTP adapters are functions that get run on the HTTP request before it's passed into the graph. Ray Serve provides a handful of these adapters, so you can rely on them to conveniently handle the HTTP parsing while focusing your attention on the graph itself.
 
 For instance, you can use the Ray Serve-provided `json_request` adapter to simplify the [arithmetic call graph](deployment-graph-arithmetic-graph) by eliminating the `unpack_request` function. You can replace lines 29 through 38 with this graph:
 
@@ -165,8 +165,6 @@ At runtime:
 3. The `DAGDriver` passes the `http_adapter` output to the same function and methods that the `InputNode` is passed into, kicking off the request's journey through the call graph.
 
 In the example above, the `InputNode` represents the number packaged inside the request's JSON body instead of the HTTP request itself. You can pass the JSON directly into the graph instead of first unpacking it from the request.
-
-See [the guide](serve-http-adapters) on `http_adapters` to learn more.
 
 (deployment-graph-call-graph-testing)=
 ## Testing the Graph with the Python API
@@ -277,7 +275,3 @@ On the other hand, when the script visualizes the final graph output, `combine_o
 
 ### Visualizing the Graph with Gradio
 Another option is to visualize your deployment graph through Gradio. Check out the [Graph Visualization with Gradio Tutorial](serve-gradio-dag-visualization) to learn how to interactively run your deployment graph through the Gradio UI and see the intermediate outputs of each node in real time as they finish evaluation.
-
-# Next Steps
-
-To learn more about deployment graphs, check out some [deployment graph patterns](serve-deployment-graph-patterns-overview) you can incorporate into your own graph!

@@ -91,6 +91,7 @@ NEED_WHEELS="$(_need_wheels)"
 
 compile_pip_dependencies() {
   # Compile boundaries
+  TARGET="${1-requirements_compiled.txt}"
 
   if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
     # Resolution currently does not work on aarch64 as some pinned packages
@@ -99,6 +100,8 @@ compile_pip_dependencies() {
     echo "Skipping for aarch64"
     return 0
   fi
+
+  echo "Target file: $TARGET"
 
   # shellcheck disable=SC2262
   alias pip="python -m pip"
@@ -109,33 +112,44 @@ compile_pip_dependencies() {
   python -c "import torch" 2>/dev/null && HAS_TORCH=1
   pip install --no-cache-dir numpy torch
 
-  if [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ]; then
-    echo requirements_compiled already exists
-  else
-    pip-compile --resolver=backtracking -q \
-       --pip-args --no-deps --strip-extras --no-annotate --no-header -o \
-      "${WORKSPACE_DIR}/python/requirements_compiled.txt" \
-      "${WORKSPACE_DIR}/python/requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
-  fi
+  pip-compile --resolver=backtracking -q \
+     --pip-args --no-deps --strip-extras --no-annotate --no-header -o \
+    "${WORKSPACE_DIR}/python/$TARGET" \
+    "${WORKSPACE_DIR}/python/requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
 
   # Remove some pins from upstream dependencies:
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn
-  sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/$TARGET"
 
-  cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  # Delete local installation
+  sed -i "/@ file/d" "${WORKSPACE_DIR}/python/$TARGET"
+
+  # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
+  # This is needed because we specify the requirements as torch==version, but
+  # the resolver adds the device-specific version tag. If this is not removed,
+  # pip install will complain about irresolvable constraints.
+  sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
+
+  # Add python_version < 3.11 to scikit-image, scikit-optimize, scipy, networkx
+  # as they need more recent versions in python 3.11.
+  # These will be automatically resolved. Remove as
+  # soon as we resolve to versions of scikit-image that are built for py311.
+  sed -i -E 's/((scikit-image|scikit-optimize|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
+
+  cat "${WORKSPACE_DIR}/python/$TARGET"
 
   if [ "$HAS_TORCH" -eq 0 ]; then
     pip uninstall -y torch
@@ -199,7 +213,6 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
-      -python/ray/serve:conda_env # pip field in runtime_env not supported
       -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
       -python/ray/serve:test_gcs_failure # Fork not supported in windows
       -python/ray/serve:test_standalone_2 # Multinode not supported on Windows
@@ -213,6 +226,7 @@ test_python() {
       -python/ray/tests:test_cli
       -python/ray/tests:test_client_init # timeout
       -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
+      -python/ray/tests:test_gcp_tpu_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_gcs_fault_tolerance # flaky
       -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc
@@ -226,6 +240,7 @@ test_python() {
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
+      -python/ray/tests:vsphere/test_vsphere_node_provider # irrelevant on windows
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
@@ -240,7 +255,7 @@ test_python() {
     # Shard the args.
     BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
     BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    test_shard_selection=$(python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+    test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
 
     # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
     # It's unclear to me if this should be necessary, but this is to make tests run for now.
@@ -332,7 +347,6 @@ build_dashboard_front_end() {
 }
 
 build_sphinx_docs() {
-  _bazel_build_protobuf
   install_ray
 
   (
@@ -360,9 +374,7 @@ check_sphinx_links() {
 _bazel_build_before_install() {
   local target
   if [ "${OSTYPE}" = msys ]; then
-    # On Windows, we perform as full of a build as possible, to ensure the repository always remains buildable on Windows.
-    # (Pip install will not perform a full build.)
-    target="//:*"
+    target="//:ray_pkg"
   else
     # Just build Python on other platforms.
     # This because pip install captures & suppresses the build output, which causes a timeout on CI.
@@ -383,10 +395,6 @@ _bazel_build_before_install() {
   fi
 }
 
-
-_bazel_build_protobuf() {
-  bazel build "//:install_py_proto"
-}
 
 install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.
@@ -461,7 +469,7 @@ build_wheels_and_jars() {
         -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
         -e "CI=${CI}"
-        -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
+        -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-1}"
         -e "BUILDKITE=${BUILDKITE:-}"
         -e "BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
@@ -597,8 +605,7 @@ init() {
 
   configure_system
 
-  # shellcheck disable=SC2031
-  . "${ROOT_DIR}"/env/install-dependencies.sh  # Script is sourced to propagate up environment changes
+  "${ROOT_DIR}/env/install-dependencies.sh"
 }
 
 build() {

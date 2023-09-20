@@ -339,7 +339,23 @@ class AlgorithmConfig(_Config):
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
-        self.model = copy.deepcopy(MODEL_DEFAULTS)
+        # TODO (sven): Unsolved problem with RLModules sometimes requiring settings from
+        #  the main AlgorithmConfig. We should not require the user to provide those
+        #  settings in both, the AlgorithmConfig (as property) AND the model config
+        #  dict. We should generally move to a world, in which there exists an
+        #  AlgorithmConfig that a) has-a user provided model config object and b)
+        #  is given a chance to compile a final model config (dict or object) that is
+        #  then passed into the RLModule/Catalog. This design would then match our
+        #  "compilation" pattern, where we compile automatically those settings that
+        #  should NOT be touched by the user.
+        #  In case, an Algorithm already uses the above described pattern (and has
+        #  `self.model` as a @property, ignore AttributeError (for trying to set this
+        #  property).
+        try:
+            self.model = copy.deepcopy(MODEL_DEFAULTS)
+        except AttributeError:
+            pass
+
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
@@ -2672,7 +2688,7 @@ class AlgorithmConfig(_Config):
             # We do NOT attempt to auto-detect Atari env for other specified types like
             # a callable, to avoid running heavy logics in validate().
             # For these cases, users can explicitly set `environment(atari=True)`.
-            if not type(self.env) == str:
+            if type(self.env) is not str:
                 return False
             try:
                 env = gym.make(self.env)
@@ -3023,12 +3039,14 @@ class AlgorithmConfig(_Config):
 
         # If container given, construct a simple default callable returning True
         # if the PolicyID is found in the list/set of IDs.
-        is_policy_to_train = self.policies_to_train
         if self.policies_to_train is not None and not callable(self.policies_to_train):
             pols = set(self.policies_to_train)
 
             def is_policy_to_train(pid, batch=None):
                 return pid in pols
+
+        else:
+            is_policy_to_train = self.policies_to_train
 
         return policies, is_policy_to_train
 
@@ -3347,7 +3365,6 @@ class AlgorithmConfig(_Config):
         return marl_module_spec
 
     def get_learner_group_config(self, module_spec: ModuleSpec) -> LearnerGroupConfig:
-
         if not self._is_frozen:
             raise ValueError(
                 "Cannot call `get_learner_group_config()` on an unfrozen "
@@ -3681,21 +3698,15 @@ class AlgorithmConfig(_Config):
             )
 
     @property
-    @Deprecated(error=False)
+    @Deprecated(
+        old="AlgorithmConfig.multiagent['[some key]']",
+        new="AlgorithmConfig.[some key]",
+        error=True,
+    )
     def multiagent(self):
-        """Shim method to help pretend we are a dict with 'multiagent' key."""
-        return {
-            "policies": self.policies,
-            "policy_mapping_fn": self.policy_mapping_fn,
-            "policies_to_train": self.policies_to_train,
-            "policy_map_capacity": self.policy_map_capacity,
-            "policy_map_cache": self.policy_map_cache,
-            "count_steps_by": self.count_steps_by,
-            "observation_fn": self.observation_fn,
-        }
+        pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=False)
+    @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=True)
     def num_workers(self):
-        """For backward-compatibility purposes only."""
-        return self.num_rollout_workers
+        pass
