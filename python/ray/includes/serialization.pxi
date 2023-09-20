@@ -3,8 +3,6 @@ from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
 import contextlib
 import cython
 
-DEF MEMCOPY_THREADS = 6
-
 # This is the default alignment value for len(buffer) < 2048.
 DEF kMinorBufferAlign = 8
 # This is the default alignment value for len(buffer) >= 2048.
@@ -17,7 +15,11 @@ DEF kLanguageSpecificTypeExtensionId = 101
 DEF kMessagePackOffset = 9
 
 cdef extern from "ray/util/memory.h" namespace "ray" nogil:
+    cdef int DEFAULT_MEMCOPY_THREADS
+
     void parallel_memcopy(uint8_t* dst, const uint8_t* src, int64_t nbytes,
+                          uintptr_t block_size)
+    void parallel_memcopy_legacy(uint8_t* dst, const uint8_t* src, int64_t nbytes,
                           uintptr_t block_size, int num_threads)
 
 cdef extern from "google/protobuf/repeated_field.h" nogil:
@@ -379,7 +381,7 @@ cdef class Pickle5Writer:
             with nogil:
                 if (memcopy_threads > 1 and
                         buffer_len > kMemcopyDefaultThreshold):
-                    parallel_memcopy(ptr + buffer_addr,
+                    parallel_memcopy_legacy(ptr + buffer_addr,
                                      <const uint8_t*> self.buffers[i].buf,
                                      buffer_len,
                                      kMemcopyDefaultBlocksize, memcopy_threads)
@@ -440,7 +442,7 @@ cdef class Pickle5SerializedObject(SerializedObject):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:
-        self.writer.write_to(self.inband, buffer, MEMCOPY_THREADS)
+        self.writer.write_to(self.inband, buffer, DEFAULT_MEMCOPY_THREADS)
 
 
 cdef class MessagePackSerializedObject(SerializedObject):
@@ -528,11 +530,10 @@ cdef class RawSerializedObject(SerializedObject):
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:
         with nogil:
-            if (MEMCOPY_THREADS > 1 and
+            if (DEFAULT_MEMCOPY_THREADS > 1 and
                     self._total_bytes > kMemcopyDefaultThreshold):
                 parallel_memcopy(&buffer[0],
                                  self.value_ptr,
-                                 self._total_bytes, kMemcopyDefaultBlocksize,
-                                 MEMCOPY_THREADS)
+                                 self._total_bytes, kMemcopyDefaultBlocksize)
             else:
                 memcpy(&buffer[0], self.value_ptr, self._total_bytes)
