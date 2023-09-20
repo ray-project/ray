@@ -571,7 +571,7 @@ class ExecutionPlan:
                     "are freed up. A common reason is that cluster resources are "
                     "used by Actors or Tune trials; see the following link "
                     "for more details: "
-                    "https://docs.ray.io/en/master/data/dataset-internals.html#datasets-and-tune"  # noqa: E501
+                    "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
         if not self.has_computed_output():
             if self._run_with_new_execution_backend():
