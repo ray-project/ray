@@ -12,10 +12,15 @@ from ray.tests.conftest import *  # noqa
 # and start a local service:
 # sudo apt-get install -y mongodb
 # sudo service mongodb start
+#
 
 
 @pytest.fixture
 def start_mongo():
+    # This test has only been tested for the following versions:
+    pytest.importorskip("pyarrow", minversion="12.0.0")
+    pytest.importorskip("pymongoarrow", minversion="1.0.0")
+
     import pymongo
 
     mongo_url = "mongodb://localhost:27017"

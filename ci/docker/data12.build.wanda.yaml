@@ -11,5 +11,6 @@ srcs:
   - python/requirements/ml/data-test-requirements.txt
 build_args:
   - ARROW_VERSION=12
+  - ARROW_MONGO_VERSION=1.0.2
 tags:
   - cr.ray.io/rayproject/data12build

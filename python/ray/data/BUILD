@@ -69,7 +69,7 @@ py_test(
     name = "test_mongo",
     size = "large",
     srcs = ["tests/test_mongo.py"],
-    tags = ["team:data", "exclusive", "data_integration"],
+    tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -422,7 +422,7 @@ py_test(
     name = "test_raydp",
     size = "medium",
     srcs = ["tests/test_raydp.py"],
-    tags = ["team:data", "exclusive", "data_integration"],
+    tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
