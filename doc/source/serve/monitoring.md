@@ -458,7 +458,7 @@ The following metrics are exposed by Ray Serve:
      - The number of request scheduling tasks in the router that are undergoing backoff.
    * - ``ray_serve_long_poll_host_bytes_sent`` [†]
      - N/A
-     - The number of bytes sent by the ServeController's long poll host.
+     - The number of bytes sent by the ServeController's long poll host. The actual number of bytes sent over the wire may be different than the metric reports. This metric should be used as an approximation.
    * - ``ray_serve_handle_request_counter`` [**]
      - * handle
        * deployment
