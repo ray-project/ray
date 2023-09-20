@@ -199,7 +199,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         if pkg_uri.endswith(".whl"):
             # Don't modify the .whl filename. See
             # https://peps.python.org/pep-0427/#file-name-convention
-            # so don't modify
+            # for more informationl.
             package_name = pkg_uri.split("/")[-1]
         else:
             package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
