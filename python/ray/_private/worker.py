@@ -427,7 +427,7 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, HABANA_VISIBLE_MODULES ..)
         # environment variables.
         self.original_gpu_and_accelerator_runtime_ids = (
             ray._private.utils.get_gpu_and_accelerator_runtime_ids()
@@ -869,9 +869,9 @@ class Worker:
                     assigned_ids.add(resource_id)
 
         # If the user had already set the environment variables
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) then
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, HABANA_VISIBLE_MODULES, ..) then
         # respect that in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
-        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
+        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, HABANA_VISIBLE_MODULES,  ..) should be returned.
         if (
             self.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
             is not None

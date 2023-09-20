@@ -3,6 +3,8 @@
 import logging
 import os
 import sys
+from functools import lru_cache
+from importlib.util import find_spec
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,16 @@ def env_bool(key, default):
 def env_set_by_user(key):
     return key in os.environ
 
+
+@lru_cache()
+def is_package_present(package_name: str) -> bool:
+    try:
+        return find_spec(package_name) is not None
+    except ModuleNotFoundError:
+        return False
+
+
+HPU_PACKAGE_AVAILABLE = is_package_present("habana_frameworks")
 
 # Whether event logging to driver is enabled. Set to 0 to disable.
 AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
@@ -401,14 +413,17 @@ NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR = (
 )
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
+NOSET_HABANA_VISIBLE_MODULES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_HABANA_VISIBLE_MODULES"
 
 CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
 NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
+HABANA_VISIBLE_MODULES_ENV_VAR = "HABANA_VISIBLE_MODULES"
 
 NEURON_CORES = "neuron_cores"
 GPU = "GPU"
 TPU = "TPU"
+HPU = "HPU"
 
 # https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/inf2-arch.html#aws-inf2-arch
 # https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/trn1-arch.html#aws-trn1-arch

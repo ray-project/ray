@@ -9,6 +9,7 @@ import ray._private.ray_constants as ray_constants
 import ray._private.utils as utils
 import re
 from typing import Iterable, Optional
+from ray._private.ray_constants import HPU_PACKAGE_AVAILABLE
 
 
 def update_resources_with_accelerator_type(resources: dict):
@@ -18,6 +19,7 @@ def update_resources_with_accelerator_type(resources: dict):
     Currently, we support detection and configuration of:
     - AWS NeuronCore (neuron_cores / accelerator_type:aws-neuron-core)
     - Google Cloud TPUs (TPU / accelerator_type:TPU-V*)
+    - Intel Habana HPUs (HPU / accelerator_type:GAUDI)
 
     Args:
         resources: Resources dictionary to be updated with
@@ -40,6 +42,15 @@ def update_resources_with_accelerator_type(resources: dict):
         visible_ids=utils.get_tpu_visible_chips(),
         autodetected_accelerators=_autodetect_num_tpus(),
         visible_devices_env_variable=ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR,
+    )
+    # Autodetect Intel Habana HPUs
+    _detect_and_configure_custom_accelerator(
+        resources=resources,
+        accelerator_key=ray_constants.HPU,
+        accelerator_type=_autodetect_hpu_type(),
+        visible_ids=utils.get_hpu_visible_devices(),
+        autodetected_accelerators=_autodetect_num_hpus(),
+        visible_devices_env_variable=ray_constants.HABANA_VISIBLE_MODULES_ENV_VAR,
     )
 
 
@@ -70,13 +81,13 @@ def _detect_and_configure_custom_accelerator(
             accelerator type and resource count.
         accelerator_key: The key used to access the number of accelerators
             within `resources`. This can be:
-            ray_constants.NEURON_CORES or ray_constants.TPU
+            ray_constants.NEURON_CORES or ray_constants.TPU or ray_constants.HPU
         accelerator_type: The name of the accelerator type. This
             is the unique identifier of the accelerator version, e.g.
-            ray_constants.AWS_NEURON_CORE or ray_constants.GOOGLE_TPU_V4.
+            ray_constants.AWS_NEURON_CORE or ray_constants.GOOGLE_TPU_V4 or ray_constants.GAUDI.
         visible_ids: The visible IDs specified by the user. This is typically
             controlled by an environment variable, e.g. NEURON_RT_VISIBLE_CORES
-            or TPU_VISIBLE_CHIPS.
+            or TPU_VISIBLE_CHIPS or HABANA_VISIBLE_MODULES.
         autodetected_accelerators: The number of accelerators autodetected
             on the machine.
         visible_devices_env_variable: The environment variable a user uses
@@ -240,3 +251,37 @@ def assert_tpu_accelerator_type(accelerator_type: str):
             "`acceleratorType` should match v(generation)-(cores/chips). "
             f"Got {accelerator_type}."
         )
+
+
+def _autodetect_hpu_type() -> str:
+    """Attempt to HPU family type.
+
+    Returns:
+        The device name if detected else an empty string.
+    """
+    if HPU_PACKAGE_AVAILABLE:
+        import habana_frameworks.torch.hpu as torch_hpu
+        if torch_hpu.is_available():
+            return torch_hpu.get_device_name()
+        else:
+            logging.info("HPU type cannot be detected")
+            return ""
+    else:
+        return ""
+
+
+def _autodetect_num_hpus() -> int:
+    """Attempt to detect the number of HPUs on this machine.
+
+    Returns:
+        The number of HPUs if any were detected, otherwise 0.
+    """
+    if HPU_PACKAGE_AVAILABLE:
+        import habana_frameworks.torch.hpu as torch_hpu
+        if torch_hpu.is_available():
+            return torch_hpu.device_count()
+        else:
+            logging.info("HPU devices not available")
+            return 0
+    else:
+        return 0

@@ -14,6 +14,10 @@ from ray.util import PublicAPI
 import torch
 import torch.distributed as dist
 
+from ray._private.ray_constants import HPU_PACKAGE_AVAILABLE
+if HPU_PACKAGE_AVAILABLE:
+    import habana_frameworks.torch.core as htcore
+    import habana_frameworks.torch.distributed.hccl as hpu_dist
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +108,10 @@ def _setup_torch_process_group(
         )
         os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
 
+    #Fix Me: initialize hpu envs before any device creation.
+    if not HPU_PACKAGE_AVAILABLE:
+        hpu_dist.initialize_distributed_hpu(world_size=world_size, rank=world_rank, local_rank=world_rank)
+
     dist.init_process_group(
         backend=backend,
         init_method=init_method,
@@ -155,6 +163,12 @@ class _TorchBackend(Backend):
             if backend_config.backend is None:
                 if worker_group.num_gpus_per_worker > 0:
                     backend = "nccl"
+                elif worker_group.num_workers > 1:
+                    if HPU_PACKAGE_AVAILABLE:
+                        logger.debug("Using Intel habana distributed backend HCCL")
+                        backend = "hccl"
+                    else:
+                        backend = "gloo"
                 else:
                     backend = "gloo"
             else:

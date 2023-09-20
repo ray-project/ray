@@ -186,21 +186,29 @@ def test_autodetect_tpu_fails_gracefully():
         assert tpu_result is None
 
 
+def test_autodetect_num_hpus_accel():
+    assert accelerator._autodetect_num_hpus() == 8 #default num cards in a node
+
+
 @pytest.mark.parametrize(
     "test_config",
     [
-        (1, 0, 0, False, False),
-        (0, 1, 0, False, False),
-        (0, 0, 1, False, False),
-        (0, 0, 0, True, False),
-        (1, 1, 0, False, True),
-        (0, 1, 1, False, True),
-        (0, 1, 0, True, True),
-        (1, 0, 0, True, True),
+        (1, 0, 0, 0, False, False),
+        (0, 1, 0, 0, False, False),
+        (0, 0, 1, 0, False, False),
+        (0, 0, 0, 1, False, False),
+        (0, 0, 0, 0, True, False),
+        (1, 1, 0, 0, False, True),
+        (1, 0, 0, 1, False, True),
+        (0, 1, 1, 0, False, True),
+        (0, 0, 1, 1, False, True),
+        (0, 1, 0, 0, True, True),
+        (0, 0, 0, 1, True, True),
+        (1, 0, 0, 0, True, True),
     ],
 )
 def test_validate_accelerator_options(test_config):
-    num_gpus, num_tpus, num_neuron_cores, use_neuron_acc, expect_error = test_config
+    num_gpus, num_tpus, num_neuron_cores, num_hpus, use_neuron_acc, expect_error = test_config
     options = {
         "num_gpus": num_gpus,
         "resources": {},
@@ -212,6 +220,8 @@ def test_validate_accelerator_options(test_config):
         options["resources"]["neuron_cores"] = num_neuron_cores
     if num_tpus > 0:
         options["resources"]["TPU"] = num_tpus
+    if num_hpus > 0:
+        options["resources"]["HPU"] = num_hpus
 
     if expect_error:
         with pytest.raises(ValueError):

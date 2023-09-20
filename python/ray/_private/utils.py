@@ -278,8 +278,8 @@ def compute_driver_id_from_job(job_id):
 
 def get_gpu_and_accelerator_runtime_ids() -> Mapping[str, Optional[List[str]]]:
     """
-    Get the device IDs of GPUs (CUDA), accelerators(NeuronCore and TPUs)
-    using (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS)
+    Get the device IDs of GPUs (CUDA), accelerators(NeuronCore, HPUs and TPUs)
+    using (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, HABANA_VISIBLE_MODULES, TPU_VISIBLE_CHIPS)
     environment variables.
 
     Returns:
@@ -288,6 +288,7 @@ def get_gpu_and_accelerator_runtime_ids() -> Mapping[str, Optional[List[str]]]:
             - ray_constants.NEURON_CORES: The list of device IDs of
                 accelerators.
             - ray_constants.TPU: The list of device IDs of TPUs.
+            - ray_constants.HPU: The list of device IDs of HPUs.
         If either of the environment variables is not set, returns None for
         corresponding key.
     """
@@ -295,6 +296,7 @@ def get_gpu_and_accelerator_runtime_ids() -> Mapping[str, Optional[List[str]]]:
         ray_constants.GPU: get_cuda_visible_devices(),
         ray_constants.NEURON_CORES: get_aws_neuron_core_visible_ids(),
         ray_constants.TPU: get_tpu_visible_chips(),
+        ray_constants.HPU: get_hpu_visible_devices(),
     }
 
 
@@ -308,6 +310,18 @@ def get_cuda_visible_devices() -> Optional[List[str]]:
             If it is not set or is set to NoDevFiles, returns empty list.
     """
     return _get_visible_ids(env_var=ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR)
+
+
+def get_hpu_visible_devices() -> Optional[List[str]]:
+    """
+    Get the device IDs using HABANA_VISIBLE_MODULES environment variable.
+
+    Returns:
+        devices (List[str]): If environment variable is set, returns a
+            list of strings representing the IDs of the visible devices.
+            If it is not set or is set to NoDevFiles, returns empty list.
+    """
+    return _get_visible_ids(env_var=ray_constants.HABANA_VISIBLE_MODULES_ENV_VAR)
 
 
 def get_aws_neuron_core_visible_ids() -> Optional[List[str]]:
@@ -339,7 +353,7 @@ def _get_visible_ids(env_var: str) -> Optional[List[str]]:
     """Get the device IDs from defined environment variable.
     Args:
         env_var: Environment variable (e.g., CUDA_VISIBLE_DEVICES,
-        NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS) to set based
+        NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, HABANA_VISIBLE_MODULES) to set based
         on the accelerator runtime.
 
     Returns:
@@ -351,6 +365,7 @@ def _get_visible_ids(env_var: str) -> Optional[List[str]]:
         ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR,
         ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
         ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR,
+        ray_constants.HABANA_VISIBLE_MODULES_ENV_VAR,
     ):
         raise ValueError(f"Invalid environment variable {env_var} to get visible IDs.")
     visible_ids_str = os.environ.get(env_var, None)
@@ -371,6 +386,7 @@ def _get_visible_ids(env_var: str) -> Optional[List[str]]:
 last_set_gpu_ids = None
 last_set_neuron_core_ids = None
 last_set_tpu_chips = None
+last_set_hpu_ids = None
 
 
 def set_omp_num_threads_if_unset() -> bool:
@@ -425,6 +441,7 @@ def set_gpu_and_accelerator_runtime_ids() -> None:
     set_cuda_visible_devices(ids[ray_constants.GPU])
     set_aws_neuron_core_visible_ids(ids[ray_constants.NEURON_CORES])
     set_tpu_visible_ids_and_bounds(ids[ray_constants.TPU])
+    set_hpu_visible_devices(ids[ray_constants.HPU])
 
 
 def set_cuda_visible_devices(gpu_ids: List[str]):
@@ -499,6 +516,21 @@ def set_tpu_visible_ids_and_bounds(tpu_chips: List[str]) -> None:
     last_set_tpu_chips = tpu_chips
 
 
+def set_hpu_visible_devices(hpu_ids: List[str]):
+    """Set the HABANA_VISIBLE_MODULE environment variable.
+
+    Args:
+        gpu_ids (List[str]): List of strings representing HPU IDs.
+    """
+    if os.environ.get(ray_constants.NOSET_HABANA_VISIBLE_MODULES_ENV_VAR):
+        return
+    global last_set_hpu_ids
+    if last_set_hpu_ids == hpu_ids:
+        return  # optimization: already set
+    _set_visible_ids(hpu_ids, ray_constants.HABANA_VISIBLE_MODULES_ENV_VAR)
+    last_set_hpu_ids = hpu_ids
+
+
 def _set_visible_ids(visible_ids: List[str], env_var: str):
     """Set the environment variable (e.g., CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES,
      TPU_VISIBLE_CHIPS) passed based on accelerator runtime and will raise an error if
@@ -513,6 +545,7 @@ def _set_visible_ids(visible_ids: List[str], env_var: str):
         ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR,
         ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
         ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR,
+        ray_constants.HABANA_VISIBLE_MODULES_ENV_VAR,
     ):
         raise ValueError(f"Invalid environment variable {env_var} to set visible IDs.")
     os.environ[env_var] = ",".join([str(i) for i in visible_ids])

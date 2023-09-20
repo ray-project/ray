@@ -123,7 +123,7 @@ def _maybe_warn_misconfigured_tpu_chips(resources: Dict[str, Any]):
 def _validate_accelerators(options: Dict[str, Any]):
     """Validate options for accelerators - support only one out of multiple options.
 
-    GPUs, NeuronCore accelerators (neuron_cores), and TPUs are valid options, but
+    GPUs, NeuronCore accelerators (neuron_cores), HPU's and TPUs are valid options, but
     individual nodes do not support heterogeneous accelerators. This function
     guards against this setting.
 
@@ -132,8 +132,8 @@ def _validate_accelerators(options: Dict[str, Any]):
           a particular accelerator, captured by booleans.
             - For GPUs, this is set if num_gpus > 0.
             - For custom resources, this is set if the
-              resource name ("neuron_cores" or "TPU") or
-              accelerator_type ("aws-neuron-core", "TPU-V2", "TPU-V3", etc.)
+              resource name ("neuron_cores" or "TPU" or "HPU") or
+              accelerator_type ("aws-neuron-core", "TPU-V2", "TPU-V3", "GAUDI", etc.)
               is requested.
         - If we identify that >1 resource type is requested,
           we raise an error indicating that heterogeneous raylets
@@ -175,12 +175,18 @@ def _validate_accelerators(options: Dict[str, Any]):
             accelerators.GOOGLE_TPU_V4,
         ],
     )
+    non_zero_hpus = non_zero_custom_resource(
+        resource_id=ray_constants.HPU,
+        accelerator_ids=[
+            accelerators.GAUDI,
+        ],
+    )
 
     if non_zero_tpus:
         _maybe_warn_misconfigured_tpu_chips(resources)
 
     num_configured_accelerators = sum(
-        [non_zero_gpus, non_zero_tpus, non_zero_neuron_cores]
+        [non_zero_gpus, non_zero_tpus, non_zero_hpus, non_zero_neuron_cores]
     )
     if num_configured_accelerators > 1:
         hardware_requested = []
@@ -190,10 +196,12 @@ def _validate_accelerators(options: Dict[str, Any]):
             hardware_requested.append("neuron_cores")
         if non_zero_tpus:
             hardware_requested.append("TPU")
+        if non_zero_hpus:
+            hardware_requested.append("HPU")
         hardware_str = ",".join(hardware_requested)
         raise ValueError(
             "Only one of 'num_gpus', 'neuron_cores/accelerator_type:aws-neuron-core' "
-            "and 'TPU/accelerator_type:TPU-V*' can be set. "
+            "'HPU/accelerator_type:GAUDI' and 'TPU/accelerator_type:TPU-V*' can be set. "
             f"Detected {num_configured_accelerators} "
             f"options were configured: {hardware_str}."
         )

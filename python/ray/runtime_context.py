@@ -415,17 +415,17 @@ class RuntimeContext(object):
 
     def get_resource_ids(self) -> Dict[str, List[str]]:
         """
-        Get the current worker's GPU, accelerator and TPU ids.
+        Get the current worker's GPU, accelerator, TPU ids and HPU ids.
 
         Returns:
             A dictionary keyed by the resource name. The values are list
             of ids `{'GPU': ['0', '1'], 'neuron_cores': ['0', '1'],
-            'TPU': ['0', '1']}`.
+            'TPU': ['0', '1'], 'HPU': ['0', '1']}`.
         """
         worker = self.worker
         worker.check_connected()
         ids_dict: Dict[str, List[str]] = {}
-        for name in [ray_constants.GPU, ray_constants.NEURON_CORES, ray_constants.TPU]:
+        for name in [ray_constants.GPU, ray_constants.NEURON_CORES, ray_constants.TPU, ray_constants.HPU]:
             resource_ids = worker.get_resource_ids_for_resource(
                 name, f"^{name}_group_[0-9A-Za-z]+$"
             )
