@@ -275,11 +275,12 @@ class MapOperator(OneToOneOperator, ABC):
         def _task_done_callback(task_index, inputs):
             # We should only destroy the input bundle when the whole task is done.
             # Otherwise, if the task crashes in the middle, we can't rerun it.
-            refs = [input[0] for input in inputs.blocks]
-            locations = ray.experimental.get_object_locations(refs)
-            for ref in inputs.blocks:
+            blocks = [input[0] for input in inputs.blocks]
+            metadata = [input[1] for input in inputs.blocks]
+            locations = ray.experimental.get_object_locations(blocks)
+            for block, meta in zip(blocks, metadata):
                 self._metrics.spilled += (
-                    ref[1].size_bytes * locations[ref[0]]["times_spilled"]
+                    meta.size_bytes * locations[block]["times_spilled"]
                 )
 
             inputs.destroy_if_owned()

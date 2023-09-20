@@ -563,6 +563,8 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
             The hex IDs of the nodes that have a copy of this object.
         - object_size:
             The size of data + metadata in bytes.
+        - times_spilled:
+            The number of times this object was spilled.
     """
     object_size = c_object_location.GetObjectSize()
     times_spilled = c_object_location.GetTimesSpilled()
