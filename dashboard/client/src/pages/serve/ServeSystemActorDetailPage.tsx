@@ -59,9 +59,7 @@ export const ServeProxyDetailPage = () => {
                 id: "serveProxy",
                 title: `ProxyActor:${proxy.node_id}`,
                 pageTitle: `${proxy.node_id} | Serve ProxyActor`,
-                path: `/serve/proxies/${encodeURIComponent(
-                  proxy.node_id,
-                )}`,
+                path: `/serve/proxies/${encodeURIComponent(proxy.node_id)}`,
               }
             : {
                 id: "serveProxy",
@@ -70,9 +68,7 @@ export const ServeProxyDetailPage = () => {
               }
         }
       />
-      <ServeSystemActorDetail
-        actor={{ type: "proxy", detail: proxy }}
-      />
+      <ServeSystemActorDetail actor={{ type: "proxy", detail: proxy }} />
     </div>
   );
 };
@@ -155,10 +151,7 @@ export const ServeSystemActorDetail = ({
             label: "Status",
             content:
               actor.type === "proxy" ? (
-                <StatusChip
-                  type="serveProxy"
-                  status={actor.detail.status}
-                />
+                <StatusChip type="serveProxy" status={actor.detail.status} />
               ) : fetchedActor ? (
                 <StatusChip
                   type="serveController"

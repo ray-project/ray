@@ -146,10 +146,7 @@ export const ServeSystemDetails = ({
                 page.pageNo * page.pageSize,
               )
               .map((proxy) => (
-                <ServeProxyRow
-                  key={proxy.actor_id}
-                  proxy={proxy}
-                />
+                <ServeProxyRow key={proxy.actor_id} proxy={proxy} />
               ))}
           </TableBody>
         </Table>

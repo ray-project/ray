@@ -6,10 +6,7 @@ import { getServeApplications } from "../../../service/serve";
 import { ServeSystemActorStatus } from "../../../type/serve";
 import { ServeDetails } from "../ServeSystemDetails";
 
-const SERVE_PROXY_STATUS_SORT_ORDER: Record<
-  ServeSystemActorStatus,
-  number
-> = {
+const SERVE_PROXY_STATUS_SORT_ORDER: Record<ServeSystemActorStatus, number> = {
   [ServeSystemActorStatus.UNHEALTHY]: 0,
   [ServeSystemActorStatus.STARTING]: 1,
   [ServeSystemActorStatus.HEALTHY]: 2,
