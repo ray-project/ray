@@ -179,9 +179,9 @@ def job_cli_group():
     "--entrypoint-memory",
     required=False,
     type=float,
-    help="amount of reservable memory resource in bytes rounded down "
-    "to the nearest integer for the entrypoint command, separately from "
-    "any tasks or actors that are launched by it",
+    help="the amount of total available memory for workers requesting memory "
+    "for the entrypoint command, separately from any tasks or actors that are "
+    "launched by it",
 )
 @click.option(
     "--entrypoint-resources",

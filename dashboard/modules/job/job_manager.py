@@ -873,9 +873,9 @@ class JobManager:
             entrypoint_num_gpus: The quantity of GPUs to reserve for
                 the entrypoint command, separately from any tasks or actors launched
                 by it. Defaults to 0.
-            entrypoint_memory: The quantity of Memory to reserve for
-                the entrypoint command, separately from any tasks or actors launched
-                by it. Defaults to 0.
+            entrypoint_memory: The amount of total available memory for workers
+                requesting memory the entrypoint command, separately from any tasks
+                or actors launched by it. Defaults to 0.
             entrypoint_resources: The quantity of various custom resources
                 to reserve for the entrypoint command, separately from any tasks or
                 actors launched by it.
