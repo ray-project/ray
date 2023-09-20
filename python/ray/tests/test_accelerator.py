@@ -190,6 +190,18 @@ def test_autodetect_num_hpus_accel():
     assert accelerator._autodetect_num_hpus() == 8 #default num cards in a node
 
 
+def test_configured_hpu():
+    resources = {"HPU": 2}
+    accelerator.update_resources_with_accelerator_type(resources)
+    assert resources.get(ray_constants.HPU) == 2
+
+
+def test_auto_detect_hpus():
+    resources = {"CPU": 1}
+    accelerator.update_resources_with_accelerator_type(resources)
+    assert resources.get(ray_constants.HPU) == 8
+
+
 @pytest.mark.parametrize(
     "test_config",
     [
