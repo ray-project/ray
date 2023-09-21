@@ -2942,7 +2942,14 @@ class AlgorithmConfig(_Config):
                     ):
                         obs_space = None
                         mapping_fn = self.policy_mapping_fn
-                        if mapping_fn:
+                        one_obs_space = next(iter(env_obs_space.values()))
+                        # If all obs spaces are the same anyways, just use the first
+                        # single-agent space.
+                        if all(s == one_obs_space for s in env_obs_space.values()):
+                            obs_space = one_obs_space
+                        # Otherwise, we have to match the policy ID with all possible
+                        # agent IDs and find the agent ID that matches.
+                        elif mapping_fn:
                             for aid in env.get_agent_ids():
                                 # Match: Assign spaces for this agentID to the PolicyID.
                                 if mapping_fn(aid, None, worker=None) == pid:
@@ -2996,7 +3003,14 @@ class AlgorithmConfig(_Config):
                     ):
                         act_space = None
                         mapping_fn = self.policy_mapping_fn
-                        if mapping_fn:
+                        one_act_space = next(iter(env_act_space.values()))
+                        # If all action spaces are the same anyways, just use the first
+                        # single-agent space.
+                        if all(s == one_act_space for s in env_act_space.values()):
+                            act_space = one_act_space
+                        # Otherwise, we have to match the policy ID with all possible
+                        # agent IDs and find the agent ID that matches.
+                        elif mapping_fn:
                             for aid in env.get_agent_ids():
                                 # Match: Assign spaces for this AgentID to the PolicyID.
                                 if mapping_fn(aid, None, worker=None) == pid:
