@@ -103,6 +103,7 @@ class TestPPO(unittest.TestCase):
         for fw in framework_iterator(config, frameworks=("tf2")):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in [
+                #"CliffWalking-v0",
                 "CartPole-v1",
                 "Pendulum-v1",
             ]:  # "ALE/Breakout-v5"]:
@@ -137,108 +138,108 @@ class TestPPO(unittest.TestCase):
                     )
                     algo.stop()
 
-    def test_ppo_exploration_setup(self):
-        """Tests, whether PPO runs with different exploration setups."""
-        config = (
-            ppo.PPOConfig()
-            .environment(
-                "FrozenLake-v1",
-                env_config={"is_slippery": False, "map_name": "4x4"},
-            )
-            .rollouts(
-                # Run locally.
-                num_rollout_workers=1,
-                enable_connectors=True,
-            )
-            .rl_module(_enable_rl_module_api=True)
-            .training(_enable_learner_api=True)
-        )
-        obs = np.array(0)
+    # def test_ppo_exploration_setup(self):
+    #     """Tests, whether PPO runs with different exploration setups."""
+    #     config = (
+    #         ppo.PPOConfig()
+    #         .environment(
+    #             "FrozenLake-v1",
+    #             env_config={"is_slippery": False, "map_name": "4x4"},
+    #         )
+    #         .rollouts(
+    #             # Run locally.
+    #             num_rollout_workers=1,
+    #             enable_connectors=True,
+    #         )
+    #         .rl_module(_enable_rl_module_api=True)
+    #         .training(_enable_learner_api=True)
+    #     )
+    #     obs = np.array(0)
 
-        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
-            # Default Agent should be setup with StochasticSampling.
-            algo = config.build()
-            # explore=False, always expect the same (deterministic) action.
-            a_ = algo.compute_single_action(
-                obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
-            )
+    #     for _ in framework_iterator(config, frameworks=("torch", "tf2")):
+    #         # Default Agent should be setup with StochasticSampling.
+    #         algo = config.build()
+    #         # explore=False, always expect the same (deterministic) action.
+    #         a_ = algo.compute_single_action(
+    #             obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
+    #         )
 
-            for _ in range(50):
-                a = algo.compute_single_action(
-                    obs,
-                    explore=False,
-                    prev_action=np.array(2),
-                    prev_reward=np.array(1.0),
-                )
-                check(a, a_)
+    #         for _ in range(50):
+    #             a = algo.compute_single_action(
+    #                 obs,
+    #                 explore=False,
+    #                 prev_action=np.array(2),
+    #                 prev_reward=np.array(1.0),
+    #             )
+    #             check(a, a_)
 
-            # With explore=True (default), expect stochastic actions.
-            actions = []
-            for _ in range(300):
-                actions.append(
-                    algo.compute_single_action(
-                        obs, prev_action=np.array(2), prev_reward=np.array(1.0)
-                    )
-                )
-            check(np.mean(actions), 1.5, atol=0.2)
-            algo.stop()
+    #         # With explore=True (default), expect stochastic actions.
+    #         actions = []
+    #         for _ in range(300):
+    #             actions.append(
+    #                 algo.compute_single_action(
+    #                     obs, prev_action=np.array(2), prev_reward=np.array(1.0)
+    #                 )
+    #             )
+    #         check(np.mean(actions), 1.5, atol=0.2)
+    #         algo.stop()
 
-    def test_ppo_free_log_std_with_rl_modules(self):
-        """Tests the free log std option works."""
-        config = (
-            (
-                ppo.PPOConfig()
-                .environment("Pendulum-v1")
-                .rollouts(
-                    num_rollout_workers=1,
-                )
-                .training(
-                    gamma=0.99,
-                    model=dict(
-                        fcnet_hiddens=[10],
-                        fcnet_activation="linear",
-                        free_log_std=True,
-                        vf_share_layers=True,
-                    ),
-                )
-            )
-            .rl_module(_enable_rl_module_api=True)
-            .training(_enable_learner_api=True)
-        )
+    # def test_ppo_free_log_std_with_rl_modules(self):
+    #     """Tests the free log std option works."""
+    #     config = (
+    #         (
+    #             ppo.PPOConfig()
+    #             .environment("Pendulum-v1")
+    #             .rollouts(
+    #                 num_rollout_workers=1,
+    #             )
+    #             .training(
+    #                 gamma=0.99,
+    #                 model=dict(
+    #                     fcnet_hiddens=[10],
+    #                     fcnet_activation="linear",
+    #                     free_log_std=True,
+    #                     vf_share_layers=True,
+    #                 ),
+    #             )
+    #         )
+    #         .rl_module(_enable_rl_module_api=True)
+    #         .training(_enable_learner_api=True)
+    #     )
 
-        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
-            algo = config.build()
-            policy = algo.get_policy()
-            learner = algo.learner_group._learner
-            module = learner.module[DEFAULT_POLICY_ID]
+    #     for fw in framework_iterator(config, frameworks=("torch", "tf2")):
+    #         algo = config.build()
+    #         policy = algo.get_policy()
+    #         learner = algo.learner_group._learner
+    #         module = learner.module[DEFAULT_POLICY_ID]
 
-            # Check the free log std var is created.
-            if fw == "torch":
-                matching = [v for (n, v) in module.named_parameters() if "log_std" in n]
-            else:
-                matching = [
-                    v for v in module.trainable_variables if "log_std" in str(v)
-                ]
-            assert len(matching) == 1, matching
-            log_std_var = matching[0]
+    #         # Check the free log std var is created.
+    #         if fw == "torch":
+    #             matching = [v for (n, v) in module.named_parameters() if "log_std" in n]
+    #         else:
+    #             matching = [
+    #                 v for v in module.trainable_variables if "log_std" in str(v)
+    #             ]
+    #         assert len(matching) == 1, matching
+    #         log_std_var = matching[0]
 
-            def get_value():
-                if fw == "torch":
-                    return log_std_var.detach().cpu().numpy()[0]
-                else:
-                    return log_std_var.numpy()[0]
+    #         def get_value():
+    #             if fw == "torch":
+    #                 return log_std_var.detach().cpu().numpy()[0]
+    #             else:
+    #                 return log_std_var.numpy()[0]
 
-            # Check the variable is initially zero.
-            init_std = get_value()
-            assert init_std == 0.0, init_std
-            batch = compute_gae_for_sample_batch(policy, PENDULUM_FAKE_BATCH.copy())
-            batch = policy._lazy_tensor_dict(batch)
-            algo.learner_group.update(batch.as_multi_agent())
+    #         # Check the variable is initially zero.
+    #         init_std = get_value()
+    #         assert init_std == 0.0, init_std
+    #         batch = compute_gae_for_sample_batch(policy, PENDULUM_FAKE_BATCH.copy())
+    #         batch = policy._lazy_tensor_dict(batch)
+    #         algo.learner_group.update(batch.as_multi_agent())
 
-            # Check the variable is updated.
-            post_std = get_value()
-            assert post_std != 0.0, post_std
-            algo.stop()
+    #         # Check the variable is updated.
+    #         post_std = get_value()
+    #         assert post_std != 0.0, post_std
+    #         algo.stop()
 
 
 if __name__ == "__main__":

@@ -371,6 +371,7 @@ class _Episode:
         observations=None,
         actions=None,
         rewards=None,
+        infos=None,
         states=None,
         t: int = 0,
         is_terminated: bool = False,
@@ -384,8 +385,10 @@ class _Episode:
         self.actions = [] if actions is None else actions
         # Rewards: t1 to T.
         self.rewards = [] if rewards is None else rewards
+        # Infos: t0 (initial info) to T.
+        self.infos = [] if infos is None else infos
         # h-states: t0 (in case this episode is a continuation chunk, we need to know
-        # about the initial h) to T.
+        # about the initial h) to T.        
         self.states = states
         # The global last timestep of the episode and the timesteps when this chunk
         # started.
@@ -415,12 +418,14 @@ class _Episode:
         assert self.t == episode_chunk.t_started
         # Pop out our end.
         self.observations.pop()
+        self.infos.pop()
 
         # Extend ourselves. In case, episode_chunk is already terminated (and numpyfied)
         # we need to convert to lists (as we are ourselves still filling up lists).
         self.observations.extend(list(episode_chunk.observations))
         self.actions.extend(list(episode_chunk.actions))
         self.rewards.extend(list(episode_chunk.rewards))
+        self.infos.extend(list(episode_chunk.infos))
         self.t = episode_chunk.t
         self.states = episode_chunk.states
 
@@ -432,7 +437,7 @@ class _Episode:
         self.validate()
 
     def add_initial_observation(
-        self, *, initial_observation, initial_state=None, initial_render_image=None
+        self, *, initial_observation, initial_info, initial_state=None, initial_render_image=None
     ):
         assert not self.is_done
         assert len(self.observations) == 0
@@ -441,6 +446,7 @@ class _Episode:
         assert self.t == self.t_started == 0
 
         self.observations.append(initial_observation)
+        self.infos.append(initial_info)
         self.states = initial_state
         if initial_render_image is not None:
             self.render_images.append(initial_render_image)
@@ -451,6 +457,7 @@ class _Episode:
         observation,
         action,
         reward,
+        info,
         *,
         state=None,
         is_terminated=False,
@@ -463,6 +470,7 @@ class _Episode:
         self.observations.append(observation)
         self.actions.append(action)
         self.rewards.append(reward)
+        self.infos.append(info)
         self.states = state
         self.t += 1
         if render_image is not None:
@@ -482,6 +490,8 @@ class _Episode:
             self.observations = np.array(self.observations)
             self.actions = np.array(self.actions)
             self.rewards = np.array(self.rewards)
+            # TODO (simon): Check, if this is suitable for infos.
+            self.infos = np.array(self.infos)
             self.render_images = np.array(self.render_images, dtype=np.uint8)
 
     @property
@@ -517,6 +527,8 @@ class _Episode:
             id_=self.id_,
             # First (and only) observation of successor is this episode's last obs.
             observations=[self.observations[-1]],
+            # In addition, first (and only) info of successor is the episode's last info.
+            infos=[self.infos[-1]],
             # Same state.
             states=self.states,
             # Continue with self's current timestep.
@@ -537,6 +549,8 @@ class _Episode:
                 SampleBatch.TRUNCATEDS: np.array(
                     [False] * (len(self) - 1) + [self.is_truncated]
                 ),
+                # TODO (simon): Check, if indexing is right here.
+                SampleBatch.INFOS: self.infos[:-1],
             }
         )
 
@@ -551,6 +565,7 @@ class _Episode:
             rewards=batch[SampleBatch.REWARDS],
             is_terminated=batch[SampleBatch.TERMINATEDS][-1],
             is_truncated=batch[SampleBatch.TRUNCATEDS][-1],
+            infos=batch[SampleBatch.INFOS],
         )
 
     def get_return(self):
@@ -577,11 +592,12 @@ class _Episode:
         eps.observations = state[1][1]
         eps.actions = state[2][1]
         eps.rewards = state[3][1]
-        eps.states = state[4][1]
-        eps.t_started = state[5][1]
-        eps.t = state[6][1]
-        eps.is_terminated = state[7][1]
-        eps.is_truncated = state[8][1]
+        eps.infos = state[4][1]
+        eps.states = state[5][1]
+        eps.t_started = state[6][1]
+        eps.t = state[7][1]
+        eps.is_terminated = state[8][1]
+        eps.is_truncated = state[9][1]
         return eps
 
     def __len__(self):

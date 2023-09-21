@@ -34,7 +34,9 @@ class PPOEnvRunner(EnvRunner):
 
         super().__init__(config=config)
 
-        self.worker_index = kwargs.get("worker_index")
+        # Get the worker index on which this instance is running.
+        self.worker_index: int = kwargs.get("worker_index")
+
         # Register env for the local context here.
         gym.register(
             "ppo-custom-env-v0",
@@ -50,11 +52,15 @@ class PPOEnvRunner(EnvRunner):
             ),
         )
         # Create the vectorized gymnasium env.
-        self.env: gym.vector.VectorEnv = gym.vector.make(
-            "ppo-custom-env-v0",
-            num_envs=self.config.num_envs_per_worker,
-            asynchronous=False,  # self.config_remote_envs
+        # Wrap into VectorListInfo wrapper to get infos as lists.
+        self.env = gym.wrappers.VectorListInfo(
+            gym.vector.make(
+                "ppo-custom-env-v0",
+                num_envs=self.config.num_envs_per_worker,
+                asynchronous=False,  # self.config_remote_envs
+            )
         )
+
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
 
@@ -144,22 +150,24 @@ class PPOEnvRunner(EnvRunner):
 
         # Have to reset the env (on all vector sub_envs)
         if force_reset or self._needs_initial_reset:
-            obs, _ = self.env.reset()
+            obs, infos = self.env.reset()
 
             self._episodes = [Episode() for _ in range(self.num_envs)]
             states = initial_states
 
             # Set initial obs and states in the episodes.
             for i in range(self.num_envs):
+                # Extract infor for the vector sub_env.
                 self._episodes[i].add_initial_observation(
                     initial_observation=obs[i],
+                    initial_info=infos[i],
                     # TODO (simon): Check, if this works for the default
                     # stateful encoders.
                     initial_state={k: s[i] for k, s in states.items()},
                 )
         # Do not reset envs, but instead continue in already started episodes.
         else:
-            # Pick up stored observations and srtates from previous timesteps.
+            # Pick up stored observations and states from previous timesteps.
             obs = np.stack([eps.observations[-1] for eps in self._episodes])
             # COmpile the initial state for each batch row (vector sub_env):
             # If episode just started, use the model's initial state, in the
@@ -236,9 +244,10 @@ class PPOEnvRunner(EnvRunner):
                     # the info dict.
                     self._episodes[i].add_timestep(
                         # Gym vector env provides the `"final_observation"`.
-                        infos["final_observation"][i],
+                        infos[i]["final_observation"],
                         actions[i],
                         rewards[i],
+                        infos[i]["final_info"],
                         state=s,
                         is_terminated=terminateds[i],
                         is_truncated=truncateds[i],
@@ -258,6 +267,7 @@ class PPOEnvRunner(EnvRunner):
                         obs[i],
                         actions[i],
                         rewards[i],
+                        infos[i],
                         state=s,
                     )
 
@@ -288,7 +298,7 @@ class PPOEnvRunner(EnvRunner):
         """
         done_episodes_to_return = []
 
-        obs, _ = self.env.reset()
+        obs, infos = self.env.reset()
         episodes = [Episode() for _ in range(self.num_envs)]
 
         # Multiply states n times according to our vector env batch size (num_envs).
@@ -302,8 +312,10 @@ class PPOEnvRunner(EnvRunner):
             render_images = [e.render() for e in self.env.envs]
 
         for i in range(self.num_envs):
+            # Extract info for vector sub_env.
+            #info = {k: v[i] for k, v in infos.items()}
             episodes[i].add_initial_observation(
-                initial_observation=obs[i],
+                initial_info=infos[i],
                 initial_state={k: s[i] for k, s in states.items()},
                 initial_render_image=render_images[i],
             )
@@ -362,6 +374,8 @@ class PPOEnvRunner(EnvRunner):
                     render_images = [e.render() for e in self.env.envs]
 
                 for i in range(self.num_envs):
+                    # Extract info and state for vector sub_env.
+                    #info = {k: v[i] for k, v in infos.items()}
                     s = {k: s[i] for k, s in states.items()}
                     # The last entry in self.observations[i] is already the reset
                     # obs of the new episode.
@@ -373,6 +387,7 @@ class PPOEnvRunner(EnvRunner):
                             infos["final_observation"][i],
                             actions[i],
                             rewards[i],
+                            infos[i],
                             state=s,
                             is_terminated=terminateds[i],
                             is_truncated=truncateds[i],
@@ -393,6 +408,7 @@ class PPOEnvRunner(EnvRunner):
 
                         episodes[i] = Episode(
                             observations=[obs[i]],
+                            infos=[infos[i]],
                             states=s,
                             render_images=[render_images[i]],
                         )
@@ -401,6 +417,7 @@ class PPOEnvRunner(EnvRunner):
                             obs[i],
                             actions[i],
                             rewards[i],
+                            infos[i],
                             state=s,
                             render_image=render_images[i],
                         )
