@@ -946,7 +946,6 @@ class TestTailLogs:
             )
 
 
-
 @pytest.mark.asyncio
 async def test_stop_job_gracefully(job_manager):
     """
@@ -1216,6 +1215,7 @@ async def test_job_pending_timeout(job_manager, monkeypatch):
     assert "Job supervisor actor failed to start within" in job_info.message
     assert job_info.driver_exit_code is None
 
+
 @pytest.mark.asyncio
 async def test_failed_driver_exit_code(job_manager):
     """Test driver exit code from finished task that failed"""
@@ -1238,6 +1238,7 @@ sys.exit({EXIT_CODE})
     job_info = await job_manager.get_job_info(job_id)
     assert job_info.status == JobStatus.FAILED
     assert job_info.driver_exit_code == EXIT_CODE
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
