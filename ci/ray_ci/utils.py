@@ -9,6 +9,9 @@ from math import ceil
 import ci.ray_ci.bazel_sharding as bazel_sharding
 
 
+RAY_VERSION = "3.0.0.dev0"
+
+
 def chunk_into_n(list: List[str], n: int) -> List[List[str]]:
     """
     Chunk a list into n chunks

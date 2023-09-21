@@ -8,6 +8,10 @@ steps:
 
   - name: raypy38cu118base
     wanda: ci/docker/ray.py38.cu118.base.wanda.yaml
+
+  - name: ray-mlpy38cu118base
+    wanda: ci/docker/ray-ml.py38.cu118.base.wanda.yaml
+    depends_on: raypy38cu118base
   
   - name: oss-ci-base_test
     wanda: ci/docker/base.test.wanda.yaml
