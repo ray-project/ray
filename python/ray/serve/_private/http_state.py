@@ -4,7 +4,7 @@ import os
 import random
 import time
 import traceback
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Type
 
 import ray
 from ray.actor import ActorHandle
@@ -22,7 +22,7 @@ from ray.serve._private.constants import (
     PROXY_READY_CHECK_TIMEOUT_S,
     PROXY_DRAIN_CHECK_PERIOD_S,
 )
-from ray.serve._private import http_proxy
+from ray.serve._private.http_proxy import HTTPProxyActor
 from ray.serve._private.utils import (
     format_actor_name,
 )
@@ -35,7 +35,12 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 class HTTPProxyState:
     def __init__(
-        self, actor_handle: ActorHandle, actor_name: str, node_id: str, node_ip: str
+        self,
+        actor_handle: ActorHandle,
+        actor_name: str,
+        node_id: str,
+        node_ip: str,
+        consecutive_health_check_failures: int = 0,
     ):
         self._actor_handle = actor_handle
         self._actor_name = actor_name
@@ -45,7 +50,7 @@ class HTTPProxyState:
         self._health_check_obj_ref = None
         self._last_health_check_time: float = time.time()
         self._shutting_down = False
-        self._consecutive_health_check_failures: int = 0
+        self._consecutive_health_check_failures = consecutive_health_check_failures
 
         self._update_draining_obj_ref = None
         self._is_drained_obj_ref = None
@@ -74,6 +79,10 @@ class HTTPProxyState:
     @property
     def actor_details(self) -> ProxyDetails:
         return self._actor_details
+
+    @property
+    def consecutive_health_check_failures(self) -> int:
+        return self._consecutive_health_check_failures
 
     def set_status(self, status: ProxyStatus) -> None:
         """Sets _status and updates _actor_details with the new status."""
@@ -220,6 +229,10 @@ class HTTPProxyState:
         ):
             return
 
+        # Doing a linear backoff for the ready check timeout.
+        ready_check_timeout = (
+            self.consecutive_health_check_failures + 1
+        ) * PROXY_READY_CHECK_TIMEOUT_S
         if self._status == ProxyStatus.STARTING:
             finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
             if finished:
@@ -243,14 +256,12 @@ class HTTPProxyState:
                         "Unexpected error occurred when checking readiness of HTTP "
                         f"Proxy on node {self._node_id}:\n{traceback.format_exc()}"
                     )
-            elif (
-                time.time() - self._last_health_check_time > PROXY_READY_CHECK_TIMEOUT_S
-            ):
+            elif time.time() - self._last_health_check_time > ready_check_timeout:
                 # Ready check hasn't returned and the timeout is up, consider it failed.
                 self.set_status(ProxyStatus.UNHEALTHY)
                 logger.warning(
                     "Didn't receive ready check response for HTTP proxy "
-                    f"{self._node_id} after {PROXY_READY_CHECK_TIMEOUT_S}s."
+                    f"{self._node_id} after {ready_check_timeout}s."
                 )
             return
 
@@ -325,6 +336,8 @@ class HTTPProxyStateManager:
         head_node_id: str,
         cluster_node_info_cache: ClusterNodeInfoCache,
         grpc_options: Optional[gRPCOptions] = None,
+        proxy_actor_class: Type[HTTPProxyActor] = HTTPProxyActor,
+        soft_node_affinity: bool = False,
     ):
         self._controller_name = controller_name
         self._detached = detached
@@ -334,7 +347,10 @@ class HTTPProxyStateManager:
             self._config = HTTPOptions()
         self._grpc_options = grpc_options or gRPCOptions()
         self._proxy_states: Dict[NodeId, HTTPProxyState] = dict()
+        self._proxy_consecutive_health_check_failures: Dict[NodeId, int] = dict()
         self._head_node_id: str = head_node_id
+        self._proxy_actor_class = proxy_actor_class
+        self._soft_node_affinity = soft_node_affinity
 
         self._cluster_node_info_cache = cluster_node_info_cache
 
@@ -481,14 +497,16 @@ class HTTPProxyStateManager:
             )
             grpc_options.port = int(os.getenv("TEST_WORKER_NODE_GRPC_PORT"))
 
-        proxy = http_proxy.HTTPProxyActor.options(
+        proxy = self._proxy_actor_class.options(
             num_cpus=self._config.num_cpus,
             name=name,
             namespace=SERVE_NAMESPACE,
             lifetime="detached" if self._detached else None,
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=0,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id, soft=self._soft_node_affinity
+            ),
         ).remote(
             self._config.host,
             port,
@@ -526,7 +544,13 @@ class HTTPProxyStateManager:
                 )
 
             self._proxy_states[node_id] = HTTPProxyState(
-                proxy, name, node_id, node_ip_address
+                actor_handle=proxy,
+                actor_name=name,
+                node_id=node_id,
+                node_ip=node_ip_address,
+                consecutive_health_check_failures=self._proxy_consecutive_health_check_failures.get(
+                    node_id, 0
+                ),
             )
 
     def _stop_proxies_if_needed(self) -> bool:
@@ -552,4 +576,7 @@ class HTTPProxyStateManager:
 
         for node_id in to_stop:
             proxy_state = self._proxy_states.pop(node_id)
+            self._proxy_consecutive_health_check_failures[node_id] = (
+                proxy_state.consecutive_health_check_failures + 1
+            )
             proxy_state.shutdown()

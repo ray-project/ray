@@ -44,6 +44,7 @@ def _make_http_proxy_state_manager(
     http_options: HTTPOptions,
     head_node_id: str = HEAD_NODE_ID,
     cluster_node_info_cache=MockClusterNodeInfoCache(),
+    proxy_actor_class=HTTPProxyActor,
 ) -> (HTTPProxyStateManager, ClusterNodeInfoCache):
     return (
         HTTPProxyStateManager(
@@ -52,6 +53,8 @@ def _make_http_proxy_state_manager(
             config=http_options,
             head_node_id=head_node_id,
             cluster_node_info_cache=cluster_node_info_cache,
+            proxy_actor_class=proxy_actor_class,
+            soft_node_affinity=True,
         ),
         cluster_node_info_cache,
     )
@@ -201,7 +204,6 @@ def test_node_selection(all_nodes):
     assert manager._get_target_nodes({HEAD_NODE_ID}) == [(HEAD_NODE_ID, "fake-head-ip")]
 
 
-@patch("ray.serve._private.http_proxy.HTTPProxyActor", new=MockHTTPProxyActor)
 def test_http_state_update_restarts_unhealthy_proxies(ray_shutdown):
     """Test the update method in HTTPProxyStateManager would
        kill and restart unhealthy proxies.
@@ -215,11 +217,12 @@ def test_http_state_update_restarts_unhealthy_proxies(ray_shutdown):
     head_node_id = get_head_node_id()
 
     manager, cluster_node_info_cache = _make_http_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.HeadOnly),
-        head_node_id,
-        create_cluster_node_info_cache(
+        http_options=HTTPOptions(location=DeploymentMode.HeadOnly),
+        head_node_id=head_node_id,
+        cluster_node_info_cache=create_cluster_node_info_cache(
             GcsClient(address=ray.get_runtime_context().gcs_address)
         ),
+        proxy_actor_class=MockHTTPProxyActor,
     )
     cluster_node_info_cache.update()
     manager._proxy_states[head_node_id] = _create_http_proxy_state(
@@ -1011,6 +1014,60 @@ def test_is_ready_for_shutdown(all_nodes):
         return manager.is_ready_for_shutdown()
 
     wait_for_condition(check_is_ready_for_shutdown)
+
+
+@patch("ray.serve._private.http_state.PROXY_READY_CHECK_TIMEOUT_S", 0.9)
+@pytest.mark.parametrize("number_of_worker_nodes", [1])
+def test_proxy_starting_timeout_longer_than_env(all_nodes, number_of_worker_nodes):
+    """Test calling update method on HTTPProxyState when the proxy state is STARTING and
+    when the ready call takes longer than PROXY_READY_CHECK_TIMEOUT_S.
+
+    The proxy state started with STARTING. After update is called, ready calls takes
+    some time to finish. The state will eventually change to HEALTHY after few more
+    tries.
+    """
+
+    @ray.remote(num_cpus=0)
+    class NewMockHTTPProxyActor:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def ready(self):
+            await asyncio.sleep(1)
+            return json.dumps(["mock_worker_id", "mock_log_file_path"])
+
+        async def check_health(self):
+            pass
+
+    proxy_state_manager, cluster_node_info_cache = _make_http_proxy_state_manager(
+        http_options=HTTPOptions(location=DeploymentMode.EveryNode),
+        proxy_actor_class=NewMockHTTPProxyActor,
+    )
+    cluster_node_info_cache.alive_nodes = all_nodes
+
+    node_ids = set([node[0] for node in all_nodes])
+    proxy_state_manager.update(http_proxy_nodes=node_ids)
+
+    # Ensure 2 proxies are created, one for the head node and another for the worker.
+    assert (
+        len(proxy_state_manager._proxy_states) == 2
+    ), proxy_state_manager._proxy_states
+
+    # Ensure the proxy status before update is STARTING.
+    for proxy_state in proxy_state_manager._proxy_states.values():
+        assert proxy_state.status == ProxyStatus.STARTING
+
+    proxy_state_manager.update(http_proxy_nodes=node_ids)
+
+    # Continuously trigger update and wait for status to be changed.
+    wait_for_condition(
+        condition_predictor=_update_and_check_http_proxy_state_manager,
+        timeout=20,
+        http_proxy_state_manager=proxy_state_manager,
+        node_ids=list(node_ids),
+        statuses=[ProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
+        http_proxy_nodes=node_ids,
+    )
 
 
 if __name__ == "__main__":
