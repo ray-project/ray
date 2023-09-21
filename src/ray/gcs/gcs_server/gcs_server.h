@@ -23,7 +23,6 @@
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_monitor_server.h"
-#include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
@@ -197,9 +196,6 @@ class GcsServer {
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
 
-  /// Get or connect to a redis server
-  std::shared_ptr<RedisClient> GetOrConnectRedis();
-
   void TryGlobalGC();
 
   /// Gcs server configuration.
@@ -210,6 +206,8 @@ class GcsServer {
   instrumented_io_context &main_service_;
   /// The io service used by Pubsub, for isolation from other workload.
   instrumented_io_context pubsub_io_service_;
+  /// The backend store client
+  std::unique_ptr<StoreClient> store_client_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
@@ -228,8 +226,6 @@ class GcsServer {
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
   std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
-  /// The gcs redis failure detector.
-  std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs actor manager.
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
   /// The gcs placement group scheduler.
@@ -284,8 +280,6 @@ class GcsServer {
   std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
   /// Gcs Autoscaler state manager.
   std::unique_ptr<rpc::autoscaler::AutoscalerStateGrpcService> autoscaler_state_service_;
-  /// Backend client.
-  std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.
