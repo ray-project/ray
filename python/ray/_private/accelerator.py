@@ -262,7 +262,8 @@ def _autodetect_hpu_type() -> str:
     if HPU_PACKAGE_AVAILABLE:
         import habana_frameworks.torch.hpu as torch_hpu
         if torch_hpu.is_available():
-            return torch_hpu.get_device_name()
+            #Fix me, if device is not initialized, we open a device to get the name
+            return "GAUDI" #torch_hpu.get_device_name()
         else:
             logging.info("HPU type cannot be detected")
             return ""
