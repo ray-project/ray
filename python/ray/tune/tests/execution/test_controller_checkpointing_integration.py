@@ -584,6 +584,8 @@ def test_checkpoint_force_with_num_to_keep(
         testCloudCheckpointForceWithNumToKeep
     """
     storage = mock_storage_context(delete_syncer=False)
+    # Needed to avoid infinite recursion error on CI runners
+    storage.syncer.__getstate__ = lambda *a, **kw: {}
 
     with mock.patch.dict(
         os.environ, {"TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S": "2"}
