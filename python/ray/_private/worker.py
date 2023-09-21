@@ -558,7 +558,7 @@ class Worker:
             # when needed.
             # https://github.com/ray-project/ray/issues/35598
             return
-        
+
         if not hasattr(self, "core_worker"):
             return
 
