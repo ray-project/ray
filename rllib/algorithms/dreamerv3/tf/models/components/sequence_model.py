@@ -88,10 +88,15 @@ class SequenceModel(tf.keras.Model):
         dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
         self.call = tf.function(
             input_signature=[
-                tf.TensorSpec(shape=[None] + (
-                    [action_space.n] if isinstance(action_space, gym.spaces.Discrete)
-                    else list(action_space.shape)
-                ), dtype=dl_type),
+                tf.TensorSpec(
+                    shape=[None]
+                    + (
+                        [action_space.n]
+                        if isinstance(action_space, gym.spaces.Discrete)
+                        else list(action_space.shape)
+                    ),
+                    dtype=dl_type,
+                ),
                 tf.TensorSpec(shape=[None, num_gru_units], dtype=dl_type),
                 tf.TensorSpec(
                     shape=[
@@ -125,7 +130,8 @@ class SequenceModel(tf.keras.Model):
                     get_num_z_categoricals(self.model_size)
                     * get_num_z_classes(self.model_size)
                     + (
-                        self.action_space.n if isinstance(self.action_space, gym.spaces.Discrete)
+                        self.action_space.n
+                        if isinstance(self.action_space, gym.spaces.Discrete)
                         else int(np.prod(self.action_space.shape))
                     )
                 ),
