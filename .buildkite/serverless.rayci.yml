@@ -8,7 +8,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --except-tags manual,kuberay_operator,spark_plugin_tests
     depends_on: serverlessbuild
-    job_env: serverlessbuild
+    job_env: forge
 
   - label: ":serverless: serverless: flaky tests"
     instance_type: medium
@@ -16,4 +16,4 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... serverless --run-flaky-tests  --parallelism-per-worker 3
     depends_on: serverlessbuild
-    job_env: serverlessbuild
+    job_env: forge
