@@ -1045,7 +1045,7 @@ def test_proxy_starting_timeout_longer_than_env(all_nodes, number_of_worker_node
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
-    node_ids = set([node[0] for node in all_nodes])
+    node_ids = {node[0] for node in all_nodes}
     proxy_state_manager.update(http_proxy_nodes=node_ids)
 
     # Ensure 2 proxies are created, one for the head node and another for the worker.
