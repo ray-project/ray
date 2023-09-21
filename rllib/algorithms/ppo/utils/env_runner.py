@@ -15,6 +15,7 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 from ray.rllib.utils.rl_module import foreach_module
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -222,10 +223,14 @@ class PPOEnvRunner(EnvRunner):
                 action_dist = action_dist_cls[DEFAULT_POLICY_ID].from_logits(
                     fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                 )
+                actions = action_dist.sample()
+                action_logp = convert_to_numpy(action_dist.logp(actions))
+                actions = actions.numpy()
+                fwd_out = convert_to_numpy(fwd_out)
 
-                actions = action_dist.sample().numpy()
                 if STATE_OUT in fwd_out:
-                    states = tree.map_structure(lambda s: s.numpy(), fwd_out[STATE_OUT])
+                    states = convert_to_numpy(fwd_out[STATE_OUT])
+                    # states = tree.map_structure(lambda s: s.numpy(), fwd_out[STATE_OUT])
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
@@ -239,6 +244,24 @@ class PPOEnvRunner(EnvRunner):
                 # TODO (simon): This might be unfortunate if a user needs to set a
                 # certain env parameter during different episodes (for example for
                 # benchmarking).
+                # TODO (simon): Check, if there is more efficient conversion. Maybe 
+                # converting once before the loop for all vector sub_envs.
+                if explore:
+                    extra_model_output = {
+                        SampleBatch.ACTION_DIST_INPUTS: fwd_out[
+                            SampleBatch.ACTION_DIST_INPUTS
+                        ][i],
+                        SampleBatch.ACTION_LOGP: action_logp[i],
+                        SampleBatch.VF_PREDS: fwd_out[SampleBatch.VF_PREDS][i],
+                    }
+                    # In inference we have only the action logits.
+                else:
+                    extra_model_output = {
+                        SampleBatch.ACTION_DIST_INPUTS: fwd_out[
+                            SampleBatch.ACTION_DIST_INPUTS
+                        ][i],
+                        SampleBatch.ACTION_LOGP:action_logp[i],
+                    }
                 if terminateds[i] or truncateds[i]:
                     # Finish the episode with the actual terminal observation stored in
                     # the info dict.
@@ -251,6 +274,7 @@ class PPOEnvRunner(EnvRunner):
                         state=s,
                         is_terminated=terminateds[i],
                         is_truncated=truncateds[i],
+                        extra_model_output=extra_model_output,
                     )
                     # Reset h-states to nthe model's intiial ones b/c we are starting a
                     # new episode.
@@ -269,6 +293,7 @@ class PPOEnvRunner(EnvRunner):
                         rewards[i],
                         infos[i],
                         state=s,
+                        extra_model_output=extra_model_output,
                     )
 
         # Return done episodes ...
@@ -313,7 +338,7 @@ class PPOEnvRunner(EnvRunner):
 
         for i in range(self.num_envs):
             # Extract info for vector sub_env.
-            #info = {k: v[i] for k, v in infos.items()}
+            # info = {k: v[i] for k, v in infos.items()}
             episodes[i].add_initial_observation(
                 initial_info=infos[i],
                 initial_state={k: s[i] for k, s in states.items()},
@@ -362,12 +387,16 @@ class PPOEnvRunner(EnvRunner):
                     action_dist = action_dist_cls[DEFAULT_POLICY_ID].from_logits(
                         fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                     )
-                    actions = action_dist.sample().numpy()
+                    actions = action_dist.sample()
+                    action_logp = convert_to_numpy(action_dist.logp(actions))
+                    actions = actions.numpy()
+                    fwd_out = convert_to_numpy(fwd_out)
 
                     if STATE_OUT in fwd_out:
-                        states = tree.map_structure(
-                            lambda s: s.numpy(), fwd_out[STATE_OUT]
-                        )
+                        states = fwd_out[STATE_OUT]
+                        # states = tree.map_structure(
+                        #     lambda s: s.numpy(), fwd_out[STATE_OUT]
+                        # )
 
                 obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
                 if with_render_data:
@@ -375,10 +404,26 @@ class PPOEnvRunner(EnvRunner):
 
                 for i in range(self.num_envs):
                     # Extract info and state for vector sub_env.
-                    #info = {k: v[i] for k, v in infos.items()}
+                    # info = {k: v[i] for k, v in infos.items()}
                     s = {k: s[i] for k, s in states.items()}
                     # The last entry in self.observations[i] is already the reset
                     # obs of the new episode.
+                    if explore:
+                        extra_model_output = {
+                            SampleBatch.ACTION_DIST_INPUTS: fwd_out[
+                                SampleBatch.ACTION_DIST_INPUTS
+                            ][i],
+                            SampleBatch.ACTION_LOGP: action_logp[i],
+                            SampleBatch.VF_PREDS: fwd_out[SampleBatch.VF_PREDS][i],
+                        }
+                        # In inference we have only the action logits.
+                    else:
+                        extra_model_output = {
+                            SampleBatch.ACTION_DIST_INPUTS: fwd_out[
+                                SampleBatch.ACTION_DIST_INPUTS
+                            ][i],
+                            SampleBatch.ACTION_LOGP: action_logp[i],
+                        }
                     if terminateds[i] or truncateds[i]:
                         eps += 1
                         pbar.update(1)
@@ -391,6 +436,7 @@ class PPOEnvRunner(EnvRunner):
                             state=s,
                             is_terminated=terminateds[i],
                             is_truncated=truncateds[i],
+                            extra_model_output=extra_model_output,
                         )
                         done_episodes_to_return.append(episodes[i])
 
@@ -420,6 +466,7 @@ class PPOEnvRunner(EnvRunner):
                             infos[i],
                             state=s,
                             render_image=render_images[i],
+                            extra_model_output=extra_model_output,
                         )
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)

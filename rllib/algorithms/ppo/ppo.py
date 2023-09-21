@@ -489,8 +489,8 @@ class PPO(Algorithm):
             #  learner actors.
             # TODO (sven): What's the plan for multi-agent setups when the
             # policy is gone?
-            # TODO (simon): he default method has already this funcitonality,
-            # but this serves simply as a placeholder until we
+            # TODO (simon): he default method has already this functionality,
+            # but this serves simply as a placeholder until
             # it is decided on how to replace the functionalities of the policy.
             def is_module_trainable(module_id: ModuleID, batch: SampleBatch):
                 return True

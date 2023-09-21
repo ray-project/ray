@@ -377,6 +377,7 @@ class _Episode:
         is_terminated: bool = False,
         is_truncated: bool = False,
         render_images=None,
+        extra_model_outputs=None,
     ):
         self.id_ = id_ or uuid.uuid4().hex
         # Observations: t0 (initial obs) to T.
@@ -402,6 +403,8 @@ class _Episode:
         # rewards.
         assert render_images is None or observations is not None
         self.render_images = [] if render_images is None else render_images
+        # Extra model outputs, e.g. `action_dist_input` needed in the batch.
+        self.extra_model_outputs = {} if extra_model_outputs is None else extra_model_outputs
 
     def concat_episode(self, episode_chunk: "_Episode"):
         """Adds the given `episode_chunk` to the right side of self."""
@@ -433,6 +436,9 @@ class _Episode:
             self.is_terminated = True
         elif episode_chunk.is_truncated:
             self.is_truncated = True
+        
+        for k, v in episode_chunk.extra_model_outputs.items():
+            self.extra_model_outputs[k].extend(list(v))
         # Validate.
         self.validate()
 
@@ -463,6 +469,7 @@ class _Episode:
         is_terminated=False,
         is_truncated=False,
         render_image=None,
+        extra_model_output=None,
     ):
         # Cannot add data to an already done episode.
         assert not self.is_done
@@ -475,6 +482,12 @@ class _Episode:
         self.t += 1
         if render_image is not None:
             self.render_images.append(render_image)
+        if extra_model_output is not None:
+            for k, v in extra_model_output.items():
+                if k not in self.extra_model_outputs:
+                    self.extra_model_outputs[k] = [v]
+                else:
+                    self.extra_model_outputs[k].append(v)
         self.is_terminated = is_terminated
         self.is_truncated = is_truncated
         self.validate()
@@ -493,6 +506,8 @@ class _Episode:
             # TODO (simon): Check, if this is suitable for infos.
             self.infos = np.array(self.infos)
             self.render_images = np.array(self.render_images, dtype=np.uint8)
+            for k, v in self.extra_model_outputs.items():
+                self.extra_model_outputs[k] = np.array(v)                
 
     @property
     def is_done(self):
@@ -551,11 +566,36 @@ class _Episode:
                 ),
                 # TODO (simon): Check, if indexing is right here.
                 SampleBatch.INFOS: self.infos[:-1],
+                **self.extra_model_outputs,
             }
         )
 
     @staticmethod
     def from_sample_batch(batch):
+        # TODO (simon): This is very ugly, but right now 
+        # we can only do it according to the exclusion principle.
+        extra_model_output_keys = []
+        for k in batch.keys():
+            if k not in [
+                SampleBatch.EPS_ID,
+                SampleBatch.AGENT_INDEX,
+                SampleBatch.ENV_ID,
+                SampleBatch.AGENT_INDEX,
+                SampleBatch.T,
+                SampleBatch.SEQ_LENS,
+                SampleBatch.OBS,
+                SampleBatch.NEXT_OBS,
+                SampleBatch.ACTIONS,
+                SampleBatch.PREV_ACTIONS,
+                SampleBatch.REWARDS,
+                SampleBatch.PREV_REWARDS,
+                SampleBatch.TERMINATEDS,
+                SampleBatch.TRUNCATEDS,
+                SampleBatch.UNROLL_ID,
+                SampleBatch.DONES,
+                SampleBatch.CUR_OBS,
+            ]:
+                extra_model_output_keys.append(k)
         return _Episode(
             id_=batch[SampleBatch.EPS_ID][0],
             observations=np.concatenate(
@@ -566,6 +606,7 @@ class _Episode:
             is_terminated=batch[SampleBatch.TERMINATEDS][-1],
             is_truncated=batch[SampleBatch.TRUNCATEDS][-1],
             infos=batch[SampleBatch.INFOS],
+            extra_model_outputs={k: batch[k] for k in extra_model_output_keys},
         )
 
     def get_return(self):
@@ -583,6 +624,7 @@ class _Episode:
                 "t": self.t,
                 "is_terminated": self.is_terminated,
                 "is_truncated": self.is_truncated,
+                **self.extra_model_outputs,
             }.items()
         )
 
@@ -598,6 +640,7 @@ class _Episode:
         eps.t = state[7][1]
         eps.is_terminated = state[8][1]
         eps.is_truncated = state[9][1]
+        eps.extra_model_outputs = {*state[10:][1]}
         return eps
 
     def __len__(self):
