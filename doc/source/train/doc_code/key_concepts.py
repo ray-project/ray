@@ -27,7 +27,6 @@ trainer = DataParallelTrainer(
 import os
 
 from ray.train import RunConfig
-from ray.air.integrations.wandb import WandbLoggerCallback
 
 run_config = RunConfig(
     # Name of the training run (directory name).
@@ -35,8 +34,6 @@ run_config = RunConfig(
     # The experiment results will be saved to: storage_path/name
     storage_path=os.path.expanduser("~/ray_results"),
     # storage_path="s3://my_bucket/tune_results",
-    # Custom and built-in callbacks
-    callbacks=[WandbLoggerCallback()],
     # Stopping criteria
     stop={"training_iteration": 10},
 )
