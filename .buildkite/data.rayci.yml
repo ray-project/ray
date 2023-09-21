@@ -11,7 +11,7 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
     depends_on: data6build
-    job_env: data6build
+    job_env: forge
 
   - label: ":database: data: arrow 12 tests"
     instance_type: medium
@@ -24,7 +24,7 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
     depends_on: data12build
-    job_env: data12build
+    job_env: forge
 
   - label: ":database: data: arrow nightly tests"
     instance_type: medium
@@ -37,7 +37,7 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
     depends_on: datanbuild
-    job_env: datanbuild
+    job_env: forge
 
   - label: ":database: data: bulk executor tests"
     instance_type: medium
@@ -50,7 +50,7 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
         --except-tags data_integration,doctest
     depends_on: databbuild
-    job_env: databbuild
+    job_env: forge
 
   - label: ":database: data: flaky tests"
     instance_type: medium
@@ -60,4 +60,4 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1 --parallelism-per-worker 3
         --build-name data12build
     depends_on: data12build
-    job_env: data12build
+    job_env: forge
