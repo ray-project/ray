@@ -220,7 +220,10 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
                             cleaned_metadata(read_task),
                         )
                     ],
-                    owns_blocks=True,
+                    # `owns_blocks` is False, because these refs are the root of the
+                    # DAG. We shouldn't eagerly free them. Otherwise, the DAG cannot
+                    # be reconstructed.
+                    owns_blocks=False,
                 )
                 for read_task in read_tasks
             ]

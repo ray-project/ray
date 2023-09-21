@@ -6,10 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
 from ray import train, tune
-from ray.air.checkpoint import Checkpoint as LegacyCheckpoint
-from ray.train._checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig
-from ray.train._internal.storage import _use_storage_context
+from ray.train import Checkpoint, RunConfig, ScalingConfig
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
@@ -93,11 +90,6 @@ def _convert_scaling_config_to_ray_params(
     placement_options = {
         "strategy": scaling_config.placement_strategy,
     }
-    # Special case, same as in ScalingConfig.as_placement_group_factory
-    if scaling_config._max_cpu_fraction_per_node is not None:
-        placement_options[
-            "_max_cpu_fraction_per_node"
-        ] = scaling_config._max_cpu_fraction_per_node
     ray_params = ray_params_cls_extended(
         placement_options=placement_options,
         **ray_params_kwargs,
@@ -162,7 +154,7 @@ class GBDTTrainer(BaseTrainer):
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         preprocessor: Optional["Preprocessor"] = None,  # Deprecated
-        resume_from_checkpoint: Optional[LegacyCheckpoint] = None,
+        resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
         **train_kwargs,
     ):
@@ -206,6 +198,22 @@ class GBDTTrainer(BaseTrainer):
                         f"which is not present in `datasets`."
                     )
 
+    @classmethod
+    def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
+        # Todo: `trainer_resources` should be configurable. Currently it is silently
+        # ignored. We catch the error here rather than in
+        # `_scaling_config_allowed_keys` because the default of `None` is updated to
+        # `{}` from XGBoost-Ray.
+        if scaling_config.trainer_resources not in [None, {}]:
+            raise ValueError(
+                f"The `trainer_resources` attribute for {cls.__name__} "
+                f"is currently ignored and defaults to `{{}}`. Remove the "
+                f"`trainer_resources` key from your `ScalingConfig` to resolve."
+            )
+        return super(GBDTTrainer, cls)._validate_scaling_config(
+            scaling_config=scaling_config
+        )
+
     def _get_dmatrices(
         self, dmatrix_params: Dict[str, Any]
     ) -> Dict[str, "xgboost_ray.RayDMatrix"]:
@@ -218,7 +226,7 @@ class GBDTTrainer(BaseTrainer):
 
     def _load_checkpoint(
         self,
-        checkpoint: LegacyCheckpoint,
+        checkpoint: Checkpoint,
     ) -> Any:
         raise NotImplementedError
 
@@ -276,12 +284,7 @@ class GBDTTrainer(BaseTrainer):
         else:
             with tempfile.TemporaryDirectory() as checkpoint_dir:
                 self._save_model(model, path=checkpoint_dir)
-
-                if _use_storage_context():
-                    checkpoint = Checkpoint.from_directory(checkpoint_dir)
-                else:
-                    checkpoint = LegacyCheckpoint.from_directory(checkpoint_dir)
-
+                checkpoint = Checkpoint.from_directory(checkpoint_dir)
                 train.report(result_dict, checkpoint=checkpoint)
 
     def training_loop(self) -> None:

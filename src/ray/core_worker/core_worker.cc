@@ -162,7 +162,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   if (options_.worker_type != WorkerType::DRIVER) {
     periodical_runner_.RunFnPeriodically(
         [this] { ExitIfParentRayletDies(); },
-        RayConfig::instance().raylet_death_check_interval_milliseconds());
+        RayConfig::instance().raylet_death_check_interval_milliseconds(),
+        "CoreWorker.ExitIfParentRayletDies");
   }
 
   // Start the IO thread first to make sure the checker is working.
@@ -573,7 +574,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                         << "Task Event stats:\n"
                         << task_event_buffer_->DebugString() << "\n";
         },
-        event_stats_print_interval_ms);
+        event_stats_print_interval_ms,
+        "CoreWorker.PrintEventStats");
   }
 
   // Set event context for current core worker thread.
@@ -603,15 +605,18 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           }
         }
       },
-      100);
+      100,
+      "CoreWorker.RecoverObjects");
 
   periodical_runner_.RunFnPeriodically(
       [this] { InternalHeartbeat(); },
-      RayConfig::instance().core_worker_internal_heartbeat_ms());
+      RayConfig::instance().core_worker_internal_heartbeat_ms(),
+      "CoreWorker.InternalHeartbeat");
 
   periodical_runner_.RunFnPeriodically(
       [this] { RecordMetrics(); },
-      RayConfig::instance().metrics_report_interval_ms() / 2);
+      RayConfig::instance().metrics_report_interval_ms() / 2,
+      "CoreWorker.RecordMetrics");
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
@@ -2296,7 +2301,7 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
 
   if (task_spec->IsActorTask()) {
     if (force_kill) {
-      return Status::Invalid("force=True is not supported for actor tasks.");
+      return Status::InvalidArgument("force=True is not supported for actor tasks.");
     }
 
     return direct_actor_submitter_->CancelTask(task_spec.value(), recursive);
@@ -2484,6 +2489,11 @@ CoreWorker::ListNamedActorsLocalMode() {
     actors.push_back(std::make_pair(/*namespace=*/"", it->first));
   }
   return std::make_pair(actors, Status::OK());
+}
+
+const std::string CoreWorker::GetActorName() const {
+  absl::MutexLock lock(&mutex_);
+  return actor_manager_->GetActorHandle(actor_id_)->GetName();
 }
 
 const ResourceMappingType CoreWorker::GetResourceIDs() const {
@@ -3993,7 +4003,7 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
 
 void CoreWorker::GetAsync(const ObjectID &object_id,
                           SetResultCallback success_callback,
-                          void *python_future) {
+                          void *python_user_callback) {
   auto fallback_callback = std::bind(&CoreWorker::PlasmaCallback,
                                      this,
                                      success_callback,
@@ -4001,15 +4011,32 @@ void CoreWorker::GetAsync(const ObjectID &object_id,
                                      std::placeholders::_2,
                                      std::placeholders::_3);
 
-  memory_store_->GetAsync(object_id,
-                          [python_future, success_callback, fallback_callback, object_id](
-                              std::shared_ptr<RayObject> ray_object) {
-                            if (ray_object->IsInPlasmaError()) {
-                              fallback_callback(ray_object, object_id, python_future);
-                            } else {
-                              success_callback(ray_object, object_id, python_future);
-                            }
-                          });
+  memory_store_->GetAsync(
+      object_id,
+      [this,
+       object_id,
+       python_user_callback,
+       success_callback = std::move(success_callback),
+       fallback_callback =
+           std::move(fallback_callback)](std::shared_ptr<RayObject> ray_object) {
+        // Post the callback to the io_service_ to avoid deadlocks.
+        // The user callback can make arbitrary Ray API calls and will be called
+        // immediately when the object is `Put` into the in-memory store. This can
+        // cause deadlocks if the callers of `Put` is holding a lock.
+        io_service_.post(
+            [object_id,
+             python_user_callback,
+             success_callback = std::move(success_callback),
+             fallback_callback = std::move(fallback_callback),
+             ray_object = std::move(ray_object)]() {
+              if (ray_object->IsInPlasmaError()) {
+                fallback_callback(ray_object, object_id, python_user_callback);
+              } else {
+                success_callback(ray_object, object_id, python_user_callback);
+              }
+            },
+            "CoreWorker.GetAsync.Callback");
+      });
 }
 
 void CoreWorker::PlasmaCallback(SetResultCallback success,

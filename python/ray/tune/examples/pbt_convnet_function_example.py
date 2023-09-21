@@ -10,7 +10,7 @@ from ray.tune.examples.mnist_pytorch import test_func, ConvNet, get_data_loaders
 
 import ray
 from ray import train, tune
-from ray.train._checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
 
 # __tutorial_imports_end__
@@ -47,7 +47,7 @@ def train_convnet(config):
             # Every 5 steps, checkpoint our current state.
             # First get the checkpoint directory from tune.
             # Need to create a directory under current working directory
-            # to construct an AIR Checkpoint object from.
+            # to construct checkpoint object from.
             os.makedirs("my_model", exist_ok=True)
             torch.save(
                 {

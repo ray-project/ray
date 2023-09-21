@@ -16,10 +16,7 @@ import ray.cloudpickle as ray_pickle
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
-from ray.air.checkpoint import (
-    Checkpoint,
-    _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
-)
+from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
 from ray.air.constants import (
     TIMESTAMP,
     TIME_THIS_ITER_S,
@@ -31,7 +28,7 @@ from ray.train._internal.storage import (
     StorageContext,
     _exists_at_fs_path,
 )
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train import Checkpoint
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -62,7 +59,7 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.train._internal.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.logger import Logger
@@ -97,18 +94,18 @@ class Trainable:
     By default, Tune will also change the current working directory of this process to
     its corresponding trial-level log directory ``self.logdir``.
     This is designed so that different trials that run on the same physical node won't
-    accidently write to the same location and overstep each other.
+    accidentally write to the same location and overstep each other.
 
     The behavior of changing the working directory can be disabled by setting the
-    flag `chdir_to_trial_dir=False` in `tune.TuneConfig`. This allows access to files
+    `RAY_CHDIR_TO_TRIAL_DIR=0` environment variable. This allows access to files
     in the original working directory, but relative paths should be used for read only
     purposes, and you must make sure that the directory is synced on all nodes if
     running on multiple machines.
 
     The `TUNE_ORIG_WORKING_DIR` environment variable was the original workaround for
     accessing paths relative to the original working directory. This environment
-    variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
-    used instead.
+    variable is deprecated, and the `RAY_CHDIR_TO_TRIAL_DIR` environment variable
+    described above should be used instead.
 
     This class supports checkpointing to and restoring from remote storage.
 
@@ -498,6 +495,7 @@ class Trainable:
         )
         return checkpoint_dir
 
+    @DeveloperAPI
     def save(
         self, checkpoint_dir: Optional[str] = None, prevent_upload: bool = False
     ) -> str:
@@ -543,7 +541,7 @@ class Trainable:
                             f"Got {checkpoint_dict_or_path} != {checkpoint_dir}"
                         )
 
-                local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
+                local_checkpoint = Checkpoint.from_directory(checkpoint_dir)
 
                 metrics = self._last_result.copy() if self._last_result else {}
 
@@ -874,6 +872,7 @@ class Trainable:
 
         return True
 
+    @Deprecated
     def save_to_object(self):
         raise DeprecationWarning(
             "Trainable.save_to_object() has been removed. "
@@ -887,6 +886,7 @@ class Trainable:
                 checkpoint_node_ip=None,
             )
 
+    @DeveloperAPI
     def restore(
         self,
         checkpoint_path: Union[str, Checkpoint],
@@ -928,11 +928,18 @@ class Trainable:
 
         """
         if _use_storage_context():
-            checkpoint_result: _TrainingResult = checkpoint_path
+            if isinstance(checkpoint_path, str):
+                checkpoint_path = Checkpoint.from_directory(checkpoint_path)
+            if isinstance(checkpoint_path, Checkpoint):
+                checkpoint_result = _TrainingResult(
+                    checkpoint=checkpoint_path, metrics={}
+                )
+            else:
+                checkpoint_result: _TrainingResult = checkpoint_path
             assert isinstance(checkpoint_result, _TrainingResult), type(
                 checkpoint_result
             )
-
+            checkpoint = checkpoint_result.checkpoint
             checkpoint_metrics = checkpoint_result.metrics
             self._iteration = checkpoint_metrics.get(TRAINING_ITERATION, 0)
             self._time_total = checkpoint_metrics.get(TIME_TOTAL_S, 0)
@@ -944,7 +951,6 @@ class Trainable:
             self._timesteps_since_restore = 0
             self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
 
-            checkpoint = checkpoint_result.checkpoint
             if not _exists_at_fs_path(checkpoint.filesystem, checkpoint.path):
                 raise ValueError(
                     f"Could not recover from checkpoint as it does not exist on "
@@ -976,8 +982,7 @@ class Trainable:
             self._restored = True
 
             logger.info(
-                f"Restored on {self._local_ip} from checkpoint: "
-                f"{checkpoint_result.checkpoint}"
+                f"Restored on {self._local_ip} from checkpoint: " f"{checkpoint}"
             )
             return True
 
@@ -1070,12 +1075,14 @@ class Trainable:
         }
         logger.info("Current state after restoring: %s", state)
 
+    @Deprecated
     def restore_from_object(self, obj):
         raise DeprecationWarning(
             "Trainable.restore_from_object() has been removed. "
             "Use Trainable.restore() instead."
         )
 
+    @Deprecated
     def delete_checkpoint(self, checkpoint_path: Union[str, Checkpoint]):
         """Deletes local copy of checkpoint.
 

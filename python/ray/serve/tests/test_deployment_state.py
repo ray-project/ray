@@ -8,14 +8,13 @@ import pytest
 import ray
 from ray.serve._private.common import (
     DeploymentID,
-    DeploymentConfig,
     DeploymentInfo,
     DeploymentStatus,
-    ReplicaConfig,
     ReplicaTag,
     ReplicaName,
     ReplicaState,
 )
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deployment_scheduler import (
     ReplicaSchedulingRequest,
 )
@@ -152,6 +151,10 @@ class MockReplicaActorWrapper:
             return self._node_id
         if self.ready == ReplicaStartupStatus.SUCCEEDED or self.started:
             return "node-id"
+        return None
+
+    @property
+    def availability_zone(self) -> Optional[str]:
         return None
 
     @property
@@ -338,6 +341,9 @@ class MockClusterNodeInfoCache:
 
     def get_active_node_ids(self):
         return self.alive_node_ids - self.draining_node_ids
+
+    def get_node_az(self, node_id):
+        return None
 
 
 @pytest.fixture

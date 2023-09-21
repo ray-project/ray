@@ -9,10 +9,6 @@ doctest(
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
             "huggingface/transformers/transformers_trainer.py",
-            "accelerate/accelerate_torch_trainer.py",
-            "accelerate/accelerate_torch_trainer_no_raydata.py",
-            "deepspeed/deepspeed_torch_trainer.py",
-            "deepspeed/deepspeed_torch_trainer_no_raydata.py",
             "_internal/session.py",
             "context.py"
         ]
@@ -25,10 +21,6 @@ doctest(
     files = [
         "tensorflow/tensorflow_trainer.py",
         "huggingface/transformers/transformers_trainer.py",
-        "accelerate/accelerate_torch_trainer.py",
-        "accelerate/accelerate_torch_trainer_no_raydata.py",
-        "deepspeed/deepspeed_torch_trainer.py",
-        "deepspeed/deepspeed_torch_trainer_no_raydata.py",
         "_internal/session.py",
         "context.py"
     ],
@@ -45,6 +37,66 @@ py_library(
     name = "conftest",
     srcs = ["tests/conftest.py"]
 )
+
+############ Experiment tracking examples start ############
+
+# no credentials needed
+py_test(
+    name = "lightning_exp_tracking_mlflow",
+    size = "small",
+    main = "examples/experiment_tracking/lightning_exp_tracking_mlflow.py",
+    srcs = ["examples/experiment_tracking/lightning_exp_tracking_mlflow.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
+    tags = ["team:ml", "exclusive", "no_main", "new_storage"],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "lightning_exp_tracking_tensorboard",
+    size = "small",
+    main = "examples/experiment_tracking/lightning_exp_tracking_tensorboard.py",
+    srcs = ["examples/experiment_tracking/lightning_exp_tracking_tensorboard.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
+    tags = ["team:ml", "exclusive", "no_main", "new_storage"],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "torch_exp_tracking_mlflow",
+    size = "medium",
+    main = "examples/experiment_tracking/torch_exp_tracking_mlflow.py",
+    srcs = ["examples/experiment_tracking/torch_exp_tracking_mlflow.py"],
+    tags = ["team:ml", "exclusive", "no_main", "new_storage"],
+    deps = [":train_lib"],
+)
+
+# credentials needed
+py_test(
+    name = "lightning_exp_tracking_wandb",
+    size = "medium",
+    main = "examples/experiment_tracking/lightning_exp_tracking_wandb.py",
+    srcs = ["examples/experiment_tracking/lightning_exp_tracking_wandb.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
+    tags = ["team:ml", "exclusive", "no_main", "needs_credentials", "new_storage"],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "lightning_exp_tracking_comet",
+    size = "medium",
+    main = "examples/experiment_tracking/lightning_exp_tracking_comet.py",
+    srcs = ["examples/experiment_tracking/lightning_exp_tracking_comet.py", "examples/experiment_tracking/lightning_exp_tracking_model_dl.py"],
+    tags = ["team:ml", "exclusive", "no_main", "needs_credentials", "new_storage"],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "torch_exp_tracking_wandb",
+    size = "medium",
+    main = "examples/experiment_tracking/torch_exp_tracking_wandb.py",
+    srcs = ["examples/experiment_tracking/torch_exp_tracking_wandb.py"],
+    tags = ["team:ml", "exclusive", "no_main", "needs_credentials", "new_storage"],
+    deps = [":train_lib"],
+)
+
+############ Experiment tracking examples end ############
 
 py_test(
     name = "mlflow_simple_example",
@@ -429,6 +481,38 @@ py_test(
 )
 
 py_test(
+    name = "accelerate_torch_trainer",
+    size = "large",
+    srcs = ["examples/accelerate/accelerate_torch_trainer.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "accelerate_torch_trainer_no_raydata",
+    size = "large",
+    srcs = ["examples/accelerate/accelerate_torch_trainer_no_raydata.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "deepspeed_torch_trainer",
+    size = "large",
+    srcs = ["examples/deepspeed/deepspeed_torch_trainer.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "deepspeed_torch_trainer_no_raydata",
+    size = "large",
+    srcs = ["examples/deepspeed/deepspeed_torch_trainer_no_raydata.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
@@ -465,6 +549,14 @@ py_test(
     size = "small",
     srcs = ["tests/test_sklearn_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_storage",
+    size = "small",
+    srcs = ["tests/test_storage.py"],
+    tags = ["team:ml", "exclusive"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -538,6 +630,14 @@ py_test(
     srcs = ["tests/test_torch_utils.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_train_usage",
+    size = "medium",
+    srcs = ["tests/test_train_usage.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"],
 )
 
 py_test(

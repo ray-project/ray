@@ -3,24 +3,26 @@ import concurrent.futures
 from dataclasses import dataclass
 import threading
 from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tuple, Union
+import warnings
 
 import ray
+from ray.util import metrics
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray._private.utils import get_or_create_event_loop
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import StreamingObjectRefGenerator, GcsClient
 
 from ray import serve
 from ray.serve._private.common import DeploymentID, RequestProtocol
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
 )
+from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     get_random_letters,
     DEFAULT,
 )
 from ray.serve._private.router import Router, RequestMetadata
-from ray.util import metrics
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 _global_async_loop = None
 
@@ -151,13 +153,24 @@ class _DeploymentHandleBase:
             else:
                 event_loop = get_or_create_event_loop()
 
+            node_id = ray.get_runtime_context().get_node_id()
+            try:
+                cluster_node_info_cache = create_cluster_node_info_cache(
+                    GcsClient(address=ray.get_runtime_context().gcs_address)
+                )
+                cluster_node_info_cache.update()
+                availability_zone = cluster_node_info_cache.get_node_az(node_id)
+            except Exception:
+                availability_zone = None
+
             self._router = Router(
-                serve.context.get_global_client()._controller,
+                serve.context._get_global_client()._controller,
                 self.deployment_id,
-                ray.get_runtime_context().get_node_id(),
+                node_id,
+                availability_zone,
                 event_loop=event_loop,
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
-                _prefer_local_routing=self.handle_options._prefer_local_routing,
+                _prefer_local_node_routing=self.handle_options._prefer_local_routing,
                 _router_cls=self.handle_options._router_cls,
             )
 
@@ -223,6 +236,18 @@ class _DeploymentHandleBase:
         )
 
     def _remote(self, args: Tuple[Any], kwargs: Dict[str, Any]) -> Coroutine:
+        if not self.__class__ == DeploymentHandle:
+            warnings.warn(
+                "Ray 2.7 introduces a new `DeploymentHandle` API that will "
+                "replace the existing `RayServeHandle` and `RayServeSyncHandle` "
+                "APIs in a future release. You are encouraged to migrate to the "
+                "new API to avoid breakages in the future. To opt in, either use "
+                "`handle.options(use_new_handle_api=True)` or set the global "
+                "environment variable `export RAY_SERVE_ENABLE_NEW_HANDLE_API=1`. "
+                "See https://docs.ray.io/en/latest/serve/model_composition.html "
+                "for more details."
+            )
+
         self._record_telemetry_if_needed()
         _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
@@ -270,7 +295,13 @@ class _DeploymentHandleBase:
         return self.__class__._deserialize, (serialized_constructor_args,)
 
 
-@PublicAPI(stability="beta")
+@Deprecated(
+    message=(
+        "This API is being replaced by `ray.serve.handle.DeploymentHandle`. "
+        "Opt into the new API by using `handle.options(use_new_handle_api=True)` "
+        "or setting the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`."
+    )
+)
 class RayServeHandle(_DeploymentHandleBase):
     """A handle used to make requests from one deployment to another.
 
@@ -363,7 +394,13 @@ class RayServeHandle(_DeploymentHandleBase):
         return asyncio.ensure_future(result_coro, loop=loop)
 
 
-@PublicAPI(stability="beta")
+@Deprecated(
+    message=(
+        "This API is being replaced by `ray.serve.handle.DeploymentHandle`. "
+        "Opt into the new API by using `handle.options(use_new_handle_api=True)` "
+        "or setting the environment variable `RAY_SERVE_USE_NEW_HANDLE_API=1`."
+    )
+)
 class RayServeSyncHandle(_DeploymentHandleBase):
     """A handle used to make requests to the ingress deployment of an application.
 
@@ -485,8 +522,9 @@ class _DeploymentResponseBase:
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
         if self._object_ref_future is None:
             raise RuntimeError(
-                "Sync methods should not be called from within an `asyncio` event loop."
-                "Use `await response` or `await response._to_object_ref()` instead."
+                "Sync methods should not be called from within an `asyncio` event "
+                "loop. Use `await response` or `await response._to_object_ref()` "
+                "instead."
             )
 
         if _record_telemetry:
@@ -497,18 +535,30 @@ class _DeploymentResponseBase:
     def cancel(self):
         """Attempt to cancel the `DeploymentHandle` call.
 
-        This is best effort and will only successfully cancel the call if it has not yet
-        been assigned to a replica actor. If the call is successfully cancelled,
-        subsequent operations on the ref will raise an `asyncio.CancelledError` (or a
-        `concurrent.futures.CancelledError` if using synchronous methods like
-        `.result()`).
+        This is best effort.
+
+        - If the request hasn't been assigned to a replica actor, the assignment will be
+          cancelled.
+        - If the request has been assigned to a replica actor, `ray.cancel` will be
+          called on the object ref, attempting to cancel the request and any downstream
+          requests it makes.
+
+        If the request is successfully cancelled, subsequent operations on the ref will
+        raise an exception:
+
+            - If the request was cancelled before assignment, they'll raise
+              `asyncio.CancelledError` (or a `concurrent.futures.CancelledError` for
+              synchronous methods like `.result()`.).
+            - If the request was cancelled after assignment, they'll raise
+              `ray.exceptions.TaskCancelledError`.
         """
-        # TODO(edoakes): when actor task cancellation is supported, we should cancel
-        # the scheduled actor task here if the assign request task is done.
-        self._assign_request_task.cancel()
+        if not self._assign_request_task.done():
+            self._assign_request_task.cancel()
+        elif self._assign_request_task.exception() is None:
+            ray.cancel(self._assign_request_task.result())
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class DeploymentResponse(_DeploymentResponseBase):
     """A future-like object wrapping the result of a unary deployment handle call.
 
@@ -627,7 +677,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class DeploymentResponseGenerator(_DeploymentResponseBase):
     """A future-like object wrapping the result of a streaming deployment handle call.
 
@@ -694,6 +744,12 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
             loop_is_in_another_thread=loop_is_in_another_thread,
         )
         self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
+
+    def __await__(self):
+        raise TypeError(
+            "`DeploymentResponseGenerator` cannot be awaited directly. Use `async for` "
+            "or `_to_object_ref_gen` instead."
+        )
 
     def __aiter__(self) -> AsyncIterator[Any]:
         return self
@@ -797,7 +853,7 @@ class DeploymentHandle(_DeploymentHandleBase):
 
         .. code-block:: python
 
-            response = handle.options(
+            response: DeploymentResponse = handle.options(
                 method_name="other_method",
                 multiplexed_model_id="model:v1",
             ).remote()
@@ -814,7 +870,7 @@ class DeploymentHandle(_DeploymentHandleBase):
     def remote(
         self, *args, **kwargs
     ) -> Union[DeploymentResponse, DeploymentResponseGenerator]:
-        """Issue a call to the deployment.
+        """Issue a remote call to a method of the deployment.
 
         By default, the result is a `DeploymentResponse` that can be awaited to fetch
         the result of the call or passed to another `.remote()` call to compose multiple
@@ -835,6 +891,11 @@ class DeploymentHandle(_DeploymentHandleBase):
             composed_response = handle2.remote(handle1.remote())
             composed_result = await composed_response
 
+        Args:
+            *args: Positional arguments to be serialized and passed to the
+                remote method call.
+            **kwargs: Keyword arguments to be serialized and passed to the
+                remote method call.
         """
         loop = self._get_or_create_router()._event_loop
         result_coro = self._remote(args, kwargs)
