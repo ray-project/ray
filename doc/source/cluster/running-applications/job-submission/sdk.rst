@@ -210,7 +210,7 @@ To be precise, the environment variable ``CUDA_VISIBLE_DEVICES`` will not be set
 
 .. note::
 
-    Resources specified by ``entrypoint_num_cpus``, ``entrypoint_num_gpus``,  ``--entrypoint-memory``, and ``entrypoint_resources`` are separate from any resources specified
+    Resources specified by ``entrypoint_num_cpus``, ``entrypoint_num_gpus``,  ``entrypoint-memory``, and ``entrypoint_resources`` are separate from any resources specified
     for tasks and actors within the job.  
     
     For example, if you specify ``entrypoint_num_gpus=1``, then the entrypoint script will be scheduled on a node with at least 1 GPU,
