@@ -543,8 +543,8 @@ class HTTPProxyStateManager:
                     node_ip_address=node_ip_address,
                 )
 
-            failure_count = (
-                self._proxy_consecutive_health_check_failures.get(node_id, 0),
+            failure_count = self._proxy_consecutive_health_check_failures.get(
+                node_id, 0
             )
             self._proxy_states[node_id] = HTTPProxyState(
                 actor_handle=proxy,
