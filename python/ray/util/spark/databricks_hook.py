@@ -179,4 +179,8 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
 
                 time.sleep(DATABRICKS_AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS)
 
-        threading.Thread(target=auto_shutdown_watcher, daemon=True).start()
+        # Only enable auto_shutdown_watcher for non-global mode cluster.
+        # This process is attached to the parent REPL, so it will be killed
+        # if parent REPL restarted.
+        if not global_mode_enabled():
+            threading.Thread(target=auto_shutdown_watcher, daemon=True).start()

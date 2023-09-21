@@ -33,7 +33,6 @@ from .utils import (
 from .databricks_hook import (
     global_mode_enabled,
     DATABRICKS_RAY_CLUSTER_GLOBAL_MODE,
-    _DATABRICKS_DEFAULT_TMP_ROOT_DIR,
     _get_start_hook,
 )
 
@@ -87,6 +86,7 @@ class RayClusterOnSpark:
         cluster_unique_id,
         start_hook,
         ray_dashboard_port,
+        ray_head_port,
     ):
         self.address = address
         self.head_proc = head_proc
@@ -96,6 +96,7 @@ class RayClusterOnSpark:
         self.cluster_unique_id = cluster_unique_id
         self.start_hook = start_hook
         self.ray_dashboard_port = ray_dashboard_port
+        self.ray_head_port = ray_head_port
 
         self.is_shutdown = False
         self.spark_job_is_canceled = False
@@ -240,17 +241,24 @@ class RayClusterOnSpark:
         cluster_info = {
             str(k): v for k, v in self.__dict__.items() if k not in ignore_fields
         }
-        cluster_info["head_proc_pid"] = self.head_proc.pid
         return cluster_info
 
     @classmethod
     def from_dict(cls, cluster_info):
-        head_proc_pid = cluster_info.pop("head_proc_pid", None)
-        if head_proc_pid is None:
+        ray_head_port = cluster_info.pop("ray_head_port", None)
+        if ray_head_port is None:
             raise ValueError(
-                "The cluster info dict doesn't contain head_proc_pid field."
+                "The cluster info dict doesn't contain ray_head_port field."
             )
-        head_proc = psutil.Process(head_proc_pid)
+        head_proc = None
+        for conn in psutil.net_connections():
+            if conn.laddr.port == ray_head_port:
+                head_proc = psutil.Process(conn.pid)
+                break
+        if head_proc is None:
+            raise RuntimeError(
+                f"Cannot find ray head process with port {ray_head_port}."
+            )
         start_hook = _get_start_hook()
         return cls(head_proc=head_proc, start_hook=start_hook, **cluster_info)
 
@@ -728,6 +736,7 @@ def _setup_ray_cluster(
         cluster_unique_id=cluster_unique_id,
         start_hook=start_hook,
         ray_dashboard_port=ray_dashboard_port,
+        ray_head_port=ray_head_port,
     )
 
     def background_job_thread_fn():
