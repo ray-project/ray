@@ -352,7 +352,7 @@ class ApplicationState:
             except Exception:
                 self._set_target_state_deployment_infos(None)
                 self._update_status(
-                    BuildAppStatus.FAILED,
+                    ApplicationStatus.DEPLOY_FAILED,
                     (
                         f"Unexpected error occured while applying config for "
                         f"application '{self._name}': \n{traceback.format_exc()}"
@@ -845,6 +845,8 @@ class ApplicationStateManager:
     def shutdown(self) -> None:
         for app_state in self._application_states.values():
             app_state.delete()
+
+        self._kv_store.delete(CHECKPOINT_KEY)
 
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all applications have shut down.

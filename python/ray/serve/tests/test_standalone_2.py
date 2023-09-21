@@ -379,5 +379,38 @@ serve.run(B.bind())"""
         )
 
 
+def test_checkpoint_deleted_on_serve_shutdown(start_and_shutdown_ray_cli_function):
+    """Test the application target state checkpoint is deleted when Serve is shutdown"""
+
+    file1 = """from ray import serve
+@serve.deployment
+class A:
+    def __call__(self):
+        return "Hello A"
+serve.run(A.bind())"""
+
+    file2 = """from ray import serve
+@serve.deployment
+class B:
+    def __call__(self):
+        return "Hello B"
+serve.run(B.bind())"""
+
+    with NamedTemporaryFile() as f1, NamedTemporaryFile() as f2:
+        f1.write(file1.encode("utf-8"))
+        f1.seek(0)
+        output = subprocess.check_output(["python", f1.name], stderr=subprocess.STDOUT)
+        print(output.decode("utf-8"))
+        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+        subprocess.check_output(["serve", "shutdown", "-y"])
+
+        f2.write(file2.encode("utf-8"))
+        f2.seek(0)
+        output = subprocess.check_output(["python", f2.name], stderr=subprocess.STDOUT)
+        print(output.decode("utf-8"))
+        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+        assert "Recovering target state for application" not in output.decode("utf-8")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
