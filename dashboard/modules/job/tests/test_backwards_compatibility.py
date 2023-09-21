@@ -81,15 +81,15 @@ def test_error_message():
     for unsupported_submit_kwargs in [
         {"entrypoint_num_cpus": 1},
         {"entrypoint_num_gpus": 1},
-        {"entrypoint_memory": 1},
+        {"entrypoint_memory": 256},
         {"entrypoint_resources": {"custom": 1}},
     ]:
         with pytest.raises(
             Exception,
             match="Ray version 2.0.1 is running on the cluster. "
-            "`entrypoint_num_cpus`, `entrypoint_num_gpus`, `entrypoint_memory`,"
-            "and `entrypoint_resources` kwargs"
-            " are not supported on the Ray cluster. Please ensure the cluster is "
+            "`entrypoint_num_cpus`, `entrypoint_num_gpus`, "
+            "`entrypoint_memory`, and `entrypoint_resources` kwargs "
+            "are not supported on the Ray cluster. Please ensure the cluster is "
             "running Ray 2.2 or higher.",
         ):
             client.submit_job(
