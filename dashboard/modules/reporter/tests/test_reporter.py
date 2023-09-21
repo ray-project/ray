@@ -332,21 +332,21 @@ def test_report_stats():
             assert val == STATS_TEMPLATE["shm"]
         print(record.gauge.name)
         print(record)
-    assert len(records) == 33
+    assert len(records) == 36
     # Test stats without raylets
     STATS_TEMPLATE["raylet"] = {}
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 30
+    assert len(records) == 32
     # Test stats with gpus
     STATS_TEMPLATE["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
     ]
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 34
+    assert len(records) == 36
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 32
+    assert len(records) == 34
 
 
 def test_report_stats_gpu():
@@ -660,7 +660,7 @@ def test_report_per_component_stats():
         "ray::IDLE",
         float(idle_stats["memory_full_info"].uss) / 1.0e6,
         idle_stats["cpu_percent"],
-        stats["num_fds"],
+        idle_stats["num_fds"],
     )
 
     comp = "ray::func"
