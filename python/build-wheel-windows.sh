@@ -117,7 +117,14 @@ build_wheel_windows() {
       if [ -n "$BUILDKITE_COMMIT" ]; then
         sed -i.bak "s/{{RAY_COMMIT_SHA}}/$BUILDKITE_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
       else
-        echo "BUILDKITE_COMMIT variable not set - required to populated ray.__commit__."
+        echo "BUILDKITE_COMMIT environment variable not set - required to populate ray.__commit__."
+        exit 1
+      fi
+      # Set the branch name in __init__.py.
+      if [ -n "$BUILDKITE_BRANCH" ]; then
+        sed -i.bak "s/{{RAY_BRANCH_NAME}}/$BUILDKITE_BRANCH/g" ray/__init__.py && rm ray/__init__.py.bak
+      else
+        echo "BUILDKITE_BRANCH environment variable not set - required to populate ray.__branch__."
         exit 1
       fi
       # build ray wheel
