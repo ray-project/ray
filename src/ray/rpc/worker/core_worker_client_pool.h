@@ -73,7 +73,7 @@ class CoreWorkerClientPool {
   /// A pool of open connections by WorkerID. Clients can reuse the connection
   /// objects in this pool by requesting them.
   absl::flat_hash_map<ray::WorkerID, shared_ptr<CoreWorkerClientInterface>> client_map_
-      GUARDED_BY(mu_);
+      ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace rpc

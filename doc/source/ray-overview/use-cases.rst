@@ -98,9 +98,9 @@ Learn more about model serving with the following resources.
 
 - `[Talk] Productionizing ML at Scale with Ray Serve <https://www.youtube.com/watch?v=UtH-CMpmxvI>`_
 - `[Blog] Simplify your MLOps with Ray & Ray Serve <https://www.anyscale.com/blog/simplify-your-mlops-with-ray-and-ray-serve>`_
-- `[Guide] Getting Started with Ray Serve </serve/getting_started>`_
-- `[Guide] Model Composition in Serve </serve/model_composition>`_
-- `[Gallery] Serve Examples Gallery </serve/tutorials/index>`_
+- :doc:`[Guide] Getting Started with Ray Serve </serve/getting_started>`
+- :doc:`[Guide] Model Composition in Serve </serve/model_composition>`
+- :doc:`[Gallery] Serve Examples Gallery </serve/tutorials/index>`
 - `[Gallery] More Serve Use Cases on the Blog <https://www.anyscale.com/blog?tag=ray_serve>`_
 
 Hyperparameter Tuning
@@ -116,11 +116,11 @@ Running multiple hyperparameter tuning experiments is a pattern apt for distribu
 
 Learn more about the Tune library with the following talks and user guides.
 
-- `[Guide] Getting Started with Ray Tune </tune/getting-started>`_
+- :doc:`[Guide] Getting Started with Ray Tune </tune/getting-started>`
 - `[Blog] How to distribute hyperparameter tuning with Ray Tune <https://www.anyscale.com/blog/how-to-distribute-hyperparameter-tuning-using-ray-tune>`_
 - `[Talk] Simple Distributed Hyperparameter Optimization <https://www.youtube.com/watch?v=KgYZtlbFYXE>`_
 - `[Blog] Hyperparameter Search with 🤗 Transformers <https://www.anyscale.com/blog/hyperparameter-search-hugging-face-transformers-ray-tune>`_
-- `[Gallery] Ray Tune Examples Gallery </tune/examples/index>`_
+- :doc:`[Gallery] Ray Tune Examples Gallery </tune/examples/index>`
 - `More Tune use cases on the Blog <https://www.anyscale.com/blog?tag=ray-tune>`_
 
 Distributed Training
@@ -139,9 +139,9 @@ Learn more about the Train library with the following talks and user guides.
 
 - `[Talk] Ray Train, PyTorch, TorchX, and distributed deep learning <https://www.youtube.com/watch?v=e-A93QftCfc>`_
 - `[Blog] Elastic Distributed Training with XGBoost on Ray <https://www.uber.com/blog/elastic-xgboost-ray/>`_
-- `[Guide] Getting Started with Ray Train </train/train>`_
-- `[Example] Fine-tune a 🤗 Transformers model </ray-air/examples/huggingface_text_classification>`_
-- `[Gallery] Ray Train Examples Gallery </train/examples>`_
+- :doc:`[Guide] Getting Started with Ray Train </train/train>`
+- :doc:`[Example] Fine-tune a 🤗 Transformers model </train/examples/transformers/huggingface_text_classification>`
+- :doc:`[Gallery] Ray Train Examples Gallery </train/examples>`
 - `[Gallery] More Train Use Cases on the Blog <https://www.anyscale.com/blog?tag=ray_train>`_
 
 Reinforcement Learning
@@ -157,22 +157,22 @@ Learn more about reinforcement learning with the following resources.
 
 - `[Course] Applied Reinforcement Learning with RLlib <https://applied-rl-course.netlify.app/>`_
 - `[Blog] Intro to RLlib: Example Environments <https://medium.com/distributed-computing-with-ray/intro-to-rllib-example-environments-3a113f532c70>`_
-- `[Guide] Getting Started with RLlib </rllib/rllib-training>`_
+- :doc:`[Guide] Getting Started with RLlib </rllib/rllib-training>`
 - `[Talk] Deep reinforcement learning at Riot Games <https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games>`_
-- `[Gallery] RLlib Examples Gallery </rllib/rllib-examples>`_
+- :doc:`[Gallery] RLlib Examples Gallery </rllib/rllib-examples>`
 - `[Gallery] More RL Use Cases on the Blog <https://www.anyscale.com/blog?tag=rllib>`_
 
 ML Platform
 -----------
 
-Ray and its AI Runtime libraries provide unified compute runtime for teams looking to simplify their ML platform.
+Ray and its AI libraries provide unified compute runtime for teams looking to simplify their ML platform.
 Ray's libraries such as Ray Train, Ray Data, and Ray Serve can be used to compose end-to-end ML workflows, providing features and APIs for
 data preprocessing as part of training, and transitioning from training to serving.
 
 Read more about building ML platforms with Ray in :ref:`this section <ray-for-ml-infra>`.
 
 ..
-  https://docs.google.com/drawings/d/1atB1dLjZIi8ibJ2-CoHdd3Zzyl_hDRWyK2CJAVBBLdU/edit
+  https://docs.google.com/drawings/d/1PFA0uJTq7SDKxzd7RHzjb5Sz3o1WvP13abEJbD0HXTE/edit
 
 .. image:: /images/ray-air.svg
 
@@ -181,12 +181,10 @@ End-to-End ML Workflows
 
 The following highlights examples utilizing Ray AI libraries to implement end-to-end ML workflows.
 
-- `[Example] Text classification with Ray </ray-air/examples/huggingface_text_classification>`_
-- `[Example] Image classification with Ray </ray-air/examples/torch_image_example>`_
-- `[Example] Object detection with Ray </ray-air/examples/torch_detection>`_
-- `[Example] Machine learning on tabular data </ray-air/examples/xgboost_example>`_
-- `[Example] AutoML for Time Series with Ray </ray-core/examples/automl_for_time_series>`_
-- `[Gallery] Full Ray AIR Examples Gallery </ray-air/examples/index>`_
+- :doc:`[Example] Text classification with Ray </train/examples/transformers/huggingface_text_classification>`
+- :doc:`[Example] Object detection with Ray </train/examples/pytorch/torch_detection>`
+- :doc:`[Example] Machine learning on tabular data </train/examples/xgboost/xgboost_example>`
+- :doc:`[Example] AutoML for Time Series with Ray </ray-core/examples/automl_for_time_series>`
 
 Large Scale Workload Orchestration
 ----------------------------------
@@ -196,4 +194,4 @@ The following highlights feature projects leveraging Ray Core's distributed APIs
 - `[Blog] Highly Available and Scalable Online Applications on Ray at Ant Group <https://www.anyscale.com/blog/building-highly-available-and-scalable-online-applications-on-ray-at-ant>`_
 - `[Blog] Ray Forward 2022 Conference: Hyper-scale Ray Application Use Cases <https://www.anyscale.com/blog/ray-forward-2022>`_
 - `[Blog] A new world record on the CloudSort benchmark using Ray <https://www.anyscale.com/blog/ray-breaks-the-usd1-tb-barrier-as-the-worlds-most-cost-efficient-sorting>`_
-- `[Example] Speed up your web crawler by parallelizing it with Ray </ray-core/examples/web-crawler>`_
+- :doc:`[Example] Speed up your web crawler by parallelizing it with Ray </ray-core/examples/web-crawler>`

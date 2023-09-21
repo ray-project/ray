@@ -12,7 +12,7 @@ from ray._private.test_utils import wait_for_condition
 from ray._private.usage import usage_lib
 
 from ray import serve
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.serve.tests.utils import check_ray_stopped, TELEMETRY_ROUTE_PREFIX
 
 # https://tools.ietf.org/html/rfc6335#section-6
@@ -76,7 +76,7 @@ def _shared_serve_instance():
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
     serve.start(http_options={"host": "0.0.0.0"})
-    yield get_global_client()
+    yield _get_global_client()
 
 
 @pytest.fixture

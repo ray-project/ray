@@ -16,7 +16,8 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
 )
-from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
@@ -270,7 +271,7 @@ class ServeControllerClient:
         self,
         name: str,
         replica_config: ReplicaConfig,
-        deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
+        deployment_config: Union[None, DeploymentConfig, Dict[str, Any]] = None,
         version: Optional[str] = None,
         route_prefix: Optional[str] = None,
         url: Optional[str] = None,

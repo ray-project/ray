@@ -1,14 +1,14 @@
 .. _train-pytorch-transformers:
 
-Getting Started with Hugging Face Transformers
-==============================================
+Get Started with Hugging Face Transformers
+==========================================
 
 This tutorial walks through the process of converting an existing Hugging Face Transformers script to use Ray Train.
 
 Learn how to:
 
-1. Configure your training function to report metrics and save checkpoints.
-2. Configure scale and CPU/GPU resource requirements for your training job.
+1. Configure a :ref:`training function <train-overview-training-function>` to report metrics and save checkpoints.
+2. Configure :ref:`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for your training job.
 3. Launch your distributed training job with a :class:`~ray.train.torch.TorchTrainer`.
 
 Quickstart
@@ -28,9 +28,9 @@ For reference, the final code follows:
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
-1. Your `train_func` is the Python code that is executed on each distributed training worker.
-2. Your :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and computing resources (e.g. GPUs).
-3. Your :class:`~ray.train.torch.TorchTrainer` launches the distributed training job.
+1. `train_func` is the Python code that executes on each distributed training :ref:`worker <train-overview-worker>`.
+2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and computing resources (e.g. GPUs).
+3. :class:`~ray.train.torch.TorchTrainer` launches the distributed training job.
 
 Compare a Hugging Face Transformers training script with and without Ray Train.
 
@@ -171,32 +171,32 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
             ray_trainer.fit()
 
 
-Setting up your training function
----------------------------------
+Set up a training function
+--------------------------
 
 First, update your training code to support distributed training. 
-You can begin by wrapping your code in a function:
+You can begin by wrapping your code in a :ref:`training function <train-overview-training-function>`:
 
 .. code-block:: python
 
     def train_func(config):
         # Your Transformers training code here.
 
-This function is executed on each distributed training worker. Ray Train will set up the distributed 
+This function executes on each distributed training worker. Ray Train sets up the distributed 
 process group on each worker before entering this function.
 
-Please put all the logics into this function, including dataset construction and preprocessing, 
+Put all the logic into this function, including dataset construction and preprocessing, 
 model initialization, transformers trainer definition and more.
 
 .. note::
 
     If you are using Hugging Face Datasets or Evaluate, make sure to call ``datasets.load_dataset`` and ``evaluate.load`` 
-    inside the training function. Do not pass the loaded datasets and metrics from outside of the training 
+    inside the training function. Don't pass the loaded datasets and metrics from outside of the training 
     function, because it might cause serialization errors while transferring the objects to the workers.
 
 
-Reporting checkpoints and metrics
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Report checkpoints and metrics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To persist your checkpoints and monitor training progress, add a 
 :class:`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback to your Trainer. 
@@ -215,11 +215,11 @@ To persist your checkpoints and monitor training progress, add a
 
 
 Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and :ref:`fault-tolerant training <train-fault-tolerance>`. 
-Note that the :class:`ray.train.huggingface.transformers.RayTrainReportCallback` only provides a simple implementation, and can be :ref:`further customized <train-dl-saving-checkpoints>`.
+Note that the :class:`ray.train.huggingface.transformers.RayTrainReportCallback` only provides a simple implementation, and you can :ref:`further customize <train-dl-saving-checkpoints>` it.
 
 
-Preparing your Transformers Trainer
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Prepare a Transformers Trainer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Finally, pass your Transformers Trainer into
 :meth:`~ray.train.huggingface.transformers.prepare_trainer` to validate 
@@ -239,8 +239,8 @@ your configurations and enable Ray Data Integration.
          ...
 
 
-Configuring scale and GPUs
----------------------------
+Configure scale and GPUs
+------------------------
 
 Outside of your training function, create a :class:`~ray.train.ScalingConfig` object to configure:
 
@@ -255,8 +255,8 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
 
 For more details, see :ref:`train_scaling_config`.
 
-Launching your training job
----------------------------
+Launch a training job
+---------------------
 
 Tying this all together, you can now launch a distributed training job 
 with a :class:`~ray.train.torch.TorchTrainer`.
@@ -270,8 +270,8 @@ with a :class:`~ray.train.torch.TorchTrainer`.
 
 Refer to :ref:`train-run-config` for more configuration options for `TorchTrainer`.
 
-Accessing training results
---------------------------
+Access training results
+-----------------------
 
 After training completes, a :class:`~ray.train.Result` object is returned which contains
 information about the training run, including the metrics and checkpoints reported during training.
@@ -297,15 +297,15 @@ After you have converted your Hugging Face Transformers training script to use R
 
 .. _transformers-trainer-migration-guide:
 
-``TransformersTrainer`` Migration Guide
----------------------------------------
+TransformersTrainer Migration Guide
+-----------------------------------
 
-The `TransformersTrainer` was added in Ray 2.1. It exposes a `trainer_init_per_worker` interface 
-to define `transformers.Trainer`, then runs a pre-defined training loop in a black box.
+Ray 2.1 introduced the `TransformersTrainer`, which exposes a `trainer_init_per_worker` interface 
+to define `transformers.Trainer`, then runs a pre-defined training function in a black box.
 
-Ray 2.7 introduces the newly unified :class:`~ray.train.torch.TorchTrainer` API, 
-which offers enhanced transparency, flexibility, and simplicity. This API is more aligned
-with standard Hugging Face Transformers scripts, ensuring users have better control over their 
+Ray 2.7 introduced the newly unified :class:`~ray.train.torch.TorchTrainer` API, 
+which offers enhanced transparency, flexibility, and simplicity. This API aligns more
+with standard Hugging Face Transformers scripts, ensuring that you have better control over your 
 native Transformers training code.
 
 
