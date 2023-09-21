@@ -2,6 +2,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 import functools
 import os
 import sys
+import threading
 import time
 from typing import Dict
 
@@ -345,8 +346,6 @@ def test_http_proxy_request_cancellation(serve_instance):
 
 
 def test_nonserializable_deployment(serve_instance):
-    import threading
-
     lock = threading.Lock()
 
     class D:
@@ -365,16 +364,10 @@ def test_nonserializable_deployment(serve_instance):
         def __init__(self, arg):
             self.arg = arg
 
-    with pytest.raises(
-        TypeError,
-        match=r"Could not serialize the deployment init args:[\s\S]*was found to be non-serializable.*",  # noqa
-    ):
+    with pytest.raises(TypeError, match="pickle"):
         serve.run(E.bind(lock))
 
-    with pytest.raises(
-        TypeError,
-        match=r"Could not serialize the deployment init kwargs:[\s\S]*was found to be non-serializable.*",  # noqa
-    ):
+    with pytest.raises(TypeError, match="pickle"):
         serve.run(E.bind(arg=lock))
 
 

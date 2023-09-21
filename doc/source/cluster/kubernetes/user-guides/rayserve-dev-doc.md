@@ -6,7 +6,7 @@ In this tutorial, you will learn how to effectively debug your Ray Serve scripts
 Many RayService issues are related to the Ray Serve Python scripts, so it is important to ensure the correctness of the scripts before deploying them to a RayService.
 This tutorial will show you how to develop a Ray Serve Python script for a MobileNet image classifier on a RayCluster.
 You can deploy and serve the classifier on your local Kind cluster without requiring a GPU.
-Please refer to [ray-service.mobilenet.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.mobilenet.yaml) and [mobilenet-rayservice.md](https://github.com/ray-project/kuberay/blob/master/docs/guidance/mobilenet-rayservice.md) for more details.
+Refer to [ray-service.mobilenet.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service.mobilenet.yaml) and [mobilenet-rayservice.md](kuberay-mobilenet-rayservice-example) for more details.
 
 
 # Step 1: Install a KubeRay cluster
@@ -16,7 +16,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 # Step 2: Create a RayCluster CR
 
 ```sh
-helm install raycluster kuberay/ray-cluster --version 0.6.0
+helm install raycluster kuberay/ray-cluster --version 1.0.0-rc.0
 ```
 
 # Step 3: Log in to the head Pod
@@ -50,7 +50,7 @@ the second `mobilenet` is the name of the Python file in the directory `mobilene
 helm uninstall raycluster
 
 # Install the RayCluster CR with the Ray image `rayproject/ray-ml:${RAY_VERSION}`
-helm install raycluster kuberay/ray-cluster --version 0.6.0 --set image.repository=rayproject/ray-ml
+helm install raycluster kuberay/ray-cluster --version 1.0.0-rc.0 --set image.repository=rayproject/ray-ml
 ```
 
 The error message in Step 4 indicates that the Ray image `rayproject/ray:${RAY_VERSION}` does not have the TensorFlow package.

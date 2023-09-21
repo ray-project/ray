@@ -20,7 +20,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.api import build as build_app
-from ray.serve.config import DeploymentMode, gRPCOptions
+from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
@@ -165,9 +165,9 @@ def cli():
 )
 @click.option(
     "--proxy-location",
-    default=DeploymentMode.EveryNode,
+    default=ProxyLocation.EveryNode,
     required=False,
-    type=click.Choice(list(DeploymentMode)),
+    type=click.Choice(list(ProxyLocation)),
     help="Location of the proxies. Defaults to EveryNode.",
 )
 @click.option(
@@ -182,8 +182,8 @@ def cli():
     default=[],
     required=False,
     multiple=True,
-    help="Servicer function for adding the method handler to the gRPC server."
-    "Defaults to empty list and no gRPC server will be started.",
+    help="Servicer function for adding the method handler to the gRPC server. "
+    "Defaults to an empty list and no gRPC server is started.",
 )
 def start(
     address,
@@ -775,8 +775,8 @@ def shutdown(address: str, yes: bool):
     default=[],
     required=False,
     multiple=True,
-    help="Servicer function for adding the method handler to the gRPC server."
-    "Defaults to empty list and no gRPC server will be started.",
+    help="Servicer function for adding the method handler to the gRPC server. "
+    "Defaults to an empty list and no gRPC server is started.",
 )
 def build(
     import_paths: Tuple[str],
