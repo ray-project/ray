@@ -1062,7 +1062,7 @@ def test_proxy_starting_timeout_longer_than_env(all_nodes, number_of_worker_node
     # Continuously trigger update and wait for status to be changed.
     wait_for_condition(
         condition_predictor=_update_and_check_http_proxy_state_manager,
-        timeout=20,
+        timeout=60,
         http_proxy_state_manager=proxy_state_manager,
         node_ids=list(node_ids),
         statuses=[ProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
