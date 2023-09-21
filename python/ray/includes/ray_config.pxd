@@ -96,3 +96,7 @@ cdef extern from "ray/common/ray_config.h" nogil:
         c_string predefined_unit_instance_resources() const
 
         c_string custom_unit_instance_resources() const
+
+        int64_t nums_py_gcs_reconnect_retry() const
+
+        int64_t py_gcs_connect_timeout_s() const

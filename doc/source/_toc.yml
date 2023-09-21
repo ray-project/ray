@@ -212,8 +212,8 @@ parts:
               - file: serve/advanced-guides/dyn-req-batch
               - file: serve/advanced-guides/inplace-updates
               - file: serve/advanced-guides/dev-workflow
+              - file: serve/advanced-guides/grpc-guide
               - file: serve/advanced-guides/deployment-graphs
-              - file: serve/advanced-guides/direct-ingress
               - file: serve/advanced-guides/managing-java-deployments
               - file: serve/advanced-guides/deploy-vm
           - file: serve/architecture
@@ -285,11 +285,13 @@ parts:
               - file: cluster/kubernetes/user-guides
                 sections:
                   - file: cluster/kubernetes/user-guides/rayservice.md
+                    title: Deploy Ray Serve Apps
                   - file: cluster/kubernetes/user-guides/observability.md
                   - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
                     sections:
                       - file: cluster/kubernetes/user-guides/aws-eks-gpu-cluster.md
                       - file: cluster/kubernetes/user-guides/gcp-gke-gpu-cluster.md
+                  - file: cluster/kubernetes/user-guides/storage.md
                   - file: cluster/kubernetes/user-guides/config.md
                   - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
                   - file: cluster/kubernetes/user-guides/kuberay-gcs-ft.md

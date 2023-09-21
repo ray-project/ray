@@ -83,6 +83,7 @@ To opt into the new API, you can either use `handle.options(use_new_handle_api=T
    :toctree: doc/
 
    serve.config.ProxyLocation
+   serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
 ```
@@ -462,6 +463,7 @@ Content-Type: application/json
    :toctree: doc/
 
    schema.ServeDeploySchema
+   schema.gRPCOptionsSchema
    schema.HTTPOptionsSchema
    schema.ServeApplicationSchema
    schema.DeploymentSchema
