@@ -40,7 +40,6 @@ _logger = logging.getLogger(__name__)
 
 
 class RayOnSparkCPUClusterTestBase(ABC):
-
     spark = None
     num_total_cpus = None
     num_cpus_per_spark_task = None
@@ -95,6 +94,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
         try:
             ray_temp_root_dir = tempfile.mkdtemp()
             collect_log_to_path = tempfile.mkdtemp()
+            # Test the case that `collect_log_to_path` directory does not exist.
+            shutil.rmtree(collect_log_to_path, ignore_errors=True)
             setup_ray_cluster(
                 num_worker_nodes=MAX_NUM_WORKER_NODES,
                 collect_log_to_path=collect_log_to_path,

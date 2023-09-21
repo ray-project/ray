@@ -83,8 +83,7 @@ if __name__ == "__main__":
                 if collect_log_to_path:
                     try:
                         base_dir = os.path.join(
-                            collect_log_to_path,
-                            os.path.basename(temp_dir) + "-logs"
+                            collect_log_to_path, os.path.basename(temp_dir) + "-logs"
                         )
                         # Note: multiple Ray node launcher process might
                         # execute this line code, so we set exist_ok=True here.
