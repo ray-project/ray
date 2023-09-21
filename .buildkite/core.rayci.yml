@@ -17,7 +17,14 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
     depends_on: corebuild
-    job_env: corebuild
+    job_env: forge
+
+  - label: ":ray: core: doc tests"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core --test-type doctest
+    depends_on: docbuild
+    job_env: forge
 
   - label: ":ray: core: flaky tests"
     instance_type: large
