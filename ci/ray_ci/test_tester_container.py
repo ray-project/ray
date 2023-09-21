@@ -40,7 +40,7 @@ def test_run_script_in_docker() -> None:
 
     with mock.patch("subprocess.check_output", side_effect=_mock_check_output):
         container = TesterContainer("team")
-        container.run_script(["run command"])
+        container.run_script_with_output(["run command"])
 
 
 def test_run_tests() -> None:
