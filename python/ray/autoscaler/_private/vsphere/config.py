@@ -49,6 +49,52 @@ def bootstrap_vsphere(config):
     return config
 
 
+def check_and_update_frozen_vm_configs_in_provider_section(
+    config, head_node_config, worker_node_config
+):
+    provider_config = config["provider"]
+
+    vsphere_config = provider_config["vsphere_config"]
+
+    # If only 'name' is specified, the code will try to fetch a frozen VM
+    # with that name and bring up all the nodes from it.
+
+    # If 'name' and 'library_item' are specified, the code will create a
+    # frozen VM with that name and bring up all the nodes from it.
+
+    # If 'resource_pool' is specified, the code will try to fetch one VM
+    # out of a group of VMs present in the resource_pool specified.
+
+    # If 'name', 'library_item' 'resource_pool' and 'cluster' are specified,
+    # the code will create VMs on each host of the cluster that's specified.
+    # Each frozen VM name will start with value in the 'name' field. All the
+    # frozen VMs will be moved into the 'resource_pool' specified.
+
+    head_node_config["frozen_vm"] = vsphere_config["frozen_vm"]
+
+    worker_node_config["frozen_vm"] = {}
+
+    # Copy the fields from head node config to worker node config.
+    # We don't copy the library_item field into the worker node config as it'll
+    # trigger creation of frozen VM(s) again when the code executes on the head
+    # node.
+    # The copied fields will later be used when the code executes on the head
+    # node. The fields will determine the frozen VMs to be used for creating
+    # worker nodes.
+    if "name" in head_node_config["frozen_vm"]:
+        worker_node_config["frozen_vm"]["name"] = head_node_config["frozen_vm"]["name"]
+
+    if "resource_pool" in head_node_config["frozen_vm"]:
+        worker_node_config["frozen_vm"]["resource_pool"] = head_node_config[
+            "frozen_vm"
+        ]["resource_pool"]
+
+    if "cluster" in head_node_config["frozen_vm"]:
+        worker_node_config["frozen_vm"]["cluster"] = head_node_config["frozen_vm"][
+            "cluster"
+        ]
+
+
 def add_credentials_into_provider_section(config):
 
     provider_config = config["provider"]
@@ -68,7 +114,6 @@ def add_credentials_into_provider_section(config):
         "password": os.environ["VSPHERE_PASSWORD"],
     }
 
-    provider_config["vsphere_config"] = {}
     provider_config["vsphere_config"]["credentials"] = env_credentials
 
 
@@ -114,16 +159,7 @@ def update_vsphere_configs(config):
 
     worker_node_config["resource_pool"] = worker_resource_pool
 
-    worker_networks = None
     worker_datastore = None
-
-    if "networks" in head_node_config and head_node_config["networks"]:
-        worker_networks = head_node_config["networks"]
-
-    if "networks" in worker_node_config and worker_node_config["networks"]:
-        worker_networks = worker_node_config["networks"]
-
-    worker_node_config["networks"] = worker_networks
 
     if "datastore" in head_node_config and head_node_config["datastore"]:
         worker_datastore = head_node_config["datastore"]
@@ -133,11 +169,9 @@ def update_vsphere_configs(config):
 
     worker_node_config["datastore"] = worker_datastore
 
-    if "frozen_vm_name" not in head_node_config:
-        raise ValueError(
-            "frozen_vm_name is mandatory for bringing up the Ray cluster, contact "
-            "yourVI admin for the information."
-        )
+    check_and_update_frozen_vm_configs_in_provider_section(
+        config, head_node_config, worker_node_config
+    )
 
 
 def create_key_pair():

@@ -179,6 +179,8 @@ vSphere Config
 
             :ref:`credentials <cluster-configuration-vsphere-credentials>`:
                 :ref:`vSphere Credentials <cluster-configuration-vsphere-credentials-type>`
+            :ref:`frozen_vm <cluster-configuration-vsphere-frozen-vm>`:
+                :ref:`vSphere Frozen VM Configs <cluster-configuration-vsphere-frozen-vm-configs>`
 
 .. _cluster-configuration-vsphere-credentials-type:
 
@@ -195,7 +197,23 @@ vSphere Credentials
             :ref:`password <cluster-configuration-vsphere-password>`: str
             :ref:`server <cluster-configuration-vsphere-server>`: str
 
+.. _cluster-configuration-vsphere-frozen-vm-configs:
+
+vSphere Frozen VM Configs
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`name <cluster-configuration-vsphere-frozen-vm-name>`: str
+            :ref:`library-item <cluster-configuration-vsphere-frozen-vm-library-item>`: str
+            :ref:`resource_pool <cluster-configuration-vsphere-frozen-vm-resource-pool>`: str
+
 .. _cluster-configuration-node-types-type:
+
 
 Node types
 ~~~~~~~~~~
@@ -254,8 +272,6 @@ nodes with the newly applied ``node_config`` will then be created according to c
             # The resource pool where the head node should live, if unset, will be
             # the frozen VM's resource pool.
             resource_pool: str
-            # Mandatory: The frozen VM name from which the head node will be instant-cloned.
-            frozen_vm_name: str
             # The datastore to store the vmdk of the head node vm, if unset, will be
             # the frozen VM's datastore.
             datastore: str
@@ -1127,7 +1143,7 @@ controlled by your cloud provider's configuration.
 
     .. tab-item:: vSphere
 
-        vSphere configuations used to connect vCenter Server. If not configured,
+        vSphere configurations used to connect vCenter Server. If not configured,
         the VSPHERE_* environment variables will be used.
 
         * **Required:** No
@@ -1199,6 +1215,57 @@ The vSphere vCenter Server address.
 
 * **Required:** No
 * **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm:
+
+``vsphere_config.frozen_vm``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The frozen VM related configurations. If "library_item" is unset, then either an existing frozen VM should be specified
+by "name" of a resource pool name of Frozen VMs on every ESXi host should be specified by "resource_pool"
+If "library_item" is set, then "name" must be set to indicate the name or the name prefix of the frozen VM,
+and "resource_pool" can be set to indicate that a set of frozen VMs should be created on each ESXi host.
+
+* **Required:** Yes
+* **Importance:** High
+* **Type:** :ref:`vSphere Frozen VM Configs <cluster-configuration-vsphere-frozen-vm-configs>`
+
+.. _cluster-configuration-vsphere-frozen-vm-name:
+
+``vsphere_config.frozen_vm.name``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The name of the frozen VM, or the prefix for a set of frozen VMs.
+Can only be unset when "frozen_vm.resource_pool" is set and pointing to an existing resource pool of Frozen VMs.
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-library-item:
+
+``vsphere_config.frozen_vm.library_item``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The library item of the OVF template of the frozen VM. If set, the frozen VM or a set of frozen VMs will be
+deployed from an OVF template specified by library item.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-vsphere-frozen-vm-resource-pool:
+
+``vsphere_config.frozen_vm.resource_pool``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The resource pool name of the frozen VMs, can point to an existing resource pool of frozen VMs. Otherwise,
+"frozen_vm.library_item" must be specified and a set of frozen VMs will be deployed on each ESXi host.
+The frozen VMs will be named as "{frozen_vm.name}-{the vm's ip address}"
+
+* **Required:** No
+* **Importance:** Medium
 * **Type:** String
 
 .. _cluster-configuration-node-config:
