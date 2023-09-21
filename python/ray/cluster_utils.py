@@ -79,6 +79,12 @@ class AutoscalingCluster:
             cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
         if "GPU" in self._head_resources:
             cmd.append("--num-gpus={}".format(self._head_resources.pop("GPU")))
+        if "object_store_memory" in self._head_resources:
+            cmd.append(
+                "--object-store-memory={}".format(
+                    self._head_resources.pop("object_store_memory")
+                )
+            )
         if self._head_resources:
             cmd.append("--resources='{}'".format(json.dumps(self._head_resources)))
         if _system_config is not None:
