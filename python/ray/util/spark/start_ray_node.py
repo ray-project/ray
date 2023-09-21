@@ -16,11 +16,10 @@ from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
 # ray node subprocess, instead, it creates a subprocess to run this
 # `ray.util.spark.start_ray_node` module, and in this module it invokes `ray start ...`
 # script to start ray node, the purpose of `start_ray_node` module is to set up a
-# SIGTERM handler for cleaning ray temp directory when ray node exits.
-# When spark driver python process dies, or spark python worker dies, because they
-# registered the PR_SET_PDEATHSIG signal, so OS will send a SIGTERM signal to its
-# children processes, so `start_ray_node` subprocess will receive a SIGTERM signal and
-# the SIGTERM handler will do cleanup work.
+# exit handler for cleaning ray temp directory when ray node exits.
+# When spark driver python process dies, or spark python worker dies, because
+# `start_ray_node` starts a daemon thread of `check_parent_alive`, it will detect
+# parent process died event and then trigger cleanup work.
 
 
 _logger = logging.getLogger(__name__)
@@ -110,7 +109,6 @@ if __name__ == "__main__":
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
             os.close(lock_fd)
 
-
     def check_parent_alive() -> None:
         orig_parent_id = os.getppid()
         while True:
@@ -118,11 +116,13 @@ if __name__ == "__main__":
             if os.getppid() != orig_parent_id:
                 process.terminate()
                 try_clean_temp_dir_at_exit()
+                # Keep the same exit code 143 with sigterm signal.
                 os._exit(143)
 
     threading.Thread(target=check_parent_alive, daemon=True).start()
 
     try:
+
         def sighup_handler(*args):
             pass
 
@@ -139,6 +139,7 @@ if __name__ == "__main__":
         def sigterm_handler(*args):
             process.terminate()
             try_clean_temp_dir_at_exit()
+            # Sigterm exit code is 143.
             os._exit(143)
 
         signal.signal(signal.SIGTERM, sigterm_handler)
