@@ -15,7 +15,7 @@
 (rayserve-overview)=
 
 Ray Serve is a scalable model serving library for building online inference APIs.
-Serve is framework-agnostic, so you can use a single toolkit to serve everything from deep learning models built with frameworks like PyTorch, Tensorflow, and Keras, to Scikit-Learn models, to arbitrary Python business logic. It has several features and performance optimizations for serving Large Language Models such as response streaming, dynamic request batching, multi-node/multi-GPU serving, etc.
+Serve is framework-agnostic, so you can use a single toolkit to serve everything from deep learning models built with frameworks like PyTorch, TensorFlow, and Keras, to Scikit-Learn models, to arbitrary Python business logic. It has several features and performance optimizations for serving Large Language Models such as response streaming, dynamic request batching, multi-node/multi-GPU serving, etc.
 
 Ray Serve is particularly well suited for [model composition](serve-model-composition) and many model serving, enabling you to build a complex inference service consisting of multiple ML models and business logic all in Python code. 
 
@@ -79,7 +79,7 @@ The model we'll use is a sentiment analysis model: it will take a text string as
 :animate: fade-in-slide-down
 
 Many solutions for ML serving focus on "tensor-in, tensor-out" serving: that is, they wrap ML models behind a predefined, structured endpoint.
-However, machine learning isn't useful in isolation!
+However, machine learning isn't useful in isolation.
 It's often important to combine machine learning with business logic and traditional web serving logic such as database queries.
 
 Ray Serve is unique in that it allows you to build and deploy an end-to-end distributed serving application in a single framework.
@@ -91,13 +91,13 @@ You can combine multiple ML models, business logic, and expressive HTTP handling
 :animate: fade-in-slide-down
 
 Often solving a problem requires more than just a single machine learning model.
-For instance, image processing applications typically require a multi-stage pipeline consisting of steps like preprocessing, segmentation, and filtering in order to achieve their end goal.
-In many cases each model may use a different architecture or framework and require different resources (e.g., CPUs vs GPUs).
+For instance, image processing applications typically require a multi-stage pipeline consisting of steps like preprocessing, segmentation, and filtering to achieve their end goal.
+In many cases each model may use a different architecture or framework and require different resources (like CPUs vs GPUs).
 
 Many other solutions support defining a static graph in YAML or some other configuration language.
 This can be limiting and hard to work with.
 Ray Serve, on the other hand, supports multi-model composition using a programmable API where calls to different models look just like function calls.
-The models can use different resources and run across different machines in the cluster, but you can write it like a regular program (see {ref}`serve-model-composition` for more details).
+The models can use different resources and run across different machines in the cluster, but you can write it like a regular program. See {ref}`serve-model-composition` for more details.
 
 :::
 

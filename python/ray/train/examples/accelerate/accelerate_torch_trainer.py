@@ -19,6 +19,7 @@ from transformers import (
     set_seed,
 )
 
+import ray
 import ray.train
 from ray.train import DataConfig, ScalingConfig, Checkpoint
 from ray.train.torch import TorchTrainer
