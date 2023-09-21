@@ -432,3 +432,12 @@ class Tuner:
                 string_queue,
             )
             return ray.get(get_results_future)
+
+    def __getattribute__(self, item):
+        if item == "restore":
+            raise AttributeError(
+                "`Tuner.restore()` is a classmethod and cannot be called on an "
+                "instance. Use `tuner = Tuner.restore(...)` to instantiate the "
+                "Tuner instead."
+            )
+        return super().__getattribute__(item)

@@ -422,6 +422,15 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
     assert file_sizes == expected_file_sizes
 
+    # Many directories should not trigger error.
+    if isinstance(fs, LocalFileSystem):
+        dir_paths = [dir1, dir2] * num_dfs
+        with caplog.at_level(logging.WARNING), patcher as mock_get:
+            file_paths, file_sizes = map(
+                list, zip(*meta_provider.expand_paths(dir_paths, fs))
+            )
+        assert len(file_paths) == len(paths) * num_dfs
+
 
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
