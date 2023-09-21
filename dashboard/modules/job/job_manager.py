@@ -486,7 +486,7 @@ class JobSupervisor:
                     else:
                         message = (
                             "Job entrypoint command "
-                            f"failed with exit code {return_code}"
+                            f"failed with exit code {return_code}. No logs available."
                         )
                     await self._job_info_client.put_status(
                         self._job_id, JobStatus.FAILED, message=message
