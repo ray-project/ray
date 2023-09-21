@@ -459,9 +459,9 @@ class JobSupervisor:
                             "force-killed with SIGKILL."
                         )
                         self._kill_processes(proc_to_kill, signal.SIGKILL)
-                return_code = job_process.wait()
+
                 await self._job_info_client.put_status(
-                    self._job_id, JobStatus.STOPPED, driver_exit_code=return_code
+                    self._job_id, JobStatus.STOPPED, driver_exit_code=None
                 )
             else:
                 # Child process finished execution and no stop event is set
@@ -504,7 +504,7 @@ class JobSupervisor:
                 "Got unexpected exception while trying to execute driver "
                 f"command. {traceback.format_exc()}"
             )
-            return_code = child_process.returncode
+            return_code = child_process.returncode if child_process else None
             try:
                 await self._job_info_client.put_status(
                     self._job_id,

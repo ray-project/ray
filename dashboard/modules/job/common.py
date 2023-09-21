@@ -237,8 +237,8 @@ class JobInfoStorageClient:
         job_id: str,
         status: JobStatus,
         message: Optional[str] = None,
-        jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
         driver_exit_code: Optional[str] = None,
+        jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """Puts or updates job status.  Sets end_time if status is terminal."""
 

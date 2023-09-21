@@ -324,7 +324,9 @@ async def check_job_failed(job_manager, job_id):
 
 async def check_job_stopped(job_manager, job_id):
     status = await job_manager.get_job_status(job_id)
+    data = await job_manager.get_job_info(job_id)
     assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED}
+    assert data.driver_exit_code is None
     return status == JobStatus.STOPPED
 
 
@@ -745,9 +747,6 @@ class TestAsyncAPI:
             )
             # Assert stopping non-existent job returns False
             assert job_manager.stop_job(str(uuid4())) is False
-            # Assert driver exit code
-            data = await job_manager.get_job_info(job_id)
-            assert data.driver_exit_code == -signal.SIGTERM
 
     async def test_kill_job_actor_in_before_driver_finish(self, job_manager):
         """
@@ -800,9 +799,6 @@ class TestAsyncAPI:
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
 
-            data = await job_manager.get_job_info(job_id)
-            assert data.driver_exit_code == -signal.SIGTERM
-
     async def test_kill_job_actor_in_pending(self, job_manager):
         """
         Kick off a job that is in PENDING state, kill the job actor and ensure
@@ -846,9 +842,6 @@ class TestAsyncAPI:
             await async_wait_for_condition_async_predicate(
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
-
-            data = await job_manager.get_job_info(job_id)
-            assert data.driver_exit_code == -signal.SIGTERM
 
             # Ensure driver subprocess gets cleaned up after job reached
             # termination state
@@ -952,8 +945,6 @@ class TestTailLogs:
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
 
-            data = await job_manager.get_job_info(job_id)
-            assert data.driver_exit_code == -signal.SIGTERM
 
 
 @pytest.mark.asyncio
@@ -987,8 +978,6 @@ while True:
     )
 
     assert "SIGTERM signal handled!" in job_manager.get_job_logs(job_id)
-    data = await job_manager.get_job_info(job_id)
-    assert data.driver_exit_code == 0
 
 
 @pytest.mark.asyncio
@@ -1044,9 +1033,6 @@ while True:
         job_id=job_id,
         timeout=10,
     )
-
-    data = await job_manager.get_job_info(job_id)
-    assert data.driver_exit_code == -signal.SIGKILL
 
 
 @pytest.mark.asyncio
@@ -1230,6 +1216,28 @@ async def test_job_pending_timeout(job_manager, monkeypatch):
     assert "Job supervisor actor failed to start within" in job_info.message
     assert job_info.driver_exit_code is None
 
+@pytest.mark.asyncio
+async def test_failed_driver_exit_code(job_manager):
+    """Test driver exit code from finished task that failed"""
+    EXIT_CODE = 10
+
+    exit_code_script = f"""
+import sys
+sys.exit({EXIT_CODE})
+"""
+
+    exit_code_cmd = f'python -c "{exit_code_script}"'
+
+    job_id = await job_manager.submit_job(entrypoint=exit_code_cmd)
+    # Wait for the job to timeout.
+    await async_wait_for_condition_async_predicate(
+        check_job_failed, job_manager=job_manager, job_id=job_id
+    )
+
+    # Check that the job failed
+    job_info = await job_manager.get_job_info(job_id)
+    assert job_info.status == JobStatus.FAILED
+    assert job_info.driver_exit_code == EXIT_CODE
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
