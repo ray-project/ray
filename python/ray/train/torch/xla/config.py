@@ -1,19 +1,20 @@
+
 import os
 import uuid
 from dataclasses import dataclass
 
 import ray
 from ray._private.ray_constants import NEURON_CORES
-from ray.train import BackendConfig
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend
+from ray.train.torch import TorchConfig
 from ray.util import PublicAPI
 
 
 @PublicAPI(stability="alpha")
 @dataclass
-class TorchXLAConfig(BackendConfig):
+class TorchXLAConfig(TorchConfig):
     """
     Configuration for torch XLA setup.
     See https://pytorch.org/xla/release/1.13/index.html for more info.
@@ -71,8 +72,8 @@ def _set_xla_env_vars():
 
 def _setup_xla_torch_process_group():
     try:
-        import torch_xla.core.xla_model as xm  # noqa
-        import torch_xla.distributed.xla_backend  # noqa
+        import torch_xla.core.xla_model as xm  # noqa F401
+        import torch_xla.distributed.xla_backend  # noqa F401
         import torch.distributed as dist
 
         dist.init_process_group("xla")
@@ -120,7 +121,7 @@ class _TorchAwsNeuronXLABackend(Backend):
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchXLAConfig):
         """
-        Logic ran right before training is started.
+        Logic ran right after training is finished.
         This is a sanity cleanup to kill xrt server.
         """
         worker_group.execute(_kill_xrt_server)
