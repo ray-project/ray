@@ -164,8 +164,6 @@ def test_pause_resume_trial(
 
     Legacy test: test_trial_runner_2.py::TrialRunnerTest::testPauseThenResume
     """
-    # TODO(krfricke): Unskip once pause trial changes are in.
-    pytest.skip("Skipping for now.")
     runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         storage=STORAGE,
@@ -191,7 +189,7 @@ def test_pause_resume_trial(
         runner.step()
 
     assert trials[0].has_checkpoint()
-    assert DONE not in trials[0].last_result
+    assert not trials[0].last_result.get(DONE), trials[0].last_result
 
     # Start again
     runner._set_trial_status(trials[0], Trial.PENDING)
