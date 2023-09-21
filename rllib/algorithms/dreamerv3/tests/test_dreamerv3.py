@@ -214,8 +214,8 @@ class TestDreamerV3(unittest.TestCase):
                     module_spec = config.get_marl_module_spec(policy_dict=policy_dict)
                     rl_module = module_spec.build()[DEFAULT_POLICY_ID]
 
-                    # Count the generated RLModule's parameters and compare to the paper's
-                    # reported numbers ([1] and [3]).
+                    # Count the generated RLModule's parameters and compare to the
+                    # paper's reported numbers ([1] and [3]).
                     num_params_world_model = sum(
                         np.prod(v.shape.as_list())
                         for v in rl_module.world_model.trainable_variables
