@@ -64,12 +64,12 @@ For example, to pass a new message to the `HelloWorld` app defined above (with t
 2023-05-16 10:49:25,247 INFO scripts.py:351 -- Running config file: 'config.yaml'.
 2023-05-16 10:49:26,949 INFO worker.py:1615 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 2023-05-16 10:49:28,678 SUCC scripts.py:419 -- Submitted deploy config successfully.
-(ServeController pid=57109) INFO 2023-05-16 10:49:28,676 controller 57109 controller.py:559 - Starting deploy_serve_application task for application MyApp.
+(ServeController pid=57109) INFO 2023-05-16 10:49:28,676 controller 57109 controller.py:559 - Building application 'MyApp'.
 (HTTPProxyActor pid=57111) INFO:     Started server process [57111]
+(ServeController pid=57109) INFO 2023-05-16 10:49:28,940 controller 57109 application_state.py:202 - Built application 'MyApp' successfully.
 (ServeController pid=57109) INFO 2023-05-16 10:49:28,942 controller 57109 deployment_state.py:1244 - Deploying new version of deployment MyApp_HelloWorld.
 (ServeController pid=57109) INFO 2023-05-16 10:49:29,016 controller 57109 deployment_state.py:1483 - Adding 1 replica to deployment MyApp_HelloWorld.
 (ServeReplica:MyApp_HelloWorld pid=57113) Message: Hello from config
-(ServeController pid=57109) INFO 2023-05-16 10:49:30,046 controller 57109 application_state.py:202 - Deploy task for app 'MyApp' ran successfully.
 ```
 
 Notice that the "Hello from config" message is printed from within the deployment constructor.
