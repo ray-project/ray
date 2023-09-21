@@ -111,7 +111,7 @@ _AUTOSCALER_METRICS = [
 
 
 # This list of metrics should be kept in sync with
-# ray/python/ray/autoscaler/_private/prom_metrics.py
+# dashboard/dashboard_metrics.py
 _DASHBOARD_METRICS = [
     "ray_dashboard_api_requests_duration_seconds_bucket",
     "ray_dashboard_api_requests_duration_seconds_created",

@@ -65,6 +65,9 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_component_cpu_percentage`
      - `Component`, `InstanceId`
      - The measured CPU percentage, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_num_fds`
+     - `Component`, `InstanceId`
+     - The measured number of open file descriptors, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
    * - `ray_node_gram_used`
      - `InstanceId`, `GpuDeviceName`, `GpuIndex`
      - The amount of GPU memory used per GPU, in bytes.
