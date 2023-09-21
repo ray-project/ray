@@ -43,7 +43,13 @@ void GcsResourceManager::ConsumeSyncMessage(
         rpc::ResourcesData resources;
         resources.ParseFromString(message->sync_message());
         resources.set_node_id(message->node_id());
-        UpdateFromResourceReport(resources);
+        if (message->message_type() == syncer::MessageType::COMMANDS) {
+          UpdateFromResourceCommand(resources);
+        } else if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
+          UpdateFromResourceView(resources);
+        } else {
+          RAY_LOG(FATAL) << "Unsupported message type: " << message->message_type();
+        }
       },
       "GcsResourceManager::Update");
 }
@@ -124,7 +130,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
   ++counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST];
 }
 
-void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
+void GcsResourceManager::UpdateFromResourceView(const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
   // When gcs detects task pending, we may receive an local update. But it can be ignored
   // here because gcs' syncer has already broadcast it.
@@ -134,10 +140,11 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
+    // We will only update the node's resources if it's from resource view reports.
     if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
                                               data)) {
       RAY_LOG(INFO)
-          << "[UpdateFromResourceReport]: received resource usage from unknown node id "
+          << "[UpdateFromResourceView]: received resource usage from unknown node id "
           << node_id;
     }
   }
@@ -167,7 +174,7 @@ void GcsResourceManager::HandleReportResourceUsage(
     rpc::ReportResourceUsageRequest request,
     rpc::ReportResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  UpdateFromResourceReport(request.resources());
+  UpdateFromResourceView(request.resources());
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
@@ -260,6 +267,19 @@ void GcsResourceManager::HandleGetAllResourceUsage(
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
 
+void GcsResourceManager::UpdateFromResourceCommand(const rpc::ResourcesData &data) {
+  const auto node_id = NodeID::FromBinary(data.node_id());
+  auto iter = node_resource_usages_.find(node_id);
+  if (iter == node_resource_usages_.end()) {
+    return;
+  }
+
+  // TODO(rickyx): We should change this to be part of RESOURCE_VIEW.
+  // This is being populated from NodeManager as part of COMMANDS
+  iter->second.set_cluster_full_of_actors_detected(
+      data.cluster_full_of_actors_detected());
+}
+
 void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
                                                  const rpc::ResourcesData &resources) {
   auto iter = node_resource_usages_.find(node_id);
@@ -268,18 +288,15 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
     // If the node is not registered to GCS,
     // we are guaranteed that no resource usage will be reported.
     return;
-  } else {
-    if (resources.resources_total_size() > 0) {
-      (*iter->second.mutable_resources_total()) = resources.resources_total();
-    }
+  }
+  if (resources.resources_total_size() > 0) {
+    (*iter->second.mutable_resources_total()) = resources.resources_total();
+  }
 
-    (*iter->second.mutable_resources_available()) = resources.resources_available();
+  (*iter->second.mutable_resources_available()) = resources.resources_available();
 
-    if (resources.resources_normal_task_changed()) {
-      (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
-    }
-    iter->second.set_cluster_full_of_actors_detected(
-        resources.cluster_full_of_actors_detected());
+  if (resources.resources_normal_task_changed()) {
+    (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
   }
 }
 
