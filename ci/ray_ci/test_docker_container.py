@@ -45,6 +45,25 @@ class TestDockerContainer(RayCITestBase):
                 "rayproject/ray-ml:123456-py37-cpu"
             )
 
+    def test_get_image_name(self) -> None:
+        container = DockerContainer("py38", "cpu", "ray")
+        assert container._get_image_names() == [
+            "rayproject/ray:123456-py38-cpu",
+            "rayproject/ray:123456-py38",
+            "rayproject/ray:nightly-py38-cpu",
+            "rayproject/ray:nightly-py38",
+        ]
+
+        container = DockerContainer("py37", "cu118", "ray-ml")
+        assert container._get_image_names() == [
+            "rayproject/ray-ml:123456-py37-cu118",
+            "rayproject/ray-ml:123456-py37-gpu",
+            "rayproject/ray-ml:123456-py37",
+            "rayproject/ray-ml:nightly-py37-cu118",
+            "rayproject/ray-ml:nightly-py37-gpu",
+            "rayproject/ray-ml:nightly-py37",
+        ]
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
