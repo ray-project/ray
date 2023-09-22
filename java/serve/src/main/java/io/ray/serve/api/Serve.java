@@ -303,7 +303,8 @@ public class Serve {
     DeploymentRoute deploymentRoute = getGlobalClient().getDeploymentInfo(name);
     if (deploymentRoute == null) {
       throw new RayServeException(
-          MessageFormatter.format("Deployment {} was not found. Did you call Deployment.deploy?", name));
+          MessageFormatter.format(
+              "Deployment {} was not found. Did you call Deployment.deploy?", name));
     }
 
     // TODO use DeploymentCreator

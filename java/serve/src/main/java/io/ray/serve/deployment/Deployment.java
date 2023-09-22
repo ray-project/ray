@@ -121,14 +121,14 @@ public class Deployment {
   }
 
   public Application bind(Object firstArg, Object... otherArgs) {
-  	Object[] args = null;
-  	if (firstArg != null) {
-  		if (otherArgs == null) {
+    Object[] args = null;
+    if (firstArg != null) {
+      if (otherArgs == null) {
         args = new Object[] {firstArg};
       } else {
         args = Stream.concat(Stream.of(firstArg), Arrays.stream(otherArgs)).toArray(Object[]::new);
-  		}
-  	}
+      }
+    }
 
     Map<String, Object> otherArgsToResolve = new HashMap<>();
     otherArgsToResolve.put("deployment_schema", this);

@@ -92,7 +92,8 @@ public class DeploymentCreator {
         "Manually setting num_replicas is not allowed when autoscalingConfig is provided.");
 
     if (version != null) {
-    	LOGGER.warn("DeprecationWarning: `version` in `@serve.deployment` has been deprecated. Explicitly specifying version will raise an error in the future!");
+      LOGGER.warn(
+          "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. Explicitly specifying version will raise an error in the future!");
     }
     if (routePrefix != null) {
       LOGGER.warn(
