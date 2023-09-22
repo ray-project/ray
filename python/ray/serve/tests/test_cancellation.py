@@ -1,21 +1,20 @@
 import asyncio
 import concurrent.futures
-import pytest
 import sys
 
-from fastapi import FastAPI
+import pytest
 import requests
+from fastapi import FastAPI
 from starlette.requests import Request
 
 import ray
-from ray.actor import ActorHandle
+from ray import serve
 from ray._private.test_utils import (
     SignalActor,
     async_wait_for_condition,
     wait_for_condition,
 )
-
-from ray import serve
+from ray.actor import ActorHandle
 from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
 
 
