@@ -109,9 +109,7 @@ def _setup_torch_process_group(
         os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
 
     if HPU_PACKAGE_AVAILABLE:
-        #Fix Me: Use helper to set the visible devices and internal env's
-        #hpu_dist.initialize_distributed_hpu(world_size=world_size, rank=world_rank, local_rank=world_rank)
-        os.environ["ID"] = str(world_rank)
+        hpu_dist.initialize_distributed_hpu(world_size=world_size, rank=world_rank, local_rank=world_rank)
 
     dist.init_process_group(
         backend=backend,

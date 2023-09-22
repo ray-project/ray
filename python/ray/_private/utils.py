@@ -430,7 +430,7 @@ def set_omp_num_threads_if_unset() -> bool:
 
 
 def set_gpu_and_accelerator_runtime_ids() -> None:
-    """Set (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS ,...)
+    """Set (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...)
     environment variables based on the accelerator runtime.
 
     Raises:
@@ -525,7 +525,7 @@ def set_hpu_visible_devices(hpu_ids: List[str]):
     if os.environ.get(ray_constants.NOSET_HABANA_VISIBLE_MODULES_ENV_VAR):
         return
     global last_set_hpu_ids
-    if last_set_hpu_ids == hpu_ids:
+    if last_set_hpu_ids == hpu_ids or not hpu_ids:
         return  # optimization: already set
     _set_visible_ids(hpu_ids, ray_constants.HABANA_VISIBLE_MODULES_ENV_VAR)
     last_set_hpu_ids = hpu_ids
@@ -533,7 +533,7 @@ def set_hpu_visible_devices(hpu_ids: List[str]):
 
 def _set_visible_ids(visible_ids: List[str], env_var: str):
     """Set the environment variable (e.g., CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES,
-     TPU_VISIBLE_CHIPS) passed based on accelerator runtime and will raise an error if
+     HABANA_VISIBLE_MODULES, TPU_VISIBLE_CHIPS) passed based on accelerator runtime and will raise an error if
      the function uses different environment variable.
 
     Args:
