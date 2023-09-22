@@ -3,13 +3,12 @@ import importlib
 import os
 import sys
 import time
-from typing import Set, Optional, Tuple, Union
+from typing import Optional, Set, Tuple, Union
 
 import pytest
 
 import ray
 from ray._private.utils import get_or_create_event_loop
-
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.router import (
     PowerOfTwoChoicesReplicaScheduler,
@@ -33,7 +32,6 @@ class FakeReplicaWrapper(ReplicaWrapper):
         model_ids: Optional[Set[str]] = None,
         sleep_time_s: float = 0.0
     ):
-
         self._replica_id = replica_id
         self._node_id = node_id
         self._availability_zone = availability_zone
