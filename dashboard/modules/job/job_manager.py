@@ -941,13 +941,13 @@ class JobManager:
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=entrypoint_num_cpus,
                 num_gpus=entrypoint_num_gpus,
+                memory=entrypoint_memory,
                 resources=entrypoint_resources,
                 scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(
                     runtime_env, resources_specified
                 ),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-                _memory=entrypoint_memory,
             ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
             supervisor.run.remote(
                 _start_signal_actor=_start_signal_actor,
