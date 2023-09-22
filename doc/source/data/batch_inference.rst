@@ -84,6 +84,48 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             {'data': 'Complete this', 'output': 'Complete this information or purchase any item from this site.\n\nAll purchases are final and non-'}
 
 
+    .. group-tab:: Embeddings
+
+        .. testcode::
+
+            import ray
+            from langchain.embeddings.huggingface import HuggingFaceEmbeddings
+
+            # Load the dataset
+            ds = ray.data.read_text("s3://bucket")
+
+            # Define a Predictor class for calculating the embeddings.
+            class EmbedChunksPredictor:
+                def __init__(self, model_name):
+                    self.embedding_model = HuggingFaceEmbeddings(
+                        model_name=model_name,
+                        model_kwargs={"device": "cuda"},
+                        encode_kwargs={"batch_size": 100})
+
+                def __call__(self, batch):
+                    content = batch["text"]
+                    embeddings = self.embedding_model.embed_documents(content)
+                    return {"text": content, "embeddings": embeddings}
+
+            # Map the Predictor over the dataset to compute the embeddings
+            embeddings = ds.map_batches(
+                EmbedChunksPredictor,
+                fn_constructor_kwargs={"model_name": "thenlper/gte-small"},
+                batch_size=100,
+                num_gpus=1,
+                compute=ray.data.ActorPoolStrategy(size=1))
+
+            # Write the embeddings to a vector database.
+            def connection_factory():
+                import psycopg
+                from pgvector.psycopg import register_vector
+                conn = psycopg.connect("...")
+                register_vector(conn)
+                return conn
+
+            embeddings.write_sql("INSERT INTO document VALUES(?, ?)", connection_factory)
+
+
     .. group-tab:: PyTorch
 
         .. testcode::
