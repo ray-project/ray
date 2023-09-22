@@ -384,7 +384,8 @@ def get_avail_mem_per_ray_worker_node(
             )
         except Exception as e:
             import traceback
-            trace_msg = '\n'.join(traceback.format_tb(e.__traceback__))
+
+            trace_msg = "\n".join(traceback.format_tb(e.__traceback__))
             return -1, -1, repr(e) + trace_msg, None
 
     # Running memory inference routine on spark executor side since the spark worker

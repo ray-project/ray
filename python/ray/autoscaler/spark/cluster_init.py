@@ -2,27 +2,22 @@ import copy
 import json
 import logging
 import os
-import subprocess
-import tempfile
-import time
 import sys
+import tempfile
 
 import yaml
 
 import ray
 import ray._private.services
-from ray.util.annotations import DeveloperAPI
 from ray.autoscaler._private.spark.node_provider import RAY_ON_SPARK_HEAD_NODE_ID
-import ray._private.ray_constants as ray_constants
-
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
 class AutoscalingCluster:
-    """Create a ray on spark autoscaling cluster.
-    """
+    """Create a ray on spark autoscaling cluster."""
 
     def __init__(
         self,
@@ -41,13 +36,20 @@ class AutoscalingCluster:
         self._head_resources = head_resources.copy()
         self._head_resources["NODE_ID_AS_RESOURCE"] = RAY_ON_SPARK_HEAD_NODE_ID
         self._config = self._generate_config(
-            head_resources, worker_node_types, extra_provider_config,
-            upscaling_speed, idle_timeout_minutes
+            head_resources,
+            worker_node_types,
+            extra_provider_config,
+            upscaling_speed,
+            idle_timeout_minutes,
         )
 
     def _generate_config(
-        self, head_resources, worker_node_types, extra_provider_config,
-        upscaling_speed, idle_timeout_minutes
+        self,
+        head_resources,
+        worker_node_types,
+        extra_provider_config,
+        upscaling_speed,
+        idle_timeout_minutes,
     ):
         base_config = yaml.safe_load(
             open(
@@ -86,10 +88,10 @@ class AutoscalingCluster:
         ray.init("auto").
         """
         from ray.util.spark.cluster_init import (
-            _convert_ray_node_options,
-            exec_cmd,
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH,
             _append_resources_config,
+            _convert_ray_node_options,
+            exec_cmd,
         )
 
         _, autoscale_config = tempfile.mkstemp()
@@ -110,15 +112,27 @@ class AutoscalingCluster:
         ]
 
         if "CPU" in self._head_resources:
-            ray_head_node_cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
+            ray_head_node_cmd.append(
+                "--num-cpus={}".format(self._head_resources.pop("CPU"))
+            )
         if "GPU" in self._head_resources:
-            ray_head_node_cmd.append("--num-gpus={}".format(self._head_resources.pop("GPU")))
+            ray_head_node_cmd.append(
+                "--num-gpus={}".format(self._head_resources.pop("GPU"))
+            )
         if "memory" in self._head_resources:
-            ray_head_node_cmd.append("--memory={}".format(self._head_resources.pop("memory")))
+            ray_head_node_cmd.append(
+                "--memory={}".format(self._head_resources.pop("memory"))
+            )
         if "object_store_memory" in self._head_resources:
-            ray_head_node_cmd.append("--object-store-memory={}".format(self._head_resources.pop("object_store_memory")))
+            ray_head_node_cmd.append(
+                "--object-store-memory={}".format(
+                    self._head_resources.pop("object_store_memory")
+                )
+            )
 
-        head_node_options = _append_resources_config(head_node_options, self._head_resources)
+        head_node_options = _append_resources_config(
+            head_node_options, self._head_resources
+        )
         ray_head_node_cmd.extend(_convert_ray_node_options(head_node_options))
 
         extra_env = {

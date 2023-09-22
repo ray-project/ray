@@ -35,8 +35,12 @@ _RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES = 10000000000
 
 
 def _setup_ray_on_spark_envs():
-    os.environ["RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES"] = str(_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES)
-    os.environ["RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES"] = str(_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES)
+    os.environ["RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES"] = str(
+        _RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES
+    )
+    os.environ["RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES"] = str(
+        _RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES
+    )
 
 
 def setup_module():
@@ -56,7 +60,6 @@ _logger = logging.getLogger(__name__)
 
 
 class RayOnSparkCPUClusterTestBase(ABC):
-
     spark = None
     num_total_cpus = None
     num_cpus_per_spark_task = None
@@ -96,10 +99,14 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 self.max_spark_tasks // 2 + 1,
             ),  # Test case: requesting resources exceeding all cluster resources
         ]:
-            num_ray_task_slots = (
-                self.max_spark_tasks // (num_cpus_worker_node // self.num_cpus_per_spark_task)
+            num_ray_task_slots = self.max_spark_tasks // (
+                num_cpus_worker_node // self.num_cpus_per_spark_task
             )
-            mem_per_worker, object_store_mem_per_worker, _ = _calc_mem_per_ray_worker_node(
+            (
+                mem_per_worker,
+                object_store_mem_per_worker,
+                _,
+            ) = _calc_mem_per_ray_worker_node(
                 num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
@@ -117,7 +124,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
                     assert (
                         worker_res["CPU"] == num_cpus_worker_node
                         and worker_res["memory"] == mem_per_worker
-                        and worker_res["object_store_memory"] == object_store_mem_per_worker
+                        and worker_res["object_store_memory"]
+                        == object_store_mem_per_worker
                     )
 
     def test_public_api(self):
@@ -205,10 +213,14 @@ class RayOnSparkCPUClusterTestBase(ABC):
             (self.max_spark_tasks, self.num_cpus_per_spark_task),
             (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2),
         ]:
-            num_ray_task_slots = (
-                self.max_spark_tasks // (num_cpus_worker_node // self.num_cpus_per_spark_task)
+            num_ray_task_slots = self.max_spark_tasks // (
+                num_cpus_worker_node // self.num_cpus_per_spark_task
             )
-            mem_per_worker, object_store_mem_per_worker, _ = _calc_mem_per_ray_worker_node(
+            (
+                mem_per_worker,
+                object_store_mem_per_worker,
+                _,
+            ) = _calc_mem_per_ray_worker_node(
                 num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
@@ -229,6 +241,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 @ray.remote(num_cpus=num_cpus_worker_node)
                 def f(x):
                     import time
+
                     time.sleep(5)
                     return x * x
 
@@ -241,7 +254,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 assert len(worker_res_list) == num_worker_nodes and all(
                     worker_res_list[i]["CPU"] == num_cpus_worker_node
                     and worker_res_list[i]["memory"] == mem_per_worker
-                    and worker_res_list[i]["object_store_memory"] == object_store_mem_per_worker
+                    and worker_res_list[i]["object_store_memory"]
+                    == object_store_mem_per_worker
                     for i in range(num_worker_nodes)
                 )
 
@@ -312,7 +326,7 @@ class TestSparkLocalCluster:
             num_worker_nodes=1,
             num_cpus_head_node=3,
             num_gpus_head_node=2,
-            object_store_memory_head_node=256*1024*1024,
+            object_store_memory_head_node=256 * 1024 * 1024,
             head_node_options={"include_dashboard": False},
             autoscale=autoscale,
         )

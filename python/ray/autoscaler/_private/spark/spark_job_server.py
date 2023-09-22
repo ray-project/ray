@@ -1,14 +1,12 @@
 import json
+import logging
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-import threading
 
 from pyspark.util import inheritable_thread_target
 
-from ray.util.spark.cluster_init import get_spark_session
 from ray.util.spark.cluster_init import _start_ray_worker_nodes
-import logging
-
 
 _logger = logging.getLogger("ray.autoscaler._private.spark.spark_job_server")
 _logger.setLevel(logging.WARN)
@@ -17,7 +15,7 @@ _logger.setLevel(logging.WARN)
 class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
     def _set_headers(self):
         self.send_response(200)
-        self.send_header('Content-type', 'application/json')
+        self.send_header("Content-type", "application/json")
         self.end_headers()
 
     def handle_POST(self, path, data):
@@ -103,22 +101,19 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
             raise ValueError(f"Illegal request path: {path}")
 
     def do_POST(self):
-        '''Reads post request body'''
-        """
-        curl -X POST http://localhost/ -H 'Content-Type: application/json' -d '{"login":"my_login","password":"my_password"}'
-        """
+        """Reads post request body"""
         self._set_headers()
-        content_len = int(self.headers['content-length'])
-        content_type = self.headers['content-type']
+        content_len = int(self.headers["content-length"])
+        content_type = self.headers["content-type"]
         assert content_type == "application/json"
         path = self.path
-        post_body = self.rfile.read(content_len).decode('utf-8')
+        post_body = self.rfile.read(content_len).decode("utf-8")
         post_body_json = json.loads(post_body)
         response_body_json = self.handle_POST(path, post_body_json)
         response_body = json.dumps(response_body_json)
         self.wfile.write(response_body.encode("utf-8"))
 
-    def log_request(self, code='-', size='-'):
+    def log_request(self, code="-", size="-"):
         # Make logs less verbose.
         pass
 

@@ -110,7 +110,6 @@ if __name__ == "__main__":
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
             os.close(lock_fd)
 
-
     def check_parent_alive() -> None:
         orig_parent_id = os.getppid()
         while True:
@@ -123,6 +122,7 @@ if __name__ == "__main__":
     threading.Thread(target=check_parent_alive, daemon=True).start()
 
     try:
+
         def sighup_handler(*args):
             pass
 

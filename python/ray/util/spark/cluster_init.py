@@ -118,13 +118,10 @@ class RayClusterOnSpark:
         try:
             ray.init(address=self.address)
 
-            if (
-                self.ray_dashboard_port is not None and
-                _wait_service_up(
-                    self.address.split(":")[0],
-                    self.ray_dashboard_port,
-                    _RAY_DASHBOARD_STARTUP_TIMEOUT,
-                )
+            if self.ray_dashboard_port is not None and _wait_service_up(
+                self.address.split(":")[0],
+                self.ray_dashboard_port,
+                _RAY_DASHBOARD_STARTUP_TIMEOUT,
             ):
                 self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
             else:
@@ -493,7 +490,10 @@ def _setup_ray_cluster(
     if include_dashboard is None or include_dashboard is True:
         if ray_dashboard_port is None:
             ray_dashboard_port = get_random_unused_port(
-                ray_head_ip, min_port=9000, max_port=10000, exclude_list=port_exclude_list
+                ray_head_ip,
+                min_port=9000,
+                max_port=10000,
+                exclude_list=port_exclude_list,
             )
             port_exclude_list.append(ray_dashboard_port)
         ray_dashboard_agent_port = get_random_unused_port(
@@ -537,7 +537,9 @@ def _setup_ray_cluster(
     )
 
     if autoscale:
-        from ray.autoscaler._private.spark.spark_job_server import _start_spark_job_server
+        from ray.autoscaler._private.spark.spark_job_server import (
+            _start_spark_job_server,
+        )
 
         spark_job_server = _start_spark_job_server(
             ray_head_ip, spark_job_server_port, spark
@@ -655,8 +657,8 @@ def _setup_ray_cluster(
                     spark=spark,
                     spark_job_group_id=spark_job_group_id,
                     spark_job_group_desc=(
-                        "This job group is for spark job which runs the Ray cluster with ray "
-                        f"head node {ray_head_ip}:{ray_head_port}"
+                        "This job group is for spark job which runs the Ray cluster "
+                        f"with ray head node {ray_head_ip}:{ray_head_port}"
                     ),
                     num_worker_nodes=num_worker_nodes,
                     using_stage_scheduling=using_stage_scheduling,
@@ -676,19 +678,21 @@ def _setup_ray_cluster(
                 # NB:
                 # The background spark job is designed to running forever until it is
                 # killed, The exception might be raised in following cases:
-                #  1. The background job raises unexpected exception (i.e. ray cluster dies
-                #    unexpectedly)
+                #  1. The background job raises unexpected exception (i.e. ray cluster
+                #     dies unexpectedly)
                 #  2. User explicitly orders shutting down the ray cluster.
                 #  3. On Databricks runtime, when a notebook is detached, it triggers
-                #     python REPL `onCancel` event, cancelling the background running spark
-                #     job.
-                #  For case 1 and 3, only ray workers are killed, but driver side ray head
-                #  might still be running and the ray context might be in connected status.
+                #     python REPL `onCancel` event, cancelling the background running
+                #     spark job.
+                #  For case 1 and 3, only ray workers are killed, but driver side ray
+                #  head might still be running and the ray context might be in
+                #  connected status.
                 #  In order to disconnect and kill the ray head node, a call to
                 #  `ray_cluster_handler.shutdown()` is performed.
                 if not ray_cluster_handler.spark_job_is_canceled:
-                    # Set `background_job_exception` attribute before calling `shutdown`
-                    # so inside `shutdown` we can get exception information easily.
+                    # Set `background_job_exception` attribute before calling
+                    # `shutdown` so inside `shutdown` we can get exception information
+                    # easily.
                     ray_cluster_handler.background_job_exception = e
                     ray_cluster_handler.shutdown(cancel_background_job=False)
 
@@ -709,10 +713,10 @@ def _setup_ray_cluster(
                     ) from ray_cluster_handler.background_job_exception
 
         except Exception:
-            # If driver side setup ray-cluster routine raises exception, it might result
-            # in part of ray processes has been launched (e.g. ray head or some ray workers
-            # have been launched), calling `ray_cluster_handler.shutdown()` to kill them
-            # and clean status.
+            # If driver side setup ray-cluster routine raises exception, it might
+            # result in part of ray processes has been launched (e.g. ray head or
+            # some ray workers have been launched), calling
+            # `ray_cluster_handler.shutdown()` to kill them and clean status.
             ray_cluster_handler.shutdown()
             raise
 
@@ -889,12 +893,13 @@ def setup_ray_cluster(
         autoscale: If True, enable autoscaling, the number of initial Ray worker nodes
             is zero, and the maximum number of Ray worker nodes is set to
             `num_worker_nodes`. Default value is False.
-        autoscale_upscaling_speed: If autoscale enabled, it represents the number of nodes
-            allowed to be pending as a multiple of the current number of nodes. The higher
-            the value, the more aggressive upscaling will be. For example, if this is set
-            to 1.0, the cluster can grow in size by at most 100% at any time, so if the
-            cluster currently has 20 nodes, at most 20 pending launches are allowed. The
-            minimum number of pending launches is 5 regardless of this setting.
+        autoscale_upscaling_speed: If autoscale enabled, it represents the number of
+            nodes allowed to be pending as a multiple of the current number of nodes.
+            The higher the value, the more aggressive upscaling will be. For example,
+            if this is set to 1.0, the cluster can grow in size by at most 100% at any
+            time, so if the cluster currently has 20 nodes, at most 20 pending launches
+            are allowed. The minimum number of pending launches is 5 regardless of
+            this setting.
             Default value is 1.0, minimum value is 1.0
         autoscale_idle_timeout_minutes: If autoscale enabled, it represents the number
             of minutes that need to pass before an idle worker node is removed by the
@@ -1296,17 +1301,20 @@ def _start_ray_worker_nodes(
             if autoscale_mode:
                 # Notify job server the task has been launched.
                 requests.post(
-                    url=f"http://{ray_head_ip}:{spark_job_server_port}/notify_task_launched",
+                    url=(
+                        f"http://{ray_head_ip}:{spark_job_server_port}"
+                        "/notify_task_launched"
+                    ),
                     json={
                         "spark_job_group_id": spark_job_group_id,
-                    }
+                    },
                 )
 
             # Note:
             # When a pyspark job cancelled, the UDF python worker process are killed by
-            # signal "SIGKILL", then `start_ray_node` process will detect the parent died
-            # event (see `ray.util.spark.start_ray_node.check_parent_alive`) and then
-            # kill ray worker node process and execute cleanup routine.
+            # signal "SIGKILL", then `start_ray_node` process will detect the parent
+            # died event (see `ray.util.spark.start_ray_node.check_parent_alive`) and
+            # then kill ray worker node process and execute cleanup routine.
             exec_cmd(
                 ray_worker_node_cmd,
                 synchronous=True,
@@ -1314,9 +1322,7 @@ def _start_ray_worker_nodes(
             )
         except Exception as e:
             if autoscale_mode:
-                _logger.warning(
-                    f"Ray worker node process exit, reason: {repr(e)}."
-                )
+                _logger.warning(f"Ray worker node process exit, reason: {repr(e)}.")
             else:
                 raise
 

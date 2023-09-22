@@ -30,7 +30,6 @@ def setup_module():
 
 
 class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
-
     num_total_gpus = None
     num_gpus_per_spark_task = None
 
@@ -67,10 +66,14 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_worker_nodes
 
-                num_ray_task_slots = (
-                    self.max_spark_tasks // (num_gpus_worker_node // self.num_gpus_per_spark_task)
+                num_ray_task_slots = self.max_spark_tasks // (
+                    num_gpus_worker_node // self.num_gpus_per_spark_task
                 )
-                mem_per_worker, object_store_mem_per_worker, _ = _calc_mem_per_ray_worker_node(
+                (
+                    mem_per_worker,
+                    object_store_mem_per_worker,
+                    _,
+                ) = _calc_mem_per_ray_worker_node(
                     num_task_slots=num_ray_task_slots,
                     physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                     shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
@@ -81,7 +84,9 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                     assert worker_res["CPU"] == num_cpus_worker_node
                     assert worker_res["GPU"] == num_gpus_worker_node
                     assert worker_res["memory"] == mem_per_worker
-                    assert worker_res["object_store_memory"] == object_store_mem_per_worker
+                    assert (
+                        worker_res["object_store_memory"] == object_store_mem_per_worker
+                    )
 
                 @ray.remote(
                     num_cpus=num_cpus_worker_node, num_gpus=num_gpus_worker_node
@@ -106,13 +111,25 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
 
     def test_gpu_autoscaling(self):
         for num_worker_nodes, num_cpus_worker_node, num_gpus_worker_node in [
-            (self.max_spark_tasks, self.num_cpus_per_spark_task, self.num_gpus_per_spark_task),
-            (self.max_spark_tasks // 2, self.num_cpus_per_spark_task * 2, self.num_gpus_per_spark_task * 2),
+            (
+                self.max_spark_tasks,
+                self.num_cpus_per_spark_task,
+                self.num_gpus_per_spark_task,
+            ),
+            (
+                self.max_spark_tasks // 2,
+                self.num_cpus_per_spark_task * 2,
+                self.num_gpus_per_spark_task * 2,
+            ),
         ]:
-            num_ray_task_slots = (
-                self.max_spark_tasks // (num_gpus_worker_node // self.num_gpus_per_spark_task)
+            num_ray_task_slots = self.max_spark_tasks // (
+                num_gpus_worker_node // self.num_gpus_per_spark_task
             )
-            mem_per_worker, object_store_mem_per_worker, _ = _calc_mem_per_ray_worker_node(
+            (
+                mem_per_worker,
+                object_store_mem_per_worker,
+                _,
+            ) = _calc_mem_per_ray_worker_node(
                 num_task_slots=num_ray_task_slots,
                 physical_mem_bytes=_RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES,
                 shared_mem_bytes=_RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES,
@@ -131,9 +148,12 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == 0
 
-                @ray.remote(num_cpus=num_cpus_worker_node, num_gpus=num_gpus_worker_node)
+                @ray.remote(
+                    num_cpus=num_cpus_worker_node, num_gpus=num_gpus_worker_node
+                )
                 def f(x):
                     import time
+
                     time.sleep(5)
                     return x * x
 
@@ -147,7 +167,8 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                     worker_res_list[i]["CPU"] == num_cpus_worker_node
                     and worker_res_list[i]["GPU"] == num_gpus_worker_node
                     and worker_res_list[i]["memory"] == mem_per_worker
-                    and worker_res_list[i]["object_store_memory"] == object_store_mem_per_worker
+                    and worker_res_list[i]["object_store_memory"]
+                    == object_store_mem_per_worker
                     for i in range(num_worker_nodes)
                 )
 
