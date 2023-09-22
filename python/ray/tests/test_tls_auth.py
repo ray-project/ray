@@ -148,7 +148,9 @@ print(ray.is_initialized())
      """,
         env=tls_env,
     )
-    assert out.strip() == "True"
+    # ignore logger warning on sigterm handler
+    out_msg = out.stip().split("\n")[0]
+    assert out_msg == "True"
 
 
 if __name__ == "__main__":
