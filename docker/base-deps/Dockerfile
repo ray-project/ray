@@ -79,6 +79,22 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         $(if [[ "$BASE_IMAGE" == "ubuntu:focal" && "$HOSTTYPE" == "x86_64" ]]; then echo \
         g++; fi) \
     && sudo rm -rf /var/lib/apt/lists/* \
-    && sudo apt-get clean
+    && sudo apt-get clean \
+    && (if [ "$AUTOSCALER" = "autoscaler" ]; \
+        then $HOME/anaconda3/bin/pip --no-cache-dir install \
+        "redis>=3.5.0,<4.0.0" \
+        "six==1.13.0" \
+        "boto3==1.26.76" \
+        "pyOpenSSL==22.1.0" \
+        "cryptography==38.0.1" \
+        "google-api-python-client==1.7.8" \
+        "google-oauth" \
+        "azure-cli-core==2.40.0" \
+        "azure-identity==1.10.0" \
+        "azure-mgmt-compute==23.1.0" \
+        "azure-mgmt-network==19.0.0" \
+        "azure-mgmt-resource==20.0.0" \
+        "msrestazure==0.6.4"; \
+    fi;)
 
 WORKDIR $HOME

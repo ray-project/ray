@@ -1,7 +1,7 @@
 """Execute a jupytext markdown notebook"""
 
-import runpy
 import argparse
+import runpy
 import tempfile
 
 import jupytext
