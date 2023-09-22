@@ -24,6 +24,13 @@ steps:
     depends_on: manylinux
     job_env: manylinux
 
+  - label: ":tapioca: build: doc"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- doc 
+    depends_on: docbuild
+    job_env: docbuild
+
   - label: ":tapioca: build: ray py38 cu118 docker"
     instance_type: medium
     commands:
