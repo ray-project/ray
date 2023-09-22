@@ -80,7 +80,7 @@ Compare a PyTorch training script with and without Ray Train.
     .. group-tab:: PyTorch + Ray Train
 
         .. code-block:: python
-            :emphasize-lines: 12, 17, 18, 26, 27, 41, 42, 44-49
+            :emphasize-lines: 9, 10, 12, 17, 18, 26, 27, 41, 42, 44-49
 
             import tempfile
             import torch
