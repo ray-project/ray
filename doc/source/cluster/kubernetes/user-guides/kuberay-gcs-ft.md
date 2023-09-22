@@ -10,7 +10,10 @@ This way, in the event of a GCS restart, it retrieves all the data from the Redi
 Without GCS fault tolerance, the Ray cluster, the GCS process, and the Ray head Pod are fate-sharing.
 If the GCS process dies, the Ray head Pod dies as well after `RAY_gcs_rpc_server_reconnect_timeout_s` seconds.
 If the Ray head Pod is restarted according to the Pod's `restartPolicy`, worker Pods attempt to reconnect to the new head Pod.
-However, the worker Pods are terminated by the new head Pod; without GCS fault tolerance enabled, the cluster state is lost, and the worker Pods are perceived as "unknown workers" by the new head Pod.
+The worker Pods are terminated by the new head Pod; without GCS fault tolerance enabled, the cluster state is lost, and the worker Pods are perceived as "unknown workers" by the new head Pod.
+This is adequate for most Ray applications; however, it is not ideal for Ray Serve, especially if high availability is crucial for your use cases.
+Hence, we recommend enabling GCS fault tolerance on the RayService custom resource to ensure high availability.
+See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide-gcs>` for more information.
 ```
 
 ## Prerequisites
