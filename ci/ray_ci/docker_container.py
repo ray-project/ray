@@ -16,8 +16,6 @@ class DockerContainer(Container):
     """
 
     def __init__(self, python_version: str, platform: str, image_type: str) -> None:
-        assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
-        rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
         self.python_version = python_version
         self.platform = platform
         self.image_type = image_type
@@ -25,7 +23,7 @@ class DockerContainer(Container):
         super().__init__(
             "forge",
             volumes=[
-                f"{rayci_checkout_dir}:/rayci",
+                f"{get_ray_checkout()}:/rayci",
                 "/var/run/docker.sock:/var/run/docker.sock",
             ],
         )
