@@ -83,13 +83,14 @@ class ConnectorContext:
 class Connector(abc.ABC):
     """Connector base class.
 
-    A connector is a step of transformation, of either envrionment data before they
-    get to a policy, or policy output before it is sent back to the environment.
+    A connector performs a transformation step, either on envrionment data before it
+    gets to the RLModule, or on RLModule output before it is sent back to the
+    environment.
 
     Connectors may be training-aware, for example, behave slightly differently
     during training and inference.
 
-    All connectors are required to be serializable and implement to_state().
+    All connectors are required to be serializable and implement the `to_state()` method.
     """
 
     def __init__(self, ctx: ConnectorContext):
@@ -108,7 +109,7 @@ class Connector(abc.ABC):
     def to_state(self) -> Tuple[str, Any]:
         """Serialize a connector into a JSON serializable Tuple.
 
-        to_state is required, so that all Connectors are serializable.
+        `to_state()` is required, so that all Connectors are serializable.
 
         Returns:
             A tuple of connector's name and its serialized states.
@@ -118,13 +119,13 @@ class Connector(abc.ABC):
             state can simply be None.
         """
         # Must implement by each connector.
-        return NotImplementedError
+        raise NotImplementedError
 
     @staticmethod
-    def from_state(self, ctx: ConnectorContext, params: Any) -> "Connector":
+    def from_state(ctx: ConnectorContext, params: Any) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
-        from_state is required, so that all Connectors are serializable.
+        `from_state()` is required, so that all Connectors are serializable.
 
         Args:
             ctx: Context for constructing this connector.
@@ -134,7 +135,7 @@ class Connector(abc.ABC):
             De-serialized connector.
         """
         # Must implement by each connector.
-        return NotImplementedError
+        raise NotImplementedError
 
 
 @PublicAPI(stability="alpha")
@@ -224,7 +225,7 @@ class AgentConnector(Connector):
         For example, at the end of an episode.
 
         Args:
-            env_id: required. ID of a user environment. Required.
+            env_id: ID of the environment.
         """
         pass
 
@@ -247,8 +248,8 @@ class AgentConnector(Connector):
         """Transform a list of data items from env before they reach policy.
 
         Args:
-            ac_data: List of env and agent IDs, plus arbitrary data items from
-                an environment or upstream agent connectors.
+            acd_list: List of `AgentConnectorDataType`, each containing env-, agent ID,
+                and arbitrary data items from an environment or upstream agent connectors.
 
         Returns:
             A list of transformed data items in AgentConnectorDataType format.
@@ -268,8 +269,8 @@ class AgentConnector(Connector):
         """Transform a single agent connector data item.
 
         Args:
-            data: Env and agent IDs, plus arbitrary data item from a single agent
-            of an environment.
+            ac_data: Env and agent IDs, plus arbitrary data item from a single agent
+                of an environment.
 
         Returns:
             A transformed piece of agent connector data.
