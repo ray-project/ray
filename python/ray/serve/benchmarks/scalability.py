@@ -28,15 +28,15 @@
 # [...] similar results for remaining nodes
 
 import logging
-import time
 import subprocess
+import time
+
 import requests
 
 import ray
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray.util.placement_group import placement_group, remove_placement_group
-
 from ray import serve
+from ray.util.placement_group import placement_group, remove_placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__file__)
 

@@ -418,12 +418,6 @@ def _expand_paths(
             )
         # 3. Parallelization case.
         else:
-            logger.warning(
-                f"Expanding {len(paths)} path(s). This may be a HIGH LATENCY "
-                f"operation on some cloud storage services. Moving all the "
-                "paths to a common parent directory will lead to faster "
-                "metadata fetching."
-            )
             # Parallelize requests via Ray tasks.
             yield from _get_file_infos_parallel(paths, filesystem, ignore_missing_paths)
 
@@ -449,13 +443,30 @@ def _get_file_infos_common_path_prefix(
     ):
         if path in path_to_size:
             path_to_size[path] = file_size
-    # Iterate over `paths` to yield each path in original order.
-    # NOTE: do not iterate over `path_to_size` because the dictionary skips duplicated
-    # path, while `paths` might contain duplicated path if one wants to read same file
-    # multiple times.
+
+    # Check if all `paths` have file size metadata.
+    # If any of paths has no file size, fall back to get files metadata in parallel.
+    # This can happen when path is a directory, but not a file.
+    have_missing_path = False
     for path in paths:
-        assert path in path_to_size
-        yield path, path_to_size[path]
+        if path_to_size[path] is None:
+            logger.debug(
+                f"Finding path {path} not have file size metadata. "
+                "Fall back to get files metadata in parallel for all paths."
+            )
+            have_missing_path = True
+            break
+
+    if have_missing_path:
+        # Parallelize requests via Ray tasks.
+        yield from _get_file_infos_parallel(paths, filesystem, ignore_missing_paths)
+    else:
+        # Iterate over `paths` to yield each path in original order.
+        # NOTE: do not iterate over `path_to_size` because the dictionary skips
+        # duplicated path, while `paths` might contain duplicated path if one wants
+        # to read same file multiple times.
+        for path in paths:
+            yield path, path_to_size[path]
 
 
 def _get_file_infos_parallel(
@@ -468,6 +479,13 @@ def _get_file_infos_parallel(
         _fetch_metadata_parallel,
         _unwrap_s3_serialization_workaround,
         _wrap_s3_serialization_workaround,
+    )
+
+    logger.warning(
+        f"Expanding {len(paths)} path(s). This may be a HIGH LATENCY "
+        f"operation on some cloud storage services. Moving all the "
+        "paths to a common parent directory will lead to faster "
+        "metadata fetching."
     )
 
     # Capture the filesystem in the fetcher func closure, but wrap it in our

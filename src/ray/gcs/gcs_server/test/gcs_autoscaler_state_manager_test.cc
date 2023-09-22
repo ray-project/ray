@@ -146,7 +146,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     return reply.is_accepted();
   }
 
-  void UpdateFromResourceReportSync(
+  void UpdateFromResourceViewSync(
       const NodeID &node_id,
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
@@ -159,7 +159,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                               total_resources,
                               idle_ms,
                               is_draining);
-    gcs_resource_manager_->UpdateFromResourceReport(resources_data);
+    gcs_resource_manager_->UpdateFromResourceView(resources_data);
   }
 
   rpc::autoscaler::GetClusterStatusReply GetClusterStatusSync() {
@@ -364,9 +364,9 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
 
   // Update available resources.
   {
-    UpdateFromResourceReportSync(NodeID::FromBinary(node->node_id()),
-                                 {/* available */ {"CPU", 1.75}},
-                                 /* total*/ {{"CPU", 2}, {"GPU", 1}});
+    UpdateFromResourceViewSync(NodeID::FromBinary(node->node_id()),
+                               {/* available */ {"CPU", 1.75}},
+                               /* total*/ {{"CPU", 2}, {"GPU", 1}});
 
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.node_states_size(), 1);
@@ -721,11 +721,11 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainingStatus) {
   }
 
   // Report draining info.
-  UpdateFromResourceReportSync(NodeID::FromBinary(node->node_id()),
-                               {/* available */ {"CPU", 2}, {"GPU", 1}},
-                               /* total*/ {{"CPU", 2}, {"GPU", 1}},
-                               /* idle_duration_ms */ 10,
-                               /* is_draining */ true);
+  UpdateFromResourceViewSync(NodeID::FromBinary(node->node_id()),
+                             {/* available */ {"CPU", 2}, {"GPU", 1}},
+                             /* total*/ {{"CPU", 2}, {"GPU", 1}},
+                             /* idle_duration_ms */ 10,
+                             /* is_draining */ true);
   {
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.node_states(0).status(), rpc::autoscaler::NodeStatus::DRAINING);
@@ -758,10 +758,10 @@ TEST_F(GcsAutoscalerStateManagerTest, TestIdleTime) {
   }
 
   // Report idle node info.
-  UpdateFromResourceReportSync(NodeID::FromBinary(node->node_id()),
-                               {/* available */ {"CPU", 2}, {"GPU", 1}},
-                               /* total*/ {{"CPU", 2}, {"GPU", 1}},
-                               /* idle_duration_ms */ 10);
+  UpdateFromResourceViewSync(NodeID::FromBinary(node->node_id()),
+                             {/* available */ {"CPU", 2}, {"GPU", 1}},
+                             /* total*/ {{"CPU", 2}, {"GPU", 1}},
+                             /* idle_duration_ms */ 10);
 
   // Check report idle time is set.
   {

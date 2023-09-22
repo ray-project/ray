@@ -559,6 +559,9 @@ class Worker:
             # https://github.com/ray-project/ray/issues/35598
             return
 
+        if not hasattr(self, "core_worker"):
+            return
+
         self.core_worker.record_task_log_start(
             self.get_out_file_path(),
             self.get_err_file_path(),
@@ -574,6 +577,9 @@ class Worker:
             # Recording actor task log is expensive and should be enabled only
             # when needed.
             # https://github.com/ray-project/ray/issues/35598
+            return
+
+        if not hasattr(self, "core_worker"):
             return
 
         self.core_worker.record_task_log_end(
@@ -1159,6 +1165,7 @@ def init(
     This method handles two cases; either a Ray cluster already exists and we
     just attach this driver to it or we start all of the processes associated
     with a Ray cluster and attach to the newly started cluster.
+    Note: This method overwrite sigterm handler of the driver process.
 
     In most cases, it is enough to just call this method with no arguments.
     This will autodetect an existing Ray cluster or start a new Ray instance if
@@ -1504,6 +1511,18 @@ def init(
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
 
+        # terminate any signal before connecting driver
+        def sigterm_handler(signum, frame):
+            sys.exit(signum)
+
+        try:
+            ray._private.utils.set_sigterm_handler(sigterm_handler)
+        except ValueError:
+            logger.warning(
+                "Failed to set SIGTERM handler, processes might "
+                "not be cleaned up properly on exit."
+            )
+
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._private.usage import usage_lib
 
@@ -1750,20 +1769,6 @@ def shutdown(_exiting_interpreter: bool = False):
 
 
 atexit.register(shutdown, True)
-
-
-# TODO(edoakes): this should only be set in the driver.
-def sigterm_handler(signum, frame):
-    sys.exit(signum)
-
-
-try:
-    ray._private.utils.set_sigterm_handler(sigterm_handler)
-except ValueError:
-    logger.warning(
-        "Failed to set SIGTERM handler, processes might"
-        "not be cleaned up properly on exit."
-    )
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
