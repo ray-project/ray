@@ -619,8 +619,8 @@ class PPO(Algorithm):
                 )
 
         # Update global vars on local worker as well.
-        # TODO (simon): At least in RolloutWorker obsolete I guess as called in 
-        # `sync_weights()` called above if remote workers. Can we call this 
+        # TODO (simon): At least in RolloutWorker obsolete I guess as called in
+        # `sync_weights()` called above if remote workers. Can we call this
         # where `set_weights()` is called on the local_worker?
         self.workers.local_worker().set_global_vars(global_vars)
 

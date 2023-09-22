@@ -193,9 +193,7 @@ class PPOEnvRunner(EnvRunner):
 
         # Loop through env in enumerate.(self._episodes):
         ts = 0
-        pbar = tqdm(
-            total=num_timesteps, desc=f"Sampling {num_timesteps} timesteps ..."
-        )
+        pbar = tqdm(total=num_timesteps, desc=f"Sampling {num_timesteps} timesteps ...")
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
