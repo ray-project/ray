@@ -1,3 +1,5 @@
+awscli
+boto3
 click
 pytest
 pyyaml
