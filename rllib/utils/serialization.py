@@ -269,6 +269,15 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
         return gym.spaces.Tuple(spaces=spaces)
 
     def _dict(d: Dict) -> gym.spaces.Discrete:
+        # We need to always use an OrderedDict here to cover the following two ways, by
+        # which a user might construct a Dict space originally. We need to restore this
+        # original Dict space exactly as the user intended to.
+        # - User provides an OrderedDict inside the gym.spaces.Dict constructor ->
+        #  gymnasium should NOT further sort the keys. The same (user-provided) order
+        #  must be restored.
+        # - User provides a simple dict inside the gym.spaces.Dict constructor ->
+        #  By its API definition, gymnasium automatically sorts all keys alphabetically.
+        #  The same (alphabetical) order must thus be restored.
         spaces = OrderedDict(
             {k: gym_space_from_dict(sp) for k, sp in d["spaces"].items()}
         )
