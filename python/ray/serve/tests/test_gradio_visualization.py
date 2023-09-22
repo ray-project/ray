@@ -1,14 +1,15 @@
-import pytest
-from collections import defaultdict
 import asyncio
-import aiohttp
 import random
+from collections import defaultdict
 
-from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
-from ray.dag.utils import _DAGNodeNameGenerator
+import aiohttp
+import pytest
+
 from ray import serve
 from ray.dag import InputNode
+from ray.dag.utils import _DAGNodeNameGenerator
 from ray.serve.drivers import DAGDriver
+from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
 
 
 @pytest.fixture

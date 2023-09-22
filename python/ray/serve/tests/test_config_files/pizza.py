@@ -1,9 +1,10 @@
 from enum import Enum
-from typing import List, Dict, TypeVar
+from typing import Dict, List, TypeVar
+
+import starlette.requests
 
 from ray import serve
 from ray.serve.handle import RayServeHandle
-import starlette.requests
 
 RayHandleLike = TypeVar("RayHandleLike")
 
