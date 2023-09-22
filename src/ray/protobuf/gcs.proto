@@ -369,7 +369,7 @@ message GcsNodeInfo {
   bool is_head_node = 25;
   // The key-value labels of this node.
   map<string, string> labels = 26;
- 
+
   // A snapshot of node state.
   NodeSnapshot state_snapshot = 28;
 }
