@@ -922,8 +922,9 @@ class TestTailLogs:
             await async_wait_for_condition_async_predicate(
                 check_job_failed, job_manager=job_manager, job_id=job_id
             )
+            # check if the driver is killed
             data = await job_manager.get_job_info(job_id)
-            assert data.driver_exit_code == -9
+            assert data.driver_exit_code == -signal.SIGKILL
 
     async def test_stopped_job(self, job_manager):
         """Test tailing logs for a job that unexpectedly exits."""
