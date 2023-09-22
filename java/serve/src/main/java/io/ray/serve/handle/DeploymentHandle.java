@@ -1,6 +1,5 @@
 package io.ray.serve.handle;
 
-import io.ray.api.ObjectRef;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Metrics;
 import io.ray.serve.api.Serve;
@@ -9,13 +8,18 @@ import io.ray.serve.deployment.DeploymentId;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.router.Router;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 
 /** A handle to a service deployment. */
-public class RayServeHandle {
+public class DeploymentHandle implements Serializable {
+
+  private static final long serialVersionUID = 550701184372753496L;
 
   private DeploymentId deploymentId;
 
@@ -23,11 +27,11 @@ public class RayServeHandle {
 
   private String handleTag;
 
-  private Count requestCounter;
+  private transient Count requestCounter;
 
-  private Router router;
+  private transient volatile Router router;
 
-  public RayServeHandle(
+  public DeploymentHandle(
       String deploymentName, String appName, HandleOptions handleOptions, Router router) {
     this.deploymentId = new DeploymentId(deploymentName, appName);
     this.handleOptions = handleOptions != null ? handleOptions : new HandleOptions();
@@ -36,12 +40,15 @@ public class RayServeHandle {
             ? deploymentName + "#" + RandomStringUtils.randomAlphabetic(6)
             : appName + "#" + deploymentName + "#" + RandomStringUtils.randomAlphabetic(6);
     this.router = router;
+    initMetrics();
+  }
 
+  private void initMetrics() {
     Map<String, String> metricsTags = new HashMap<>();
     metricsTags.put(RayServeMetrics.TAG_HANDLE, handleTag);
-    metricsTags.put(RayServeMetrics.TAG_ENDPOINT, deploymentName);
-    if (StringUtils.isNotBlank(appName)) {
-      metricsTags.put(RayServeMetrics.TAG_APPLICATION, appName);
+    metricsTags.put(RayServeMetrics.TAG_ENDPOINT, deploymentId.getName());
+    if (StringUtils.isNotBlank(deploymentId.getApp())) {
+      metricsTags.put(RayServeMetrics.TAG_APPLICATION, deploymentId.getApp());
     }
     RayServeMetrics.execute(
         () ->
@@ -61,14 +68,15 @@ public class RayServeHandle {
    * @param parameters The input parameters of the specified method to be invoked in the deployment.
    * @return ObjectRef
    */
-  public ObjectRef<Object> remote(Object... parameters) {
+  public DeploymentResponse remote(Object... parameters) {
     RayServeMetrics.execute(() -> requestCounter.inc(1.0));
     RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
     requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
     requestMetadata.setEndpoint(deploymentId.getName());
     requestMetadata.setCallMethod(
         handleOptions != null ? handleOptions.getMethodName() : Constants.CALL_METHOD);
-    return getOrCreateRouter().assignRequest(requestMetadata.build(), parameters);
+    return new DeploymentResponse(
+        getOrCreateRouter().assignRequest(requestMetadata.build(), parameters));
   }
 
   private Router getOrCreateRouter() {
@@ -76,7 +84,7 @@ public class RayServeHandle {
       return router;
     }
 
-    synchronized (RayServeHandle.class) {
+    synchronized (DeploymentHandle.class) {
       if (router != null) {
         return router;
       }
@@ -85,7 +93,20 @@ public class RayServeHandle {
     return router;
   }
 
-  public RayServeHandle method(String methodName) {
+  /**
+   * When `DeploymentHandle` is passed as a parameter, `Router` and `Count` cannot be serialized, so
+   * we do not serialize them. During deserialization, we reconstruct them.
+   *
+   * @param in
+   * @throws IOException
+   * @throws ClassNotFoundException
+   */
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    initMetrics();
+  }
+
+  public DeploymentHandle method(String methodName) {
     handleOptions.setMethodName(methodName);
     return this;
   }
@@ -93,7 +114,7 @@ public class RayServeHandle {
   // TODO method(String methodName, String signature)
 
   public Router getRouter() {
-    return router;
+    return getOrCreateRouter();
   }
 
   /**

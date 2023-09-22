@@ -1,10 +1,9 @@
 package io.ray.serve.deployment;
 
-import io.ray.api.Ray;
 import io.ray.serve.BaseServeTest;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.DeploymentLanguage;
-import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.handle.DeploymentHandle;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -58,7 +57,7 @@ public class CrossLanguageDeploymentTest extends BaseServeTest {
             .create();
 
     deployment.deploy(true);
-    Assert.assertEquals(Ray.get(deployment.getHandle().method("increase").remote("6")), "34");
+    Assert.assertEquals(deployment.getHandle().method("increase").remote("6").result(), "34");
   }
 
   @Test
@@ -71,8 +70,8 @@ public class CrossLanguageDeploymentTest extends BaseServeTest {
             .setNumReplicas(1)
             .create();
     deployment.deploy(true);
-    RayServeHandle handle = deployment.getHandle();
-    Assert.assertEquals(Ray.get(handle.method("__call__").remote("6")), "6");
+    DeploymentHandle handle = deployment.getHandle();
+    Assert.assertEquals(handle.method("__call__").remote("6").result(), "6");
   }
 
   @Test
@@ -87,9 +86,9 @@ public class CrossLanguageDeploymentTest extends BaseServeTest {
             .setInitArgs(new Object[] {"28"})
             .create();
     deployment.deploy(true);
-    Assert.assertEquals(Ray.get(deployment.getHandle().method("increase").remote("6")), "7");
+    Assert.assertEquals(deployment.getHandle().method("increase").remote("6").result(), "7");
     deployment.options().setUserConfig("3").create().deploy(true);
     TimeUnit.SECONDS.sleep(20L);
-    Assert.assertEquals(Ray.get(deployment.getHandle().method("increase").remote("6")), "9");
+    Assert.assertEquals(deployment.getHandle().method("increase").remote("6").result(), "9");
   }
 }

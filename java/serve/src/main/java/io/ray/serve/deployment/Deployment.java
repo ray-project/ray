@@ -6,7 +6,7 @@ import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.ReplicaConfig;
 import io.ray.serve.dag.ClassNode;
 import io.ray.serve.dag.DAGNode;
-import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.handle.DeploymentHandle;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -84,7 +84,7 @@ public class Deployment {
    *
    * @return ServeHandle
    */
-  public RayServeHandle getHandle() {
+  public DeploymentHandle getHandle() {
     return Serve.getGlobalClient().getHandle(name, true);
   }
 

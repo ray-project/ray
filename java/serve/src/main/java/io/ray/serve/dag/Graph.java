@@ -2,7 +2,7 @@ package io.ray.serve.dag;
 
 import com.google.common.base.Preconditions;
 import io.ray.serve.deployment.Deployment;
-import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.handle.DeploymentHandle;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.CommonUtil;
 import io.ray.serve.util.DAGUtil;
@@ -129,11 +129,11 @@ public class Graph {
     return ingressDeployments.get(0);
   }
 
-  public static RayServeHandle replaceWithHandle(DAGNode node) {
+  public static DeploymentHandle replaceWithHandle(DAGNode node) {
     if (node instanceof DeploymentNode) {
       DeploymentNode deploymentNode = (DeploymentNode) node;
-      return new RayServeHandle(
-          null, deploymentNode.getDeployment().getName(), null, null); // TODO RayServeHandle
+      return new DeploymentHandle(
+          deploymentNode.getDeployment().getName(), deploymentNode.getAppName(), null, null);
     }
     return null;
   }

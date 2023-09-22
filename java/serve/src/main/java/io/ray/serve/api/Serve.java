@@ -18,7 +18,7 @@ import io.ray.serve.deployment.DeploymentCreator;
 import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
-import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.handle.DeploymentHandle;
 import io.ray.serve.poll.LongPollClientFactory;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
@@ -341,11 +341,11 @@ public class Serve {
     return deployments;
   }
 
-  public static Optional<RayServeHandle> run(Application target) {
+  public static Optional<DeploymentHandle> run(Application target) {
     return run(target, true, Constants.SERVE_DEFAULT_APP_NAME, null, null);
   }
 
-  public static Optional<RayServeHandle> run(
+  public static Optional<DeploymentHandle> run(
       Application target,
       boolean blocking,
       String name,

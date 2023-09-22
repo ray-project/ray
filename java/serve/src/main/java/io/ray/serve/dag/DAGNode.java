@@ -26,9 +26,11 @@ public abstract class DAGNode implements DAGNodeBase {
   @Override
   public <T> T applyRecursive(Function<DAGNodeBase, T> fn) {
     if (!(fn instanceof CachingFn)) {
-      fn = new CachingFn<>(fn);
+      Function<DAGNodeBase, T> newFun = new CachingFn<>(fn);
+      return newFun.apply(applyAndReplaceAllChildNodes(node -> node.applyRecursive(newFun)));
+    } else {
+      return fn.apply(applyAndReplaceAllChildNodes(node -> node.applyRecursive(fn)));
     }
-    return fn.apply(applyAndReplaceAllChildNodes(fn));
   }
 
   @Override

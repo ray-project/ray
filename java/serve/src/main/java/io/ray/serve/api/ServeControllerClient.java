@@ -17,7 +17,7 @@ import io.ray.serve.generated.DeploymentStatus;
 import io.ray.serve.generated.DeploymentStatusInfo;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.StatusOverview;
-import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.handle.DeploymentHandle;
 import io.ray.serve.util.MessageFormatter;
 import io.ray.serve.util.ServeProtoUtil;
 import java.util.ArrayList;
@@ -42,7 +42,7 @@ public class ServeControllerClient {
 
   private boolean shutdown;
 
-  private Map<String, RayServeHandle> handleCache = new ConcurrentHashMap<>();
+  private Map<String, DeploymentHandle> handleCache = new ConcurrentHashMap<>();
 
   private String rootUrl;
 
@@ -61,14 +61,14 @@ public class ServeControllerClient {
   }
 
   /**
-   * Retrieve RayServeHandle for service deployment to invoke it from Java.
+   * Retrieve DeploymentHandle for service deployment to invoke it from Java.
    *
    * @param deploymentName A registered service deployment.
    * @param missingOk If true, then Serve won't check the deployment is registered.
    * @return
    */
   @SuppressWarnings("unchecked")
-  public RayServeHandle getHandle(String deploymentName, boolean missingOk) {
+  public DeploymentHandle getHandle(String deploymentName, boolean missingOk) {
     String cacheKey = deploymentName + "#" + missingOk;
     if (handleCache.containsKey(cacheKey)) {
       return handleCache.get(cacheKey);
@@ -97,7 +97,7 @@ public class ServeControllerClient {
       throw new RayServeException(MessageFormatter.format("Deployment {} does not exist.", deploymentName));
     }
 
-    RayServeHandle handle = new RayServeHandle(deploymentName, null, null, null);
+    DeploymentHandle handle = new DeploymentHandle(deploymentName, null, null, null);
     handleCache.put(cacheKey, handle);
     return handle;
   }

@@ -1,6 +1,5 @@
 package io.ray.serve.docdemo;
 
-import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.deployment.Deployment;
 import io.ray.serve.generated.DeploymentLanguage;
@@ -26,6 +25,6 @@ public class ManagePythonDeployment {
             .create();
     deployment.deploy(true);
 
-    System.out.println(Ray.get(deployment.getHandle().method("increase").remote("2")));
+    System.out.println(deployment.getHandle().method("increase").remote("2").result());
   }
 }

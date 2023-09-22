@@ -1,17 +1,21 @@
 package io.ray.serve.deployment;
 
-import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.config.RayServeConfig;
-import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.handle.DeploymentHandle;
+import io.ray.serve.handle.DeploymentResponse;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 public class DeploymentGraphTest {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(DeploymentGraphTest.class);
 
   private String previousHttpPort;
 
@@ -25,6 +29,17 @@ public class DeploymentGraphTest {
 
   @AfterMethod(alwaysRun = true)
   public void after() {
+    try {
+      Serve.shutdown();
+    } catch (Exception e) {
+      LOGGER.error("serve shutdown error", e);
+    }
+    try {
+      Ray.shutdown();
+      LOGGER.info("Base serve test shutdown ray. Is initialized:{}", Ray.isInitialized());
+    } catch (Exception e) {
+      LOGGER.error("ray shutdown error", e);
+    }
     if (previousHttpPort == null) {
       System.clearProperty(RayServeConfig.PROXY_HTTP_PORT);
     } else {
@@ -49,8 +64,8 @@ public class DeploymentGraphTest {
     Application deployment =
         Serve.deployment().setDeploymentDef(Counter.class.getName()).setNumReplicas(1).bind("2");
 
-    RayServeHandle handle = Serve.run(deployment).get();
-    Assert.assertEquals(Ray.get(handle.remote("2")), "4");
+    DeploymentHandle handle = Serve.run(deployment).get();
+    Assert.assertEquals(handle.remote("2").result(), "4");
   }
 
   public static class ModelA {
@@ -66,18 +81,19 @@ public class DeploymentGraphTest {
   }
 
   public static class Combiner {
-    private RayServeHandle modelAHandle;
-    private RayServeHandle modelBHandle;
+    private DeploymentHandle modelAHandle;
+    private DeploymentHandle modelBHandle;
 
-    public Combiner(RayServeHandle modelAHandle, RayServeHandle modelBHandle) {
+    public Combiner(DeploymentHandle modelAHandle, DeploymentHandle modelBHandle) {
+      LOGGER.info("Combiner.");
       this.modelAHandle = modelAHandle;
       this.modelBHandle = modelBHandle;
     }
 
     public String call(String request) {
-      ObjectRef<Object> refA = modelAHandle.remote(request);
-      ObjectRef<Object> refB = modelBHandle.remote(request);
-      return refA.get() + "," + refB.get();
+      DeploymentResponse responseA = modelAHandle.remote(request);
+      DeploymentResponse responseB = modelBHandle.remote(request);
+      return responseA.result() + "," + responseB.result();
     }
   }
 
@@ -88,7 +104,7 @@ public class DeploymentGraphTest {
 
     Application driver =
         Serve.deployment().setDeploymentDef(Combiner.class.getName()).bind(modelA, modelB);
-    RayServeHandle handle = Serve.run(driver).get();
-    Assert.assertEquals(handle.remote("test"), "A:test,B:test");
+    DeploymentHandle handle = Serve.run(driver).get();
+    Assert.assertEquals(handle.remote("test").result(), "A:test,B:test");
   }
 }

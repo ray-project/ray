@@ -1,7 +1,7 @@
 package io.ray.serve.dag;
 
 import io.ray.serve.deployment.Deployment;
-import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.handle.DeploymentHandle;
 import java.util.Map;
 
 public class DeploymentNode extends DAGNode {
@@ -10,7 +10,7 @@ public class DeploymentNode extends DAGNode {
 
   private Deployment deployment;
 
-  private RayServeHandle rayServeHandle;
+  private DeploymentHandle deploymentHandle;
 
   public DeploymentNode(
       Deployment deployment,
@@ -21,8 +21,7 @@ public class DeploymentNode extends DAGNode {
     super(deploymentInitArgs, rayActorOptions, otherArgsToResolve);
     this.appName = appName;
     this.deployment = deployment;
-    this.rayServeHandle =
-        new RayServeHandle(deployment.getName(), appName, null, null); // TODO RayServeHandle
+    this.deploymentHandle = new DeploymentHandle(deployment.getName(), appName, null, null);
   }
 
   @Override
@@ -39,7 +38,7 @@ public class DeploymentNode extends DAGNode {
     return deployment;
   }
 
-  public RayServeHandle getRayServeHandle() {
-    return rayServeHandle;
+  public DeploymentHandle getDeploymentHandle() {
+    return deploymentHandle;
   }
 }

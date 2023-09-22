@@ -1,6 +1,5 @@
 package io.ray.serve.deployment;
 
-import io.ray.api.Ray;
 import io.ray.serve.BaseServeTest;
 import io.ray.serve.api.Serve;
 import io.ray.serve.config.AutoscalingConfig;
@@ -34,8 +33,8 @@ public class DeploymentTest extends BaseServeTest {
             .create();
 
     deployment.deploy(true);
-    Assert.assertEquals(Ray.get(deployment.getHandle().method("call").remote("6")), "echo_6_test");
-    Assert.assertTrue((boolean) Ray.get(deployment.getHandle().method("checkHealth").remote()));
+    Assert.assertEquals(deployment.getHandle().method("call").remote("6").result(), "echo_6_test");
+    Assert.assertTrue((boolean) deployment.getHandle().method("checkHealth").remote().result());
   }
 
   @Test
@@ -106,7 +105,7 @@ public class DeploymentTest extends BaseServeTest {
             .setInitArgs(new Object[] {"echo_"})
             .create();
     deployment.deploy(true);
-    Assert.assertEquals(Ray.get(deployment.getHandle().method("call").remote("6")), "echo_6_test");
+    Assert.assertEquals(deployment.getHandle().method("call").remote("6").result(), "echo_6_test");
   }
 
   @Test
@@ -122,6 +121,6 @@ public class DeploymentTest extends BaseServeTest {
             .create();
     deployment.deploy(true);
     deployment.options().setUserConfig("_new").create().deploy(true);
-    Assert.assertEquals(Ray.get(deployment.getHandle().method("call").remote("6")), "echo_6_new");
+    Assert.assertEquals(deployment.getHandle().method("call").remote("6").result(), "echo_6_new");
   }
 }
