@@ -1,12 +1,13 @@
-import pytest
 import sys
 
+import pytest
+
+from ray import serve
+from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
-from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve.dag import InputNode
-from ray import serve
 
 
 @serve.deployment

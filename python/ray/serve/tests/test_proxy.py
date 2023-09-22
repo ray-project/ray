@@ -1,31 +1,29 @@
 import asyncio
 import pickle
 import sys
-from unittest.mock import patch, MagicMock, ANY
 from typing import AsyncGenerator
+from unittest.mock import ANY, MagicMock, patch
 
 import grpc
 import pytest
+
 import ray
 from ray import serve
 from ray.actor import ActorHandle
+from ray.serve._private.common import EndpointTag, RequestProtocol
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.http_proxy import (
-    GenericProxy,
-    gRPCProxy,
-    HTTPProxy,
     HEALTH_CHECK_SUCCESS_MESSAGE,
+    GenericProxy,
+    HTTPProxy,
+    gRPCProxy,
 )
-from ray.serve._private.proxy_request_response import (
-    ASGIProxyRequest,
-    ProxyResponse,
-)
-from ray.serve._private.common import EndpointTag, RequestProtocol
-from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
+from ray.serve._private.proxy_request_response import ASGIProxyRequest, ProxyResponse
 from ray.serve.generated import serve_pb2
 
 if sys.version_info >= (3, 8, 0):

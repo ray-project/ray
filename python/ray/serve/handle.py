@@ -1,28 +1,22 @@
 import asyncio
 import concurrent.futures
-from dataclasses import dataclass
 import threading
-from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tuple, Union
 import warnings
+from dataclasses import dataclass
+from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tuple, Union
 
 import ray
+from ray import serve
+from ray._private.utils import get_or_create_event_loop
+from ray._raylet import GcsClient, StreamingObjectRefGenerator
+from ray.serve._private.common import DeploymentID, RequestProtocol
+from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
+from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.router import RequestMetadata, Router
+from ray.serve._private.usage import ServeUsageTag
+from ray.serve._private.utils import DEFAULT, get_random_letters
 from ray.util import metrics
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-from ray._private.utils import get_or_create_event_loop
-from ray._raylet import StreamingObjectRefGenerator, GcsClient
-
-from ray import serve
-from ray.serve._private.common import DeploymentID, RequestProtocol
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_NEW_ROUTING,
-)
-from ray.serve._private.default_impl import create_cluster_node_info_cache
-from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import (
-    get_random_letters,
-    DEFAULT,
-)
-from ray.serve._private.router import Router, RequestMetadata
 
 _global_async_loop = None
 

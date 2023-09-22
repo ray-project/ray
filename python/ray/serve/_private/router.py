@@ -1,7 +1,4 @@
-from abc import ABC
 import asyncio
-from collections import defaultdict, deque
-from dataclasses import dataclass
 import enum
 import itertools
 import logging
@@ -9,6 +6,10 @@ import math
 import pickle
 import random
 import time
+import warnings
+from abc import ABC
+from collections import defaultdict, deque
+from dataclasses import dataclass
 from typing import (
     Any,
     AsyncGenerator,
@@ -21,17 +22,14 @@ from typing import (
     Tuple,
     Union,
 )
-import warnings
 
 from starlette.requests import Request
 
 import ray
+from ray._private.utils import load_class, make_asyncio_event_version_compat
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
-from ray.util import metrics
-from ray._private.utils import make_asyncio_event_version_compat, load_class
-
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentInfo,
@@ -39,23 +37,22 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
-    SERVE_LOGGER_NAME,
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
-    compute_iterable_delta,
     JavaActorHandleProxy,
     MetricsPusher,
+    compute_iterable_delta,
     in_ray_driver_process,
 )
-from ray.serve.generated.serve_pb2 import (
-    DeploymentRoute,
-    RequestMetadata as RequestMetadataProto,
-)
+from ray.serve.generated.serve_pb2 import DeploymentRoute
+from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
+from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -111,9 +108,9 @@ class Query:
            the objects should be fully disallowed in a future release.
         """
         from ray.serve.handle import (
-            _DeploymentResponseBase,
             DeploymentResponse,
             DeploymentResponseGenerator,
+            _DeploymentResponseBase,
         )
 
         scanner = _PyObjScanner(

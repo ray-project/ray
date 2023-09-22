@@ -1,14 +1,14 @@
 import time
 from typing import Optional
 
-import requests
-import pandas as pd
-from tqdm import tqdm
 import click
+import pandas as pd
+import requests
+from tqdm import tqdm
 
 from ray import serve
-from ray.serve._private.constants import DEFAULT_HTTP_ADDRESS
 from ray.serve import controller
+from ray.serve._private.constants import DEFAULT_HTTP_ADDRESS
 
 controller._TRACING_ENABLED = True
 

@@ -2,22 +2,21 @@ import os
 import sys
 import time
 from collections import defaultdict
-import requests
 
 import pytest
+import requests
 
 import ray
+from ray import serve
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.exceptions import RayActorError
-from ray._private.test_utils import SignalActor, wait_for_condition
-
-from ray import serve
-from ray.serve.context import _get_global_client
-from ray.serve.handle import RayServeHandle
 from ray.serve._private.common import DeploymentID, ReplicaState
-from ray.serve._private.constants import SERVE_NAMESPACE, RAY_SERVE_ENABLE_NEW_ROUTING
+from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING, SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.utils import get_head_node_id
+from ray.serve.context import _get_global_client
+from ray.serve.handle import RayServeHandle
 
 
 @pytest.fixture
