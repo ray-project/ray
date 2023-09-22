@@ -71,14 +71,23 @@ class DockerContainer(Container):
     def _should_upload(self) -> bool:
         return os.environ.get("BUILDKITE_PIPELINE_ID") == POSTMERGE_PIPELINE
 
+    def _get_image_version_tags(self) -> List[str]:
+        branch = os.environ.get("BUILDKITE_BRANCH")
+        sha_tag = os.environ["BUILDKITE_COMMIT"][:6]
+        if branch == "master":
+            return [sha_tag, "nightly"]
+
+        if branch and branch.startswith("releases/"):
+            release_name = branch[len("releases/") :]
+            return [f"{release_name}.{sha_tag}"]
+
+        return [sha_tag]
+
     def _get_image_names(self) -> List[str]:
         # Image name is composed by ray version tag, python version and platform.
         # See https://docs.ray.io/en/latest/ray-overview/installation.html for
         # more information on the image tags.
-        versions = [f"{os.environ['BUILDKITE_COMMIT'][:6]}"]
-        if os.environ.get("BUILDKITE_BRANCH") == "master":
-            # TODO(can): add ray version if this is a release branch
-            versions.append("nightly")
+        versions = self._get_image_version_tags()
 
         platforms = [f"-{self.platform}"]
         if self.platform == "cpu" and self.image_type == "ray":
