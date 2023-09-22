@@ -312,7 +312,10 @@ async def check_job_succeeded(job_manager, job_id):
     if status == JobStatus.FAILED:
         raise RuntimeError(f"Job failed! {data.message}")
     assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED}
-    assert data.driver_exit_code == 0
+    if status == JobStatus.SUCCEEDED:
+        assert data.driver_exit_code == 0
+    else:
+        assert data.driver_exit_code is None
     return status == JobStatus.SUCCEEDED
 
 

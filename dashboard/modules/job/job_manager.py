@@ -502,13 +502,11 @@ class JobSupervisor:
                 "Got unexpected exception while trying to execute driver "
                 f"command. {traceback.format_exc()}"
             )
-            return_code = child_process.returncode if child_process else None
             try:
                 await self._job_info_client.put_status(
                     self._job_id,
                     JobStatus.FAILED,
                     message=traceback.format_exc(),
-                    driver_exit_code=return_code,
                 )
             except Exception:
                 logger.error(
