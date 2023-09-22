@@ -305,7 +305,7 @@ message NodeSnapshot {
   int64 idle_duration_ms = 2;
   // Observability string describing why the node is not idle.
   string node_activity = 3;
-} 
+}
 
 message GcsNodeInfo {
   // State of a node.
@@ -369,7 +369,7 @@ message GcsNodeInfo {
   bool is_head_node = 25;
   // The key-value labels of this node.
   map<string, string> labels = 26;
-  
+ 
   // A snapshot of node state.
   NodeSnapshot state_snapshot = 28;
 }
