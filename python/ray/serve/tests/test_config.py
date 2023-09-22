@@ -473,8 +473,8 @@ def test_grpc_options():
 
     When the gRPCOptions object is created, the default values are set correctly. When
     the gRPCOptions object is created with user-specified values, the values are set
-    correctly. Also if the user provided an invalid grpc_servicer_function, it does not
-    raise an error.
+    correctly. Also, if the user provided an invalid grpc_servicer_function, it
+    raises errors.
     """
     default_grpc_options = gRPCOptions()
     assert default_grpc_options.port == DEFAULT_GRPC_PORT
@@ -484,8 +484,6 @@ def test_grpc_options():
     port = 9001
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
-        "fake.service.that.does.not.exist",  # Import not found, ignore.
-        "ray.serve._private.constants.DEFAULT_HTTP_PORT",  # Not callable, ignore.
     ]
     grpc_options = gRPCOptions(
         port=port,
@@ -496,6 +494,18 @@ def test_grpc_options():
     assert grpc_options.grpc_servicer_func_callable == [
         add_UserDefinedServiceServicer_to_server
     ]
+
+    # Import not found should raise ModuleNotFoundError.
+    grpc_servicer_functions = ["fake.service.that.does.not.exist"]
+    with pytest.raises(ModuleNotFoundError):
+        grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
+        grpc_options.grpc_servicer_func_callable
+
+    # Not callable should raise ValueError.
+    grpc_servicer_functions = ["ray.serve._private.constants.DEFAULT_HTTP_PORT"]
+    with pytest.raises(ValueError):
+        grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
+        grpc_options.grpc_servicer_func_callable
 
 
 def test_proxy_location_to_deployment_mode():
