@@ -2,7 +2,6 @@ import os
 import sys
 from typing import List
 from unittest import mock
-from datetime import datetime
 
 import pytest
 
@@ -12,7 +11,7 @@ from ci.ray_ci.test_base import RayCITestBase
 from ci.ray_ci.utils import RAY_VERSION
 
 
-class TestDockerContainer(RayCITestBase):
+class TestRayDockerContainer(RayCITestBase):
     cmds = []
 
     def test_run(self) -> None:

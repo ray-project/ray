@@ -1,5 +1,4 @@
 import logging
-import os
 import subprocess
 import sys
 import tempfile
@@ -31,11 +30,6 @@ def shard_tests(
     Shard tests into N shards and return the shard corresponding to shard_id
     """
     return bazel_sharding.main(test_targets, index=shard_id, count=shard_count)
-
-
-def get_ray_checkout() -> str:
-    assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
-    return os.environ["RAYCI_CHECKOUT_DIR"]
 
 
 def docker_login(docker_ecr: str) -> None:
