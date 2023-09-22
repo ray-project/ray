@@ -236,7 +236,7 @@ def _zip_one_block(
         # Swap blocks if ordering was inverted during block alignment splitting.
         block, other_block = other_block, block
     # Zip block and other blocks.
-    result = BlockAccessor.for_block(block).zip(other_block)
+    result = _try_zip(block, other_block)
     br = BlockAccessor.for_block(result)
     return result, br.get_metadata(input_files=[], exec_stats=stats.build())
 
@@ -244,3 +244,15 @@ def _zip_one_block(
 def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:
     block = BlockAccessor.for_block(block)
     return block.num_rows(), block.size_bytes()
+
+
+def _try_zip(block: Block, other_block: Block) -> Block:
+    try:
+        return BlockAccessor.for_block(block).zip(other_block)
+    except Exception as e:
+        import pandas
+
+        if isinstance(other_block, pandas.DataFrame):
+            return BlockAccessor.for_block(block.to_pandas()).zip(other_block)
+        else:
+            raise e

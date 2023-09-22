@@ -206,6 +206,14 @@ class TableBlockAccessor(BlockAccessor):
     def zip(self, other: "Block") -> "Block":
         acc = BlockAccessor.for_block(other)
         if not isinstance(acc, type(self)):
+            import pandas
+
+            if isinstance(self._table, pandas.DataFrame):
+                try:  # Try falling back by converting the `other` block to a pandas DataFrame
+                    return self.zip(other.to_pandas())
+                except Exception as e:
+                    raise "Failed to zip: {}".format(e)
+
             raise ValueError(
                 "Cannot zip {} with block of type {}".format(type(self), type(other))
             )
