@@ -57,8 +57,6 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
   private final Method callMethod;
 
-  private String appName;
-
   public RayServeReplicaImpl(
       Object callable,
       DeploymentConfig deploymentConfig,
@@ -73,7 +71,6 @@ public class RayServeReplicaImpl implements RayServeReplica {
     this.version = version;
     this.checkHealthMethod = getRunnerMethod(Constants.CHECK_HEALTH_METHOD, null, true);
     this.callMethod = getRunnerMethod(Constants.CALL_METHOD, new Object[] {new Object()}, true);
-    this.appName = appName;
     registerMetrics();
   }
 
