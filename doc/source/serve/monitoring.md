@@ -56,24 +56,28 @@ If you have a remote cluster, `serve config` and `serve status` also has an `--a
 
 `serve config` gets the latest config file that the Ray Cluster received. This config file represents the Serve application's goal state. The Ray Cluster constantly strives to reach and maintain this state by deploying deployments, and recovering failed replicas, and performing other relevant actions.
 
-Using the `fruit_config.yaml` example from [the production guide](fruit-config-yaml):
+Using the `serve_config.yaml` example from [the production guide](production-config-yaml):
 
 ```console
 $ ray start --head
-$ serve deploy fruit_config.yaml
+$ serve deploy serve_config.yaml
 ...
 
 $ serve config
-
-name: app1
+name: default
 route_prefix: /
-import_path: fruit:deployment_graph
-runtime_env: {}
+import_path: text_ml:app
+runtime_env:
+  pip:
+    - torch
+    - transformers
 deployments:
-- name: MangoStand
+- name: Translator
+  num_replicas: 1
   user_config:
-    price: 3
-...
+    language: french
+- name: Summarizer
+  num_replicas: 1
 ```
 
 `serve status` gets your Serve application's current status. This command reports the status of the `proxies` and the `applications` running on the Ray cluster.
@@ -108,43 +112,28 @@ deployments:
 
 Use the `serve status` command to inspect your deployments after they are deployed and throughout their lifetime.
 
-Using the `fruit_config.yaml` example from [an earlier section](fruit-config-yaml):
+Using the `serve_config.yaml` example from [an earlier section](production-config-yaml):
 
 ```console
 $ ray start --head
-$ serve deploy fruit_config.yaml
+$ serve deploy serve_config.yaml
 ...
 
 $ serve status
 proxies:
-  0eeaadc5f16b64b8cd55aae184254406f0609370cbc79716800cb6f2: HEALTHY
+  cef533a072b0f03bf92a6b98cb4eb9153b7b7c7b7f15954feb2f38ec: HEALTHY
 applications:
-  app1:
+  default:
     status: RUNNING
     message: ''
-    last_deployed_time_s: 1693430845.863128
+    last_deployed_time_s: 1694041157.2211847
     deployments:
-      MangoStand:
+      Translator:
         status: HEALTHY
         replica_states:
           RUNNING: 1
         message: ''
-      OrangeStand:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 1
-        message: ''
-      PearStand:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 1
-        message: ''
-      FruitMarket:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 2
-        message: ''
-      DAGDriver:
+      Summarizer:
         status: HEALTHY
         replica_states:
           RUNNING: 1
@@ -372,7 +361,7 @@ failed requests through the [Ray metrics monitoring infrastructure](dash-metrics
 
 :::{note}
 Different metrics are collected when Deployments are called
-via Python `ServeHandle` and when they are called via HTTP.
+via Python `DeploymentHandle` and when they are called via HTTP.
 
 See the list of metrics below marked for each.
 :::
@@ -459,12 +448,20 @@ The following metrics are exposed by Ray Serve:
        * route
        * application
      - The number of requests processed by the router.
+   * - ``ray_serve_num_scheduling_tasks`` [*][†]
+     - * deployment
+       * actor_id
+     - The number of request scheduling tasks in the router.
+   * - ``ray_serve_num_scheduling_tasks_in_backoff`` [*][†]
+     - * deployment
+       * actor_id
+     - The number of request scheduling tasks in the router that are undergoing backoff.
    * - ``ray_serve_handle_request_counter`` [**]
      - * handle
        * deployment
        * route
        * application
-     - The number of requests processed by this ServeHandle.
+     - The number of requests processed by this DeploymentHandle.
    * - ``ray_serve_deployment_queued_queries`` [*]
      - * deployment
        * route
@@ -532,8 +529,10 @@ The following metrics are exposed by Ray Serve:
        * application
      - The number of calls to get a multiplexed model.
 ```
-[*] - only available when using proxy calls
-[**] - only available when using Python `ServeHandle` calls
+
+[*] - only available when using proxy calls</br>
+[**] - only available when using Python `DeploymentHandle` calls</br>
+[†] - developer metrics for advanced usage; may change in future releases
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 

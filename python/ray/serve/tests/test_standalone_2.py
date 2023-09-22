@@ -8,16 +8,15 @@ import pytest
 import requests
 
 import ray
-import ray.actor
 import ray._private.state
-from ray.util.state import list_actors
-
+import ray.actor
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.constants import SERVE_NAMESPACE, SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray.util.state import list_actors
 
 
 @pytest.fixture
@@ -377,6 +376,39 @@ serve.run(B.bind())"""
             "Adding 1 replica to deployment B in application 'default'"
             in output.decode("utf-8")
         )
+
+
+def test_checkpoint_deleted_on_serve_shutdown(start_and_shutdown_ray_cli_function):
+    """Test the application target state checkpoint is deleted when Serve is shutdown"""
+
+    file1 = """from ray import serve
+@serve.deployment
+class A:
+    def __call__(self):
+        return "Hello A"
+serve.run(A.bind())"""
+
+    file2 = """from ray import serve
+@serve.deployment
+class B:
+    def __call__(self):
+        return "Hello B"
+serve.run(B.bind())"""
+
+    with NamedTemporaryFile() as f1, NamedTemporaryFile() as f2:
+        f1.write(file1.encode("utf-8"))
+        f1.seek(0)
+        output = subprocess.check_output(["python", f1.name], stderr=subprocess.STDOUT)
+        print(output.decode("utf-8"))
+        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+        subprocess.check_output(["serve", "shutdown", "-y"])
+
+        f2.write(file2.encode("utf-8"))
+        f2.seek(0)
+        output = subprocess.check_output(["python", f2.name], stderr=subprocess.STDOUT)
+        print(output.decode("utf-8"))
+        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+        assert "Recovering target state for application" not in output.decode("utf-8")
 
 
 if __name__ == "__main__":

@@ -118,6 +118,10 @@ div.navbar-brand-box {
     overflow-y: scroll !important;
 }
 
+.bd-sidebar__content {
+  overflow-y: unset !important;
+}
+
 .bd-sidebar__top {
     display: flex;
     flex-direction: column;
@@ -788,8 +792,4 @@ footer.col.footer > p {
 
 #csat-textarea {
   resize: none;
-}
-
-.summit-ad {
-  margin: 1em 0em;
 }
