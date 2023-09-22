@@ -57,8 +57,8 @@ Scaling configuration
 The :class:`~ray.train.ScalingConfig` is the mechanism for defining the scale of the training job.
 Specify two basic parameters for worker parallelism and compute resources:
 
-* :attr:`~ray.train.ScalingConfig.num_workers`: The number of workers to launch for a distributed training job.
-* :attr:`~ray.train.ScalingConfig.use_gpu`: Whether each worker should use a GPU or CPU.
+* :class:`num_workers <ray.train.ScalingConfig>`: The number of workers to launch for a distributed training job.
+* :class:`use_gpu <ray.train.ScalingConfig>`: Whether each worker should use a GPU or CPU.
 
 .. code-block:: python
 
