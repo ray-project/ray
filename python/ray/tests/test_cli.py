@@ -925,23 +925,25 @@ def test_ray_status(shutdown_only, monkeypatch, enable_v2):
 
     # Wait one whole reporting cycle
     time.sleep(autoscaler_constants.AUTOSCALER_UPDATE_INTERVAL_S)
+    if enable_v2:
+        filename_expected = "test_ray_status.txt"
+    else:
+        filename_expected = "test_ray_status_v1.txt"
 
     result = runner.invoke(scripts.status, [])
-    _check_output_via_pattern("test_ray_status.txt", result)
+    _check_output_via_pattern(filename_expected, result)
 
     result_arg = runner.invoke(scripts.status, ["--address", address])
-    if enable_v2:
-        _check_output_via_pattern("test_ray_status.txt", result_arg)
-    else:
-        _check_output_via_pattern("test_ray_status_v1.txt", result_arg)
+
+    _check_output_via_pattern(filename_expected, result_arg)
 
     # Try to check status with RAY_ADDRESS set
     monkeypatch.setenv("RAY_ADDRESS", address)
     result_env = runner.invoke(scripts.status)
-    _check_output_via_pattern("test_ray_status.txt", result_env)
+    _check_output_via_pattern(filename_expected, result_env)
 
     result_env_arg = runner.invoke(scripts.status, ["--address", address])
-    _check_output_via_pattern("test_ray_status.txt", result_env_arg)
+    _check_output_via_pattern(filename_expected, result_env_arg)
 
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported on Windows")

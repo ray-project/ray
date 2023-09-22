@@ -127,7 +127,7 @@ class ClusterStatusFormatter:
         )
 
         node_activity = [
-            (node.node_ip, node.ray_node_type_name, node.node_activity)
+            (node.ip_address, node.ray_node_type_name, node.node_activity)
             for node in data.active_nodes
         ]
 
