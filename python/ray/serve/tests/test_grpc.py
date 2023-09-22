@@ -311,6 +311,38 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     ping_fruit_stand(channel, app_name)
 
 
+def test_serve_start_dictionary_grpc_options(ray_cluster):
+    """Test serve able to start with dictionary grpc_options.
+
+    When Serve starts with dictionary grpc_options, it should not throw errors and able
+    to serve health check and list applications gRPC requests.
+    """
+    cluster = ray_cluster
+    cluster.add_node(num_cpus=2)
+    cluster.connect(namespace=SERVE_NAMESPACE)
+
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options={
+            "port": grpc_port,
+            "grpc_servicer_functions": grpc_servicer_functions,
+        },
+    )
+
+    channel = grpc.insecure_channel("localhost:9000")
+
+    # Ensures ListApplications method succeeding.
+    ping_grpc_list_applications(channel, [])
+
+    # Ensures Healthz method succeeding.
+    ping_grpc_healthz(channel)
+
+
 def test_grpc_proxy_routing_without_metadata(ray_cluster):
     """Test metadata are not required when calling gRPC proxy with only one app.
 

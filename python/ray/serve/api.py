@@ -68,7 +68,7 @@ def start(
     proxy_location: Union[None, str, ProxyLocation] = None,
     http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
-    grpc_options: Optional[gRPCOptions] = None,
+    grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -95,8 +95,9 @@ def start(
           `HTTPOptions` for supported options.
         dedicated_cpu: [DEPRECATED] Whether to reserve a CPU core for the
           Serve controller actor.
-        grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. See
-          `gRPCOptions` for supported options.
+        grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
+          be passed as an unstructured dictionary or the structured `gRPCOptions`
+          class See `gRPCOptions` for supported options.
     """
     if not detached:
         warnings.warn(
