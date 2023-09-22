@@ -1810,7 +1810,14 @@ class TuneController:
             # Cache decision to execute on after the save is processed.
             # This prevents changing the trial's state or kicking off
             # another training step prematurely.
-            self._cached_trial_decisions[trial.trial_id] = decision
+            if not self._cached_trial_decisions.get(trial.trial_id) or decision in {
+                TrialScheduler.PAUSE,
+                TrialScheduler.STOP,
+            }:
+                # If already set, only overwrite if it's a PAUSE or STOP. This is
+                # to avoid that CONTINUE decisions from a training step that resolve
+                # late overwrite PAUSE/STOP decision.
+                self._cached_trial_decisions[trial.trial_id] = decision
             return None
         else:
             self._queue_decision(trial, decision)
