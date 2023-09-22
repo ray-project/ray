@@ -12,6 +12,7 @@ from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.utils import _gym_env_creator
+from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -23,6 +24,13 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 _, tf, _ = try_import_tf()
 
 
+# TODO (simon): MultiAgent Version.
+# TODO (sven): Connectors.
+# TODO (simon): Sample should return tuple or not. Batch postprocessing
+# on local worker in training step (TIMING) or as callback
+# `postprocess_trajectory`.
+# TODO (simon): Include callbacks.
+# TODO (simon): Framework-agnostic.
 class PPOEnvRunner(EnvRunner):
     """An environment runner to collect data from vectorized gymnasium environments."""
 
@@ -185,9 +193,9 @@ class PPOEnvRunner(EnvRunner):
 
         # Loop through env in enumerate.(self._episodes):
         ts = 0
-        # pbar = tqdm(
-        #     total=num_timesteps, desc=f"Sampling {num_timesteps} timesteps ..."
-        # )
+        pbar = tqdm(
+            total=num_timesteps, desc=f"Sampling {num_timesteps} timesteps ..."
+        )
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
@@ -195,6 +203,7 @@ class PPOEnvRunner(EnvRunner):
             # Compute an action using the RLModule.
             else:
                 # Note, RLModule `forward()` methods expect `NestedDict`s.
+                # TODO (simon): Framework-agnostic.
                 batch = {
                     STATE_IN: tree.map_structure(
                         lambda s: tf.convert_to_tensor(s),
@@ -235,7 +244,7 @@ class PPOEnvRunner(EnvRunner):
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
-            # pbar.update(self.num_envs)
+            pbar.update(self.num_envs)
 
             for i in range(self.num_envs):
                 # Extract state for vector sub_env.
@@ -277,6 +286,12 @@ class PPOEnvRunner(EnvRunner):
                         is_truncated=truncateds[i],
                         extra_model_output=extra_model_output,
                     )
+                    # Make postprocessing here. Calculate advantages and value targets.
+                    self._episodes[i] = compute_gae_for_episode(
+                        self._episodes[i],
+                        self.config,
+                        self.module,
+                    )
                     # Reset h-states to nthe model's intiial ones b/c we are starting a
                     # new episode.
                     for k, v in (
@@ -306,7 +321,12 @@ class PPOEnvRunner(EnvRunner):
         self._episodes = [eps.create_successor() for eps in self._episodes]
         for eps in ongoing_episodes:
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
-
+        # Make postprocessing here for ongoing episodes. Compute
+        # advantages and value targets.
+        ongoing_episodes = [
+            compute_gae_for_episode(eps, self.config, self.module)
+            for eps in ongoing_episodes
+        ]
         self._ts_since_last_metrics += ts
 
         return done_episodes_to_return, ongoing_episodes

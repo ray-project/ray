@@ -24,7 +24,9 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
 )
 from ray.rllib.algorithms.ppo.utils.env_runner import PPOEnvRunner
-from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+
+# from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
 )
@@ -459,6 +461,10 @@ class PPO(Algorithm):
                 # episodes.
                 # Convert completed episodes to `SampleBatch`es.
                 for episode in sample[0]:
+                    # TODO (sven): Check, if runs faster on local_worker with batched
+                    # episodes.
+                    # episode = compute_gae_for_episode(episode, self.config,
+                    # self.learner_group._learner._module)
                     train_batches.append(episode.to_sample_batch())
                 # Convert truncated episodes to `SampleBatch`es. Here we have to
                 # convert data to numpy arrays, because the `_Episode.validate()`
@@ -474,6 +480,7 @@ class PPO(Algorithm):
                     train_batches.append(episode.to_sample_batch())
 
         train_batch = concat_samples(train_batches)
+        del train_batch[SampleBatch.INFOS]
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
@@ -492,11 +499,9 @@ class PPO(Algorithm):
             # TODO (simon): he default method has already this functionality,
             # but this serves simply as a placeholder until
             # it is decided on how to replace the functionalities of the policy.
-            def is_module_trainable(module_id: ModuleID, batch: SampleBatch):
-                return True
 
             # is_module_trainable = self.workers.local_worker().is_policy_to_train
-            self.learner_group.set_is_module_trainable(is_module_trainable)
+            # self.learner_group.set_is_module_trainable(is_module_trainable)
             train_results = self.learner_group.update(
                 train_batch,
                 minibatch_size=self.config.sgd_minibatch_size,
@@ -614,6 +619,9 @@ class PPO(Algorithm):
                 )
 
         # Update global vars on local worker as well.
+        # TODO (simon): At least in RolloutWorker obsolete I guess as called in 
+        # `sync_weights()` called above if remote workers. Can we call this 
+        # where `set_weights()` is called on the local_worker?
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results

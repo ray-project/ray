@@ -6,7 +6,7 @@ cartpole-ppo:
         timesteps_total: 100000
     config:
         # Both torch and tf2 works.
-        framework: torch
+        framework: tf2
         gamma: 0.99
         lr: 0.0003
         num_workers: 1
