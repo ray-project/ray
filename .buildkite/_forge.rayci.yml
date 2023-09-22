@@ -44,10 +44,6 @@ steps:
     wanda: ci/docker/datan.build.wanda.yaml
     depends_on: oss-ci-base_ml
 
-  - name: databbuild
-    wanda: ci/docker/datab.build.wanda.yaml
-    depends_on: oss-ci-base_ml
-
   - name: servebuild
     wanda: ci/docker/serve.build.wanda.yaml
     depends_on: oss-ci-base_build
