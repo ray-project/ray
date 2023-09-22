@@ -80,7 +80,7 @@ Compare a PyTorch training script with and without Ray Train.
     .. group-tab:: PyTorch + Ray Train
 
         .. code-block:: python
-            :emphasize-lines: 12, 18, 27, 42, 44-49
+            :emphasize-lines: 12, 17, 18, 26, 27, 41, 42, 44-49
 
             import tempfile
             import torch
@@ -245,8 +245,8 @@ Configure scale and GPUs
 
 Outside of your training function, create a :class:`~ray.train.ScalingConfig` object to configure:
 
-1. :attr:`~ray.train.ScalingConfig.num_workers` - The number of distributed training worker processes.
-2. :attr:`~ray.train.ScalingConfig.use_gpu` - Whether each worker should use a GPU (or CPU).
+1. :class:`num_workers <ray.train.ScalingConfig>` - The number of distributed training worker processes.
+2. :class:`use_gpu <ray.train.ScalingConfig>` - Whether each worker should use a GPU (or CPU).
 
 .. code-block:: python
 
