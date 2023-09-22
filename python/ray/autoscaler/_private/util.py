@@ -742,6 +742,7 @@ def get_per_node_breakdown_as_dict(
 def get_per_node_breakdown(
     lm_summary: LoadMetricsSummary,
     node_type_mapping: Optional[Dict[str, float]],
+    node_activities: Optional[Dict[str, List[str]]],
     verbose: bool,
 ) -> str:
     sio = StringIO()
@@ -750,17 +751,28 @@ def get_per_node_breakdown(
         node_type_mapping = {}
 
     print(file=sio)
-    for node_ip, usage in lm_summary.usage_by_node.items():
+    for node_id, usage in lm_summary.usage_by_node.items():
         print(file=sio)  # Print a newline.
-        node_string = f"Node: {node_ip}"
-        if node_ip in node_type_mapping:
-            node_type = node_type_mapping[node_ip]
+        node_string = f"Node: {node_id}"
+        if node_id in node_type_mapping:
+            node_type = node_type_mapping[node_id]
             node_string += f" ({node_type})"
 
         print(node_string, file=sio)
         print(" Usage:", file=sio)
         for line in parse_usage(usage, verbose):
             print(f"  {line}", file=sio)
+        # Don't print anything if not provided.
+        if not node_activities:
+            continue
+        print(" Activity:", file=sio)
+        if node_id not in node_activities:
+            print("  (no activity)", file=sio)
+        else:
+            # Note: We have node IP here.
+            _, reasons = node_activities[node_id]
+            for reason in reasons:
+                print(f"  {reason}", file=sio)
 
     return sio.getvalue()
 
@@ -807,15 +819,6 @@ def format_info_string(
             line = f" {count} {node_type}"
             idle_node_report_lines.append(line)
         idle_node_report = "\n".join(idle_node_report_lines)
-
-    if not autoscaler_summary.node_activity:
-        activity_report = "(no activity)"
-    else:
-        activity_report_lines = []
-        for node_ip, node_type, reason in autoscaler_summary.node_activity:
-            activity_report_lines.append(f"Node: {node_ip} ({node_type})")
-            activity_report_lines.append(f"{reason}\n")
-        activity_report = "\n".join(activity_report_lines)
 
     pending_lines = []
     for node_type, count in autoscaler_summary.pending_launches.items():
@@ -893,16 +896,13 @@ Resources
     if verbose:
         if lm_summary.usage_by_node:
             formatted_output += get_per_node_breakdown(
-                lm_summary, autoscaler_summary.node_type_mapping, verbose
+                lm_summary,
+                autoscaler_summary.node_type_mapping,
+                autoscaler_summary.node_activities,
+                verbose,
             )
         else:
             formatted_output += "\n"
-
-        if not autoscaler_summary.legacy:
-            formatted_output += f"""
-Node Activity
-{separator}
-{activity_report}"""
 
     return formatted_output.strip()
 

@@ -3216,7 +3216,7 @@ def test_info_string_verbose():
         ],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.6", "p3.2xlarge")],
-        node_activity=[
+        node_activities=[
             (
                 "192.168.1.1",
                 "m4.4xlarge",

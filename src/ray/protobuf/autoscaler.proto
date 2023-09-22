@@ -140,7 +140,7 @@ message NodeState {
   string instance_type_name = 11;
 
   // Observability debug string describing why the node is not idle.
-  string node_activity = 12;
+  repeated string node_activity = 12;
 }
 
 // ============= Autoscaling State Service API =======================

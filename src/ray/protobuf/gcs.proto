@@ -303,8 +303,9 @@ message NodeSnapshot {
   State state = 1;
   // How long the node has been idle.
   int64 idle_duration_ms = 2;
-  // Observability string describing why the node is not idle.
-  string node_activity = 3;
+  // Observability strings describing why the node is not idle.
+  // Each string is a reason.
+  repeated string node_activity = 3;
 }
 
 message GcsNodeInfo {
@@ -566,7 +567,7 @@ message ResourcesData {
   // Whether the node is being drained.
   bool is_draining = 16;
   // Why the node is not idle.
-  string node_activity = 17;
+  repeated string node_activity = 17;
 }
 
 message ResourceUsageBatchData {

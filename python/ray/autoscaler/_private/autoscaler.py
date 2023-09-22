@@ -103,12 +103,14 @@ class AutoscalerSummary:
     node_availability_summary: NodeAvailabilitySummary = field(
         default_factory=lambda: NodeAvailabilitySummary({})
     )
-    node_activity: Optional[List[Tuple[NodeIP, NodeType, str]]] = None
+    # A dictionary of node IP to a list of reasons the node is not idle.
+    node_activities: Optional[Dict[str, Tuple[NodeIP, List[str]]]] = None
     pending_resources: Dict[str, int] = field(default_factory=lambda: {})
     # A mapping from node name (the same key as `usage_by_node`) to node type.
     # Optional for deployment modes which have the concept of node types and
     # backwards compatibility.
     node_type_mapping: Optional[Dict[str, str]] = None
+    # Whether the autoscaler summary is v1 or v2.
     legacy: bool = False
 
 

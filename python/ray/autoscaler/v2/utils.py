@@ -126,10 +126,10 @@ class ClusterStatusFormatter:
             node_availabilities=node_availabilities
         )
 
-        node_activity = [
-            (node.ip_address, node.ray_node_type_name, node.node_activity)
+        node_activities = {
+            node.node_id: (node.ip_address, node.node_activity)
             for node in data.active_nodes
-        ]
+        }
 
         return AutoscalerSummary(
             active_nodes=active_nodes,
@@ -140,7 +140,7 @@ class ClusterStatusFormatter:
             pending_resources={},  # NOTE: This is not used in ray status.
             node_type_mapping=node_type_mapping,
             node_availability_summary=node_availabilities,
-            node_activity=node_activity,
+            node_activities=node_activities,
         )
 
     @classmethod

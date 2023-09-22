@@ -49,7 +49,7 @@ class NodeInfo:
     # Descriptive details.
     details: Optional[str] = None
     # Activity on the node.
-    node_activity: Optional[str] = None
+    node_activity: Optional[List[str]] = None
 
     def total_resources(self) -> Dict[str, float]:
         if self.resource_usage is None:
