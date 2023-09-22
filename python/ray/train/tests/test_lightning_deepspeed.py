@@ -2,7 +2,7 @@ import os
 import pytest
 
 import ray
-from ray.air.config import CheckpointConfig, RunConfig
+from ray.train import CheckpointConfig, RunConfig
 from ray.air.constants import MODEL_KEY
 from ray.train.lightning import LightningConfigBuilder, LightningTrainer
 from ray.train.tests.lightning_test_utils import (
@@ -47,7 +47,7 @@ def test_deepspeed_stages(ray_start_6_cpus_4_gpus, tmpdir, stage, test_restore):
         .checkpointing(dirpath="my/ckpt/dir", monitor="val_loss", save_top_k=3)
     )
 
-    scaling_config = ray.air.ScalingConfig(num_workers=num_workers, use_gpu=True)
+    scaling_config = ray.train.ScalingConfig(num_workers=num_workers, use_gpu=True)
 
     trainer = LightningTrainer(
         lightning_config=config_builder.build(),
@@ -59,7 +59,6 @@ def test_deepspeed_stages(ray_start_6_cpus_4_gpus, tmpdir, stage, test_restore):
                 num_to_keep=3,
                 checkpoint_score_attribute="val_loss",
                 checkpoint_score_order="min",
-                _checkpoint_keep_all_ranks=True,
             ),
         ),
     )

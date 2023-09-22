@@ -1119,14 +1119,12 @@ py_test(
 )
 
 # DreamerV3
-# TODO (sven): Enable once the version conflict for gymnasium/supersuit/pettingzoo
-#  /shimmy/mujoco has been resolved.
-#py_test(
-#    name = "test_dreamerv3",
-#    tags = ["team:rllib", "algorithms_dir"],
-#    size = "large",
-#    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
-#)
+py_test(
+    name = "test_dreamerv3",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
+)
 
 # DT
 py_test(
@@ -2937,7 +2935,7 @@ py_test(
 )
 
 py_test(
-     name = "tests/test_supported_spaces_ppo_no_preproceesor_gpu",
+     name = "tests/test_supported_spaces_ppo_no_preprocessor_gpu",
      main = "tests/test_supported_spaces.py",
      tags = ["team:rllib", "gpu", "no_cpu"],
      size = "large",
@@ -2979,12 +2977,12 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "examples/action_masking_tf",
+    name = "examples/action_masking_tf2",
     main = "examples/action_masking.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/action_masking.py"],
-    args = ["--stop-iter=2", "--framework=tf"]
+    args = ["--stop-iter=2", "--framework=tf2"]
 )
 
 py_test(
@@ -4002,6 +4000,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/recommender_system_with_recsim_and_slateq_torch",
+    main = "examples/recommender_system_with_recsim_and_slateq.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
+    args = ["--stop-iters=2", "--num-steps-sampled-before-learning_starts=100", "--framework=torch", "--use-tune", "--random-test-episodes=10", "--env-num-candidates=50", "--env-slate-size=2"],
+)
+
+py_test(
     name = "examples/recommender_system_with_recsim_and_slateq_tf2",
     main = "examples/recommender_system_with_recsim_and_slateq.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -4481,7 +4488,6 @@ py_test_module_list(
   files = [
     "tests/test_dnc.py",
     "tests/test_perf.py",
-    "algorithms/dreamerv3/tests/test_dreamerv3.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",

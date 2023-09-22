@@ -3,7 +3,7 @@ import React from "react";
 import { getServeApplications } from "../../../service/serve";
 import {
   ServeApplicationStatus,
-  ServeDeploymentMode,
+  ServeProxyLocation,
 } from "../../../type/serve";
 import { TEST_APP_WRAPPER } from "../../../util/test-utils";
 import { RecentServeCard } from "./RecentServeCard";
@@ -17,7 +17,7 @@ describe("RecentServeCard", () => {
     mockGetServeApplications.mockResolvedValue({
       data: {
         http_options: { host: "1.2.3.4", port: 8000 },
-        proxy_location: ServeDeploymentMode.EveryNode,
+        proxy_location: ServeProxyLocation.EveryNode,
         applications: {
           home: {
             name: "home",

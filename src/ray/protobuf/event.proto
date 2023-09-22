@@ -36,6 +36,15 @@ message Event {
     WARNING = 1;
     ERROR = 2;
     FATAL = 3;
+    // Ideally we would want these to be smaller numerically than INFO, but
+    // unfortunately the original rpc enum comes without such, and to be backward
+    // compatible we have to keep the same values for INFO.
+    // DEBUG: messages that are useful for debugging. These messages are not
+    // intended to be seen by end users.
+    DEBUG = 4;
+    // TRACE: messages that are useful for tracing (e.g. function entering/exit),
+    // more detailed than DEBUG info.
+    TRACE = 5;
   }
 
   // event_id is the unique ID of this event

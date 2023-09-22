@@ -74,7 +74,8 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_node: Optional[OpState] = None
 
         Executor.__init__(self, options)
-        threading.Thread.__init__(self, daemon=True)
+        thread_name = f"StreamingExecutor-{self._execution_id}"
+        threading.Thread.__init__(self, daemon=True, name=thread_name)
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
@@ -99,7 +100,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
-        _validate_dag(dag, self._get_or_refresh_resource_limits())
         self._topology, _ = build_streaming_topology(dag, self._options)
 
         if not isinstance(dag, InputDataBuffer):

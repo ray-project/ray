@@ -33,8 +33,8 @@ NodeResources ConstructNodeResources(
     absl::flat_hash_map<ResourceID, FixedPoint> available,
     absl::flat_hash_map<ResourceID, FixedPoint> total) {
   NodeResources resources;
-  resources.available = ResourceRequest(available);
-  resources.total = ResourceRequest(total);
+  resources.available = NodeResourceSet(available);
+  resources.total = NodeResourceSet(total);
   return resources;
 }
 
@@ -93,8 +93,8 @@ class GcsMonitorServerTest : public ::testing::Test {
 
   absl::btree_multimap<
       int64_t,
-      std::pair<ExponentialBackOff, std::shared_ptr<gcs::GcsPlacementGroup>>> &
-  PendingPlacementGroups() {
+      std::pair<ExponentialBackOff, std::shared_ptr<gcs::GcsPlacementGroup>>>
+      &PendingPlacementGroups() {
     return mock_placement_group_manager_->pending_placement_groups_;
   }
 

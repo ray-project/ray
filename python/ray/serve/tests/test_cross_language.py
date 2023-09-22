@@ -1,11 +1,12 @@
 import pytest
 
 import ray
-from ray.job_config import JobConfig
 from ray import serve
-from ray.serve.config import ReplicaConfig, DeploymentConfig
+from ray.job_config import JobConfig
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import JAVA, RequestMetadata
-from ray.tests.conftest import shutdown_only, maybe_external_redis  # noqa: F401
+from ray.tests.conftest import maybe_external_redis, shutdown_only  # noqa: F401
 
 
 @pytest.mark.skip(reason="TIMEOUT, see https://github.com/ray-project/ray/issues/26513")
@@ -16,7 +17,8 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
         # A dummy code search path to enable cross language.
         job_config=JobConfig(code_search_path=["."]),
     )
-    client = serve.start(detached=True)
+    serve.start()
+    client = _get_global_client()
 
     controller = client._controller
 
@@ -65,7 +67,8 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))

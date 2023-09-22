@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 import os
 import pathlib
+import re
 import sys
 import time
-from typing import Dict, Optional, Tuple
+import traceback
+from dataclasses import asdict
+from typing import Dict, List, Optional, Tuple
 
 import click
+import watchfiles
 import yaml
-import traceback
-import re
 from pydantic import ValidationError
 
 import ray
@@ -17,17 +19,18 @@ from ray._private.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.serve.api import build as build_app
-from ray.serve.config import DeploymentMode
+from ray.serve._private import api as _private_api
+from ray.serve._private.common import ServeDeployMode
 from ray.serve._private.constants import (
+    DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
 )
-from ray.serve._private.common import ServeDeployMode
+from ray.serve.api import build as build_app
+from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
-from ray.serve._private import api as _private_api
 from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -124,7 +127,7 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
 
 @click.group(
     help="CLI for managing Serve applications on a Ray cluster.",
-    context_settings=dict(help_option_names=["-h", "--help"]),
+    context_settings=dict(help_option_names=["--help", "-h"]),
 )
 def cli():
     pass
@@ -158,19 +161,61 @@ def cli():
     default=DeploymentMode.HeadOnly,
     required=False,
     type=click.Choice(list(DeploymentMode)),
-    help="Location of the HTTP proxies. Defaults to HeadOnly.",
+    help="DEPRECATED: Use `--proxy-location` instead.",
 )
-def start(address, http_host, http_port, http_location):
+@click.option(
+    "--proxy-location",
+    default=ProxyLocation.EveryNode,
+    required=False,
+    type=click.Choice(list(ProxyLocation)),
+    help="Location of the proxies. Defaults to EveryNode.",
+)
+@click.option(
+    "--grpc-port",
+    default=DEFAULT_GRPC_PORT,
+    required=False,
+    type=int,
+    help="Port for gRPC proxies to listen on. " f"Defaults to {DEFAULT_GRPC_PORT}.",
+)
+@click.option(
+    "--grpc-servicer-functions",
+    default=[],
+    required=False,
+    multiple=True,
+    help="Servicer function for adding the method handler to the gRPC server. "
+    "Defaults to an empty list and no gRPC server is started.",
+)
+def start(
+    address,
+    http_host,
+    http_port,
+    http_location,
+    proxy_location,
+    grpc_port,
+    grpc_servicer_functions,
+):
+    if http_location != DeploymentMode.HeadOnly:
+        cli_logger.warning(
+            "The `--http-location` flag to `serve start` is deprecated, "
+            "use `--proxy-location` instead."
+        )
+
+        proxy_location = http_location
+
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
     )
     serve.start(
         detached=True,
+        proxy_location=proxy_location,
         http_options=dict(
             host=http_host,
             port=http_port,
-            location=http_location,
+        ),
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
         ),
     )
 
@@ -322,6 +367,17 @@ def deploy(config_file_name: str, address: str):
         "as the ingress deployment."
     ),
 )
+@click.option(
+    "--reload",
+    "-r",
+    is_flag=True,
+    help=(
+        "Listens for changes to files in the working directory, --working-dir "
+        "or the working_dir in the --runtime-env, and automatically redeploys "
+        "the application. This will block until Ctrl-C'd, then clean up the "
+        "app."
+    ),
+)
 def run(
     config_or_import_path: str,
     arguments: Tuple[str],
@@ -334,7 +390,15 @@ def run(
     port: int,
     blocking: bool,
     gradio: bool,
+    reload: bool,
 ):
+    if host is not None or port is not None:
+        cli_logger.warning(
+            "Specifying `--host` and `--port` to `serve run` is deprecated and will be "
+            "removed in a future version. To specify custom HTTP options, use the "
+            "`serve start` command."
+        )
+
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
@@ -430,12 +494,19 @@ def run(
         )
 
     http_options = {"host": host, "port": port, "location": "EveryNode"}
-    # Merge http_options with the ones on ServeDeploySchema. If host and/or port is
-    # passed by cli, those continue to take the priority
+    grpc_options = gRPCOptions()
+    # Merge http_options and grpc_options with the ones on ServeDeploySchema. If host
+    # and/or port is passed by cli, those continue to take the priority
     if is_config and isinstance(config, ServeDeploySchema):
         config_http_options = config.http_options.dict()
         http_options = {**config_http_options, **http_options}
-    client = _private_api.serve_start(detached=True, http_options=http_options)
+        grpc_options = gRPCOptions(**config.grpc_options.dict())
+
+    client = _private_api.serve_start(
+        detached=True,
+        http_options=http_options,
+        grpc_options=grpc_options,
+    )
 
     try:
         if is_config:
@@ -452,11 +523,36 @@ def run(
 
             visualizer = GraphVisualizer()
             visualizer.visualize_with_gradio(handle)
-        else:
-            if blocking:
-                while True:
-                    # Block, letting Ray print logs to the terminal.
-                    time.sleep(10)
+        elif reload:
+            if not blocking:
+                raise click.ClickException(
+                    "The --non-blocking option conflicts with the --reload option."
+                )
+            if working_dir:
+                watch_dir = working_dir
+            else:
+                watch_dir = app_dir
+
+            for changes in watchfiles.watch(
+                watch_dir,
+                rust_timeout=10000,
+                yield_on_timeout=True,
+            ):
+                if changes:
+                    cli_logger.info(
+                        f"Detected file change in path {watch_dir}. Redeploying app."
+                    )
+                    # The module needs to be reloaded with `importlib` in order to pick
+                    # up any changes.
+                    app = _private_api.call_app_builder_with_args_if_necessary(
+                        import_attr(import_path, reload_module=True), args_dict
+                    )
+                    serve.run(app, host=host, port=port)
+
+        if blocking:
+            while True:
+                # Block, letting Ray print logs to the terminal.
+                time.sleep(10)
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")
@@ -570,26 +666,21 @@ def status(address: str, name: Optional[str]):
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
+    status = asdict(serve_details._get_status())
 
     # Ensure multi-line strings in app_status is dumped/printed correctly
     yaml.SafeDumper.add_representer(str, str_presenter)
 
     if name is None:
-        if len(serve_details.applications) == 0:
-            print("There are no applications running on this cluster.")
-        else:
-            print(
-                "\n---\n\n".join(
-                    yaml.safe_dump(
-                        # Ensure exception traceback in app_status are printed correctly
-                        process_dict_for_yaml_dump(application.get_status_dict()),
-                        default_flow_style=False,
-                        sort_keys=False,
-                    )
-                    for application in serve_details.applications.values()
-                ),
-                end="",
-            )
+        print(
+            yaml.safe_dump(
+                # Ensure exception traceback in app_status are printed correctly
+                process_dict_for_yaml_dump(status),
+                default_flow_style=False,
+                sort_keys=False,
+            ),
+            end="",
+        )
     else:
         if name not in serve_details.applications:
             cli_logger.error(f'Application "{name}" does not exist.')
@@ -597,9 +688,7 @@ def status(address: str, name: Optional[str]):
             print(
                 yaml.safe_dump(
                     # Ensure exception tracebacks in app_status are printed correctly
-                    process_dict_for_yaml_dump(
-                        serve_details.applications.get(name).get_status_dict()
-                    ),
+                    process_dict_for_yaml_dump(status["applications"][name]),
                     default_flow_style=False,
                     sort_keys=False,
                 ),
@@ -681,6 +770,14 @@ def shutdown(address: str, yes: bool):
     is_flag=True,
     help="Generate a single-application config from one target.",
 )
+@click.option(
+    "--grpc-servicer-functions",
+    default=[],
+    required=False,
+    multiple=True,
+    help="Servicer function for adding the method handler to the gRPC server. "
+    "Defaults to an empty list and no gRPC server is started.",
+)
 def build(
     import_paths: Tuple[str],
     app_dir: str,
@@ -689,6 +786,7 @@ def build(
     # This is no longer used, it is only kept here to avoid breaking existing CLI usage
     multi_app: bool,
     single_app: bool,
+    grpc_servicer_functions: List[str],
 ):
     # Add logger messages for users who are still using --multi-app
     if multi_app:
@@ -710,7 +808,7 @@ def build(
                 f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        app = build_app(app)
+        app = build_app(app, name)
         schema = ServeApplicationSchema(
             import_path=import_path,
             runtime_env={},
@@ -746,7 +844,9 @@ def build(
             )
 
         config_str += yaml.dump(
-            build_app_config(import_paths[0], kubernetes_format),
+            build_app_config(
+                import_paths[0], kubernetes_format, SERVE_DEFAULT_APP_NAME
+            ),
             Dumper=ServeApplicationSchemaDumper,
             default_flow_style=False,
             sort_keys=False,
@@ -768,6 +868,10 @@ def build(
             "http_options": {
                 "host": "0.0.0.0",
                 "port": 8000,
+            },
+            "grpc_options": {
+                "port": DEFAULT_GRPC_PORT,
+                "grpc_servicer_functions": grpc_servicer_functions,
             },
             "applications": app_configs,
         }

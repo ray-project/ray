@@ -431,6 +431,8 @@ class PipPlugin(RuntimeEnvPlugin):
         # Maps a URI to a lock that is used to prevent multiple concurrent
         # installs of the same virtualenv, see #24513
         self._create_locks: Dict[str, asyncio.Lock] = {}
+        # Key: created hashes. Value: size of the pip dir.
+        self._created_hash_bytes: Dict[str, int] = {}
         try_to_create_directory(self._pip_resources_dir)
 
     def _get_path_from_hash(self, hash: str) -> str:
@@ -465,6 +467,8 @@ class PipPlugin(RuntimeEnvPlugin):
         task = self._creating_task.pop(hash, None)
         if task is not None:
             task.cancel()
+
+        del self._created_hash_bytes[hash]
 
         pip_env_path = self._get_path_from_hash(hash)
         local_dir_size = get_directory_size_bytes(pip_env_path)
@@ -507,9 +511,13 @@ class PipPlugin(RuntimeEnvPlugin):
             self._create_locks[uri] = asyncio.Lock()
 
         async with self._create_locks[uri]:
+            if hash in self._created_hash_bytes:
+                return self._created_hash_bytes[hash]
             self._creating_task[hash] = task = create_task(_create_for_hash())
             task.add_done_callback(lambda _: self._creating_task.pop(hash, None))
-            return await task
+            bytes = await task
+            self._created_hash_bytes[hash] = bytes
+            return bytes
 
     def modify_context(
         self,
