@@ -10,5 +10,7 @@ class RayCITestBase(unittest.TestCase):
                 "RAYCI_BUILD_ID": "123",
                 "RAYCI_WORK_REPO": "rayproject/citemp",
                 "BUILDKITE_COMMIT": "123456",
+                "BUILDKITE_BRANCH": "master",
+                "BUILDKITE_PIPELINE_ID": "123456",
             }
         )
