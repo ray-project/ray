@@ -8,20 +8,15 @@ import pytest
 import requests
 
 import ray
-import ray.actor
 import ray._private.state
-from ray.util.state import list_actors
-
+import ray.actor
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.constants import (
-    SERVE_NAMESPACE,
-    SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
-from ray.serve.context import get_global_client
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve.context import _get_global_client
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray.util.state import list_actors
 
 
 @pytest.fixture
@@ -166,7 +161,7 @@ def test_refresh_controller_after_death(shutdown_ray_and_serve, detached):
     serve.shutdown()  # Ensure serve isn't running before beginning the test
     serve.start(detached=detached)
 
-    old_handle = get_global_client()._controller
+    old_handle = _get_global_client()._controller
     ray.kill(old_handle, no_restart=True)
 
     def controller_died(handle):
@@ -181,7 +176,7 @@ def test_refresh_controller_after_death(shutdown_ray_and_serve, detached):
     # Call start again to refresh handle
     serve.start(detached=detached)
 
-    new_handle = get_global_client()._controller
+    new_handle = _get_global_client()._controller
     assert new_handle is not old_handle
 
     # Health check should not error
@@ -197,13 +192,10 @@ def test_get_serve_status(shutdown_ray_and_serve):
 
     serve.run(f.bind())
 
-    client = get_global_client()
+    client = _get_global_client()
     status_info_1 = client.get_serve_status()
     assert status_info_1.app_status.status == "RUNNING"
-    assert (
-        status_info_1.deployment_statuses[0].name
-        == f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
-    )
+    assert status_info_1.deployment_statuses[0].name == "f"
     assert status_info_1.deployment_statuses[0].status in {"UPDATING", "HEALTHY"}
 
 
@@ -221,14 +213,13 @@ def test_controller_deserialization_deployment_def(
 
         # Import and build the graph
         graph = import_attr("test_config_files.pizza.serve_dag")
-        app = build(graph)
+        app = build(graph, SERVE_DEFAULT_APP_NAME)
 
         # Override options for each deployment
         for name in app.deployments:
             app.deployments[name].set_options(ray_actor_options={"num_cpus": 0.1})
 
         # Run the graph locally on the cluster
-        serve.start(detached=True)
         serve.run(graph)
 
     # Start Serve controller in a directory without access to the graph code
@@ -239,7 +230,7 @@ def test_controller_deserialization_deployment_def(
             "working_dir": os.path.join(os.path.dirname(__file__), "storage_tests")
         },
     )
-    serve.start(detached=True)
+    serve.start()
     serve.context._global_client = None
     ray.shutdown()
 
@@ -251,16 +242,15 @@ def test_controller_deserialization_deployment_def(
     )
     ray.get(run_graph.remote())
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
 
 
 def test_controller_deserialization_args_and_kwargs(shutdown_ray_and_serve):
     """Ensures init_args and init_kwargs stay serialized in controller."""
-
-    ray.init()
-    client = serve.start()
+    serve.start()
+    client = _get_global_client()
 
     class PidBasedString(str):
         pass
@@ -300,7 +290,8 @@ def test_controller_recover_and_delete(shutdown_ray_and_serve):
     """Ensure that in-progress deletion can finish even after controller dies."""
 
     ray_context = ray.init()
-    client = serve.start()
+    serve.start()
+    client = _get_global_client()
 
     num_replicas = 10
 
@@ -342,16 +333,9 @@ def test_controller_recover_and_delete(shutdown_ray_and_serve):
         == len(actors) - num_replicas
     )
 
-    # The deployment should be deleted, meaning its state should not be stored
-    # in the DeploymentStateManager. This can be checked by attempting to
-    # retrieve the deployment's status through the controller.
+    # The application should be deleted.
     wait_for_condition(
-        lambda: (
-            client.get_serve_status().get_deployment_status(
-                f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
-            )
-            is None
-        )
+        lambda: SERVE_DEFAULT_APP_NAME not in serve.status().applications
     )
 
 
@@ -378,14 +362,53 @@ serve.run(B.bind())"""
         # Driver 1 (starts Serve controller)
         output = subprocess.check_output(["python", f1.name], stderr=subprocess.STDOUT)
         assert "Connecting to existing Ray cluster" in output.decode("utf-8")
-        assert "Adding 1 replica to deployment default_A" in output.decode("utf-8")
+        assert (
+            "Adding 1 replica to deployment A in application 'default'"
+            in output.decode("utf-8")
+        )
 
         f2.write(file2.encode("utf-8"))
         f2.seek(0)
         # Driver 2 (reconnects to the same Serve controller)
         output = subprocess.check_output(["python", f2.name], stderr=subprocess.STDOUT)
         assert "Connecting to existing Ray cluster" in output.decode("utf-8")
-        assert "Adding 1 replica to deployment default_B" in output.decode("utf-8")
+        assert (
+            "Adding 1 replica to deployment B in application 'default'"
+            in output.decode("utf-8")
+        )
+
+
+def test_checkpoint_deleted_on_serve_shutdown(start_and_shutdown_ray_cli_function):
+    """Test the application target state checkpoint is deleted when Serve is shutdown"""
+
+    file1 = """from ray import serve
+@serve.deployment
+class A:
+    def __call__(self):
+        return "Hello A"
+serve.run(A.bind())"""
+
+    file2 = """from ray import serve
+@serve.deployment
+class B:
+    def __call__(self):
+        return "Hello B"
+serve.run(B.bind())"""
+
+    with NamedTemporaryFile() as f1, NamedTemporaryFile() as f2:
+        f1.write(file1.encode("utf-8"))
+        f1.seek(0)
+        output = subprocess.check_output(["python", f1.name], stderr=subprocess.STDOUT)
+        print(output.decode("utf-8"))
+        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+        subprocess.check_output(["serve", "shutdown", "-y"])
+
+        f2.write(file2.encode("utf-8"))
+        f2.seek(0)
+        output = subprocess.check_output(["python", f2.name], stderr=subprocess.STDOUT)
+        print(output.decode("utf-8"))
+        assert "Connecting to existing Ray cluster" in output.decode("utf-8")
+        assert "Recovering target state for application" not in output.decode("utf-8")
 
 
 if __name__ == "__main__":

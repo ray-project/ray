@@ -34,6 +34,9 @@ RAY_CONFIG(bool, event_stats_metrics, false)
 /// TODO(ekl) remove this after Ray 1.8
 RAY_CONFIG(bool, legacy_scheduler_warnings, false)
 
+/// Whether to enable cluster authentication.
+RAY_CONFIG(bool, enable_cluster_auth, false)
+
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available to
 /// debug_state_*.txt
@@ -291,6 +294,10 @@ RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 /// starting_worker_timeout_callback() is called.
 RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 
+/// The maximum workers raylet can start at the same time.
+/// 0 means it will use the default (number of CPUs).
+RAY_CONFIG(int64_t, worker_maximum_startup_concurrency, 0)
+
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128)
 
@@ -444,8 +451,10 @@ RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
 /// gRPC channel reconnection related configs to GCS.
 /// Check https://grpc.github.io/grpc/core/group__grpc__arg__keys.html for details
+/// Note: `gcs_grpc_min_reconnect_backoff_ms` is (mis)used by gRPC as the connection
+/// timeout. If your cluster has a high latency, make it to > 4x the latency.
 RAY_CONFIG(int32_t, gcs_grpc_max_reconnect_backoff_ms, 2000)
-RAY_CONFIG(int32_t, gcs_grpc_min_reconnect_backoff_ms, 100)
+RAY_CONFIG(int32_t, gcs_grpc_min_reconnect_backoff_ms, 1000)
 RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 100)
 
 /// Maximum bytes of request queued when RPC failed due to GCS is down.
@@ -456,8 +465,6 @@ RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024
 /// The duration between two checks for grpc status.
 RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
 
-/// Feature flag to use the ray syncer for resource synchronization
-RAY_CONFIG(bool, use_ray_syncer, true)
 /// Due to the protocol drawback, raylet needs to refresh the message if
 /// no message is received for a while.
 /// Refer to https://tinyurl.com/n6kvsp87 for more details
@@ -511,6 +518,17 @@ RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
+
+/// Comma separated list of components we enable grpc metrics collection for.
+/// Only effective if `enable_metrics_collection` is also true. Will have some performance
+/// degredations.
+///
+/// Valid fields: "gcs".
+/// TODO: it only works for gcs now. The goal is to do "gcs,core_worker,raylet.". The
+/// problem is we need this config field *before* any grpc call, but raylet and
+/// core_worker received configs from gcs and raylet respectively, so the configs are only
+/// available *after* a grpc call.
+RAY_CONFIG(std::string, enable_grpc_metrics_collection_for, "")
 
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
@@ -596,7 +614,7 @@ RAY_CONFIG(int, max_io_workers, 4)
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
-/// If set to less than 1.0, Ray will start spilling objects when existing objects
+/// If set to less than 1.0, Ray will start spilling objects when existing primary objects
 /// take more than this percentage of the available memory.
 RAY_CONFIG(float, object_spilling_threshold, 0.8)
 
@@ -690,9 +708,11 @@ RAY_CONFIG(uint32_t,
 RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 
 /// The scheduler will treat these custom resource types as unit_instance.
-/// Default custom_unit_instance_resources is empty.
-/// When set it to "FPGA", we will treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "")
+/// This allows the scheduler to provide chip IDs for custom resources like
+/// "neuron_cores", "TPUs" and "FPGAs".
+/// Default custom_unit_instance_resources is "neuron_cores,TPU".
+/// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
+RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU")
 
 // Maximum size of the batches when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
@@ -833,3 +853,7 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)
+
+// Python GCS client number of reconnection retry and timeout.
+RAY_CONFIG(int64_t, nums_py_gcs_reconnect_retry, 5)
+RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)

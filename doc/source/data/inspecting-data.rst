@@ -18,7 +18,7 @@ This guide shows you how to:
 Describing datasets
 ===================
 
-:class:`Datasets <ray.data.Dataset>` are tabular. To view a Dataset's column names and
+:class:`Datasets <ray.data.Dataset>` are tabular. To view a dataset's column names and
 types, call :meth:`Dataset.schema() <ray.data.Dataset.schema>`.
 
 .. testcode::
@@ -149,7 +149,7 @@ For more information on working with batches, see
 Inspecting execution statistics
 ===============================
 
-Ray Data calculates statistics during execution like the wall clock time and memory usage for the different stages. 
+Ray Data calculates statistics during execution like the wall clock time and memory usage for the different stages.
 
 To view stats about your :class:`Datasets <ray.data.Dataset>`, call :meth:`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. The stats are also persisted under `/tmp/ray/session_*/logs/ray-data.log`.
 
@@ -195,4 +195,3 @@ To view stats about your :class:`Datasets <ray.data.Dataset>`, call :meth:`Datas
         * In ray.get(): 2.16ms min, 2.16ms max, 2.16ms avg, 2.16ms total
         * In batch creation: 897.67us min, 897.67us max, 897.67us avg, 897.67us total
         * In batch formatting: 836.87us min, 836.87us max, 836.87us avg, 836.87us total
-

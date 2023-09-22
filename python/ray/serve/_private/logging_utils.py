@@ -1,28 +1,34 @@
-import json
 import copy
+import json
 import logging
 import os
-from typing import Optional
+from typing import Optional, Tuple
 
 import ray
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
     DEBUG_LOG_ENV_VAR,
-    SERVE_LOGGER_NAME,
+    RAY_SERVE_ENABLE_CPU_PROFILING,
     RAY_SERVE_ENABLE_JSON_LOGGING,
-    SERVE_LOG_RECORD_FORMAT,
-    SERVE_LOG_REQUEST_ID,
-    SERVE_LOG_ROUTE,
+    RAY_SERVE_ENABLE_MEMORY_PROFILING,
     SERVE_LOG_APPLICATION,
-    SERVE_LOG_MESSAGE,
-    SERVE_LOG_DEPLOYMENT,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
-    SERVE_LOG_TIME,
+    SERVE_LOG_DEPLOYMENT,
     SERVE_LOG_LEVEL_NAME,
+    SERVE_LOG_MESSAGE,
+    SERVE_LOG_RECORD_FORMAT,
     SERVE_LOG_REPLICA,
-    RAY_SERVE_ENABLE_MEMORY_PROFILING,
+    SERVE_LOG_REQUEST_ID,
+    SERVE_LOG_ROUTE,
+    SERVE_LOG_TIME,
+    SERVE_LOGGER_NAME,
 )
+
+try:
+    import cProfile
+except ImportError:
+    pass
 
 
 LOG_FILE_FMT = "{component_name}_{component_id}{suffix}"
@@ -246,9 +252,22 @@ def configure_component_memory_profiler(
                 component_name=component_name,
                 component_id=component_id,
                 component_type=component_type,
-                suffix="_memray.bin",
+                suffix="_memray_0.bin",
             )
             memray_file_path = os.path.join(logs_dir, memray_file_name)
+
+            # If the actor restarted, memray requires a new file to start
+            # tracking memory.
+            restart_counter = 1
+            while os.path.exists(memray_file_path):
+                memray_file_name = get_component_log_file_name(
+                    component_name=component_name,
+                    component_id=component_id,
+                    component_type=component_type,
+                    suffix=f"_memray_{restart_counter}.bin",
+                )
+                memray_file_path = os.path.join(logs_dir, memray_file_name)
+                restart_counter += 1
 
             # Memray usually tracks the memory usage of only a block of code
             # within a context manager. We explicitly call __enter__ here
@@ -268,6 +287,61 @@ def configure_component_memory_profiler(
                 "is not installed. No memory profiling is happening. "
                 "`pip install memray` to enable memory profiling."
             )
+
+
+def configure_component_cpu_profiler(
+    component_name: str,
+    component_id: str,
+    component_type: Optional[ServeComponentType] = None,
+) -> Tuple[Optional[cProfile.Profile], Optional[str]]:
+    """Configures the CPU profiler for this component.
+
+    Does nothing if RAY_SERVE_ENABLE_CPU_PROFILING is disabled.
+
+    Returns:
+        2-tuple containing profiler object and log file name for profile stats.
+    """
+
+    if RAY_SERVE_ENABLE_CPU_PROFILING:
+        logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+        try:
+            import cProfile
+        except ImportError:
+            logger.warning(
+                "RAY_SERVE_ENABLE_CPU_PROFILING is enabled, but cProfile "
+                "is not installed. No CPU profiling is happening."
+            )
+            return None, None
+        try:
+            # Need marshal to dump data. Check if marshal is installed before
+            # starting the profiler.
+            import marshal  # noqa: F401
+        except ImportError:
+            logger.warning(
+                "RAY_SERVE_ENABLE_CPU_PROFILING is enabled, but marshal "
+                "is not installed. No CPU profiling is happening."
+            )
+            return None, None
+
+        logs_dir = get_serve_logs_dir()
+        cpu_profiler_file_name = get_component_log_file_name(
+            component_name=component_name,
+            component_id=component_id,
+            component_type=component_type,
+            suffix="_cprofile.prof",
+        )
+        cpu_profiler_file_path = os.path.join(logs_dir, cpu_profiler_file_name)
+
+        profile = cProfile.Profile()
+        profile.enable()
+        logger.info(
+            "RAY_SERVE_ENABLE_CPU_PROFILING is enabled. Started cProfile "
+            "on this actor."
+        )
+        return profile, cpu_profiler_file_path
+    else:
+        return None, None
 
 
 def get_serve_logs_dir() -> str:

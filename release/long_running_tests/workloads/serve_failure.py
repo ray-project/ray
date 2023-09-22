@@ -1,14 +1,16 @@
+import asyncio
+import logging
 import os
 import random
 import string
 import time
-import asyncio
+from typing import List
 
 import requests
 
 import ray
 from ray import serve
-from ray.serve.context import get_global_client
+from ray.serve.context import _get_global_client
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import safe_write_to_results_json
 
@@ -64,7 +66,7 @@ ray.init(
     dashboard_host="0.0.0.0",
     log_to_driver=True,
 )
-serve.start(detached=True)
+serve.start(proxy_location="HeadOnly")
 
 
 @ray.remote(max_restarts=-1, max_task_retries=-1)
@@ -89,12 +91,12 @@ class RandomKiller:
         self.sanctuary.discard(deployment_name)
 
     def _get_serve_actors(self):
-        controller = get_global_client()._controller
+        controller = _get_global_client()._controller
         routers = list(ray.get(controller.get_http_proxies.remote()).values())
         all_handles = routers + [controller]
         replica_dict = ray.get(controller._all_running_replicas.remote())
-        for deployment_name, replica_info_list in replica_dict.items():
-            if deployment_name not in self.sanctuary:
+        for deployment_id, replica_info_list in replica_dict.items():
+            if deployment_id.name not in self.sanctuary:
                 for replica_info in replica_info_list:
                     all_handles.append(replica_info.actor_handle)
 
@@ -111,11 +113,20 @@ class RandomTest:
         self.deployments = []
 
         self.random_killer = random_killer_handle
-        for _ in range(max_deployments):
-            self.create_deployment()
+
+        # Deploy in parallel to avoid long test startup time.
+        self.wait_for_deployments_ready(
+            [self.create_deployment(blocking=False) for _ in range(max_deployments)]
+        )
+
         self.random_killer.run.remote()
 
-    def create_deployment(self):
+    def wait_for_deployments_ready(self, deployment_names: List[str]):
+        client = _get_global_client()
+        for deployment_name in deployment_names:
+            client._wait_for_deployment_healthy(deployment_name, timeout_s=60)
+
+    def create_deployment(self, blocking: bool = True) -> str:
         if len(self.deployments) == self.max_deployments:
             deployment_to_delete = self.deployments.pop()
             serve.get_deployment(deployment_to_delete).delete()
@@ -124,15 +135,19 @@ class RandomTest:
 
         @serve.deployment(name=new_name)
         def handler(self, *args):
+            logging.getLogger("ray.serve").setLevel(logging.ERROR)
             return new_name
 
-        ray.get(self.random_killer.spare.remote(new_name))
+        if blocking:
+            ray.get(self.random_killer.spare.remote(new_name))
+            handler.deploy(_blocking=blocking)
+            self.deployments.append(new_name)
+            ray.get(self.random_killer.stop_spare.remote(new_name))
+        else:
+            handler.deploy(_blocking=False)
+            self.deployments.append(new_name)
 
-        handler.deploy(_blocking=True)
-
-        self.deployments.append(new_name)
-
-        ray.get(self.random_killer.stop_spare.remote(new_name))
+        return new_name
 
     def verify_deployment(self):
         deployment = random.choice(self.deployments)
@@ -142,7 +157,7 @@ class RandomTest:
                 assert r.text == deployment
             except Exception:
                 print("Request to {} failed.".format(deployment))
-                time.sleep(0.01)
+                time.sleep(0.1)
 
     def run(self):
         start_time = time.time()

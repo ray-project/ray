@@ -1,97 +1,106 @@
 import os
 import subprocess
 import sys
-import tempfile
 
-from typing import List
+from typing import List, Optional
 
-from ci.ray_ci.utils import chunk_into_n
+_DOCKER_ECR_REPO = os.environ.get(
+    "RAYCI_WORK_REPO",
+    "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp",
+)
+_DOCKER_ENV = [
+    "BUILDKITE_BUILD_URL",
+    "BUILDKITE_BRANCH",
+    "BUILDKITE_COMMIT",
+    "BUILDKITE_JOB_ID",
+    "BUILDKITE_LABEL",
+    "BUILDKITE_PIPELINE_ID",
+]
+_DOCKER_CAP_ADD = [
+    "SYS_PTRACE",
+    "SYS_ADMIN",
+    "NET_ADMIN",
+]
+_RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
 
-DOCKER_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
-DOCKER_REPO = "ci_base_images"
-DOCKER_TAG = f"oss-ci-build_{os.environ.get('BUILDKITE_COMMIT')}"
 
-
-def run_tests(
-    test_targets: List[str],
-    pre_run_commands: List[str],
-    parallelism,
-) -> bool:
+class Container:
     """
-    Run tests parallelly in docker. Return whether all tests pass.
+    A wrapper for running commands in ray ci docker container
     """
-    chunks = chunk_into_n(test_targets, parallelism)
-    # Run tests in parallel. Currently, the logs are also printed in parallel.
-    # TODO(can): We can use a queue to print the logs in order.
-    runs = [_run_tests_in_docker(chunk, pre_run_commands) for chunk in chunks]
-    exits = [run.wait() for run in runs]
-    return all(exit == 0 for exit in exits)
 
+    def __init__(self, docker_tag: str, volumes: Optional[List[str]] = None) -> None:
+        self.docker_tag = docker_tag
+        self.volumes = volumes or []
 
-def _run_tests_in_docker(
-    test_targets: List[str],
-    pre_test_commands: List[str],
-) -> subprocess.Popen:
-    bazel_command = ["bazel", "test", "--config=ci"] + test_targets
-    script = "\n".join(pre_test_commands + [" ".join(bazel_command)])
-    return subprocess.Popen(_docker_run_bash_script(script))
+    def run_script_with_output(self, script: List[str]) -> bytes:
+        """
+        Run a script in container and returns output
+        """
+        return subprocess.check_output(self._get_run_command(script))
 
-
-def run_command(script: str) -> bytes:
-    """
-    Run command in docker
-    """
-    return subprocess.check_output(_docker_run_bash_script(script))
-
-
-def _docker_run_bash_script(script: str) -> str:
-    return _get_docker_run_command() + ["/bin/bash", "-ice", script]
-
-
-def docker_login() -> None:
-    """
-    Login to docker with AWS credentials
-    """
-    subprocess.run(["pip", "install", "awscli"])
-    password = subprocess.check_output(
-        ["aws", "ecr", "get-login-password", "--region", "us-west-2"],
-        stderr=sys.stderr,
-    )
-    with tempfile.TemporaryFile() as f:
-        f.write(password)
-        f.flush()
-        f.seek(0)
-
-        subprocess.run(
-            [
-                "docker",
-                "login",
-                "--username",
-                "AWS",
-                "--password-stdin",
-                DOCKER_ECR,
-            ],
-            stdin=f,
+    def run_script(self, script: List[str]) -> None:
+        """
+        Run a script in container
+        """
+        return subprocess.check_call(
+            self._get_run_command(script),
             stdout=sys.stdout,
             stderr=sys.stderr,
         )
 
+    def install_ray(self) -> None:
+        env = os.environ.copy()
+        env["DOCKER_BUILDKIT"] = "1"
+        subprocess.check_call(
+            [
+                "docker",
+                "build",
+                "--pull",
+                "--build-arg",
+                f"BASE_IMAGE={self._get_docker_image()}",
+                "-t",
+                self._get_docker_image(),
+                "-f",
+                "/ray/ci/ray_ci/tests.env.Dockerfile",
+                "/ray",
+            ],
+            env=env,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+        )
 
-def _get_docker_run_command() -> List[str]:
-    return [
-        "docker",
-        "run",
-        "-i",
-        "--rm",
-        "--workdir",
-        "/ray",
-        "--shm-size=2.5gb",
-        _get_docker_image(),
-    ]
+    def _get_run_command(self, script: List[str]) -> List[str]:
+        command = [
+            "docker",
+            "run",
+            "-i",
+            "--rm",
+            "--volume",
+            "/tmp/artifacts:/artifact-mount",
+        ]
+        for volume in self.volumes:
+            command += ["--volume", volume]
+        for env in _DOCKER_ENV:
+            command += ["--env", env]
+        for cap in _DOCKER_CAP_ADD:
+            command += ["--cap-add", cap]
+        command += [
+            "--workdir",
+            "/rayci",
+            "--shm-size=2.5gb",
+            self._get_docker_image(),
+            "/bin/bash",
+            "-iecuo",
+            "pipefail",
+            "--",
+            "\n".join(script),
+        ]
 
+        return command
 
-def _get_docker_image() -> str:
-    """
-    Get docker image for a particular commit
-    """
-    return f"{DOCKER_ECR}/{DOCKER_REPO}:{DOCKER_TAG}"
+    def _get_docker_image(self) -> str:
+        """
+        Get docker image for a particular commit
+        """
+        return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{self.docker_tag}"

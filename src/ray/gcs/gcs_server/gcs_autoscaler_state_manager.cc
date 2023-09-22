@@ -28,12 +28,14 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     const ClusterResourceManager &cluster_resource_manager,
     const GcsResourceManager &gcs_resource_manager,
     const GcsNodeManager &gcs_node_manager,
-    const GcsPlacementGroupManager &gcs_placement_group_manager)
+    const GcsPlacementGroupManager &gcs_placement_group_manager,
+    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
     : session_name_(session_name),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
       gcs_resource_manager_(gcs_resource_manager),
       gcs_placement_group_manager_(gcs_placement_group_manager),
+      raylet_client_pool_(std::move(raylet_client_pool)),
       last_cluster_resource_state_version_(0),
       last_seen_autoscaler_state_version_(0) {}
 
@@ -133,15 +135,17 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
   // Iterate through each placement group load.
   for (const auto &pg_data : placement_group_load->placement_group_data()) {
     auto gang_resource_req = state->add_pending_gang_resource_requests();
+    auto pg_state = pg_data.state();
+    auto pg_id = PlacementGroupID::FromBinary(pg_data.placement_group_id());
     // For each placement group, if it's not pending/rescheduling, skip it since.
     // it's not part of the load.
-    RAY_CHECK(pg_data.state() == rpc::PlacementGroupTableData::PENDING ||
-              pg_data.state() == rpc::PlacementGroupTableData::RESCHEDULING)
-        << "Placement group load should only include pending/rescheduling PGs. ";
+    if (pg_state != rpc::PlacementGroupTableData::PENDING &&
+        pg_state != rpc::PlacementGroupTableData::RESCHEDULING) {
+      continue;
+    }
 
-    const auto pg_constraint = GenPlacementConstraintForPlacementGroup(
-        PlacementGroupID::FromBinary(pg_data.placement_group_id()).Hex(),
-        pg_data.strategy());
+    const auto pg_constraint =
+        GenPlacementConstraintForPlacementGroup(pg_id.Hex(), pg_data.strategy());
 
     // Add the strategy as detail info for the gang resource request.
     gang_resource_req->set_details(FormatPlacementGroupDetails(pg_data));
@@ -152,7 +156,7 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
         // We will be skipping **placed** bundle (which has node id associated with it).
         // This is to avoid double counting the bundles that are already placed when
         // reporting PG related load.
-        RAY_CHECK(pg_data.state() == rpc::PlacementGroupTableData::RESCHEDULING);
+        RAY_CHECK(pg_state == rpc::PlacementGroupTableData::RESCHEDULING);
         // NOTE: This bundle is placed in a PG, this must be a bundle that was lost due
         // to node crashed.
         continue;
@@ -219,7 +223,9 @@ void GcsAutoscalerStateManager::GetNodeStates(
     // THe node is alive. We need to check if the node is idle.
     auto const &node_resource_data = cluster_resource_manager_.GetNodeResources(
         scheduling::NodeID(node_state_proto->node_id()));
-    if (node_resource_data.idle_resource_duration_ms > 0) {
+    if (node_resource_data.is_draining) {
+      node_state_proto->set_status(rpc::autoscaler::NodeStatus::DRAINING);
+    } else if (node_resource_data.idle_resource_duration_ms > 0) {
       // The node was reported idle.
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::IDLE);
 
@@ -240,12 +246,12 @@ void GcsAutoscalerStateManager::GetNodeStates(
     }
 
     // Copy resource available
-    const auto &available = node_resource_data.available.ToResourceMap();
+    const auto &available = node_resource_data.available.GetResourceMap();
     node_state_proto->mutable_available_resources()->insert(available.begin(),
                                                             available.end());
 
     // Copy total resources
-    const auto &total = node_resource_data.total.ToResourceMap();
+    const auto &total = node_resource_data.total.GetResourceMap();
     node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
 
     // Add dynamic PG labels.
@@ -276,7 +282,42 @@ void GcsAutoscalerStateManager::GetNodeStates(
 void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeRequest request,
     rpc::autoscaler::DrainNodeReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {}
+    rpc::SendReplyCallback send_reply_callback) {
+  const NodeID node_id = NodeID::FromBinary(request.node_id());
+  RAY_LOG(INFO) << "HandleDrainNode " << node_id.Hex()
+                << ", reason: " << request.reason_message();
+
+  auto node = gcs_node_manager_.GetAliveNode(node_id);
+  if (!node.has_value()) {
+    if (gcs_node_manager_.GetAllDeadNodes().contains(node_id)) {
+      // The node is dead so treat it as drained.
+      reply->set_is_accepted(true);
+    } else {
+      // Since gcs only stores limit number of dead nodes
+      // so we don't know whether the node is dead or doesn't exist.
+      // Since it's not running so still treat it as drained.
+      RAY_LOG(WARNING) << "Request to drain an unknown node " << node_id;
+      reply->set_is_accepted(true);
+    }
+    send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  rpc::Address raylet_address;
+  raylet_address.set_raylet_id(node.value()->node_id());
+  raylet_address.set_ip_address(node.value()->node_manager_address());
+  raylet_address.set_port(node.value()->node_manager_port());
+
+  const auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(raylet_address);
+  raylet_client->DrainRaylet(
+      request.reason(),
+      request.reason_message(),
+      [reply, send_reply_callback](const Status &status,
+                                   const rpc::DrainRayletReply &raylet_reply) {
+        reply->set_is_accepted(raylet_reply.is_accepted());
+        send_reply_callback(status, nullptr, nullptr);
+      });
+}
 
 }  // namespace gcs
 }  // namespace ray

@@ -24,3 +24,10 @@ if [ -d "/tmp/artifacts" ]; then
     echo "Artifact directory contents after cleanup:"
     find /tmp/artifacts -print || true
 fi
+
+echo "Creating var/ artifact directory..."
+docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'chown -R 2000 /artifact-mount/' || true
+
+
+RAYCI_CHECKOUT_DIR="$(pwd)"
+export RAYCI_CHECKOUT_DIR

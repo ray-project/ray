@@ -23,7 +23,7 @@ class SlimFC:
         initializer: Optional[Callable] = None,
         activation_fn: Optional[str] = None,
         use_bias: bool = True,
-        prng_key: Optional[jax.random.PRNGKey] = None,
+        prng_key: Optional["jax.random.PRNGKey"] = None,
         name: Optional[str] = None,
     ):
         """Initializes a SlimFC instance.

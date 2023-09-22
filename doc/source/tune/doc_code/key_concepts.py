@@ -148,7 +148,7 @@ results = tuner.fit()
 
 best_result = results.get_best_result()  # Get best result object
 best_config = best_result.config  # Get best trial's hyperparameters
-best_logdir = best_result.log_dir  # Get best trial's logdir
+best_logdir = best_result.path  # Get best trial's result directory
 best_checkpoint = best_result.checkpoint  # Get best trial's best checkpoint
 best_metrics = best_result.metrics  # Get best trial's last results
 best_result_df = best_result.metrics_dataframe  # Get best result as pandas dataframe

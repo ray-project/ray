@@ -4,9 +4,7 @@ from typing import TYPE_CHECKING, Optional
 
 import lightgbm
 
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
-from ray.air.checkpoint import Checkpoint
-from ray.air.constants import MODEL_KEY
+from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -14,13 +12,10 @@ if TYPE_CHECKING:
 
 
 @PublicAPI(stability="beta")
-class LightGBMCheckpoint(Checkpoint):
-    """A :py:class:`~ray.air.checkpoint.Checkpoint` with LightGBM-specific
-    functionality.
+class LightGBMCheckpoint(FrameworkCheckpoint):
+    """A :py:class:`~ray.train.Checkpoint` with LightGBM-specific functionality."""
 
-    Create this from a generic :py:class:`~ray.air.checkpoint.Checkpoint` by calling
-    ``LightGBMCheckpoint.from_checkpoint(ckpt)``.
-    """
+    MODEL_FILENAME = "model.txt"
 
     @classmethod
     def from_model(
@@ -29,8 +24,7 @@ class LightGBMCheckpoint(Checkpoint):
         *,
         preprocessor: Optional["Preprocessor"] = None,
     ) -> "LightGBMCheckpoint":
-        """Create a :py:class:`~ray.air.checkpoint.Checkpoint` that stores a LightGBM
-        model.
+        """Create a :py:class:`~ray.train.Checkpoint` that stores a LightGBM model.
 
         Args:
             booster: The LightGBM model to store in the checkpoint.
@@ -49,26 +43,19 @@ class LightGBMCheckpoint(Checkpoint):
             >>>
             >>> model = lightgbm.LGBMClassifier().fit(train_X, train_y)
             >>> checkpoint = LightGBMCheckpoint.from_model(model.booster_)
-
-            You can use a :py:class:`LightGBMCheckpoint` to create an
-            :py:class:`~ray.train.lightgbm.LightGBMPredictor` and preform inference.
-
-            >>> from ray.train.lightgbm import LightGBMPredictor
-            >>>
-            >>> predictor = LightGBMPredictor.from_checkpoint(checkpoint)
         """
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            booster.save_model(os.path.join(tmpdirname, MODEL_KEY))
+        tempdir = tempfile.mkdtemp()
+        booster.save_model(os.path.join(tempdir, cls.MODEL_FILENAME))
 
-            if preprocessor:
-                save_preprocessor_to_dir(preprocessor, tmpdirname)
+        checkpoint = cls.from_directory(tempdir)
+        if preprocessor:
+            checkpoint.set_preprocessor(preprocessor)
 
-            checkpoint = cls.from_directory(tmpdirname)
-            ckpt_dict = checkpoint.to_dict()
-
-        return cls.from_dict(ckpt_dict)
+        return checkpoint
 
     def get_model(self) -> lightgbm.Booster:
         """Retrieve the LightGBM model stored in this checkpoint."""
         with self.as_directory() as checkpoint_path:
-            return lightgbm.Booster(model_file=os.path.join(checkpoint_path, MODEL_KEY))
+            return lightgbm.Booster(
+                model_file=os.path.join(checkpoint_path, self.MODEL_FILENAME)
+            )

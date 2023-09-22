@@ -14,10 +14,13 @@ from ray.air._internal.remote_storage import (
     _is_network_mount,
     _translate_s3_options,
     _CACHE_VALIDITY_S,
+    _is_local_windows_path,
 )
 from ray.tune.utils.file_transfer import _get_recursive_files_and_stats
 
 from freezegun import freeze_time
+
+from ray.tune.utils.util import _split_remote_local_path
 
 
 @pytest.fixture
@@ -314,6 +317,17 @@ def test_cache_uri_query():
 
     # Different query parameters, so different object
     assert id(fs) != id(fs3)
+
+
+def test_windows_path():
+    with patch("sys.platform", "win32"):
+        assert _is_local_windows_path("c:/some/where")
+        assert _is_local_windows_path("c:\\some\\where")
+        assert _is_local_windows_path("c:\\some\\where/mixed")
+
+        loc, rem = _split_remote_local_path("c:\\some\\where", "default_local")
+        assert loc
+        assert not rem
 
 
 if __name__ == "__main__":
