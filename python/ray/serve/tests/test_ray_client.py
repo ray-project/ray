@@ -7,8 +7,8 @@ import pytest
 import requests
 
 import ray
-from ray._private.test_utils import run_string_as_driver
 from ray import serve
+from ray._private.test_utils import run_string_as_driver
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152

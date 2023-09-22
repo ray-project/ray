@@ -282,9 +282,23 @@ class MosaicDataset(LocalDataset):
 
 class S3MosaicDataset(StreamingDataset):
     def __init__(
-        self, s3_bucket: str, cache_dir: str, transforms: Callable, cache_limit=None
+        self,
+        s3_bucket: str,
+        num_physical_nodes,
+        cache_dir: str,
+        transforms: Callable,
+        cache_limit=None,
+        epoch_size=None,
     ) -> None:
-        super().__init__(remote=s3_bucket, local=cache_dir, cache_limit=cache_limit)
+        super().__init__(
+            remote=s3_bucket,
+            local=cache_dir,
+            cache_limit=cache_limit,
+            epoch_size=epoch_size,
+            # Set StreamingDataset to read sequentially.
+            shuffle=False,
+            num_canonical_nodes=num_physical_nodes,
+        )
         self.transforms = transforms
 
     def __getitem__(self, idx: int) -> Any:
@@ -292,6 +306,74 @@ class S3MosaicDataset(StreamingDataset):
         image = obj["image"]
         label = obj["label"]
         return self.transforms(image), label
+
+
+def get_mosaic_dataloader(
+    mosaic_data_root,
+    batch_size,
+    num_physical_nodes,
+    epoch_size=None,
+    num_workers=None,
+    cache_limit=None,
+):
+    # MosaicML StreamingDataset.
+    use_s3 = mosaic_data_root.startswith("s3://")
+
+    if not use_s3:
+        assert (
+            epoch_size is not None
+        ), "epoch_size not supported for streaming.LocalDataset"
+        assert (
+            cache_limit is not None
+        ), "cache_limit not supported for streaming.LocalDataset"
+
+    if use_s3:
+        MOSAIC_CACHE = "/tmp/mosaic_cache"
+        try:
+            import shutil
+
+            shutil.rmtree(MOSAIC_CACHE)
+        except (OSError, FileNotFoundError):
+            pass
+        streaming.base.util.clean_stale_shared_memory()
+        print(f"Initializing mosaic StreamingDataset, cache_limit={cache_limit}")
+        mosaic_ds = S3MosaicDataset(
+            s3_bucket=mosaic_data_root,
+            num_physical_nodes=num_physical_nodes,
+            cache_dir=MOSAIC_CACHE,
+            cache_limit=cache_limit,
+            epoch_size=epoch_size,
+            transforms=get_transform(True),
+        )
+    else:
+        mosaic_ds = MosaicDataset(mosaic_data_root, transforms=get_transform(True))
+
+    if num_workers is None:
+        num_workers = os.cpu_count()
+
+    print(f"Initializing torch DataLoader with {num_workers} workers.")
+    mosaic_dl = torch.utils.data.DataLoader(
+        mosaic_ds,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        drop_last=True,
+    )
+
+    return mosaic_dl
+
+
+def get_ray_mosaic_dataset(mosaic_data_root):
+    mds_source = MdsDatasource()
+    return ray.data.read_datasource(mds_source, paths=mosaic_data_root)
+
+
+def get_ray_parquet_dataset(parquet_data_root, parallelism=None):
+    if parallelism is not None:
+        ray_dataset = ray.data.read_parquet(parquet_data_root, parallelism=parallelism)
+    else:
+        ray_dataset = ray.data.read_parquet(parquet_data_root)
+    ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
+    return ray_dataset
 
 
 if __name__ == "__main__":
@@ -480,9 +562,7 @@ if __name__ == "__main__":
             )
 
     if args.parquet_data_root is not None:
-        ray_dataset = ray.data.read_parquet(
-            args.parquet_data_root, parallelism=128
-        ).map(decode_image_crop_and_flip)
+        ray_dataset = get_ray_parquet_dataset(args.parquet_data_root, parallelism=128)
         for i in range(args.num_epochs):
             iterate(
                 ray_dataset.iter_torch_batches(batch_size=args.batch_size),
@@ -494,31 +574,16 @@ if __name__ == "__main__":
         print(ray_dataset.stats())
 
     if args.mosaic_data_root is not None:
-        # MosaicML StreamingDataset.
         use_s3 = args.mosaic_data_root.startswith("s3://")
-
-        if use_s3:
-            MOSAIC_CACHE = "/tmp/mosaic_cache"
-            try:
-                import shutil
-
-                shutil.rmtree(MOSAIC_CACHE)
-            except FileNotFoundError:
-                pass
-            mosaic_ds = S3MosaicDataset(
-                s3_bucket=args.mosaic_data_root,
-                cache_dir=MOSAIC_CACHE,
-                cache_limit="1000mb",
-                transforms=get_transform(True),
-            )
-        else:
-            mosaic_ds = MosaicDataset(
-                args.mosaic_data_root, transforms=get_transform(True)
-            )
-        num_workers = 64
-        mosaic_dl = torch.utils.data.DataLoader(
-            mosaic_ds, batch_size=args.batch_size, num_workers=num_workers
+        num_workers = None
+        mosaic_dl = get_mosaic_dataloader(
+            args.mosaic_data_root,
+            batch_size=args.batch_size,
+            num_physical_nodes=1,
+            num_workers=num_workers,
+            cache_limit="2gb",
         )
+
         for i in range(args.num_epochs):
             iterate(
                 mosaic_dl, "mosaicml_mds", args.batch_size, metrics, args.output_file
@@ -530,6 +595,7 @@ if __name__ == "__main__":
             ray_dataset = ray.data.read_datasource(
                 mds_source, paths=args.mosaic_data_root
             )
+            ray_dataset = ray_dataset.map(crop_and_flip_image)
             for i in range(args.num_epochs):
                 iterate(
                     ray_dataset.iter_torch_batches(batch_size=args.batch_size),

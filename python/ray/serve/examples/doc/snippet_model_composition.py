@@ -1,5 +1,7 @@
 from random import random
+
 import requests
+
 import ray
 from ray import serve
 
@@ -65,7 +67,6 @@ class ComposedModel:
 
 
 if __name__ == "__main__":
-
     # Start ray with 8 processes.
     if ray.is_initialized():
         ray.shutdown()
