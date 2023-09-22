@@ -136,6 +136,7 @@ class ScalingConfig:
     use_gpu: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
     placement_strategy: Union[str, SampleRange] = "PACK"
+    force_pack_num_workers: Optional[int] = None
 
     def __post_init__(self):
         if self.resources_per_worker:
@@ -251,7 +252,9 @@ class ScalingConfig:
             for _ in range(self.num_workers if self.num_workers else 0)
         ]
         bundles = trainer_bundle + worker_bundles
-        return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
+        return PlacementGroupFactory(
+            bundles, strategy=self.placement_strategy, merge_bundles_by=self.force_pack_num_workers
+            )
 
     @classmethod
     def from_placement_group_factory(

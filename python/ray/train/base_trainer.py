@@ -175,6 +175,7 @@ class BaseTrainer(abc.ABC):
 
     _scaling_config_allowed_keys: List[str] = [
         "trainer_resources",
+        "force_pack_num_workers"
     ]
     _handles_checkpoint_freq: bool = False
     _handles_checkpoint_at_end: bool = False
