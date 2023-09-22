@@ -584,15 +584,17 @@ def read_parquet(
         petal.width   double
         variety       string
 
-
         Read a directory in remote storage.
+
         >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris-parquet/")
 
         Read multiple local files.
+
         >>> ray.data.read_parquet(
         ...    ["local:///path/to/file1", "local:///path/to/file2"]) # doctest: +SKIP
 
         Specify a schema for the parquet file.
+
         >>> import pyarrow as pa
         >>> fields = [("sepal.length", pa.float32()),
         ...           ("sepal.width", pa.float32()),
@@ -609,7 +611,6 @@ def read_parquet(
         petal.length  float
         petal.width   float
         variety       string
-
 
         The Parquet reader also supports projection and filter pushdown, allowing column
         selection and row filtering to be pushed down to the file scan.
