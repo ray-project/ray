@@ -460,9 +460,7 @@ class JobSupervisor:
                         )
                         self._kill_processes(proc_to_kill, signal.SIGKILL)
 
-                await self._job_info_client.put_status(
-                    self._job_id, JobStatus.STOPPED, driver_exit_code=None
-                )
+                await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
                 # at the same time
