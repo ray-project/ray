@@ -1,6 +1,6 @@
 import unittest
 
-import numpy as np
+# import numpy as np
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
@@ -8,13 +8,15 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
 )
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.algorithms.ppo.tests.test_ppo import PENDULUM_FAKE_BATCH
+
+# from ray.rllib.algorithms.ppo.tests.test_ppo import PENDULUM_FAKE_BATCH
 from ray.rllib.core.learner.learner import (
     LEARNER_RESULTS_CURR_LR_KEY,
 )
-from ray.rllib.evaluation.postprocessing import (
-    compute_gae_for_sample_batch,
-)
+
+# from ray.rllib.evaluation.postprocessing import (
+#     compute_gae_for_sample_batch,
+# )
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import (
@@ -103,7 +105,7 @@ class TestPPO(unittest.TestCase):
         for fw in framework_iterator(config, frameworks=("tf2")):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in [
-                #"CliffWalking-v0",
+                # "CliffWalking-v0",
                 "CartPole-v1",
                 "Pendulum-v1",
             ]:  # "ALE/Breakout-v5"]:
@@ -215,7 +217,8 @@ class TestPPO(unittest.TestCase):
 
     #         # Check the free log std var is created.
     #         if fw == "torch":
-    #             matching = [v for (n, v) in module.named_parameters() if "log_std" in n]
+    #             matching = [v for (n, v) in module.named_parameters()
+    #             if "log_std" in n]
     #         else:
     #             matching = [
     #                 v for v in module.trainable_variables if "log_std" in str(v)

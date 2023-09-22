@@ -230,7 +230,8 @@ class PPOEnvRunner(EnvRunner):
 
                 if STATE_OUT in fwd_out:
                     states = convert_to_numpy(fwd_out[STATE_OUT])
-                    # states = tree.map_structure(lambda s: s.numpy(), fwd_out[STATE_OUT])
+                    # states = tree.map_structure(lambda s: s.numpy(),
+                    # fwd_out[STATE_OUT])
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
@@ -244,7 +245,7 @@ class PPOEnvRunner(EnvRunner):
                 # TODO (simon): This might be unfortunate if a user needs to set a
                 # certain env parameter during different episodes (for example for
                 # benchmarking).
-                # TODO (simon): Check, if there is more efficient conversion. Maybe 
+                # TODO (simon): Check, if there is more efficient conversion. Maybe
                 # converting once before the loop for all vector sub_envs.
                 if explore:
                     extra_model_output = {
@@ -260,7 +261,7 @@ class PPOEnvRunner(EnvRunner):
                         SampleBatch.ACTION_DIST_INPUTS: fwd_out[
                             SampleBatch.ACTION_DIST_INPUTS
                         ][i],
-                        SampleBatch.ACTION_LOGP:action_logp[i],
+                        SampleBatch.ACTION_LOGP: action_logp[i],
                     }
                 if terminateds[i] or truncateds[i]:
                     # Finish the episode with the actual terminal observation stored in
