@@ -1,0 +1,15 @@
+applications:
+  - name: valid
+    route_prefix: /valid
+    import_path: ray.serve.tests.test_config_files.max_replicas_per_node.app
+    deployments:
+      - name: D
+        max_replicas_per_node: 2
+
+  - name: invalid
+    route_prefix: /invalid
+    import_path: ray.serve.tests.test_config_files.max_replicas_per_node.app
+    deployments:
+      - name: D
+        # Non-positive max_replicas_per_node.
+        max_replicas_per_node: 0

@@ -8,7 +8,7 @@ This test uses mocked call into wandb API.
 import pytest
 
 import ray
-from ray.air import RunConfig, ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.air.integrations.wandb import WANDB_ENV_VAR
 from ray.air.tests.mocked_wandb_integration import WandbTestExperimentLogger
 from ray.train.examples.pytorch.torch_linear_example import (

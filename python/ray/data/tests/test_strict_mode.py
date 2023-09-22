@@ -134,7 +134,7 @@ def test_strict_default_batch_format(ray_start_regular_shared):
 
     q = Queue.remote()
 
-    assert isinstance(next(ds.iter_batches())["id"], np.ndarray)
+    assert isinstance(next(iter(ds.iter_batches()))["id"], np.ndarray)
     assert isinstance(ds.take_batch()["id"], np.ndarray)
 
     def f(x):

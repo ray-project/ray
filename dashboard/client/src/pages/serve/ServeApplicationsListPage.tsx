@@ -243,8 +243,8 @@ const ServeControllerLogs = ({
         "To view replica logs, please click into a Serve application from " +
         "the table above to enter the Application details page.\nThen, click " +
         "into a Serve Replica in the Deployments table.\n\n" +
-        "HTTP Proxy logs contains HTTP access logs for each HTTP Proxy.\n" +
-        "To view HTTP Proxy logs, click into a HTTP Proxy from the Serve System " +
+        "Proxy logs contains HTTP and gRPC access logs for each Proxy.\n" +
+        "To view Proxy logs, click into a Proxy from the Serve System " +
         "Details page.\nThis page can be accessed via the left tab menu or by " +
         'clicking "View system status and configuration" link above.',
     },

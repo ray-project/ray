@@ -605,6 +605,13 @@ message GetAllResourceUsageReply {
   bool cluster_full_of_actors_detected_by_gcs = 3;
 }
 
+message GetDrainingNodesRequest {}
+
+message GetDrainingNodesReply {
+  GcsStatus status = 1;
+  repeated bytes node_ids = 2;
+}
+
 // Service for node resource info access.
 service NodeResourceInfoGcsService {
   // Get node's resources from GCS Service.
@@ -616,6 +623,8 @@ service NodeResourceInfoGcsService {
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
+  // Get ids of draining nodes.
+  rpc GetDrainingNodes(GetDrainingNodesRequest) returns (GetDrainingNodesReply);
 }
 
 message GcsStatus {

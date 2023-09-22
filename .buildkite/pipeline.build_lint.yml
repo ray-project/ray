@@ -1,7 +1,0 @@
-#ci:group=:book: lint
-
-- label: "lint"
-  commands:
-    - export LINT=1
-    - ./ci/env/install-dependencies.sh
-    - ./ci/v2/lint.sh

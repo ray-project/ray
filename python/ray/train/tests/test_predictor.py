@@ -1,4 +1,5 @@
 from typing import Optional, Dict, Union
+import uuid
 from unittest import mock
 import pytest
 
@@ -6,11 +7,13 @@ import pandas as pd
 import numpy as np
 
 import ray
-from ray.air.checkpoint import Checkpoint
-from ray.air.constants import PREPROCESSOR_KEY, TENSOR_COLUMN_NAME
+from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor
 from ray.train.predictor import Predictor, PredictorNotSerializableException
+
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 class DummyPreprocessor(Preprocessor):
@@ -18,6 +21,7 @@ class DummyPreprocessor(Preprocessor):
         self.multiplier = multiplier
         self.inputs = []
         self.outputs = []
+        self.id = uuid.uuid4()
 
     def fit_status(self) -> Preprocessor.FitStatus:
         """Override fit status to test full transform_batch path."""
@@ -53,8 +57,10 @@ class DummyPredictor(Predictor):
         super().__init__(preprocessor)
 
     @classmethod
-    def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "DummyPredictor":
-        checkpoint_data = checkpoint.to_dict()
+    def from_checkpoint(
+        cls, checkpoint: FrameworkCheckpoint, **kwargs
+    ) -> "DummyPredictor":
+        checkpoint_data = load_dict_checkpoint(checkpoint)
         preprocessor = checkpoint.get_preprocessor()
         return cls(checkpoint_data["factor"], preprocessor)
 
@@ -86,8 +92,10 @@ def test_serialization():
 
 
 def test_from_checkpoint():
-    checkpoint = Checkpoint.from_dict({"factor": 2.0})
-    assert DummyPredictor.from_checkpoint(checkpoint).factor == 2.0
+    with create_dict_checkpoint(
+        {"factor": 2.0}, checkpoint_cls=FrameworkCheckpoint
+    ) as checkpoint:
+        assert DummyPredictor.from_checkpoint(checkpoint).factor == 2.0
 
 
 def test_predict_pandas_with_pandas_data():
@@ -95,10 +103,11 @@ def test_predict_pandas_with_pandas_data():
     batch format are pandas dataframes.
     """
     input = pd.DataFrame({"x": [1, 2, 3]})
-    checkpoint = Checkpoint.from_dict(
-        {"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}
-    )
-    predictor = DummyPredictor.from_checkpoint(checkpoint)
+    with create_dict_checkpoint(
+        {"factor": 2.0}, checkpoint_cls=FrameworkCheckpoint
+    ) as checkpoint:
+        checkpoint.set_preprocessor(DummyPreprocessor())
+        predictor = DummyPredictor.from_checkpoint(checkpoint)
 
     actual_output = predictor.predict(input)
     pd.testing.assert_frame_equal(
@@ -114,10 +123,12 @@ def test_predict_pandas_with_pandas_data():
     )
 
     # Test predict with both Numpy and Pandas preprocessor available
-    checkpoint = Checkpoint.from_dict(
-        {"factor": 2.0, PREPROCESSOR_KEY: DummyWithNumpyPreprocessor()}
-    )
-    predictor = DummyPredictor.from_checkpoint(checkpoint)
+    with create_dict_checkpoint(
+        {"factor": 2.0}, checkpoint_cls=FrameworkCheckpoint
+    ) as checkpoint:
+        checkpoint.set_preprocessor(DummyWithNumpyPreprocessor())
+        predictor = DummyPredictor.from_checkpoint(checkpoint)
+
     actual_output = predictor.predict(input)
     pd.testing.assert_frame_equal(
         actual_output, pd.DataFrame({"predictions": [4.0, 8.0, 12.0]})
@@ -138,10 +149,12 @@ def test_predict_numpy_with_numpy_data():
     """
     input = np.array([1, 2, 3])
     # Test predict with only Pandas preprocessor
-    checkpoint = Checkpoint.from_dict(
-        {"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}
-    )
-    predictor = DummyWithNumpyPredictor.from_checkpoint(checkpoint)
+    with create_dict_checkpoint(
+        {"factor": 2.0}, checkpoint_cls=FrameworkCheckpoint
+    ) as checkpoint:
+        checkpoint.set_preprocessor(DummyPreprocessor())
+        predictor = DummyPredictor.from_checkpoint(checkpoint)
+
     actual_output = predictor.predict(input)
     # Numpy is the preferred batch format for prediction.
     # Multiply by 2 from preprocessor, another multiply by 2.0 from predictor
@@ -159,10 +172,11 @@ def test_predict_numpy_with_numpy_data():
 
     # Test predict with Numpy as preferred batch format for both Predictor and
     # Preprocessor.
-    checkpoint = Checkpoint.from_dict(
-        {"factor": 2.0, PREPROCESSOR_KEY: DummyWithNumpyPreprocessor()}
-    )
-    predictor = DummyWithNumpyPredictor.from_checkpoint(checkpoint)
+    with create_dict_checkpoint(
+        {"factor": 2.0}, checkpoint_cls=FrameworkCheckpoint
+    ) as checkpoint:
+        checkpoint.set_preprocessor(DummyWithNumpyPreprocessor())
+        predictor = DummyPredictor.from_checkpoint(checkpoint)
 
     actual_output = predictor.predict(input)
     np.testing.assert_equal(actual_output, np.array([4.0, 8.0, 12.0]))
@@ -178,10 +192,12 @@ def test_predict_pandas_with_numpy_data():
     """
     input = np.array([1, 2, 3])
     # Test predict with only Pandas preprocessor
-    checkpoint = Checkpoint.from_dict(
-        {"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}
-    )
-    predictor = DummyPredictor.from_checkpoint(checkpoint)
+    with create_dict_checkpoint(
+        {"factor": 2.0}, checkpoint_cls=FrameworkCheckpoint
+    ) as checkpoint:
+        checkpoint.set_preprocessor(DummyPreprocessor())
+        predictor = DummyPredictor.from_checkpoint(checkpoint)
+
     actual_output = predictor.predict(input)
 
     # Predictor should return in the same format as the input.
@@ -199,10 +215,11 @@ def test_predict_pandas_with_numpy_data():
     )
 
     # Test predict with both Numpy and Pandas preprocessor available
-    checkpoint = Checkpoint.from_dict(
-        {"factor": 2.0, PREPROCESSOR_KEY: DummyWithNumpyPreprocessor()}
-    )
-    predictor = DummyPredictor.from_checkpoint(checkpoint)
+    with create_dict_checkpoint(
+        {"factor": 2.0}, checkpoint_cls=FrameworkCheckpoint
+    ) as checkpoint:
+        checkpoint.set_preprocessor(DummyWithNumpyPreprocessor())
+        predictor = DummyPredictor.from_checkpoint(checkpoint)
 
     actual_output = predictor.predict(input)
     np.testing.assert_equal(actual_output, np.array([4.0, 8.0, 12.0]))
@@ -234,8 +251,10 @@ def test_from_udf():
 
 @mock.patch.object(DummyPredictor, "_predict_pandas", return_value=mock.DEFAULT)
 def test_kwargs(predict_pandas_mock):
-    checkpoint = Checkpoint.from_dict({"factor": 2.0})
-    predictor = DummyPredictor.from_checkpoint(checkpoint)
+    with create_dict_checkpoint(
+        {"factor": 2.0}, checkpoint_cls=FrameworkCheckpoint
+    ) as checkpoint:
+        predictor = DummyPredictor.from_checkpoint(checkpoint)
 
     input = pd.DataFrame({"x": [1, 2, 3]})
     predictor.predict(input, extra_arg=1)
@@ -249,10 +268,13 @@ def test_get_and_set_preprocessor():
     """Test preprocessor can be set and get."""
 
     preprocessor = DummyPreprocessor(1)
-    predictor = DummyPredictor.from_checkpoint(
-        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: preprocessor}),
-    )
-    assert predictor.get_preprocessor() == preprocessor
+    with create_dict_checkpoint(
+        {"factor": 2.0}, checkpoint_cls=FrameworkCheckpoint
+    ) as checkpoint:
+        checkpoint.set_preprocessor(preprocessor)
+        predictor = DummyPredictor.from_checkpoint(checkpoint)
+
+    assert predictor.get_preprocessor().id == preprocessor.id
 
     test_dataset = pd.DataFrame(range(4))
     output_df = predictor.predict(test_dataset)
@@ -265,7 +287,7 @@ def test_get_and_set_preprocessor():
 
     preprocessor2 = DummyPreprocessor(2)
     predictor.set_preprocessor(preprocessor2)
-    assert predictor.get_preprocessor() == preprocessor2
+    assert predictor.get_preprocessor().id == preprocessor2.id
 
     output_df = predictor.predict(test_dataset)
     assert output_df.to_numpy().squeeze().tolist() == [

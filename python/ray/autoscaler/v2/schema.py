@@ -3,7 +3,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
 
-NODE_DEATH_CAUSE_RAYLET_DIED = "RayletUnexpectedlyDied"
+# TODO(rickyx): once we have graceful shutdown, we could populate
+# the failure detail with the actual termination message. As of now,
+# we will use a more generic message to include cases such as:
+# (idle termination, node death, crash, preemption, etc)
+NODE_DEATH_CAUSE_RAYLET_DIED = "NodeTerminated"
 
 
 @dataclass
@@ -44,6 +48,21 @@ class NodeInfo:
     failure_detail: Optional[str] = None
     # Descriptive details.
     details: Optional[str] = None
+
+    def total_resources(self) -> Dict[str, float]:
+        if self.resource_usage is None:
+            return {}
+        return {r.resource_name: r.total for r in self.resource_usage.usage}
+
+    def available_resources(self) -> Dict[str, float]:
+        if self.resource_usage is None:
+            return {}
+        return {r.resource_name: r.total - r.used for r in self.resource_usage.usage}
+
+    def used_resources(self) -> Dict[str, float]:
+        if self.resource_usage is None:
+            return {}
+        return {r.resource_name: r.used for r in self.resource_usage.usage}
 
 
 @dataclass
@@ -141,7 +160,9 @@ class ResourceDemandSummary:
 @dataclass
 class Stats:
     # How long it took to get the GCS request.
-    gcs_request_time_s: Optional[float] = None
+    # This is required when initializing the Stats since it should be calculated before
+    # the request was made.
+    gcs_request_time_s: float
     # How long it took to get all live instances from node provider.
     none_terminated_node_request_time_s: Optional[float] = None
     # How long for autoscaler to process the scaling decision.
@@ -174,6 +195,12 @@ class ClusterStatus:
     )
     # Query metics
     stats: Stats = field(default_factory=Stats)
+
+    def total_resources(self) -> Dict[str, float]:
+        return {r.resource_name: r.total for r in self.cluster_resource_usage}
+
+    def available_resources(self) -> Dict[str, float]:
+        return {r.resource_name: r.total - r.used for r in self.cluster_resource_usage}
 
     # TODO(rickyx): we don't show infeasible requests as of now.
     # (They will just be pending forever as part of the demands)

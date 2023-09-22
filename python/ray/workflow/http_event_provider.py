@@ -69,19 +69,25 @@ class HTTPEventProvider:
 
     Example Usage
     =============
-    >>> from ray.workflow.http_event_provider import HTTPEventProvider, HTTPListener
-    >>> ray.init(address='auto', namespace='serve')
-    >>> serve.start(detached=True)
-    >>> event_node = workflow.wait_for_event( # doctest: +SKIP
-    ...     HTTPListener, event_key='')
-    >>> handle_event = ... # doctest: +SKIP
-    >>> workflow.run_aync(handle_event.bind(event_node)) # doctest: +SKIP
-    >>>
-    >>> On a separate python process, it sends an event to the HTTPEventProvider.
-    >>> import requests
-    >>> resp = requests.post('http://127.0.0.1:8000/event/send_event/{workflow_id}',
-    ...     json={'event_key':'my_key','event_payload':'testMessage'})
-    >>>
+    .. testcode::
+        :skipif: True
+
+        from ray.workflow.http_event_provider import HTTPEventProvider, HTTPListener
+        ray.init(address='auto', namespace='serve')
+        serve.start(detached=True)
+        event_node = workflow.wait_for_event(
+            HTTPListener, event_key='')
+        handle_event = ...
+        workflow.run_aync(handle_event.bind(event_node))
+
+    On a separate python process, it sends an event to the HTTPEventProvider:
+
+    .. testcode::
+        :skipif: True
+
+        import requests
+        resp = requests.post('http://127.0.0.1:8000/event/send_event/{workflow_id}',
+            json={'event_key':'my_key','event_payload':'testMessage'})
 
     """
 

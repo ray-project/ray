@@ -24,8 +24,7 @@ from ray.data._internal.numpy_support import (
     is_valid_udf_return,
 )
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import _truncated_repr
-from ray.data.aggregate import AggregateFn
+from ray.data._internal.util import _truncated_repr, find_partitions
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -46,7 +45,8 @@ except ImportError:
 if TYPE_CHECKING:
     import pandas
 
-    from ray.data._internal.sort import SortKeyT
+    from ray.data._internal.sort import SortKey
+    from ray.data.aggregate import AggregateFn
 
 
 T = TypeVar("T")
@@ -327,9 +327,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             )
         return self._table.select(columns)
 
-    def _sample(self, n_samples: int, key: "SortKeyT") -> "pyarrow.Table":
+    def _sample(self, n_samples: int, sort_key: "SortKey") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)
-        table = self._table.select([k[0] for k in key])
+        table = self._table.select(sort_key.get_columns())
         return transform_pyarrow.take_table(table, indices)
 
     def count(self, on: str) -> Optional[U]:
@@ -412,13 +412,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
         )
 
     def sort_and_partition(
-        self, boundaries: List[T], key: "SortKeyT", descending: bool
+        self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:
-        if len(key) > 1:
-            raise NotImplementedError(
-                "sorting by multiple columns is not supported yet"
-            )
-
         if self._table.num_rows == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.
@@ -426,33 +421,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         context = DataContext.get_current()
         sort = get_sort_transform(context)
-        col, _ = key[0]
-        table = sort(self._table, key, descending)
+
+        table = sort(self._table, sort_key)
         if len(boundaries) == 0:
             return [table]
 
-        partitions = []
-        # For each boundary value, count the number of items that are less
-        # than it. Since the block is sorted, these counts partition the items
-        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
-        # partition[i]. If `descending` is true, `boundaries` would also be
-        # in descending order and we only need to count the number of items
-        # *greater than* the boundary value instead.
-        if descending:
-            num_rows = len(table[col])
-            bounds = num_rows - np.searchsorted(
-                table[col], boundaries, sorter=np.arange(num_rows - 1, -1, -1)
-            )
-        else:
-            bounds = np.searchsorted(table[col], boundaries)
-        last_idx = 0
-        for idx in bounds:
-            partitions.append(table.slice(last_idx, idx - last_idx))
-            last_idx = idx
-        partitions.append(table.slice(last_idx))
-        return partitions
+        return find_partitions(table, boundaries, sort_key)
 
-    def combine(self, key: str, aggs: Tuple[AggregateFn]) -> Block:
+    def combine(self, key: str, aggs: Tuple["AggregateFn"]) -> Block:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -531,7 +507,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List[Block], key: "SortKeyT", _descending: bool
+        blocks: List[Block], sort_key: "SortKey"
     ) -> Tuple[Block, BlockMetadata]:
         stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.num_rows > 0]
@@ -539,14 +515,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
             ret = ArrowBlockAccessor._empty_table()
         else:
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
-            ret = concat_and_sort(blocks, key, _descending)
+            ret = concat_and_sort(blocks, sort_key)
         return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
 
     @staticmethod
     def aggregate_combined_blocks(
         blocks: List[Block],
         key: str,
-        aggs: Tuple[AggregateFn],
+        aggs: Tuple["AggregateFn"],
         finalize: bool,
     ) -> Tuple[Block, BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.

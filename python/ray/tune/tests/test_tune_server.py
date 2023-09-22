@@ -9,7 +9,9 @@ from ray.rllib import _register_all
 from ray.tune import PlacementGroupFactory
 from ray.tune.experiment.trial import Trial
 from ray.tune.web_server import TuneClient
-from ray.tune.execution.trial_runner import TrialRunner
+from ray.tune.execution.tune_controller import TuneController
+
+from ray.train.tests.util import mock_storage_context
 
 
 def get_valid_port():
@@ -31,11 +33,12 @@ class TuneServerSuite(unittest.TestCase):
 
         ray.init(num_cpus=4, num_gpus=1)
         port = get_valid_port()
-        self.runner = TrialRunner(server_port=port)
+        self.runner = TuneController(server_port=port, storage=mock_storage_context())
         runner = self.runner
         kwargs = {
             "stopping_criterion": {"training_iteration": 3},
             "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+            "storage": mock_storage_context(),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
@@ -86,6 +89,7 @@ class TuneServerSuite(unittest.TestCase):
             trial_id="function_trial",
             stopping_criterion={"training_iteration": 3},
             config={"callbacks": {"on_episode_start": lambda x: None}},
+            storage=mock_storage_context(),
         )
         runner.add_trial(test_trial)
 
@@ -100,7 +104,7 @@ class TuneServerSuite(unittest.TestCase):
     def testStopTrial(self):
         """Check if Stop Trial works."""
         runner, client = self.basicSetup()
-        for i in range(2):
+        while not any(t.status == Trial.RUNNING for t in runner.get_trials()):
             runner.step()
         all_trials = client.get_all_trials()["trials"]
         self.assertEqual(
@@ -119,7 +123,7 @@ class TuneServerSuite(unittest.TestCase):
     def testStopExperiment(self):
         """Check if stop_experiment works."""
         runner, client = self.basicSetup()
-        for i in range(2):
+        while not any(t.status == Trial.RUNNING for t in runner.get_trials()):
             runner.step()
         all_trials = client.get_all_trials()["trials"]
         self.assertEqual(

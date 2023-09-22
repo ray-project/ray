@@ -323,4 +323,4 @@ lifecycle:
 ```
 To ensure graceful termination, `ray stop` is executed prior to the Ray pod's termination.
 
-[IngressDoc]: https://ray-project.github.io/kuberay/guidance/ingress/
+[IngressDoc]: kuberay-ingress

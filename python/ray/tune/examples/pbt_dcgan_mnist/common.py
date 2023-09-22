@@ -1,5 +1,4 @@
 import ray
-from ray.air import Checkpoint
 
 import os
 import torch
@@ -182,7 +181,7 @@ def inception_score(imgs, mnist_model_ref, batch_size=32, splits=1):
 # __INCEPTION_SCORE_end__
 
 
-def train(
+def train_func(
     netD,
     netG,
     optimG,
@@ -269,7 +268,8 @@ def demo_gan(checkpoint_paths):
     img_list = []
     fixed_noise = torch.randn(64, nz, 1, 1)
     for path in checkpoint_paths:
-        checkpoint_dict = Checkpoint.from_directory(path).to_dict()
+        checkpoint_dict = torch.load(os.path.join(path, "checkpoint.pt"))
+
         loadedG = Generator()
         loadedG.load_state_dict(checkpoint_dict["netGmodel"])
         with torch.no_grad():

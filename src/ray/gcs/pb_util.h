@@ -20,7 +20,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
-#include "src/ray/protobuf/experimental/autoscaler.pb.h"
+#include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -52,6 +52,7 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
   *job_info_ptr->mutable_driver_address() = driver_address;
+  job_info_ptr->set_driver_ip_address(driver_address.ip_address());
   job_info_ptr->set_driver_pid(driver_pid);
   job_info_ptr->set_entrypoint(entrypoint);
   *job_info_ptr->mutable_config() = job_config;

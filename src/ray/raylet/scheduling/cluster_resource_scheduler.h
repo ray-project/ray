@@ -24,8 +24,8 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
-#include "ray/common/scheduling/scheduling_resources.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
@@ -135,7 +135,7 @@ class ClusterResourceScheduler {
             std::function<int64_t(void)> get_used_object_store_memory,
             std::function<bool(void)> get_pull_manager_at_capacity);
 
-  bool NodeAlive(scheduling::NodeID node_id) const;
+  bool NodeAvailable(scheduling::NodeID node_id) const;
 
   /// Decrease the available resources of a node when a resource request is
   /// scheduled on the given node.
