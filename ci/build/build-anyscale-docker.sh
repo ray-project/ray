@@ -16,6 +16,7 @@ aws s3api get-object --bucket "${DATAPLANE_S3_BUCKET}" \
 echo "${DATAPLANE_DIGEST}  ${DATAPLANE_FILENAME}" | sha256sum -c
 
 # build anyscale image
-DOCKER_BUILDKIT=1 docker build \
-    --build-arg BASE_IMAGE="$SOURCE_IMAGE" \
-    -t "$DEST_IMAGE" - < "${DATAPLANE_FILENAME}"
+set DOCKER_BUILDKIT=1
+
+docker build --build-arg BASE_IMAGE="$SOURCE_IMAGE" -t "$DEST_IMAGE" \
+    - < "${DATAPLANE_FILENAME}"
