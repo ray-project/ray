@@ -141,9 +141,6 @@ if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
     fi
 fi
 
-# This retagging is required because the Dockerfile hardcodes the base image.
-docker tag "${RAY_IMG}" "rayproject/ray:nightly-${PY_VERSION_CODE}-${IMG_TYPE}${IMG_SUFFIX}"
-
 if [[ "${PY_VERSION_CODE}" == "py37" || "${PY_VERSION_CODE}" == "py311" || "${HOSTTYPE}" == "aarch64" ]]; then
     echo "Skipping ML image for ${PY_VERSION_CODE}" and host ${HOSTTYPE}
     exit 0
@@ -154,22 +151,25 @@ RAY_ML_IMG="${RUNTIME_ML_REPO}:${BUILD_TAG}"
 ANYSCALE_ML_IMG="${RUNTIME_ML_REPO}:${BUILD_TAG}-as"
 echo "--- Build ${RAY_ML_IMG}"
 
-ML_TMP="$(mktemp -d)"
-
-cp docker/ray-ml/Dockerfile "${ML_TMP}/Dockerfile"
-cp docker/ray-ml/install-ml-docker-requirements.sh "${ML_TMP}/."
-cp python/requirements.txt "${ML_TMP}/."
-cp python/requirements_compiled.txt "${ML_TMP}/."
-cp python/requirements/docker/ray-docker-requirements.txt "${ML_TMP}/."
-cp python/requirements/ml/*-requirements.txt "${ML_TMP}/."
-
-(
-    cd "${ML_TMP}"
-    tar --mtime="UTC 2020-01-01" -c -f - . \
-        | docker build --progress=plain \
-            --build-arg BASE_IMAGE="-${PY_VERSION_CODE}-${IMG_TYPE}" \
-            -t "${RAY_ML_IMG}" -f Dockerfile -
-)
+tar --mtime="UTC 2020-01-01" -c -f - \
+    docker/ray-ml/Dockerfile \
+    python/requirements.txt \
+    python/requirements_compiled.txt \
+    python/requirements/ml/dl-cpu-requirements.txt \
+    python/requirements/ml/dl-gpu-requirements.txt \
+    python/requirements/ml/core-requirements.txt \
+    python/requirements/ml/data-requirements.txt \
+    python/requirements/ml/rllib-requirements.txt \
+    python/requirements/ml/rllib-test-requirements.txt \
+    python/requirements/ml/train-requirements.txt \
+    python/requirements/ml/train-test-requirements.txt \
+    python/requirements/ml/tune-requirements.txt \
+    python/requirements/ml/tune-test-requirements.txt \
+    python/requirements/docker/ray-docker-requirements.txt \
+    docker/ray-ml/install-ml-docker-requirements.sh \
+    | docker build --progress=plain \
+        --build-arg FULL_BASE_IMAGE="${RAY_IMG}" \
+        -t "${RAY_ML_IMG}" -f docker/ray-ml/Dockerfile -
 
 echo "--- Build ${ANYSCALE_ML_IMG}"
 docker build --progress=plain \
