@@ -27,29 +27,30 @@ class MiniBatchIteratorBase:
 class MiniBatchCyclicIterator(MiniBatchIteratorBase):
     """This implements a simple multi-agent minibatch iterator.
 
-
     This iterator will split the input multi-agent batch into minibatches where the
     size of batch for each module_id (aka policy_id) is equal to minibatch_size. If the
     input batch is smaller than minibatch_size, then the iterator will cycle through
     the batch until it has covered num_iters epochs.
-
-    Args:
-        batch: The input multi-agent batch.
-        minibatch_size: The size of the minibatch for each module_id.
-        num_iters: The minimum number of epochs to cover. If the input batch is smaller
-            than minibatch_size, then the iterator will cycle through the batch until
-            it has covered at least num_iters epochs.
     """
 
     def __init__(
         self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int = 1
     ) -> None:
+        """Initializes a MiniBatchCyclicIterator instance.
+
+        Args:
+            batch: The input multi-agent batch.
+            minibatch_size: The size of the minibatch for each module_id.
+            num_iters: The minimum number of epochs to cover. If the input batch is smaller
+                than minibatch_size, then the iterator will cycle through the batch until
+                it has covered at least num_iters epochs.
+        """
         super().__init__(batch, minibatch_size, num_iters)
         self._batch = batch
         self._minibatch_size = minibatch_size
         self._num_iters = num_iters
 
-        # mapping from module_id to the start index of the batch
+        # Mapping from module_id to the start index of the batch.
         self._start = {mid: 0 for mid in batch.policy_batches.keys()}
         # mapping from module_id to the number of epochs covered for each module_id
         self._num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
@@ -90,7 +91,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     def get_len(b):
                         return len(b)
 
-                # Cycle through the batch until we have enough samples
+                # Cycle through the batch until we have enough samples.
                 while n_steps >= get_len(module_batch) - s:
                     sample = module_batch[s:]
                     samples_to_concat.append(sample)
@@ -104,15 +105,13 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                 if e > s:
                     samples_to_concat.append(module_batch[s:e])
 
-                # concatenate all the samples, we should have minibatch_size of sample
-                # after this step
+                # Concatenate all the samples, we should have a sample of size
+                # self._minibatch_size after this step.
                 minibatch[module_id] = concat_samples(samples_to_concat)
-                # roll minibatch to zero when we reach the end of the batch
+                # Start from index 0 again when we reach the end of the batch.
                 self._start[module_id] = e
 
-            # Note (Kourosh): env_steps is the total number of env_steps that this
-            # multi-agent batch is covering. It should be simply inherited from the
-            # original multi-agent batch.
+            # Each module batch in MultiAgentBatch has length `self._minibatch_size`.
             minibatch = MultiAgentBatch(minibatch, self._minibatch_size)
             yield minibatch
 

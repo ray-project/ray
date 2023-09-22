@@ -4,7 +4,20 @@ import numpy as np
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.minibatch_utils import MiniBatchCyclicIterator
 
+
 CONFIGS = [
+    {
+        "mini_batch_size": 128,
+        "num_sgd_iter": 3,
+        "agent_steps": (512, 512),
+        "turn_based": True,
+    },
+    {
+        "mini_batch_size": 256,
+        "num_sgd_iter": 3,
+        "agent_steps": (30, 30),
+        "turn_based": True,
+    },
     {"mini_batch_size": 128, "num_sgd_iter": 3, "agent_steps": (56, 56)},
     {"mini_batch_size": 128, "num_sgd_iter": 7, "agent_steps": (56, 56)},
     {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 56)},
@@ -23,8 +36,12 @@ class TestMinibatchUtils(unittest.TestCase):
             mini_batch_size = config["mini_batch_size"]
             num_sgd_iter = config["num_sgd_iter"]
             agent_steps = config["agent_steps"]
+            # Do the agents take turns and move strictly at alternating timesteps?
+            turn_based = config.get("turn_based")
+            if turn_based:
+                self.assertEqual(agent_steps[0], agent_steps[1])
 
-            num_env_steps = max(agent_steps)
+            num_env_steps = max(agent_steps) if not turn_based else sum(agent_steps)
             sample_batches = {
                 f"pol{i}": SampleBatch({"obs": np.arange(agent_steps[i])})
                 for i in range(len(agent_steps))
@@ -38,8 +55,13 @@ class TestMinibatchUtils(unittest.TestCase):
                 print("-" * 80)
                 print(batch["pol0"]["obs"])
                 print("*" * 80)
+
+                # Make sure each sliced sub-batch is of the correct size.
+                self.assertEqual(len(batch), mini_batch_size)
+
                 # Check that for each policy the batch size is equal to the
-                # mini_batch_size
+                # mini_batch_size. This should be independent on being `turn_based`
+                # or not.
                 for policy_batch in batch.policy_batches.values():
                     self.assertEqual(policy_batch.count, mini_batch_size)
                 iteration_counter += 1
