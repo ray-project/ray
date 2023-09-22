@@ -115,7 +115,6 @@ def test_multi_node(start_cluster, option: str, source: str):
 @pytest.mark.parametrize("working_dir", [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
 def test_runtime_context(start_cluster, working_dir):
     """Tests that the working_dir is propagated in the runtime_context."""
-
     cluster, address = start_cluster
     ray.init(runtime_env={"working_dir": working_dir})
 

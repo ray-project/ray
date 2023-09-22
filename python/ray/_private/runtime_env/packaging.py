@@ -185,6 +185,9 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     >>> parse_uri("https://test.com/file.zip")
     (<Protocol.HTTPS: 'https'>, 'https_test_com_file.zip')
 
+    >>> parse_uri("https://test.com/file.whl")
+    (<Protocol.HTTPS: 'https'>, 'file.whl')
+
     """
     uri = urlparse(pkg_uri)
     try:
@@ -199,7 +202,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         if pkg_uri.endswith(".whl"):
             # Don't modify the .whl filename. See
             # https://peps.python.org/pep-0427/#file-name-convention
-            # for more informationl.
+            # for more information.
             package_name = pkg_uri.split("/")[-1]
         else:
             package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
@@ -736,8 +739,7 @@ async def download_and_unpack_package(
                     with open_file(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
 
-                pkg_format = Path(pkg_name).suffix
-                if pkg_format == ".zip":
+                if pkg_file.suffix == ".zip":
                     unzip_package(
                         package_path=pkg_file,
                         target_dir=local_dir,
@@ -745,11 +747,11 @@ async def download_and_unpack_package(
                         unlink_zip=True,
                         logger=logger,
                     )
-                elif pkg_format == ".whl":
+                elif pkg_file.suffix == ".whl":
                     return str(pkg_file)
                 else:
                     raise NotImplementedError(
-                        f"Package format {pkg_format} is ",
+                        f"Package format {pkg_file.suffix} is ",
                         "not supported for remote protocols",
                     )
             else:
