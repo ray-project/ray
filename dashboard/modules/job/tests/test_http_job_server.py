@@ -77,7 +77,6 @@ def test_submit_job_with_resources(shutdown_only):
     ]:
         job_id = client.submit_job(entrypoint="echo hello", **kwargs)
         data = client.get_job_info(job_id)
-
         assert "waiting for resources" in data.message
 
     # Check the case of sufficient resources.
