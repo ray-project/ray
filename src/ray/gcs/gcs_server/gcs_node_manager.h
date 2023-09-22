@@ -34,9 +34,9 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+class GcsMonitorServerTest;
 namespace gcs {
 
-class GcsMonitorServerTest;
 class GcsAutoscalerStateManagerTest;
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.

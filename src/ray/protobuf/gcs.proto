@@ -297,7 +297,7 @@ message NodeSnapshot {
     ACTIVE = 2;
     // Node is draining.
     DRAINING = 3;
-  } 
+  }
 
   // The idle state of the node.
   State state = 1;
@@ -370,7 +370,7 @@ message GcsNodeInfo {
   // The key-value labels of this node.
   map<string, string> labels = 26;
   
-  // A snapshot of node state. 
+  // A snapshot of node state.
   NodeSnapshot state_snapshot = 28;
 }
 

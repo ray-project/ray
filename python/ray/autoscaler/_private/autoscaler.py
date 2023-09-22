@@ -103,7 +103,7 @@ class AutoscalerSummary:
     node_availability_summary: NodeAvailabilitySummary = field(
         default_factory=lambda: NodeAvailabilitySummary({})
     )
-    node_activity: List[Tuple[NodeIP, NodeType, str]] = None
+    node_activity: Optional[List[Tuple[NodeIP, NodeType, str]]] = None
     pending_resources: Dict[str, int] = field(default_factory=lambda: {})
     # A mapping from node name (the same key as `usage_by_node`) to node type.
     # Optional for deployment modes which have the concept of node types and
