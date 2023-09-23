@@ -37,7 +37,7 @@ class HTTPProxyState:
         actor_name: str,
         node_id: str,
         node_ip: str,
-        consecutive_health_check_failures: int = 0,
+        proxy_restart_count: int = 0,
     ):
         self._actor_handle = actor_handle
         self._actor_name = actor_name
@@ -47,7 +47,8 @@ class HTTPProxyState:
         self._health_check_obj_ref = None
         self._last_health_check_time: float = time.time()
         self._shutting_down = False
-        self._consecutive_health_check_failures = consecutive_health_check_failures
+        self._consecutive_health_check_failures: int = 0
+        self._proxy_restart_count = proxy_restart_count
 
         self._update_draining_obj_ref = None
         self._is_drained_obj_ref = None
@@ -78,8 +79,8 @@ class HTTPProxyState:
         return self._actor_details
 
     @property
-    def consecutive_health_check_failures(self) -> int:
-        return self._consecutive_health_check_failures
+    def proxy_restart_count(self) -> int:
+        return self._proxy_restart_count
 
     def set_status(self, status: ProxyStatus) -> None:
         """Sets _status and updates _actor_details with the new status."""
@@ -228,7 +229,7 @@ class HTTPProxyState:
 
         # Doing a linear backoff for the ready check timeout.
         ready_check_timeout = (
-            self.consecutive_health_check_failures + 1
+            self.proxy_restart_count + 1
         ) * PROXY_READY_CHECK_TIMEOUT_S
         if self._status == ProxyStatus.STARTING:
             finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
@@ -344,7 +345,7 @@ class HTTPProxyStateManager:
             self._config = HTTPOptions()
         self._grpc_options = grpc_options or gRPCOptions()
         self._proxy_states: Dict[NodeId, HTTPProxyState] = dict()
-        self._proxy_consecutive_health_check_failures: Dict[NodeId, int] = dict()
+        self._proxy_restart_counts: Dict[NodeId, int] = dict()
         self._head_node_id: str = head_node_id
         self._proxy_actor_class = proxy_actor_class
         self._soft_node_affinity = soft_node_affinity
@@ -540,15 +541,12 @@ class HTTPProxyStateManager:
                     node_ip_address=node_ip_address,
                 )
 
-            failure_count = self._proxy_consecutive_health_check_failures.get(
-                node_id, 0
-            )
             self._proxy_states[node_id] = HTTPProxyState(
                 actor_handle=proxy,
                 actor_name=name,
                 node_id=node_id,
                 node_ip=node_ip_address,
-                consecutive_health_check_failures=failure_count,
+                proxy_restart_count=self._proxy_restart_counts.get(node_id, 0),
             )
 
     def _stop_proxies_if_needed(self) -> bool:
@@ -574,7 +572,5 @@ class HTTPProxyStateManager:
 
         for node_id in to_stop:
             proxy_state = self._proxy_states.pop(node_id)
-            self._proxy_consecutive_health_check_failures[node_id] = (
-                proxy_state.consecutive_health_check_failures + 1
-            )
+            self._proxy_restart_counts[node_id] = proxy_state.proxy_restart_count + 1
             proxy_state.shutdown()
