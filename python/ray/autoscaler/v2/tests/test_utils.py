@@ -520,11 +520,7 @@ Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00002
 
 Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00003
  Usage:
-  0.0/1.0 CPU
-
-Node Activity
---------------------------------------------------------
-(no activity)"""
+  0.0/1.0 CPU"""
     assert actual == expected
 
 

@@ -3216,16 +3216,13 @@ def test_info_string_verbose():
         ],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.6", "p3.2xlarge")],
-        node_activities=[
-            (
-                "192.168.1.1",
+        node_activities={
+            "192.168.1.1": (
                 "m4.4xlarge",
-                """ CPU in use.
- GPU in use.
- Currently leased workers.""",
+                ["CPU in use.", "GPU in use.", "Active workers."],
             ),
-            ("192.168.1.2", "m4.4xlarge", " Currently leased workers."),
-        ],
+            "192.168.1.2": ("m4.4xlarge", ["GPU in use.", "Active workers."]),
+        },
     )
 
     expected = """
@@ -3268,6 +3265,10 @@ Node: 192.168.1.1
   0.1/1 accelerator_type:V100
   1.00GiB/4.00GiB memory
   3.14GiB/4.00GiB object_store_memory
+ Activity:
+  CPU in use.
+  GPU in use.
+  Active workers.
 
 Node: 192.168.1.2
  Usage:
@@ -3276,16 +3277,9 @@ Node: 192.168.1.2
   0.9/1 accelerator_type:V100
   1.00GiB/12.00GiB memory
   0B/4.00GiB object_store_memory
-
-Node Activity
---------------------------------------------------------
-Node: 192.168.1.1 (m4.4xlarge)
- CPU in use.
- GPU in use.
- Currently leased workers.
-
-Node: 192.168.1.2 (m4.4xlarge)
- Currently leased workers.
+ Activity:
+  GPU in use.
+  Active workers.
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3393,10 +3387,6 @@ Node: 192.168.1.2 (gpu-worker)
   0.9/1 accelerator_type:V100
   1.00GiB/12.00GiB memory
   0B/4.00GiB object_store_memory
-
-Node Activity
---------------------------------------------------------
-(no activity)
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3472,10 +3462,6 @@ Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
  {'CPU': 16}: 100+ from request_resources()
-
-Node Activity
---------------------------------------------------------
-(no activity)
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3662,10 +3648,6 @@ Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
  {'CPU': 16}: 100+ from request_resources()
-
-Node Activity
---------------------------------------------------------
-(no activity)
 """.strip()
     actual = format_info_string(
         lm_summary,

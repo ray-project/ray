@@ -125,10 +125,10 @@ class DataOrganizer:
         node = DataSource.nodes.get(node_id, {})
 
         if get_summary:
-            node_stats.pop("coreWorkersStats", None)
-        else:
             node_physical_stats.pop("workers", None)
             node_stats.pop("workersStats", None)
+        else:
+            node_stats.pop("coreWorkersStats", None)
         store_stats = node_stats.get("storeStats", {})
         used = int(store_stats.get("objectStoreBytesUsed", 0))
         # objectStoreBytesAvail == total in the object_manager.cc definition.
