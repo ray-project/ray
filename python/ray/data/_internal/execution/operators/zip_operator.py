@@ -250,7 +250,7 @@ def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:
 def _try_zip(block: Block, other_block: Block) -> Block:
     try:
         return BlockAccessor.for_block(block).zip(other_block)
-    except Exception as e:
+    except ValueError as e:
         pd = _lazy_import_pandas()
         if pd and isinstance(other_block, pd.DataFrame) and hasattr(block, "to_pandas"):
             return BlockAccessor.for_block(block.to_pandas()).zip(other_block)
