@@ -417,6 +417,7 @@ def setup(app):
     # https://github.com/ines/termynal
     app.add_js_file("js/termynal.js", defer="defer")
     app.add_js_file("js/custom.js", defer="defer")
+    app.add_js_file("js/assistant.js", defer="defer")
 
     app.add_js_file("js/top-navigation.js", defer="defer")
 
