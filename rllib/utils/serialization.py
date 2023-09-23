@@ -271,7 +271,7 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
     def _dict(d: Dict) -> gym.spaces.Discrete:
         # We need to always use an OrderedDict here to cover the following two ways, by
         # which a user might construct a Dict space originally. We need to restore this
-        # original Dict space exactly as the user intended to.
+        # original Dict space with the exact order of keys the user intended to.
         # - User provides an OrderedDict inside the gym.spaces.Dict constructor ->
         #  gymnasium should NOT further sort the keys. The same (user-provided) order
         #  must be restored.
