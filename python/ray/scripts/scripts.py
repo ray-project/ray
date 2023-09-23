@@ -1192,7 +1192,7 @@ def stop(force: bool, grace_period: int, port: int):
             gcs_port_filter,
         ]
     else:
-        bucket_port_filters = [None] * len(bucket)
+        bucket_port_filters = [None] * len(buckets)
 
     for bucket, port_filters in zip(buckets, bucket_port_filters):
         found, stopped, alive = kill_procs(
