@@ -252,7 +252,7 @@ def _try_zip(block: Block, other_block: Block) -> Block:
     except Exception as e:
         import pandas
 
-        if isinstance(other_block, pandas.DataFrame):
+        if isinstance(other_block, pandas.DataFrame) and hasattr(block, "to_pandas"):
             return BlockAccessor.for_block(block.to_pandas()).zip(other_block)
         else:
-            raise e
+            raise "Failed to zip: {}".format(e)
