@@ -149,7 +149,7 @@ print(ray.is_initialized())
         env=tls_env,
     )
     # ignore logger warning on sigterm handler
-    out_msg = out.stip().split("\n")[0]
+    out_msg = out.strip().split("\n")[0]
     assert out_msg == "True"
 
 
