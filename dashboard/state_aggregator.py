@@ -185,9 +185,20 @@ class StateAPIManager:
                 if filter_column not in datum:
                     match = False
                 elif filter_predicate == "=":
-                    match = datum[filter_column] == filter_value
+                    if isinstance(filter_value, str) and isinstance(
+                        datum[filter_column], str
+                    ):
+                        # Case insensitive match for string filter values.
+                        match = datum[filter_column].lower() == filter_value.lower()
+                    else:
+                        match = datum[filter_column] == filter_value
                 elif filter_predicate == "!=":
-                    match = datum[filter_column] != filter_value
+                    if isinstance(filter_value, str) and isinstance(
+                        datum[filter_column], str
+                    ):
+                        match = datum[filter_column].lower() != filter_value.lower()
+                    else:
+                        match = datum[filter_column] != filter_value
                 else:
                     raise ValueError(
                         f"Unsupported filter predicate {filter_predicate} is given. "
@@ -518,7 +529,7 @@ class StateAPIManager:
             We don't have id -> data mapping like other API because runtime env
             doesn't have unique ids.
         """
-        agent_ids = self._client.get_all_registered_agent_ids()
+        agent_ids = self._client.get_all_registered_runtime_env_agent_ids()
         replies = await asyncio.gather(
             *[
                 self._client.get_runtime_envs_info(node_id, timeout=option.timeout)
@@ -530,7 +541,9 @@ class StateAPIManager:
         result = []
         unresponsive_nodes = 0
         total_runtime_envs = 0
-        for node_id, reply in zip(self._client.get_all_registered_agent_ids(), replies):
+        for node_id, reply in zip(
+            self._client.get_all_registered_runtime_env_agent_ids(), replies
+        ):
             if isinstance(reply, DataSourceUnavailable):
                 unresponsive_nodes += 1
                 continue

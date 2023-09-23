@@ -3,6 +3,7 @@ from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
+import ray
 from ray._private.ray_constants import AUTOSCALER_NAMESPACE, AUTOSCALER_V2_ENABLED_KEY
 from ray._private.utils import binary_to_hex
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
@@ -291,9 +292,12 @@ class ClusterStatusParser:
 
         for constraint_request in state.cluster_resource_constraints:
             demand = ClusterConstraintDemand(
-                bundles_by_count=cls._aggregate_resource_requests_by_shape(
-                    constraint_request.min_bundles
-                ),
+                bundles_by_count=[
+                    ResourceRequestByCount(
+                        bundle=dict(r.request.resources_bundle.items()), count=r.count
+                    )
+                    for r in constraint_request.min_bundles
+                ]
             )
             constraint_demand.append(demand)
 
@@ -527,7 +531,13 @@ def is_autoscaler_v2() -> bool:
         Exception: if GCS address could not be resolved (e.g. ray.init() not called)
     """
 
-    # See src/ray/common/constants.h for the definition of this key.
+    # If env var is set to enable autoscaler v2, we should always return True.
+    if ray._config.enable_autoscaler_v2():
+        # TODO(rickyx): Once we migrate completely to v2, we should remove this.
+        # While this short-circuit may allow client-server inconsistency
+        # (e.g. client running v1, while server running v2), it's currently
+        # not possible with existing use-cases.
+        return True
 
     global cached_is_autoscaler_v2
     if cached_is_autoscaler_v2 is not None:
@@ -538,6 +548,7 @@ def is_autoscaler_v2() -> bool:
             "GCS address could not be resolved (e.g. ray.init() not called)"
         )
 
+    # See src/ray/common/constants.h for the definition of this key.
     cached_is_autoscaler_v2 = (
         _internal_kv_get(
             AUTOSCALER_V2_ENABLED_KEY.encode(), namespace=AUTOSCALER_NAMESPACE.encode()

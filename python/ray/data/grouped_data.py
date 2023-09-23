@@ -10,6 +10,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
+from ray.data._internal.sort import SortKey
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.aggregate._aggregate import _AggregateOnKeyBase
 from ray.data.block import (
@@ -45,8 +46,7 @@ class _GroupbyOp(ShuffleOp):
         else:
             partitions = BlockAccessor.for_block(block).sort_and_partition(
                 boundaries,
-                [(key, "ascending")] if isinstance(key, str) else key,
-                descending=False,
+                SortKey(key),
             )
         parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
         meta = BlockAccessor.for_block(block).get_metadata(
@@ -160,9 +160,7 @@ class GroupedData:
             else:
                 boundaries = sort.sample_boundaries(
                     blocks.get_blocks(),
-                    [(self._key, "ascending")]
-                    if isinstance(self._key, str)
-                    else self._key,
+                    SortKey(self._key),
                     num_reducers,
                     task_ctx,
                 )

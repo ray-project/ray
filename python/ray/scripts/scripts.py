@@ -22,6 +22,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._private.utils import (
+    check_ray_client_dependencies_installed,
     parse_resources_json,
     parse_node_labels_json,
 )
@@ -345,8 +346,9 @@ def debug(address):
     "--ray-client-server-port",
     required=False,
     type=int,
-    default=10001,
-    help="the port number the ray client server binds on, default to 10001.",
+    default=None,
+    help="the port number the ray client server binds on, default to 10001, "
+    "or None if ray[client] is not installed.",
 )
 @click.option(
     "--memory",
@@ -623,6 +625,15 @@ def start(
         temp_dir = None
 
     redirect_output = None if not no_redirect_output else True
+
+    # no  client, no  port -> ok
+    # no  port, has client -> default to 10001
+    # has port, no  client -> value error
+    # has port, has client -> ok, check port validity
+    has_ray_client = check_ray_client_dependencies_installed()
+    if has_ray_client and ray_client_server_port is None:
+        ray_client_server_port = 10001
+
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -909,6 +920,7 @@ def start(
         node = ray._private.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
         )
+        temp_dir = node.get_temp_dir_path()
 
         # Ray and Python versions should probably be checked before
         # initializing Node.
@@ -1134,6 +1146,7 @@ def stop(force: bool, grace_period: int, port: int):
         psutil.wait_procs(alive, timeout=2)
         return total_found, total_stopped, alive
 
+    # Make sure use isn't trying to kill multiple processes at once unintentionally
     if len(services.find_gcs_addresses()) > 1 and port is None:
         if cli_logger.interactive:
             confirm_kill_all_clusters = cli_logger.confirm(
@@ -1147,45 +1160,47 @@ def stop(force: bool, grace_period: int, port: int):
         else:
             cli_logger.print(ray_constants.RAY_STOP_MULTIPLE_CLUSTERS_WARNING)
 
+    # Process killing procedure: we put processes into 3 buckets.
+    # Bucket 1: raylet
+    # Bucket 2: all other processes, e.g. dashboard, runtime env agents
+    # Bucket 3: gcs_server.
+    #
+    # For each bucket, we send sigterm to all processes, then wait for 30s, then if
+    # they are still alive, send sigkill.
+    processes_to_kill = RAY_PROCESSES
+    # Raylet should exit before all other processes exit.
+    # Otherwise, fate-sharing agents will complain and suicide.
+    assert processes_to_kill[0][0] == "raylet"
+
     # GCS should exit after all other processes exit.
     # Otherwise, some of processes may exit with an unexpected
     # exit code which breaks ray start --block.
-    processes_to_kill = RAY_PROCESSES
-    gcs = processes_to_kill[0]
-    assert gcs[0] == "gcs_server"
+    assert processes_to_kill[-1][0] == "gcs_server"
 
-    grace_period_to_kill_gcs = int(grace_period / 2)
-    grace_period_to_kill_components = grace_period - grace_period_to_kill_gcs
+    buckets = [[processes_to_kill[0]], processes_to_kill[1:-1], [processes_to_kill[-1]]]
 
-    # Kill everything except GCS.
-    non_gcs_proc_arg_filters = (
-        [f"--gcs-address={address}"] if address is not None else None
-    )
-    found, stopped, alive = kill_procs(
-        force,
-        grace_period_to_kill_components,
-        processes_to_kill[1:],
-        non_gcs_proc_arg_filters,
-    )
-    total_procs_found += found
-    total_procs_stopped += stopped
-    procs_not_gracefully_killed.extend(alive)
-
-    # Kill GCS.
+    # Add additional filters to buckets if we only wanted to kill processes on
+    # a single port
     if address is not None:
         url = address.split(":")[0]
-        gcs_proc_arg_filters = [f"--node-ip-address={url}", f"--gcs_server_port={port}"]
+        generic_port_filter = [f"--gcs-address={address}"]
+        gcs_port_filter = [f"--node-ip-address={url}", f"--gcs_server_port={port}"]
+
+        bucket_port_filters = [
+            generic_port_filter,
+            generic_port_filter,
+            gcs_port_filter,
+        ]
     else:
-        gcs_proc_arg_filters = None
-    found, stopped, alive = kill_procs(
-        force,
-        grace_period_to_kill_gcs,
-        [gcs],
-        gcs_proc_arg_filters,
-    )
-    total_procs_found += found
-    total_procs_stopped += stopped
-    procs_not_gracefully_killed.extend(alive)
+        bucket_port_filters = [None] * len(bucket)
+
+    for bucket, port_filters in zip(buckets, bucket_port_filters):
+        found, stopped, alive = kill_procs(
+            force, grace_period / len(buckets), bucket, port_filters
+        )
+        total_procs_found += found
+        total_procs_stopped += stopped
+        procs_not_gracefully_killed.extend(alive)
 
     # Print the termination result.
     if total_procs_found == 0:

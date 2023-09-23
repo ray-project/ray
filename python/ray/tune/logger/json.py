@@ -94,6 +94,10 @@ class JsonLoggerCallback(LoggerCallback):
         # Make sure logdir exists
         trial.init_local_path()
         local_file = os.path.join(trial.local_path, EXPR_RESULT_FILE)
+
+        # Resume the file from remote storage.
+        self._restore_from_remote(EXPR_RESULT_FILE, trial)
+
         self._trial_files[trial] = open(local_file, "at")
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):

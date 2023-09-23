@@ -691,7 +691,7 @@ class ArrowVariableShapedTensorArray(
                 raise ValueError(
                     "ArrowVariableShapedTensorArray only supports tensor elements that "
                     "all have the same number of dimensions, but got tensor elements "
-                    f"with dimensions: {ndim}, {a.ndim}: {arr}"
+                    f"with dimensions: {ndim}, {a.ndim}"
                 )
             ndim = a.ndim
             shapes.append(a.shape)

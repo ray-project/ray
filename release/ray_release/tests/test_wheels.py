@@ -55,7 +55,7 @@ def test_get_ray_wheels_url(remove_buildkite_env):
     )
     assert (
         url == "https://s3-us-west-2.amazonaws.com/ray-wheels/master/1234/"
-        "ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+        "ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
     )
 
 

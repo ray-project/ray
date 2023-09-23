@@ -725,6 +725,20 @@ def get_demand_report(lm_summary: LoadMetricsSummary):
     return demand_report
 
 
+def get_per_node_breakdown_as_dict(
+    lm_summary: LoadMetricsSummary,
+) -> dict:
+    per_node_breakdown = {}
+
+    for node_id, usage in lm_summary.usage_by_node.items():
+        usage_string = ""
+        for line in parse_usage(usage, verbose=True):
+            usage_string += f"{line}\n"
+        per_node_breakdown[node_id] = usage_string.strip()
+
+    return per_node_breakdown
+
+
 def get_per_node_breakdown(
     lm_summary: LoadMetricsSummary,
     node_type_mapping: Optional[Dict[str, float]],
@@ -796,7 +810,7 @@ def format_info_string(
 
     failure_lines = []
     for ip, node_type in autoscaler_summary.failed_nodes:
-        line = f" {node_type}: RayletUnexpectedlyDied (ip: {ip})"
+        line = f" {node_type}: NodeTerminated (ip: {ip})"
         failure_lines.append(line)
     if autoscaler_summary.node_availability_summary:
         records = sorted(

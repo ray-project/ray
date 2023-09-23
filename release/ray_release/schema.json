@@ -26,7 +26,8 @@
 					"enum": [
 						"3.7",
 						"3.8",
-						"3.9"
+						"3.9",
+						"3.11"
 					]
 				},
 				"frequency": {
@@ -69,9 +70,6 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
-				"cluster_env": {
-					"type": "string"
-				},
 				"cluster_compute": {
 					"type": "string"
 				},
@@ -90,8 +88,8 @@
 				}
 			},
 			"required": [
-				"cluster_compute",
-				"cluster_env"
+				"byod",
+				"cluster_compute"
 			],
 			"title": "Cluster"
 		},
@@ -104,7 +102,8 @@
 					"enum": [
 						"cpu",
 						"gpu",
-						"cu118"
+						"cu118",
+						"cu121"
 					]
 				},
 				"post_build_script":{

@@ -10,11 +10,11 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torchvision import datasets
-from ray.tune.examples.mnist_pytorch import train, test, ConvNet,\
+from ray.tune.examples.mnist_pytorch import train_func, test_func, ConvNet,\
     get_data_loaders
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils import validate_save_restore
 # __tutorial_imports_end__
@@ -37,16 +37,16 @@ class PytorchTrainable(tune.Trainable):
             momentum=config.get("momentum", 0.9))
 
     def step(self):
-        train(self.model, self.optimizer, self.train_loader)
-        acc = test(self.model, self.test_loader)
+        train_func(self.model, self.optimizer, self.train_loader)
+        acc = test_func(self.model, self.test_loader)
         return {"mean_accuracy": acc}
 
     def save_checkpoint(self, checkpoint_dir):
         checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
         torch.save(self.model.state_dict(), checkpoint_path)
-        return checkpoint_path
 
-    def load_checkpoint(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_dir):
+        checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
         self.model.load_state_dict(torch.load(checkpoint_path))
 
     def reset_config(self, new_config):
@@ -72,7 +72,6 @@ if __name__ == "__main__":
 
     # check if PytorchTrainble will save/restore correctly before execution
     validate_save_restore(PytorchTrainable)
-    validate_save_restore(PytorchTrainable, use_object_store=True)
 
     # __pbt_begin__
     scheduler = PopulationBasedTraining(
@@ -104,11 +103,11 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         PytorchTrainable,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="pbt_test",
             stop=stopper,
             verbose=1,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_score_attribute="mean_accuracy",
                 checkpoint_frequency=5,
                 num_to_keep=4,
@@ -131,11 +130,3 @@ if __name__ == "__main__":
 
     best_result = results.get_best_result()
     best_checkpoint = best_result.checkpoint
-
-    restored_trainable = PytorchTrainable()
-    restored_trainable.restore(best_checkpoint)
-    best_model = restored_trainable.model
-    # Note that test only runs on a small random set of the test data, thus the
-    # accuracy may be different from metrics shown in tuning process.
-    test_acc = test(best_model, get_data_loaders()[1])
-    print("best model accuracy: ", test_acc)

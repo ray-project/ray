@@ -1,6 +1,6 @@
-
-
 .. _catalog-reference-docs:
+
+.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
 
 .. include:: /_includes/rllib/rlmodules_rollout.rst
 

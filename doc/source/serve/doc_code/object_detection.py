@@ -1,5 +1,3 @@
-from contextlib import contextmanager
-
 # __example_code_start__
 import torch
 from PIL import Image
@@ -9,16 +7,19 @@ from fastapi.responses import Response
 from fastapi import FastAPI
 
 from ray import serve
+from ray.serve.handle import DeploymentHandle
 
 
 app = FastAPI()
 
 
-@serve.deployment(num_replicas=1, route_prefix="/")
+@serve.deployment(num_replicas=1)
 @serve.ingress(app)
 class APIIngress:
     def __init__(self, object_detection_handle) -> None:
-        self.handle = object_detection_handle
+        self.handle: DeploymentHandle = object_detection_handle.options(
+            use_new_handle_api=True,
+        )
 
     @app.get(
         "/detect",
@@ -26,8 +27,7 @@ class APIIngress:
         response_class=Response,
     )
     async def detect(self, image_url: str):
-        image_ref = await self.handle.detect.remote(image_url)
-        image = await image_ref
+        image = await self.handle.detect.remote(image_url)
         file_stream = BytesIO()
         image.save(file_stream, "jpeg")
         return Response(content=file_stream.getvalue(), media_type="image/jpeg")
@@ -52,16 +52,6 @@ entrypoint = APIIngress.bind(ObjectDetection.bind())
 
 # __example_code_end__
 
-
-@contextmanager
-def serve_session(deployment):
-    handle = serve.run(deployment)
-    try:
-        yield handle
-    finally:
-        serve.shutdown()
-
-
 if __name__ == "__main__":
     import ray
     import requests
@@ -69,11 +59,12 @@ if __name__ == "__main__":
 
     ray.init(runtime_env={"pip": ["seaborn", "ultralytics"]})
 
-    with serve_session(entrypoint):
-        image_url = "https://ultralytics.com/images/zidane.jpg"
-        resp = requests.get(f"http://127.0.0.1:8000/detect?image_url={image_url}")
+    serve.run(entrypoint)
+    image_url = "https://ultralytics.com/images/zidane.jpg"
+    resp = requests.get(f"http://127.0.0.1:8000/detect?image_url={image_url}")
 
-        with open("output.jpeg", "wb") as f:
-            f.write(resp.content)
+    with open("output.jpeg", "wb") as f:
+        f.write(resp.content)
 
-        assert os.path.exists("output.jpeg")
+    assert os.path.exists("output.jpeg")
+    os.remove("output.jpeg")

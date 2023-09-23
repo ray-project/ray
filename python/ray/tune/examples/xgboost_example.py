@@ -9,10 +9,7 @@ import xgboost as xgb
 import ray
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.integration.xgboost import (
-    TuneReportCheckpointCallback,
-    TuneReportCallback,
-)
+from ray.tune.integration.xgboost import TuneReportCheckpointCallback
 
 
 def train_breast_cancer(config: dict):
@@ -33,7 +30,7 @@ def train_breast_cancer(config: dict):
         train_set,
         evals=[(test_set, "test")],
         verbose_eval=False,
-        callbacks=[TuneReportCheckpointCallback(filename="model.xgb")],
+        callbacks=[TuneReportCheckpointCallback(filename="model.xgb", frequency=1)],
     )
 
 
@@ -57,11 +54,15 @@ def train_breast_cancer_cv(config: dict):
         verbose_eval=False,
         stratified=True,
         # Checkpointing is not supported for CV
-        callbacks=[TuneReportCallback(results_postprocessing_fn=average_cv_folds)],
+        callbacks=[
+            TuneReportCheckpointCallback(
+                results_postprocessing_fn=average_cv_folds, frequency=0
+            )
+        ],
     )
 
 
-def get_best_model_checkpoint(best_result: "ray.air.Result"):
+def get_best_model_checkpoint(best_result: "ray.train.Result"):
     best_bst = xgb.Booster()
     with best_result.checkpoint.as_directory() as checkpoint_dir:
         best_bst.load_model(os.path.join(checkpoint_dir, "model.xgb"))

@@ -194,22 +194,7 @@ def rollout(
     """Old rollout script. Please use `rllib evaluate` instead."""
     from ray.rllib.utils.deprecation import deprecation_warning
 
-    deprecation_warning(old="rllib rollout", new="rllib evaluate", error=False)
-
-    return evaluate(
-        checkpoint=checkpoint,
-        algo=algo,
-        env=env,
-        local_mode=local_mode,
-        render=render,
-        steps=steps,
-        episodes=episodes,
-        out=out,
-        config=config,
-        save_info=save_info,
-        use_shelve=use_shelve,
-        track_progress=track_progress,
-    )
+    deprecation_warning(old="rllib rollout", new="rllib evaluate", error=True)
 
 
 @app.callback()

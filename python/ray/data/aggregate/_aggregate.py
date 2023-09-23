@@ -8,15 +8,8 @@ from ray.data._internal.null_aggregate import (
     _null_wrap_init,
     _null_wrap_merge,
 )
-from ray.data.block import (
-    AggType,
-    Block,
-    BlockAccessor,
-    KeyType,
-    T,
-    U,
-    _validate_key_fn,
-)
+from ray.data._internal.sort import SortKey
+from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -90,7 +83,7 @@ class _AggregateOnKeyBase(AggregateFn):
         self._key_fn = on
 
     def _validate(self, schema: Optional[Union[type, "pa.lib.Schema"]]) -> None:
-        _validate_key_fn(schema, self._key_fn)
+        SortKey(self._key_fn).validate_schema(schema)
 
 
 @PublicAPI

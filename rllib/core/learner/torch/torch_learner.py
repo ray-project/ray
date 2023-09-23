@@ -44,7 +44,7 @@ from ray.rllib.utils.typing import Optimizer, Param, ParamDict, TensorType
 torch, nn = try_import_torch()
 
 if torch:
-    from ray.train.torch.train_loop_utils import get_device
+    from ray.air._internal.torch_utils import get_device
 
 
 logger = logging.getLogger(__name__)
@@ -445,6 +445,12 @@ class TorchLearner(Learner):
                 )
             ),
         )
+
+    @staticmethod
+    @override(Learner)
+    def _get_optimizer_lr(optimizer: "torch.optim.Optimizer") -> float:
+        for g in optimizer.param_groups:
+            return g["lr"]
 
     @staticmethod
     @override(Learner)
