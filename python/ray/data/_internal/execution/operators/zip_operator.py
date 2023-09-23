@@ -7,6 +7,7 @@ from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.util import _lazy_import_pandas
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -250,9 +251,8 @@ def _try_zip(block: Block, other_block: Block) -> Block:
     try:
         return BlockAccessor.for_block(block).zip(other_block)
     except Exception as e:
-        import pandas
-
-        if isinstance(other_block, pandas.DataFrame) and hasattr(block, "to_pandas"):
+        pd = _lazy_import_pandas()
+        if pd and isinstance(other_block, pd.DataFrame) and hasattr(block, "to_pandas"):
             return BlockAccessor.for_block(block.to_pandas()).zip(other_block)
         else:
             raise "Failed to zip: {}".format(e)

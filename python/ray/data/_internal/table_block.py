@@ -7,6 +7,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.numpy_support import convert_udf_returns_to_numpy, is_array_like
 from ray.data._internal.size_estimator import SizeEstimator
+from ray.data._internal.util import _lazy_import_pandas
 from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
 
@@ -206,10 +207,11 @@ class TableBlockAccessor(BlockAccessor):
     def zip(self, other: "Block") -> "Block":
         acc = BlockAccessor.for_block(other)
         if not isinstance(acc, type(self)):
-            import pandas
-
-            if isinstance(self._table, pandas.DataFrame) and hasattr(
-                other, "to_pandas"
+            pd = _lazy_import_pandas()
+            if (
+                pd
+                and isinstance(self._table, pd.DataFrame)
+                and hasattr(other, "to_pandas")
             ):
                 return self.zip(other.to_pandas())
 
