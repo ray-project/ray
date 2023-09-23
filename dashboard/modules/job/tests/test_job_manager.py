@@ -673,7 +673,7 @@ class TestRuntimeEnv:
             {},
             {"entrypoint_num_cpus": 1},
             {"entrypoint_num_gpus": 1},
-            {"entrypoint_memory": 256},
+            {"entrypoint_memory": 64},
             {"entrypoint_resources": {"Custom": 1}},
         ],
     )

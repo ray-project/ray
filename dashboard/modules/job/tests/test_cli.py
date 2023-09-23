@@ -380,7 +380,7 @@ class TestSubmit:
         with set_env_var("RAY_ADDRESS", "env_addr"):
             result = runner.invoke(
                 job_cli_group,
-                ["submit", "--entrypoint-memory=256", "--", "echo hello"],
+                ["submit", "--entrypoint-memory=64", "--", "echo hello"],
             )
             assert result.exit_code == 0
             mock_client_instance.submit_job.assert_called_with(
@@ -390,7 +390,7 @@ class TestSubmit:
                 metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
-                entrypoint_memory=256,
+                entrypoint_memory=64,
                 entrypoint_resources=None,
             )
 

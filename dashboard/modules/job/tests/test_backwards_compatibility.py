@@ -81,7 +81,7 @@ def test_error_message():
     for unsupported_submit_kwargs in [
         {"entrypoint_num_cpus": 1},
         {"entrypoint_num_gpus": 1},
-        {"entrypoint_memory": 256},
+        {"entrypoint_memory": 64},
         {"entrypoint_resources": {"custom": 1}},
     ]:
         with pytest.raises(
