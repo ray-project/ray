@@ -47,8 +47,18 @@ steps:
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version py38 
         --platform cu118 --image-type ray-ml
-    depends_on: 
+    depends_on:
       - manylinux
       - forge
       - ray-mlpy38cu118base
+    job_env: forge
+
+  - label: ":tapioca: build: pip-compile dependencies"
+    instance_type: small
+    commands:
+      - rm ./python/requirements_compiled.txt
+      - ./ci/ci.sh compile_pip_dependencies
+      - cp -f ./python/requirements_compiled.txt /artifact-mount/
+    depends_on:
+      - forge
     job_env: forge
