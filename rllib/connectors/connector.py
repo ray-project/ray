@@ -147,7 +147,7 @@ class AgentConnector(Connector):
     The input API is designed so agent connectors can have access to all the
     agents assigned to a particular policy.
 
-    AgentConnectorDataTypes can be used to specify arbitrary type of env data,
+    AgentConnectorDataTypes can be used to specify arbitrary types of env data,
 
     Example:
 
@@ -225,10 +225,11 @@ class AgentConnector(Connector):
         For example, at the end of an episode.
 
         Args:
-            env_id: ID of the environment.
+            env_id: The ID of the environment.
         """
         pass
 
+    # TODO (sven): Deprecate in favor of Episodes (which contain all the needed data).
     def on_policy_output(self, output: ActionConnectorDataType):
         """Callback on agent connector of policy output.
 
@@ -242,6 +243,7 @@ class AgentConnector(Connector):
         """
         pass
 
+    
     def __call__(
         self, acd_list: List[AgentConnectorDataType]
     ) -> List[AgentConnectorDataType]:

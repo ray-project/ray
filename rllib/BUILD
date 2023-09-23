@@ -1715,24 +1715,24 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "connectors/tests/test_connector",
+    name = "connectors/tests/test_connectors",
     tags = ["team:rllib", "connector"],
     size = "small",
-    srcs = ["connectors/tests/test_connector.py"]
+    srcs = ["connectors/tests/test_connectors.py"]
 )
 
 py_test(
-    name = "connectors/tests/test_action",
+    name = "connectors/tests/test_action_connectors",
     tags = ["team:rllib", "connector"],
     size = "small",
-    srcs = ["connectors/tests/test_action.py"]
+    srcs = ["connectors/tests/test_action_connectors.py"]
 )
 
 py_test(
-    name = "connectors/tests/test_agent",
+    name = "connectors/tests/test_agent_connectors",
     tags = ["team:rllib", "connector"],
     size = "medium",
-    srcs = ["connectors/tests/test_agent.py"]
+    srcs = ["connectors/tests/test_agent_connectors.py"]
 )
 
 # --------------------------------------------------------------------
