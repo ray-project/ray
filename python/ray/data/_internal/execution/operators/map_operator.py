@@ -80,6 +80,11 @@ class MapOperator(OneToOneOperator, ABC):
         # When the streaming generator ref is GC'ed, the objects it generated
         # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
         self._finished_streaming_gens: List[StreamingObjectRefGenerator] = []
+        # Keep track of # of tasks finished, and the # of blocks they outputted.
+        # Used for estimating the # of output blocks.
+        self._tasks_finished = 0
+        self._tasks_finished_blocks = 0
+        self._task_blocks_outputted: Dict[int, int] = defaultdict(int)
         super().__init__(name, input_op)
 
     @classmethod
@@ -271,6 +276,7 @@ class MapOperator(OneToOneOperator, ABC):
             self._metrics.cur += allocated
             if self._metrics.cur > self._metrics.peak:
                 self._metrics.peak = self._metrics.cur
+            self._task_blocks_outputted[task_index] += 1
 
         def _task_done_callback(task_index, inputs):
             # We should only destroy the input bundle when the whole task is done.
@@ -279,6 +285,13 @@ class MapOperator(OneToOneOperator, ABC):
             freed = inputs.size_bytes()
             self._metrics.freed += freed
             self._metrics.cur -= freed
+            self._tasks_finished += 1
+            self._tasks_finished_blocks += self._task_blocks_outputted[task_index]
+            self._estimated_output_blocks = round(
+                (self.num_outputs_total() or 1)
+                * self._tasks_finished_blocks
+                / self._tasks_finished
+            )
             task = self._data_tasks.pop(task_index)
             self._finished_streaming_gens.append(task.get_waitable())
             # Notify output queue that this task is complete.

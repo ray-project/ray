@@ -171,6 +171,10 @@ class OpState:
         self.num_completed_tasks += 1
         if self.progress_bar:
             self.progress_bar.update(1)
+            if self.op._estimated_output_blocks is not None:
+                self.progress_bar.update_total(
+                    self.op._estimated_output_blocks, estimate=True
+                )
 
     def refresh_progress_bar(self) -> None:
         """Update the console with the latest operator progress."""

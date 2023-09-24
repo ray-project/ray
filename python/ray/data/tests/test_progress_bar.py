@@ -66,3 +66,18 @@ def test_progress_bar(enable_tqdm_ray):
 
     assert pb._progress == new_total
     assert total_at_close == new_total
+
+    # Test updating the total
+    pb = ProgressBar("", total, enabled=True)
+    assert pb._bar is not None
+    patch_close(pb._bar)
+    new_total = total * 2
+    pb.update_total(new_total, estimate=True)
+
+    assert pb._bar.total == new_total
+    assert "~{total_fmt}" in pb._bar.bar_format
+
+    pb.update_total(total)
+    assert pb._bar.total == total
+    assert "~{total_fmt}" not in pb._bar.bar_format
+    pb.close()
