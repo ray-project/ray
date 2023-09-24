@@ -122,7 +122,7 @@ def test_dynamic_status_message():
     )
     assert "may be waiting for resources" in info.message
 
-    info = JobInfo(status=JobStatus.PENDING, entrypoint="echo hi", entrypoint_memory=64)
+    info = JobInfo(status=JobStatus.PENDING, entrypoint="echo hi", entrypoint_memory=4)
     assert "may be waiting for resources" in info.message
 
     info = JobInfo(
@@ -144,7 +144,7 @@ def test_job_info_to_json():
         entrypoint="echo hi",
         entrypoint_num_cpus=1,
         entrypoint_num_gpus=1,
-        entrypoint_memory=64,
+        entrypoint_memory=4,
         entrypoint_resources={"Custom": 1},
         runtime_env={"pip": ["pkg"]},
     )
@@ -158,7 +158,7 @@ def test_job_info_to_json():
         "entrypoint": "echo hi",
         "entrypoint_num_cpus": 1,
         "entrypoint_num_gpus": 1,
-        "entrypoint_memory": 64,
+        "entrypoint_memory": 4,
         "entrypoint_resources": {"Custom": 1},
         "runtime_env_json": '{"pip": ["pkg"]}',
     }
@@ -185,7 +185,7 @@ def test_job_info_json_to_proto():
         metadata={"hi": "hi2"},
         entrypoint_num_cpus=1,
         entrypoint_num_gpus=1,
-        entrypoint_memory=64,
+        entrypoint_memory=4,
         entrypoint_resources={"Custom": 1},
         runtime_env={"pip": ["pkg"]},
         driver_agent_http_address="http://localhost:1234",
@@ -200,7 +200,7 @@ def test_job_info_json_to_proto():
     assert info_proto.metadata == {"hi": "hi2"}
     assert info_proto.entrypoint_num_cpus == 1
     assert info_proto.entrypoint_num_gpus == 1
-    assert info_proto.entrypoint_memory == 256
+    assert info_proto.entrypoint_memory == 4
     assert info_proto.entrypoint_resources == {"Custom": 1}
     assert info_proto.runtime_env_json == '{"pip": ["pkg"]}'
     assert info_proto.message == (
