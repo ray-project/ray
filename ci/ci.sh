@@ -113,7 +113,7 @@ compile_pip_dependencies() {
   pip install --no-cache-dir numpy torch
 
   pip-compile --resolver=backtracking -q \
-     --pip-args --no-deps --strip-extras --no-annotate --no-header -o \
+     --pip-args --no-deps --strip-extras --no-header -o \
     "${WORKSPACE_DIR}/python/$TARGET" \
     "${WORKSPACE_DIR}/python/requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
@@ -128,7 +128,8 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
+    "${WORKSPACE_DIR}/doc/requirements-doc.txt"
 
   # Remove some pins from upstream dependencies:
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn
