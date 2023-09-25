@@ -321,6 +321,16 @@ def test_get_reader(shutdown_only):
     wait_for_condition(verify_get_reader, timeout=20)
 
 
+def test_zip_datasets_with_different_types(ray_start_regular_shared):
+    df = pd.DataFrame({"spam": [0]})
+    ds1 = ray.data.from_pandas(df)
+    ds2 = ray.data.from_items([{"ham": [0]}])
+    zipped_ds = ds1.zip(ds2)
+    assert list(zipped_ds.iter_rows()) == [{"spam": 0, "ham": 0}]
+    zipped_ds = ds2.zip(ds1)
+    assert list(zipped_ds.iter_rows()) == [{"ham": 0, "spam": 0}]
+
+
 if __name__ == "__main__":
     import sys
 
