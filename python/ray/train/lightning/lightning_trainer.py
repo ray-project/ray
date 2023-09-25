@@ -1,5 +1,10 @@
 import os
-import pytorch_lightning as pl
+
+try:
+    import lightning.pytorch as pl
+except ModuleNotFoundError:
+    import pytorch_lightning as pl
+
 
 from copy import copy
 from inspect import isclass

@@ -5,7 +5,12 @@ from ray.data.preprocessor import Preprocessor
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from ray.train.torch.torch_predictor import TorchPredictor
 from ray.util.annotations import PublicAPI
-import pytorch_lightning as pl
+
+try:
+    import lightning.pytorch as pl
+except ModuleNotFoundError:
+    import pytorch_lightning as pl
+
 
 logger = logging.getLogger(__name__)
 
