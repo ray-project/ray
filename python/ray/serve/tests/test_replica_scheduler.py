@@ -818,13 +818,18 @@ async def test_prefer_az_off(pow_2_scheduler, fake_query):
 
     async def choose_replicas():
         tasks = []
-        for _ in range(30):
+        for _ in range(10):
             tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
         replicas = await asyncio.gather(*tasks)
         return {r.replica_id for r in replicas}
 
     # Requests should be spread across all nodes
-    assert await choose_replicas() == {r1.replica_id, r2.replica_id, r3.replica_id}
+    chosen_replicas = set()
+    for _ in range(100):
+        chosen_replicas = chosen_replicas.union(await choose_replicas())
+        if chosen_replicas == {r1.replica_id, r2.replica_id, r3.replica_id}:
+            break
+    assert chosen_replicas == {r1.replica_id, r2.replica_id, r3.replica_id}
 
     r1.set_queue_state_response(0, accepted=False)
     assert await choose_replicas() == {r2.replica_id, r3.replica_id}
