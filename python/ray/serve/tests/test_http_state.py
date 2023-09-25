@@ -16,12 +16,12 @@ from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.controller import ServeController
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_proxy import HTTPProxyActor
 from ray.serve._private.http_state import HTTPProxyState, HTTPProxyStateManager
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.config import DeploymentMode, HTTPOptions
-from ray.serve.controller import ServeController
 
 HEAD_NODE_ID = "node_id-index-head"
 
