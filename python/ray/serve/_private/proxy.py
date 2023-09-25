@@ -1022,10 +1022,16 @@ class HTTPProxy(GenericProxy):
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
             should_backoff = False
             result_ref = handle.remote(request)
+            # NOTE: This task will not be completed until response is sent back or client disconnects,
+            #       hence we rely on it to track whether client has disconnected while we're handling
+            #       their requests
             client_disconnection_task = loop.create_task(proxy_request.receive())
+            # Converting response object to `ObjectRef` actually entails assignment of the target replica
+            # that would be handling it
+            replica_assignment_task = loop.create_task(result_ref._to_object_ref(_record_telemetry=False))
             done, _ = await asyncio.wait(
                 [
-                    result_ref._to_object_ref(_record_telemetry=False),
+                    replica_assignment_task,
                     client_disconnection_task,
                 ],
                 return_when=FIRST_COMPLETED,
@@ -1509,10 +1515,11 @@ class ProxyActor:
         """Returns when both HTTP and gRPC proxies are ready to serve traffic.
         Or throw exception when either proxy is not able to serve traffic.
         """
-        http_setup_complete_wait_task = get_or_create_event_loop().create_task(
+        loop = get_or_create_event_loop()
+        http_setup_complete_wait_task = loop.create_task(
             self.http_setup_complete.wait()
         )
-        grpc_setup_complete_wait_task = get_or_create_event_loop().create_task(
+        grpc_setup_complete_wait_task = loop.create_task(
             self.grpc_setup_complete.wait()
         )
 
