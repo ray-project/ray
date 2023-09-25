@@ -1,8 +1,8 @@
-from typing import Any, Callable, Tuple
+from types import ModuleType
+from typing import Any, Callable, Tuple, Union
 
 import numpy as np
 
-from ray.data._internal.util import _lazy_import_pandas
 from ray.data.block import AggType, Block, KeyType, T, U
 
 WrappedAggType = Tuple[AggType, int]
@@ -248,6 +248,22 @@ def _null_wrap_finalize(
         return finalize(a)
 
     return _finalize
+
+
+LazyModule = Union[None, bool, ModuleType]
+_pandas: LazyModule = None
+
+
+def _lazy_import_pandas() -> LazyModule:
+    global _pandas
+    if _pandas is None:
+        try:
+            import pandas as _pandas
+        except ModuleNotFoundError:
+            # If module is not found, set _pandas to False so we won't
+            # keep trying to import it on every _lazy_import_pandas() call.
+            _pandas = False
+    return _pandas
 
 
 def _is_null(r: Any):

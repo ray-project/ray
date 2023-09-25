@@ -7,7 +7,7 @@ from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import _lazy_import_pandas, _lazy_import_pyarrow
+from ray.data._internal.util import _lazy_import_pyarrow_table
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -251,12 +251,12 @@ def _try_zip(block: Block, other_block: Block) -> Block:
     try:
         return BlockAccessor.for_block(block).zip(other_block)
     except ValueError as e:
-        pyarrow = _lazy_import_pyarrow()
-        if pyarrow:
-            if isinstance(block, pyarrow.Table):
-                return _try_zip(block, pyarrow.Table.from_pandas(other_block))
-            if isinstance(other_block, pyarrow.Table):
-                return _try_zip(pyarrow.Table.from_pandas(block), other_block)
+        pyarrow_table = _lazy_import_pyarrow_table()
+        if pyarrow_table:
+            if isinstance(block, pyarrow_table):
+                return _try_zip(block, pyarrow_table.from_pandas(other_block))
+            if isinstance(other_block, pyarrow_table):
+                return _try_zip(pyarrow_table.from_pandas(block), other_block)
         else:
             # Re-raise the ValueError
             raise e
