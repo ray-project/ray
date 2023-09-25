@@ -330,7 +330,7 @@ py_test(
 
 
 py_test(
-    name = "test_router",
+    name = "test_request_metadata",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
