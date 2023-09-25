@@ -1,5 +1,6 @@
 from typing import Any, Mapping
 
+from ray.rllib.algorithms.dqn.dqn_learner import QF_PREDS, QF_TARGET_PREDS
 from ray.rllib.algorithms.dqn.dqn_rl_module import DQNRLModule
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
@@ -69,26 +70,28 @@ class DQNTfRLModule(TfRLModule, DQNRLModule):
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         output = {}
 
-        # State encoding.
-        encoder_outs = self.q_encoder(batch)
+        # State encodings.
+        q_encoder_outs = self.q_encoder(batch)
+        target_encoder_outs = self.target_encoder(batch)
 
         # Q head.
-        q_outs = self.q(encoder_outs[ENCODER_OUT])
+        q_outs = self.q(q_encoder_outs[ENCODER_OUT])
 
-        # TODO (simon): Either override the `Encoder` for the target
-        # or override the `input_specs_train` for the `target_encoder`
-        # to accept the `SampleBatch.NEXT_OBS` instead of the
-        # `SampleBatch.OBS`.
+        # For the q function we need to consider the actions taken.
+        one_hot_selection = tf.one_hot(
+            tf.cast(batch[SampleBatch.ACTIONS], tf.int32), self.config.action_space.n
+        )
+        q_t_selected = tf.reduce_sum(q_outs * one_hot_selection, 1)
+        output[QF_PREDS] = q_t_selected
 
-        output["q_values"] = q_outs
+        # Target head.
+        target_outs = self.target(target_encoder_outs[ENCODER_OUT])
+        # For bootstrapping we assume the optimal action is taken.
+        target_outs = tf.max(target_outs, axis=1)
+        output[QF_TARGET_PREDS] = target_outs
+
         return output
 
-    # TODO (kourosh, avnish): I see that there is an
-    # 'RLModuleWIthTargetNetworksInterface`. That one calls in the `Learner`
-    # the get_target_network_pairs and updates the weights of the target
-    # inside the learner.
-    # This here could be called in the learner and contains already the
-    # framwork-specific logic how to do it. What's your opinion on it?
     def update_target_network(self):
         """Updates (framework-specifically) the weights of the target network."""
         self.target_encoder.set_weights(self.q_encoder.get_weigths())
