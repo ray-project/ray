@@ -1022,13 +1022,15 @@ class HTTPProxy(GenericProxy):
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
             should_backoff = False
             result_ref = handle.remote(request)
-            # NOTE: This task will not be completed until response is sent back or client disconnects,
-            #       hence we rely on it to track whether client has disconnected while we're handling
-            #       their requests
+            # NOTE: This task will not be completed until response is sent back or
+            #       client disconnects, hence we rely on it to track whether client
+            #       has disconnected while we're handling their request
             client_disconnection_task = loop.create_task(proxy_request.receive())
-            # Converting response object to `ObjectRef` actually entails assignment of the target replica
-            # that would be handling it
-            replica_assignment_task = loop.create_task(result_ref._to_object_ref(_record_telemetry=False))
+            # Converting response object to `ObjectRef` actually entails assignment
+            # of the target replica that would be handling it
+            replica_assignment_task = loop.create_task(
+                result_ref._to_object_ref(_record_telemetry=False)
+            )
             done, _ = await asyncio.wait(
                 [
                     replica_assignment_task,
