@@ -1198,10 +1198,22 @@ class ActorHandle:
         return object_refs
 
     def __getattr__(self, item):
+        if item in ["remote"] and "__call__" in self._ray_method_signatures:
+            method_name = (
+                "__call__"  # Default to actor's callable method registered at __init__
+            )
+            return ActorMethod(
+                self,
+                method_name,
+                self._ray_method_num_returns[method_name],
+                decorator=self._ray_method_decorators.get(method_name),
+            ).remote
+
         if not self._ray_is_cross_language:
             raise AttributeError(
                 f"'{type(self).__name__}' object has " f"no attribute '{item}'"
             )
+
         if item in ["__ray_terminate__"]:
 
             class FakeActorMethod(object):

@@ -1342,6 +1342,30 @@ def test_parent_task_correct_concurrent_async_actor(shutdown_only):
         assert actual, expected
 
 
+def test_actor_with_callables(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        @ray.method(num_returns=1)
+        def __call__(self, a, b, c):
+            return a + b + c
+
+    f = Foo.remote()
+    ref_one = f.__call__.remote(a=1, b=2, c=3)
+    ref_two = f.remote(a=1, b=2, c=3)
+    assert ray.get(ref_one) == ray.get(ref_two)
+
+    @ray.remote
+    class Bar:
+        @ray.method(num_returns=3)
+        def __call__(self, a, b, c):
+            return a, b, c
+
+    b = Bar.remote()
+    ref_one = b.__call__.remote(a=1, b=2, c=3)
+    ref_two = b.remote(a=1, b=2, c=3)
+    assert ray.get(ref_one) == ray.get(ref_two)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
