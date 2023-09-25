@@ -6,6 +6,8 @@ from typing import Any, Dict
 
 import yaml
 
+import ray
+from ray._private.utils import get_master_wheel_url, get_release_wheel_url
 from ray.autoscaler._private.loader import load_function_or_class
 
 logger = logging.getLogger(__name__)
@@ -254,6 +256,34 @@ def _clear_provider_cache():
     _provider_instances = {}
 
 
+def _install_ray_if_needed(defaults: Dict[str, Any]) -> Dict[str, Any]:
+    """Append setup command to (if needed) install the version of Ray matching the client.
+
+    Args:
+        defaults: The default config dict.
+
+    Returns:
+        The updated config dict.
+    """
+    if ray.__commit__ == "{{RAY_COMMIT_SHA}}":
+        logger.warning(
+            "Current Ray version could not be detected on the local machine, most "
+            "likely because you have manually built Ray from source. If Ray is not "
+            "detected in the cluster, the latest released Ray will be installed."
+        )
+        defaults["setup_commands"].append("which ray || pip install -U ray[default]")
+    else:
+        if "dev" in ray.__version__:
+            wheel_url = get_master_wheel_url(py_version=(3, 8))
+        else:
+            wheel_url = get_release_wheel_url(py_version=(3, 8))
+        defaults["setup_commands"].append(
+            'which ray || pip install -U "ray[default]@{}"'.format(wheel_url)
+        )
+
+    return defaults
+
+
 def _get_default_config(provider_config):
     """Retrieve a node provider.
 
@@ -270,5 +300,7 @@ def _get_default_config(provider_config):
     path_to_default = load_config()
     with open(path_to_default) as f:
         defaults = yaml.safe_load(f)
+
+    defaults = _install_ray_if_needed(defaults)
 
     return defaults
