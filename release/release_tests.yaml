@@ -5787,7 +5787,7 @@
     cluster_compute: stable_diffusion_benchmark_compute.yaml
 
   run:
-    timeout: 600
+    timeout: 1800
     script: python stable_diffusion_benchmark.py
 
   variations:
