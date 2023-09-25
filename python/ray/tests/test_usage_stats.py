@@ -125,6 +125,8 @@ def reset_ray_version_commit():
 def test_get_extra_usage_tags_to_report(
     monkeypatch, call_ray_start, reset_usage_stats, ray_client, gcs_storage_type
 ):
+    if os.environ.get("RAY_MINIMAL") == "1" and ray_client:
+        pytest.skip("Skipping due to we don't have ray client in minimal.")
     with monkeypatch.context() as m:
         # Test a normal case.
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val;key2=val2")
@@ -1204,7 +1206,6 @@ provider:
         if os.environ.get("RAY_MINIMAL") != "1":
             expected_payload["tune_scheduler"] = "FIFOScheduler"
             expected_payload["tune_searcher"] = "BasicVariantGenerator"
-            expected_payload["air_storage_configuration"] = "driver"
             expected_payload["air_entrypoint"] = "Tuner.fit"
         assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1

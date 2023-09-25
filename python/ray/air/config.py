@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
-    from ray.tune.syncer import SyncConfig
+    from ray.train import SyncConfig
     from ray.tune.experimental.output import AirVerbosity
     from ray.tune.utils.log import Verbosity
     from ray.tune.execution.placement_groups import PlacementGroupFactory
@@ -105,9 +105,9 @@ class ScalingConfig:
             worker can be overridden with the ``resources_per_worker``
             argument.
         resources_per_worker: If specified, the resources
-            defined in this Dict will be reserved for each worker. The
-            ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
-            override the number of CPU/GPUs used by each worker.
+            defined in this Dict is reserved for each worker.
+            Define the ``"CPU"`` and ``"GPU"`` keys (case-sensitive) to
+            override the number of CPU or GPUs used by each worker.
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
@@ -304,7 +304,7 @@ class ScalingConfig:
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
-    See :ref:`the AIR Dataset configuration guide <air-ingest>` for
+    See :ref:`the AIR Dataset configuration guide <data-ingest-torch>` for
     usage examples.
 
     This config defines how the Dataset should be read into the DataParallelTrainer.
@@ -548,7 +548,7 @@ class FailureConfig:
         if self.fail_fast and self.max_failures != 0:
             raise ValueError("max_failures must be 0 if fail_fast=True.")
 
-        # Same check as in TrialRunner
+        # Same check as in TuneController
         if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() == "RAISE"):
             raise ValueError(
                 "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
@@ -727,7 +727,7 @@ class RunConfig:
             (any state of the callback will not be checkpointed by Tune
             and thus will not take effect in resumed runs).
         failure_config: Failure mode configuration.
-        sync_config: Configuration object for syncing. See tune.SyncConfig.
+        sync_config: Configuration object for syncing. See train.SyncConfig.
         checkpoint_config: Checkpointing configuration.
         progress_reporter: Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
@@ -766,8 +766,7 @@ class RunConfig:
     local_dir: Optional[str] = None
 
     def __post_init__(self):
-        from ray.tune.syncer import SyncConfig, Syncer
-        from ray.tune.utils.util import _resolve_storage_path
+        from ray.train import SyncConfig
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
         if not self.failure_config:
@@ -779,12 +778,27 @@ class RunConfig:
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
 
+        if self.verbose is None:
+            # Default `verbose` value. For new output engine,
+            # this is AirVerbosity.DEFAULT.
+            # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
+            # Todo (krfricke): Currently uses number to pass test_configs::test_repr
+            self.verbose = get_air_verbosity(AirVerbosity.DEFAULT) or 3
+
         # Convert Paths to strings
         if isinstance(self.local_dir, Path):
             self.local_dir = str(self.local_dir)
 
         if isinstance(self.storage_path, Path):
             self.storage_path = str(self.storage_path)
+
+        # TODO(justinvyu): [code_removal] Legacy stuff below.
+        from ray.tune.utils.util import _resolve_storage_path
+        from ray.train._internal.storage import _use_storage_context
+        from ray.train._internal.syncer import Syncer
+
+        if _use_storage_context():
+            return
 
         local_path, remote_path = _resolve_storage_path(
             self.storage_path, self.local_dir, self.sync_config.upload_dir
@@ -834,15 +848,8 @@ class RunConfig:
                 "Must specify a remote `storage_path` to use a custom `syncer`."
             )
 
-        if self.verbose is None:
-            # Default `verbose` value. For new output engine,
-            # this is AirVerbosity.DEFAULT.
-            # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
-            # Todo (krfricke): Currently uses number to pass test_configs::test_repr
-            self.verbose = get_air_verbosity(AirVerbosity.DEFAULT) or 3
-
     def __repr__(self):
-        from ray.tune.syncer import SyncConfig
+        from ray.train import SyncConfig
 
         return _repr_dataclass(
             self,

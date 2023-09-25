@@ -700,6 +700,21 @@ Status NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
   return Status::OK();
 }
 
+Status NodeResourceInfoAccessor::AsyncGetDrainingNodes(
+    const ItemCallback<std::vector<NodeID>> &callback) {
+  rpc::GetDrainingNodesRequest request;
+  client_impl_->GetGcsRpcClient().GetDrainingNodes(
+      request, [callback](const Status &status, const rpc::GetDrainingNodesReply &reply) {
+        RAY_CHECK_OK(status);
+        std::vector<NodeID> draining_nodes;
+        for (const auto &node_id : VectorFromProtobuf(reply.node_ids())) {
+          draining_nodes.emplace_back(NodeID::FromBinary(node_id));
+        }
+        callback(draining_nodes);
+      });
+  return Status::OK();
+}
+
 Status NodeResourceInfoAccessor::AsyncReportResourceUsage(
     const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
   absl::MutexLock lock(&mutex_);
@@ -717,38 +732,26 @@ Status NodeResourceInfoAccessor::AsyncReportResourceUsage(
   return Status::OK();
 }
 
-void NodeResourceInfoAccessor::AsyncReReportResourceUsage() {
-  absl::MutexLock lock(&mutex_);
-  if (cached_resource_usage_.has_resources()) {
-    RAY_LOG(INFO) << "Rereport resource usage.";
-    FillResourceUsageRequest(cached_resource_usage_);
-    client_impl_->GetGcsRpcClient().ReportResourceUsage(
-        cached_resource_usage_,
-        [](const Status &status, const rpc::ReportResourceUsageReply &reply) {});
-  }
-}
-
 void NodeResourceInfoAccessor::FillResourceUsageRequest(
     rpc::ReportResourceUsageRequest &resources) {
   NodeResources cached_resources = *GetLastResourceUsage();
 
   auto resources_data = resources.mutable_resources();
   resources_data->clear_resources_total();
-  for (const auto &resource_pair : cached_resources.total.ToResourceMap()) {
+  for (const auto &resource_pair : cached_resources.total.GetResourceMap()) {
     (*resources_data->mutable_resources_total())[resource_pair.first] =
         resource_pair.second;
   }
 
   resources_data->clear_resources_available();
-  resources_data->set_resources_available_changed(true);
-  for (const auto &resource_pair : cached_resources.available.ToResourceMap()) {
+  for (const auto &resource_pair : cached_resources.available.GetResourceMap()) {
     (*resources_data->mutable_resources_available())[resource_pair.first] =
         resource_pair.second;
   }
 
   resources_data->clear_resource_load();
   resources_data->set_resource_load_changed(true);
-  for (const auto &resource_pair : cached_resources.load.ToResourceMap()) {
+  for (const auto &resource_pair : cached_resources.load.GetResourceMap()) {
     (*resources_data->mutable_resource_load())[resource_pair.first] =
         resource_pair.second;
   }

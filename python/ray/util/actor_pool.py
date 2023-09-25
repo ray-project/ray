@@ -1,11 +1,12 @@
-from typing import List, Callable, Any, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, List, TypeVar
 
 import ray
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.actor import ActorHandle
-    from ray.types import ObjectRef
+    import ray.actor
+
+V = TypeVar("V")
 
 
 @DeveloperAPI
@@ -59,7 +60,7 @@ class ActorPool:
         # next work depending when actors free
         self._pending_submits = []
 
-    def map(self, fn: Callable[["ActorHandle", Any], "ObjectRef"], values: List[Any]):
+    def map(self, fn: Callable[["ray.actor.ActorHandle", V], Any], values: List[V]):
         """Apply the given function in parallel over the actors and values.
 
         This returns an ordered iterator that will return results of the map
@@ -114,7 +115,7 @@ class ActorPool:
         return get_generator()
 
     def map_unordered(
-        self, fn: Callable[["ActorHandle", Any], "ObjectRef"], values: List[Any]
+        self, fn: Callable[["ray.actor.ActorHandle", V], Any], values: List[V]
     ):
         """Similar to map(), but returning an unordered iterator.
 

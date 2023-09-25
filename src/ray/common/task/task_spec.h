@@ -25,7 +25,7 @@
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_common.h"
 #include "ray/util/container_util.h"
 
@@ -339,6 +339,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   const uint8_t *ArgMetadata(size_t arg_index) const;
 
   size_t ArgMetadataSize(size_t arg_index) const;
+
+  /// Return true if the task should be retried upon exceptions.
+  bool ShouldRetryExceptions() const;
 
   /// Return the ObjectRefs that were inlined in this task argument.
   const std::vector<rpc::ObjectReference> ArgInlinedRefs(size_t arg_index) const;

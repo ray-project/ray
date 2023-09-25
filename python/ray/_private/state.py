@@ -1,6 +1,7 @@
 import json
 import logging
 from collections import defaultdict
+from typing import Set
 
 from google.protobuf.json_format import MessageToDict
 
@@ -733,6 +734,11 @@ class GlobalState:
         return self.global_state_accessor.get_node_to_connect_for_driver(
             node_ip_address
         )
+
+    def get_draining_nodes(self) -> Set[str]:
+        """Get all the hex ids of nodes that are being drained."""
+        self._check_connected()
+        return self.global_state_accessor.get_draining_nodes()
 
 
 state = GlobalState()

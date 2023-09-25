@@ -32,6 +32,11 @@ from ray.dashboard.consts import (
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
     RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
 )
+from ray.dashboard.modules.job.tests.conftest import (
+    create_ray_cluster,
+    create_job_manager,
+    _driver_script_path,
+)
 from ray.job_submission import JobStatus
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
 from ray.tests.conftest import call_ray_start  # noqa: F401
@@ -145,7 +150,7 @@ async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
     )
 
     found = False
-    for job_table_entry in (await gcs_aio_client.get_all_job_info()).job_info_list:
+    for job_table_entry in (await gcs_aio_client.get_all_job_info()).values():
         if job_table_entry.config.metadata.get(JOB_ID_METADATA_KEY) == submission_id:
             found = True
             # Check that the job info is populated correctly.
@@ -191,7 +196,7 @@ async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: 
     async def check_is_running_tasks(job_id, expected_is_running_tasks):
         """Return True if the driver indicated by job_id is currently running tasks."""
         found = False
-        for job_table_entry in (await gcs_aio_client.get_all_job_info()).job_info_list:
+        for job_table_entry in (await gcs_aio_client.get_all_job_info()).values():
             if job_table_entry.job_id.hex() == job_id:
                 found = True
                 return job_table_entry.is_running_tasks == expected_is_running_tasks
@@ -256,13 +261,7 @@ def shared_ray_instance():
     # submissions.
     old_ray_address = os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
 
-    yield ray.init(
-        num_cpus=16,
-        num_gpus=1,
-        resources={"Custom": 1},
-        namespace=TEST_NAMESPACE,
-        log_to_driver=True,
-    )
+    yield create_ray_cluster()
 
     if old_ray_address is not None:
         os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
@@ -271,17 +270,7 @@ def shared_ray_instance():
 @pytest.mark.asyncio
 @pytest.fixture
 async def job_manager(shared_ray_instance, tmp_path):
-    address_info = shared_ray_instance
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
-    yield JobManager(gcs_aio_client, tmp_path)
-
-
-def _driver_script_path(file_name: str) -> str:
-    return os.path.join(
-        os.path.dirname(__file__), "subprocess_driver_scripts", file_name
-    )
+    yield create_job_manager(shared_ray_instance, tmp_path)
 
 
 async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):

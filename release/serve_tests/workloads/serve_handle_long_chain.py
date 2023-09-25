@@ -70,7 +70,9 @@ def construct_long_chain_graph_with_pure_handle(
         Node.options(name=str(id)).deploy(
             id, prev_handle, init_delay_secs, compute_delay_secs, sync_handle
         )
-        prev_handle = get_global_client().get_handle(str(id), sync=sync_handle)
+        prev_handle = get_global_client().get_handle(
+            str(id), app_name="", sync=sync_handle
+        )
     return prev_handle
 
 

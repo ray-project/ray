@@ -27,6 +27,7 @@ If you think there is anything missing, please open an issue on `Github`_.
     models.rst
     catalogs.rst
     rl_modules.rst
+    learner.rst
     evaluation.rst
     replay-buffers.rst
     utils.rst

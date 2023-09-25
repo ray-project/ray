@@ -5,21 +5,15 @@ from datetime import timedelta
 from typing import Optional
 
 import ray
-from ray.air.checkpoint import Checkpoint
-from ray.train.backend import BackendConfig, Backend, _warn_about_bad_checkpoint_type
+from ray.train.backend import BackendConfig, Backend
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train._internal.utils import get_address_and_port
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.util import PublicAPI
 
 import torch
 import torch.distributed as dist
 
-try:
-    from torch.profiler import profile
-except ImportError:
-    profile = None
 
 logger = logging.getLogger(__name__)
 
@@ -216,11 +210,3 @@ class _TorchBackend(Backend):
         self, worker_group: WorkerGroup, backend_config: BackendConfig
     ):
         worker_group.execute(_set_torch_distributed_env_vars)
-
-    @classmethod
-    def _encode_data(cls, checkpoint: Checkpoint):
-        checkpoint = super()._encode_data(checkpoint)
-        if type(checkpoint) is Checkpoint:
-            _warn_about_bad_checkpoint_type(TorchCheckpoint)
-            checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
-        return checkpoint

@@ -2,6 +2,7 @@ import copy
 import importlib
 import inspect
 import logging
+import math
 import os
 import random
 import string
@@ -34,14 +35,12 @@ from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
-    RAY_GCS_RPC_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
 from ray._private.utils import import_attr
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 import __main__
@@ -174,24 +173,6 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     return name
 
 
-def get_all_node_ids(gcs_client) -> List[Tuple[str, str]]:
-    """Get IDs for all live nodes in the cluster.
-
-    Returns a list of (node_id: str, ip_address: str). The node_id can be
-    passed into the Ray SchedulingPolicy API.
-    """
-    nodes = gcs_client.get_all_node_info(timeout=RAY_GCS_RPC_TIMEOUT_S)
-    node_ids = [
-        (ray.NodeID.from_binary(node_id).hex(), node["node_name"].decode("utf-8"))
-        for (node_id, node) in nodes.items()
-        if node["state"] == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
-    ]
-
-    # Sort on NodeID to ensure the ordering is deterministic across the cluster.
-    sorted(node_ids)
-    return node_ids
-
-
 def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
     """Given two iterables, return the entries that's (added, removed, updated).
 
@@ -287,7 +268,7 @@ def get_deployment_import_path(
         with __main__'s file name if the deployment's module is __main__
     """
 
-    body = deployment._func_or_class
+    body = deployment.func_or_class
 
     if isinstance(body, str):
         # deployment's func_or_class is already an import path
@@ -511,46 +492,6 @@ def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
     return len(finished) == 1
 
 
-serve_telemetry_tag_map = {
-    "SERVE_API_VERSION": TagKey.SERVE_API_VERSION,
-    "SERVE_NUM_DEPLOYMENTS": TagKey.SERVE_NUM_DEPLOYMENTS,
-    "GCS_STORAGE": TagKey.GCS_STORAGE,
-    "SERVE_NUM_GPU_DEPLOYMENTS": TagKey.SERVE_NUM_GPU_DEPLOYMENTS,
-    "SERVE_FASTAPI_USED": TagKey.SERVE_FASTAPI_USED,
-    "SERVE_DAG_DRIVER_USED": TagKey.SERVE_DAG_DRIVER_USED,
-    "SERVE_HTTP_ADAPTER_USED": TagKey.SERVE_HTTP_ADAPTER_USED,
-    "SERVE_GRPC_INGRESS_USED": TagKey.SERVE_GRPC_INGRESS_USED,
-    "SERVE_REST_API_VERSION": TagKey.SERVE_REST_API_VERSION,
-    "SERVE_NUM_APPS": TagKey.SERVE_NUM_APPS,
-    "SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED": (
-        TagKey.SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED
-    ),
-    "SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED": (
-        TagKey.SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED
-    ),
-    "SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED": (
-        TagKey.SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED
-    ),
-}
-
-
-def record_serve_tag(key: str, value: str):
-    """Record telemetry.
-
-    TagKey objects cannot be pickled, so deployments can't directly record
-    telemetry using record_extra_usage_tag. They can instead call this function
-    which records telemetry for them.
-    """
-
-    if key not in serve_telemetry_tag_map:
-        raise ValueError(
-            f'The TagKey "{key}" does not exist. Expected a key from: '
-            f"{list(serve_telemetry_tag_map.keys())}."
-        )
-
-    record_extra_usage_tag(serve_telemetry_tag_map[key], value)
-
-
 def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
     """Check if this is a method rather than a function.
 
@@ -618,21 +559,14 @@ class MetricsPusher:
         """
 
         def send_forever():
-
             while True:
                 if self.stop_event.is_set():
                     return
 
                 start = time.time()
-                least_interval_s = None
-
                 for task in self.tasks:
                     try:
-                        if least_interval_s is None:
-                            least_interval_s = task.interval_s
-                        else:
-                            least_interval_s = min(least_interval_s, task.interval_s)
-                        if start - task.last_call_succeeded_time > task.interval_s:
+                        if start - task.last_call_succeeded_time >= task.interval_s:
                             if task.last_ref:
                                 ready_refs, _ = ray.wait([task.last_ref], timeout=0)
                                 if len(ready_refs) == 0:
@@ -647,10 +581,20 @@ class MetricsPusher:
                         logger.warning(
                             f"MetricsPusher thread failed to run metric task: {e}"
                         )
-                duration_s = time.time() - start
-                remaining_time = least_interval_s - duration_s
-                if remaining_time > 0:
-                    time.sleep(remaining_time)
+
+                # For all tasks, check when the task should be executed
+                # next. Sleep until the next closest time.
+                least_interval_s = math.inf
+                for task in self.tasks:
+                    time_until_next_push = task.interval_s - (
+                        time.time() - task.last_call_succeeded_time
+                    )
+                    least_interval_s = min(least_interval_s, time_until_next_push)
+
+                time.sleep(max(least_interval_s, 0))
+
+        if len(self.tasks) == 0:
+            raise ValueError("MetricsPusher has zero tasks registered.")
 
         self.pusher_thread = threading.Thread(target=send_forever)
         # Making this a daemon thread so it doesn't leak upon shutdown, and it
@@ -733,3 +677,23 @@ def calculate_remaining_timeout(
 
     time_since_start_s = curr_time_s - start_time_s
     return max(0, timeout_s - time_since_start_s)
+
+
+def get_all_live_placement_group_names() -> List[str]:
+    """Fetch and parse the Ray placement group table for live placement group names.
+
+    Placement groups are filtered based on their `scheduling_state`; any placement
+    group not in the "REMOVED" state is considered live.
+    """
+    placement_group_table = ray.util.placement_group_table()
+
+    live_pg_names = []
+    for entry in placement_group_table.values():
+        pg_name = entry.get("name", "")
+        if (
+            pg_name
+            and entry.get("stats", {}).get("scheduling_state", "UNKNOWN") != "REMOVED"
+        ):
+            live_pg_names.append(pg_name)
+
+    return live_pg_names

@@ -16,7 +16,7 @@ Where can I deploy Ray clusters?
 
 Ray provides native cluster deployment support on the following technology stacks:
 
-* On :ref:`AWS and GCP <cloud-vm-index>`. Community-supported Azure and Aliyun integrations also exist.
+* On :ref:`AWS and GCP <cloud-vm-index>`. Community-supported Azure, Aliyun and vSphere integrations also exist.
 * On :ref:`Kubernetes <kuberay-index>`, via the officially supported KubeRay project.
 
 Advanced users may want to :ref:`deploy Ray manually <on-prem>`
@@ -54,7 +54,7 @@ What's next?
         **I want to run Ray on Kubernetes**
         ^^^
         Deploy a Ray application to a Kubernetes cluster. You can run the tutorial on a
-        Kubernetes cluster or on your laptop via KinD.
+        Kubernetes cluster or on your laptop via Kind.
 
         +++
         .. button-ref:: kuberay-quickstart
