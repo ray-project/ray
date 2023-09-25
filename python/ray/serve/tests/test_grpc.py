@@ -162,7 +162,7 @@ finally:
         )
 
 
-@patch("ray.serve._private.api.FLAG_DISABLE_HTTP_PROXY", True)
+@patch("ray.serve._private.api.FLAG_DISABLE_PROXY", True)
 def test_controller_without_http(serve_start_shutdown):
     @serve.deployment
     class D1:
@@ -170,13 +170,10 @@ def test_controller_without_http(serve_start_shutdown):
             return input["a"]
 
     serve.run(DefaultgRPCDriver.bind(D1.bind()))
-    assert (
-        ray.get(serve.context._global_client._controller.get_http_proxies.remote())
-        == {}
-    )
+    assert ray.get(serve.context._global_client._controller.get_proxies.remote()) == {}
 
 
-@patch("ray.serve._private.api.FLAG_DISABLE_HTTP_PROXY", True)
+@patch("ray.serve._private.api.FLAG_DISABLE_PROXY", True)
 def test_deploy_grpc_driver_to_node(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=2)
