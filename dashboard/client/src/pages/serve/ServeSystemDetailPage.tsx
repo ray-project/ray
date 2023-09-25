@@ -21,13 +21,8 @@ const useStyles = makeStyles((theme) =>
 export const ServeSystemDetailPage = () => {
   const classes = useStyles();
 
-  const {
-    serveDetails,
-    httpProxies,
-    httpProxiesPage,
-    setHttpProxiesPage,
-    error,
-  } = useServeApplications();
+  const { serveDetails, proxies, proxiesPage, setProxiesPage, error } =
+    useServeApplications();
 
   if (error) {
     return <Typography color="error">{error.toString()}</Typography>;
@@ -53,9 +48,9 @@ export const ServeSystemDetailPage = () => {
       ) : (
         <ServeSystemDetails
           serveDetails={serveDetails}
-          httpProxies={httpProxies}
-          page={httpProxiesPage}
-          setPage={setHttpProxiesPage}
+          proxies={proxies}
+          page={proxiesPage}
+          setPage={setProxiesPage}
         />
       )}
     </div>

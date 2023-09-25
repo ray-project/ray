@@ -6,7 +6,6 @@ import pytest
 import ray
 from ray import serve
 from ray.serve import Deployment
-from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
 from ray.serve.handle import RayServeHandle
 
 
@@ -66,9 +65,6 @@ async def async_gen_function(n: int):
         yield i
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
-)
 @pytest.mark.parametrize("deployment", [AsyncStreamer, SyncStreamer])
 class TestAppHandleStreaming:
     def test_basic(self, serve_instance, deployment: Deployment):
@@ -139,9 +135,6 @@ class TestAppHandleStreaming:
             ray.get(next(obj_ref_gen))
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
-)
 @pytest.mark.parametrize("deployment", [AsyncStreamer, SyncStreamer])
 class TestDeploymentHandleStreaming:
     def test_basic(self, serve_instance, deployment: Deployment):
@@ -280,9 +273,6 @@ class TestDeploymentHandleStreaming:
         ray.get(h.remote())
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
-)
 @pytest.mark.parametrize("deployment", [sync_gen_function, async_gen_function])
 class TestGeneratorFunctionDeployment:
     def test_app_handle(self, deployment: Deployment):

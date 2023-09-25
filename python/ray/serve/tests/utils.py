@@ -12,7 +12,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.http_proxy import DRAINED_MESSAGE
+from ray.serve._private.proxy import DRAINED_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
