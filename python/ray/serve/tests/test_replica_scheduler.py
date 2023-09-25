@@ -824,6 +824,8 @@ async def test_prefer_az_off(pow_2_scheduler, fake_query):
         return {r.replica_id for r in replicas}
 
     # Requests should be spread across all nodes
+    # NOTE(zcin): Choose up to 1000 replicas in batches of 10 at a time.
+    # This deflakes the test, but also makes sure the test runs fast on average
     chosen_replicas = set()
     for _ in range(100):
         chosen_replicas = chosen_replicas.union(await choose_replicas())
