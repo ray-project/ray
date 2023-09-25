@@ -278,7 +278,7 @@ def test_quote_escaping(ray_start_stop):
 
 
 def test_resources(shutdown_only):
-    available_memory=4
+    available_memory = 4
     ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1}, _memory=available_memory)
 
     # Check the case of too many resources.
