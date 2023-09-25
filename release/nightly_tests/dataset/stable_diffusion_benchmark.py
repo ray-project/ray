@@ -10,8 +10,9 @@ from diffusers import StableDiffusionImg2ImgPipeline
 
 import ray
 
-DATA_URI = "s3://air-example-data-2/300G-image-data-synthetic-raw-parquet/"
-BATCH_SIZE = 20
+DATA_URI = "s3://air-example-data-2/100G-image-data-synthetic-raw-parquet/"
+# This is approximately the largest batch size you can use on a T4 GPU.
+BATCH_SIZE = 125
 PROMPT = "ghibli style"
 
 
@@ -31,17 +32,13 @@ def main(args):
 
     if args.smoke_test:
         dataset = dataset.limit(1)
-        actor_pool_size = 1
-        num_gpus = 0
-    else:
-        actor_pool_size = int(ray.cluster_resources().get("GPU"))
-        num_gpus = 1
 
+    actor_pool_size = int(ray.cluster_resources().get("GPU"))
     dataset = dataset.map_batches(
         GenerateImage,
         compute=ray.data.ActorPoolStrategy(size=actor_pool_size),
         batch_size=BATCH_SIZE,
-        num_gpus=num_gpus,
+        num_gpus=1,
     )
 
     num_images = 0
