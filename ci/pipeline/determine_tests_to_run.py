@@ -361,6 +361,8 @@ if __name__ == "__main__":
             ),
         ]
     )
+    if RAY_CI_PYTHON_AFFECTED == 1:
+        output_string += " RAYCI_CORE_CHANGE"
 
     # Debug purpose
     print(output_string, file=sys.stderr)
