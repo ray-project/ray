@@ -6,7 +6,7 @@ import pickle
 import random
 import time
 import warnings
-from abc import ABC
+from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import (
@@ -296,15 +296,22 @@ class ActorReplicaWrapper:
 class ReplicaScheduler(ABC):
     """Abstract interface for a replica scheduler (how the router calls it)."""
 
+    @abstractmethod
     async def assign_replica(
         self, query: Query
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
         pass
 
-    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+    @abstractmethod
+    def update_replicas(self, replicas: List[ActorReplicaWrapper]):
         pass
 
+    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+        """Compatibility shim for RunningReplicaInfo datatype."""
+        return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
+
     @property
+    @abstractmethod
     def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
         pass
 
@@ -543,10 +550,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         )
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
-
-    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
-        """Shim for compatibility with the existing round robin scheduler."""
-        return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
     def _get_candidate_multiplexed_replica_ids(
         self,
