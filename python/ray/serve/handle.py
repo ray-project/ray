@@ -14,22 +14,32 @@ from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.router import RequestMetadata, Router
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import DEFAULT, get_random_letters
+from ray.serve._private.utils import (
+    DEFAULT,
+    get_random_letters,
+    is_running_in_asyncio_loop,
+)
 from ray.util import metrics
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 _global_async_loop = None
+_global_async_loop_creation_lock = threading.Lock()
 
 
 def _create_or_get_async_loop_in_thread():
     global _global_async_loop
     if _global_async_loop is None:
-        _global_async_loop = asyncio.new_event_loop()
-        thread = threading.Thread(
-            daemon=True,
-            target=_global_async_loop.run_forever,
-        )
-        thread.start()
+        with _global_async_loop_creation_lock:
+            if _global_async_loop is not None:
+                return _global_async_loop
+
+            _global_async_loop = asyncio.new_event_loop()
+            thread = threading.Thread(
+                daemon=True,
+                target=_global_async_loop.run_forever,
+            )
+            thread.start()
+
     return _global_async_loop
 
 
@@ -86,13 +96,11 @@ class _DeploymentHandleBase:
         *,
         handle_options: Optional[_HandleOptions] = None,
         _router: Optional[Router] = None,
-        _is_for_sync_context: bool = False,
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
     ):
         self.deployment_id = DeploymentID(deployment_name, app_name)
         self.handle_options = handle_options or _HandleOptions()
-        self._is_for_sync_context = _is_for_sync_context
         self._recorded_telemetry = _recorded_telemetry
 
         self.request_counter = _request_counter or metrics.Counter(
@@ -142,7 +150,7 @@ class _DeploymentHandleBase:
 
     def _get_or_create_router(self) -> Router:
         if self._router is None:
-            if self._is_for_sync_context:
+            if self.__class__ in {DeploymentHandle, RayServeSyncHandle}:
                 event_loop = _create_or_get_async_loop_in_thread()
             else:
                 event_loop = get_or_create_event_loop()
@@ -184,7 +192,7 @@ class _DeploymentHandleBase:
 
         This is only useful for async handles.
         """
-        if self._is_for_sync_context:
+        if self.__class__ in {DeploymentHandle, RayServeSyncHandle}:
             return True
 
         return get_or_create_event_loop() == self._get_or_create_router()._event_loop
@@ -225,7 +233,6 @@ class _DeploymentHandleBase:
             handle_options=new_handle_options,
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
             _request_counter=self.request_counter,
-            _is_for_sync_context=self._is_for_sync_context,
             _recorded_telemetry=self._recorded_telemetry,
         )
 
@@ -284,7 +291,6 @@ class _DeploymentHandleBase:
             "deployment_name": self.deployment_name,
             "app_name": self.app_name,
             "handle_options": self.handle_options,
-            "_is_for_sync_context": self._is_for_sync_context,
         }
         return self.__class__._deserialize, (serialized_constructor_args,)
 
@@ -484,19 +490,11 @@ class _DeploymentResponseBase:
         self,
         assign_request_coro: Coroutine,
         loop: asyncio.AbstractEventLoop,
-        loop_is_in_another_thread: bool,
     ):
-        self._assign_request_task = loop.create_task(assign_request_coro)
-
-        if loop_is_in_another_thread:
-            # For the "sync" case where the handle is likely used in a driver for
-            # testing, we need to call `run_coroutine_threadsafe` to eagerly execute
-            # the request.
-            self._object_ref_future = asyncio.run_coroutine_threadsafe(
-                self._to_object_ref_or_gen(_record_telemetry=False), loop
-            )
-        else:
-            self._object_ref_future = None
+        # TODO discuss why & how to interact w/ this.
+        self._object_ref_future = asyncio.run_coroutine_threadsafe(
+            assign_request_coro, loop
+        )
 
     async def _to_object_ref_or_gen(
         self,
@@ -508,13 +506,15 @@ class _DeploymentResponseBase:
         # this path as well as calls from the proxy.
         if _record_telemetry:
             ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
-        return await self._assign_request_task
+
+        # TODO: explain this call.
+        return await asyncio.wrap_future(self._object_ref_future)
 
     def _to_object_ref_or_gen_sync(
         self,
         _record_telemetry: bool = True,
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
-        if self._object_ref_future is None:
+        if is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
                 "loop. Use `await response` or `await response._to_object_ref()` "
@@ -546,10 +546,10 @@ class _DeploymentResponseBase:
             - If the request was cancelled after assignment, they'll raise
               `ray.exceptions.TaskCancelledError`.
         """
-        if not self._assign_request_task.done():
-            self._assign_request_task.cancel()
-        elif self._assign_request_task.exception() is None:
-            ray.cancel(self._assign_request_task.result())
+        if not self._object_ref_future.done():
+            self._object_ref_future.cancel()
+        elif self._object_ref_future.exception() is None:
+            ray.cancel(self._object_ref_future.result())
 
 
 @PublicAPI(stability="beta")
@@ -624,7 +624,7 @@ class DeploymentResponse(_DeploymentResponseBase):
 
     def __await__(self):
         """Yields the final result of the deployment handle call."""
-        obj_ref = yield from self._assign_request_task.__await__()
+        obj_ref = yield from asyncio.wrap_future(self._object_ref_future)
         result = yield from obj_ref.__await__()
         return result
 
@@ -730,12 +730,10 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         self,
         assign_request_coro: Coroutine,
         loop: asyncio.AbstractEventLoop,
-        loop_is_in_another_thread: bool,
     ):
         super().__init__(
             assign_request_coro,
             loop=loop,
-            loop_is_in_another_thread=loop_is_in_another_thread,
         )
         self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
 
@@ -901,5 +899,4 @@ class DeploymentHandle(_DeploymentHandleBase):
         return response_cls(
             result_coro,
             loop=loop,
-            loop_is_in_another_thread=self._is_for_sync_context,
         )

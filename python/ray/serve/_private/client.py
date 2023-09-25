@@ -514,19 +514,16 @@ class ServeControllerClient:
             handle = DeploymentHandle(
                 deployment_name,
                 app_name,
-                _is_for_sync_context=sync,
             )
         elif sync:
             handle = RayServeSyncHandle(
                 deployment_name,
                 app_name,
-                _is_for_sync_context=sync,
             )
         else:
             handle = RayServeHandle(
                 deployment_name,
                 app_name,
-                _is_for_sync_context=sync,
             )
 
         self.handle_cache[cache_key] = handle

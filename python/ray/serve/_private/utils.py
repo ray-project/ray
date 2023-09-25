@@ -1,3 +1,4 @@
+import asyncio
 import copy
 import importlib
 import inspect
@@ -693,3 +694,11 @@ def in_ray_driver_process() -> bool:
     """
 
     return ray.get_runtime_context().worker.mode in [SCRIPT_MODE, LOCAL_MODE]
+
+
+def is_running_in_asyncio_loop() -> bool:
+    try:
+        asyncio.get_running_loop()
+        return True
+    except RuntimeError:
+        return False
