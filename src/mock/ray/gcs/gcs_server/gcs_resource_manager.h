@@ -18,7 +18,11 @@ namespace ray {
 namespace gcs {
 static instrumented_io_context __mock_io_context_;
 static ClusterResourceManager __mock_cluster_resource_manager_(__mock_io_context_);
-static GcsNodeManager __mock_gcs_node_manager_ = MockGcsNodeManager();
+static GcsNodeManager __mock_gcs_node_manager_(nullptr,
+                                               nullptr,
+                                               nullptr,
+                                               ClusterID::Nil());
+
 class MockGcsResourceManager : public GcsResourceManager {
  public:
   using GcsResourceManager::GcsResourceManager;
