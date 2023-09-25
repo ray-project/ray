@@ -26,6 +26,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import StatsDict
+from ray.data.context import DataContext
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
@@ -204,7 +205,9 @@ class OperatorFusionRule(Rule):
         if up_logical_op.target_max_block_size is not None:
             down_target_max_block_size = down_logical_op.target_max_block_size
             if down_target_max_block_size is None:
-                down_target_max_block_size = DataContext.get_current().target_max_block_size
+                down_target_max_block_size = (
+                    DataContext.get_current().target_max_block_size
+                )
             if up_logical_op.target_max_block_size != down_target_max_block_size:
                 return False
 
