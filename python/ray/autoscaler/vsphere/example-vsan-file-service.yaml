@@ -55,6 +55,15 @@ provider:
             # Otherwise, "frozen_vm.library_item" must be specified and a set of frozen VMs will be deployed
             # on each ESXi host. The frozen VMs will be named as "{frozen_vm.name}-{the vm's ip address}"
             resource_pool:
+            # The vSphere cluster name, only makes sense when "frozen_vm.library_item" is set and
+            # "frozen_vm.resource_pool" is unset. Indicates to deploy a single frozen VM on the vSphere cluster
+            # from OVF template.
+            cluster:
+            # The target vSphere datastore name for storing the vmdk of the frozen VM to be deployed from OVF template.
+            # Will take effect only when "frozen_vm.library_item" is set. If "frozen_vm.resource_pool" is also set,
+            # this datastore must be a shared datastore among the ESXi hosts.
+            datastore:
+
 
 # How Ray will authenticate with newly launched nodes.
 auth:

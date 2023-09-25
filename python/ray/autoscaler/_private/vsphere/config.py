@@ -89,11 +89,6 @@ def check_and_update_frozen_vm_configs_in_provider_section(
             "frozen_vm"
         ]["resource_pool"]
 
-    if "cluster" in head_node_config["frozen_vm"]:
-        worker_node_config["frozen_vm"]["cluster"] = head_node_config["frozen_vm"][
-            "cluster"
-        ]
-
 
 def add_credentials_into_provider_section(config):
 
