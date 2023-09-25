@@ -392,6 +392,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/install-java.sh
+    # TODO(scottjlee): upgrade ARROW_VERSION to 12.* and ARROW_MONGO_VERSION to 1.0.*
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=9.* ARROW_MONGO_VERSION=0.5.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - sudo apt-get purge -y mongodb*
