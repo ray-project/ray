@@ -80,7 +80,7 @@ def ray_instance(request):
     os.environ.update(requested_env_vars)
     importlib.reload(ray.serve._private.constants)
     importlib.reload(ray.serve.controller)
-    importlib.reload(ray.serve._private.http_proxy)
+    importlib.reload(ray.serve._private.proxy)
 
     yield ray.init()
 
@@ -158,7 +158,7 @@ def test_callback_fail(ray_instance):
     Actor will fail to be started and further call will raise RayActorError.
     """
 
-    actor_def = ray.serve._private.http_proxy.HTTPProxyActor
+    actor_def = ray.serve._private.proxy.ProxyActor
     handle = actor_def.remote(
         host="http_proxy",
         port=123,
@@ -191,7 +191,7 @@ def test_callback_fail(ray_instance):
 def test_http_proxy_return_aribitary_objects(ray_instance):
     """Test invalid callback path in http proxy"""
 
-    actor_def = ray.serve._private.http_proxy.HTTPProxyActor
+    actor_def = ray.serve._private.proxy.ProxyActor
     handle = actor_def.remote(
         host="http_proxy",
         port=123,

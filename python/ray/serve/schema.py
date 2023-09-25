@@ -899,7 +899,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     grpc_options: Optional[gRPCOptionsSchema] = Field(description="gRPC Proxy options.")
     proxies: Dict[str, ProxyDetails] = Field(
         description=(
-            "Mapping from node_id to details about the HTTP Proxy running on that node."
+            "Mapping from node_id to details about the Proxy running on that node."
         )
     )
     deploy_mode: ServeDeployMode = Field(
