@@ -21,7 +21,7 @@ def f_process1(x):
     return len([i for i in range(x) if i % 2 == 0])
 
 
-class TestInitializerException(Exception):
+class InitializerException(Exception):
     pass
 
 
@@ -262,8 +262,8 @@ class TestShared:
 class TestIsolated:
 
     # This class is for tests that must be run with dedicated/isolated ray
-    # instances. It forces tests to be run in series and the individual test is
-    # responsible for creating its own ray instances.
+    # instances. Individual tests are responsible for creating their own ray
+    # instances.
 
     @pytest.fixture(autouse=True)
     def _tear_down(self):
@@ -595,12 +595,12 @@ class TestIsolated:
 
         # ----------------------------
         with ThreadPoolExecutor(
-            max_workers=2, initializer=safe, initargs=(TestInitializerException,)
+            max_workers=2, initializer=safe, initargs=(InitializerException,)
         ) as tpe:
             tpe_iter = tpe.map(f_process1, range(10))
             _ = list(tpe_iter)
         with ThreadPoolExecutor(
-            max_workers=2, initializer=unsafe, initargs=(TestInitializerException,)
+            max_workers=2, initializer=unsafe, initargs=(InitializerException,)
         ) as tpe:
             tpe_iter = tpe.map(f_process1, range(10))
             with pytest.raises(BrokenThreadPool):
@@ -611,7 +611,7 @@ class TestIsolated:
         with RayExecutor(
             max_workers=2,
             initializer=safe,
-            initargs=(TestInitializerException,),
+            initargs=(InitializerException,),
             runtime_env={"working_dir": "./python/ray/tests/."},
         ) as ex:
             ray_iter = ex.map(lambda x: x, range(10))
@@ -619,7 +619,7 @@ class TestIsolated:
         with RayExecutor(
             max_workers=2,
             initializer=unsafe,
-            initargs=(TestInitializerException,),
+            initargs=(InitializerException,),
             runtime_env={"working_dir": "./python/ray/tests/."},
         ) as ex:
             ray_iter = ex.map(f_process1, range(10))
@@ -631,13 +631,13 @@ class TestIsolated:
 
         with pytest.raises(ValueError):
             with RayExecutor(
-                max_workers=2, initializer=safe, initargs=(TestInitializerException,)
+                max_workers=2, initializer=safe, initargs=(InitializerException,)
             ) as _:
                 pass
         with RayExecutor(
             max_workers=2,
             initializer=unsafe,
-            initargs=(TestInitializerException,),
+            initargs=(InitializerException,),
             runtime_env={"working_dir": "./python/ray/tests/."},
         ) as _:
             pass
