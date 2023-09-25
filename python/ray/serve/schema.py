@@ -1,29 +1,30 @@
+import json
 from collections import Counter
 from dataclasses import dataclass, field
-import json
-from pydantic import BaseModel, Field, Extra, root_validator, validator
-from typing import Union, List, Dict, Set, Optional
+from typing import Dict, List, Optional, Set, Union
+
+from pydantic import BaseModel, Extra, Field, root_validator, validator
 
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
-    DeploymentStatusInfo,
-    ApplicationStatusInfo,
     ApplicationStatus,
-    DeploymentStatus,
+    ApplicationStatusInfo,
     DeploymentInfo,
-    StatusOverview,
+    DeploymentStatus,
+    DeploymentStatusInfo,
+    ProxyStatus,
     ReplicaState,
     ServeDeployMode,
-    ProxyStatus,
+    StatusOverview,
 )
-from ray.serve.config import ProxyLocation
-from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
-from ray.util.annotations import PublicAPI
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
+from ray.serve.config import ProxyLocation
+from ray.util.annotations import PublicAPI
 
 
 def _route_prefix_format(cls, v):
@@ -421,7 +422,6 @@ class ServeApplicationSchema(BaseModel):
 
     @validator("import_path")
     def import_path_format_valid(cls, v: str):
-
         if v is None:
             return
 
@@ -477,9 +477,7 @@ class ServeApplicationSchema(BaseModel):
 
         config = self.dict(**kwargs)
         for idx, deployment in enumerate(config["deployments"]):
-
             if isinstance(deployment.get("ray_actor_options"), dict):
-
                 # JSON-serialize ray_actor_options' resources dictionary
                 if isinstance(deployment["ray_actor_options"].get("resources"), dict):
                     deployment["ray_actor_options"]["resources"] = json.dumps(
@@ -901,7 +899,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     grpc_options: Optional[gRPCOptionsSchema] = Field(description="gRPC Proxy options.")
     proxies: Dict[str, ProxyDetails] = Field(
         description=(
-            "Mapping from node_id to details about the HTTP Proxy running on that node."
+            "Mapping from node_id to details about the Proxy running on that node."
         )
     )
     deploy_mode: ServeDeployMode = Field(

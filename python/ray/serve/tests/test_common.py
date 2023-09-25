@@ -1,21 +1,24 @@
 import time
+
 import pytest
 
-from ray.serve._private.utils import get_random_letters
 from ray.serve._private.common import (
-    ReplicaName,
-    StatusOverview,
-    DeploymentStatus,
-    DeploymentStatusInfo,
     ApplicationStatus,
     ApplicationStatusInfo,
+    DeploymentStatus,
+    DeploymentStatusInfo,
+    ReplicaName,
     RunningReplicaInfo,
+    StatusOverview,
 )
+from ray.serve._private.utils import get_random_letters
 from ray.serve.generated.serve_pb2 import (
-    StatusOverview as StatusOverviewProto,
-    DeploymentStatusInfo as DeploymentStatusInfoProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
 )
+from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusInfo as DeploymentStatusInfoProto,
+)
+from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 
 
 def test_replica_tag_formatting():
