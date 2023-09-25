@@ -237,7 +237,7 @@ def _zip_one_block(
         # Swap blocks if ordering was inverted during block alignment splitting.
         block, other_block = other_block, block
     # Zip block and other blocks.
-    result = _try_zip(block, other_block)
+    result = _try_zip(BlockAccessor.for_block(block), other_block)
     br = BlockAccessor.for_block(result)
     return result, br.get_metadata(input_files=[], exec_stats=stats.build())
 
@@ -247,16 +247,15 @@ def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:
     return block.num_rows(), block.size_bytes()
 
 
-def _try_zip(block: Block, other_block: Block) -> Block:
+def _try_zip(block: BlockAccessor, other_block: Block) -> Block:
     try:
-        return BlockAccessor.for_block(block).zip(other_block)
-    except ValueError as e:
+        return block.zip(other_block)
+    except ValueError:
         pyarrow_table = _lazy_import_pyarrow_table()
         if pyarrow_table:
-            if isinstance(block, pyarrow_table):
-                return _try_zip(block, pyarrow_table.from_pandas(other_block))
-            if isinstance(other_block, pyarrow_table):
-                return _try_zip(pyarrow_table.from_pandas(block), other_block)
-        else:
-            # Re-raise the ValueError
-            raise e
+            if not isinstance(other_block, pyarrow_table):
+                other_block = BlockAccessor.for_block(other_block).to_arrow()
+                return block.zip(other_block)
+            else:
+                block = BlockAccessor.for_block(block.to_arrow())
+                return block.zip(other_block)
