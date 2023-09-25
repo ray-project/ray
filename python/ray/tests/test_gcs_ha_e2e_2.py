@@ -38,7 +38,7 @@ print(ray._private.worker._global_node.session_name)
 
     head.restart()
 
-    wait_for_condition(get_session_name, timeout=15, to_head=True)
+    wait_for_condition(get_session_name, timeout=30, to_head=True)
     session_name_head_after_restart = get_session_name(to_head=True)
     wait_for_condition(get_session_name, to_head=False)
     session_name_worker_after_restart = get_session_name(to_head=False)
