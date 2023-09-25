@@ -1,8 +1,9 @@
+import uuid
+
 import pytest
 import requests
-from fastapi import FastAPI
 import starlette
-import uuid
+from fastapi import FastAPI
 
 import ray
 from ray import serve
@@ -37,7 +38,6 @@ def test_request_id_header_by_default(serve_instance):
 
 class TestUserProvidedRequestIDHeader:
     def verify_result(self):
-
         for header_attr in [RAY_SERVE_REQUEST_ID_HEADER, "X-Request-ID"]:
             resp = requests.get(
                 "http://localhost:8000", headers={header_attr: "123-234"}

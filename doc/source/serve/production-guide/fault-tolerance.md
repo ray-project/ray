@@ -435,7 +435,7 @@ total_actors: 10
 Table (group by class):
 ------------------------------------
     CLASS_NAME              STATE_COUNTS
-0   HTTPProxyActor          ALIVE: 3
+0   ProxyActor          ALIVE: 3
 1   ServeReplica:SleepyPid  ALIVE: 6
 2   ServeController         ALIVE: 1
 
@@ -513,7 +513,7 @@ total_actors: 11
 Table (group by class):
 ------------------------------------
     CLASS_NAME              STATE_COUNTS
-0   HTTPProxyActor          ALIVE: 3
+0   ProxyActor          ALIVE: 3
 1   ServeController         ALIVE: 1
 2   ServeReplica:SleepyPid  ALIVE: 6
 
@@ -572,11 +572,11 @@ total_actors: 12
 Table (group by class):
 ------------------------------------
     CLASS_NAME              STATE_COUNTS
-0   HTTPProxyActor          ALIVE: 3
+0   ProxyActor          ALIVE: 3
 1   ServeController         ALIVE: 1
 2   ServeReplica:SleepyPid  ALIVE: 6
 
-$ ray list actors --filter "class_name=HTTPProxyActor"
+$ ray list actors --filter "class_name=ProxyActor"
 
 ======== List: 2022-10-04 21:52:39.853758 ========
 Stats:
@@ -586,9 +586,9 @@ Total: 3
 Table:
 ------------------------------
     ACTOR_ID                          CLASS_NAME      STATE    NAME                                                                                                 PID
- 0  283fc11beebb6149deb608eb01000000  HTTPProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-91f9a685e662313a0075efcb7fd894249a5bdae7ee88837bea7985a0    101
- 1  2b010ce28baeff5cb6cb161e01000000  HTTPProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-cc262f3dba544a49ea617d5611789b5613f8fe8c86018ef23c0131eb    133
- 2  7abce9dd241b089c1172e9ca01000000  HTTPProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-7589773fc62e08c2679847aee9416805bbbf260bee25331fa3389c4f    267
+ 0  283fc11beebb6149deb608eb01000000  ProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-91f9a685e662313a0075efcb7fd894249a5bdae7ee88837bea7985a0    101
+ 1  2b010ce28baeff5cb6cb161e01000000  ProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-cc262f3dba544a49ea617d5611789b5613f8fe8c86018ef23c0131eb    133
+ 2  7abce9dd241b089c1172e9ca01000000  ProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-7589773fc62e08c2679847aee9416805bbbf260bee25331fa3389c4f    267
 ```
 
 You can use the `NAME` from the `ray list actor` output to get a handle to one of the replicas:
@@ -605,7 +605,7 @@ $ python
 While the proxy is restarted, the other proxies can continue accepting requests. Eventually the proxy restarts and continues accepting requests. You can use the `ray list actor` command to see when the proxy restarts:
 
 ```console
-$ ray list actors --filter "class_name=HTTPProxyActor"
+$ ray list actors --filter "class_name=ProxyActor"
 
 ======== List: 2022-10-04 21:58:41.193966 ========
 Stats:
@@ -615,12 +615,12 @@ Total: 3
 Table:
 ------------------------------
     ACTOR_ID                          CLASS_NAME      STATE    NAME                                                                                                 PID
- 0  283fc11beebb6149deb608eb01000000  HTTPProxyActor  ALIVE     SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-91f9a685e662313a0075efcb7fd894249a5bdae7ee88837bea7985a0  57317
- 1  2b010ce28baeff5cb6cb161e01000000  HTTPProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-cc262f3dba544a49ea617d5611789b5613f8fe8c86018ef23c0131eb    133
- 2  7abce9dd241b089c1172e9ca01000000  HTTPProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-7589773fc62e08c2679847aee9416805bbbf260bee25331fa3389c4f    267
+ 0  283fc11beebb6149deb608eb01000000  ProxyActor  ALIVE     SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-91f9a685e662313a0075efcb7fd894249a5bdae7ee88837bea7985a0  57317
+ 1  2b010ce28baeff5cb6cb161e01000000  ProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-cc262f3dba544a49ea617d5611789b5613f8fe8c86018ef23c0131eb    133
+ 2  7abce9dd241b089c1172e9ca01000000  ProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-7589773fc62e08c2679847aee9416805bbbf260bee25331fa3389c4f    267
 ```
 
-Note that the PID for the first HTTPProxyActor has changed, indicating that it restarted.
+Note that the PID for the first ProxyActor has changed, indicating that it restarted.
 
 [KubeRay]: kuberay-index
 [external storage namespace]: kuberay-external-storage-namespace

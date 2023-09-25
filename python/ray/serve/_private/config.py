@@ -1,21 +1,21 @@
 import inspect
 import json
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from google.protobuf.json_format import MessageToDict
 from pydantic import (
     BaseModel,
+    Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     validator,
-    Field,
 )
 
 from ray import cloudpickle
-from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
-
-from ray.serve.config import AutoscalingConfig
+from ray._private import ray_option_utils
+from ray._private.serialization import pickle_dumps
+from ray._private.utils import resources_from_ray_options
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
@@ -25,15 +25,12 @@ from ray.serve._private.constants import (
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
-from ray.serve.generated.serve_pb2 import (
-    AutoscalingConfig as AutoscalingConfigProto,
-    DeploymentConfig as DeploymentConfigProto,
-    DeploymentLanguage,
-    ReplicaConfig as ReplicaConfigProto,
-)
-from ray._private import ray_option_utils
-from ray._private.utils import resources_from_ray_options
-from ray._private.serialization import pickle_dumps
+from ray.serve.config import AutoscalingConfig
+from ray.serve.generated.serve_pb2 import AutoscalingConfig as AutoscalingConfigProto
+from ray.serve.generated.serve_pb2 import DeploymentConfig as DeploymentConfigProto
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
+from ray.serve.generated.serve_pb2 import ReplicaConfig as ReplicaConfigProto
+from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
 
 
 def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bool):
