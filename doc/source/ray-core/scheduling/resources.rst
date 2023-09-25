@@ -190,11 +190,11 @@ The precision of the fractional resource requirement is 0.0001 so you should avo
     :start-after: __specifying_fractional_resource_requirements_start__
     :end-before: __specifying_fractional_resource_requirements_end__
 
+.. note::
+  Unit resource requirements that are greater than 1, 
+  need to be whole numbers. For example,  ``num_gpus=1.5`` is invalid. This restriction applies to resources that the scheduler assigns using IDs such as GPU, TPU, and Neuron Core.
+
 .. tip::
 
   Besides resource requirements, you can also specify an environment for a task or actor to run in,
   which can include Python packages, local files, environment variables, and more. See :ref:`Runtime Environments <runtime-environments>` for details.
-
-.. note::
-  Unit resource requirements that are greater than 1, 
-  need to be whole numbers. For example,  ``num_gpus=1.5`` is invalid. This restriction applies to resources that the scheduler assigns using IDs such as GPU, TPU, and Neuron Core.

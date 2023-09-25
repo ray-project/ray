@@ -630,6 +630,7 @@ cdef int prepare_resources(
     cdef:
         unordered_map[c_string, double] out
         c_string resource_name
+        list unit_resources
 
     if resource_dict is None:
         raise ValueError("Must provide resource map.")
@@ -640,14 +641,18 @@ cdef int prepare_resources(
         if value < 0:
             raise ValueError("Resource quantities may not be negative.")
         if value > 0:
-            unit_resources = f"{RayConfig.instance().predefined_unit_instance_resources()},\
-            {RayConfig.instance().custom_unit_instance_resources()}"
+            unit_resources = (
+                f"{RayConfig.instance().predefined_unit_instance_resources()\
+                .decode('utf-8')},"
+                f"{RayConfig.instance().custom_unit_instance_resources()\
+                .decode('utf-8')}"
+            ).split(",")
 
             if (value >= 1 and isinstance(value, float)
                     and not value.is_integer() and str(key) in unit_resources):
                 raise ValueError(
-                    "Unit instance resource (GPU, TPU, Neuron Core) quantities >1 must",
-                    f" be whole numbers. {key} resource with value {value} is invalid.")
+                    f"{key} resource quantities >1 must",
+                    f" be whole numbers. The specified quantity {value} is invalid.")
             resource_map[0][key.encode("ascii")] = float(value)
     return 0
 

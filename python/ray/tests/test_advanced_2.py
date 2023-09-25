@@ -147,7 +147,7 @@ def test_zero_cpus_actor(ray_start_cluster):
 
 
 def test_fractional_resources(shutdown_only):
-    ray.init(num_cpus=6, num_gpus=3, resources={"Custom": 3, "TPU": 3})
+    ray.init(num_cpus=6, num_gpus=3, resources={"Custom": 3, "Custom2": 3, "TPU": 3})
 
     @ray.remote(num_gpus=0.5)
     class Foo1:
@@ -185,7 +185,7 @@ def test_fractional_resources(shutdown_only):
 
     # Non unit resources (e.g. CPU, ) allow fractional
     # number of resources greather than 1.
-    @ray.remote(num_cpus=1.5, resources={"Custom": 2.5})
+    @ray.remote(num_cpus=1.5, resources={"Custom2": 2.5})
     def test_frac_cpu():
         return True
 
