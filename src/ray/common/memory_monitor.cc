@@ -268,7 +268,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
       buffer_bytes = value;
     } else if (title == "MemTotal:") {
       mem_total_bytes = value;
-    }else{
+    } else {
       /// Skip other lines
       continue;
     }
