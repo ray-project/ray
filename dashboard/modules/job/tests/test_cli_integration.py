@@ -278,19 +278,17 @@ def test_quote_escaping(ray_start_stop):
 
 
 def test_resources(shutdown_only):
-    available_memory = 4
-    ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1}, _memory=available_memory)
+    ray.init(num_cpus=1, num_gpus=1, resources={"Custom": 1})
 
     # Check the case of too many resources.
     for id, arg in [
         ("entrypoint_num_cpus", "--entrypoint-num-cpus=2"),
         ("entrypoint_num_gpus", "--entrypoint-num-gpus=2"),
-        ("entrypoint_memory", f"--entrypoint-memory={available_memory + 1}"),
+        ("entrypoint_memory", "--entrypoint-memory=4"),
         ("entrypoint_resources", "--entrypoint-resources='{\"Custom\": 2}'"),
     ]:
         _run_cmd(f"ray job submit --submission-id={id} --no-wait {arg} -- echo hi")
         stdout, _ = _run_cmd(f"ray job status {id}")
-        print(f"stdout: {stdout}")
         assert "waiting for resources" in stdout
 
     # Check the case of sufficient resources.
