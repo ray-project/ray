@@ -2,8 +2,11 @@ import os
 import numpy as np
 from pathlib import Path
 import pytest
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
+
+try:
+    import lightning.pytorch as pl
+except ModuleNotFoundError:
+    import pytorch_lightning as pl
 
 import ray
 from ray.train import RunConfig, CheckpointConfig
@@ -147,7 +150,7 @@ def test_air_trainer_restore(
 
     if resume_from_ckpt_path:
         ckpt_dir = f"{tmpdir}/ckpts"
-        callback = ModelCheckpoint(dirpath=ckpt_dir, save_last=True)
+        callback = pl.callbacks.ModelCheckpoint(dirpath=ckpt_dir, save_last=True)
         pl_trainer = pl.Trainer(
             max_epochs=init_epoch, accelerator="cpu", callbacks=[callback]
         )

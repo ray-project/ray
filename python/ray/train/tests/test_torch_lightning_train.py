@@ -17,7 +17,11 @@ from ray.train.tests.lightning_test_utils import (
     LinearModule,
     DummyDataModule,
 )
-import pytorch_lightning as pl
+
+try:
+    import lightning.pytorch as pl
+except ModuleNotFoundError:
+    import pytorch_lightning as pl
 
 
 @pytest.fixture

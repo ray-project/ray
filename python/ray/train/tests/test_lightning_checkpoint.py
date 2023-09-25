@@ -1,4 +1,8 @@
-import pytorch_lightning as pl
+try:
+    import lightning.pytorch as pl
+except ModuleNotFoundError:
+    import pytorch_lightning as pl
+
 import torch
 import torch.nn as nn
 import tempfile

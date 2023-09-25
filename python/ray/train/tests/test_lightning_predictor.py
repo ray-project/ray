@@ -3,8 +3,13 @@ import pytest
 import torch
 
 import numpy as np
-import pytorch_lightning as pl
 from torch.utils.data import DataLoader
+
+try:
+    import lightning.pytorch as pl
+except ModuleNotFoundError:
+    import pytorch_lightning as pl
+
 
 from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY
 from ray.train.tests.conftest import *  # noqa
