@@ -342,6 +342,27 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
   resources_data.set_is_draining(IsLocalNodeDraining());
 
+  for (const auto &iter : last_idle_times_) {
+    if (iter.second == absl::nullopt) {
+      // If it is a WorkFootprint
+      if (iter.first.index() == 0) {
+        switch (std::get<WorkFootprint>(iter.first)) {
+        case WorkFootprint::NODE_WORKERS:
+          resources_data.add_node_activity("Busy workers on node.");
+          break;
+        default:
+          UNREACHABLE;
+        }
+        // If it is a ResourceID
+      } else {
+        std::stringstream out;
+        out << "Resource: " << std::get<ResourceID>(iter.first).Binary()
+            << " currently in use.";
+        resources_data.add_node_activity(out.str());
+      }
+    }
+  }
+
   msg.set_node_id(local_node_id_.Binary());
   msg.set_version(version_);
   msg.set_message_type(message_type);
