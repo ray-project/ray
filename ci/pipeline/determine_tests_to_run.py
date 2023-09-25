@@ -366,9 +366,11 @@ if __name__ == "__main__":
     print(output_string, file=sys.stderr)
 
     # Used by buildkite log format
+    pairs = [item.split("=") for item in output_string.split(" ")]
+    affected_vars = [key for key, affected in pairs if affected == "1"]
     if args.output.lower() == "json":
-        pairs = [item.split("=") for item in output_string.split(" ")]
-        affected_vars = [key for key, affected in pairs if affected == "1"]
         print(json.dumps(affected_vars))
+    if args.output.lower() == "envvars":
+        print(" ".join(affected_vars))
     else:
         print(output_string)
