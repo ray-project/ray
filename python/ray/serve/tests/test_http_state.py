@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from random import random
 from typing import Any, List, Tuple
 from unittest.mock import patch
 
@@ -42,6 +43,7 @@ def _make_http_proxy_state_manager(
     head_node_id: str = HEAD_NODE_ID,
     cluster_node_info_cache=MockClusterNodeInfoCache(),
     proxy_actor_class=HTTPProxyActor,
+    ray_api_wrapper=ray,
 ) -> (HTTPProxyStateManager, ClusterNodeInfoCache):
     return (
         HTTPProxyStateManager(
@@ -51,7 +53,7 @@ def _make_http_proxy_state_manager(
             head_node_id=head_node_id,
             cluster_node_info_cache=cluster_node_info_cache,
             proxy_actor_class=proxy_actor_class,
-            soft_node_affinity=True,
+            ray_api_wrapper=ray_api_wrapper,
         ),
         cluster_node_info_cache,
     )
@@ -1013,56 +1015,91 @@ def test_is_ready_for_shutdown(all_nodes):
     wait_for_condition(check_is_ready_for_shutdown)
 
 
-@patch("ray.serve._private.http_state.PROXY_READY_CHECK_TIMEOUT_S", 0.9)
+@patch("ray.serve._private.http_state.PROXY_READY_CHECK_TIMEOUT_S", 0.1)
 @pytest.mark.parametrize("number_of_worker_nodes", [1])
-def test_proxy_starting_timeout_longer_than_env(all_nodes, number_of_worker_nodes):
-    """Test calling update method on HTTPProxyState when the proxy state is STARTING and
+def test_proxy_starting_timeout_longer_than_env(number_of_worker_nodes, all_nodes):
+    """Test update method on ProxyStateManager when the proxy state is STARTING and
     when the ready call takes longer than PROXY_READY_CHECK_TIMEOUT_S.
 
     The proxy state started with STARTING. After update is called, ready calls takes
     some time to finish. The state will eventually change to HEALTHY after few more
     tries.
     """
+    completed_tasks = None
 
-    @ray.remote(num_cpus=0)
-    class NewMockHTTPProxyActor:
+    def remote(func):
+        func.completed_task = None
+        func.remote = func
+        return func
+
+    class FakeRayAPIWrapper:
+        @classmethod
+        def get_actor(cls, *args, **kwargs):
+            raise ValueError
+
+        def wait(self, tasks, timeout=0):
+            return completed_tasks, None
+
+        def get(self, result):
+            return result
+
+    class FakeProxyActor:
         def __init__(self, *args, **kwargs):
-            pass
+            self._actor_id = random()
 
-        async def ready(self):
-            await asyncio.sleep(1)
-            return json.dumps(["mock_worker_id", "mock_log_file_path"])
+        @remote
+        async def ready():
+            pass
 
         async def check_health(self):
             pass
 
+    class ProxyActorWrapper:
+        @classmethod
+        def options(cls, *args, **kwargs):
+            return ProxyActorWrapper
+
+        @classmethod
+        def remote(cls, *args, **kwargs):
+            return FakeProxyActor()
+
     proxy_state_manager, cluster_node_info_cache = _make_http_proxy_state_manager(
         http_options=HTTPOptions(location=DeploymentMode.EveryNode),
-        proxy_actor_class=NewMockHTTPProxyActor,
+        proxy_actor_class=ProxyActorWrapper,
+        ray_api_wrapper=FakeRayAPIWrapper(),
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
     node_ids = {node[0] for node in all_nodes}
+
     proxy_state_manager.update(http_proxy_nodes=node_ids)
 
     # Ensure 2 proxies are created, one for the head node and another for the worker.
-    assert (
-        len(proxy_state_manager._proxy_states) == 2
+    assert len(proxy_state_manager._proxy_states) == len(
+        node_ids
     ), proxy_state_manager._proxy_states
 
-    # Ensure the proxy status before update is STARTING.
+    # Ensure the proxy state statuses before update are STARTING.
     for proxy_state in proxy_state_manager._proxy_states.values():
         assert proxy_state.status == ProxyStatus.STARTING
 
-    proxy_state_manager.update(http_proxy_nodes=node_ids)
+    # Continuously trigger update and wait for proxy states to restart.
+    def check_proxy_state_restarted():
+        proxy_state_manager.update(http_proxy_nodes=node_ids)
+        return len(proxy_state_manager._proxy_restart_counts) == len(node_ids)
 
-    # Continuously trigger update and wait for status to be changed.
+    wait_for_condition(check_proxy_state_restarted, timeout=5)
+
+    # Simulate the ready call completes within PROXY_READY_CHECK_TIMEOUT_S.
+    completed_tasks = [json.dumps(["mock_worker_id", "mock_log_file_path"])]
+
+    # Continuously trigger update and wait for status to be changed to HEALTHY.
     wait_for_condition(
         condition_predictor=_update_and_check_http_proxy_state_manager,
-        timeout=60,
+        timeout=5,
         http_proxy_state_manager=proxy_state_manager,
         node_ids=list(node_ids),
-        statuses=[ProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
+        statuses=[ProxyStatus.HEALTHY] * len(node_ids),
         http_proxy_nodes=node_ids,
     )
 

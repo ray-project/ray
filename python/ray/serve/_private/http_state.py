@@ -4,10 +4,12 @@ import os
 import random
 import time
 import traceback
+from types import ModuleType
 from typing import Dict, List, Optional, Set, Tuple, Type
 
 import ray
 from ray.actor import ActorHandle
+from ray.exceptions import GetTimeoutError, RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import NodeId, ProxyStatus
 from ray.serve._private.constants import (
@@ -38,6 +40,7 @@ class HTTPProxyState:
         node_id: str,
         node_ip: str,
         proxy_restart_count: int = 0,
+        ray_api_wrapper: ModuleType = ray,
     ):
         self._actor_handle = actor_handle
         self._actor_name = actor_name
@@ -49,6 +52,7 @@ class HTTPProxyState:
         self._shutting_down = False
         self._consecutive_health_check_failures: int = 0
         self._proxy_restart_count = proxy_restart_count
+        self._ray_api_wrapper = ray_api_wrapper
 
         self._update_draining_obj_ref = None
         self._is_drained_obj_ref = None
@@ -132,15 +136,17 @@ class HTTPProxyState:
         assert self._status in {ProxyStatus.HEALTHY, ProxyStatus.DRAINING}
 
         if self._health_check_obj_ref:
-            finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
+            finished, _ = self._ray_api_wrapper.wait(
+                [self._health_check_obj_ref], timeout=0
+            )
             if finished:
                 self._health_check_obj_ref = None
                 try:
-                    ray.get(finished[0])
+                    self._ray_api_wrapper.get(finished[0])
                     # Call to reset _consecutive_health_check_failures
                     # the status should be unchanged.
                     self.try_update_status(self._status)
-                except ray.exceptions.RayActorError:
+                except RayActorError:
                     # The proxy actor dies.
                     self.set_status(ProxyStatus.UNHEALTHY)
                 except Exception as e:
@@ -175,11 +181,13 @@ class HTTPProxyState:
         assert self._status == ProxyStatus.DRAINING
 
         if self._is_drained_obj_ref:
-            finished, _ = ray.wait([self._is_drained_obj_ref], timeout=0)
+            finished, _ = self._ray_api_wrapper.wait(
+                [self._is_drained_obj_ref], timeout=0
+            )
             if finished:
                 self._is_drained_obj_ref = None
                 try:
-                    is_drained = ray.get(finished[0])
+                    is_drained = self._ray_api_wrapper.get(finished[0])
                     if is_drained:
                         self.set_status(ProxyStatus.DRAINED)
                 except Exception as e:
@@ -232,17 +240,19 @@ class HTTPProxyState:
             self.proxy_restart_count + 1
         ) * PROXY_READY_CHECK_TIMEOUT_S
         if self._status == ProxyStatus.STARTING:
-            finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
+            finished, _ = self._ray_api_wrapper.wait([self._ready_obj_ref], timeout=0)
             if finished:
                 try:
-                    worker_id, log_file_path = json.loads(ray.get(finished[0]))
+                    worker_id, log_file_path = json.loads(
+                        self._ray_api_wrapper.get(finished[0])
+                    )
                     self.try_update_status(ProxyStatus.HEALTHY)
                     self.update_actor_details(
                         worker_id=worker_id,
                         log_file_path=log_file_path,
                         status=self._status,
                     )
-                except ray.exceptions.RayActorError:
+                except RayActorError:
                     self.set_status(ProxyStatus.UNHEALTHY)
                     logger.warning(
                         "Unexpected actor death when checking readiness of HTTP "
@@ -295,7 +305,7 @@ class HTTPProxyState:
 
     def shutdown(self):
         self._shutting_down = True
-        ray.kill(self.actor_handle, no_restart=True)
+        self._ray_api_wrapper.kill(self.actor_handle, no_restart=True)
 
     def is_ready_for_shutdown(self) -> bool:
         """Return whether the HTTP proxy actor is shutdown.
@@ -308,11 +318,13 @@ class HTTPProxyState:
             return False
 
         try:
-            ray.get(self._actor_handle.check_health.remote(), timeout=0.001)
-        except ray.exceptions.RayActorError:
+            self._ray_api_wrapper.get(
+                self._actor_handle.check_health.remote(), timeout=0.001
+            )
+        except RayActorError:
             # The actor is dead, so it's ready for shutdown.
             return True
-        except ray.exceptions.GetTimeoutError:
+        except GetTimeoutError:
             # The actor is still alive, so it's not ready for shutdown.
             return False
 
@@ -335,7 +347,7 @@ class HTTPProxyStateManager:
         cluster_node_info_cache: ClusterNodeInfoCache,
         grpc_options: Optional[gRPCOptions] = None,
         proxy_actor_class: Type[HTTPProxyActor] = HTTPProxyActor,
-        soft_node_affinity: bool = False,
+        ray_api_wrapper: ModuleType = ray,
     ):
         self._controller_name = controller_name
         self._detached = detached
@@ -348,7 +360,7 @@ class HTTPProxyStateManager:
         self._proxy_restart_counts: Dict[NodeId, int] = dict()
         self._head_node_id: str = head_node_id
         self._proxy_actor_class = proxy_actor_class
-        self._soft_node_affinity = soft_node_affinity
+        self._ray_api_wrapper = ray_api_wrapper
 
         self._cluster_node_info_cache = cluster_node_info_cache
 
@@ -412,6 +424,7 @@ class HTTPProxyStateManager:
             proxy_state.update(draining)
 
         self._stop_proxies_if_needed()
+
         self._start_proxies_if_needed(target_nodes)
 
     def _get_target_nodes(self, http_proxy_nodes) -> List[Tuple[str, str]]:
@@ -502,9 +515,7 @@ class HTTPProxyStateManager:
             lifetime="detached" if self._detached else None,
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=0,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id, soft=self._soft_node_affinity
-            ),
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
         ).remote(
             self._config.host,
             port,
@@ -528,7 +539,7 @@ class HTTPProxyStateManager:
 
             name = self._generate_actor_name(node_id=node_id)
             try:
-                proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
+                proxy = self._ray_api_wrapper.get_actor(name, namespace=SERVE_NAMESPACE)
             except ValueError:
                 logger.info(
                     f"Starting HTTP proxy with name '{name}' on node '{node_id}' "
@@ -547,6 +558,7 @@ class HTTPProxyStateManager:
                 node_id=node_id,
                 node_ip=node_ip_address,
                 proxy_restart_count=self._proxy_restart_counts.get(node_id, 0),
+                ray_api_wrapper=self._ray_api_wrapper,
             )
 
     def _stop_proxies_if_needed(self) -> bool:
