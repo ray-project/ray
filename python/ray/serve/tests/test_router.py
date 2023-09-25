@@ -8,10 +8,10 @@ import copy
 import pytest
 
 import ray
-from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.common import RunningReplicaInfo, RequestProtocol
-from ray.serve._private.router import Query, RoundRobinReplicaScheduler, RequestMetadata
 from ray._private.test_utils import SignalActor
+from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.common import RequestProtocol, RunningReplicaInfo
+from ray.serve._private.router import Query, RequestMetadata, RoundRobinReplicaScheduler
 
 pytestmark = pytest.mark.asyncio
 
