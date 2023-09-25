@@ -491,9 +491,11 @@ class _DeploymentResponseBase:
         assign_request_coro: Coroutine,
         loop: asyncio.AbstractEventLoop,
     ):
-        # TODO discuss why & how to interact w/ this.
-        self._object_ref_future = asyncio.run_coroutine_threadsafe(
-            assign_request_coro, loop
+        # Schedule the coroutine to run on the provided loop. This is always a separate
+        # loop running in another thread to avoid user code blocking the router, so we
+        # use the `concurrent.futures.Future` thread safe API.
+        self._object_ref_future: concurrent.futures.Future = (
+            asyncio.run_coroutine_threadsafe(assign_request_coro, loop)
         )
 
     async def _to_object_ref_or_gen(
@@ -507,7 +509,8 @@ class _DeploymentResponseBase:
         if _record_telemetry:
             ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
-        # TODO: explain this call.
+        # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited safely
+        # from any asyncio loop.
         return await asyncio.wrap_future(self._object_ref_future)
 
     def _to_object_ref_or_gen_sync(
