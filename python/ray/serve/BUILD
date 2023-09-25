@@ -114,7 +114,7 @@ py_test(
 )
 
 py_test(
-    name = "test_http_state",
+    name = "test_proxy_state",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],

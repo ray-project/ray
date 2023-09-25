@@ -99,7 +99,7 @@ public class Serve {
 
     ActorNameList actorNameList =
         ServeProtoUtil.bytesToProto(
-            (byte[]) controller.task(PyActorMethod.of("get_http_proxy_names")).remote().get(),
+            (byte[]) controller.task(PyActorMethod.of("get_proxy_names")).remote().get(),
             ActorNameList::parseFrom);
     if (actorNameList != null && !CollectionUtil.isEmpty(actorNameList.getNamesList())) {
       try {
