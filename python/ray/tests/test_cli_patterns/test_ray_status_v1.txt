@@ -2,8 +2,6 @@
 Node status
 ---------------------------------------------------------------
 Active:
- \(no active nodes\)
-Idle:
  1 node_.+
 Pending:
  \(no pending nodes\)
