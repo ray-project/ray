@@ -885,7 +885,12 @@ footer.col.footer > p {
 }
 
 #searchBtn {
+    margin-top: 0px;
     margin-top: 10px;
+}
+
+textarea {
+    width:80%;
 }
 
 .thumbs {
