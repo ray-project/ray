@@ -250,7 +250,7 @@ def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:
 def _try_zip(block: BlockAccessor, other_block: Block) -> Block:
     try:
         return block.zip(other_block)
-    except ValueError:
+    except ValueError as e:
         pyarrow_table = _lazy_import_pyarrow_table()
         if pyarrow_table:
             if not isinstance(other_block, pyarrow_table):
@@ -259,3 +259,6 @@ def _try_zip(block: BlockAccessor, other_block: Block) -> Block:
             else:
                 block = BlockAccessor.for_block(block.to_arrow())
                 return block.zip(other_block)
+
+        # Re-raise the ValueError in case `pyarrow` not installed as a dependency
+        raise e
