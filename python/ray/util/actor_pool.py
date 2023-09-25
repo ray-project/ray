@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable, List, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, List, TypeVar, Union
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -172,7 +172,7 @@ class ActorPool:
         return get_generator()
 
     def submit(
-        self, fn: Callable[["ActorHandle", Any], "ObjectRef"], value: Any
+        self, fn: Callable[["ray.actor.ActorHandle", Any], "ray.ObjectRef"], value: Any
     ) -> None:
         """Schedule a single task to run in the pool.
 
