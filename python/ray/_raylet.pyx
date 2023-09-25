@@ -563,11 +563,11 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
             The hex IDs of the nodes that have a copy of this object.
         - object_size:
             The size of data + metadata in bytes.
-        - times_spilled:
-            The number of times this object was spilled.
+        - did_spill:
+            Whether or not this object was spilled.
     """
     object_size = c_object_location.GetObjectSize()
-    times_spilled = c_object_location.GetTimesSpilled()
+    did_spill = c_object_location.GetDidSpill()
 
     node_ids = set()
     c_node_ids = c_object_location.GetNodeIDs()
@@ -588,7 +588,7 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
     return {
         "node_ids": list(node_ids),
         "object_size": object_size,
-        "times_spilled": times_spilled,
+        "did_spill": did_spill,
     }
 
 

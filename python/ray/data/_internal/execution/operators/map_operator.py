@@ -279,9 +279,8 @@ class MapOperator(OneToOneOperator, ABC):
             metadata = [input[1] for input in inputs.blocks]
             locations = ray.experimental.get_object_locations(blocks)
             for block, meta in zip(blocks, metadata):
-                self._metrics.spilled += (
-                    meta.size_bytes * locations[block]["times_spilled"]
-                )
+                if locations[block]["did_spill"]:
+                    self._metrics.spilled += meta.size_bytes
 
             inputs.destroy_if_owned()
             freed = inputs.size_bytes()

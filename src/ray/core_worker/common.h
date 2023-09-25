@@ -200,14 +200,14 @@ class ObjectLocation {
                  bool is_spilled,
                  std::string spilled_url,
                  NodeID spilled_node_id,
-                 uint64_t times_spilled)
+                 bool did_spill)
       : primary_node_id_(primary_node_id),
         object_size_(object_size),
         node_ids_(std::move(node_ids)),
         is_spilled_(is_spilled),
         spilled_url_(std::move(spilled_url)),
         spilled_node_id_(spilled_node_id),
-        times_spilled_(times_spilled) {}
+        did_spill_(did_spill) {}
 
   const NodeID &GetPrimaryNodeID() const { return primary_node_id_; }
 
@@ -221,7 +221,7 @@ class ObjectLocation {
 
   const NodeID &GetSpilledNodeID() const { return spilled_node_id_; }
 
-  const uint64_t GetTimesSpilled() const { return times_spilled_; }
+  const bool GetDidSpill() const { return did_spill_; }
 
  private:
   /// The ID of the node has the primary copy of the object.
@@ -238,8 +238,8 @@ class ObjectLocation {
   /// If spilled, the ID of the node that spilled the object. Nil if the object was
   /// spilled to distributed external storage.
   const NodeID spilled_node_id_;
-  /// Number of times this object was spilled.
-  const uint64_t times_spilled_;
+  /// Whether or not this object was spilled.
+  const bool did_spill_;
 };
 
 }  // namespace core
