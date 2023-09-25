@@ -11,8 +11,8 @@ from diffusers import StableDiffusionImg2ImgPipeline
 import ray
 
 DATA_URI = "s3://air-example-data-2/10G-image-data-synthetic-raw-parquet/"
-# This isn't the largest batch size that fits in memory, but for some reason throughput
-# declines at higher batch sizes.
+# This isn't the largest batch size that fits in memory, but it achieves virtually 100%
+# GPU utilization, and throughput declines at higher batch sizes.
 BATCH_SIZE = 32
 PROMPT = "ghibli style"
 
