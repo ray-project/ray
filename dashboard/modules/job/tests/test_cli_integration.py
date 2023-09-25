@@ -289,7 +289,8 @@ def test_resources(shutdown_only):
     ]:
         _run_cmd(f"ray job submit --submission-id={id} --no-wait {arg} -- echo hi")
         stdout, _ = _run_cmd(f"ray job status {id}")
-        assert "waiting for resources" in stdout or "is currently running" in stdout
+        print(f"stdout: {stdout}")
+        assert "waiting for resources" in stdout
 
     # Check the case of sufficient resources.
     stdout, _ = _run_cmd(
