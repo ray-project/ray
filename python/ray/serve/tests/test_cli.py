@@ -1,28 +1,28 @@
 import os
+import subprocess
 import sys
-import yaml
 import time
+from copy import deepcopy
+from tempfile import NamedTemporaryFile
+from typing import List
+
 import click
 import pytest
 import requests
-import subprocess
-from typing import List
-from copy import deepcopy
-from tempfile import NamedTemporaryFile
+import yaml
 
 import ray
-from ray.util.state import list_actors
-from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
-from ray._private.test_utils import wait_for_condition
-
 from ray import serve
-from ray.serve.scripts import convert_args_to_dict, remove_ansi_escape_sequences
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
-    SERVE_NAMESPACE,
     MULTI_APP_MIGRATION_MESSAGE,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
 )
+from ray.serve.scripts import convert_args_to_dict, remove_ansi_escape_sequences
+from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
+from ray.util.state import list_actors
 
 
 def assert_deployments_live(ids: List[DeploymentID]):

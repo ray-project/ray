@@ -420,26 +420,6 @@
     - echo "--- Running the script with fault of networking delay"
     - ray job submit --address http://localhost:8265 --runtime-env python/ray/tests/chaos/streaming_llm.yaml --working-dir python/ray/tests/chaos -- python streaming_llm.py --num_queries_per_task=100 --num_tasks=2 --num_words_per_query=100
     
-
-- label: ":book: Documentation"
-  commands:
-    - export LINT=1
-    - ./ci/env/install-dependencies.sh
-    # Specifying above somehow messes up the Ray install.
-    # Uninstall and re-install Ray so that we can use Ray Client
-    # (remove thirdparty_files to sidestep an issue with psutil).
-    - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
-    - pushd /ray && git clean -f -f -x -d -e .whl -e python/ray/dashboard/client && popd
-    - bazel clean --expunge
-    - export WANDB_MODE=offline
-    # Horovod needs to be installed separately (needed for API ref imports)
-    - ./ci/env/install-horovod.sh
-    # See https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
-    # Pin urllib to avoid downstream ssl incompatibility issues. This matches requirements-doc.txt.
-    - pip install "mosaicml==0.12.1" "urllib3<1.27" "typing-extensions==4.5.0" --ignore-installed
-    - ./ci/env/env_info.sh
-    - ./ci/ci.sh build_sphinx_docs
-
 - label: ":octopus: Tune multinode tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   instance_size: medium

@@ -3,13 +3,17 @@ import os
 import sys
 import tempfile
 import time
-from unittest import mock
-from typing import List, Iterable
 import zipfile
+from typing import Iterable, List
+from unittest import mock
 
+import numpy as np
 import pytest
 import requests
 
+import ray
+import ray.util.state as state_api
+from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.autoscaling_policy import (
     BasicAutoscalingPolicy,
@@ -21,19 +25,13 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     ReplicaState,
 )
+from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_DEFAULT_APP_NAME
+from ray.serve.config import AutoscalingConfig
+from ray.serve.controller import ServeController
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
-from ray.serve.config import AutoscalingConfig
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_DEFAULT_APP_NAME
-from ray.serve.controller import ServeController
 from ray.serve.schema import ServeDeploySchema
-import ray.util.state as state_api
-
-import ray
-from ray import serve
-
-import numpy as np
 
 
 class TestCalculateDesiredNumReplicas:
@@ -1317,6 +1315,7 @@ app = g.bind()
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))
