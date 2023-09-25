@@ -162,7 +162,7 @@ finally:
         )
 
 
-@patch("ray.serve._private.api.FLAG_DISABLE_HTTP_PROXY", True)
+@patch("ray.serve._private.api.FLAG_DISABLE_PROXY", True)
 def test_controller_without_http(serve_start_shutdown):
     @serve.deployment
     class D1:
@@ -170,13 +170,10 @@ def test_controller_without_http(serve_start_shutdown):
             return input["a"]
 
     serve.run(DefaultgRPCDriver.bind(D1.bind()))
-    assert (
-        ray.get(serve.context._global_client._controller.get_http_proxies.remote())
-        == {}
-    )
+    assert ray.get(serve.context._global_client._controller.get_proxies.remote()) == {}
 
 
-@patch("ray.serve._private.api.FLAG_DISABLE_HTTP_PROXY", True)
+@patch("ray.serve._private.api.FLAG_DISABLE_PROXY", True)
 def test_deploy_grpc_driver_to_node(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=2)
@@ -309,6 +306,38 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
 
     # Ensure model composition is responding correctly.
     ping_fruit_stand(channel, app_name)
+
+
+def test_serve_start_dictionary_grpc_options(ray_cluster):
+    """Test serve able to start with dictionary grpc_options.
+
+    When Serve starts with dictionary grpc_options, it should not throw errors and able
+    to serve health check and list applications gRPC requests.
+    """
+    cluster = ray_cluster
+    cluster.add_node(num_cpus=2)
+    cluster.connect(namespace=SERVE_NAMESPACE)
+
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options={
+            "port": grpc_port,
+            "grpc_servicer_functions": grpc_servicer_functions,
+        },
+    )
+
+    channel = grpc.insecure_channel("localhost:9000")
+
+    # Ensures ListApplications method succeeding.
+    ping_grpc_list_applications(channel, [])
+
+    # Ensures Healthz method succeeding.
+    ping_grpc_healthz(channel)
 
 
 def test_grpc_proxy_routing_without_metadata(ray_cluster):
