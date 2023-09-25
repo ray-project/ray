@@ -137,7 +137,7 @@ class HttpServerDashboardHead:
             # If the destination is not relative to the expected directory,
             # then the user is attempting path traversal, so deny the request.
             request_path = pathlib.Path(request.path).resolve()
-            if request_path != parent and parent not in request_path.parents():
+            if request_path != parent and parent not in request_path.parents:
                 raise aiohttp.web.HTTPForbidden()
         return await handler(request)
 
