@@ -74,7 +74,7 @@ class JobInfo:
     #: A message describing the status in more detail.
     message: Optional[str] = None
     # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
-    # Internal error, user script error
+    #: Internal error, user script error
     error_type: Optional[str] = None
     #: The time when the job was started.  A Unix timestamp in ms.
     start_time: Optional[int] = None
@@ -95,6 +95,9 @@ class JobInfo:
     #: The node id that driver running on. It will be None only when the job status
     # is PENDING, and this field will not be deleted or modified even if the driver dies
     driver_node_id: Optional[str] = None
+    #: The driver process exit code after the driver executed. Return None if driver
+    #: doesn't finish executing
+    driver_exit_code: Optional[int] = None
 
     def __post_init__(self):
         if isinstance(self.status, str):
@@ -235,6 +238,7 @@ class JobInfoStorageClient:
         job_id: str,
         status: JobStatus,
         message: Optional[str] = None,
+        driver_exit_code: Optional[int] = None,
         jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """Puts or updates job status.  Sets end_time if status is terminal."""
@@ -243,7 +247,9 @@ class JobInfoStorageClient:
 
         if jobinfo_replace_kwargs is None:
             jobinfo_replace_kwargs = dict()
-        jobinfo_replace_kwargs.update(status=status, message=message)
+        jobinfo_replace_kwargs.update(
+            status=status, message=message, driver_exit_code=driver_exit_code
+        )
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
                 assert False, "Attempted to change job status from a terminal state."

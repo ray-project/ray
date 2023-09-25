@@ -312,6 +312,10 @@ async def check_job_succeeded(job_manager, job_id):
     if status == JobStatus.FAILED:
         raise RuntimeError(f"Job failed! {data.message}")
     assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED}
+    if status == JobStatus.SUCCEEDED:
+        assert data.driver_exit_code == 0
+    else:
+        assert data.driver_exit_code is None
     return status == JobStatus.SUCCEEDED
 
 
@@ -323,13 +327,17 @@ async def check_job_failed(job_manager, job_id):
 
 async def check_job_stopped(job_manager, job_id):
     status = await job_manager.get_job_status(job_id)
+    data = await job_manager.get_job_info(job_id)
     assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED}
+    assert data.driver_exit_code is None
     return status == JobStatus.STOPPED
 
 
 async def check_job_running(job_manager, job_id):
     status = await job_manager.get_job_status(job_id)
+    data = await job_manager.get_job_info(job_id)
     assert status in {JobStatus.PENDING, JobStatus.RUNNING}
+    assert data.driver_exit_code is None
     return status == JobStatus.RUNNING
 
 
@@ -594,6 +602,7 @@ class TestRuntimeEnv:
         data = await job_manager.get_job_info(job_id)
         assert data.status == JobStatus.FAILED
         assert "path_not_exist is not a valid URI" in data.message
+        assert data.driver_exit_code is None
 
     async def test_failed_runtime_env_setup(self, job_manager):
         """Ensure job status is correctly set as failed if job has a valid
@@ -610,6 +619,7 @@ class TestRuntimeEnv:
 
         data = await job_manager.get_job_info(job_id)
         assert "runtime_env setup failed" in data.message
+        assert data.driver_exit_code is None
 
     async def test_pass_metadata(self, job_manager):
         def dict_to_str(d):
@@ -761,6 +771,8 @@ class TestAsyncAPI:
             await async_wait_for_condition_async_predicate(
                 check_job_failed, job_manager=job_manager, job_id=job_id
             )
+            data = await job_manager.get_job_info(job_id)
+            assert data.driver_exit_code is None
 
             # Ensure driver subprocess gets cleaned up after job reached
             # termination state
@@ -813,6 +825,8 @@ class TestAsyncAPI:
             await async_wait_for_condition_async_predicate(
                 check_job_failed, job_manager=job_manager, job_id=job_id
             )
+            data = await job_manager.get_job_info(job_id)
+            assert data.driver_exit_code is None
 
     async def test_stop_job_subprocess_cleanup_upon_stop(self, job_manager):
         """
@@ -908,6 +922,9 @@ class TestTailLogs:
             await async_wait_for_condition_async_predicate(
                 check_job_failed, job_manager=job_manager, job_id=job_id
             )
+            # check if the driver is killed
+            data = await job_manager.get_job_info(job_id)
+            assert data.driver_exit_code == -signal.SIGKILL
 
     async def test_stopped_job(self, job_manager):
         """Test tailing logs for a job that unexpectedly exits."""
@@ -1128,6 +1145,7 @@ async def test_failed_job_logs_max_char(job_manager):
         "Job entrypoint command failed with exit code 1,"
         " last available logs (truncated to 20,000 chars):\n"
     )
+    assert job_info.driver_exit_code == 1
 
 
 @pytest.mark.asyncio
@@ -1199,6 +1217,31 @@ async def test_job_pending_timeout(job_manager, monkeypatch):
     job_info = await job_manager.get_job_info(job_id)
     assert job_info.status == JobStatus.FAILED
     assert "Job supervisor actor failed to start within" in job_info.message
+    assert job_info.driver_exit_code is None
+
+
+@pytest.mark.asyncio
+async def test_failed_driver_exit_code(job_manager):
+    """Test driver exit code from finished task that failed"""
+    EXIT_CODE = 10
+
+    exit_code_script = f"""
+import sys
+sys.exit({EXIT_CODE})
+"""
+
+    exit_code_cmd = f'python -c "{exit_code_script}"'
+
+    job_id = await job_manager.submit_job(entrypoint=exit_code_cmd)
+    # Wait for the job to timeout.
+    await async_wait_for_condition_async_predicate(
+        check_job_failed, job_manager=job_manager, job_id=job_id
+    )
+
+    # Check that the job failed
+    job_info = await job_manager.get_job_info(job_id)
+    assert job_info.status == JobStatus.FAILED
+    assert job_info.driver_exit_code == EXIT_CODE
 
 
 if __name__ == "__main__":
