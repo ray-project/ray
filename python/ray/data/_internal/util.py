@@ -50,6 +50,7 @@ _EXAMPLE_SCHEME = "example"
 
 LazyModule = Union[None, bool, ModuleType]
 _pandas: LazyModule = None
+_pyarrow: LazyModule = None
 _pyarrow_dataset: LazyModule = None
 
 
@@ -65,15 +66,24 @@ def _lazy_import_pandas() -> LazyModule:
     return _pandas
 
 
+def _lazy_import_pyarrow() -> LazyModule:
+    global _pyarrow
+    if _pyarrow is None:
+        try:
+            import pyarrow as _pyarrow
+        except ModuleNotFoundError:
+            # If module is not found, set _pandas to False so we won't
+            # keep trying to import it on every _lazy_import_pandas() call.
+            _pyarrow = False
+    return _pyarrow
+
+
 def _lazy_import_pyarrow_dataset() -> LazyModule:
     global _pyarrow_dataset
-    if _pyarrow_dataset is None:
-        try:
-            from pyarrow import dataset as _pyarrow_dataset
-        except ModuleNotFoundError:
-            # If module is not found, set _pyarrow to False so we won't
-            # keep trying to import it on every _lazy_import_pyarrow() call.
-            _pyarrow_dataset = False
+    if not _pyarrow_dataset:
+        pyarrow = _lazy_import_pyarrow()
+        if pyarrow:
+            _pyarrow_dataset = pyarrow.dataset
     return _pyarrow_dataset
 
 

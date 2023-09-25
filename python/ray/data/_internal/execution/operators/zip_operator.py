@@ -7,7 +7,7 @@ from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import _lazy_import_pandas
+from ray.data._internal.util import _lazy_import_pandas, _lazy_import_pyarrow
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -252,7 +252,18 @@ def _try_zip(block: Block, other_block: Block) -> Block:
         return BlockAccessor.for_block(block).zip(other_block)
     except ValueError as e:
         pd = _lazy_import_pandas()
-        if pd and isinstance(other_block, pd.DataFrame) and hasattr(block, "to_pandas"):
-            return BlockAccessor.for_block(block.to_pandas()).zip(other_block)
+        if pd and isinstance(other_block, pd.DataFrame):
+            pyarrow = _lazy_import_pyarrow()
+            # Try converting either blocks to pyarrow first
+            if pyarrow:
+                if isinstance(block, pyarrow.Table):
+                    return _try_zip(block, pyarrow.Table.from_pandas(other_block))
+                elif isinstance(other_block, pyarrow.Table):
+                    return _try_zip(pyarrow.Table.from_pandas(block), other_block)
+
+            # Finally try converting `block` to pandas
+            if hasattr(block, "to_pandas"):
+                return BlockAccessor.for_block(block.to_pandas()).zip(other_block)
         else:
-            raise "Failed to zip: {}".format(e)
+            # Re-raise the ValueError
+            raise e
