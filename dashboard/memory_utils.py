@@ -14,9 +14,6 @@ logger = logging.getLogger(__name__)
 TASKID_BYTES_SIZE = TaskID.size()
 ACTORID_BYTES_SIZE = ActorID.size()
 JOBID_BYTES_SIZE = JobID.size()
-# We need to multiply 2 because we need bits size instead of bytes size.
-TASKID_RANDOM_BITS_SIZE = (TASKID_BYTES_SIZE - ACTORID_BYTES_SIZE) * 2
-ACTORID_RANDOM_BITS_SIZE = (ACTORID_BYTES_SIZE - JOBID_BYTES_SIZE) * 2
 
 
 def decode_object_ref_if_needed(object_ref: str) -> bytes:
@@ -161,14 +158,18 @@ class MemoryTableEntry:
     def _is_object_ref_actor_handle(self) -> bool:
         object_ref_hex = self.object_ref.hex()
 
+        # We need to multiply 2 because we need bits size instead of bytes size.
+        taskid_random_bits_size = (TASKID_BYTES_SIZE - ACTORID_BYTES_SIZE) * 2
+        actorid_random_bits_size = (ACTORID_BYTES_SIZE - JOBID_BYTES_SIZE) * 2
+
         # random (8B) | ActorID(6B) | flag (2B) | index (6B)
         # ActorID(6B) == ActorRandomByte(4B) + JobID(2B)
         # If random bytes are all 'f', but ActorRandomBytes
         # are not all 'f', that means it is an actor creation
         # task, which is an actor handle.
-        random_bits = object_ref_hex[:TASKID_RANDOM_BITS_SIZE]
+        random_bits = object_ref_hex[:taskid_random_bits_size]
         actor_random_bits = object_ref_hex[
-            TASKID_RANDOM_BITS_SIZE : TASKID_RANDOM_BITS_SIZE + ACTORID_RANDOM_BITS_SIZE
+            taskid_random_bits_size : taskid_random_bits_size + actorid_random_bits_size
         ]
         if random_bits == "f" * 16 and not actor_random_bits == "f" * 24:
             return True
