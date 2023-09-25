@@ -247,7 +247,7 @@ def create_replica_wrapper(actor_class_name: str):
                 )
                 return b"", result
             elif request_metadata.is_http_request:
-                # The sole argument passed from `http_proxy.py` is the ASGI scope.
+                # The sole argument passed from `proxy.py` is the ASGI scope.
                 assert len(request_args) == 1
                 request: HTTPRequestWrapper = pickle.loads(request_args[0])
 
