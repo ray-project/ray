@@ -94,7 +94,7 @@ class Protocol(Enum):
     @classmethod
     def remote_protocols(cls):
         # Returns a list of protocols that support remote storage
-        # These protocols should only be used with paths that end in ".zip"
+        # These protocols should only be used with paths that end in ".zip" or ".whl"
         return [cls.HTTPS, cls.S3, cls.GS, cls.FILE]
 
 
@@ -739,7 +739,7 @@ async def download_and_unpack_package(
                     with open_file(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
 
-                if pkg_file.suffix == ".zip":
+                if pkg_file.suffix in [".zip", ".jar"]:
                     unzip_package(
                         package_path=pkg_file,
                         target_dir=local_dir,
