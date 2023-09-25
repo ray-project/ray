@@ -251,19 +251,12 @@ def _try_zip(block: Block, other_block: Block) -> Block:
     try:
         return BlockAccessor.for_block(block).zip(other_block)
     except ValueError as e:
-        pd = _lazy_import_pandas()
-        if pd and isinstance(other_block, pd.DataFrame):
-            pyarrow = _lazy_import_pyarrow()
-            # Try converting either blocks to pyarrow first
-            if pyarrow:
-                if isinstance(block, pyarrow.Table):
-                    return _try_zip(block, pyarrow.Table.from_pandas(other_block))
-                elif isinstance(other_block, pyarrow.Table):
-                    return _try_zip(pyarrow.Table.from_pandas(block), other_block)
-
-            # Finally try converting `block` to pandas
-            if hasattr(block, "to_pandas"):
-                return BlockAccessor.for_block(block.to_pandas()).zip(other_block)
+        pyarrow = _lazy_import_pyarrow()
+        if pyarrow:
+            if isinstance(block, pyarrow.Table):
+                return _try_zip(block, pyarrow.Table.from_pandas(other_block))
+            if isinstance(other_block, pyarrow.Table):
+                return _try_zip(pyarrow.Table.from_pandas(block), other_block)
         else:
             # Re-raise the ValueError
             raise e

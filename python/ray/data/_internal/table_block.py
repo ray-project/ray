@@ -207,14 +207,6 @@ class TableBlockAccessor(BlockAccessor):
     def zip(self, other: "Block") -> "Block":
         acc = BlockAccessor.for_block(other)
         if not isinstance(acc, type(self)):
-            pd = _lazy_import_pandas()
-            if (
-                pd
-                and isinstance(self._table, pd.DataFrame)
-                and hasattr(other, "to_pandas")
-            ):
-                return self.zip(other.to_pandas())
-
             raise ValueError(
                 "Cannot zip {} with block of type {}".format(type(self), type(other))
             )
