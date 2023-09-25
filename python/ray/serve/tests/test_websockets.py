@@ -1,15 +1,14 @@
 import asyncio
-import pytest
 import sys
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import pytest
 import requests
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from starlette.responses import StreamingResponse
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
 import ray
-
 from ray import serve
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 
@@ -93,6 +92,10 @@ def test_client_disconnect(serve_instance):
     reason="Streaming feature flag is disabled.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Hanging on Windows.")
+@pytest.mark.skipif(
+    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
+    reason="Different disconnect behavior on 3.7.",
+)
 def test_server_disconnect(serve_instance):
     app = FastAPI()
 

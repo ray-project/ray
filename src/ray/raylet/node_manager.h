@@ -224,6 +224,25 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::function<void()> &on_all_replied);
 
  private:
+  void ReleaseWorker(const WorkerID &worker_id) {
+    leased_workers_.erase(worker_id);
+    SetIdleIfLeaseEmpty();
+  }
+
+  void ReleaseWorkers(const std::vector<WorkerID> &worker_ids) {
+    for (auto &it : worker_ids) {
+      leased_workers_.erase(it);
+    }
+    SetIdleIfLeaseEmpty();
+  }
+
+  inline void SetIdleIfLeaseEmpty() {
+    if (leased_workers_.empty()) {
+      cluster_resource_scheduler_->GetLocalResourceManager().SetIdleFootprint(
+          WorkFootprint::NODE_WORKERS);
+    }
+  }
+
   /// If the primary objects' usage is over the threshold
   /// specified in RayConfig, spill objects up to the max
   /// throughput.
@@ -811,7 +830,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Keeps track of workers waiting for objects
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>>
-      async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
+      async_plasma_objects_notification_
+          ABSL_GUARDED_BY(plasma_object_notification_lock_);
 
   /// Fields that are used to report metrics.
   /// The period between debug state dumps.

@@ -5,7 +5,7 @@ import os
 import random
 import time
 import traceback
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict, defaultdict
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
@@ -15,27 +15,23 @@ import ray
 from ray import ObjectRef, cloudpickle
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
-from ray.util.placement_group import PlacementGroup
-
+from ray.serve import metrics
+from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
+from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
     Duration,
+    MultiplexedReplicaInfo,
     ReplicaName,
+    ReplicaState,
     ReplicaTag,
     RunningReplicaInfo,
-    ReplicaState,
-    MultiplexedReplicaInfo,
 )
-from ray.serve.schema import (
-    DeploymentDetails,
-    ReplicaDetails,
-    _deployment_info_to_schema,
-)
-from ray.serve.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
@@ -43,29 +39,32 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
+from ray.serve._private.deployment_scheduler import (
+    DeploymentDownscaleRequest,
+    DeploymentScheduler,
+    DriverDeploymentSchedulingPolicy,
+    ReplicaSchedulingRequest,
+    SpreadDeploymentSchedulingPolicy,
+)
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     JavaActorHandleProxy,
+    check_obj_ref_ready_nowait,
     format_actor_name,
     get_random_letters,
-    msgpack_serialize,
     msgpack_deserialize,
-    check_obj_ref_ready_nowait,
+    msgpack_serialize,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
-from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
-from ray.serve._private.deployment_scheduler import (
-    SpreadDeploymentSchedulingPolicy,
-    DriverDeploymentSchedulingPolicy,
-    ReplicaSchedulingRequest,
-    DeploymentDownscaleRequest,
-    DeploymentScheduler,
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
+from ray.serve.schema import (
+    DeploymentDetails,
+    ReplicaDetails,
+    _deployment_info_to_schema,
 )
-from ray.serve._private import default_impl
-from ray.serve import metrics
+from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -844,11 +843,14 @@ class DeploymentReplica(VersionedReplica):
         )
         self._multiplexed_model_ids: List = []
 
-    def get_running_replica_info(self) -> RunningReplicaInfo:
+    def get_running_replica_info(
+        self, cluster_node_info_cache: ClusterNodeInfoCache
+    ) -> RunningReplicaInfo:
         return RunningReplicaInfo(
             deployment_name=self.deployment_name,
             replica_tag=self._replica_tag,
             node_id=self.actor_node_id,
+            availability_zone=cluster_node_info_cache.get_node_az(self.actor_node_id),
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
             is_cross_language=self._actor.is_cross_language,
@@ -1287,7 +1289,7 @@ class DeploymentState:
 
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
-            replica.get_running_replica_info()
+            replica.get_running_replica_info(self._cluster_node_info_cache)
             for replica in self._replicas.get([ReplicaState.RUNNING])
         ]
 
@@ -1959,7 +1961,6 @@ class DeploymentState:
             len(slow_start_replicas)
             and time.time() - self._prev_startup_warning > SLOW_STARTUP_WARNING_PERIOD_S
         ):
-
             pending_allocation = []
             pending_initialization = []
 
@@ -2271,7 +2272,6 @@ class DeploymentStateManager:
         all_current_placement_group_names: List[str],
         cluster_node_info_cache: ClusterNodeInfoCache,
     ):
-
         self._controller_name = controller_name
         self._detached = detached
         self._kv_store = kv_store

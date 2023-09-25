@@ -1,11 +1,9 @@
 # __fruit_example_begin__
 # File name: fruit.py
 
-import ray
 from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.serve.deployment_graph import InputNode
-from ray.serve.handle import RayServeHandle
 from ray.serve.http_adapters import json_request
 
 # These imports are used only for type hints:
@@ -14,16 +12,11 @@ from typing import Dict
 
 @serve.deployment(num_replicas=2)
 class FruitMarket:
-    def __init__(
-        self,
-        mango_stand: RayServeHandle,
-        orange_stand: RayServeHandle,
-        pear_stand: RayServeHandle,
-    ):
+    def __init__(self, mango_stand, orange_stand, pear_stand):
         self.directory = {
-            "MANGO": mango_stand,
-            "ORANGE": orange_stand,
-            "PEAR": pear_stand,
+            "MANGO": mango_stand.options(use_new_handle_api=True),
+            "ORANGE": orange_stand.options(use_new_handle_api=True),
+            "PEAR": pear_stand.options(use_new_handle_api=True),
         }
 
     async def check_price(self, fruit: str, amount: float) -> float:
@@ -31,9 +24,7 @@ class FruitMarket:
             return -1
         else:
             fruit_stand = self.directory[fruit]
-            ref: ray.ObjectRef = await fruit_stand.check_price.remote(amount)
-            result = await ref
-            return result
+            return await fruit_stand.check_price.remote(amount)
 
 
 @serve.deployment(user_config={"price": 3})
@@ -108,7 +99,7 @@ import requests  # noqa: E402
 from ray._private.test_utils import wait_for_condition  # noqa: E402
 
 from ray.serve.api import build  # noqa: E402
-from ray.serve.context import get_global_client  # noqa: E402
+from ray.serve.context import _get_global_client  # noqa: E402
 from ray.serve.schema import ServeApplicationSchema  # noqa: E402
 
 
@@ -149,7 +140,7 @@ print("Deployments have been torn down.")
 
 # Check for regression in remote repository
 serve.start()
-client = get_global_client()
+client = _get_global_client()
 config1 = {
     "import_path": "fruit.deployment_graph",
     "runtime_env": {

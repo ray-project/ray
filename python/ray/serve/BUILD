@@ -4,7 +4,6 @@ doctest(
     files = glob(
         ["**/*.py"],
         exclude=[
-            "examples/**",
             "tests/**",
             "benchmarks/**",
             # FIXME: Failing on Windows
@@ -114,7 +113,7 @@ py_test(
 )
 
 py_test(
-    name = "test_http_state",
+    name = "test_proxy_state",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -330,7 +329,7 @@ py_test(
 
 
 py_test(
-    name = "test_router",
+    name = "test_request_metadata",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -570,6 +569,14 @@ py_test(
 )
 
 py_test(
+    name = "test_cancellation",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_streaming_response",
     size = "medium",
     srcs = serve_tests_srcs,
@@ -609,23 +616,6 @@ py_test(
     deps = [":serve_lib"],
 )
 
-# Make sure the example showing in doc is tested
-py_test(
-    name = "quickstart_class",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve", "no_main"],
-    deps = [":serve_lib"]
-)
-
-py_test(
-    name = "quickstart_function",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve", "no_main"],
-    deps = [":serve_lib"]
-)
-
 py_test(
     name = "tutorial_rllib",
     size = "medium",
@@ -634,22 +624,6 @@ py_test(
     args = ["--path", "doc/source/serve/tutorials/rllib.md"],
     data = ["//doc/source/serve/tutorials:markdowns"],
     tags = ["exclusive", "team:serve", "no_main"],
-)
-
-py_test(
-    name = "snippet_model_composition",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"]
-)
-
-py_test(
-    name = "conda_env",
-    size = "medium",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "post_wheel_build", "team:serve", "no_main"],
-    deps = [":serve_lib"]
 )
 
 py_test(
@@ -666,14 +640,6 @@ py_test(
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
-)
-
-py_test(
-    name = "snippet_model_ensemble",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"]
 )
 
 py_test(

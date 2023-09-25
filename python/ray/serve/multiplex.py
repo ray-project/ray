@@ -1,25 +1,21 @@
 import asyncio
-from collections import OrderedDict
 import inspect
 import logging
 import time
+from collections import OrderedDict
 from typing import Any, Callable, List, Set
 
 from ray._private.async_compat import sync_to_async
+from ray.serve import metrics
+from ray.serve._private.common import DeploymentID, MultiplexedReplicaInfo
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
-    SERVE_LOGGER_NAME,
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
+    SERVE_LOGGER_NAME,
 )
-from ray.serve.context import (
-    get_global_client,
-    get_internal_replica_context,
-)
-from ray.serve._private.common import DeploymentID, MultiplexedReplicaInfo
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import MetricsPusher
-from ray.serve import metrics
-
+from ray.serve.context import _get_global_client, _get_internal_replica_context
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -94,7 +90,7 @@ class _ModelMultiplexWrapper:
             description="The counter for loaded models on the current replica.",
         )
 
-        context = get_internal_replica_context()
+        context = _get_internal_replica_context()
         if context is None:
             raise RuntimeError(
                 "Fail to retrieve serve replica context, the model multiplexer ",
@@ -134,14 +130,13 @@ class _ModelMultiplexWrapper:
     def _push_model_ids_info(self):
         """Push the multiplexed replica info to the controller."""
         try:
-
             self.num_models_gauge.set(len(self.models))
 
             for model_id in self.models:
                 self.registered_model_gauge.set(1, tags={"model_id": model_id})
 
             if self._push_multiplexed_replica_info:
-                get_global_client().record_multiplexed_replica_info(
+                _get_global_client().record_multiplexed_replica_info(
                     MultiplexedReplicaInfo(
                         DeploymentID(self._deployment_name, self._app_name),
                         self._replica_tag,
@@ -166,7 +161,8 @@ class _ModelMultiplexWrapper:
                 )
 
     async def load_model(self, model_id: str) -> Any:
-        """Load the model if it is not loaded yet, and return the user-constructed model object.
+        """Load the model if it is not loaded yet, and return
+            the user-constructed model object.
 
         Args:
             model_id: the model ID.

@@ -1,21 +1,24 @@
 import time
+
 import pytest
 
-from ray.serve._private.utils import get_random_letters
 from ray.serve._private.common import (
-    ReplicaName,
-    StatusOverview,
-    DeploymentStatus,
-    DeploymentStatusInfo,
     ApplicationStatus,
     ApplicationStatusInfo,
+    DeploymentStatus,
+    DeploymentStatusInfo,
+    ReplicaName,
     RunningReplicaInfo,
+    StatusOverview,
 )
+from ray.serve._private.utils import get_random_letters
 from ray.serve.generated.serve_pb2 import (
-    StatusOverview as StatusOverviewProto,
-    DeploymentStatusInfo as DeploymentStatusInfoProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
 )
+from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusInfo as DeploymentStatusInfoProto,
+)
+from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 
 
 def test_replica_tag_formatting():
@@ -197,9 +200,15 @@ def test_running_replica_info():
     fake_h1 = FakeActorHandler("1")
     fake_h2 = FakeActorHandler("1")
     assert fake_h1 != fake_h2
-    replica1 = RunningReplicaInfo("my_deployment", "1", "node_id", fake_h1, 1, False)
-    replica2 = RunningReplicaInfo("my_deployment", "1", "node_id", fake_h2, 1, False)
-    replica3 = RunningReplicaInfo("my_deployment", "1", "node_id", fake_h2, 1, True)
+    replica1 = RunningReplicaInfo(
+        "my_deployment", "1", "node_id", "some-az", fake_h1, 1, False
+    )
+    replica2 = RunningReplicaInfo(
+        "my_deployment", "1", "node_id", "some-az", fake_h2, 1, False
+    )
+    replica3 = RunningReplicaInfo(
+        "my_deployment", "1", "node_id", "some-az", fake_h2, 1, True
+    )
     assert replica1._hash == replica2._hash
     assert replica3._hash != replica1._hash
 

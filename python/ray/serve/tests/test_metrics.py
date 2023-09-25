@@ -1,29 +1,29 @@
-import grpc
 import os
 from functools import partial
 from multiprocessing import Pool
-from typing import List, Dict, DefaultDict
+from typing import DefaultDict, Dict, List
 
-import requests
+import grpc
 import pytest
+import requests
+from fastapi import FastAPI
 
 import ray
+import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.utils import block_until_http_ready
-import ray.util.state as state_api
-from fastapi import FastAPI
-from ray.serve.metrics import Counter, Histogram, Gauge
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
+from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import gRPCOptions
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
-from ray.serve.tests.utils import (
-    ping_grpc_list_applications,
-    ping_grpc_call_method,
-    ping_fruit_stand,
-)
+from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
+from ray.serve.tests.utils import (
+    ping_fruit_stand,
+    ping_grpc_call_method,
+    ping_grpc_list_applications,
+)
 
 
 @pytest.fixture
@@ -222,7 +222,7 @@ def test_proxy_metrics(serve_start_shutdown):
         async def __init__(self):
             pass
 
-        async def __call__(self):
+        async def __call__(self, *args):
             # Trigger RayActorError
             os._exit(0)
 
@@ -230,7 +230,7 @@ def test_proxy_metrics(serve_start_shutdown):
     serve.run(A.bind(), name=app_name)
     requests.get("http://127.0.0.1:8000/A/")
     requests.get("http://127.0.0.1:8000/A/")
-    with pytest.raises(AssertionError):
+    with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=app_name)
     try:
         wait_for_condition(
@@ -339,7 +339,7 @@ def test_proxy_metrics_fields(serve_start_shutdown):
     print("Sent requests to correct URL.")
 
     # Ping gPRC proxy for broken app
-    with pytest.raises(AssertionError):
+    with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=real_app_name)
 
     num_deployment_errors = get_metric_dictionaries(
@@ -679,7 +679,7 @@ class TestRequestContextMetrics:
         channel = grpc.insecure_channel("localhost:9000")
         ping_grpc_call_method(channel, app_name1)
         ping_fruit_stand(channel, app_name2)
-        with pytest.raises(AssertionError):
+        with pytest.raises(grpc.RpcError):
             ping_grpc_call_method(channel, app_name3)
 
         # app1 has 1 deployment, app2 has 3 deployments, and app3 has 1 deployment.
@@ -1086,20 +1086,52 @@ def test_queued_queries_disconnected(serve_start_shutdown):
 
     print("Deployed hang_on_first_request deployment.")
 
-    def get_metric(metric: str) -> float:
+    def check_metric(metric: str, expected: float) -> bool:
         metrics = requests.get("http://127.0.0.1:9999").text
         metric_value = -1
         for line in metrics.split("\n"):
             if metric in line:
                 metric_value = line.split(" ")[-1]
 
-        return float(metric_value)
+        assert float(metric_value) == expected
+        return True
+
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="ray_serve_num_scheduling_tasks",
+        expected=0,
+    )
+    print("ray_serve_num_scheduling_tasks updated successfully.")
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="serve_num_scheduling_tasks_in_backoff",
+        expected=0,
+    )
+    print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
     def first_request_executing(request_future) -> bool:
         try:
             request_future.get(timeout=0.1)
         except Exception:
             return ray.get(signal.cur_num_waiters.remote()) == 1
+
+    # No scheduling tasks should be running once the first request is assigned.
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="ray_serve_num_scheduling_tasks",
+        expected=0,
+    )
+    print("ray_serve_num_scheduling_tasks updated successfully.")
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="serve_num_scheduling_tasks_in_backoff",
+        expected=0,
+    )
+    print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
     url = "http://localhost:8000/"
 
@@ -1110,7 +1142,10 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     wait_for_condition(lambda: first_request_executing(fut), timeout=5)
     print("Executed first request.")
     wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
+        check_metric,
+        timeout=15,
+        metric="ray_serve_num_ongoing_http_requests",
+        expected=1,
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
 
@@ -1121,31 +1156,72 @@ def test_queued_queries_disconnected(serve_start_shutdown):
 
     # First request should be processing. All others should be queued.
     wait_for_condition(
-        lambda: get_metric("ray_serve_deployment_queued_queries") == num_requests,
+        check_metric,
         timeout=15,
+        metric="ray_serve_deployment_queued_queries",
+        expected=num_requests,
     )
     print("ray_serve_deployment_queued_queries updated successfully.")
     wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_http_requests") == num_requests + 1,
+        check_metric,
         timeout=15,
+        metric="ray_serve_num_ongoing_http_requests",
+        expected=num_requests + 1,
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
+
+    # There should be 2 scheduling tasks (which is the max, since
+    # 2 = 2 * 1 replica) that are attempting to schedule the hanging requests.
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="ray_serve_num_scheduling_tasks",
+        expected=2,
+    )
+    print("ray_serve_num_scheduling_tasks updated successfully.")
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="serve_num_scheduling_tasks_in_backoff",
+        expected=2,
+    )
+    print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
     # Disconnect all requests by terminating the process pool.
     pool.terminate()
     print("Terminated all requests.")
 
     wait_for_condition(
-        lambda: get_metric("ray_serve_deployment_queued_queries") == 0, timeout=15
+        check_metric,
+        timeout=15,
+        metric="ray_serve_deployment_queued_queries",
+        expected=0,
     )
     print("ray_serve_deployment_queued_queries updated successfully.")
 
-    # TODO (shrekris-anyscale): This should be 0 once async task cancellation
-    # is implemented.
+    # Task should get cancelled.
     wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
+        check_metric,
+        timeout=15,
+        metric="ray_serve_num_ongoing_http_requests",
+        expected=0,
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
+
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="ray_serve_num_scheduling_tasks",
+        expected=0,
+    )
+    print("ray_serve_num_scheduling_tasks updated successfully.")
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="serve_num_scheduling_tasks_in_backoff",
+        expected=0,
+    )
+    print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
 
 def test_actor_summary(serve_instance):
@@ -1157,7 +1233,7 @@ def test_actor_summary(serve_instance):
     actors = state_api.list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
-        {"ServeController", "HTTPProxyActor", "ServeReplica:app:f"}
+        {"ServeController", "ProxyActor", "ServeReplica:app:f"}
     )
 
 
