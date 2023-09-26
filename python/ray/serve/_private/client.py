@@ -496,9 +496,7 @@ class ServeControllerClient:
         """
         cache_key = (deployment_name, app_name, missing_ok, sync)
         if cache_key in self.handle_cache:
-            cached_handle = self.handle_cache[cache_key]
-            if cached_handle._is_same_loop:
-                return cached_handle
+            return self.handle_cache[cache_key]
 
         all_deployments = ray.get(self._controller.list_deployment_ids.remote())
         if (

@@ -3,11 +3,10 @@ import concurrent.futures
 import threading
 import warnings
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray import serve
-from ray._private.utils import get_or_create_event_loop
 from ray._raylet import GcsClient, StreamingObjectRefGenerator
 from ray.serve._private.common import DeploymentID, RequestProtocol
 from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
@@ -26,7 +25,11 @@ _global_async_loop = None
 _global_async_loop_creation_lock = threading.Lock()
 
 
-def _create_or_get_async_loop_in_thread():
+def _create_or_get_global_asyncio_event_loop_in_thread():
+    """Provides a global singleton asyncio event loop running in a daemon thread.
+
+    Thread-safe.
+    """
     global _global_async_loop
     if _global_async_loop is None:
         with _global_async_loop_creation_lock:
@@ -150,11 +153,6 @@ class _DeploymentHandleBase:
 
     def _get_or_create_router(self) -> Router:
         if self._router is None:
-            if self.__class__ in {DeploymentHandle, RayServeSyncHandle}:
-                event_loop = _create_or_get_async_loop_in_thread()
-            else:
-                event_loop = get_or_create_event_loop()
-
             node_id = ray.get_runtime_context().get_node_id()
             try:
                 cluster_node_info_cache = create_cluster_node_info_cache(
@@ -170,7 +168,7 @@ class _DeploymentHandleBase:
                 self.deployment_id,
                 node_id,
                 availability_zone,
-                event_loop=event_loop,
+                event_loop=_create_or_get_global_asyncio_event_loop_in_thread(),
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
                 _prefer_local_node_routing=self.handle_options._prefer_local_routing,
                 _router_cls=self.handle_options._router_cls,
@@ -185,17 +183,6 @@ class _DeploymentHandleBase:
     @property
     def app_name(self) -> str:
         return self.deployment_id.app
-
-    @property
-    def _is_same_loop(self) -> bool:
-        """Whether the caller's asyncio loop is the same loop for handle.
-
-        This is only useful for async handles.
-        """
-        if self.__class__ in {DeploymentHandle, RayServeSyncHandle}:
-            return True
-
-        return get_or_create_event_loop() == self._get_or_create_router()._event_loop
 
     def _options(
         self,
@@ -236,7 +223,9 @@ class _DeploymentHandleBase:
             _recorded_telemetry=self._recorded_telemetry,
         )
 
-    def _remote(self, args: Tuple[Any], kwargs: Dict[str, Any]) -> Coroutine:
+    def _remote(
+        self, args: Tuple[Any], kwargs: Dict[str, Any]
+    ) -> concurrent.futures.Future:
         if not self.__class__ == DeploymentHandle:
             warnings.warn(
                 "Ray 2.7 introduces a new `DeploymentHandle` API that will "
@@ -267,8 +256,14 @@ class _DeploymentHandleBase:
                 "application": _request_context.app_name,
             }
         )
-        return self._get_or_create_router().assign_request(
-            request_metadata, *args, **kwargs
+        router = self._get_or_create_router()
+
+        # Schedule the coroutine to run on the router loop. This is always a separate
+        # loop running in another thread to avoid user code blocking the router, so we
+        # use the `concurrent.futures.Future` thread safe API.
+        return asyncio.run_coroutine_threadsafe(
+            router.assign_request(request_metadata, *args, **kwargs),
+            loop=router._event_loop,
         )
 
     def __getattr__(self, name):
@@ -389,9 +384,12 @@ class RayServeHandle(_DeploymentHandleBase):
             result = await obj_ref
 
         """
-        loop = self._get_or_create_router()._event_loop
-        result_coro = self._remote(args, kwargs)
-        return asyncio.ensure_future(result_coro, loop=loop)
+        future = self._remote(args, kwargs)
+
+        async def await_future():
+            return await asyncio.wrap_future(future)
+
+        return asyncio.ensure_future(await_future())
 
 
 @Deprecated(
@@ -469,10 +467,7 @@ class RayServeSyncHandle(_DeploymentHandleBase):
             result = ray.get(obj_ref)
 
         """
-        coro = self._remote(args, kwargs)
-        future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
-            coro, self._get_or_create_router()._event_loop
-        )
+        future = self._remote(args, kwargs)
         return future.result()
 
 
@@ -486,17 +481,10 @@ class RayServeDeploymentHandle(RayServeHandle):
 
 
 class _DeploymentResponseBase:
-    def __init__(
-        self,
-        assign_request_coro: Coroutine,
-        loop: asyncio.AbstractEventLoop,
-    ):
-        # Schedule the coroutine to run on the provided loop. This is always a separate
-        # loop running in another thread to avoid user code blocking the router, so we
-        # use the `concurrent.futures.Future` thread safe API.
-        self._object_ref_future: concurrent.futures.Future = (
-            asyncio.run_coroutine_threadsafe(assign_request_coro, loop)
-        )
+    def __init__(self, object_ref_future: concurrent.futures.Future):
+        # The result of `object_ref_future` must be an ObjectRef or
+        # StreamingObjectRefGenerator.
+        self._object_ref_future = object_ref_future
 
     async def _to_object_ref_or_gen(
         self,
@@ -731,13 +719,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
     def __init__(
         self,
-        assign_request_coro: Coroutine,
-        loop: asyncio.AbstractEventLoop,
+        object_ref_future: concurrent.futures.Future,
     ):
-        super().__init__(
-            assign_request_coro,
-            loop=loop,
-        )
+        super().__init__(object_ref_future)
         self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
 
     def __await__(self):
@@ -892,14 +876,10 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
-        loop = self._get_or_create_router()._event_loop
-        result_coro = self._remote(args, kwargs)
+        future = self._remote(args, kwargs)
         if self.handle_options.stream:
             response_cls = DeploymentResponseGenerator
         else:
             response_cls = DeploymentResponse
 
-        return response_cls(
-            result_coro,
-            loop=loop,
-        )
+        return response_cls(future)
