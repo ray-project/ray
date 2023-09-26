@@ -345,6 +345,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         return AllToAllOperator(
             bulk_fn,
             input_op,
+            target_max_block_size=None,
             name=stage.name,
             num_outputs=stage.num_blocks,
             sub_progress_bar_names=stage.sub_stage_names,
