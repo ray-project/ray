@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Union
+from typing import List, Optional, Union
 
 from ray.rllib.core.learner.learner import LearnerHyperparameters
 
@@ -25,8 +25,6 @@ class DQNLearnerHyperparameters(LearnerHyperparameters):
     store_buffer_in_checkpoints: bool = None
     lr_schedule: Optional[List[List[Union[int, float]]]] = None
     adam_epsilon: float = None
-    grad_clip: bool = None
-    grad_clip_by: str = None
     tau: float = None
     num_atoms: int = None
     v_min: float = None
@@ -36,7 +34,6 @@ class DQNLearnerHyperparameters(LearnerHyperparameters):
     hiddens: float = None
     double_q: bool = None
     n_step: int = None
-    before_learn_on_batch: Callable = None
     training_intensity: int = None
     td_error_loss_fn: str = None
     categorical_distribution_temperature: float = None

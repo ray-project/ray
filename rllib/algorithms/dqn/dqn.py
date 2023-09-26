@@ -9,17 +9,24 @@ Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn
 """  # noqa: E501
 
+import dataclasses
 import logging
-from typing import List, Optional, Type, Callable
+from typing import List, Optional, Type, Callable, Union
 import numpy as np
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.dqn.dqn_catalog import DQNCatalog
+from ray.rllib.algorithms.dqn.dqn_learner import DQNLearnerHyperparameters
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.algorithms.simple_q.simple_q import (
     SimpleQ,
     SimpleQConfig,
 )
+from ray.rllib.core.learner import Learner
+from ray.rllib.core.learner.learner import LearnerHyperparameters
+from ray.rllib.core.learner.learner_group_config import ModuleSpec
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -33,6 +40,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
     NUM_ENV_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED,
     SAMPLE_TIMER,
@@ -155,8 +163,79 @@ class DQNConfig(SimpleQConfig):
         }
         # Set to `self.n_step`, if 'auto'.
         self.rollout_fragment_length = "auto"
+
+        # Enable RL Module API by default.
+        self.rl_module(_enable_rl_module_api=True)
+        self.training(_enable_learner_api=True)
         # fmt: on
         # __sphinx_doc_end__
+
+    @override(AlgorithmConfig)
+    def get_default_rl_module_spec(self) -> ModuleSpec:
+        if self.framework_str == "torch":
+            raise ValueError(
+                "In development status. Torch not yet implemented. Please " "use tf2."
+            )
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.dqn.tf.dqn_tf_rl_module import DQNTfRLModule
+
+            return SingleAgentRLModuleSpec(
+                module_class=DQNTfRLModule,
+                catalog_class=DQNCatalog,
+            )
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
+
+    @override(AlgorithmConfig)
+    def get_default_learner_class(self) -> Union[Type[Learner], str]:
+        if self.framework_str == "torch":
+            raise ValueError(
+                "In development status. Torch is not yet implemented. Please "
+                "use tf2."
+            )
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.dqn.tf.dqn_tf_learner import DQNTfLearner
+
+            return DQNTfLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
+
+    @override(AlgorithmConfig)
+    def get_learner_hyperparameters(self) -> LearnerHyperparameters:
+        base_hps = super().get_learner_hyperparameters()
+        return DQNLearnerHyperparameters(
+            target_network_update_freq=self.target_network_update_freq,
+            replay_buffer_config=self.replay_buffer_config,
+            num_steps_sampled_before_learning_starts=(
+                self.num_steps_sampled_before_learning_starts
+            ),
+            store_buffer_in_checkpoints=self.store_buffer_in_checkpoints,
+            lr_schedule=self.lr_schedule,
+            adam_epsilon=self.adam_epsilon,
+            tau=self.tau,
+            num_atoms=self.num_atoms,
+            v_min=self.v_min,
+            v_max=self.v_max,
+            noisy=self.noisy,
+            sigma0=self.sigma0,
+            # TODO (simon): Check, if this will be still needed in
+            # the RLModule implementation.
+            hiddens=self.hiddens,
+            double_q=self.double_q,
+            n_step=self.n_step,
+            training_intensity=self.training_intensity,
+            td_error_loss_fn=self.td_error_loss_fn,
+            categorical_distribution_temperature=(
+                self.categorical_distribution_temperature
+            ),
+            **dataclasses.asdict(base_hps),
+        )
 
     @override(SimpleQConfig)
     def training(
@@ -313,18 +392,21 @@ class DQNConfig(SimpleQConfig):
                 f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
             )
 
-        if self.exploration_config["type"] == "ParameterNoise":
-            if self.batch_mode != "complete_episodes":
-                raise ValueError(
-                    "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Try setting `config.rollouts("
-                    "batch_mode='complete_episodes')`."
-                )
-            if self.noisy:
-                raise ValueError(
-                    "ParameterNoise Exploration and `noisy` network cannot be"
-                    " used at the same time!"
-                )
+        # RL Module API has no exploration_config. Instead
+        # the `forward_exploration()`method is used.`
+        if not self._enable_rl_module_api:
+            if self.exploration_config["type"] == "ParameterNoise":
+                if self.batch_mode != "complete_episodes":
+                    raise ValueError(
+                        "ParameterNoise Exploration requires `batch_mode` to be "
+                        "'complete_episodes'. Try setting `config.rollouts("
+                        "batch_mode='complete_episodes')`."
+                    )
+                if self.noisy:
+                    raise ValueError(
+                        "ParameterNoise Exploration and `noisy` network cannot be"
+                        " used at the same time!"
+                    )
 
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
@@ -440,10 +522,19 @@ class DQN(SimpleQ):
                 #     print(len(sample_batch["obs"]))
                 #     print(sample_batch.count)
 
+                if self.config._enable_learner_api:
+                    is_module_trainable = self.workers.local_worker().is_policy_to_train
+                    self.learner_group.set_is_module_trainable(is_module_trainable)
+                    train_results = self.learner_group.update(
+                        train_batch,
+                        minibatch_size=self.config.train_batch_size,
+                        num_iters=1,
+                    )
+
                 # Learn on training batch.
                 # Use simple optimizer (only for multi-agent or tf-eager; all other
                 # cases should use the multi-GPU optimizer, even if only using 1 GPU)
-                if self.config.get("simple_optimizer") is True:
+                elif self.config.get("simple_optimizer") is True:
                     train_results = train_one_step(self, train_batch)
                 else:
                     train_results = multi_gpu_train_one_step(self, train_batch)
@@ -456,14 +547,50 @@ class DQN(SimpleQ):
                     train_results,
                 )
 
-                last_update = self._counters[LAST_TARGET_UPDATE_TS]
-                if cur_ts - last_update >= self.config.target_network_update_freq:
-                    to_update = self.workers.local_worker().get_policies_to_train()
-                    self.workers.local_worker().foreach_policy_to_train(
-                        lambda p, pid: pid in to_update and p.update_target()
+                if self.config._enable_learner_api:
+                    # The train results's loss keys are pids to their loss values.
+                    # But we also return a total_loss key at the same level as the
+                    # pid keys. So we need to subtract that to get the total set
+                    # of pids to update.
+                    policies_to_update = set(train_results.keys()) - {ALL_MODULES}
+                else:
+                    policies_to_update = list(train_results.keys())
+
+                with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                    if self.workers.num_remote_workers() > 0:
+                        from_worker_or_learner_group = None
+                        if self.config._enable_learner_api:
+                            # Sync weights from learner_group to all remote workers.
+                            from_worker_or_learner_group = self.learner_group
+                        self.workers.sync_weights(
+                            from_worker_or_learner_group=from_worker_or_learner_group,
+                            policies=policies_to_update,
+                            global_vars=global_vars,
+                        )
+                    else:
+                        self.workers.local_worker().set_weights(
+                            self.learner_group.get_weights()
+                        )
+
+                if self.config._enable_learner_api:
+                    additional_results = self.learner_group.additional_update(
+                        module_ids_to_update=policies_to_update,
+                        timestep=cur_ts,
+                        last_update=self._counters[LAST_TARGET_UPDATE_TS],
                     )
-                    self._counters[NUM_TARGET_UPDATES] += 1
-                    self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+                    for pid, res in additional_results.items():
+                        train_results[pid].update(res)
+
+                    return train_results
+                else:
+                    last_update = self._counters[LAST_TARGET_UPDATE_TS]
+                    if cur_ts - last_update >= self.config.target_network_update_freq:
+                        to_update = self.workers.local_worker().get_policies_to_train()
+                        self.workers.local_worker().foreach_policy_to_train(
+                            lambda p, pid: pid in to_update and p.update_target()
+                        )
+                        self._counters[NUM_TARGET_UPDATES] += 1
+                        self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
                 # Update weights and global_vars - after learning on the local worker -
                 # on all remote workers.

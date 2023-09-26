@@ -276,13 +276,16 @@ class SimpleQConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
-        if self.exploration_config["type"] == "ParameterNoise":
-            if self.batch_mode != "complete_episodes":
-                raise ValueError(
-                    "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Try setting `config.rollouts("
-                    "batch_mode='complete_episodes')`."
-                )
+        # RL Module API has no exploration_config. Instead
+        # the `forward_exploration()`method is used.`
+        if not self._enable_rl_module_api:
+            if self.exploration_config["type"] == "ParameterNoise":
+                if self.batch_mode != "complete_episodes":
+                    raise ValueError(
+                        "ParameterNoise Exploration requires `batch_mode` to be "
+                        "'complete_episodes'. Try setting `config.rollouts("
+                        "batch_mode='complete_episodes')`."
+                    )
 
         if not self.in_evaluation:
             validate_buffer_config(self)

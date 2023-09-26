@@ -3,6 +3,10 @@ from ray.rllib.algorithms.dqn.dqn_learner import QF_PREDS, QF_TARGET_PREDS
 from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.core.rl_module.rl_module import ModuleID
+from ray.rllib.execution.common import (
+    LAST_TARGET_UPDATE_TS,
+    NUM_TARGET_UPDATES,
+)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -66,10 +70,17 @@ class DQNTfLearner(TfLearner):
         module_id: ModuleID,
         hps: LearnerHyperparameters,
         timestep: int,
+        last_update: int,
         **kwargs
     ) -> Dict[str, Any]:
+        results = super().additional_update_for_module(
+            module_id=module_id,
+            hps=hps,
+            timestep=timestep,
+            last_update=last_update,
+        )
         # Only update each `target_network_update_freq`.
-        if hps.target_network_update_freq >= self._metrics["num_grad_updates"]:
+        if timestep - last_update >= hps.target_network_update_freq:
             # `self.module` is a MARLModule.
             module = self.module[module_id]
 
@@ -78,3 +89,12 @@ class DQNTfLearner(TfLearner):
             target_and_q_network_pairs = module.get_target_network_pairs()
             for target_network, q_network in target_and_q_network_pairs:
                 target_network.set_weights(q_network.get_weights())
+
+            results.update(
+                {
+                    NUM_TARGET_UPDATES: results[NUM_TARGET_UPDATES] + 1,
+                    LAST_TARGET_UPDATE_TS: timestep,
+                }
+            )
+
+            return results
