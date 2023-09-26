@@ -20,10 +20,15 @@ from packaging.version import Version
 from typing import Any, Dict, Optional
 from torch.utils.data import IterableDataset, DataLoader
 
-try:
-    import lightning.pytorch as pl
-except ModuleNotFoundError:
-    import pytorch_lightning as pl
+
+def import_lightning():
+    try:
+        import lightning.pytorch as pl
+    except ModuleNotFoundError:
+        import pytorch_lightning as pl
+    return pl
+
+pl = import_lightning()
 
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
 _TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")

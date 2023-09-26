@@ -3,11 +3,6 @@ import numpy as np
 from pathlib import Path
 import pytest
 
-try:
-    import lightning.pytorch as pl
-except ModuleNotFoundError:
-    import pytorch_lightning as pl
-
 import ray
 from ray.train import RunConfig, CheckpointConfig
 from ray.air.util.data_batch_conversion import _convert_batch_type_to_pandas
@@ -19,7 +14,10 @@ from ray.train.tests.lightning_test_utils import (
     DummyDataModule,
     LinearModule,
 )
+from ray.train.lightning._lightning_utils import import_lightning
 from ray.tune import Callback
+
+pl = import_lightning()
 
 
 @pytest.fixture

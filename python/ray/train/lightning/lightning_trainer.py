@@ -1,11 +1,5 @@
 import os
 
-try:
-    import lightning.pytorch as pl
-except ModuleNotFoundError:
-    import pytorch_lightning as pl
-
-
 from copy import copy
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
@@ -28,7 +22,10 @@ from ray.train.lightning._lightning_utils import (
     RayDataModule,
     RayModelCheckpoint,
     prepare_trainer,
+    import_lightning,
 )
+
+pl = import_lightning()
 
 
 import logging

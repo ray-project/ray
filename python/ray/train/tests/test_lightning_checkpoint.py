@@ -1,8 +1,3 @@
-try:
-    import lightning.pytorch as pl
-except ModuleNotFoundError:
-    import pytorch_lightning as pl
-
 import torch
 import torch.nn as nn
 import tempfile
@@ -16,6 +11,9 @@ from ray.train.lightning import (
     LightningConfigBuilder,
     LightningTrainer,
 )
+from ray.train.lightning._lightning_utils import import_lightning
+
+pl = import_lightning()
 
 
 class Net(pl.LightningModule):

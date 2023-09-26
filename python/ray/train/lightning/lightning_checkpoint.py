@@ -1,6 +1,5 @@
 import os
 import logging
-import pytorch_lightning as pl
 import tempfile
 import shutil
 
@@ -13,9 +12,11 @@ from ray.data import Preprocessor
 from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
 from ray.train.torch import LegacyTorchCheckpoint
 from ray.util.annotations import PublicAPI
+from ray.train.lightning._lightning_utils import import_lightning
+
+pl = import_lightning()
 
 logger = logging.getLogger(__name__)
-
 
 @PublicAPI(stability="alpha")
 class LightningCheckpoint(FrameworkCheckpoint):
