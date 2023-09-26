@@ -375,11 +375,11 @@ class BlockAccessor:
 
                 # batch is type of dict[str, np.ndarray]
                 # check for arrays with ndim > 1
-                if all(val.ndim == 1 for val in batch.values()):
+                if all(np.ndim(val) == 1 for val in batch.values()):
                     return pd.DataFrame(batch)
 
                 for val in batch.values():
-                    if val.ndim > 1:
+                    if np.ndim(val) > 1:
                         raise ValueError("Unsupported value in batch: {}".format(val))
 
         return batch
