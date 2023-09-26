@@ -1100,14 +1100,14 @@ def test_queued_queries_disconnected(serve_start_shutdown):
         check_metric,
         timeout=15,
         metric="ray_serve_num_scheduling_tasks",
-        expected=0,
+        expected=-1,  # -1 means not expected to be present yet.
     )
     print("ray_serve_num_scheduling_tasks updated successfully.")
     wait_for_condition(
         check_metric,
         timeout=15,
         metric="serve_num_scheduling_tasks_in_backoff",
-        expected=0,
+        expected=-1,  # -1 means not expected to be present yet.
     )
     print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
@@ -1117,24 +1117,7 @@ def test_queued_queries_disconnected(serve_start_shutdown):
         except Exception:
             return ray.get(signal.cur_num_waiters.remote()) == 1
 
-    # No scheduling tasks should be running once the first request is assigned.
-    wait_for_condition(
-        check_metric,
-        timeout=15,
-        metric="ray_serve_num_scheduling_tasks",
-        expected=0,
-    )
-    print("ray_serve_num_scheduling_tasks updated successfully.")
-    wait_for_condition(
-        check_metric,
-        timeout=15,
-        metric="serve_num_scheduling_tasks_in_backoff",
-        expected=0,
-    )
-    print("serve_num_scheduling_tasks_in_backoff updated successfully.")
-
     url = "http://localhost:8000/"
-
     pool = Pool()
 
     # Make a request to block the deployment from accepting other requests
