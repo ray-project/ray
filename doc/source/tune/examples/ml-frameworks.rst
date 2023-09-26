@@ -1,6 +1,21 @@
 Examples using Ray Tune with ML Frameworks
 ------------------------------------------
 
+.. toctree::
+    :hidden:
+
+    Scikit-Learn Example <tune-sklearn>
+    Keras Example <tune_mnist_keras>
+    PyTorch Example <tune-pytorch-cifar>
+    PyTorch Lightning Example <tune-pytorch-lightning>
+    Ray Serve Example <tune-serve-integration-mnist>
+    Ray RLlib Example <pbt_ppo_example>
+    XGBoost Example <tune-xgboost>
+    LightGBM Example <lightgbm_example>
+    Horovod Example <horovod_simple>
+    Hugging Face Transformers Example <pbt_transformers>
+
+
 Ray Tune integrates with many popular machine learning frameworks.
 Here you find a few practical examples showing you how to tune your models.
 At the end of these guides you will often find links to even more examples.
@@ -88,7 +103,7 @@ At the end of these guides you will often find links to even more examples.
         .. button-ref:: tune-huggingface-example
 
             A Guide To Tuning Huggingface Transformers With Tune
-    
+
     .. grid-item-card::
         :img-top: /images/tune.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img

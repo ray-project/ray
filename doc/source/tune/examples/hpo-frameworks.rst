@@ -1,6 +1,20 @@
 Tune Hyperparameter Optimization Framework Examples
 ---------------------------------------------------
 
+.. toctree::
+    :hidden:
+
+    Ax Example <ax_example>
+    Dragonfly Example <dragonfly_example>
+    HyperOpt Example <hyperopt_example>
+    Bayesopt Example <bayesopt_example>
+    FLAML Example <flaml_example>
+    BOHB Example <bohb_example>
+    Nevergrad Example <nevergrad_example>
+    Optuna Example <optuna_example>
+    SigOpt Example <sigopt_example>
+
+
 Tune integrates with a wide variety of hyperparameter optimization frameworks
 and their respective search algorithms. Here you can find detailed examples
 on each of our integrations:

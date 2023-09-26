@@ -2,7 +2,7 @@
 
 # Getting Started
 Use Ray to scale applications on your laptop or the cloud. Choose the right guide for your task.
-* Scale ML workloads: [Ray Libraries Quickstart](#ray-libraries-quickstart)
+* Scale ML workloads: [Ray Libraries Quickstart](#libraries-quickstart)
 * Scale general Python applications: [Ray Core Quickstart](#ray-core-quickstart)
 * Deploy to the cloud: [Ray Clusters Quickstart](#ray-cluster-quickstart)
 * Debug and monitor applications: [Debugging and Monitoring Quickstart](#debugging-and-monitoring-quickstart)

@@ -2,25 +2,20 @@
 
 {%- block extrahead %}
 
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/default.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" />
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+<!-- Used for text embedded in html on the index page  -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" ></script>
+
+<!-- Parser used to call hljs on responses from Ray Assistant -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+<!-- Sanitizer for Ray Assistant AI -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.3.3/purify.min.js"></script>
 
 <!-- Fathom - beautiful, simple website analytics -->
 <script src="https://deer.ray.io/script.js" data-site="WYYANYOS" defer></script>
 <!-- / Fathom -->
-
-<script async src="https://www.googletagmanager.com/gtag/js?id=UA-110413294-1"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-
-  gtag('config', 'UA-110413294-1');
-</script>
 
 <script>
 (function(apiKey){
@@ -41,5 +36,6 @@
 })('f89fa48a-6dd7-4d7c-67cf-a8051ed891f2');
 </script>
 
+  {{ super() }}
 
 {% endblock %}
