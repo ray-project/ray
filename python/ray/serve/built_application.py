@@ -81,7 +81,6 @@ def _get_deploy_args_from_built_app(app: BuiltApplication):
                 deployment_config=deployment._deployment_config,
                 version=deployment.version,
                 route_prefix=deployment.route_prefix,
-                is_driver_deployment=deployment._is_driver_deployment,
                 docs_path=deployment._docs_path,
             )
         )

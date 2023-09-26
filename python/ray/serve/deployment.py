@@ -116,7 +116,6 @@ class Deployment:
         replica_config: ReplicaConfig,
         version: Optional[str] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-        is_driver_deployment: Optional[bool] = False,
         _internal=False,
     ) -> None:
         if not _internal:
@@ -140,12 +139,6 @@ class Deployment:
             if "{" in route_prefix or "}" in route_prefix:
                 raise ValueError("route_prefix may not contain wildcards.")
 
-        if is_driver_deployment is True:
-            if deployment_config.num_replicas != 1:
-                raise ValueError("num_replicas should not be set for driver deployment")
-            if deployment_config.autoscaling_config:
-                raise ValueError("autoscaling should not be set for driver deployment")
-
         docs_path = None
         if (
             inspect.isclass(replica_config.deployment_def)
@@ -160,7 +153,6 @@ class Deployment:
         self._deployment_config = deployment_config
         self._replica_config = replica_config
         self._route_prefix = route_prefix
-        self._is_driver_deployment = is_driver_deployment
         self._docs_path = docs_path
 
     @property
@@ -214,7 +206,7 @@ class Deployment:
 
     @property
     def url(self) -> Optional[str]:
-        if self._route_prefix is None or self._is_driver_deployment:
+        if self._route_prefix is None:
             # this deployment is not exposed over HTTP
             return None
 
@@ -386,7 +378,6 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-        is_driver_deployment: bool = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
@@ -497,9 +488,6 @@ class Deployment:
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_deployment_config.health_check_timeout_s = health_check_timeout_s
 
-        if is_driver_deployment is DEFAULT.VALUE:
-            is_driver_deployment = self._is_driver_deployment
-
         new_replica_config = ReplicaConfig.create(
             func_or_class,
             init_args=init_args,
@@ -517,7 +505,6 @@ class Deployment:
             version=version,
             route_prefix=route_prefix,
             _internal=True,
-            is_driver_deployment=is_driver_deployment,
         )
 
     @Deprecated(
@@ -545,7 +532,6 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-        is_driver_deployment: bool = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> None:
         """Overwrite this deployment's options in-place.
@@ -579,7 +565,6 @@ class Deployment:
             health_check_period_s=health_check_period_s,
             health_check_timeout_s=health_check_timeout_s,
             _internal=_internal,
-            is_driver_deployment=is_driver_deployment,
         )
 
         self._name = validated._name
@@ -648,7 +633,6 @@ def deployment_to_schema(
         "placement_group_strategy": d._replica_config.placement_group_strategy,
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
-        "is_driver_deployment": d._is_driver_deployment,
     }
 
     if include_route_prefix:
@@ -701,11 +685,6 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         max_replicas_per_node = s.max_replicas_per_node
 
-    if s.is_driver_deployment is DEFAULT.VALUE:
-        is_driver_deployment = False
-    else:
-        is_driver_deployment = s.is_driver_deployment
-
     deployment_config = DeploymentConfig.from_default(
         num_replicas=s.num_replicas,
         user_config=s.user_config,
@@ -736,5 +715,4 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         replica_config=replica_config,
         route_prefix=s.route_prefix,
         _internal=True,
-        is_driver_deployment=is_driver_deployment,
     )

@@ -984,11 +984,6 @@ def override_deployment_info(
         if deployment_route_prefix is not DEFAULT.VALUE:
             override_options["route_prefix"] = deployment_route_prefix
 
-        # Override is_driver_deployment if specified in deployment config
-        is_driver_deployment = options.pop("is_driver_deployment", None)
-        if is_driver_deployment is not None:
-            override_options["is_driver_deployment"] = is_driver_deployment
-
         # Merge app-level and deployment-level runtime_envs.
         replica_config = info.replica_config
         app_runtime_env = override_config.runtime_env

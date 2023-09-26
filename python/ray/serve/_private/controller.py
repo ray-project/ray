@@ -592,7 +592,6 @@ class ServeController:
         route_prefix: Optional[str],
         deployer_job_id: Union[str, bytes],
         docs_path: Optional[str] = None,
-        is_driver_deployment: Optional[bool] = False,
         # TODO(edoakes): this is a hack because the deployment_language doesn't seem
         # to get set properly from Java.
         is_deployed_from_python: bool = False,
@@ -610,7 +609,6 @@ class ServeController:
             deployer_job_id=deployer_job_id,
             route_prefix=route_prefix,
             docs_path=docs_path,
-            is_driver_deployment=is_driver_deployment,
             app_name="",
         )
 

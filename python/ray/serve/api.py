@@ -281,7 +281,6 @@ def deployment(
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-    is_driver_deployment: Optional[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -336,8 +335,6 @@ def deployment(
             no more work to be done before shutting down. Defaults to 2s.
         graceful_shutdown_timeout_s: Duration to wait for a replica to gracefully
             shut down before being forcefully killed. Defaults to 20s.
-        is_driver_deployment: [EXPERIMENTAL] when set, exactly one replica of this
-            deployment runs on every node (like a daemon set).
         max_replicas_per_node: [EXPERIMENTAL] The max number of deployment replicas can
             run on a single node. Valid values are None (no limitation)
             or an integer in the range of [1, 100].
@@ -384,9 +381,6 @@ def deployment(
             "`serve.run` instead."
         )
 
-    if is_driver_deployment is DEFAULT.VALUE:
-        is_driver_deployment = False
-
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
@@ -430,7 +424,6 @@ def deployment(
             replica_config,
             version=(version if version is not DEFAULT.VALUE else None),
             route_prefix=route_prefix,
-            is_driver_deployment=is_driver_deployment,
             _internal=True,
         )
 
@@ -565,7 +558,6 @@ def run(
             "version": deployment._version or get_random_letters(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
-            "is_driver_deployment": deployment._is_driver_deployment,
             "docs_path": deployment._docs_path,
             "ingress": deployment._name == ingress._name,
         }

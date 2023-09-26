@@ -5,7 +5,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-import ray
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentInfo,
@@ -29,7 +28,6 @@ from ray.serve._private.deployment_state import (
     DeploymentState,
     DeploymentStateManager,
     DeploymentVersion,
-    DriverDeploymentState,
     ReplicaStartupStatus,
     ReplicaStateContainer,
     VersionedReplica,
@@ -296,7 +294,6 @@ def deployment_info(
     version: Optional[str] = None,
     num_replicas: Optional[int] = 1,
     user_config: Optional[Any] = None,
-    is_driver_deployment: bool = False,
     **config_opts,
 ) -> Tuple[DeploymentInfo, DeploymentVersion]:
     info = DeploymentInfo(
@@ -307,7 +304,6 @@ def deployment_info(
         ),
         replica_config=ReplicaConfig.create(lambda x: x),
         deployer_job_id="",
-        is_driver_deployment=is_driver_deployment,
     )
 
     if version is not None:
@@ -359,30 +355,17 @@ def mock_deployment_state(request) -> Tuple[DeploymentState, Mock, Mock]:
 
         cluster_node_info_cache = MockClusterNodeInfoCache()
 
-        # It is a driver deployment test
-        if request.param is True:
-            deployment_state = DriverDeploymentState(
-                DeploymentID("name", "my_app"),
-                "name",
-                True,
-                mock_long_poll,
-                MockDeploymentScheduler(cluster_node_info_cache),
-                cluster_node_info_cache,
-                mock_save_checkpoint_fn,
-            )
-            yield deployment_state, timer, cluster_node_info_cache
-        else:
-            deployment_state = DeploymentState(
-                DeploymentID("name", "my_app"),
-                "name",
-                True,
-                mock_long_poll,
-                MockDeploymentScheduler(cluster_node_info_cache),
-                cluster_node_info_cache,
-                mock_save_checkpoint_fn,
-            )
+        deployment_state = DeploymentState(
+            DeploymentID("name", "my_app"),
+            "name",
+            True,
+            mock_long_poll,
+            MockDeploymentScheduler(cluster_node_info_cache),
+            cluster_node_info_cache,
+            mock_save_checkpoint_fn,
+        )
 
-            yield deployment_state, timer, cluster_node_info_cache
+        yield deployment_state, timer, cluster_node_info_cache
 
 
 def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
@@ -2261,7 +2244,7 @@ def mock_deployment_state_manager_full(
         cluster_node_info_cache = MockClusterNodeInfoCache()
 
         def create_deployment_state_manager(
-            actor_names=None, placement_group_names=None, is_driver_deployment=False
+            actor_names=None, placement_group_names=None
         ):
             if actor_names is None:
                 actor_names = []
@@ -2286,10 +2269,7 @@ def mock_deployment_state_manager_full(
         yield create_deployment_state_manager, timer, cluster_node_info_cache
 
 
-@pytest.mark.parametrize("is_driver_deployment", [True, False])
-def test_recover_state_from_replica_names(
-    mock_deployment_state_manager_full, is_driver_deployment
-):
+def test_recover_state_from_replica_names(mock_deployment_state_manager_full):
     """Test recover deployment state."""
     deployment_id = DeploymentID("test_deployment", "test_app")
     (
@@ -2301,9 +2281,7 @@ def test_recover_state_from_replica_names(
     cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     # Deploy deployment with version "1" and one replica
-    info1, version1 = deployment_info(
-        version="1", is_driver_deployment=is_driver_deployment
-    )
+    info1, version1 = deployment_info(version="1")
     updating = deployment_state_manager.deploy(deployment_id, info1)
     deployment_state = deployment_state_manager._deployment_states[deployment_id]
     assert updating
@@ -2363,10 +2341,7 @@ def test_recover_state_from_replica_names(
     assert mocked_replica.replica_tag == new_mocked_replica.replica_tag
 
 
-@pytest.mark.parametrize("is_driver_deployment", [True, False])
-def test_recover_during_rolling_update(
-    mock_deployment_state_manager_full, is_driver_deployment
-):
+def test_recover_during_rolling_update(mock_deployment_state_manager_full):
     """Test controller crashes before a replica is updated to new version.
 
     During recovery, the controller should wait for the version to be fetched from
@@ -2384,9 +2359,7 @@ def test_recover_during_rolling_update(
     cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     # Step 1: Create some deployment info with actors in running state
-    info1, version1 = deployment_info(
-        version="1", is_driver_deployment=is_driver_deployment
-    )
+    info1, version1 = deployment_info(version="1")
     updating = deployment_state_manager.deploy(deployment_id, info1)
     deployment_state = deployment_state_manager._deployment_states[deployment_id]
     assert updating
@@ -2412,9 +2385,7 @@ def test_recover_during_rolling_update(
     )
 
     # Now execute a rollout: upgrade the version to "2".
-    info2, version2 = deployment_info(
-        version="2", is_driver_deployment=is_driver_deployment
-    )
+    info2, version2 = deployment_info(version="2")
     updating = deployment_state_manager.deploy(deployment_id, info2)
     assert updating
 
@@ -2437,20 +2408,15 @@ def test_recover_during_rolling_update(
         version=version2,
         by_state=[(ReplicaState.RECOVERING, 1)],
     )
-    # Replica should remain recovering and remain labeled as version "2"
-    # before it recovers the real version from the actor
-    if not is_driver_deployment:
-        # NOTE(zcin): for is_driver_deployment=True, since the node id is not available
-        # when recovering, if we perform an update before marking the replica as ready,
-        # it will think it needs to bring up a new replica on the node(s) in the cluster
-        for _ in range(3):
-            new_deployment_state_manager.update()
-            check_counts(
-                new_deployment_state,
-                total=1,
-                version=version2,
-                by_state=[(ReplicaState.RECOVERING, 1)],
-            )
+
+    for _ in range(3):
+        new_deployment_state_manager.update()
+        check_counts(
+            new_deployment_state,
+            total=1,
+            version=version2,
+            by_state=[(ReplicaState.RECOVERING, 1)],
+        )
 
     # Get the new mocked replica. Note that this represents a newly
     # instantiated class keeping track of the state of the replica,
@@ -2494,7 +2460,6 @@ def test_recover_during_rolling_update(
 
 @pytest.fixture
 def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock, Mock]:
-    ray.init()
     timer = MockTimer()
     with patch(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
@@ -2524,11 +2489,9 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
         )
 
         yield deployment_state_manager, timer, cluster_node_info_cache
-    ray.shutdown()
 
 
-@pytest.mark.parametrize("is_driver_deployment", [False, True])
-def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
+def test_shutdown(mock_deployment_state_manager):
     """
     Test that shutdown waits for all deployments to be deleted and they
     are force-killed without a grace period.
@@ -2545,7 +2508,6 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
     grace_period_s = 10
     b_info_1, _ = deployment_info(
         graceful_shutdown_timeout_s=grace_period_s,
-        is_driver_deployment=is_driver_deployment,
     )
     updating = deployment_state_manager.deploy(deployment_id, b_info_1)
     assert updating
@@ -2601,112 +2563,6 @@ def test_resource_requirements_none():
 
     # resource_requirements() should not error
     replica.resource_requirements()
-
-
-@pytest.mark.parametrize("mock_deployment_state", [True], indirect=True)
-def test_cancel_extra_replicas_for_driver_deployment(mock_deployment_state):
-    """Test to make sure the driver deployment state
-    can cancel extra starting replicas.
-    """
-
-    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
-    cluster_node_info_cache.alive_node_ids = {"0", "1"}
-
-    b_info_1, b_version_1 = deployment_info()
-    updating = deployment_state.deploy(b_info_1)
-    assert updating
-    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
-
-    deployment_state_update_result = deployment_state.update()
-    # 1 node dies, now the cluster only has 1 node
-    cluster_node_info_cache.alive_node_ids = {"0"}
-    deployment_state._deployment_scheduler.schedule(
-        {deployment_state._id: deployment_state_update_result.upscale}, {}
-    )
-    check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
-    # only 1 replica is scheduled successfully, the other is PENDING_ALLOCATION
-    deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
-    # the other replica should be cancelled
-    deployment_state.update()
-    check_counts(
-        deployment_state,
-        total=2,
-        by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 1)],
-    )
-
-
-@pytest.mark.parametrize("mock_deployment_state", [True], indirect=True)
-def test_add_and_remove_nodes_for_driver_deployment(mock_deployment_state):
-    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
-    cluster_node_info_cache.alive_node_ids = {"0"}
-
-    b_info_1, b_version_1 = deployment_info()
-    updating = deployment_state.deploy(b_info_1)
-    assert updating
-    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
-
-    deployment_state_update_result = deployment_state.update()
-    deployment_state._deployment_scheduler.schedule(
-        {deployment_state._id: deployment_state_update_result.upscale}, {}
-    )
-    check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
-
-    # Add a node when previous one is in STARTING state
-    cluster_node_info_cache.alive_node_ids = {"0", "1"}
-    deployment_state_update_result = deployment_state.update()
-    deployment_state._deployment_scheduler.schedule(
-        {deployment_state._id: deployment_state_update_result.upscale}, {}
-    )
-    check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
-    for replica in deployment_state._replicas.get(states=[ReplicaState.STARTING]):
-        replica._actor.set_ready()
-    deployment_state.update()
-    check_counts(deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
-
-    # Add another two nodes
-    cluster_node_info_cache.alive_node_ids = {"0", "1", "2", "3"}
-    deployment_state_update_result = deployment_state.update()
-    deployment_state._deployment_scheduler.schedule(
-        {deployment_state._id: deployment_state_update_result.upscale}, {}
-    )
-    check_counts(
-        deployment_state,
-        total=4,
-        by_state=[(ReplicaState.RUNNING, 2), (ReplicaState.STARTING, 2)],
-    )
-    for replica in deployment_state._replicas.get(states=[ReplicaState.STARTING]):
-        replica._actor.set_ready()
-    deployment_state.update()
-    check_counts(deployment_state, total=4, by_state=[(ReplicaState.RUNNING, 4)])
-
-    # Remove one node and add another node, node3 is removed, node4 added
-    cluster_node_info_cache.alive_node_ids = {"0", "1", "2", "4"}
-    deployment_state._replicas.get(states=[ReplicaState.RUNNING])[
-        3
-    ]._actor.set_unhealthy()
-    deployment_state_update_result = deployment_state.update()
-    deployment_state._deployment_scheduler.schedule(
-        {deployment_state._id: deployment_state_update_result.upscale}, {}
-    )
-    check_counts(
-        deployment_state,
-        total=4,
-        by_state=[
-            (ReplicaState.RUNNING, 3),
-            (ReplicaState.STOPPING, 1),
-        ],
-    )
-
-    # Mark stopped replica finish stopping step.
-    for replica in deployment_state._replicas.get(states=[ReplicaState.STOPPING]):
-        replica._actor.set_done_stopping()
-    deployment_state.update()
-
-    # Make starting replica finish starting step.
-    for replica in deployment_state._replicas.get(states=[ReplicaState.STARTING]):
-        replica._actor.set_ready()
-    deployment_state.update()
-    check_counts(deployment_state, total=4, by_state=[(ReplicaState.RUNNING, 4)])
 
 
 class TestActorReplicaWrapper:

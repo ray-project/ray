@@ -1,6 +1,5 @@
 import os
 import sys
-from unittest.mock import patch
 
 import grpc
 
@@ -20,12 +19,9 @@ from ray.cluster_utils import Cluster
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
 from ray.serve.config import gRPCOptions
-from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
-from ray.serve.exceptions import RayServeException
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 from ray.serve.tests.utils import (
@@ -160,73 +156,6 @@ finally:
         """,
             env=os.environ.copy(),
         )
-
-
-@patch("ray.serve._private.api.FLAG_DISABLE_PROXY", True)
-def test_controller_without_http(serve_start_shutdown):
-    @serve.deployment
-    class D1:
-        def __call__(self, input):
-            return input["a"]
-
-    serve.run(DefaultgRPCDriver.bind(D1.bind()))
-    assert ray.get(serve.context._global_client._controller.get_proxies.remote()) == {}
-
-
-@patch("ray.serve._private.api.FLAG_DISABLE_PROXY", True)
-def test_deploy_grpc_driver_to_node(ray_cluster):
-    cluster = ray_cluster
-    cluster.add_node(num_cpus=2)
-    cluster.connect(namespace=SERVE_NAMESPACE)
-
-    @serve.deployment
-    class D1:
-        def __call__(self, input):
-            return input["a"]
-
-    serve.run(DefaultgRPCDriver.bind(D1.bind()))
-    replicas = ray.get(
-        serve.context._global_client._controller._all_running_replicas.remote()
-    )
-    deployment_id = DeploymentID("DefaultgRPCDriver", SERVE_DEFAULT_APP_NAME)
-    assert len(replicas[deployment_id]) == 1
-
-    worker_node = cluster.add_node(num_cpus=2)
-
-    wait_for_condition(
-        lambda: len(
-            ray.get(
-                serve.context._global_client._controller._all_running_replicas.remote()
-            )[deployment_id]
-        )
-        == 2
-    )
-
-    # Kill the worker node.
-    cluster.remove_node(worker_node)
-
-    wait_for_condition(
-        lambda: len(
-            ray.get(
-                serve.context._global_client._controller._all_running_replicas.remote()
-            )[deployment_id]
-        )
-        == 1
-    )
-
-
-def test_schemas_attach_grpc_server():
-    # Failed with initiate solely
-    with pytest.raises(RayServeException):
-        _ = gRPCIngress()
-
-    class MyDriver(gRPCIngress):
-        def __init__(self):
-            super().__init__()
-
-    # Failed with no schema gRPC binding function
-    with pytest.raises(RayServeException):
-        _ = MyDriver()
 
 
 def test_serving_request_through_grpc_proxy(ray_cluster):

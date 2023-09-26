@@ -154,7 +154,6 @@ def deployment_params(name: str, route_prefix: str = None, docs_path: str = None
         "route_prefix": route_prefix,
         "docs_path": docs_path,
         "ingress": False,
-        "is_driver_deployment": False,
     }
 
 
@@ -845,24 +844,6 @@ class TestOverrideDeploymentInfo:
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/bob"
         assert updated_info.version == "123"
-
-    def test_override_is_driver_deployment(self, info):
-        config = ServeApplicationSchema(
-            name="default",
-            import_path="test.import.path",
-            deployments=[
-                DeploymentSchema(
-                    name="A",
-                    is_driver_deployment=True,
-                )
-            ],
-        )
-
-        updated_infos = override_deployment_info("default", {"A": info}, config)
-        updated_info = updated_infos["A"]
-        assert updated_info.route_prefix == "/"
-        assert updated_info.version == "123"
-        assert updated_info.is_driver_deployment
 
     def test_override_ray_actor_options_1(self, info):
         """Test runtime env specified in config at deployment level."""
