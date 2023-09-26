@@ -24,9 +24,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_HANDLE_API,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve.config import HTTPOptions
-from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
 from ray.serve.generated.serve_pb2 import (
