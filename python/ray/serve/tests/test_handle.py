@@ -8,10 +8,7 @@ import requests
 import ray
 from ray import serve
 from ray.serve._private.common import RequestProtocol
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SERVE_DEFAULT_APP_NAME,
-)
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle, _HandleOptions
@@ -175,29 +172,6 @@ def test_handle_in_endpoint(serve_instance):
     serve.run(end_p2)
 
     assert requests.get("http://127.0.0.1:8000/Endpoint2").text == "hello"
-
-
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING, reason="Not supported w/ streaming."
-)
-def test_handle_inject_starlette_request(serve_instance):
-    @serve.deployment(name="echo")
-    def echo_request_type(request):
-        return str(type(request))
-
-    echo_request_type.deploy()
-
-    @serve.deployment(name="wrapper")
-    def wrapper_model(web_request):
-        handle = echo_request_type.get_handle()
-        return ray.get(handle.remote(web_request))
-
-    wrapper_model.deploy()
-
-    for route in ["echo", "wrapper"]:
-        resp = requests.get(f"http://127.0.0.1:8000/{route}")
-        request_type = resp.text
-        assert request_type == "<class 'starlette.requests.Request'>"
 
 
 def test_handle_option_chaining(serve_instance):

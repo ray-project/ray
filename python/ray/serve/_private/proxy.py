@@ -28,7 +28,6 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
     RAY_SERVE_REQUEST_ID_HEADER,
     SERVE_LOGGER_NAME,
@@ -173,12 +172,6 @@ class GenericProxy(ABC):
 
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
-
-        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-            logger.info(
-                "Experimental streaming feature flag enabled.",
-                extra={"log_to_stderr": False},
-            )
 
         def get_handle(deployment_name, app_name):
             # Delayed import due to circular dependency.
@@ -466,7 +459,7 @@ class GenericProxy(ABC):
             )
 
             # Streaming codepath isn't supported for Java.
-            if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
+            if not app_is_cross_language:
                 proxy_response = await self.send_request_to_replica_streaming(
                     request_id=request_id,
                     handle=handle,

@@ -278,7 +278,7 @@ class ActorReplicaWrapper:
                 num_returns="streaming"
             ).remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
         else:
-            _, obj_ref = self._actor_handle.handle_request.remote(
+            obj_ref = self._actor_handle.handle_request.remote(
                 pickle.dumps(query.metadata), *query.args, **query.kwargs
             )
 

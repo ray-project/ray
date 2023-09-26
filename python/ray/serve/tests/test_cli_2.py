@@ -17,11 +17,7 @@ from pydantic import BaseModel
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SERVE_DEFAULT_APP_NAME,
-    SERVE_NAMESPACE,
-)
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.tests.conftest import check_ray_stop
@@ -805,9 +801,7 @@ def test_run_config_request_timeout():
     # the 0.1 request_timeout_s set in in the config yaml
     wait_for_condition(
         lambda: requests.get("http://localhost:8000/app1?sleep_s=0.11").status_code
-        == 408
-        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
-        else 500,
+        == 408,
     )
 
     # Ensure the http request returned the correct response when the deployment runs
