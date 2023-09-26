@@ -1,4 +1,6 @@
 import json
+import time
+
 import requests
 import os
 from urllib.parse import urljoin, urlencode
@@ -33,12 +35,7 @@ class _DatabricksUCReader(Reader):
         self.schema = schema
         self.query = query
 
-    def estimate_inmemory_data_size(self) -> Optional[int]:
-        return None
-
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         # TODO: support canceling the query once exception happens.
-
         url_base = f"https://{self.host}/api/2.0/sql/statements/"
 
         payload = json.dumps({
@@ -61,11 +58,12 @@ class _DatabricksUCReader(Reader):
             data=payload
         )
         statement_id = response.json()["statement_id"]
-        statement_url = urljoin(url_base, statement_id)
 
+        state = response.json()["status"]["state"]
         while state in ["PENDING", "RUNNING"]:
+            time.sleep(1)
             response = requests.get(
-                statement_url + "/",
+                urljoin(url_base, statement_id) + "/",
                 auth=req_auth,
                 headers=req_headers,
             )
@@ -79,14 +77,13 @@ class _DatabricksUCReader(Reader):
 
         # Make chunks metadata are ordered by index.
         chunks = sorted(chunks, key=lambda x: x['chunk_index'])
-
-        assert parallelism > 0, f"Invalid parallelism {parallelism}"
-
         num_chunks = len(chunks)
-        if parallelism > num_chunks:
-            parallelism = num_chunks
+        self.num_chunks = num_chunks
+        self._estimate_inmemory_data_size = sum(
+            chunk['byte_count'] for chunk in chunks
+        )
 
-        def get_read_task(task_index):
+        def get_read_task(task_index, parallelism):
             # 0 <= task_index < parallelism
             chunk_index_list = list(range(task_index, parallelism, num_chunks))
 
@@ -110,17 +107,17 @@ class _DatabricksUCReader(Reader):
                     chunk_info = chunks[chunk_index]
                     row_offset_param = urlencode({'row_offset': chunk_info["row_offset"]})
                     resolve_external_link_url = urljoin(
-                        statement_url,
-                        "result/chunks/{}?{}".format(chunk_index, row_offset_param)
+                        url_base,
+                        f"{statement_id}/result/chunks/{chunk_index}?{row_offset_param}"
                     )
 
-                    resp = requests.get(
+                    resolve_response = requests.get(
                         resolve_external_link_url,
                         auth=req_auth,
                         headers=req_headers
                     )
-                    resp.raise_for_status()
-                    external_url = response.json()["external_links"][0]["external_link"]
+                    resolve_response.raise_for_status()
+                    external_url = resolve_response.json()["external_links"][0]["external_link"]
                     # NOTE: do _NOT_ send the authorization header to external urls
                     raw_response = requests.get(external_url, auth=None, headers=None)
                     raw_response.raise_for_status()
@@ -130,7 +127,18 @@ class _DatabricksUCReader(Reader):
 
             return ReadTask(read_fn=read_fn, metadata=metadata)
 
-        return [get_read_task(index) for index in range(parallelism)]
+        self._get_read_task = get_read_task
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        return self._estimate_inmemory_data_size
+
+    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        assert parallelism > 0, f"Invalid parallelism {parallelism}"
+
+        if parallelism > self.num_chunks:
+            parallelism = self.num_chunks
+
+        return [self._get_read_task(index, parallelism) for index in range(parallelism)]
 
 
 @PublicAPI(stability="alpha")

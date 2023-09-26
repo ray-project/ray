@@ -1788,7 +1788,6 @@ def read_databricks_uc_tables(
         warehouse_id=warehouse_id,
         catalog=catalog,
         schema=schema,
-        table_name=table_name,
         query=query,
     )
 
