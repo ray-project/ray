@@ -394,7 +394,7 @@ class RayServeHandle(_DeploymentHandleBase):
         # here can't directly be awaited by it. So we include a reference to the
         # underlying (thread-safe) `concurrent.futures.Future`.
         # This can be removed when `RayServeHandle` is fully deprecated.
-        task.__ray_serve_object_ref_future = future
+        task._ray_serve_object_ref_future = future
         return task
 
 

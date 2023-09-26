@@ -157,8 +157,8 @@ class Query:
                 # `asyncio.Task` can't directly be awaited here. So we use the
                 # thread-safe `concurrent.futures.Future` instead.
                 # This can be removed when `RayServeHandle` is fully deprecated.
-                if hasattr(task, "__ray_serve_object_ref_future"):
-                    future = task.__ray_serve_object_ref_future
+                if hasattr(task, "_ray_serve_object_ref_future"):
+                    future = task._ray_serve_object_ref_future
                     replacement_table[task] = await asyncio.wrap_future(future)
                 else:
                     replacement_table[task] = task
