@@ -379,16 +379,16 @@ class BlockAccessor:
                     return pd.DataFrame(batch)
 
                 # Flatten any ndarray with ndim > 1
-                pd_batch = dict()
+                flattened_batch = dict()
                 for key, value in batch.items():
                     if value.ndim > 1:
-                        pd_batch[key] = np.array(
+                        flattened_batch[key] = np.array(
                             [",".join(value.flatten())], dtype=value.dtype
                         )
                     else:
-                        pd_batch[key] = value
+                        flattened_batch[key] = value
 
-                return pd.DataFrame(pd_batch)
+                return pd.DataFrame(flattened_batch)
 
         return batch
 
