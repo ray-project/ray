@@ -33,43 +33,54 @@ class _PoolActor(TypedDict):
     actor: "ActorHandle"
     task_count: int
 
+
 # ------------------------------------------------------
+
 
 class _ActorPool(ABC):
 
     """This interface defines the actor pool class of Ray actors used by
-    RayExecutor. """
+    RayExecutor."""
 
     @property
-    def max_tasks_per_actor(self) -> Optional[int]: ...
+    def max_tasks_per_actor(self) -> Optional[int]:
+        ...
 
     @max_tasks_per_actor.setter
     @abstractmethod
-    def max_tasks_per_actor(self, val: Optional[int]) -> None: ...
+    def max_tasks_per_actor(self, val: Optional[int]) -> None:
+        ...
 
     @property
-    def num_actors(self) -> int: ...
+    def num_actors(self) -> int:
+        ...
 
     @num_actors.setter
     @abstractmethod
-    def num_actors(self, val: int) -> None: ...
+    def num_actors(self, val: int) -> None:
+        ...
 
     @property
-    def initializer(self) -> Optional[Callable[..., Any]]: ...
+    def initializer(self) -> Optional[Callable[..., Any]]:
+        ...
 
     @initializer.setter
     @abstractmethod
-    def initializer(self, val: Optional[Callable[..., Any]]) -> None: ...
+    def initializer(self, val: Optional[Callable[..., Any]]) -> None:
+        ...
 
     @property
-    def initargs(self) -> tuple[Any, ...]: ...
+    def initargs(self) -> tuple[Any, ...]:
+        ...
 
     @initargs.setter
     @abstractmethod
-    def initargs(self, val: tuple[Any, ...]) -> None: ...
+    def initargs(self, val: tuple[Any, ...]) -> None:
+        ...
 
     @abstractmethod
-    def submit(self, fn: Callable[[], T]) -> Future[T]: ...
+    def submit(self, fn: Callable[[], T]) -> Future[T]:
+        ...
 
 
 class _RoundRobinActorPool(_ActorPool):
@@ -85,12 +96,16 @@ class _RoundRobinActorPool(_ActorPool):
     num_actors : int
         Specify the size of the actor pool to create.
     initializer : Callable
-        A function that will be called remotely in the actor context before the submitted task (for compatibility with concurrent.futures.ThreadPoolExecutor).
+        A function that will be called remotely in the actor context before the
+        submitted task (for compatibility with
+        concurrent.futures.ThreadPoolExecutor).
     initargs : tuple
-        Arguments for initializer (for compatibility with concurrent.futures.ThreadPoolExecutor).
+        Arguments for initializer (for compatibility with
+        concurrent.futures.ThreadPoolExecutor).
     max_tasks_per_actor : int
-        The maximum number of tasks to be performed by an actor before it is gracefully killed and replaced (for compatibility with concurrent.futures.ProcessPoolExecutor).
-
+        The maximum number of tasks to be performed by an actor before it is
+        gracefully killed and replaced (for compatibility with
+        concurrent.futures.ProcessPoolExecutor).
     """
 
     @property
@@ -215,7 +230,13 @@ class _RoundRobinActorPool(_ActorPool):
             def exit(self) -> None:
                 ray.actor.exit_actor()
 
-        return {"actor": ExecutorActor.options().remote(self.initializer, self.initargs), "task_count": 0}  # type: ignore[attr-defined]
+        actor = ExecutorActor.options().remote(  # type: ignore[attr-defined]
+            self.initializer, self.initargs
+        )
+        return {
+            "actor": actor,
+            "task_count": 0,
+        }
 
     def _replace_actor_if_max_tasks(self) -> None:
         if self.max_tasks_per_actor is not None:
@@ -262,17 +283,23 @@ class RayExecutor(Executor):
         if it was initialised during instantiation of the current RayExecutor,
         otherwise it will not be shutdown.
     initializer : Callable[..., Any] | None
-        A function that will be called remotely in the actor context before the submitted task (for compatibility with concurrent.futures.ThreadPoolExecutor).
+        A function that will be called remotely in the actor context before the
+        submitted task (for compatibility with
+        concurrent.futures.ThreadPoolExecutor).
     initargs : tuple[Any, ...] | None
-        Arguments for initializer (for compatibility with concurrent.futures.ThreadPoolExecutor).
+        Arguments for initializer (for compatibility with
+        concurrent.futures.ThreadPoolExecutor).
     max_tasks_per_child : int | None
-        The maximum number of tasks to be performed by an actor before it is gracefully killed and replaced (for compatibility with concurrent.futures.ProcessPoolExecutor).
+        The maximum number of tasks to be performed by an actor before it is
+        gracefully killed and replaced (for compatibility with
+        concurrent.futures.ProcessPoolExecutor).
     mp_context : Any | None
-        This is only included for compatibility with concurrent.futures.ProcessPoolExecutor but is unused.
+        This is only included for compatibility with
+        concurrent.futures.ProcessPoolExecutor but is unused.
     futures : list[Future[Any]]
         Aggregated Futures from initiated tasks
     actor_pool : _ActorPool
-            A container of Actor objects over which the tasks will be distributed.
+        A container of Actor objects over which the tasks will be distributed.
 
     All additional keyword arguments are passed to ray.init()
     (see https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).
@@ -321,7 +348,8 @@ class RayExecutor(Executor):
         self.futures: list[Future[Any]] = []
         self.shutdown_ray = shutdown_ray
 
-        # mp_context is included for API compatiblity only, it does nothing in this context
+        # mp_context is included for API compatiblity only, it does nothing in
+        # this context
         self._mp_context = mp_context
 
         if max_tasks_per_child is not None:
@@ -336,7 +364,7 @@ class RayExecutor(Executor):
             runtime_env = kwargs.get("runtime_env")
             if runtime_env is None or "working_dir" not in runtime_env:
                 raise ValueError(
-                    f"working_dir must be specified in runtime_env dictionary if \
+                    "working_dir must be specified in runtime_env dictionary if \
                                  initializer function is not None so that \
                                  it can be accessible by remote workers"
                 )
@@ -372,7 +400,8 @@ class RayExecutor(Executor):
         Returns
         -------
         Future
-            A future representing the yet-to-be-resolved result of the submitted task. Futures are also collected in self.futures.
+            A future representing the yet-to-be-resolved result of the
+            submitted task. Futures are also collected in self.futures.
 
         Usage example:
 

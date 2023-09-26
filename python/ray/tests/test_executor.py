@@ -117,12 +117,12 @@ class TestShared:
         assert pool.index == 0
 
         # wait for actors to live
-        assert self.wait_actor_state(pool, "ALIVE") == True
+        assert self.wait_actor_state(pool, "ALIVE")
         pool.kill()
         # wait for actors to die
-        assert self.wait_actor_state(pool, "DEAD") == True
+        assert self.wait_actor_state(pool, "DEAD")
 
-    def test_round_robin_actor_pool_kills_actors_and_does_not_wait_for_tasks_to_complete(
+    def test_actor_pool_kills_actors_and_does_not_wait_for_tasks_to_complete(
         self, call_ray_start
     ):
         pool = _RoundRobinActorPool(num_actors=2)
@@ -132,7 +132,7 @@ class TestShared:
 
         future = pool.submit(f)
         pool.kill()
-        assert self.wait_actor_state(pool, "DEAD") == True
+        assert self.wait_actor_state(pool, "DEAD")
         with pytest.raises(RayActorError):
             future.result()
 
@@ -146,7 +146,7 @@ class TestShared:
 
         future = pool.submit(f)
         actor = pool._exit_actor(0)
-        assert self.wait_actor_state_(actor, "DEAD") == True
+        assert self.wait_actor_state_(actor, "DEAD")
         assert future.result() == 123
 
     def test_round_robin_actor_pool_replaces_expired_actors(self, call_ray_start):
