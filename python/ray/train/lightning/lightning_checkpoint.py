@@ -18,6 +18,7 @@ pl = import_lightning()
 
 logger = logging.getLogger(__name__)
 
+
 @PublicAPI(stability="alpha")
 class LightningCheckpoint(FrameworkCheckpoint):
     """A :class:`~ray.train.Checkpoint` with Lightning-specific functionality."""

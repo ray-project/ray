@@ -28,6 +28,7 @@ def import_lightning():
         import pytorch_lightning as pl
     return pl
 
+
 pl = import_lightning()
 
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")

@@ -14,6 +14,7 @@ from ray.train.lightning._lightning_utils import import_lightning
 
 pl = import_lightning()
 
+
 def test_repr():
     model = pl.LightningModule()
     predictor = LightningPredictor(model)
