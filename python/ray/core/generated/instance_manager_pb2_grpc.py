@@ -130,3 +130,64 @@ class InstanceManagerService(object):
             src_dot_ray_dot_protobuf_dot_experimental_dot_instance__manager__pb2.GetAvailableInstanceTypesResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+
+class ResourceSchedulerServiceStub(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.ScheduleResourceBundles = channel.unary_unary(
+                '/ray.rpc.autoscaler.ResourceSchedulerService/ScheduleResourceBundles',
+                request_serializer=src_dot_ray_dot_protobuf_dot_experimental_dot_instance__manager__pb2.ScheduleResourceBundlesRequest.SerializeToString,
+                response_deserializer=src_dot_ray_dot_protobuf_dot_experimental_dot_instance__manager__pb2.ScheduleResourceBundlesReply.FromString,
+                )
+
+
+class ResourceSchedulerServiceServicer(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def ScheduleResourceBundles(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_ResourceSchedulerServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'ScheduleResourceBundles': grpc.unary_unary_rpc_method_handler(
+                    servicer.ScheduleResourceBundles,
+                    request_deserializer=src_dot_ray_dot_protobuf_dot_experimental_dot_instance__manager__pb2.ScheduleResourceBundlesRequest.FromString,
+                    response_serializer=src_dot_ray_dot_protobuf_dot_experimental_dot_instance__manager__pb2.ScheduleResourceBundlesReply.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'ray.rpc.autoscaler.ResourceSchedulerService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+
+
+ # This class is part of an EXPERIMENTAL API.
+class ResourceSchedulerService(object):
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def ScheduleResourceBundles(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/ray.rpc.autoscaler.ResourceSchedulerService/ScheduleResourceBundles',
+            src_dot_ray_dot_protobuf_dot_experimental_dot_instance__manager__pb2.ScheduleResourceBundlesRequest.SerializeToString,
+            src_dot_ray_dot_protobuf_dot_experimental_dot_instance__manager__pb2.ScheduleResourceBundlesReply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
