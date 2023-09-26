@@ -83,7 +83,8 @@ class Counter(metrics.Counter):
                     self.num_requests = 0
                     self.my_counter = metrics.Counter(
                         "my_counter",
-                        description=("The number of odd-numbered requests to this deployment."),
+                        description=("The number of odd-numbered requests "
+                            "to this deployment."),
                         tag_keys=("model",),
                     )
                     self.my_counter.set_default_tags({"model": "123"})
