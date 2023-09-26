@@ -150,7 +150,7 @@ class _DeploymentHandleBase:
             _request_protocol=request_protocol
         )
 
-    def _get_or_create_router(self) -> Router:
+    def _get_or_create_router(self) -> Union[Router, asyncio.AbstractEventLoop]:
         if self._router is None:
             node_id = ray.get_runtime_context().get_node_id()
             try:
@@ -172,7 +172,7 @@ class _DeploymentHandleBase:
                 _router_cls=self.handle_options._router_cls,
             )
 
-        return self._router
+        return self._router, self._router._event_loop
 
     @property
     def deployment_name(self) -> str:
@@ -254,14 +254,14 @@ class _DeploymentHandleBase:
                 "application": _request_context.app_name,
             }
         )
-        router = self._get_or_create_router()
+        router, event_loop = self._get_or_create_router()
 
         # Schedule the coroutine to run on the router loop. This is always a separate
         # loop running in another thread to avoid user code blocking the router, so we
         # use the `concurrent.futures.Future` thread safe API.
         return asyncio.run_coroutine_threadsafe(
             router.assign_request(request_metadata, *args, **kwargs),
-            loop=router._event_loop,
+            loop=event_loop,
         )
 
     def __getattr__(self, name):
