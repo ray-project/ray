@@ -268,6 +268,7 @@ class DatasetStats:
         # Memory usage stats
         self.global_bytes_spilled: int = 0
         self.global_bytes_restored: int = 0
+        self.dataset_bytes_spilled: int = 0
 
     @property
     def stats_actor(self):
@@ -342,6 +343,7 @@ class DatasetStats:
             self.extra_metrics,
             self.global_bytes_spilled,
             self.global_bytes_restored,
+            self.dataset_bytes_spilled,
         )
 
 
@@ -358,6 +360,7 @@ class DatasetStatsSummary:
     extra_metrics: Dict[str, Any]
     global_bytes_spilled: int
     global_bytes_restored: int
+    dataset_bytes_spilled: int
 
     def to_string(
         self,
@@ -372,6 +375,7 @@ class DatasetStatsSummary:
             out.
             include_parent: If true, also include parent stats summary; otherwise, only
             log stats of the latest stage.
+            add_global_stats: If true, includes global stats to this summary.
         Returns:
             String with summary statistics for executing the Dataset.
         """
@@ -419,16 +423,18 @@ class DatasetStatsSummary:
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         out += str(self.iter_stats)
 
-        mb_spilled = round(self.global_bytes_spilled / 1e6)
-        mb_restored = round(self.global_bytes_restored / 1e6)
-        if (
-            len(self.stages_stats) > 0
-            and add_global_stats
-            and (mb_spilled or mb_restored)
-        ):
-            out += "\nCluster memory:\n"
-            out += "* Spilled to disk: {}MB\n".format(mb_spilled)
-            out += "* Restored from disk: {}MB\n".format(mb_restored)
+        if len(self.stages_stats) > 0 and add_global_stats:
+            mb_spilled = round(self.global_bytes_spilled / 1e6)
+            mb_restored = round(self.global_bytes_restored / 1e6)
+            if mb_spilled or mb_restored:
+                out += "\nCluster memory:\n"
+                out += "* Spilled to disk: {}MB\n".format(mb_spilled)
+                out += "* Restored from disk: {}MB\n".format(mb_restored)
+
+            dataset_mb_spilled = round(self.dataset_bytes_spilled / 1e6)
+            if dataset_mb_spilled:
+                out += "\nDataset memory:\n"
+                out += "* Spilled to disk: {}MB\n".format(dataset_mb_spilled)
 
         return out
 
@@ -455,6 +461,7 @@ class DatasetStatsSummary:
             f"{indent}   iter_stats={self.iter_stats.__repr__(level+1)},\n"
             f"{indent}   global_bytes_spilled={self.global_bytes_spilled / 1e6}MB,\n"
             f"{indent}   global_bytes_restored={self.global_bytes_restored / 1e6}MB,\n"
+            f"{indent}   dataset_bytes_spilled={self.dataset_bytes_spilled / 1e6}MB,\n"
             f"{indent}   parents=[{parent_stats}],\n"
             f"{indent})"
         )
