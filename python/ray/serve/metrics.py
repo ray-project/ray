@@ -72,8 +72,8 @@ class Counter(metrics.Counter):
     This corresponds to Prometheus' counter metric:
     https://prometheus.io/docs/concepts/metric_types/#counter
 
-    By default, serve related tags ("deployment", "replica", "application", "route")
-    are added automatically.
+    Serve-related tags ("deployment", "replica", "application", "route")
+    are added automatically if not provided.
 
     .. code-block:: python
 
@@ -129,8 +129,8 @@ class Gauge(metrics.Gauge):
     This corresponds to Prometheus' gauge metric:
     https://prometheus.io/docs/concepts/metric_types/#gauge
 
-    By default, serve related tags ("deployment", "replica", "application", "route")
-    are added automatically.
+    Serve-related tags ("deployment", "replica", "application", "route")
+    are added automatically if not provided.
 
     .. code-block:: python
 
@@ -187,8 +187,8 @@ class Histogram(metrics.Histogram):
     This corresponds to Prometheus' histogram metric:
     https://prometheus.io/docs/concepts/metric_types/#histogram
 
-    By default, serve related tags ("deployment", "replica", "application", "route")
-    are added automatically.
+    Serve-related tags ("deployment", "replica", "application", "route")
+    are added automatically if not provided.
 
     .. code-block:: python
 

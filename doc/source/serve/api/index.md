@@ -492,7 +492,7 @@ Content-Type: application/json
    schema.ReplicaDetails
 ```
 
-## Metric API
+## Metrics API
 ```{eval-rst}
 .. autosummary::
    :toctree: doc/
