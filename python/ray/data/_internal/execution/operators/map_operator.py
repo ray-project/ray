@@ -279,7 +279,7 @@ class MapOperator(OneToOneOperator, ABC):
             metadata = [input[1] for input in inputs.blocks]
             locations = ray.experimental.get_object_locations(blocks)
             for block, meta in zip(blocks, metadata):
-                if locations[block]["did_spill"]:
+                if "did_spill" in locations[block]:
                     self._metrics.spilled += meta.size_bytes
 
             inputs.destroy_if_owned()
