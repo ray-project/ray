@@ -61,18 +61,7 @@ def main():
     # For structured output integration with internal tooling
     results = {
         "data_uri": DATA_URI,
-        "perf_metrics": [
-            {
-                "perf_metric_name": "total_time_s",
-                "perf_metric_value": total_time,
-                "perf_metric_type": "LATENCY",
-            },
-            {
-                "perf_metric_name": "throughput_images_s",
-                "perf_metric_value": throughput,
-                "perf_metric_type": "THROUGHPUT",
-            },
-        ],
+        "perf_metrics": {"total_time_s": total_time, "throughput": throughput},
     }
 
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/release_test_out.json")

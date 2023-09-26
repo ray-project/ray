@@ -70,10 +70,10 @@ def run_benchmark(args):
     # For structured output integration with internal tooling
     results = {
         "data_uri": DATA_URI,
-        "num_files": num_files,
         "perf_metrics": {
             "total_time_s": total_time,
             "throughput_bytes": throughput_bytes,
+            "num_files": num_files,
         },
     }
 
