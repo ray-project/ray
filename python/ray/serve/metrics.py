@@ -122,6 +122,7 @@ class Counter(metrics.Counter):
         super().inc(value, tags)
 
 
+@PublicAPI(stability="beta")
 class Gauge(metrics.Gauge):
     """Gauges keep the last recorded value and drop everything before.
 
@@ -176,6 +177,7 @@ class Gauge(metrics.Gauge):
         super().set(value, tags)
 
 
+@PublicAPI(stability="beta")
 class Histogram(metrics.Histogram):
     """Tracks the size and number of events in buckets.
 
