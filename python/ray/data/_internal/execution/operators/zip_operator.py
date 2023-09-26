@@ -248,6 +248,10 @@ def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:
 
 
 def _try_zip_with_pyarrow_fallback(block: Block, other_block: Block) -> Block:
+    """Try zipping blocks together. If zip fails on ValueError exception due to
+    mismatched block formats we convert `block` or `other_block` to arrow format
+    and zip again.
+    """
     try:
         return BlockAccessor.for_block(block).zip(other_block)
     except ValueError as e:
