@@ -107,4 +107,5 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
                 "Failed to convert column values to numpy array: "
                 f"({_truncated_repr(udf_return_col)}): {e}."
             )
+
     return udf_return_col
