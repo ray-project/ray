@@ -370,7 +370,26 @@ class BlockAccessor:
 
                 # TODO(ekl) once we support Python objects within Arrow blocks, we
                 # don't need this fallback path.
-                return pd.DataFrame(dict(batch))
+                if not isinstance(batch, dict):
+                    return pd.DataFrame(dict(batch))
+
+                # batch is type of dict[str, np.ndarray]
+                # check for arrays with ndim > 1
+                if all(val.ndim == 1 for val in batch.values()):
+                    return pd.DataFrame(batch)
+
+                # Flatten any ndarray with ndim > 1
+                pd_batch = dict()
+                for key, value in batch.items():
+                    if value.ndim > 1:
+                        pd_batch[key] = np.array(
+                            [",".join(value.flatten())], dtype=value.dtype
+                        )
+                    else:
+                        pd_batch[key] = value
+
+                return pd.DataFrame(pd_batch)
+
         return batch
 
     @staticmethod
