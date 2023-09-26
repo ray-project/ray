@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from ray.autoscaler._private.vsphere.node_provider import VsphereNodeProvider
 from com.vmware.vcenter_client import VM
 from com.vmware.vcenter.vm_client import Power as HardPower
+from ray.autoscaler._private.vsphere.config import update_vsphere_configs
 
 _CLUSTER_NAME = "test"
 _PROVIDER_CONFIG = {
@@ -27,6 +28,9 @@ def mock_vsphere_node_provider():
         self.cluster_name = cluster_name
         self.tag_cache = {}
         self.cached_nodes = {}
+        self.vsphere_config = {}
+        self.vsphere_credentials = {}
+        self.pyvmomi_sdk_provider = MagicMock()
 
     with patch.object(VsphereNodeProvider, "__init__", __init__):
         node_provider = VsphereNodeProvider(_PROVIDER_CONFIG, _CLUSTER_NAME)
@@ -271,6 +275,7 @@ def test__create_node():
     vnp.attach_tag = MagicMock(return_value=None)
     vnp.get_frozen_vm_obj = MagicMock(return_value=MagicMock())
     vnp.delete_vm = MagicMock(return_value=None)
+    vnp.create_new_or_fetch_existing_frozen_vms = MagicMock(return_value={"vm": "vm-d"})
     vnp.lock = RLock()
 
     created_nodes_dict = vnp._create_node(
@@ -361,6 +366,84 @@ def test__get_node():
     vnp.vsphere_sdk_client.vcenter.VM.list.return_value = []
     vm = vnp._get_node("node_id_1")
     assert vm is None
+
+
+def test_create_new_or_fetch_existing_frozen_vms():
+    vnp = mock_vsphere_node_provider()
+    vnp.get_frozen_vm_obj = MagicMock()
+    vnp.check_frozen_vm_status = MagicMock()
+    vnp.choose_frozen_vm_obj = MagicMock()
+    vnp.create_frozen_vm_from_ovf = MagicMock()
+    vnp.create_frozen_vm_on_each_host = MagicMock()
+    vnp.initialize_frozen_vm_scheduler = MagicMock()
+
+    node_config = {"frozen_vm": {"name": "frozen"}}
+    vnp.create_new_or_fetch_existing_frozen_vms(node_config)
+    vnp.check_frozen_vm_status.assert_called()
+
+    node_config = {"frozen_vm": {"name": "frozen", "resource_pool": "frozen-rp"}}
+    vnp.create_new_or_fetch_existing_frozen_vms(node_config)
+    vnp.initialize_frozen_vm_scheduler.assert_called()
+
+    node_config = {"frozen_vm": {"name": "frozen", "library_item": "frozen"}}
+    vnp.create_new_or_fetch_existing_frozen_vms(node_config)
+    vnp.create_frozen_vm_from_ovf.assert_called()
+
+    node_config = {
+        "frozen_vm": {
+            "name": "frozen",
+            "library_item": "frozen",
+            "resource_pool": "frozen-rp",
+        }
+    }
+    vnp.create_new_or_fetch_existing_frozen_vms(node_config)
+    vnp.create_frozen_vm_on_each_host.assert_called()
+    vnp.initialize_frozen_vm_scheduler.assert_called()
+
+
+def test_update_vsphere_configs():
+    input_config = {
+        "available_node_types": {
+            "ray.head.default": {
+                "resources": {},
+                "node_config": {"resource_pool": "ray", "datastore": "vsan"},
+            },
+            "worker": {"resources": {}, "node_config": {}},
+        },
+        "provider": {"vsphere_config": {}},
+        "head_node_type": "ray.head.default",
+    }
+
+    with pytest.raises(KeyError):
+        update_vsphere_configs(input_config)
+
+    input_config = {
+        "provider": {
+            "vsphere_config": {
+                "frozen_vm": {
+                    "name": "frozen",
+                    "resource_pool": "frozen-rp",
+                    "library_item": "frozen",
+                    "cluster": "cluster",
+                }
+            }
+        },
+        "available_node_types": {
+            "ray.head.default": {
+                "resources": {},
+                "node_config": {"resource_pool": "ray", "datastore": "vsan"},
+            },
+            "worker": {"resources": {}, "node_config": {}},
+        },
+        "head_node_type": "ray.head.default",
+    }
+
+    update_vsphere_configs(input_config)
+    assert (
+        "frozen_vm"
+        in input_config["available_node_types"]["ray.head.default"]["node_config"]
+    )
+    assert "frozen_vm" in input_config["available_node_types"]["worker"]["node_config"]
 
 
 if __name__ == "__main__":
