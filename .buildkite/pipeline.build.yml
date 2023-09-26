@@ -4,12 +4,6 @@
   commands:
     - ./java/test.sh
 
-- label: ":java: Java (streaming and routing FFs off)"
-  conditions: ["RAY_CI_JAVA_AFFECTED"]
-  instance_size: medium
-  commands:
-    - export RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=0 RAY_SERVE_ENABLE_NEW_ROUTING=0 && ./java/test.sh
-
 - label: ":serverless: Dashboard Tests"
   conditions:
     [

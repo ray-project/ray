@@ -258,15 +258,17 @@ class gRPCOptions(BaseModel):
                 if callable(imported_func):
                     callables.append(imported_func)
                 else:
-                    logger.warning(
+                    message = (
                         f"{func} is not a callable function! Please make sure "
                         "the function is imported correctly."
                     )
-            except ModuleNotFoundError:
-                logger.warning(
+                    raise ValueError(message)
+            except ModuleNotFoundError as e:
+                message = (
                     f"{func} can't be imported! Please make sure there are no typo "
                     "in those functions. Or you might want to rebuild service "
                     "definitions if .proto file is changed."
                 )
+                raise ModuleNotFoundError(message) from e
 
         return callables

@@ -26,8 +26,8 @@ from ray.serve._private.common import (
     ReplicaState,
 )
 from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_DEFAULT_APP_NAME
+from ray.serve._private.controller import ServeController
 from ray.serve.config import AutoscalingConfig
-from ray.serve.controller import ServeController
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
