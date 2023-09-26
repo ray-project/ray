@@ -870,9 +870,7 @@ def get_app_handle(name: str) -> DeploymentHandle:
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
     # Default to async within a deployment and sync outside a deployment.
     sync = _get_internal_replica_context() is None
-    return client.get_handle(ingress, name, sync=sync).options(
-        use_new_handle_api=True,
-    )
+    return client.get_handle(ingress, name, sync=sync, use_new_handle_api=True)
 
 
 @DeveloperAPI
@@ -912,6 +910,6 @@ def get_deployment_handle(
     ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
     # Default to async within a deployment and sync outside a deployment.
     sync = internal_replica_context is None
-    return client.get_handle(deployment_name, app_name, sync=sync).options(
-        use_new_handle_api=True
+    return client.get_handle(
+        deployment_name, app_name, sync=sync, use_new_handle_api=True
     )
