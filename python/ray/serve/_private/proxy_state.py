@@ -4,8 +4,8 @@ import os
 import random
 import time
 import traceback
-from types import ModuleType
-from typing import Dict, List, Optional, Set, Tuple, Type
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional, Set, Tuple, Type
 
 import ray
 from ray.actor import ActorHandle
@@ -32,43 +32,162 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+class ActorWrapper(ABC):
+    def __init__(self, actor_handle: ActorHandle):
+        self._actor_handle = actor_handle
+        self._ready_obj_ref = None
+        self._health_check_obj_ref = None
+        self._is_drained_obj_ref = None
+        self._update_draining_obj_ref = None
+
+    @property
+    def actor_id(self) -> str:
+        return self._actor_handle._actor_id.hex()
+
+    @property
+    def actor_handle(self) -> ActorHandle:
+        return self._actor_handle
+
+    @property
+    def ready_obj_ref(self):
+        return self._ready_obj_ref
+
+    @property
+    def health_check_obj_ref(self):
+        return self._health_check_obj_ref
+
+    @property
+    def is_drained_obj_ref(self):
+        return self._is_drained_obj_ref
+
+    def clear_health_check_obj_ref(self):
+        self._health_check_obj_ref = None
+
+    def clear_drained_obj_ref(self):
+        self._is_drained_obj_ref = None
+
+    @abstractmethod
+    def start_new_ready_check(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def start_new_health_check(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def start_new_drained_check(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def is_ready(self) -> Any:
+        """Return the payload from proxy when ready."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def is_healthy(self) -> bool:
+        """Return whether the proxy actor is healthy or not."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def is_drained(self) -> bool:
+        """Return whether the proxy actor is drained or not."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def check_health(self):
+        """Check the health of the proxy actor."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_draining(self, draining: bool):
+        raise NotImplementedError
+
+    @abstractmethod
+    def kill_proxy(self):
+        raise NotImplementedError
+
+
+class ProxyActorWrapper(ActorWrapper):
+    def is_ready(self) -> Any:
+        """Return whether the proxy actor is ready or not."""
+        finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
+        if finished:
+            return ray.get(finished[0])
+
+        return None
+
+    def is_healthy(self) -> bool:
+        finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
+        if finished:
+            self._health_check_obj_ref = None
+            return ray.get(finished[0])
+
+        return False
+
+    def is_drained(self) -> bool:
+        """Return whether the proxy actor is drained or not."""
+        finished, _ = ray.wait([self._is_drained_obj_ref], timeout=0)
+        if finished:
+            self._is_drained_obj_ref = None
+            return ray.get(finished[0])
+
+        return False
+
+    def check_health(self):
+        ray.get(self._actor_handle.check_health.remote(), timeout=0.001)
+
+    def start_new_ready_check(self):
+        self._ready_obj_ref = self._actor_handle.ready.remote()
+
+    def start_new_health_check(self):
+        self._health_check_obj_ref = self._actor_handle.check_health.remote()
+
+    def start_new_drained_check(self):
+        self._is_drained_obj_ref = self._actor_handle.is_drained.remote(
+            _after=self._update_draining_obj_ref
+        )
+
+    def update_draining(self, draining: bool):
+        self._update_draining_obj_ref = self._actor_handle.update_draining.remote(
+            draining, _after=self._update_draining_obj_ref
+        )
+
+    def kill_proxy(self):
+        ray.kill(self._actor_handle, no_restart=True)
+
+
 class ProxyState:
     def __init__(
         self,
-        actor_handle: ActorHandle,
+        proxy_actor_wrapper: ActorWrapper,
         actor_name: str,
         node_id: str,
         node_ip: str,
         proxy_restart_count: int = 0,
-        ray_api_wrapper: ModuleType = ray,
     ):
-        self._actor_handle = actor_handle
+        self._proxy_actor_wrapper = proxy_actor_wrapper
+        self._proxy_actor_wrapper.start_new_ready_check()
         self._actor_name = actor_name
         self._node_id = node_id
-        self._ready_obj_ref = self._actor_handle.ready.remote()
         self._status = ProxyStatus.STARTING
         self._health_check_obj_ref = None
         self._last_health_check_time: float = time.time()
         self._shutting_down = False
         self._consecutive_health_check_failures: int = 0
         self._proxy_restart_count = proxy_restart_count
-        self._ray_api_wrapper = ray_api_wrapper
-
-        self._update_draining_obj_ref = None
-        self._is_drained_obj_ref = None
         self._last_drain_check_time: float = None
 
         self._actor_details = ProxyDetails(
             node_id=node_id,
             node_ip=node_ip,
-            actor_id=self._actor_handle._actor_id.hex(),
+            actor_id=self._proxy_actor_wrapper.actor_id,
             actor_name=self._actor_name,
             status=self._status,
         )
 
     @property
     def actor_handle(self) -> ActorHandle:
-        return self._actor_handle
+        return self._proxy_actor_wrapper.actor_handle
 
     @property
     def actor_name(self) -> str:
@@ -135,70 +254,53 @@ class ProxyState:
         """Perform periodic health checks."""
         assert self._status in {ProxyStatus.HEALTHY, ProxyStatus.DRAINING}
 
-        if self._health_check_obj_ref:
-            finished, _ = self._ray_api_wrapper.wait(
-                [self._health_check_obj_ref], timeout=0
-            )
-            if finished:
-                self._health_check_obj_ref = None
-                try:
-                    self._ray_api_wrapper.get(finished[0])
-                    # Call to reset _consecutive_health_check_failures
-                    # the status should be unchanged.
+        if self._proxy_actor_wrapper.health_check_obj_ref:
+            try:
+                healthy = self._proxy_actor_wrapper.is_healthy()
+                if healthy:
                     self.try_update_status(self._status)
-                except RayActorError:
-                    # The proxy actor dies.
-                    self.set_status(ProxyStatus.UNHEALTHY)
-                except Exception as e:
+                elif (
+                    time.time() - self._last_health_check_time
+                    > PROXY_HEALTH_CHECK_TIMEOUT_S
+                ):
+                    # Health check hasn't returned and the timeout is up, consider it
+                    # failed.
+                    self._proxy_actor_wrapper.clear_health_check_obj_ref()
                     logger.warning(
-                        f"Health check for proxy {self._actor_name} failed: {e}"
+                        "Didn't receive health check response for proxy "
+                        f"{self._node_id} after {PROXY_HEALTH_CHECK_TIMEOUT_S}s"
                     )
                     self.try_update_status(ProxyStatus.UNHEALTHY)
-            elif (
-                time.time() - self._last_health_check_time
-                > PROXY_HEALTH_CHECK_TIMEOUT_S
-            ):
-                # Health check hasn't returned and the timeout is up, consider it
-                # failed.
-                self._health_check_obj_ref = None
-                logger.warning(
-                    "Didn't receive health check response for proxy "
-                    f"{self._node_id} after {PROXY_HEALTH_CHECK_TIMEOUT_S}s"
-                )
+            except RayActorError:
+                # The proxy actor dies.
+                self.set_status(ProxyStatus.UNHEALTHY)
+            except Exception as e:
+                logger.warning(f"Health check for proxy {self._actor_name} failed: {e}")
                 self.try_update_status(ProxyStatus.UNHEALTHY)
 
         # If there's no active in-progress health check and it has been more than 10
         # seconds since the last health check, perform another health check.
-        if self._health_check_obj_ref:
+        if self._proxy_actor_wrapper.health_check_obj_ref:
             return
         randomized_period_s = PROXY_HEALTH_CHECK_PERIOD_S * random.uniform(0.9, 1.1)
         if time.time() - self._last_health_check_time > randomized_period_s:
             self._last_health_check_time = time.time()
-            self._health_check_obj_ref = self._actor_handle.check_health.remote()
+            self._proxy_actor_wrapper.start_new_health_check()
 
     def _drain_check(self):
         """Check whether the proxy actor is drained or not."""
         assert self._status == ProxyStatus.DRAINING
 
-        if self._is_drained_obj_ref:
-            finished, _ = self._ray_api_wrapper.wait(
-                [self._is_drained_obj_ref], timeout=0
-            )
-            if finished:
-                self._is_drained_obj_ref = None
-                try:
-                    is_drained = self._ray_api_wrapper.get(finished[0])
-                    if is_drained:
-                        self.set_status(ProxyStatus.DRAINED)
-                except Exception as e:
-                    logger.warning(
-                        f"Drain check for proxy {self._actor_name} failed: {e}."
-                    )
+        if self._proxy_actor_wrapper.is_drained_obj_ref:
+            try:
+                drained = self._proxy_actor_wrapper.is_drained()
+                if drained:
+                    self.set_status(ProxyStatus.DRAINED)
+            except Exception as e:
+                logger.warning(f"Drain check for proxy {self._actor_name} failed: {e}.")
         elif time.time() - self._last_drain_check_time > PROXY_DRAIN_CHECK_PERIOD_S:
             self._last_drain_check_time = time.time()
-            self._is_drained_obj_ref = self._actor_handle.is_drained.remote(
-                _after=self._update_draining_obj_ref
-            )
+            self._proxy_actor_wrapper.start_new_drained_check()
 
     def update(self, draining: bool = False):
         """Update the status of the current proxy.
@@ -240,36 +342,35 @@ class ProxyState:
             self.proxy_restart_count + 1
         ) * PROXY_READY_CHECK_TIMEOUT_S
         if self._status == ProxyStatus.STARTING:
-            finished, _ = self._ray_api_wrapper.wait([self._ready_obj_ref], timeout=0)
-            if finished:
-                try:
-                    worker_id, log_file_path = json.loads(
-                        self._ray_api_wrapper.get(finished[0])
-                    )
+            try:
+                ready_payload = self._proxy_actor_wrapper.is_ready()
+                if ready_payload:
+                    worker_id, log_file_path = json.loads(ready_payload)
                     self.try_update_status(ProxyStatus.HEALTHY)
                     self.update_actor_details(
                         worker_id=worker_id,
                         log_file_path=log_file_path,
                         status=self._status,
                     )
-                except RayActorError:
+                elif time.time() - self._last_health_check_time > ready_check_timeout:
+                    # Ready check hasn't returned and the timeout is up, consider it
+                    # failed.
                     self.set_status(ProxyStatus.UNHEALTHY)
                     logger.warning(
-                        "Unexpected actor death when checking readiness of "
-                        f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
+                        "Didn't receive ready check response for proxy "
+                        f"{self._node_id} after {ready_check_timeout}s."
                     )
-                except Exception:
-                    self.try_update_status(ProxyStatus.UNHEALTHY)
-                    logger.warning(
-                        "Unexpected error occurred when checking readiness of "
-                        f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
-                    )
-            elif time.time() - self._last_health_check_time > ready_check_timeout:
-                # Ready check hasn't returned and the timeout is up, consider it failed.
+            except RayActorError:
                 self.set_status(ProxyStatus.UNHEALTHY)
                 logger.warning(
-                    "Didn't receive ready check response for proxy "
-                    f"{self._node_id} after {ready_check_timeout}s."
+                    "Unexpected actor death when checking readiness of "
+                    f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
+                )
+            except Exception:
+                self.try_update_status(ProxyStatus.UNHEALTHY)
+                logger.warning(
+                    "Unexpected error occurred when checking readiness of "
+                    f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
                 )
             return
 
@@ -284,20 +385,16 @@ class ProxyState:
             logger.info(f"Start to drain the proxy actor on node {self._node_id}")
             self.set_status(ProxyStatus.DRAINING)
             # All the update_draining calls are ordered via `_after`.
-            self._update_draining_obj_ref = self._actor_handle.update_draining.remote(
-                True, _after=self._update_draining_obj_ref
-            )
-            assert self._is_drained_obj_ref is None
+            self._proxy_actor_wrapper.update_draining(draining=True)
+            assert self._proxy_actor_wrapper.is_drained_obj_ref is None
             assert self._last_drain_check_time is None
             self._last_drain_check_time = time.time()
 
         if (self._status == ProxyStatus.DRAINING) and not draining:
             logger.info(f"Stop draining the proxy actor on node {self._node_id}")
             self.set_status(ProxyStatus.HEALTHY)
-            self._update_draining_obj_ref = self._actor_handle.update_draining.remote(
-                False, _after=self._update_draining_obj_ref
-            )
-            self._is_drained_obj_ref = None
+            self._proxy_actor_wrapper.update_draining(draining=False)
+            self._proxy_actor_wrapper.clear_drained_obj_ref()
             self._last_drain_check_time = None
 
         if self._status == ProxyStatus.DRAINING:
@@ -305,7 +402,7 @@ class ProxyState:
 
     def shutdown(self):
         self._shutting_down = True
-        self._ray_api_wrapper.kill(self.actor_handle, no_restart=True)
+        self._proxy_actor_wrapper.kill_proxy()
 
     def is_ready_for_shutdown(self) -> bool:
         """Return whether the proxy actor is shutdown.
@@ -318,9 +415,7 @@ class ProxyState:
             return False
 
         try:
-            self._ray_api_wrapper.get(
-                self._actor_handle.check_health.remote(), timeout=0.001
-            )
+            self._proxy_actor_wrapper.check_health()
         except RayActorError:
             # The actor is dead, so it's ready for shutdown.
             return True
@@ -347,7 +442,6 @@ class ProxyStateManager:
         cluster_node_info_cache: ClusterNodeInfoCache,
         grpc_options: Optional[gRPCOptions] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
-        ray_api_wrapper: ModuleType = ray,
     ):
         self._controller_name = controller_name
         self._detached = detached
@@ -360,7 +454,6 @@ class ProxyStateManager:
         self._proxy_restart_counts: Dict[NodeId, int] = dict()
         self._head_node_id: str = head_node_id
         self._proxy_actor_class = proxy_actor_class
-        self._ray_api_wrapper = ray_api_wrapper
 
         self._cluster_node_info_cache = cluster_node_info_cache
 
@@ -540,7 +633,7 @@ class ProxyStateManager:
 
             name = self._generate_actor_name(node_id=node_id)
             try:
-                proxy = self._ray_api_wrapper.get_actor(name, namespace=SERVE_NAMESPACE)
+                proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
             except ValueError:
                 logger.info(
                     f"Starting proxy with name '{name}' on node '{node_id}' "
@@ -554,12 +647,11 @@ class ProxyStateManager:
                 )
 
             self._proxy_states[node_id] = ProxyState(
-                actor_handle=proxy,
+                proxy_actor_wrapper=ProxyActorWrapper(actor_handle=proxy),
                 actor_name=name,
                 node_id=node_id,
                 node_ip=node_ip_address,
                 proxy_restart_count=self._proxy_restart_counts.get(node_id, 0),
-                ray_api_wrapper=self._ray_api_wrapper,
             )
 
     def _stop_proxies_if_needed(self) -> bool:

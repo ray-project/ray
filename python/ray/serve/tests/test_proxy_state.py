@@ -20,7 +20,12 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller import ServeController
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.proxy import ProxyActor
-from ray.serve._private.proxy_state import ProxyState, ProxyStateManager
+from ray.serve._private.proxy_state import (
+    ActorWrapper,
+    ProxyActorWrapper,
+    ProxyState,
+    ProxyStateManager,
+)
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.config import DeploymentMode, HTTPOptions
 
@@ -43,7 +48,6 @@ def _make_proxy_state_manager(
     head_node_id: str = HEAD_NODE_ID,
     cluster_node_info_cache=MockClusterNodeInfoCache(),
     proxy_actor_class=ProxyActor,
-    ray_api_wrapper=ray,
 ) -> (ProxyStateManager, ClusterNodeInfoCache):
     return (
         ProxyStateManager(
@@ -53,7 +57,6 @@ def _make_proxy_state_manager(
             head_node_id=head_node_id,
             cluster_node_info_cache=cluster_node_info_cache,
             proxy_actor_class=proxy_actor_class,
-            ray_api_wrapper=ray_api_wrapper,
         ),
         cluster_node_info_cache,
     )
@@ -117,7 +120,12 @@ def _create_proxy_state(
     if kwargs:
         kwargs["node_id"] = node_id
     proxy = proxy_actor_class.options(lifetime="detached").remote(**kwargs)
-    state = ProxyState(proxy, "alice", node_id, "mock_node_ip")
+    state = ProxyState(
+        proxy_actor_wrapper=ProxyActorWrapper(actor_handle=proxy),
+        actor_name="alice",
+        node_id=node_id,
+        node_ip="mock_node_ip",
+    )
     state.set_status(status=status)
     print(f"The proxy state created has the status of: {state.status}")
     return state
@@ -785,7 +793,7 @@ def test_unhealthy_retry_correct_number_of_times():
     # Ensure _health_check_obj_ref is set again
     def check_health_obj_ref_not_none():
         proxy_state.update()
-        return proxy_state._health_check_obj_ref is not None
+        return proxy_state._proxy_actor_wrapper.health_check_obj_ref is not None
 
     wait_for_condition(check_health_obj_ref_not_none)
 
@@ -967,7 +975,7 @@ def test_proxy_actor_unhealthy_during_draining(
     )
 
     # Kill the draining proxy actor
-    ray.kill(manager._proxy_states[worker_node_id]._actor_handle, no_restart=True)
+    ray.kill(manager._proxy_states[worker_node_id].actor_handle, no_restart=True)
 
     def check_worker_node_proxy_actor_is_removed():
         manager.update(proxy_nodes=proxy_nodes)
@@ -1027,10 +1035,13 @@ def test_proxy_starting_timeout_longer_than_env(number_of_worker_nodes, all_node
     """
     completed_tasks = None
 
-    def remote(func):
-        func.completed_task = None
-        func.remote = func
-        return func
+    class FakeRemoteFunction:
+        def __init__(self, func):
+            func.remote = func
+            self.func = func
+
+        def __call__(self, *args, **kwargs):
+            return self.func
 
     class FakeRayAPIWrapper:
         @classmethod
@@ -1047,7 +1058,8 @@ def test_proxy_starting_timeout_longer_than_env(number_of_worker_nodes, all_node
         def __init__(self, *args, **kwargs):
             self._actor_id = random()
 
-        @remote
+        @property
+        @FakeRemoteFunction
         async def ready():
             pass
 
@@ -1066,7 +1078,6 @@ def test_proxy_starting_timeout_longer_than_env(number_of_worker_nodes, all_node
     proxy_state_manager, cluster_node_info_cache = _make_proxy_state_manager(
         http_options=HTTPOptions(location=DeploymentMode.EveryNode),
         proxy_actor_class=ProxyActorWrapper,
-        ray_api_wrapper=FakeRayAPIWrapper(),
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
