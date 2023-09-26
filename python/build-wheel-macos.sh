@@ -96,15 +96,6 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     fi
 
     sed -i .bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
-    # Set the branch name in __init__.py.
-    if [ -n "$TRAVIS_BRANCH" ]; then
-      echo "TRAVIS_BRANCH variable detected. ray.__branch__ will be set to $TRAVIS_BRANCH"
-    else
-      echo "TRAVIS_BRANCH variable is not set, getting the current branch from git."
-      TRAVIS_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-    fi
-
-    sed -i .bak "s/{{RAY_BRANCH_NAME}}/$TRAVIS_BRANCH/g" ray/__init__.py && rm ray/__init__.py.bak
 
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
