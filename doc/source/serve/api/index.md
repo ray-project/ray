@@ -491,3 +491,13 @@ Content-Type: application/json
    schema.DeploymentDetails
    schema.ReplicaDetails
 ```
+
+## Metrics API
+```{eval-rst}
+.. autosummary::
+   :toctree: doc/
+
+   metrics.Counter
+   metrics.Histogram
+   metrics.Gauge
+```

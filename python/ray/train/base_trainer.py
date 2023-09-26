@@ -91,7 +91,7 @@ class BaseTrainer(abc.ABC):
     Note: The base ``BaseTrainer`` class cannot be instantiated directly. Only
     one of its subclasses can be used.
 
-    Note to AIR developers: If a new AIR trainer is added, please update
+    Note to developers: If a new trainer is added, please update
     `air/_internal/usage.py`.
 
     **How does a trainer work?**
@@ -583,8 +583,9 @@ class BaseTrainer(abc.ABC):
 
         ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
 
-        You can use the :ref:`Tune Function API functions <tune-function-docstring>`
-        (``train.report()`` and ``train.get_checkpoint()``) inside
+        You can use the :ref:`Ray Train utilities <train-loop-api>`
+        (:func:`train.report() <ray.train.report>` and
+        :func:`train.get_checkpoint() <ray.train.get_checkpoint>`) inside
         this training loop.
 
         Example:
