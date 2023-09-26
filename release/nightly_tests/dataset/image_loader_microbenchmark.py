@@ -572,14 +572,12 @@ if __name__ == "__main__":
         print(ray_dataset.stats())
 
     if args.mosaic_data_root is not None:
-        use_s3 = args.mosaic_data_root.startswith("s3://")
         num_workers = None
         mosaic_dl = get_mosaic_dataloader(
             args.mosaic_data_root,
             batch_size=args.batch_size,
             num_physical_nodes=1,
             num_workers=num_workers,
-            cache_limit="2gb",
         )
 
         for i in range(args.num_epochs):
@@ -588,6 +586,7 @@ if __name__ == "__main__":
             )
 
         # ray.data.
+        use_s3 = args.mosaic_data_root.startswith("s3://")
         if not use_s3:
             mds_source = MdsDatasource()
             ray_dataset = ray.data.read_datasource(
