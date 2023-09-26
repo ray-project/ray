@@ -19,7 +19,7 @@ from . import gcs_pb2 as src_dot_ray_dot_protobuf_dot_gcs__pb2
 from . import logging_pb2 as src_dot_ray_dot_protobuf_dot_logging__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1dsrc/ray/protobuf/pubsub.proto\x12\x07ray.rpc\x1a\x1dsrc/ray/protobuf/common.proto\x1a!src/ray/protobuf/dependency.proto\x1a\x1asrc/ray/protobuf/gcs.proto\x1a\x1esrc/ray/protobuf/logging.proto\"\x80\x07\n\nPubMessage\x12*\n\x0c\x63hannel_type\x18\x01 \x01(\x0e\x32\x14.ray.rpc.ChannelType\x12\x0e\n\x06key_id\x18\x02 \x01(\x0c\x12N\n\x1eworker_object_eviction_message\x18\x03 \x01(\x0b\x32$.ray.rpc.WorkerObjectEvictionMessageH\x00\x12\x46\n\x1aworker_ref_removed_message\x18\x04 \x01(\x0b\x32 .ray.rpc.WorkerRefRemovedMessageH\x00\x12S\n\x1fworker_object_locations_message\x18\x05 \x01(\x0b\x32(.ray.rpc.WorkerObjectLocationsPubMessageH\x00\x12\x30\n\ractor_message\x18\x07 \x01(\x0b\x32\x17.ray.rpc.ActorTableDataH\x00\x12,\n\x0bjob_message\x18\x08 \x01(\x0b\x32\x15.ray.rpc.JobTableDataH\x00\x12\x31\n\x11node_info_message\x18\t \x01(\x0b\x32\x14.ray.rpc.GcsNodeInfoH\x00\x12<\n\x15node_resource_message\x18\n \x01(\x0b\x32\x1b.ray.rpc.NodeResourceChangeH\x00\x12\x38\n\x14worker_delta_message\x18\x0b \x01(\x0b\x32\x18.ray.rpc.WorkerDeltaDataH\x00\x12\x35\n\x12\x65rror_info_message\x18\x0c \x01(\x0b\x32\x17.ray.rpc.ErrorTableDataH\x00\x12.\n\x11log_batch_message\x18\r \x01(\x0b\x32\x11.ray.rpc.LogBatchH\x00\x12:\n\x17python_function_message\x18\x0e \x01(\x0b\x32\x17.ray.rpc.PythonFunctionH\x00\x12\x41\n\x1bnode_resource_usage_message\x18\x0f \x01(\x0b\x32\x1a.ray.rpc.NodeResourceUsageH\x00\x12\x32\n\x0f\x66\x61ilure_message\x18\x06 \x01(\x0b\x32\x17.ray.rpc.FailureMessageH\x00\x12\x13\n\x0bsequence_id\x18\x10 \x01(\x03\x42\x0f\n\rinner_message\"0\n\x1bWorkerObjectEvictionMessage\x12\x11\n\tobject_id\x18\x01 \x01(\x0c\"O\n\x17WorkerRefRemovedMessage\x12\x34\n\rborrowed_refs\x18\x01 \x03(\x0b\x32\x1d.ray.rpc.ObjectReferenceCount\"\xbe\x01\n\x1fWorkerObjectLocationsPubMessage\x12\x10\n\x08node_ids\x18\x01 \x03(\x0c\x12\x13\n\x0bobject_size\x18\x02 \x01(\x04\x12\x13\n\x0bspilled_url\x18\x03 \x01(\t\x12\x17\n\x0fspilled_node_id\x18\x04 \x01(\x0c\x12\x17\n\x0fprimary_node_id\x18\x06 \x01(\x0c\x12\x13\n\x0bref_removed\x18\x07 \x01(\x08\x12\x18\n\x10pending_creation\x18\x08 \x01(\x08\"\x10\n\x0e\x46\x61ilureMessage\"\xcd\x01\n\x07\x43ommand\x12*\n\x0c\x63hannel_type\x18\x01 \x01(\x0e\x32\x14.ray.rpc.ChannelType\x12\x0e\n\x06key_id\x18\x02 \x01(\x0c\x12:\n\x13unsubscribe_message\x18\x03 \x01(\x0b\x32\x1b.ray.rpc.UnsubscribeMessageH\x00\x12\x30\n\x11subscribe_message\x18\x04 \x01(\x0b\x32\x13.ray.rpc.SubMessageH\x00\x42\x18\n\x16\x63ommand_message_one_of\"\x14\n\x12UnsubscribeMessage\"\x95\x02\n\nSubMessage\x12Q\n\x1eworker_object_eviction_message\x18\x01 \x01(\x0b\x32\'.ray.rpc.WorkerObjectEvictionSubMessageH\x00\x12I\n\x1aworker_ref_removed_message\x18\x02 \x01(\x0b\x32#.ray.rpc.WorkerRefRemovedSubMessageH\x00\x12S\n\x1fworker_object_locations_message\x18\x03 \x01(\x0b\x32(.ray.rpc.WorkerObjectLocationsSubMessageH\x00\x42\x14\n\x12sub_message_one_of\"\xa9\x01\n\x1eWorkerObjectEvictionSubMessage\x12\x1a\n\x12intended_worker_id\x18\x01 \x01(\x0c\x12\x11\n\tobject_id\x18\x02 \x01(\x0c\x12,\n\x12subscriber_address\x18\x03 \x01(\x0b\x32\x10.ray.rpc.Address\x12\x19\n\x0cgenerator_id\x18\x04 \x01(\x0cH\x00\x88\x01\x01\x42\x0f\n\r_generator_id\"\x9c\x01\n\x1aWorkerRefRemovedSubMessage\x12\x1a\n\x12intended_worker_id\x18\x01 \x01(\x0c\x12+\n\treference\x18\x02 \x01(\x0b\x32\x18.ray.rpc.ObjectReference\x12\x17\n\x0f\x63ontained_in_id\x18\x03 \x01(\x0c\x12\x1c\n\x14subscriber_worker_id\x18\x04 \x01(\x0c\"P\n\x1fWorkerObjectLocationsSubMessage\x12\x1a\n\x12intended_worker_id\x18\x01 \x01(\x0c\x12\x11\n\tobject_id\x18\x02 \x01(\x0c\"j\n\x18PubsubLongPollingRequest\x12\x15\n\rsubscriber_id\x18\x01 \x01(\x0c\x12!\n\x19max_processed_sequence_id\x18\x02 \x01(\x03\x12\x14\n\x0cpublisher_id\x18\x03 \x01(\x0c\"Y\n\x16PubsubLongPollingReply\x12)\n\x0cpub_messages\x18\x01 \x03(\x0b\x32\x13.ray.rpc.PubMessage\x12\x14\n\x0cpublisher_id\x18\x02 \x01(\x0c\"V\n\x19PubsubCommandBatchRequest\x12\x15\n\rsubscriber_id\x18\x01 \x01(\x0c\x12\"\n\x08\x63ommands\x18\x02 \x03(\x0b\x32\x10.ray.rpc.Command\"\x19\n\x17PubsubCommandBatchReply*\xca\x02\n\x0b\x43hannelType\x12\x1a\n\x16WORKER_OBJECT_EVICTION\x10\x00\x12\x1e\n\x1aWORKER_REF_REMOVED_CHANNEL\x10\x01\x12#\n\x1fWORKER_OBJECT_LOCATIONS_CHANNEL\x10\x02\x12\x15\n\x11GCS_ACTOR_CHANNEL\x10\x03\x12\x13\n\x0fGCS_JOB_CHANNEL\x10\x04\x12\x19\n\x15GCS_NODE_INFO_CHANNEL\x10\x05\x12\x1c\n\x18GCS_WORKER_DELTA_CHANNEL\x10\x06\x12\x1a\n\x16RAY_ERROR_INFO_CHANNEL\x10\x07\x12\x13\n\x0fRAY_LOG_CHANNEL\x10\x08\x12\x1f\n\x1bRAY_PYTHON_FUNCTION_CHANNEL\x10\t\x12#\n\x1fRAY_NODE_RESOURCE_USAGE_CHANNEL\x10\n2\xc8\x01\n\x11SubscriberService\x12W\n\x11PubsubLongPolling\x12!.ray.rpc.PubsubLongPollingRequest\x1a\x1f.ray.rpc.PubsubLongPollingReply\x12Z\n\x12PubsubCommandBatch\x12\".ray.rpc.PubsubCommandBatchRequest\x1a .ray.rpc.PubsubCommandBatchReplyB\x03\xf8\x01\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1dsrc/ray/protobuf/pubsub.proto\x12\x07ray.rpc\x1a\x1dsrc/ray/protobuf/common.proto\x1a!src/ray/protobuf/dependency.proto\x1a\x1asrc/ray/protobuf/gcs.proto\x1a\x1esrc/ray/protobuf/logging.proto\"\x80\x07\n\nPubMessage\x12*\n\x0c\x63hannel_type\x18\x01 \x01(\x0e\x32\x14.ray.rpc.ChannelType\x12\x0e\n\x06key_id\x18\x02 \x01(\x0c\x12N\n\x1eworker_object_eviction_message\x18\x03 \x01(\x0b\x32$.ray.rpc.WorkerObjectEvictionMessageH\x00\x12\x46\n\x1aworker_ref_removed_message\x18\x04 \x01(\x0b\x32 .ray.rpc.WorkerRefRemovedMessageH\x00\x12S\n\x1fworker_object_locations_message\x18\x05 \x01(\x0b\x32(.ray.rpc.WorkerObjectLocationsPubMessageH\x00\x12\x30\n\ractor_message\x18\x07 \x01(\x0b\x32\x17.ray.rpc.ActorTableDataH\x00\x12,\n\x0bjob_message\x18\x08 \x01(\x0b\x32\x15.ray.rpc.JobTableDataH\x00\x12\x31\n\x11node_info_message\x18\t \x01(\x0b\x32\x14.ray.rpc.GcsNodeInfoH\x00\x12<\n\x15node_resource_message\x18\n \x01(\x0b\x32\x1b.ray.rpc.NodeResourceChangeH\x00\x12\x38\n\x14worker_delta_message\x18\x0b \x01(\x0b\x32\x18.ray.rpc.WorkerDeltaDataH\x00\x12\x35\n\x12\x65rror_info_message\x18\x0c \x01(\x0b\x32\x17.ray.rpc.ErrorTableDataH\x00\x12.\n\x11log_batch_message\x18\r \x01(\x0b\x32\x11.ray.rpc.LogBatchH\x00\x12:\n\x17python_function_message\x18\x0e \x01(\x0b\x32\x17.ray.rpc.PythonFunctionH\x00\x12\x41\n\x1bnode_resource_usage_message\x18\x0f \x01(\x0b\x32\x1a.ray.rpc.NodeResourceUsageH\x00\x12\x32\n\x0f\x66\x61ilure_message\x18\x06 \x01(\x0b\x32\x17.ray.rpc.FailureMessageH\x00\x12\x13\n\x0bsequence_id\x18\x10 \x01(\x03\x42\x0f\n\rinner_message\"0\n\x1bWorkerObjectEvictionMessage\x12\x11\n\tobject_id\x18\x01 \x01(\x0c\"O\n\x17WorkerRefRemovedMessage\x12\x34\n\rborrowed_refs\x18\x01 \x03(\x0b\x32\x1d.ray.rpc.ObjectReferenceCount\"\xd1\x01\n\x1fWorkerObjectLocationsPubMessage\x12\x10\n\x08node_ids\x18\x01 \x03(\x0c\x12\x13\n\x0bobject_size\x18\x02 \x01(\x04\x12\x13\n\x0bspilled_url\x18\x03 \x01(\t\x12\x17\n\x0fspilled_node_id\x18\x04 \x01(\x0c\x12\x17\n\x0fprimary_node_id\x18\x06 \x01(\x0c\x12\x13\n\x0bref_removed\x18\x07 \x01(\x08\x12\x18\n\x10pending_creation\x18\x08 \x01(\x08\x12\x11\n\tdid_spill\x18\t \x01(\x08\"\x10\n\x0e\x46\x61ilureMessage\"\xcd\x01\n\x07\x43ommand\x12*\n\x0c\x63hannel_type\x18\x01 \x01(\x0e\x32\x14.ray.rpc.ChannelType\x12\x0e\n\x06key_id\x18\x02 \x01(\x0c\x12:\n\x13unsubscribe_message\x18\x03 \x01(\x0b\x32\x1b.ray.rpc.UnsubscribeMessageH\x00\x12\x30\n\x11subscribe_message\x18\x04 \x01(\x0b\x32\x13.ray.rpc.SubMessageH\x00\x42\x18\n\x16\x63ommand_message_one_of\"\x14\n\x12UnsubscribeMessage\"\x95\x02\n\nSubMessage\x12Q\n\x1eworker_object_eviction_message\x18\x01 \x01(\x0b\x32\'.ray.rpc.WorkerObjectEvictionSubMessageH\x00\x12I\n\x1aworker_ref_removed_message\x18\x02 \x01(\x0b\x32#.ray.rpc.WorkerRefRemovedSubMessageH\x00\x12S\n\x1fworker_object_locations_message\x18\x03 \x01(\x0b\x32(.ray.rpc.WorkerObjectLocationsSubMessageH\x00\x42\x14\n\x12sub_message_one_of\"\xa9\x01\n\x1eWorkerObjectEvictionSubMessage\x12\x1a\n\x12intended_worker_id\x18\x01 \x01(\x0c\x12\x11\n\tobject_id\x18\x02 \x01(\x0c\x12,\n\x12subscriber_address\x18\x03 \x01(\x0b\x32\x10.ray.rpc.Address\x12\x19\n\x0cgenerator_id\x18\x04 \x01(\x0cH\x00\x88\x01\x01\x42\x0f\n\r_generator_id\"\x9c\x01\n\x1aWorkerRefRemovedSubMessage\x12\x1a\n\x12intended_worker_id\x18\x01 \x01(\x0c\x12+\n\treference\x18\x02 \x01(\x0b\x32\x18.ray.rpc.ObjectReference\x12\x17\n\x0f\x63ontained_in_id\x18\x03 \x01(\x0c\x12\x1c\n\x14subscriber_worker_id\x18\x04 \x01(\x0c\"P\n\x1fWorkerObjectLocationsSubMessage\x12\x1a\n\x12intended_worker_id\x18\x01 \x01(\x0c\x12\x11\n\tobject_id\x18\x02 \x01(\x0c\"j\n\x18PubsubLongPollingRequest\x12\x15\n\rsubscriber_id\x18\x01 \x01(\x0c\x12!\n\x19max_processed_sequence_id\x18\x02 \x01(\x03\x12\x14\n\x0cpublisher_id\x18\x03 \x01(\x0c\"Y\n\x16PubsubLongPollingReply\x12)\n\x0cpub_messages\x18\x01 \x03(\x0b\x32\x13.ray.rpc.PubMessage\x12\x14\n\x0cpublisher_id\x18\x02 \x01(\x0c\"V\n\x19PubsubCommandBatchRequest\x12\x15\n\rsubscriber_id\x18\x01 \x01(\x0c\x12\"\n\x08\x63ommands\x18\x02 \x03(\x0b\x32\x10.ray.rpc.Command\"\x19\n\x17PubsubCommandBatchReply*\xca\x02\n\x0b\x43hannelType\x12\x1a\n\x16WORKER_OBJECT_EVICTION\x10\x00\x12\x1e\n\x1aWORKER_REF_REMOVED_CHANNEL\x10\x01\x12#\n\x1fWORKER_OBJECT_LOCATIONS_CHANNEL\x10\x02\x12\x15\n\x11GCS_ACTOR_CHANNEL\x10\x03\x12\x13\n\x0fGCS_JOB_CHANNEL\x10\x04\x12\x19\n\x15GCS_NODE_INFO_CHANNEL\x10\x05\x12\x1c\n\x18GCS_WORKER_DELTA_CHANNEL\x10\x06\x12\x1a\n\x16RAY_ERROR_INFO_CHANNEL\x10\x07\x12\x13\n\x0fRAY_LOG_CHANNEL\x10\x08\x12\x1f\n\x1bRAY_PYTHON_FUNCTION_CHANNEL\x10\t\x12#\n\x1fRAY_NODE_RESOURCE_USAGE_CHANNEL\x10\n2\xc8\x01\n\x11SubscriberService\x12W\n\x11PubsubLongPolling\x12!.ray.rpc.PubsubLongPollingRequest\x1a\x1f.ray.rpc.PubsubLongPollingReply\x12Z\n\x12PubsubCommandBatch\x12\".ray.rpc.PubsubCommandBatchRequest\x1a .ray.rpc.PubsubCommandBatchReplyB\x03\xf8\x01\x01\x62\x06proto3')
 
 _CHANNELTYPE = DESCRIPTOR.enum_types_by_name['ChannelType']
 ChannelType = enum_type_wrapper.EnumTypeWrapper(_CHANNELTYPE)
@@ -161,8 +161,8 @@ if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
   DESCRIPTOR._serialized_options = b'\370\001\001'
-  _CHANNELTYPE._serialized_start=2647
-  _CHANNELTYPE._serialized_end=2977
+  _CHANNELTYPE._serialized_start=2666
+  _CHANNELTYPE._serialized_end=2996
   _PUBMESSAGE._serialized_start=169
   _PUBMESSAGE._serialized_end=1065
   _WORKEROBJECTEVICTIONMESSAGE._serialized_start=1067
@@ -170,29 +170,29 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _WORKERREFREMOVEDMESSAGE._serialized_start=1117
   _WORKERREFREMOVEDMESSAGE._serialized_end=1196
   _WORKEROBJECTLOCATIONSPUBMESSAGE._serialized_start=1199
-  _WORKEROBJECTLOCATIONSPUBMESSAGE._serialized_end=1389
-  _FAILUREMESSAGE._serialized_start=1391
-  _FAILUREMESSAGE._serialized_end=1407
-  _COMMAND._serialized_start=1410
-  _COMMAND._serialized_end=1615
-  _UNSUBSCRIBEMESSAGE._serialized_start=1617
-  _UNSUBSCRIBEMESSAGE._serialized_end=1637
-  _SUBMESSAGE._serialized_start=1640
-  _SUBMESSAGE._serialized_end=1917
-  _WORKEROBJECTEVICTIONSUBMESSAGE._serialized_start=1920
-  _WORKEROBJECTEVICTIONSUBMESSAGE._serialized_end=2089
-  _WORKERREFREMOVEDSUBMESSAGE._serialized_start=2092
-  _WORKERREFREMOVEDSUBMESSAGE._serialized_end=2248
-  _WORKEROBJECTLOCATIONSSUBMESSAGE._serialized_start=2250
-  _WORKEROBJECTLOCATIONSSUBMESSAGE._serialized_end=2330
-  _PUBSUBLONGPOLLINGREQUEST._serialized_start=2332
-  _PUBSUBLONGPOLLINGREQUEST._serialized_end=2438
-  _PUBSUBLONGPOLLINGREPLY._serialized_start=2440
-  _PUBSUBLONGPOLLINGREPLY._serialized_end=2529
-  _PUBSUBCOMMANDBATCHREQUEST._serialized_start=2531
-  _PUBSUBCOMMANDBATCHREQUEST._serialized_end=2617
-  _PUBSUBCOMMANDBATCHREPLY._serialized_start=2619
-  _PUBSUBCOMMANDBATCHREPLY._serialized_end=2644
-  _SUBSCRIBERSERVICE._serialized_start=2980
-  _SUBSCRIBERSERVICE._serialized_end=3180
+  _WORKEROBJECTLOCATIONSPUBMESSAGE._serialized_end=1408
+  _FAILUREMESSAGE._serialized_start=1410
+  _FAILUREMESSAGE._serialized_end=1426
+  _COMMAND._serialized_start=1429
+  _COMMAND._serialized_end=1634
+  _UNSUBSCRIBEMESSAGE._serialized_start=1636
+  _UNSUBSCRIBEMESSAGE._serialized_end=1656
+  _SUBMESSAGE._serialized_start=1659
+  _SUBMESSAGE._serialized_end=1936
+  _WORKEROBJECTEVICTIONSUBMESSAGE._serialized_start=1939
+  _WORKEROBJECTEVICTIONSUBMESSAGE._serialized_end=2108
+  _WORKERREFREMOVEDSUBMESSAGE._serialized_start=2111
+  _WORKERREFREMOVEDSUBMESSAGE._serialized_end=2267
+  _WORKEROBJECTLOCATIONSSUBMESSAGE._serialized_start=2269
+  _WORKEROBJECTLOCATIONSSUBMESSAGE._serialized_end=2349
+  _PUBSUBLONGPOLLINGREQUEST._serialized_start=2351
+  _PUBSUBLONGPOLLINGREQUEST._serialized_end=2457
+  _PUBSUBLONGPOLLINGREPLY._serialized_start=2459
+  _PUBSUBLONGPOLLINGREPLY._serialized_end=2548
+  _PUBSUBCOMMANDBATCHREQUEST._serialized_start=2550
+  _PUBSUBCOMMANDBATCHREQUEST._serialized_end=2636
+  _PUBSUBCOMMANDBATCHREPLY._serialized_start=2638
+  _PUBSUBCOMMANDBATCHREPLY._serialized_end=2663
+  _SUBSCRIBERSERVICE._serialized_start=2999
+  _SUBSCRIBERSERVICE._serialized_end=3199
 # @@protoc_insertion_point(module_scope)
