@@ -591,6 +591,7 @@ class TestIsolated:
 
     def test_conformity_with_threadpool_initializer_initargs(self):
 
+        # this assumes that the test is executed from the root difrectory
         assert os.path.isdir("./python/ray/tests/.")
 
         # ----------------------------

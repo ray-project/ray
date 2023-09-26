@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 import time
 from concurrent.futures import Executor, Future
 from functools import partial
@@ -34,7 +35,44 @@ class _PoolActor(TypedDict):
 
 # ------------------------------------------------------
 
-class _RoundRobinActorPool:
+class _ActorPool(ABC):
+
+    """This interface defines the actor pool class of Ray actors used by
+    RayExecutor. """
+
+    @property
+    def max_tasks_per_actor(self) -> Optional[int]: ...
+
+    @max_tasks_per_actor.setter
+    @abstractmethod
+    def max_tasks_per_actor(self, val: Optional[int]) -> None: ...
+
+    @property
+    def num_actors(self) -> int: ...
+
+    @num_actors.setter
+    @abstractmethod
+    def num_actors(self, val: int) -> None: ...
+
+    @property
+    def initializer(self) -> Optional[Callable[..., Any]]: ...
+
+    @initializer.setter
+    @abstractmethod
+    def initializer(self, val: Optional[Callable[..., Any]]) -> None: ...
+
+    @property
+    def initargs(self) -> tuple[Any, ...]: ...
+
+    @initargs.setter
+    @abstractmethod
+    def initargs(self, val: tuple[Any, ...]) -> None: ...
+
+    @abstractmethod
+    def submit(self, fn: Callable[[], T]) -> Future[T]: ...
+
+
+class _RoundRobinActorPool(_ActorPool):
 
     """This class manages a pool of Ray actors by distributing tasks amongst
     them in a simple round-robin fashion. Functions are executed remotely in
@@ -55,6 +93,50 @@ class _RoundRobinActorPool:
 
     """
 
+    @property
+    def max_tasks_per_actor(self) -> Optional[int]:
+        return self._max_tasks_per_actor
+
+    @max_tasks_per_actor.setter
+    def max_tasks_per_actor(self, val: Optional[int]) -> None:
+        if val is not None:
+            if val < 1:
+                raise ValueError(
+                    f"max_tasks_per_child={val} was given. The argument \
+                    max_tasks_per_child must be >= 1 or None"
+                )
+        self._max_tasks_per_actor = val
+        return
+
+    @property
+    def num_actors(self) -> int:
+        return self._num_actors
+
+    @num_actors.setter
+    def num_actors(self, val: int) -> None:
+        if val < 1:
+            raise ValueError("Pool must contain at least one Actor")
+        self._num_actors = val
+        return
+
+    @property
+    def initializer(self) -> Optional[Callable[..., Any]]:
+        return self._initializer
+
+    @initializer.setter
+    def initializer(self, val: Optional[Callable[..., Any]]) -> None:
+        self._initializer = val
+        return
+
+    @property
+    def initargs(self) -> tuple[Any, ...]:
+        return self._initargs
+
+    @initargs.setter
+    def initargs(self, val: tuple[Any, ...]) -> None:
+        self._initargs = val
+        return
+
     def __init__(
         self,
         num_actors: int = 2,
@@ -62,22 +144,15 @@ class _RoundRobinActorPool:
         initargs: tuple[Any, ...] = (),
         max_tasks_per_actor: Optional[int] = None,
     ) -> None:
-
-        if max_tasks_per_actor is not None:
-            if max_tasks_per_actor < 1:
-                raise ValueError(
-                    f"max_tasks_per_child={max_tasks_per_actor} was given. The argument \
-                    max_tasks_per_child must be >= 1 or None"
-                )
         self.max_tasks_per_actor = max_tasks_per_actor
-        if num_actors < 1:
-            raise ValueError("Pool must contain at least one Actor")
+        self.num_actors = num_actors
         self.initializer = initializer
         self.initargs = initargs
         self.pool: Dict[int, _PoolActor] = {
-            i: self._build_actor() for i in range(num_actors)
+            i: self._build_actor() for i in range(self.num_actors)
         }
         self.index: int = 0
+        return
 
     def next(self) -> "ActorHandle":
         """
@@ -119,6 +194,7 @@ class _RoundRobinActorPool:
         """
         for i in self.pool:
             self._kill_actor(i)
+        return
 
     def _build_actor(self) -> _PoolActor:
         @ray.remote
@@ -146,13 +222,16 @@ class _RoundRobinActorPool:
             if self.pool[self.index]["task_count"] >= self.max_tasks_per_actor:
                 self._exit_actor(self.index)
                 self.pool[self.index] = self._build_actor()
+        return
 
     def _increment_task_count(self) -> None:
         self.pool[self.index]["task_count"] += 1
+        return
 
     def _kill_actor(self, i: int) -> None:
         pool_actor = self.pool[i]
         ray.kill(pool_actor["actor"])
+        return
 
     def _exit_actor(self, i: int) -> "ActorHandle":
         """
@@ -192,8 +271,8 @@ class RayExecutor(Executor):
         This is only included for compatibility with concurrent.futures.ProcessPoolExecutor but is unused.
     futures : list[Future[Any]]
         Aggregated Futures from initiated tasks
-    actor_pool : _RoundRobinActorPool
-            An object containing a set of Actor objects over which the tasks will be distributed.
+    actor_pool : _ActorPool
+            A container of Actor objects over which the tasks will be distributed.
 
     All additional keyword arguments are passed to ray.init()
     (see https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).
@@ -207,7 +286,7 @@ class RayExecutor(Executor):
     """
 
     futures: list[Future[Any]]
-    actor_pool: _RoundRobinActorPool
+    actor_pool: _ActorPool
 
     def __init__(
         self,
@@ -277,6 +356,7 @@ class RayExecutor(Executor):
             initargs=initargs,
             max_tasks_per_actor=self.max_tasks_per_child,
         )
+        return
 
     def submit(
         self, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs
@@ -436,6 +516,7 @@ class RayExecutor(Executor):
 
         del self.futures
         self.futures = []
+        return
 
     def _shutdown_ray(self, wait: bool = True, cancel_futures: bool = False) -> None:
         self._shutdown_lock = True
@@ -450,7 +531,9 @@ class RayExecutor(Executor):
                     _ = future.result()
 
         ray.shutdown()
+        return
 
     def _check_shutdown_lock(self) -> None:
         if self._shutdown_lock:
             raise RuntimeError("New task submitted after shutdown() was called")
+        return
