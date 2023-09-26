@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 
 from .operator import Operator
 
@@ -14,10 +14,7 @@ class LogicalOperator(Operator):
         self,
         name: str,
         input_dependencies: List["LogicalOperator"],
-        target_max_block_size: Optional[int] = None,
     ):
-        super().__init__(
-            name, input_dependencies, target_max_block_size=target_max_block_size
-        )
+        super().__init__(name, input_dependencies)
         for x in input_dependencies:
             assert isinstance(x, LogicalOperator), x

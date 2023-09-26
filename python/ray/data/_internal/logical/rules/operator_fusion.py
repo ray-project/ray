@@ -202,13 +202,13 @@ class OperatorFusionRule(Rule):
 
         # If the upstream op overrode the target max block size, only fuse if
         # they are equal.
-        if up_logical_op.target_max_block_size is not None:
-            down_target_max_block_size = down_logical_op.target_max_block_size
+        if up_op.target_max_block_size is not None:
+            down_target_max_block_size = down_op.target_max_block_size
             if down_target_max_block_size is None:
                 down_target_max_block_size = (
                     DataContext.get_current().target_max_block_size
                 )
-            if up_logical_op.target_max_block_size != down_target_max_block_size:
+            if up_op.target_max_block_size != down_target_max_block_size:
                 return False
 
         # Otherwise, ops are compatible for fusion.
@@ -266,7 +266,7 @@ class OperatorFusionRule(Rule):
             min_rows_per_block = down_min_rows_per_block
 
         target_max_block_size = self._get_merged_target_max_block_size(
-            up_logical_op.target_max_block_size, down_logical_op.target_max_block_size
+            up_op.target_max_block_size, down_op.target_max_block_size
         )
 
         # We take the downstream op's compute in case we're fusing upstream tasks with a

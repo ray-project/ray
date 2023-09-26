@@ -52,11 +52,13 @@ class TaskPoolMapOperator(MapOperator):
         # Submit the task as a normal Ray task.
         map_task = cached_remote_fn(_map_task, num_returns="streaming")
         input_blocks = [block for block, _ in bundle.blocks]
+
         ctx = TaskContext(task_idx=self._next_data_task_idx)
         gen = map_task.options(
             **self._get_runtime_ray_remote_args(input_bundle=bundle), name=self.name
         ).remote(
             self._map_transformer_ref,
+            self.actual_target_max_block_size,
             DataContext.get_current(),
             ctx,
             *input_blocks,

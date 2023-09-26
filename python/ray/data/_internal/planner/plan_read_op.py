@@ -56,26 +56,23 @@ def _splitrange(n, k):
     return output
 
 
-class BuildOutputBlocksWithAdditionalSplit(MapTransformFn):
+class BuildOutputBlocksWithAdditionalSplit(BuildOutputBlocksMapTransformFn):
     """Build output blocks and do additional splits."""
 
-    def __init__(
-        self, target_max_block_size: Optional[int], additional_split_factor: int
-    ):
+    def __init__(self, additional_split_factor: int):
         """
         Args:
           additional_output_splits: The number of additional splits, must be
           greater than 1.
         """
-        self._target_max_block_size = target_max_block_size
         assert additional_split_factor > 1
         self._additional_split_factor = additional_split_factor
-        super().__init__(MapTransformFnDataType.Block, MapTransformFnDataType.Block)
+        super().__init__(MapTransformFnDataType.Block)
 
-    def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
-        blocks = BuildOutputBlocksMapTransformFn.for_blocks(
-            self._target_max_block_size
-        )(blocks, ctx)
+    def __call__(
+        self, blocks: Iterable[Block], target_max_block_size: int, ctx: TaskContext
+    ) -> Iterable[Block]:
+        blocks = super().__call__(blocks, target_max_block_size, ctx)
         return self._do_additional_splits(blocks)
 
     def _do_additional_splits(
@@ -133,17 +130,13 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     ]
     if op._additional_split_factor is None:
         # Then build the output blocks.
-        transform_fns.append(
-            BuildOutputBlocksMapTransformFn.for_blocks(op.target_max_block_size)
-        )
+        transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
     else:
         # Build the output blocks and do additional splits.
         # NOTE, we explictly do these two steps in one MapTransformFn to avoid
         # `BuildOutputBlocksMapTransformFn` getting dropped by the optimizer.
         transform_fns.append(
-            BuildOutputBlocksWithAdditionalSplit(
-                op.target_max_block_size, op._additional_split_factor
-            )
+            BuildOutputBlocksWithAdditionalSplit(op._additional_split_factor)
         )
 
     map_transformer = MapTransformer(transform_fns)
@@ -159,7 +152,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
 
 def apply_output_blocks_handling_to_read_task(
     read_task: ReadTask,
-    target_max_block_size: Optional[int],
+    target_max_block_size: int,
     additional_split_factor: Optional[int],
 ):
     """Patch the read task and apply output blocks handling logic.
@@ -169,14 +162,10 @@ def apply_output_blocks_handling_to_read_task(
     transform_fns: List[MapTransformFn] = []
 
     if additional_split_factor is None:
-        transform_fns.append(
-            BuildOutputBlocksMapTransformFn.for_blocks(target_max_block_size)
-        )
+        transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
     else:
         transform_fns.append(
-            BuildOutputBlocksWithAdditionalSplit(
-                target_max_block_size, additional_split_factor
-            )
+            BuildOutputBlocksWithAdditionalSplit(additional_split_factor)
         )
     map_transformer = MapTransformer(transform_fns)
 
@@ -186,6 +175,8 @@ def apply_output_blocks_handling_to_read_task(
         blocks = original_read_fn()
         # We pass None as the TaskContext because we don't have access to it here.
         # This is okay because the transform functions don't use the TaskContext.
-        return map_transformer.apply_transform(blocks, None)  # type: ignore
+        return map_transformer.apply_transform(
+            blocks, target_max_block_size, None
+        )  # type: ignore
 
     read_task._read_fn = new_read_fn

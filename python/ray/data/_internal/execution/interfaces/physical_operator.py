@@ -153,15 +153,25 @@ class PhysicalOperator(Operator):
         input_dependencies: List["PhysicalOperator"],
         target_max_block_size: Optional[int],
     ):
-        super().__init__(name, input_dependencies, target_max_block_size)
+        super().__init__(name, input_dependencies)
+
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
+        self._target_max_block_size = target_max_block_size
         self._dependents_complete = False
         self._started = False
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
+
+    @property
+    def target_max_block_size(self) -> Optional[int]:
+        """
+        Target max block size output by this operator. If this returns None,
+        then the default from DataContext should be used.
+        """
+        return self._target_max_block_size
 
     def completed(self) -> bool:
         """Return True when this operator is completed.

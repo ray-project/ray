@@ -58,7 +58,6 @@ def plan_udf_map_op(
         transform_fn = _generate_transform_fn_for_map_batches(fn)
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
-            op.target_max_block_size,
             op._batch_size,
             op._batch_format,
             op._zero_copy_batch,
@@ -75,7 +74,7 @@ def plan_udf_map_op(
             raise ValueError(f"Found unknown logical operator during planning: {op}")
 
         map_transformer = _create_map_transformer_for_row_based_map_op(
-            transform_fn, op.target_max_block_size, init_fn
+            transform_fn, init_fn
         )
 
     return MapOperator.create(
@@ -267,7 +266,6 @@ def _generate_transform_fn_for_filter(
 
 def _create_map_transformer_for_map_batches_op(
     batch_fn: MapTransformCallable[DataBatch, DataBatch],
-    target_max_block_size: Optional[int],
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     zero_copy_batch: bool = False,
@@ -284,14 +282,13 @@ def _create_map_transformer_for_map_batches_op(
         # Apply the UDF.
         BatchMapTransformFn(batch_fn),
         # Convert output batches to blocks.
-        BuildOutputBlocksMapTransformFn.for_batches(target_max_block_size),
+        BuildOutputBlocksMapTransformFn.for_batches(),
     ]
     return MapTransformer(transform_fns, init_fn)
 
 
 def _create_map_transformer_for_row_based_map_op(
     row_fn: MapTransformCallable[Row, Row],
-    target_max_block_size: Optional[int],
     init_fn: Optional[Callable[[], None]] = None,
 ) -> MapTransformer:
     """Create a MapTransformer for a row-based map operator
@@ -302,7 +299,7 @@ def _create_map_transformer_for_row_based_map_op(
         # Apply the UDF.
         RowMapTransformFn(row_fn),
         # Convert output rows to blocks.
-        BuildOutputBlocksMapTransformFn.for_rows(target_max_block_size),
+        BuildOutputBlocksMapTransformFn.for_rows(),
     ]
     return MapTransformer(transform_fns, init_fn=init_fn)
 
@@ -323,10 +320,8 @@ def generate_map_rows_fn(
     ) -> Iterator[Block]:
         DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_map_rows(row_fn)
-        map_transformer = _create_map_transformer_for_row_based_map_op(
-            transform_fn, target_max_block_size
-        )
-        yield from map_transformer.apply_transform(blocks, ctx)
+        map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
+        yield from map_transformer.apply_transform(blocks, target_max_block_size, ctx)
 
     return fn
 
@@ -347,10 +342,8 @@ def generate_flat_map_fn(
     ) -> Iterator[Block]:
         DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_flat_map(row_fn)
-        map_transformer = _create_map_transformer_for_row_based_map_op(
-            transform_fn, target_max_block_size
-        )
-        yield from map_transformer.apply_transform(blocks, ctx)
+        map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
+        yield from map_transformer.apply_transform(blocks, target_max_block_size, ctx)
 
     return fn
 
@@ -371,10 +364,8 @@ def generate_filter_fn(
     ) -> Iterator[Block]:
         DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_filter(row_fn)
-        map_transformer = _create_map_transformer_for_row_based_map_op(
-            transform_fn, target_max_block_size
-        )
-        yield from map_transformer.apply_transform(blocks, ctx)
+        map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
+        yield from map_transformer.apply_transform(blocks, target_max_block_size, ctx)
 
     return fn
 
@@ -403,11 +394,10 @@ def generate_map_batches_fn(
         transform_fn = _generate_transform_fn_for_map_batches(_batch_fn)
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
-            target_max_block_size,
             batch_size,
             batch_format,
             zero_copy_batch,
         )
-        yield from map_transformer.apply_transform(blocks, ctx)
+        yield from map_transformer.apply_transform(blocks, target_max_block_size, ctx)
 
     return fn
