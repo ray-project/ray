@@ -2286,6 +2286,7 @@ def from_torch(
     dataset: "torch.utils.data.Dataset",
     parallelism: int = -1,
     shuffle: bool = False,
+    batch_size: int = 32,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
@@ -2325,6 +2326,7 @@ def from_torch(
             :ref:`Tuning read parallelism <read_parallelism>`. Parallelism is
             upper bounded by the total number of rows in the Torch dataset.
         shuffle: If True, the dataset will be randomly partitioned for a parallel read. Otherwise, the dataset will be partitioned into contiguous blocks.
+        batch_size: The batch size that each read task will yield.
 
     Returns:
         A :class:`MaterializedDataset` containing the Torch dataset samples.
@@ -2340,6 +2342,7 @@ def from_torch(
         dataset=dataset,
         parallelism=parallelism,
         shuffle=shuffle,
+        batch_size=batch_size,
     )
 
 

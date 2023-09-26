@@ -22,14 +22,18 @@ class TorchDatasource(Datasource):
         self,
         dataset: "torch.utils.data.Dataset",
         shuffle: bool = False,
+        batch_size: int = 32,
     ):
-        return _TorchDatasourceReader(dataset, shuffle)
+        return _TorchDatasourceReader(dataset, shuffle, batch_size)
 
 
 class _TorchDatasourceReader(Reader):
-    def __init__(self, dataset: "torch.utils.data.Dataset", shuffle: bool):
+    def __init__(
+        self, dataset: "torch.utils.data.Dataset", shuffle: bool, batch_size: int
+    ):
         self._dataset = dataset
         self._shuffle = shuffle
+        self._batch_size = batch_size
 
     def get_read_tasks(self, parallelism):
         import torch
@@ -69,8 +73,9 @@ class _TorchDatasourceReader(Reader):
             )
             read_tasks.append(
                 ReadTask(
-                    lambda subset=subsets[i]: _read_subset(
+                    lambda subset=subsets[i], batch_size=self._batch_size: _read_subset(
                         subset,
+                        batch_size,
                     ),
                     metadata=meta,
                 ),
@@ -82,12 +87,17 @@ class _TorchDatasourceReader(Reader):
         return None
 
 
-def _read_subset(subset: "torch.utils.data.Subset"):
-    import torch
+def _read_subset(subset: "torch.utils.data.Subset", batch_size: int):
+    batch = []
+    for item in subset:
+        batch.append(item)
+        if len(batch) == batch_size:
+            builder = DelegatingBlockBuilder()
+            builder.add_batch({"item": batch})
+            yield builder.build()
+            batch.clear()
 
-    loader = torch.utils.data.DataLoader(subset, collate_fn=lambda x: x, batch_size=32)
-
-    for batch in loader:
+    if len(batch) > 0:
         builder = DelegatingBlockBuilder()
         builder.add_batch({"item": batch})
         yield builder.build()
