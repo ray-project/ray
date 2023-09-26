@@ -387,7 +387,15 @@ class RayServeHandle(_DeploymentHandleBase):
         async def await_future():
             return await asyncio.wrap_future(future)
 
-        return asyncio.ensure_future(await_future())
+        task = asyncio.ensure_future(await_future())
+        # NOTE(edoakes): this is a hack to enable the legacy behavior of passing
+        # `asyncio.Task` objects directly to downstream handle calls without `await`.
+        # Because the router now runs on a separate loop, the `asyncio.Task` created
+        # here can't directly be awaited by it. So we include a reference to the
+        # underlying (thread-safe) `concurrent.futures.Future`.
+        # This can be removed when `RayServeHandle` is fully deprecated.
+        task.__ray_serve_object_ref_future = future
+        return task
 
 
 @Deprecated(
