@@ -1,14 +1,13 @@
 import asyncio
 import os
 import sys
-from typing import Dict, Optional
+from typing import Optional
 
 import pytest
 import requests
 import starlette.responses
 from fastapi import FastAPI
 from pydantic import BaseModel, ValidationError
-from starlette.requests import Request
 
 import ray
 from ray import serve
