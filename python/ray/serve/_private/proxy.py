@@ -19,6 +19,7 @@ from starlette.middleware import Middleware
 from starlette.types import Message, Receive
 
 import ray
+from ray._private.tls_utils import add_port_to_grpc_server
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator
 from ray.actor import ActorHandle
@@ -1614,7 +1615,8 @@ class ProxyActor:
         grpc_server = create_serve_grpc_server(
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
-        grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
+
+        add_port_to_grpc_server(grpc_server, f"[::]:{self.grpc_port}")
 
         # Dummy servicer is used to be callable for the gRPC server. Serve have a
         # custom gRPC server implementation to redirect calls into gRPCProxy.
