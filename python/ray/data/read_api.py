@@ -1755,6 +1755,44 @@ def read_sql(
     )
 
 
+@PublicAPI(stability="alpha")
+def read_databricks_uc_tables(
+    *,
+    host: str,
+    token: str,
+    warehouse_id: str,
+    catalog: str,
+    schema: str,
+    table_name: Optional[str] = None,
+    query: Optional[str] = None,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+) -> Dataset:
+    from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
+
+    if query is not None and table_name is not None:
+        raise ValueError("Only one of 'query' and 'table_name' arguments can be set.")
+
+    if table_name:
+        query = f"select * from {table_name}"
+
+    if query is None:
+        raise ValueError("One of 'query' and 'table_name' arguments should be set.")
+
+    return read_datasource(
+        datasource=DatabricksUCDatasource(),
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        host=host,
+        token=token,
+        warehouse_id=warehouse_id,
+        catalog=catalog,
+        schema=schema,
+        table_name=table_name,
+        query=query,
+    )
+
+
 @PublicAPI
 def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
