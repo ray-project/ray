@@ -31,8 +31,10 @@ _TORCH_FSDP_AVAILABLE = _TORCH_GREATER_EQUAL_1_12 and torch.distributed.is_avail
 
 if _LIGHTNING_GREATER_EQUAL_2_0:
     from lightning.pytorch.strategies import FSDPStrategy
+    from lightning.pytorch.plugins.environments import LightningEnvironment
 else:
     from pytorch_lightning.strategies import DDPFullyShardedStrategy as FSDPStrategy
+    from pytorch_lightning.plugins.environments import LightningEnvironment
 
 if _TORCH_FSDP_AVAILABLE:
     from torch.distributed.fsdp import (
@@ -148,7 +150,7 @@ class RayDeepSpeedStrategy(pl.strategies.DeepSpeedStrategy):
 
 
 @PublicAPI(stability="beta")
-class RayLightningEnvironment(pl.plugins.environments.LightningEnvironment):
+class RayLightningEnvironment(LightningEnvironment):
     """Setup Lightning DDP training environment for Ray cluster."""
 
     def __init__(self, *args, **kwargs):
