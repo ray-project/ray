@@ -24,9 +24,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_HANDLE_API,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve.config import HTTPOptions
-from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
 from ray.serve.generated.serve_pb2 import (
@@ -480,11 +480,13 @@ class ServeControllerClient:
         app_name: Optional[str] = "default",
         missing_ok: Optional[bool] = False,
         sync: bool = True,
-    ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        """Retrieve RayServeHandle for service deployment to invoke it from Python.
+        use_new_handle_api: bool = RAY_SERVE_ENABLE_NEW_HANDLE_API,
+    ) -> Union[DeploymentHandle, RayServeHandle, RayServeSyncHandle]:
+        """Construct a handle for the specified deployment.
 
         Args:
-            deployment_name: A registered service deployment.
+            deployment_name: Deployment name.
+            app_name: Application name.
             missing_ok: If true, then Serve won't check the deployment
                 is registered. False by default.
             sync: If true, then Serve will return a ServeHandle that
@@ -510,7 +512,7 @@ class ServeControllerClient:
                 "exist."
             )
 
-        if RAY_SERVE_ENABLE_NEW_HANDLE_API:
+        if use_new_handle_api:
             handle = DeploymentHandle(
                 deployment_name,
                 app_name,
