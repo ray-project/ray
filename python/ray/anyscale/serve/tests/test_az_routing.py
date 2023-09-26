@@ -5,7 +5,6 @@ from ray import serve
 from ray._private.test_utils import SignalActor
 from ray.anyscale._private.constants import ANYSCALE_RAY_NODE_AVAILABILITY_ZONE_LABEL
 from ray.cluster_utils import Cluster
-from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
 from ray.serve.handle import RayServeHandle
 from ray.tests.conftest import *  # noqa
 
@@ -19,9 +18,6 @@ def ray_cluster():
     cluster.shutdown()
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
-)
 def test_handle_prefers_same_az(ray_cluster):
     """Test locality routing.
 
@@ -109,9 +105,6 @@ def test_handle_prefers_same_az(ray_cluster):
     assert ray.get(blocked_ref_worker1) == worker1_node_id
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
-)
 def test_handle_prefers_same_az_without_prefer_node(ray_cluster):
     """Test locality routing.
 
