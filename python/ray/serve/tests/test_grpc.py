@@ -87,7 +87,6 @@ def test_deploy_basic(ray_cluster):
     teardown_tls(key_filepath, cert_filepath, temp_dir)
 
 
-'''
 def test_serving_request_through_grpc_proxy(ray_cluster):
     """Test serving request through gRPC proxy.
 
@@ -597,7 +596,7 @@ def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
 
     assert rpc_error.code() == grpc.StatusCode.INTERNAL
     assert error_message in rpc_error.details()
-'''
+
 
 if __name__ == "__main__":
     import sys
