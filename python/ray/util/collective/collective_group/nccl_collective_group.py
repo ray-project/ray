@@ -19,6 +19,7 @@ from ray.util.collective.types import (
     ReduceScatterOptions,
     SendOptions,
     RecvOptions,
+    torch_available,
 )
 from ray.util.collective.collective_group.cuda_stream import get_stream_pool
 
@@ -148,7 +149,6 @@ class NCCLGroup(BaseGroup):
     def destroy_group(self):
         """Destroy the group and release NCCL communicators."""
         if len(self._dev_comm_map.keys()) > 0:
-
             # TODO(Hao): check this barrier call
             # self.barrier()
 
@@ -680,12 +680,21 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
     if not tensor_list:
         raise RuntimeError("Received an empty list.")
     t = tensor_list[0]
-    # note we need a cupy dtype here.
-    dtype = nccl_util.get_cupy_tensor_dtype(t)
     buffer_shape = [len(tensor_list)] + nccl_util.get_tensor_shape(t)
-    device = nccl_util.get_tensor_device(t)
-    with nccl_util.Device(device):
-        buffer = cupy.empty(buffer_shape, dtype=dtype)
+
+    # TODO(wuxibin): cupy doesn't support bfloat16 for now,
+    # once it is supported, we can eliminate this if statement.
+    if torch_available():
+        import torch
+
+        buffer = torch.empty(tuple(buffer_shape), dtype=t.dtype, device=t.device)
+    else:
+        # note we need a cupy dtype here.
+        dtype = nccl_util.get_cupy_tensor_dtype(t)
+        device = nccl_util.get_tensor_device(t)
+        with nccl_util.Device(device):
+            buffer = cupy.empty(buffer_shape, dtype=dtype)
+
     if copy:
         for i, tensor in enumerate(tensor_list):
             nccl_util.copy_tensor(buffer[i], tensor)
