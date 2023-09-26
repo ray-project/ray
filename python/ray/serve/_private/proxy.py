@@ -174,7 +174,6 @@ class GenericProxy(ABC):
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
 
-
         self.proxy_router = proxy_router_class(
             serve.get_deployment_handle, self.protocol
         )
