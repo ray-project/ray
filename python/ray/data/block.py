@@ -380,7 +380,7 @@ class BlockAccessor:
 
                 for val in batch.values():
                     if val.ndim > 1:
-                        raise ValueError(format("Unsupported value in batch: {}", val))
+                        raise ValueError("Unsupported value in batch: {}".format(val))
 
         return batch
 
