@@ -938,6 +938,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         request, so it's up to the caller to time out or cancel the request.
         """
         replica = await self.choose_replica_for_query(query)
+        logger.info(f"Assigning request to replica {replica.replica_id}")
         return replica.send_query(query)
 
 
@@ -1060,6 +1061,10 @@ class Router:
             and len(self._replica_scheduler.curr_replicas) == 0
             and self.num_queued_queries == 1
         ):
+            logger.info(
+                "(optimization) Notifying controller that new request arrived"
+                "at handle."
+            )
             self.push_metrics_to_controller({self.deployment_id: 1}, time.time())
 
         try:
