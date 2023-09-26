@@ -192,7 +192,7 @@ The precision of the fractional resource requirement is 0.0001 so you should avo
 
 .. note::
 
-  GPU, TPU, and Neuron Core requirements that are greater than 1, need to be whole numbers. For example, ``num_gpus=1.5`` is invalid.
+  GPU, TPU, and neuron_cores resource requirements that are greater than 1, need to be whole numbers. For example, ``num_gpus=1.5`` is invalid.
 
 .. tip::
 
