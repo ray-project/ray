@@ -10,11 +10,11 @@ import ray
 from ray import serve
 from ray._private.test_utils import (
     SignalActor,
-    run_string_as_driver,
     setup_tls,
     teardown_tls,
     wait_for_condition,
 )
+from ray._private.tls_utils import load_certs_from_env
 from ray.cluster_utils import Cluster
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
@@ -36,14 +36,6 @@ from ray.serve.tests.utils import (
 
 
 @pytest.fixture
-def serve_start_shutdown():
-    ray.init()
-    yield
-    serve.shutdown()
-    ray.shutdown()
-
-
-@pytest.fixture
 def ray_cluster():
     cluster = Cluster()
     yield Cluster()
@@ -53,12 +45,10 @@ def ray_cluster():
 
 
 @pytest.fixture
-def use_tls(request):
-    if request.param:
-        key_filepath, cert_filepath, temp_dir = setup_tls()
-    yield request.param
-    if request.param:
-        teardown_tls(key_filepath, cert_filepath, temp_dir)
+def use_tls():
+    key_filepath, cert_filepath, temp_dir = setup_tls()
+    yield
+    teardown_tls(key_filepath, cert_filepath, temp_dir)
 
 
 def tls_enabled():
@@ -69,93 +59,17 @@ def tls_enabled():
     sys.platform == "darwin",
     reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
 )
-@pytest.mark.parametrize("use_tls", [True], indirect=True)
 def test_deploy_basic(use_tls):
-    if use_tls:
-        run_string_as_driver(
-            """
-# coding: utf-8
-import os
-from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
-import ray
-from ray import serve
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
-import grpc
-from ray.serve.exceptions import RayServeException
-from ray._private.tls_utils import load_certs_from_env
-import logging
-import asyncio
-try:
-    ray.init()
-    @serve.deployment
-    class D1:
-        def __call__(self, input):
-            return input["a"]
-
-    serve.run(DefaultgRPCDriver.bind(D1.bind()))
-
-    async def send_request():
-        server_cert_chain, private_key, ca_cert = load_certs_from_env()
-        credentials = grpc.ssl_channel_credentials(
-            certificate_chain=server_cert_chain,
-            private_key=private_key,
-            root_certificates=ca_cert,
-        )
-
-        async with grpc.aio.secure_channel("localhost:9000", credentials) as channel:
-            stub = serve_pb2_grpc.PredictAPIsServiceStub(channel)
-            response = await stub.Predict(
-                serve_pb2.PredictRequest(input={"a": bytes("123", "utf-8")})
-            )
-        return response
-
-    resp = asyncio.run(send_request())
-    assert resp.prediction == b"123"
-finally:
-    serve.shutdown()
-    ray.shutdown()
-        """,
-            env=os.environ.copy(),
-        )
-    else:
-        run_string_as_driver(
-            """
-# coding: utf-8
-import os
-from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
-import ray
-from ray import serve
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
-import grpc
-from ray.serve.exceptions import RayServeException
-from ray._private.tls_utils import load_certs_from_env
-import logging
-import asyncio
-try:
-    ray.init()
-    @serve.deployment
-    class D1:
-        def __call__(self, input):
-            return input["a"]
-
-    serve.run(DefaultgRPCDriver.bind(D1.bind()))
-
-    async def send_request():
-        async with grpc.aio.insecure_channel("localhost:9000") as channel:
-            stub = serve_pb2_grpc.PredictAPIsServiceStub(channel)
-            response = await stub.Predict(
-                serve_pb2.PredictRequest(input={"a": bytes("123", "utf-8")})
-            )
-        return response
-
-    resp = asyncio.run(send_request())
-    assert resp.prediction == b"123"
-finally:
-    serve.shutdown()
-    ray.shutdown()
-        """,
-            env=os.environ.copy(),
-        )
+    """Test gRPC with TLS"""
+    server_cert_chain, private_key, ca_cert = load_certs_from_env()
+    credentials = grpc.ssl_channel_credentials(
+        certificate_chain=server_cert_chain,
+        private_key=private_key,
+        root_certificates=ca_cert,
+    )
+    channel = grpc.secure_channel("localhost:9000", credentials)
+    serve.run(target=g)
+    ping_grpc_call_method(channel, "default")
 
 
 def test_serving_request_through_grpc_proxy(ray_cluster):
