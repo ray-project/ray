@@ -81,7 +81,7 @@ public class Serve {
             .orElse(8000);
     PyActorHandle controllerAvatar =
         Ray.actor(
-                PyActorClass.of("ray.serve.controller", "ServeControllerAvatar"),
+                PyActorClass.of("ray.serve._private.controller", "ServeControllerAvatar"),
                 controllerName,
                 detached,
                 dedicatedCpu,
