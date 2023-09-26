@@ -62,6 +62,9 @@ When the request is cancelled, a cancellation error is raised inside the `Snorin
 
 If you want to define more complex HTTP handling logic, Serve integrates with [FastAPI](https://fastapi.tiangolo.com/). This allows you to define a Serve deployment using the {mod}`@serve.ingress <ray.serve.api.ingress>` decorator that wraps a FastAPI app with its full range of features. The most basic example of this is shown below, but for more details on all that FastAPI has to offer such as variable routes, automatic type validation, dependency injection (e.g., for database connections), and more, please check out [their documentation](https://fastapi.tiangolo.com/).
 
+:::{note}
+A Serve application that's integrated with FastAPI still respects the `route_prefix` set through Serve. The routes are that registered through the FastAPI `app` object are layered on top of the route prefix. For instance, if your Serve application has `route_prefix = /my_app` and you decorate a method with `@app.get("/fetch_data")`, then you can call that method by sending a GET request to the path `/my_app/fetch_data`.
+:::
 ```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __begin_fastapi__
 :end-before: __end_fastapi__
@@ -133,7 +136,7 @@ Save this code in `stream.py` and run it:
 $ python stream.py
 [2023-05-25 10:44:23]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (ServeController pid=40401) INFO 2023-05-25 10:44:25,296 controller 40401 deployment_state.py:1259 - Deploying new version of deployment default_StreamingResponder.
-(HTTPProxyActor pid=40403) INFO:     Started server process [40403]
+(ProxyActor pid=40403) INFO:     Started server process [40403]
 (ServeController pid=40401) INFO 2023-05-25 10:44:25,333 controller 40401 deployment_state.py:1498 - Adding 1 replica to deployment default_StreamingResponder.
 Got result 0.0s after start: '0'
 Got result 0.1s after start: '1'
@@ -167,7 +170,7 @@ In the example below, the generator streams responses forever until the client d
 $ python stream.py
 [2023-07-10 16:08:41]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (ServeController pid=50801) INFO 2023-07-10 16:08:42,296 controller 40401 deployment_state.py:1259 - Deploying new version of deployment default_StreamingResponder.
-(HTTPProxyActor pid=50803) INFO:     Started server process [50803]
+(ProxyActor pid=50803) INFO:     Started server process [50803]
 (ServeController pid=50805) INFO 2023-07-10 16:08:42,963 controller 50805 deployment_state.py:1586 - Adding 1 replica to deployment default_StreamingResponder.
 Got result 0.0s after start: '0'
 Got result 0.1s after start: '1'

@@ -9,7 +9,6 @@ import ray
 from ray import serve
 from ray._raylet import GcsClient, StreamingObjectRefGenerator
 from ray.serve._private.common import DeploymentID, RequestProtocol
-from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_ROUTING
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.router import RequestMetadata, Router
 from ray.serve._private.usage import ServeUsageTag
@@ -169,7 +168,6 @@ class _DeploymentHandleBase:
                 node_id,
                 availability_zone,
                 event_loop=_create_or_get_global_asyncio_event_loop_in_thread(),
-                _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
                 _prefer_local_node_routing=self.handle_options._prefer_local_routing,
                 _router_cls=self.handle_options._router_cls,
             )
