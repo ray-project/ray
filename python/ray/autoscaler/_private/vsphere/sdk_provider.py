@@ -28,8 +28,10 @@ class VmwSdkProviderFactory:
         elif client_type == self.ClientType.AUTOMATION_SDK:
             self.sdk_provider = self.get_vsphere_sdk_provider()
         else:
-            raise ValueError(f"Unknown client {client_type}, supported client types"
-                             f"are: {list(self.ClientType)}")
+            raise ValueError(
+                f"Unknown client {client_type}, supported client types"
+                f"are: {list(self.ClientType)}"
+            )
 
     def get_pyvmomi_sdk_provider(self):
         global pyvmomi_sdk_provider
