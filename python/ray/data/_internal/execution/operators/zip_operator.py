@@ -237,7 +237,7 @@ def _zip_one_block(
         # Swap blocks if ordering was inverted during block alignment splitting.
         block, other_block = other_block, block
     # Zip block and other blocks.
-    result = _try_zip(BlockAccessor.for_block(block), other_block)
+    result = _try_zip_with_pyarrow_fallback(block, other_block)
     br = BlockAccessor.for_block(result)
     return result, br.get_metadata(input_files=[], exec_stats=stats.build())
 
@@ -247,18 +247,18 @@ def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:
     return block.num_rows(), block.size_bytes()
 
 
-def _try_zip(block: BlockAccessor, other_block: Block) -> Block:
+def _try_zip_with_pyarrow_fallback(block: Block, other_block: Block) -> Block:
     try:
-        return block.zip(other_block)
+        return BlockAccessor.for_block(block).zip(other_block)
     except ValueError as e:
         pyarrow_table = _lazy_import_pyarrow_table()
         if pyarrow_table:
             if not isinstance(other_block, pyarrow_table):
                 other_block = BlockAccessor.for_block(other_block).to_arrow()
-                return block.zip(other_block)
+                return BlockAccessor.for_block(block).zip(other_block)
             else:
-                block = BlockAccessor.for_block(block.to_arrow())
-                return block.zip(other_block)
+                block = BlockAccessor.for_block(block).to_arrow()
+                return BlockAccessor.for_block(block).zip(other_block)
 
         # Re-raise the ValueError in case `pyarrow` not installed as a dependency
         raise e
