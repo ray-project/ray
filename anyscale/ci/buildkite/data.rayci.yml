@@ -29,13 +29,3 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
     depends_on: datanbuild
     job_env: datanbuild
-
-  - label: ":database: data: runtime bulk executor tests"
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data
-        --parallelism-per-worker 3
-        --build-name databbuild
-        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
-    depends_on: databbuild
-    job_env: databbuild
