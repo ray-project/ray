@@ -15,7 +15,9 @@ def generate_randomize_blocks_fn(
     """Generate function to randomize order of blocks."""
 
     def fn(
-        refs: List[RefBundle], context: TaskContext
+        refs: List[RefBundle],
+        target_max_block_size: int,
+        context: TaskContext
     ) -> Tuple[List[RefBundle], StatsDict]:
         import random
 

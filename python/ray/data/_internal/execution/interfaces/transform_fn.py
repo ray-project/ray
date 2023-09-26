@@ -6,5 +6,5 @@ from ray.data._internal.stats import StatsDict
 
 # Block transform function applied in AllToAllOperator.
 AllToAllTransformFn = Callable[
-    [List[RefBundle], TaskContext], Tuple[List[RefBundle], StatsDict]
+    [List[RefBundle], int, TaskContext], Tuple[List[RefBundle], StatsDict]
 ]

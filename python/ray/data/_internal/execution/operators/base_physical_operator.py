@@ -89,7 +89,7 @@ class AllToAllOperator(PhysicalOperator):
             task_idx=self._next_task_index,
             sub_progress_bar_dict=self._sub_progress_bar_dict,
         )
-        self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, ctx)
+        self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, self.actual_target_max_block_size, ctx)
         self._next_task_index += 1
         self._input_buffer.clear()
         super().all_inputs_done()

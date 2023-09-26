@@ -10,6 +10,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
 )
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.stats import StatsDict
+from ray.data.context import DataContext
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, StreamingObjectRefGenerator]
@@ -172,6 +173,16 @@ class PhysicalOperator(Operator):
         then the default from DataContext should be used.
         """
         return self._target_max_block_size
+
+    @property
+    def actual_target_max_block_size(self) -> int:
+        """
+        The actual target max block size output by this operator.
+        """
+        target_max_block_size = self._target_max_block_size
+        if target_max_block_size is None:
+            target_max_block_size = DataContext.get_current().target_max_block_size
+        return target_max_block_size
 
     def completed(self) -> bool:
         """Return True when this operator is completed.

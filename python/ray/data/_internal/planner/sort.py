@@ -27,6 +27,7 @@ def generate_sort_fn(
     def fn(
         sort_key: SortKey,
         refs: List[RefBundle],
+        target_max_block_size: int,
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         blocks = []

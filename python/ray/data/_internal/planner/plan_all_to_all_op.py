@@ -37,8 +37,8 @@ def plan_all_to_all_op(
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
     elif isinstance(op, Repartition):
         fn = generate_repartition_fn(op._num_outputs, op._shuffle)
-        # Repartition does not actually compute anything, so we want to
-        # inherit the upstream op's target max block size.
+        if op._shuffle:
+            target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
     elif isinstance(op, Sort):
         fn = generate_sort_fn(op._sort_key)
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size

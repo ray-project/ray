@@ -28,6 +28,7 @@ def generate_repartition_fn(
 
     def shuffle_repartition_fn(
         refs: List[RefBundle],
+        target_max_block_size: int,
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         # If map_transformer is specified (e.g. from fusing
@@ -38,7 +39,7 @@ def generate_repartition_fn(
         if map_transformer:
 
             def upstream_map_fn(blocks):
-                return map_transformer.apply_transform(blocks, ctx)
+                return map_transformer.apply_transform(blocks, target_max_block_size, ctx)
 
         shuffle_spec = ShuffleTaskSpec(
             random_shuffle=False,

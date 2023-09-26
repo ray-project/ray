@@ -100,6 +100,7 @@ class OperatorFusionRule(Rule):
             and isinstance(upstream_ops[0], MapOperator)
             and self._can_fuse(dag, upstream_ops[0])
         ):
+            # TODO(swang): Set block size for Sort and Aggregate.
             # Fuse operator with its upstream op.
             dag = self._get_fused_all_to_all_operator(dag, upstream_ops[0])
             upstream_ops = dag.input_dependencies
@@ -345,14 +346,14 @@ class OperatorFusionRule(Rule):
         up_map_transformer = up_op.get_map_transformer()
 
         def fused_all_to_all_transform_fn(
-            blocks: List[RefBundle], ctx: TaskContext
+            blocks: List[RefBundle], target_max_block_size, ctx: TaskContext
         ) -> Tuple[List[RefBundle], StatsDict]:
             """To fuse MapOperator->AllToAllOperator, we store the map function
             in the TaskContext so that it may be used by the downstream
             AllToAllOperator's transform function."""
             ctx.upstream_map_transformer = up_map_transformer
             ctx.upstream_map_ray_remote_args = ray_remote_args
-            return down_transform_fn(blocks, ctx)
+            return down_transform_fn(blocks, target_max_block_size, ctx)
 
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies

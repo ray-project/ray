@@ -83,17 +83,6 @@ class MapOperator(OneToOneOperator, ABC):
         self._finished_streaming_gens: List[StreamingObjectRefGenerator] = []
         super().__init__(name, input_op, target_max_block_size)
 
-    @property
-    def actual_target_max_block_size(self) -> int:
-        """
-        The actual target max block size output by this operator.
-        """
-        target_max_block_size = self._target_max_block_size
-        if target_max_block_size is None:
-            target_max_block_size = DataContext.get_current().target_max_block_size
-
-        return target_max_block_size
-
     @classmethod
     def create(
         cls,
