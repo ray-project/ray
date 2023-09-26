@@ -209,7 +209,7 @@ vSphere Frozen VM Configs
         .. parsed-literal::
 
             :ref:`name <cluster-configuration-vsphere-frozen-vm-name>`: str
-            :ref:`library-item <cluster-configuration-vsphere-frozen-vm-library-item>`: str
+            :ref:`library_item <cluster-configuration-vsphere-frozen-vm-library-item>`: str
             :ref:`resource_pool <cluster-configuration-vsphere-frozen-vm-resource-pool>`: str
             :ref:`cluster <cluster-configuration-vsphere-frozen-vm-cluster>`: str
             :ref:`datastore <cluster-configuration-vsphere-frozen-vm-datastore>`: str
@@ -1224,11 +1224,39 @@ The vSphere vCenter Server address.
 ``vsphere_config.frozen_vm``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The frozen VM related configurations. If "library_item" is unset, then either an existing frozen VM should be specified
-by "name", or a resource pool name of frozen VMs on every ESXi host should be specified by "resource_pool".
-If "library_item" is set, then "name" must be set to indicate the name or the name prefix of the frozen VM. Either
-"resource_pool" should be set to indicate that a set of frozen VMs will be created on each ESXi host, Or "cluster"
-should be set to indicate that creating a single frozen VM in the vSphere cluster.
+The frozen VM related configurations.
+If the frozen VM(s) is/are existing, then ``library_item`` should be unset. Either an existing frozen VM should be specified by ``name``, or a resource pool name of frozen VMs on every ESXi (https://docs.vmware.com/en/VMware-vSphere/index.html) host should be specified by ``resource_pool``.
+If the frozen VM(s) is/are to be deployed from OVF template, then `library_item` must be set to point to an OVF template (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-AFEDC48B-C96F-4088-9C1F-4F0A30E965DE.html) in the content library. In such as case, ``name`` must be set to indicate the name or the name prefix of the frozen VM(s). Then, either ``resource_pool`` should be set to indicate that a set of frozen VMs will be created on each ESXi host of the resource pool, or ``cluster`` should be set to indicate that creating a single frozen VM in the vSphere cluster. The config ``datastore`` (https://docs.vmware.com/en/VMware-vSphere/7.0/com.vmware.vsphere.storage.doc/GUID-D5AB2BAD-C69A-4B8D-B468-25D86B8D39CE.html) is mandatory in this case.
+
+Valid examples:
+
+1. ``ray up`` on a frozen VM to be deployed from an OVF template:
+
+    frozen_vm:
+        name: single-frozen-vm
+        library_item: frozen-vm-template
+        cluster: vsanCluster
+        datastore: vsanDatastore
+
+2. ``ray up`` on an existing frozen VM:
+
+    frozen_vm:
+        name: existing-single-frozen-vm
+
+3. ``ray up`` on a resource pool of frozen VMs to be deployed from an OVF template:
+
+    frozen_vm:
+        name: frozen-vm-prefix
+        library_item: frozen-vm-template
+        resource_pool: frozen-vm-resource-pool
+        datastore: vsanDatastore
+
+4. ``ray up`` on an existing resource pool of frozen VMs:
+
+    frozen_vm:
+        resource_pool: frozen-vm-resource-pool
+
+Other cases not in above examples are invalid.
 
 * **Required:** Yes
 * **Importance:** High
@@ -1239,8 +1267,8 @@ should be set to indicate that creating a single frozen VM in the vSphere cluste
 ``vsphere_config.frozen_vm.name``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The name of the frozen VM, or the prefix for a set of frozen VMs.
-Can only be unset when "frozen_vm.resource_pool" is set and pointing to an existing resource pool of Frozen VMs.
+The name or the name prefix of the frozen VM.
+Can only be unset when ``resource_pool`` is set and pointing to an existing resource pool of frozen VMs.
 
 * **Required:** No
 * **Importance:** Medium
@@ -1251,8 +1279,8 @@ Can only be unset when "frozen_vm.resource_pool" is set and pointing to an exist
 ``vsphere_config.frozen_vm.library_item``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The library item of the OVF template of the frozen VM. If set, the frozen VM or a set of frozen VMs will be
-deployed from an OVF template specified by library item. Otherwise, frozen VM(s) should be existing.
+The library item (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-D3DD122F-16A5-4F36-8467-97994A854B16.html#GUID-D3DD122F-16A5-4F36-8467-97994A854B16) of the OVF template of the frozen VM. If set, the frozen VM or a set of frozen VMs will be deployed from an OVF template specified by ``library_item``. Otherwise, frozen VM(s) should be existing.
+Visit the VM Packer for Ray project (https://github.com/vmware-ai-labs/vm-packer-for-ray) to know how to create an OVF template for frozen VMs.
 
 * **Required:** No
 * **Importance:** Low
@@ -1263,8 +1291,7 @@ deployed from an OVF template specified by library item. Otherwise, frozen VM(s)
 ``vsphere_config.frozen_vm.resource_pool``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The resource pool name of the frozen VMs, can point to an existing resource pool of frozen VMs. Otherwise,
-"frozen_vm.library_item" must be specified and a set of frozen VMs will be deployed on each ESXi host.
+The resource pool name of the frozen VMs, can point to an existing resource pool of frozen VMs. Otherwise, ``library_item`` must be specified and a set of frozen VMs will be deployed on each ESXi host.
 The frozen VMs will be named as "{frozen_vm.name}-{the vm's ip address}"
 
 * **Required:** No
@@ -1276,7 +1303,7 @@ The frozen VMs will be named as "{frozen_vm.name}-{the vm's ip address}"
 ``vsphere_config.frozen_vm.cluster``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The vSphere cluster name, only makes sense when "frozen_vm.library_item" is set and "frozen_vm.resource_pool" is unset.
+The vSphere cluster name, only takes effect when ``library_item`` is set and ``resource_pool`` is unset.
 Indicates to deploy a single frozen VM on the vSphere cluster from OVF template.
 
 * **Required:** No
@@ -1288,9 +1315,8 @@ Indicates to deploy a single frozen VM on the vSphere cluster from OVF template.
 ``vsphere_config.frozen_vm.datastore``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The target vSphere datastore name for storing the vmdk of the frozen VM to be deployed from OVF template.
-Will take effect only when "frozen_vm.library_item" is set. If "frozen_vm.resource_pool" is also set,
-this datastore must be a shared datastore among the ESXi hosts.
+The target vSphere datastore name for storing the virtual machine files of the frozen VM to be deployed from OVF template.
+Will take effect only when ``library_item`` is set. If ``resource_pool`` is also set, this datastore must be a shared datastore among the ESXi hosts.
 
 * **Required:** No
 * **Importance:** Low

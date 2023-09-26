@@ -11,18 +11,19 @@ class RoundRobinScheduler:
         self.current_vm_index = 0
         self.lock = threading.Lock()
         self.vms = self.frozen_resource_pool.vm
-        logger.debug("Inited the round robin schedular for vSphere VMs")
+        if len(self.vms) <= 0:
+            raise ValueError(f"No vm found in resource pool {frozen_resource_pool}!")
+        logger.debug("Inited the round robin scheduler for vSphere VMs")
 
     def choose_frozen_vm(self):
-        self.lock.acquire()
-        logger.debug(
-            "current_vm_index=%d",
-            self.current_vm_index,
-        )
-        vm = self.vms[self.current_vm_index]
-        self.current_vm_index += 1
-        if self.current_vm_index >= len(self.vms):
-            self.current_vm_index = 0
-        self.lock.release()
+        with self.lock:
+            logger.debug(
+                "current_vm_index=%d",
+                self.current_vm_index,
+            )
+            vm = self.vms[self.current_vm_index]
+            self.current_vm_index += 1
+            if self.current_vm_index >= len(self.vms):
+                self.current_vm_index = 0
 
         return vm

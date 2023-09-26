@@ -20,7 +20,7 @@ class SchedulerFactory:
 
             self.Scheduler = RoundRobinScheduler(frozen_vms_resource_pool)
         else:
-            raise Exception(f"Unknown policy {policy_name}")
+            raise ValueError(f"Unknown policy {policy_name}")
 
     def get_scheduler(self):
         return self.Scheduler

@@ -85,6 +85,11 @@ class VsphereNodeProvider(NodeProvider):
         self.cached_nodes: Dict[str, VM] = {}
 
     def check_frozen_vm_status(self, frozen_vm_name):
+        """
+        This function will help check if the frozen VM with the specific name is
+        existing and in the frozen state. If the frozen VM is existing and off, this
+        function will also help to power on the frozen VM and wait until it is frozen.
+        """
         vm = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.VirtualMachine], frozen_vm_name
         )
@@ -96,6 +101,7 @@ class VsphereNodeProvider(NodeProvider):
         logger.info(f"Found frozen VM with name: {vm._moId}")
 
         if vm.runtime.powerState == vim.VirtualMachinePowerState.poweredOff:
+            logger.debug(f"Frozen VM {vm._moId} is off. Powering it ON")
             WaitForTask(vm.PowerOnVM_Task())
 
         # Make sure it is frozen status
@@ -398,6 +404,10 @@ class VsphereNodeProvider(NodeProvider):
 
         logger.debug("source_vm={}".format(source_vm))
 
+        # If there is only one frozen VM then the caller of create_instant_clone_node
+        # will pass a frozen VM obj has the source_vm. If there is a resource pool of
+        # frozen VMs, then the source_vm passed by the caller will be None. That is why
+        # we need to call self.choose_frozen_vm_obj to get a frozen VM obj.
         parent_vm = source_vm if source_vm else self.choose_frozen_vm_obj()
 
         logger.debug("parent_vm={}".format(parent_vm))
@@ -433,12 +443,19 @@ class VsphereNodeProvider(NodeProvider):
         return vm
 
     def create_frozen_vm_on_each_host(self, node_config, name, wait_until_frozen=False):
+        """
+        This function helps to deploy a frozen VM on each ESXi host of the resource pool
+        specified in the frozen VM config under the vSphere config section. So that we
+        can spread the Ray nodes on different ESXi host at the beginning.
+        """
         exception_happened = False
         vm_names = []
 
         res_pool = self.pyvmomi_sdk_provider.get_pyvmomi_obj(
             [vim.ResourcePool], node_config["frozen_vm"]["resource_pool"]
         )
+        # In vSphere, for any user-created resource pool, the cluster object is the
+        # grandparent of the object.
         cluster = res_pool.parent.parent
 
         host_filter_spec = Host.FilterSpec(clusters={cluster._moId})
@@ -446,11 +463,11 @@ class VsphereNodeProvider(NodeProvider):
 
         futures_frozen_vms = []
         with ThreadPoolExecutor(max_workers=len(hosts)) as executor:
-            for i in range(len(hosts)):
+            for host in hosts:
                 node_config_frozen_vm = copy.deepcopy(node_config)
-                node_config_frozen_vm["host_id"] = hosts[i].host
+                node_config_frozen_vm["host_id"] = host.host
 
-                frozen_vm_name = "{}-{}".format(name, hosts[i].name)
+                frozen_vm_name = "{}-{}".format(name, host.name)
                 vm_names.append(frozen_vm_name)
 
                 futures_frozen_vms.append(
@@ -550,7 +567,7 @@ class VsphereNodeProvider(NodeProvider):
         lib_item_id = item_ids[0]
         deployment_target = LibraryItem.DeploymentTarget(
             resource_pool_id=resource_pool_id,
-            host_id=node_config["host_id"] if "host_id" in node_config else None,
+            host_id=node_config.get("host_id"),
         )
         ovf_summary = self.vsphere_sdk_client.vcenter.ovf.LibraryItem.filter(
             ovf_library_item_id=lib_item_id, target=deployment_target
@@ -675,7 +692,6 @@ class VsphereNodeProvider(NodeProvider):
         vms = resource_pool.vm
         for vm in vms:
             self.check_frozen_vm_status(vm.name)
-        return
 
     def create_new_or_fetch_existing_frozen_vms(self, node_config):
         frozen_vm_obj = None

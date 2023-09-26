@@ -69,7 +69,7 @@ export VSPHERE_PASSWORD=bar
 # Edit the example-full.yaml to update the frozen VM related configs under vsphere_config. there are 3 options:
 # 1. If you have a single frozen VM, set the "name" under "frozen_vm".
 # 2. If you have a set of frozen VMs in a resource pool (one VM on each ESXi host), set the "resource_pool" under "frozen_vm".
-# 3. If you don't have any existing frozen VM in the vSphere cluster, but you have an OVF template  of a frozen VM, set the "library_item" under "frozen_vm". After that, you need to either set the "name" of the to-be-deployed frozen VM, or set the "resource_pool" to point to an existing resource pool for the to-be-deployed frozen VMs for all the ESXi hosts in the vSphere cluster.
+# 3. If you don't have any existing frozen VM in the vSphere cluster, but you have an OVF template of a frozen VM, set the "library_item" under "frozen_vm". After that, you need to either set the "name" of the to-be-deployed frozen VM, or set the "resource_pool" to point to an existing resource pool for the to-be-deployed frozen VMs for all the ESXi hosts in the vSphere cluster. Also, the "datastore" must be specified.
 # Optionally configure the head and worker node resource pool and datastore placement.
 # If not configured via environment variables, the vSphere credentials can alternatively be configured in this file.
 
