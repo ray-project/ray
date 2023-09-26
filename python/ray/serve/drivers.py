@@ -26,7 +26,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="beta")
-@serve.deployment(route_prefix="/")
+@serve.deployment
 class DAGDriver(ASGIAppReplicaWrapper):
     """A driver implementation that accepts HTTP requests."""
 
@@ -53,9 +53,12 @@ class DAGDriver(ASGIAppReplicaWrapper):
         http_adapter = load_http_adapter(http_adapter)
         app = FastAPI()
 
+        new_dags = {}
         if isinstance(dags, dict):
-            self.dags = dags
-            for route in dags.keys():
+            for route, handle in dags.items():
+                if isinstance(handle, RayServeHandle):
+                    handle = handle.options(use_new_handle_api=True)
+                new_dags[route] = handle
 
                 def endpoint_create(route):
                     @app.get(f"{route}")
@@ -71,7 +74,10 @@ class DAGDriver(ASGIAppReplicaWrapper):
 
         else:
             assert isinstance(dags, (RayServeDAGHandle, RayServeHandle))
-            self.dags = {self.MATCH_ALL_ROUTE_PREFIX: dags}
+            if isinstance(dags, RayServeHandle):
+                dags = dags.options(use_new_handle_api=True)
+
+            new_dags[self.MATCH_ALL_ROUTE_PREFIX] = dags
 
             # Single dag case, we will receive all prefix route
             @app.get(self.MATCH_ALL_ROUTE_PREFIX)
@@ -79,6 +85,7 @@ class DAGDriver(ASGIAppReplicaWrapper):
             async def handle_request(inp=Depends(http_adapter)):
                 return await self.predict(inp)
 
+        self.dags = new_dags
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
         super().__init__(frozen_app)
 
@@ -89,14 +96,20 @@ class DAGDriver(ASGIAppReplicaWrapper):
         # the `_ray_cache_refs` kwarg.
         if isinstance(dag, RayServeDAGHandle):
             kwargs["_ray_cache_refs"] = _ray_cache_refs
-
-        return await (await dag.remote(*args, **kwargs))
+            return await (await dag.remote(*args, **kwargs))
+        else:
+            return await dag.remote(*args, **kwargs)
 
     async def predict_with_route(self, route_path, *args, **kwargs):
         """Perform inference directly without HTTP for multi dags."""
         if route_path not in self.dags:
             raise RayServeException(f"{route_path} does not exist in dags routes")
-        return await (await self.dags[route_path].remote(*args, **kwargs))
+
+        dag = self.dags[route_path]
+        if isinstance(dag, RayServeDAGHandle):
+            return await (await dag.remote(*args, **kwargs))
+        else:
+            return await dag.remote(*args, **kwargs)
 
     async def get_intermediate_object_refs(self) -> Dict[str, Any]:
         """Gets latest cached object refs from latest call to predict().
