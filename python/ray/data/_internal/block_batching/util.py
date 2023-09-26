@@ -25,7 +25,7 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
     locations."""
     current_node_id = ray.get_runtime_context().get_node_id()
 
-    locs = ray.experimental.get_object_locations(refs)
+    locs = ray.experimental.get_object_locations(refs, for_metrics=True)
     nodes: List[List[str]] = [loc["node_ids"] for loc in locs.values()]
     hits = sum(current_node_id in node_ids for node_ids in nodes)
     unknowns = sum(1 for node_ids in nodes if not node_ids)

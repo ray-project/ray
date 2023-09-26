@@ -5,7 +5,7 @@ from ray._raylet import ObjectRef
 
 
 def get_object_locations(
-    obj_refs: List[ObjectRef], timeout_ms: int = -1
+    obj_refs: List[ObjectRef], timeout_ms: int = -1, for_metrics: bool = False
 ) -> Dict[ObjectRef, Dict[str, Any]]:
     """Lookup the locations for a list of objects.
 
@@ -28,6 +28,8 @@ def get_object_locations(
 
         - object_size (int): The size of data + metadata in bytes.
 
+        - for_metrics (bool): If the use case is purely for metrics.
+
     Raises:
         RuntimeError: if the processes were not started by ray.init().
         ray.exceptions.GetTimeoutError: if it couldn't finish the
@@ -35,6 +37,16 @@ def get_object_locations(
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray hasn't been initialized.")
+    # This call can be expensive if not called by the driver.
+    # If this is for purely metrics use, we can skip the call for performance.
+    if (
+        for_metrics
+        and not ray.data.context.DataContext.get_current().enable_metric_collection
+    ):
+        return {
+            ref: {"node_ids": [], "object_size": 0, "did_spill": False}
+            for ref in obj_refs
+        }
     return ray._private.worker.global_worker.core_worker.get_object_locations(
         obj_refs, timeout_ms
     )

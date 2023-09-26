@@ -133,6 +133,9 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
     env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0)
 )
 
+# Whether to enable metric collection
+DEFAULT_ENABLE_METRIC_COLLECTION = False
+
 
 @DeveloperAPI
 class DataContext:
@@ -173,6 +176,7 @@ class DataContext:
         use_legacy_iter_batches: bool,
         enable_progress_bars: bool,
         file_metadata_shuffler: str,
+        enable_metric_collection: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.target_max_block_size = target_max_block_size
@@ -207,6 +211,7 @@ class DataContext:
         self.use_legacy_iter_batches = use_legacy_iter_batches
         self.enable_progress_bars = enable_progress_bars
         self.file_metadata_shuffler = file_metadata_shuffler
+        self.enable_metric_collection = enable_metric_collection
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -257,6 +262,7 @@ class DataContext:
                     use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
                     file_metadata_shuffler=DEFAULT_FILE_METADATA_SHUFFLER,
+                    enable_metric_collection=DEFAULT_ENABLE_METRIC_COLLECTION,
                 )
 
             return _default_context

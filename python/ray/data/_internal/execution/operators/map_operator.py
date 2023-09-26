@@ -277,7 +277,7 @@ class MapOperator(OneToOneOperator, ABC):
             # Otherwise, if the task crashes in the middle, we can't rerun it.
             blocks = [input[0] for input in inputs.blocks]
             metadata = [input[1] for input in inputs.blocks]
-            locations = ray.experimental.get_object_locations(blocks)
+            locations = ray.experimental.get_object_locations(blocks, for_metrics=True)
             for block, meta in zip(blocks, metadata):
                 if locations[block]["did_spill"]:
                     self._metrics.spilled += meta.size_bytes
