@@ -151,6 +151,10 @@ class BC(MARWIL):
             # we do not step the env.
             with self._timers[SAMPLE_TIMER]:
                 # Sampling from offline data.
+                # TODO (simon): We have to remove the `RolloutWorker` 
+                # here and just use the already distributed `dataset`
+                # for sampling. Only in online evaluation 
+                # `RolloutWorker/EnvRunner` should be used. 
                 if self.config.count_steps_by == "agent_steps":
                     train_batch = synchronous_parallel_sample(
                         worker_set=self.workers,
