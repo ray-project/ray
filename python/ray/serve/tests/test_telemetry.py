@@ -1,7 +1,6 @@
 import subprocess
 import sys
 import time
-from typing import Dict
 
 import pytest
 import requests
