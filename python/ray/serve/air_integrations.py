@@ -1,20 +1,19 @@
-from collections import defaultdict
 import logging
-from typing import Dict, List, Optional, Type, Union
-from pydantic import BaseModel
-import numpy as np
 from abc import abstractmethod
+from collections import defaultdict
+from typing import Dict, List, Optional, Type, Union
+
+import numpy as np
 import starlette
 from fastapi import Depends, FastAPI
+from pydantic import BaseModel
 
 from ray import serve
-from ray.serve._private.utils import require_packages
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.util.annotations import DeveloperAPI, Deprecated
-from ray.serve.drivers_utils import load_http_adapter, HTTPAdapterFn
-from ray.serve._private.utils import install_serve_encoders_to_fastapi
 from ray.serve._private.http_util import BufferedASGISender
-
+from ray.serve._private.utils import install_serve_encoders_to_fastapi, require_packages
+from ray.serve.drivers_utils import HTTPAdapterFn, load_http_adapter
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 try:
     import pandas as pd

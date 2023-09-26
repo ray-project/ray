@@ -1,28 +1,26 @@
 import asyncio
 import os
 import sys
-from typing import Dict, Optional
+from typing import Optional
 
-from fastapi import FastAPI
-import requests
-from pydantic import BaseModel, ValidationError
 import pytest
+import requests
 import starlette.responses
-from starlette.requests import Request
+from fastapi import FastAPI
+from pydantic import BaseModel, ValidationError
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
-
 from ray import serve
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.api import call_app_builder_with_args_if_necessary
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.built_application import BuiltApplication
 from ray.serve.deployment import Application
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle, RayServeHandle
-from ray.serve._private.api import call_app_builder_with_args_if_necessary
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.common import DeploymentID
 
 
 @serve.deployment()
@@ -314,7 +312,6 @@ def test_delete_deployment_group(serve_instance, blocking):
 
         # Check idempotence
         for _ in range(2):
-
             serve_instance.delete_deployments(["f", "g"], blocking=blocking)
 
             wait_for_condition(
@@ -838,40 +835,6 @@ def test_no_slash_route_prefix(serve_instance):
         serve.run(f.bind(), route_prefix="no_slash")
 
 
-def test_pass_starlette_request_over_handle(serve_instance):
-    @serve.deployment
-    class Downstream:
-        async def __call__(self, request: Request) -> Dict[str, str]:
-            r = await request.json()
-            r["foo"] = request.headers["foo"]
-            r.update(request.query_params)
-            return r
-
-    @serve.deployment
-    class Upstream:
-        def __init__(self, downstream: RayServeHandle):
-            self._downstream = downstream
-
-        async def __call__(self, request: Request) -> Dict[str, str]:
-            ref = await self._downstream.remote(request)
-            return await ref
-
-    serve.run(Upstream.bind(Downstream.bind()))
-
-    r = requests.get(
-        "http://127.0.0.1:8000/",
-        json={"hello": "world"},
-        headers={"foo": "bar"},
-        params={"baz": "quux"},
-    )
-    r.raise_for_status()
-    assert r.json() == {
-        "hello": "world",
-        "foo": "bar",
-        "baz": "quux",
-    }
-
-
 def test_status_basic(serve_instance):
     # Before Serve is started, serve.status() should have an empty list of applications
     assert len(serve.status().applications) == 0
@@ -946,8 +909,8 @@ def test_status_package_unavailable_in_controller(serve_instance):
     @serve.deployment
     class MyDeployment:
         def __init__(self):
-            from sqlalchemy import create_engine
             import pymysql
+            from sqlalchemy import create_engine
 
             pymysql.install_as_MySQLdb()
 

@@ -35,7 +35,7 @@ import { ServeReplicaDetailLayout } from "./pages/serve/ServeReplicaDetailLayout
 import { ServeReplicaDetailPage } from "./pages/serve/ServeReplicaDetailPage";
 import {
   ServeControllerDetailPage,
-  ServeHttpProxyDetailPage,
+  ServeProxyDetailPage,
 } from "./pages/serve/ServeSystemActorDetailPage";
 import {
   ServeSystemDetailLayout,
@@ -266,8 +266,8 @@ const App = () => {
                       path="controller"
                     />
                     <Route
-                      element={<ServeHttpProxyDetailPage />}
-                      path="httpProxies/:httpProxyId"
+                      element={<ServeProxyDetailPage />}
+                      path="proxies/:proxyId"
                     />
                   </Route>
                   <Route

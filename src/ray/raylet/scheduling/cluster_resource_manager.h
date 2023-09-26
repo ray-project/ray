@@ -51,9 +51,9 @@ class ClusterResourceManager {
   /// Get the resource view of the cluster.
   const absl::flat_hash_map<scheduling::NodeID, Node> &GetResourceView() const;
 
-  /// Update node resources. This hanppens when a node resource usage udpated.
+  /// Update node resources. This happens when a node resource usage updated.
   ///
-  /// \param node_id ID of the node which resoruces need to be udpated.
+  /// \param node_id ID of the node which resoruces need to be updated.
   /// \param resource_data The node resource data.
   bool UpdateNode(scheduling::NodeID node_id, const rpc::ResourcesData &resource_data);
 

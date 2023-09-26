@@ -1,5 +1,5 @@
 #!/bin/bash
-set -exuo pipefail
+set -euo pipefail
 
 WHEEL_NAME="$1"
 SOURCE_IMAGE="$2"

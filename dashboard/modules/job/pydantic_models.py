@@ -98,3 +98,8 @@ class JobDetails(BaseModel):
         None,
         description="The node ID of the node the job entrypoint command is running on.",
     )
+    driver_exit_code: Optional[int] = Field(
+        None,
+        description="The driver process exit code after the driver executed. "
+        "Return None if driver doesn't finish executing.",
+    )
