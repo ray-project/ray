@@ -34,10 +34,5 @@ jupytext==1.13.6
 # Pin urllib to avoid downstream ssl incompatibility issues
 urllib3 < 1.27
 
-# For the API docs
-fastapi==0.99.1
-grpcio==1.57.0
-
-# Build dependencies
-mosaicml
-typing-extensions
+# External dependencies such as ML libraries should be mocked out, not added here.
+# See doc/source/conf.py for examples of how to mock out external dependencies.

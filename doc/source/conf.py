@@ -439,6 +439,7 @@ autosummary_filename_map = {
 # Mock out external dependencies here.
 autodoc_mock_imports = [
     "aiohttp",
+    "composer",
     "dask",
     "datasets",
     "fastapi",
@@ -490,6 +491,7 @@ for mock_target in autodoc_mock_imports:
 # that are defined in dependencies can link to their respective documentation.
 intersphinx_mapping = {
     "aiohttp": ("https://docs.aiohttp.org/en/stable/", None),
+    "composer": ("https://docs.mosaicml.com/en/latest/", None),
     "dask": ("https://docs.dask.org/en/stable/", None),
     "datasets": ("https://huggingface.co/docs/datasets/main/en/", None),
     "distributed": ("https://distributed.dask.org/en/stable/", None),
