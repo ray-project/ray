@@ -52,7 +52,7 @@ def tls_enabled():
     sys.platform == "darwin",
     reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
 )
-def test_deploy_basic(ray_cluster):
+def test_tls(ray_cluster):
     """Test gRPC with TLS"""
 
     key_filepath, cert_filepath, temp_dir = setup_tls()
