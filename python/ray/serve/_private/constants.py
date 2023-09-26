@@ -159,10 +159,6 @@ MIGRATION_MESSAGE = (
     "See https://docs.ray.io/en/latest/serve/index.html for more information."
 )
 
-
-# [EXPERIMENTAL] Disable the proxy actor
-SERVE_EXPERIMENTAL_DISABLE_PROXY = "SERVE_EXPERIMENTAL_DISABLE_PROXY"
-
 # Message
 MULTI_APP_MIGRATION_MESSAGE = (
     "Please see the documentation for ServeDeploySchema for more details on multi-app "

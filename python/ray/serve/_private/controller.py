@@ -116,7 +116,6 @@ class ServeController:
         *,
         http_config: HTTPOptions,
         detached: bool = False,
-        _disable_proxy: bool = False,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
@@ -155,17 +154,14 @@ class ServeController:
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
 
-        if _disable_proxy:
-            self.proxy_state_manager = None
-        else:
-            self.proxy_state_manager = ProxyStateManager(
-                controller_name,
-                detached,
-                http_config,
-                self._controller_node_id,
-                self.cluster_node_info_cache,
-                grpc_options,
-            )
+        self.proxy_state_manager = ProxyStateManager(
+            controller_name,
+            detached,
+            http_config,
+            self._controller_node_id,
+            self.cluster_node_info_cache,
+            grpc_options,
+        )
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
 
