@@ -1768,6 +1768,49 @@ def read_databricks_uc_tables(
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
+    """
+    Read from a Databricks UC table or Databricks SQL execution result that queries
+    from Databricks UC tables.
+
+    This reader is implemented based on
+    [Databricks statemenet execution API](https://docs.databricks.com/api/workspace/statementexecution).
+
+    Examples:
+        >>> from ray.data.read_api import read_databricks_uc_tables
+        >>>
+        >>> ds = read_databricks_uc_tables(
+        ...   host='...',
+        ...   token='...',
+        ...   warehouse_id='a885ad08b64951ad',
+        ...   catalog='catalog_1',
+        ...   schema='db_1',
+        ...   query='select id from table_1 limit 750000',
+        ...   parallelism=2,
+        ... )
+
+    Args:
+        host: The host name of your databricks shard, without "https://" prefix.
+        token: The access token for the your databricks shard.
+        warehouse_id: The id of the databricks warehouse, the query statement is
+            executed on this warehouse.
+        catalog: The default catalog name used by the query
+        schema: The default schema used by the query
+        table_name: The name of UC table you want to read. If this argument is set,
+            you can't set 'query' argument, and the reader generates query
+            of 'select * from {table_name}' under the hood.
+        query: The query you want to execute. If this argument is set,
+            you can't set 'table_name' argument.
+        parallelism: The requested parallelism of the read. Defaults to -1,
+            which automatically determines the optimal parallelism for your
+            configuration. You should not need to manually set this value in most cases.
+            For details on how the parallelism is automatically determined and guidance
+            on how to tune it, see :ref:`Tuning read parallelism
+            <read_parallelism>`.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+
+    Returns:
+        A :class:`Dataset` containing the queried data.
+    """
     from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
 
     if query is not None and table_name is not None:
