@@ -86,7 +86,7 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
                 elif not np.isscalar(e):
                     has_object = True
             if has_object or len(shapes) > 1:
-                if isinstance(e, list) and all(isinstance(l, str) for l in e):
+                if isinstance(e, list) and all(isinstance(val, str) for val in e):
                     udf_return_col = np.array(udf_return_col)
                 else:
                     udf_return_col = create_ragged_ndarray(udf_return_col)
