@@ -563,8 +563,11 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
             The hex IDs of the nodes that have a copy of this object.
         - object_size:
             The size of data + metadata in bytes.
+        - did_spill:
+            Whether or not this object was spilled.
     """
     object_size = c_object_location.GetObjectSize()
+    did_spill = c_object_location.GetDidSpill()
 
     node_ids = set()
     c_node_ids = c_object_location.GetNodeIDs()
@@ -585,6 +588,7 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
     return {
         "node_ids": list(node_ids),
         "object_size": object_size,
+        "did_spill": did_spill,
     }
 
 
@@ -2388,7 +2392,10 @@ cdef class GcsClient:
         object _nums_reconnect_retry
         CClusterID cluster_id
 
-    def __cinit__(self, address, nums_reconnect_retry=5, cluster_id=None):
+    def __cinit__(self, address,
+                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
+                  ),
+                  cluster_id=None):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
@@ -2399,7 +2406,7 @@ cdef class GcsClient:
         else:
             c_cluster_id = cluster_id
             self.cluster_id = CClusterID.FromHex(c_cluster_id)
-        self._connect(5)
+        self._connect(RayConfig.instance().py_gcs_connect_timeout_s())
 
     def _connect(self, timeout_s=None):
         cdef:

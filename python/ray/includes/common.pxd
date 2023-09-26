@@ -359,6 +359,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         c_bool IsSpilled() const
         const c_string &GetSpilledURL() const
         const CNodeID &GetSpilledNodeID() const
+        const c_bool GetDidSpill() const
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":

@@ -1,14 +1,13 @@
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Union
 
-from fastapi import File, Request
-from pydantic import BaseModel, Field
 import numpy as np
 import starlette.requests
+from fastapi import File, Request
+from pydantic import BaseModel, Field
 
-from ray.util.annotations import PublicAPI
 from ray.serve._private.utils import require_packages
-
+from ray.util.annotations import PublicAPI
 
 _1DArray = List[float]
 _2DArray = List[List[float]]

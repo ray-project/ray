@@ -1,94 +1,70 @@
-from abc import ABC, abstractmethod
 import asyncio
-from asyncio.tasks import FIRST_COMPLETED
 import json
-import os
 import logging
+import os
 import pickle
 import socket
 import time
-import grpc
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Generator,
-    List,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-)
 import uuid
+from abc import ABC, abstractmethod
+from asyncio.tasks import FIRST_COMPLETED
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type, Union
 
-import uvicorn
+import grpc
 import starlette.responses
 import starlette.routing
-from starlette.types import Message, Receive
+import uvicorn
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
+from starlette.types import Message, Receive
 
 import ray
-from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayTaskError
-from ray.util import metrics
-from ray.serve._private.usage import ServeUsageTag
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator
-
-from ray.serve.handle import (
-    DeploymentHandle,
-    _DeploymentResponseBase,
-)
-from ray.serve._private.grpc_util import (
-    create_serve_grpc_server,
-    DummyServicer,
-)
-from ray.serve._private.http_util import (
-    ASGIMessageQueue,
-    HTTPRequestWrapper,
-    RawASGIResponse,
-    receive_http_body,
-    Response,
-    set_socket_reuse_port,
-    validate_http_proxy_callback_return,
-)
-from ray.serve._private.common import (
-    EndpointInfo,
-    EndpointTag,
-    NodeId,
-    RequestProtocol,
-)
+from ray.actor import ActorHandle
+from ray.exceptions import RayActorError, RayTaskError
+from ray.serve._private.common import EndpointInfo, EndpointTag, NodeId, RequestProtocol
 from ray.serve._private.constants import (
-    SERVE_LOGGER_NAME,
-    SERVE_MULTIPLEXED_MODEL_ID,
-    SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    RAY_SERVE_REQUEST_ID_HEADER,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_REQUEST_ID_HEADER,
+    SERVE_LOGGER_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
+    SERVE_NAMESPACE,
 )
-from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
+from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
+from ray.serve._private.http_util import (
+    ASGIMessageQueue,
+    HTTPRequestWrapper,
+    RawASGIResponse,
+    Response,
+    receive_http_body,
+    set_socket_reuse_port,
+    validate_http_proxy_callback_return,
+)
 from ray.serve._private.logging_utils import (
     access_log_msg,
-    configure_component_logger,
     configure_component_cpu_profiler,
+    configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
+from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
-    gRPCProxyRequest,
     ProxyRequest,
     ProxyResponse,
+    gRPCProxyRequest,
 )
 from ray.serve._private.proxy_router import (
     EndpointRouter,
     LongestPrefixRouter,
     ProxyRouter,
 )
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
     call_function_from_import_path,
@@ -96,7 +72,8 @@ from ray.serve._private.utils import (
 from ray.serve.config import gRPCOptions
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
-
+from ray.serve.handle import DeploymentHandle, _DeploymentResponseBase
+from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -1420,7 +1397,7 @@ class RequestIdMiddleware:
 
 
 @ray.remote(num_cpus=0)
-class HTTPProxyActor:
+class ProxyActor:
     def __init__(
         self,
         host: str,
@@ -1435,19 +1412,17 @@ class HTTPProxyActor:
         grpc_options: Optional[gRPCOptions] = None,
     ):  # noqa: F821
         self.grpc_options = grpc_options or gRPCOptions()
-        configure_component_logger(
-            component_name="http_proxy", component_id=node_ip_address
-        )
+        configure_component_logger(component_name="proxy", component_id=node_ip_address)
         logger.info(
             f"Proxy actor {ray.get_runtime_context().get_actor_id()} "
             f"starting on node {node_id}."
         )
 
         configure_component_memory_profiler(
-            component_name="http_proxy", component_id=node_ip_address
+            component_name="proxy", component_id=node_ip_address
         )
         self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-            component_name="http_proxy", component_id=node_ip_address
+            component_name="proxy", component_id=node_ip_address
         )
 
         if http_middlewares is None:
