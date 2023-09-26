@@ -2,9 +2,9 @@ from typing import Any, Dict, List, Union
 
 from ray import ObjectRef
 from ray.dag import DAGNode
-from ray.serve.handle import RayServeSyncHandle, RayServeHandle
 from ray.dag.constants import DAGNODE_TYPE_KEY
 from ray.dag.format_utils import get_dag_node_str
+from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 
 
 class DeploymentFunctionExecutorNode(DAGNode):

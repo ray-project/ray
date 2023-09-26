@@ -1,21 +1,18 @@
-import sys
 import copy
-from typing import Callable, Dict, Tuple, List, Optional, Union, Set
-from dataclasses import dataclass
-from collections import defaultdict
+import sys
 from abc import ABC, abstractmethod
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
+from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.utils import get_head_node_id
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
-
-from ray.serve._private.common import DeploymentID
-from ray.serve._private.utils import (
-    get_head_node_id,
-)
-from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 
 
 class SpreadDeploymentSchedulingPolicy:
@@ -343,7 +340,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
     def _get_replicas_to_stop(
         self, deployment_id: DeploymentID, max_num_to_stop: int
     ) -> Set[str]:
-        """Prioritize replicas running on a node with fewest replicas of all deployments.
+        """Prioritize replicas running on a node with fewest replicas of
+            all deployments.
 
         This algorithm helps to scale down more intelligently because it can
         relinquish nodes faster. Note that this algorithm doesn't consider

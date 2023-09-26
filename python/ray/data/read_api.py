@@ -584,15 +584,17 @@ def read_parquet(
         petal.width   double
         variety       string
 
-
         Read a directory in remote storage.
+
         >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris-parquet/")
 
         Read multiple local files.
+
         >>> ray.data.read_parquet(
         ...    ["local:///path/to/file1", "local:///path/to/file2"]) # doctest: +SKIP
 
         Specify a schema for the parquet file.
+
         >>> import pyarrow as pa
         >>> fields = [("sepal.length", pa.float32()),
         ...           ("sepal.width", pa.float32()),
@@ -609,7 +611,6 @@ def read_parquet(
         petal.length  float
         petal.width   float
         variety       string
-
 
         The Parquet reader also supports projection and filter pushdown, allowing column
         selection and row filtering to be pushed down to the file scan.
@@ -1755,7 +1756,7 @@ def read_sql(
 
 
 @PublicAPI
-def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
+def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame>`_.
 
@@ -1791,7 +1792,7 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
 
 
 @PublicAPI
-def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
+def from_mars(df: "mars.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html>`_.
 
@@ -1808,7 +1809,7 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
 
 
 @PublicAPI
-def from_modin(df: "modin.DataFrame") -> MaterializedDataset:
+def from_modin(df: "modin.pandas.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html>`_.
 

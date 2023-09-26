@@ -6,8 +6,8 @@ import pytest
 import ray
 from ray import serve
 from ray.cluster_utils import AutoscalingCluster
-from ray.util.state import list_actors
 from ray.serve.drivers import DAGDriver
+from ray.util.state import list_actors
 
 
 def get_node_to_deployment_to_num_replicas():

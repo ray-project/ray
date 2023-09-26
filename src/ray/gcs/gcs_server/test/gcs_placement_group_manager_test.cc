@@ -24,6 +24,7 @@
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
 #include "mock/ray/pubsub/publisher.h"
+#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 // clang-format on
 
 namespace ray {
@@ -91,8 +92,9 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     gcs_publisher_ =
         std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_node_manager_ = std::make_shared<gcs::MockGcsNodeManager>();
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        io_service_, cluster_resource_manager_, NodeID::FromRandom());
+        io_service_, cluster_resource_manager_, *gcs_node_manager_, NodeID::FromRandom());
     gcs_placement_group_manager_.reset(new gcs::GcsPlacementGroupManager(
         io_service_,
         mock_placement_group_scheduler_,
@@ -202,6 +204,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   std::unique_ptr<std::thread> thread_io_service_;
   instrumented_io_context io_service_;
   ClusterResourceManager cluster_resource_manager_;
+  std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
 };
