@@ -276,7 +276,7 @@ class MapOperator(OneToOneOperator, ABC):
             self._metrics.cur += allocated
             if self._metrics.cur > self._metrics.peak:
                 self._metrics.peak = self._metrics.cur
-            self._task_blocks_outputted[task_index] += 1
+            self._task_blocks_outputted[task_index] += len(output.blocks)
 
         def _task_done_callback(task_index, inputs):
             # We should only destroy the input bundle when the whole task is done.

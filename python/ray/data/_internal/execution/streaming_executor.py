@@ -133,7 +133,7 @@ class StreamingExecutor(Executor, threading.Thread):
                             self._outer._global_info.update(1)
                             if dag._estimated_output_blocks is not None:
                                 self._outer._global_info.update_total(
-                                    dag._estimated_output_blocks, estimate=True
+                                    dag._estimated_output_blocks
                                 )
                         return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we

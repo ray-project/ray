@@ -66,7 +66,6 @@ class tqdm:
         desc: Optional[str] = None,
         total: Optional[int] = None,
         position: Optional[int] = None,
-        bar_format: Optional[str] = None,
     ):
         import ray._private.services as services
 
@@ -85,7 +84,6 @@ class tqdm:
         self._uuid = uuid.uuid4().hex
         self._x = 0
         self._closed = False
-        self._bar_format = bar_format
 
     def set_description(self, desc):
         """Implements tqdm.tqdm.set_description."""
@@ -116,14 +114,6 @@ class tqdm:
     def total(self, total: int):
         self._total = total
 
-    @property
-    def bar_format(self) -> Optional[str]:
-        return self._bar_format
-
-    @bar_format.setter
-    def bar_format(self, bar_format: str):
-        self._bar_format = bar_format
-
     def _dump_state(self) -> None:
         if ray._private.worker.global_worker.mode == ray.WORKER_MODE:
             # Include newline in payload to avoid split prints.
@@ -143,7 +133,6 @@ class tqdm:
             "pid": self._pid,
             "uuid": self._uuid,
             "closed": self._closed,
-            "bar_format": self._bar_format,
         }
 
     def __iter__(self):
@@ -181,16 +170,10 @@ class _Bar:
 
     def update(self, state: ProgressBarState) -> None:
         """Apply the updated worker progress bar state."""
-        refresh = False
         if state["desc"] != self.state["desc"]:
             self.bar.set_description(state["desc"])
         if state["total"] != self.state["total"]:
             self.bar.total = state["total"]
-            refresh = True
-        if state["bar_format"] != self.state["bar_format"]:
-            self.bar.bar_format = state["bar_format"]
-            refresh = True
-        if refresh:
             self.bar.refresh()
         delta = state["x"] - self.state["x"]
         if delta:

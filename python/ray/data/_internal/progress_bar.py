@@ -18,13 +18,6 @@ except ImportError:
 _canceled_threads = set()
 _canceled_threads_lock = threading.Lock()
 
-TQDM_DEFAULT_BAR_FORMAT = (
-    "{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
-)
-TQDM_ESTIMATE_BAR_FORMAT = TQDM_DEFAULT_BAR_FORMAT.replace(
-    "{total_fmt}", "~{total_fmt}"
-)
-
 
 @PublicAPI
 def set_progress_bars(enabled: bool) -> bool:
@@ -120,12 +113,9 @@ class ProgressBar:
                 self._bar.total = self._progress
             self._bar.update(i)
 
-    def update_total(self, total: int, estimate: bool = False) -> None:
+    def update_total(self, total: int) -> None:
         if self._bar and total != self._bar.total:
             self._bar.total = total
-            self._bar.bar_format = (
-                TQDM_ESTIMATE_BAR_FORMAT if estimate else TQDM_DEFAULT_BAR_FORMAT
-            )
 
     def close(self):
         if self._bar:
