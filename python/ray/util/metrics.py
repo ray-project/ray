@@ -1,6 +1,7 @@
 import logging
 
 from typing import Dict, Any, List, Optional, Tuple, Union
+from ray.util.annotations import PublicAPI
 
 from ray._raylet import (
     Sum as CythonCount,
@@ -149,7 +150,7 @@ class Metric:
         }
 
 
-@DeveloperAPI
+@PublicAPI(stability="stable")
 class Counter(Metric):
     """A cumulative metric that is monotonically increasing.
 
