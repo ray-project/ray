@@ -487,7 +487,7 @@ control over their native Lightning code.
 
             # [5] Explicitly define and run the training function
             ray_trainer = TorchTrainer(
-                train_func_per_worker,
+                train_func,
                 scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
                 run_config=RunConfig(
                     checkpoint_config=CheckpointConfig(
