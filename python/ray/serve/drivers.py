@@ -26,7 +26,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="beta")
-@serve.deployment(route_prefix="/")
+@serve.deployment
 class DAGDriver(ASGIAppReplicaWrapper):
     """A driver implementation that accepts HTTP requests."""
 

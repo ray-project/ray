@@ -5,7 +5,6 @@ import math
 import pickle
 import random
 import time
-import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -21,8 +20,6 @@ from typing import (
     Tuple,
     Union,
 )
-
-from starlette.requests import Request
 
 import ray
 from ray._private.utils import load_class, make_asyncio_event_version_compat
@@ -41,7 +38,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     JavaActorHandleProxy,
@@ -53,9 +49,6 @@ from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProt
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-# Used to only print a single warning when users pass starlette requests via handle.
-WARNED_ABOUT_STARLETTE_REQUESTS_ONCE = False
 
 
 @dataclass
@@ -101,9 +94,6 @@ class Query:
            serve handle API and should be removed once that API is deprecated & removed.
         2) Replaces `DeploymentResponse` objects with their resolved object refs. This
            enables composition without explicitly calling `_to_object_ref`.
-        3) Buffers the bodies of `starlette.requests.Request` objects to avoid them
-           being unserializable. This is a temporary compatibility measure and passing
-           the objects should be fully disallowed in a future release.
         """
         from ray.serve.handle import (
             DeploymentResponse,
@@ -111,9 +101,7 @@ class Query:
             _DeploymentResponseBase,
         )
 
-        scanner = _PyObjScanner(
-            source_type=(asyncio.Task, _DeploymentResponseBase, Request)
-        )
+        scanner = _PyObjScanner(source_type=(asyncio.Task, _DeploymentResponseBase))
 
         try:
             tasks = []
@@ -131,24 +119,6 @@ class Query:
                     )
                 elif isinstance(obj, DeploymentResponse):
                     responses.append(obj)
-                elif isinstance(obj, Request):
-                    global WARNED_ABOUT_STARLETTE_REQUESTS_ONCE
-                    if not WARNED_ABOUT_STARLETTE_REQUESTS_ONCE:
-                        # TODO(edoakes): fully disallow this in the future.
-                        warnings.warn(
-                            "`starlette.Request` objects should not be directly passed "
-                            "via `ServeHandle` calls. Not all functionality is "
-                            "guaranteed to work (e.g., detecting disconnects) and this "
-                            "may be disallowed in a future release."
-                        )
-                        WARNED_ABOUT_STARLETTE_REQUESTS_ONCE = True
-
-                    async def empty_send():
-                        pass
-
-                    obj._send = empty_send
-                    obj._receive = make_buffered_asgi_receive(await obj.body())
-                    replacement_table[obj] = obj
 
             # Gather `asyncio.Task` results concurrently.
             if len(tasks) > 0:
