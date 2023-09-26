@@ -320,9 +320,7 @@ def get_mosaic_dataloader(
     use_s3 = mosaic_data_root.startswith("s3://")
 
     if not use_s3:
-        assert (
-            epoch_size is None
-        ), "epoch_size not supported for streaming.LocalDataset"
+        assert epoch_size is None, "epoch_size not supported for streaming.LocalDataset"
         assert (
             cache_limit is None
         ), "cache_limit not supported for streaming.LocalDataset"
