@@ -19,6 +19,7 @@ from starlette.middleware import Middleware
 from starlette.types import Message, Receive
 
 import ray
+from ray import serve
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator
 from ray.actor import ActorHandle
@@ -173,19 +174,10 @@ class GenericProxy(ABC):
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
 
-        def get_handle(deployment_name, app_name):
-            # Delayed import due to circular dependency.
-            # TODO(edoakes): use `get_deployment_handle` public API instead.
-            from ray.serve.context import _get_global_client
 
-            return _get_global_client().get_handle(
-                deployment_name,
-                app_name,
-                sync=False,
-                missing_ok=True,
-            )
-
-        self.proxy_router = proxy_router_class(get_handle, self.protocol)
+        self.proxy_router = proxy_router_class(
+            serve.get_deployment_handle, self.protocol
+        )
         self.long_poll_client = LongPollClient(
             controller_actor
             or ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
