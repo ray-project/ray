@@ -431,7 +431,7 @@ class GenericProxy(ABC):
                 )
                 return proxy_response
 
-            route_prefix, handle, app_is_cross_language = matched_route
+            route_prefix, handle, _ = matched_route
 
             # Modify the path and root path so that reverse lookups and redirection
             # work as expected. We do this here instead of in replicas so it can be
@@ -449,18 +449,11 @@ class GenericProxy(ABC):
                 proxy_request=proxy_request,
             )
 
-            # Streaming codepath isn't supported for Java.
-            if not app_is_cross_language:
-                proxy_response = await self.send_request_to_replica_streaming(
-                    request_id=request_id,
-                    handle=handle,
-                    proxy_request=proxy_request,
-                )
-            else:
-                proxy_response = await self.send_request_to_replica_unary(
-                    handle=handle,
-                    proxy_request=proxy_request,
-                )
+            proxy_response = await self.send_request_to_replica_streaming(
+                request_id=request_id,
+                handle=handle,
+                proxy_request=proxy_request,
+            )
 
             self.request_counter.inc(
                 tags={
