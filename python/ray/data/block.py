@@ -378,18 +378,10 @@ class BlockAccessor:
                 if all(val.ndim == 1 for val in batch.values()):
                     return pd.DataFrame(batch)
 
-                # Flatten any ndarray with ndim > 1
-                flattened_batch = dict()
-                for key, value in batch.items():
-                    if value.ndim > 1:
-                        flattened_batch[key] = np.array(
-                            [",".join(value.flatten())], dtype=value.dtype
-                        )
-                    else:
-                        flattened_batch[key] = value
-
-                return pd.DataFrame(flattened_batch)
-
+                for val in batch.values():
+                    if val.ndim > 1:
+                        raise ValueError(format("Unsupported value in batch: {}", val))
+ 
         return batch
 
     @staticmethod
