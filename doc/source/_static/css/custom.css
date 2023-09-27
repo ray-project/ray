@@ -859,14 +859,13 @@ footer.col.footer > p {
 }
 
 .chatContentContainer input {
-    width: 100%;
     margin-top: 10px;
     margin-bottom: 10px;
 }
 
 #result{
-    padding: 20px;
-    border-radius: 5px;
+    padding: 15px;
+    border-radius: 10px;
     margin-top: 10px;
     margin-bottom: 10px;
     background-color: #f8f9fa;
@@ -874,56 +873,18 @@ footer.col.footer > p {
     overflow-y: auto;
 }
 
-#searchBtn {
-    margin-top: 0px;
-    margin-top: 10px;
+.chatContentContainer textarea {
+    flex-grow: 1;
+    min-width: 50px;
+    max-height: 40px;
+    resize: none;
 }
 
-textarea {
-    width:80%;
+.searchBtn {
+    white-space: nowrap;
 }
 
-.thumbs {
-    cursor: pointer;
-    margin: 0 10px;
-    font-size: 1.5rem;
-    transition: background 0.2s, transform 0.2s;
-    padding: 10px;
-    border-radius: 50%;
-}
-
-.thumbs.active {
-    transform: scale(1.3);
-}
-
-.thumbs-up.active {
-    background-color: #b0e57c;
-}
-
-.thumbs-down.active {
-    background-color: #ff7f7f;
-}
-
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-#spinnerContainer {
+.input-group {
     display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    height: 100%;
-    position: absolute;
-}
-
-.spinner {
-    border: 16px solid #f3f3f3;
-    border-top: 16px solid #3498db;
-    border-radius: 50%;
-    width: 60px;
-    height: 60px;
-    animation: spin 2s linear infinite;
+    align-items: stretch;
 }
