@@ -73,15 +73,19 @@ def run_images_benchmark(benchmark: Benchmark):
         ),
     ]
 
-    benchmark.run("images-100-256-rbg-jpg", read_images, root=test_input[0])
-    benchmark.run("images-100-2048-rbg-jpg", read_images, root=test_input[1])
-    benchmark.run(
+    benchmark.run_materialize_ds(
+        "images-100-256-rbg-jpg", read_images, root=test_input[0]
+    )
+    benchmark.run_materialize_ds(
+        "images-100-2048-rbg-jpg", read_images, root=test_input[1]
+    )
+    benchmark.run_materialize_ds(
         "images-100-2048-to-256-rbg-jpg",
         read_images,
         root=test_input[1],
         size=(256, 256),
     )
-    benchmark.run(
+    benchmark.run_materialize_ds(
         "images-1000-mix", read_images, root=test_input[2], size=(256, 256), mode="RGB"
     )
 
@@ -90,7 +94,7 @@ def run_images_benchmark(benchmark: Benchmark):
 
     # TODO(chengsu): run benchmark on 20G and 100G imagenet data in multi-nodes
     # cluster.
-    benchmark.run(
+    benchmark.run_materialize_ds(
         "images-imagenet-1g",
         read_images,
         root="s3://air-example-data-2/1G-image-data-synthetic-raw",

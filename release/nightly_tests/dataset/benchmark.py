@@ -2,7 +2,7 @@ import gc
 import json
 import os
 import time
-from typing import Callable
+from typing import Callable, Iterator
 
 from ray.data.dataset import Dataset
 from typing import Any
@@ -50,7 +50,7 @@ class Benchmark:
         self.result = {}
         print(f"Running benchmark: {name}")
 
-    def run(self, name: str, fn: Callable[..., Dataset], **fn_run_args):
+    def run_materialize_ds(self, name: str, fn: Callable[..., Dataset], **fn_run_args):
         gc.collect()
 
         print(f"Running case: {name}")
@@ -60,7 +60,26 @@ class Benchmark:
         duration = time.perf_counter() - start_time
 
         # TODO(chengsu): Record more metrics based on dataset stats.
-        self.result[name] = {BenchmarkMetric.RUNTIME.value: duration}
+        self.result[name] = {
+            BenchmarkMetric.RUNTIME.value: duration,
+            BenchmarkMetric.THROUGHPUT.value: output_ds.count() / duration,
+        }
+        print(f"Result of case {name}: {self.result[name]}")
+
+    def run_iterate_ds(self, name: str, ds_iterator: Iterator[Any], **fn_run_args):
+        gc.collect()
+
+        print(f"Running case: {name}")
+        start_time = time.perf_counter()
+        record_count = 0
+        for batch in ds_iterator:
+            record_count += len(batch)
+            pass
+        duration = time.perf_counter() - start_time
+        self.result[name] = {
+            BenchmarkMetric.RUNTIME.value: duration,
+            BenchmarkMetric.THROUGHPUT.value: record_count / duration,
+        }
         print(f"Result of case {name}: {self.result[name]}")
 
     def run_fn(self, name: str, fn: Callable[..., Any], **fn_run_args):
