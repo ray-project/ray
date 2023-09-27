@@ -367,7 +367,6 @@ class BackendExecutor:
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0
         )
-        use_lazy_checkpointing = not env_integer(DISABLE_LAZY_CHECKPOINTING_ENV, 0)
 
         # First initialize the session.
         def initialize_session(
@@ -381,8 +380,6 @@ class BackendExecutor:
             checkpoint,
             dataset_shard,
             metadata,
-            checkpoint_keep_all_ranks,
-            checkpoint_upload_from_workers,
             storage,
         ):
             try:
@@ -398,9 +395,6 @@ class BackendExecutor:
                     metadata=metadata,
                     checkpoint=checkpoint,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
-                    enable_lazy_checkpointing=use_lazy_checkpointing,
-                    checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
-                    checkpoint_upload_from_workers=(checkpoint_upload_from_workers),
                     storage=storage,
                 )
             except ValueError:
