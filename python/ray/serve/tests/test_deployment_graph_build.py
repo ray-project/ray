@@ -4,27 +4,23 @@ import requests
 import ray
 from ray import serve
 from ray.dag import InputNode
-from ray.serve.handle import RayServeHandle
+from ray.dag.utils import _DAGNodeNameGenerator
 from ray.serve._private.deployment_graph_build import (
-    transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
-    transform_serve_dag_to_serve_executor_dag,
     get_pipeline_input_node,
+    transform_ray_dag_to_serve_dag,
+    transform_serve_dag_to_serve_executor_dag,
 )
-from ray.serve.tests.resources.test_modules import (
-    Model,
-    NESTED_HANDLE_KEY,
-    combine,
-)
+from ray.serve.handle import RayServeHandle
 from ray.serve.tests.resources.test_dags import (
-    get_simple_class_with_class_method_dag,
     get_func_class_with_class_method_dag,
     get_multi_instantiation_class_deployment_in_init_args_dag,
-    get_shared_deployment_handle_dag,
     get_multi_instantiation_class_nested_deployment_arg_dag,
+    get_shared_deployment_handle_dag,
+    get_simple_class_with_class_method_dag,
     get_simple_func_dag,
 )
-from ray.dag.utils import _DAGNodeNameGenerator
+from ray.serve.tests.resources.test_modules import NESTED_HANDLE_KEY, Model, combine
 
 pytestmark = pytest.mark.asyncio
 

@@ -1,10 +1,10 @@
-from ray.serve.tests.resources.test_modules import (
-    Model,
-    Combine,
-    combine,
-    NESTED_HANDLE_KEY,
-)
 from ray.dag.input_node import InputNode
+from ray.serve.tests.resources.test_modules import (
+    NESTED_HANDLE_KEY,
+    Combine,
+    Model,
+    combine,
+)
 
 
 def get_simple_func_dag():

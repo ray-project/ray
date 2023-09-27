@@ -6,16 +6,15 @@ import pytest
 import requests
 
 import ray
-
 from ray import serve
-from ray.serve.exceptions import RayServeException
-from ray.serve.handle import _HandleOptions, RayServeHandle, RayServeSyncHandle
-from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
+from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_DEFAULT_APP_NAME,
 )
-from ray.serve._private.common import RequestProtocol
+from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
+from ray.serve.exceptions import RayServeException
+from ray.serve.handle import RayServeHandle, RayServeSyncHandle, _HandleOptions
 
 
 def test_handle_options():
@@ -440,6 +439,7 @@ def test_set_request_protocol(serve_instance):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))

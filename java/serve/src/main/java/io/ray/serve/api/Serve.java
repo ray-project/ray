@@ -81,7 +81,7 @@ public class Serve {
             .orElse(8000);
     PyActorHandle controllerAvatar =
         Ray.actor(
-                PyActorClass.of("ray.serve.controller", "ServeControllerAvatar"),
+                PyActorClass.of("ray.serve._private.controller", "ServeControllerAvatar"),
                 controllerName,
                 detached,
                 dedicatedCpu,
@@ -99,7 +99,7 @@ public class Serve {
 
     ActorNameList actorNameList =
         ServeProtoUtil.bytesToProto(
-            (byte[]) controller.task(PyActorMethod.of("get_http_proxy_names")).remote().get(),
+            (byte[]) controller.task(PyActorMethod.of("get_proxy_names")).remote().get(),
             ActorNameList::parseFrom);
     if (actorNameList != null && !CollectionUtil.isEmpty(actorNameList.getNamesList())) {
       try {
