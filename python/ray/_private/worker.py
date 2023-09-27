@@ -1305,6 +1305,9 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    stack_frames = traceback.extract_stack(limit=20)
+    stack_trace = ''.join(traceback.format_list(stack_frames))
+    logger.info(stack_trace)
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
     else:
