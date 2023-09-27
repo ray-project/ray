@@ -206,6 +206,12 @@ def _autodetect_tpu_version() -> Optional[str]:
     )
     if accelerator_type is not None:
         detected_tpu_version = accelerator_type_to_version(accelerator_type)
+        if detected_tpu_version is None:
+            logging.info(
+                "While trying to autodetect a TPU type and "
+                f"parsing {ray_constants.RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR}, "
+                f"received malformed accelerator_type: {accelerator_type}"
+            )
     else:
         # GCE-based VM check
         try:
@@ -219,6 +225,19 @@ def _autodetect_tpu_version() -> Optional[str]:
             ):
                 detected_tpu_version = accelerator_type_to_version(
                     accelerator_type_request.text
+                )
+                if detected_tpu_version is None:
+                    logging.info(
+                        "While trying to autodetect a TPU type, the TPU GCE metadata "
+                        "returned a malformed accelerator type: "
+                        f"{accelerator_type_request.text}."
+                    )
+            else:
+                logging.info(
+                    "While trying to autodetect a TPU type, "
+                    "unable to poll TPU GCE metadata. Got "
+                    f"status code: {accelerator_type_request.status_code} and "
+                    f"content: {accelerator_type_request.text}"
                 )
         except requests.RequestException as e:
             logging.info(
