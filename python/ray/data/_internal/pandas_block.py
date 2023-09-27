@@ -17,7 +17,7 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import find_partitions
+from ray.data._internal.util import _lazy_import_pyarrow_table, find_partitions
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -135,9 +135,9 @@ class PandasBlockAccessor(TableBlockAccessor):
     ROW_TYPE = PandasRow
 
     def __init__(self, table: Union["pandas.DataFrame", "pyarrow.Table"]):
-        from pyarrow import Table
+        pyarrow_table = _lazy_import_pyarrow_table()
 
-        if isinstance(table, Table):
+        if pyarrow_table and isinstance(table, pyarrow_table):
             # Python types do not get checked at runtime,
             # if the user explicity specifies batch_format='arrow'
             # batches can be interleaved with both pandas and arrow blocks
