@@ -1,10 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import (
-    Optional,
-    Set,
-    List,
-    Tuple,
-)
+from typing import List, Optional, Set, Tuple
 
 import ray
 from ray._raylet import GcsClient

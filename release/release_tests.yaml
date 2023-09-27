@@ -1039,25 +1039,7 @@
     byod:
       type: cu121
       # This needs to be in sync with requirements under go/llm-forge.
-      pip:
-        - torch==2.0.0
-        - torchvision==0.15.1
-        - torchaudio==2.0.1
-        - deepspeed==0.10.0
-        - fairscale==0.4.13
-        - datasets==2.14.4
-        - accelerate==0.21.0
-        - evaluate==0.4.0
-        - bitsandbytes==0.41.1
-        - wandb==0.15.8
-        - pytorch-lightning==2.0.6
-        - protobuf<3.21.0
-        - torchmetrics==1.0.3
-        - lm_eval==0.3.0
-        - tiktoken==0.1.2
-        - sentencepiece==0.1.99
-        - urllib3<1.27
-        - git+https://github.com/huggingface/transformers.git@d0c1aeb
+      post_build_script: byod_finetune_llvms.sh
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
 
   run:
@@ -5967,7 +5949,7 @@
     cluster_compute: multi_node_train_4_workers.yaml
 
   run:
-    timeout: 1800
+    timeout: 3600
     script: python multi_node_train_benchmark.py --num-workers 4 --file-type image
 
   variations:
@@ -5988,10 +5970,10 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+    cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 1800
+    timeout: 4800
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image
 
   variations:
@@ -6012,10 +5994,10 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+    cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 1800
+    timeout: 7200
     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order
 
   variations:
@@ -6036,11 +6018,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
+    cluster_compute: multi_node_train_4_workers.yaml
 
   run:
-    timeout: 1800
-    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet
+    timeout: 3600
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet --target-worker-gb 50
 
   variations:
     - __suffix__: aws
@@ -6060,11 +6042,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+    cluster_compute: multi_node_train_16_workers.yaml
 
   run:
-    timeout: 1800
-    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet
+    timeout: 4800
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet --target-worker-gb 50
 
   variations:
     - __suffix__: aws
@@ -6911,3 +6893,26 @@
   run:
     timeout: 3600
     script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
+
+
+- name: autoscaler_aws
+  group: autoscaler-test
+  working_dir: autoscaling_tests
+
+  stable: False
+
+  frequency: nightly
+  team: core 
+
+  cluster:
+    # leave oom disabled as test is marked unstable at the moment.
+    byod:
+      runtime_env:
+        - RAY_memory_monitor_refresh_ms=0
+      pip:
+        - ray[default]
+    cluster_compute: aws.yaml 
+
+  run:
+    timeout: 1800
+    script: python run.py 

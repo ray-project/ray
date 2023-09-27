@@ -615,6 +615,7 @@ ray_cc_library(
     deps = [
         ":reporter_rpc",
         ":stats_metric",
+        "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
 )
 
@@ -1492,6 +1493,21 @@ ray_cc_test(
     ],
 )
 
+ray_cc_test(
+    name = "metric_exporter_grpc_test",
+    size = "small",
+    srcs = [
+        "src/ray/stats/metric_exporter_grpc_test.cc"],
+    tags = [
+        "stats",
+        "team:core",
+    ],
+    deps = [
+        ":stats_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 ray_cc_library(
     name = "gcs_test_util_lib",
     hdrs = [
@@ -1840,6 +1856,7 @@ ray_cc_test(
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )

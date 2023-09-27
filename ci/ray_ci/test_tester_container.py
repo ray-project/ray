@@ -28,7 +28,10 @@ def test_run_tests_in_docker() -> None:
             "--test_env v=k t1 t2" in input_str
         )
 
-    with mock.patch("subprocess.Popen", side_effect=_mock_popen):
+    with mock.patch("subprocess.Popen", side_effect=_mock_popen), mock.patch(
+        "ci.ray_ci.tester_container.TesterContainer.install_ray",
+        return_value=None,
+    ):
         container = TesterContainer("team")
         container._run_tests_in_docker(["t1", "t2"], ["v=k"])
 
@@ -38,9 +41,14 @@ def test_run_script_in_docker() -> None:
         input_str = " ".join(input)
         assert "/bin/bash -iecuo pipefail -- run command" in input_str
 
-    with mock.patch("subprocess.check_output", side_effect=_mock_check_output):
+    with mock.patch(
+        "subprocess.check_output", side_effect=_mock_check_output
+    ), mock.patch(
+        "ci.ray_ci.tester_container.TesterContainer.install_ray",
+        return_value=None,
+    ):
         container = TesterContainer("team")
-        container.run_script(["run command"])
+        container.run_script_with_output(["run command"])
 
 
 def test_run_tests() -> None:
@@ -58,6 +66,9 @@ def test_run_tests() -> None:
         side_effect=_mock_run_tests_in_docker,
     ), mock.patch(
         "ci.ray_ci.tester_container.shard_tests", side_effect=_mock_shard_tests
+    ), mock.patch(
+        "ci.ray_ci.tester_container.TesterContainer.install_ray",
+        return_value=None,
     ):
         container = TesterContainer("team")
         # test_targets are not empty

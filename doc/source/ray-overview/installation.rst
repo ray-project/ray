@@ -60,8 +60,6 @@ and macOS by choosing the option that best matches your use case.
             - Core, Dashboard, Cluster Launcher, Serve with gRPC support
           * - `pip install -U "ray[rllib]"`
             - Core, Tune, RLlib
-          * - `pip install -U "ray[air]"`
-            - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve
           * - `pip install -U "ray[all]"`
             - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve, RLlib
 
@@ -141,9 +139,6 @@ You can install the nightly Ray wheels via the following links. These daily rele
 .. note::
 
   Python 3.11 support is experimental.
-
-.. note::
-  Warning: If you run into an error building protobuf, switching from miniconda to anaconda might help.
 
 .. _`Linux Python 3.11 (x86_64) (EXPERIMENTAL)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_x86_64.whl
 .. _`Linux Python 3.10 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl
@@ -370,10 +365,11 @@ To install Ray libraries, use ``pip`` as above or ``conda``/``mamba``.
 
 .. code-block:: bash
 
-  conda install -c conda-forge "ray-air"    # installs Ray + dependencies for Ray AI Runtime
+  conda install -c conda-forge "ray-data"   # installs Ray + dependencies for Ray Data
+  conda install -c conda-forge "ray-train"  # installs Ray + dependencies for Ray Train
   conda install -c conda-forge "ray-tune"   # installs Ray + dependencies for Ray Tune
-  conda install -c conda-forge "ray-rllib"  # installs Ray + dependencies for Ray RLlib
   conda install -c conda-forge "ray-serve"  # installs Ray + dependencies for Ray Serve
+  conda install -c conda-forge "ray-rllib"  # installs Ray + dependencies for Ray RLlib
 
 For a complete list of available ``ray`` libraries on Conda-forge, have a look
 at https://anaconda.org/conda-forge/ray-default
@@ -524,12 +520,12 @@ Docker images for Python 3.9.
 
     .. group-tab:: ray (Python 3.9)
 
-        Ray version: nightly (`cc983fc <https://github.com/ray-project/ray/commit/cc983fc3e64c1ba215e981a43dd0119c03c74ff1>`_)
+        Ray version: nightly (`fd227e2 <https://github.com/ray-project/ray/commit/fd227e29c41a9650fbe847e4815f58fb67ecc86f>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
     .. group-tab:: ray-ml (Python 3.9)
 
-        Ray version: nightly (`cc983fc <https://github.com/ray-project/ray/commit/cc983fc3e64c1ba215e981a43dd0119c03c74ff1>`_)
+        Ray version: nightly (`fd227e2 <https://github.com/ray-project/ray/commit/fd227e29c41a9650fbe847e4815f58fb67ecc86f>`_)
 
         .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.txt

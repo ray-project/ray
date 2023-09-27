@@ -2,13 +2,13 @@
 # number of replicas, and with intermediate serve handles (to simulate ensemble
 # models) either on or off.
 
-import aiohttp
 import asyncio
 import logging
-from pprint import pprint
 import time
+from pprint import pprint
 from typing import Callable, Dict, Union
 
+import aiohttp
 import numpy as np
 from starlette.requests import Request
 

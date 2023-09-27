@@ -220,7 +220,7 @@ Community Examples
 - `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.
 - `Simple custom environment for single RL with Ray and RLlib <https://github.com/lcipolina/Ray_tutorials/blob/main/RLLIB_Ray2_0.ipynb>`__:
-   Create a custom environment and train a single agent RL using Ray 2.0 with Tune and Air.
+   Create a custom environment and train a single agent RL using Ray 2.0 with Tune.
 - `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
 - `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
