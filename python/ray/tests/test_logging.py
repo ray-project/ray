@@ -956,7 +956,7 @@ def test_log_with_import():
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_log_monitor_ip_correct(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0, node_ip_address="127.0.0.2")
+    cluster.add_node(num_cpus=0, node_ip_address="127.0.0.1")
     cluster.add_node(num_cpus=1, node_ip_address="127.0.0.2")
     ray.init()
 
