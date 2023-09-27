@@ -73,7 +73,6 @@ class BackendExecutor:
         num_gpus_per_worker: float = 0,
         additional_resources_per_worker: Optional[Dict[str, float]] = None,
         max_retries: int = 3,
-        checkpoint_config: Optional[CheckpointConfig] = None,
     ):
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
