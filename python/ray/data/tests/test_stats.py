@@ -1311,7 +1311,7 @@ def test_spilled_stats(shutdown_only):
     ray.init(object_store_memory=100e6)
     # The size of dataset is 1000*(80*80*4)*8B, about 200MB.
     ds = (
-        ray.data.range_tensor(1000, shape=(80, 80, 4), parallelism=100)
+        ray.data.range_tensor(1000, shape=(80, 80, 4))
         .map_batches(lambda x: x)
         .materialize()
     )
@@ -1340,9 +1340,9 @@ Dataset memory:
     assert ds._plan.stats().dataset_bytes_spilled > 100e6
 
     ds = (
-        ray.data.range_tensor(1000, shape=(80, 80, 4), parallelism=100)
+        ray.data.range_tensor(1000, shape=(80, 80, 4))
         .map_batches(lambda x: x)
-        .limit(1000)
+        .random_shuffle()
         .map_batches(lambda x: x)
         .materialize()
     )
@@ -1351,7 +1351,7 @@ Dataset memory:
 
     # The size of dataset is around 50MB, there should be no spillage
     ds = (
-        ray.data.range_tensor(250, shape=(80, 80, 4), parallelism=100)
+        ray.data.range_tensor(250, shape=(80, 80, 4), parallelism=1)
         .map_batches(lambda x: x)
         .materialize()
     )
