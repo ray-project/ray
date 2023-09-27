@@ -194,31 +194,45 @@ def _autodetect_tpu_version() -> Optional[str]:
     """
 
     def accelerator_type_to_version(accelerator_type: str) -> str:
-        assert_tpu_accelerator_type(accelerator_type)
-        return "TPU-" + str(accelerator_type.split("-")[0]).upper()
+        if valid_tpu_accelerator_type(accelerator_type):
+            return "TPU-" + str(accelerator_type.split("-")[0]).upper()
+        else:
+            return None
 
+    detected_tpu_version = None
     # GKE-based check
     accelerator_type = os.getenv(
         ray_constants.RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, None
     )
     if accelerator_type is not None:
-        return accelerator_type_to_version(accelerator_type)
+        detected_tpu_version = accelerator_type_to_version(accelerator_type)
+    else:
+        # GCE-based VM check
+        try:
+            accelerator_type_request = requests.get(
+                ray_constants.RAY_GCE_TPU_ACCELERATOR_ENDPOINT,
+                headers=ray_constants.RAY_GCE_TPU_HEADERS,
+            )
+            if (
+                accelerator_type_request.status_code == 200
+                and accelerator_type_request.text
+            ):
+                detected_tpu_version = accelerator_type_to_version(
+                    accelerator_type_request.text
+                )
+        except requests.RequestException as e:
+            logging.info(
+                "While trying to autodetect a TPU type, "
+                " unable to poll TPU GCE metadata: %s",
+                e,
+            )
 
-    # GCE-based VM check
-    try:
-        accelerator_type_request = requests.get(
-            ray_constants.RAY_GCE_TPU_ACCELERATOR_ENDPOINT,
-            headers=ray_constants.RAY_GCE_TPU_HEADERS,
-        )
-        if accelerator_type_request.status_code == 200:
-            return accelerator_type_to_version(accelerator_type_request.text)
-    except requests.RequestException as e:
-        logging.info("Unable to poll TPU GCE metadata: %s", e)
-
-    return None
+    if detected_tpu_version is None:
+        logging.info("Failed to auto-detect TPU type.")
+    return detected_tpu_version
 
 
-def assert_tpu_accelerator_type(accelerator_type: str):
+def valid_tpu_accelerator_type(accelerator_type: str):
     """Assert that the inputed accelerator_type is formatted correctly.
 
     The accelerator_type field follows a form of v{generation}-{cores/chips}.
@@ -236,7 +250,5 @@ def assert_tpu_accelerator_type(accelerator_type: str):
     """
     expected_pattern = re.compile(r"^v\d+[a-zA-Z]*-\d+$")
     if not expected_pattern.match(accelerator_type):
-        raise ValueError(
-            "`acceleratorType` should match v(generation)-(cores/chips). "
-            f"Got {accelerator_type}."
-        )
+        return False
+    return True
