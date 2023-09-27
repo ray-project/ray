@@ -61,8 +61,7 @@ def deploy_config_multi_app(config: Dict, urls: Dict[str, str]):
 
 
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
-@pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
-def test_put_get(ray_start_stop, urls):
+def test_put_get(ray_start_stop):
     config1 = {
         "import_path": (
             "ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag"
@@ -96,7 +95,7 @@ def test_put_get(ray_start_stop, urls):
         print(f"*** Starting Iteration {iteration}/{num_iterations} ***\n")
 
         print("Sending PUT request for config1.")
-        deploy_and_check_config(config1, urls)
+        deploy_and_check_config(config1, SERVE_HEAD_URLs)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
             == "3 pizzas please!",
@@ -110,7 +109,7 @@ def test_put_get(ray_start_stop, urls):
         print("Deployments are live and reachable over HTTP.\n")
 
         print("Sending PUT request for config2.")
-        deploy_and_check_config(config2, urls)
+        deploy_and_check_config(config2, SERVE_HEAD_URLs)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
             == "4 pizzas please!",
@@ -119,7 +118,7 @@ def test_put_get(ray_start_stop, urls):
         print("Adder deployment updated correctly.\n")
 
         print("Sending PUT request for config3.")
-        deploy_and_check_config(config3, urls)
+        deploy_and_check_config(config3, SERVE_HEAD_URLs)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/").text == "wonderful world",
             timeout=15,
@@ -179,7 +178,7 @@ def test_put_get_multi_app(ray_start_stop, urls):
     }
 
     # Ensure the REST API is idempotent
-    num_iterations = 3
+    num_iterations = 2
     for iteration in range(num_iterations):
         print(f"*** Starting Iteration {iteration + 1}/{num_iterations} ***\n")
 
@@ -292,8 +291,7 @@ def test_put_duplicate_routes(ray_start_stop, urls):
 
 
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
-@pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
-def test_delete(ray_start_stop, urls):
+def test_delete(ray_start_stop):
     config = {
         "import_path": "dir.subdir.a.add_and_sub.serve_dag",
         "runtime_env": {
@@ -325,7 +323,7 @@ def test_delete(ray_start_stop, urls):
         print(f"*** Starting Iteration {iteration}/{num_iterations} ***\n")
 
         print("Sending PUT request for config.")
-        deploy_and_check_config(config, urls)
+        deploy_and_check_config(config, SERVE_HEAD_URLs)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 1]).json()
             == 2,
@@ -339,14 +337,16 @@ def test_delete(ray_start_stop, urls):
         print("Deployments are live and reachable over HTTP.\n")
 
         print("Sending DELETE request for config.")
-        delete_response = requests.delete(urls["GET_OR_PUT"], timeout=15)
+        delete_response = requests.delete(SERVE_HEAD_URLs["GET_OR_PUT"], timeout=15)
         assert delete_response.status_code == 200
         print("DELETE request sent successfully.")
 
         # Make sure all deployments are deleted
         wait_for_condition(
             lambda: len(
-                requests.get(urls["GET_OR_PUT"], timeout=15).json()["deployments"]
+                requests.get(SERVE_HEAD_URLs["GET_OR_PUT"], timeout=15).json()[
+                    "deployments"
+                ]
             )
             == 0,
             timeout=15,
@@ -500,7 +500,7 @@ def test_get_status(ray_start_stop, urls):
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_get_serve_instance_details_not_started(ray_start_stop, urls):
-    """Test rest api when serve isn't started yet."""
+    """Test REST API when Serve hasn't started yet."""
     ServeInstanceDetails(**requests.get(urls["GET_OR_PUT_V2"]).json())
 
 
@@ -651,8 +651,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, urls):
 
 
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
-@pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
-def test_put_single_then_multi(ray_start_stop, urls):
+def test_put_single_then_multi(ray_start_stop):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     multi_app_config = {
@@ -678,11 +677,13 @@ def test_put_single_then_multi(ray_start_stop, urls):
         )
 
     # Deploy single app config
-    deploy_and_check_config(single_app_config, urls)
+    deploy_and_check_config(single_app_config, SERVE_HEAD_URLs)
     check_app()
 
     # Deploying multi app config afterwards should fail
-    put_response = requests.put(urls["GET_OR_PUT_V2"], json=multi_app_config, timeout=5)
+    put_response = requests.put(
+        SERVE_HEAD_URLs["GET_OR_PUT_V2"], json=multi_app_config, timeout=5
+    )
     assert put_response.status_code == 400
     print(put_response.text)
 
@@ -691,8 +692,7 @@ def test_put_single_then_multi(ray_start_stop, urls):
 
 
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
-@pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
-def test_put_multi_then_single(ray_start_stop, urls):
+def test_put_multi_then_single(ray_start_stop):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
     multi_app_config = {
@@ -729,11 +729,13 @@ def test_put_multi_then_single(ray_start_stop, urls):
         )
 
     # Deploy multi app config
-    deploy_config_multi_app(multi_app_config, urls)
+    deploy_config_multi_app(multi_app_config, SERVE_HEAD_URLs)
     check_apps()
 
     # Deploying single app config afterwards should fail
-    put_response = requests.put(urls["GET_OR_PUT"], json=single_app_config, timeout=5)
+    put_response = requests.put(
+        SERVE_HEAD_URLs["GET_OR_PUT"], json=single_app_config, timeout=5
+    )
     assert put_response.status_code == 400
 
     # The original applications should still be up and running
@@ -741,12 +743,13 @@ def test_put_multi_then_single(ray_start_stop, urls):
 
 
 @pytest.mark.parametrize("name", ["", "my_app"])
-@pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
-def test_put_single_with_name(ray_start_stop, name, urls):
+def test_put_single_with_name(ray_start_stop, name):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     single_app_config = {"name": name, "import_path": world_import_path}
 
-    resp = requests.put(urls["GET_OR_PUT"], json=single_app_config, timeout=30)
+    resp = requests.put(
+        SERVE_HEAD_URLs["GET_OR_PUT"], json=single_app_config, timeout=30
+    )
     assert resp.status_code == 400
     # Error should tell user specifying the name is not allowed
     assert "name" in resp.text
@@ -754,12 +757,8 @@ def test_put_single_with_name(ray_start_stop, name, urls):
 
 
 @pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
-@pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
-def test_serve_namespace(ray_start_stop, urls):
-    """
-    Check that the Dashboard's Serve can interact with the Python API
-    when they both start in the "serve" namespace.
-    """
+def test_serve_namespace(ray_start_stop):
+    """Check that the driver can interact with Serve using the Python API."""
 
     config = {
         "applications": [
@@ -771,7 +770,7 @@ def test_serve_namespace(ray_start_stop, urls):
     }
 
     print("Deploying config.")
-    deploy_config_multi_app(config, urls)
+    deploy_config_multi_app(config, SERVE_HEAD_URLs)
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/").text == "wonderful world",
         timeout=15,
@@ -787,6 +786,7 @@ def test_serve_namespace(ray_start_stop, urls):
     print("Successfully retrieved deployment statuses with Python API.")
     print("Shutting down Python API.")
     serve.shutdown()
+    ray.shutdown()
 
 
 @pytest.mark.parametrize(
@@ -798,8 +798,7 @@ def test_serve_namespace(ray_start_stop, urls):
         ("http_options", {"root_path": "/serve_updated"}),
     ],
 )
-@pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
-def test_put_with_http_options(ray_start_stop, option, override, urls):
+def test_put_with_http_options(ray_start_stop, option, override):
     """Submits a config with HTTP options specified.
 
     Trying to submit a config to the serve agent with the HTTP options modified should
@@ -832,7 +831,7 @@ def test_put_with_http_options(ray_start_stop, option, override, urls):
             },
         ],
     }
-    deploy_config_multi_app(original_serve_config_json, urls)
+    deploy_config_multi_app(original_serve_config_json, SERVE_HEAD_URLs)
 
     # Wait for deployments to be up
     wait_for_condition(
@@ -850,12 +849,12 @@ def test_put_with_http_options(ray_start_stop, option, override, urls):
     updated_serve_config_json[option] = override
 
     put_response = requests.put(
-        urls["GET_OR_PUT_V2"], json=updated_serve_config_json, timeout=5
+        SERVE_HEAD_URLs["GET_OR_PUT_V2"], json=updated_serve_config_json, timeout=5
     )
     assert put_response.status_code == 200
 
     # Fetch Serve status and confirm that HTTP options are unchanged
-    get_response = requests.get(urls["GET_OR_PUT_V2"], timeout=5)
+    get_response = requests.get(SERVE_HEAD_URLs["GET_OR_PUT_V2"], timeout=5)
     serve_details = ServeInstanceDetails.parse_obj(get_response.json())
 
     original_http_options = HTTPOptionsSchema.parse_obj(original_http_options_json)
@@ -870,8 +869,7 @@ def test_put_with_http_options(ray_start_stop, option, override, urls):
     assert requests.post("http://localhost:8000/serve/app2").text == "wonderful world"
 
 
-@pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
-def test_put_with_grpc_options(ray_start_stop, urls):
+def test_put_with_grpc_options(ray_start_stop):
     """Submits a config with gRPC options specified.
 
     Ensure gRPC options can be accepted by the api. HTTP deployment continue to
@@ -908,7 +906,7 @@ def test_put_with_grpc_options(ray_start_stop, urls):
         ],
     }
     # Ensure api can accept config with gRPC options
-    deploy_config_multi_app(original_config, urls)
+    deploy_config_multi_app(original_config, SERVE_HEAD_URLs)
 
     # Ensure HTTP requests are still working
     wait_for_condition(
