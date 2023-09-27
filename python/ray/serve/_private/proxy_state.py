@@ -5,6 +5,7 @@ import random
 import time
 import traceback
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple, Type
 
 import ray
@@ -24,7 +25,7 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.proxy import ProxyActor
-from ray.serve._private.utils import format_actor_name
+from ray.serve._private.utils import check_obj_ref_ready_nowait, format_actor_name
 from ray.serve.config import DeploymentMode, HTTPOptions, gRPCOptions
 from ray.serve.schema import ProxyDetails
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -32,39 +33,23 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+class ActorWrapperStatus(str, Enum):
+    STARTING = "STARTING"
+    HEALTHY = "HEALTHY"
+    UNHEALTHY = "UNHEALTHY"
+    DRAINING = "DRAINING"
+    # The DRAINED status is a momentary state
+    # just before the proxy is removed
+    # so this status won't show up on the dashboard.
+    DRAINED = "DRAINED"
+
+
 class ActorWrapper(ABC):
-    def __init__(self, actor_handle: ActorHandle):
-        self._actor_handle = actor_handle
-        self._ready_obj_ref = None
-        self._health_check_obj_ref = None
-        self._is_drained_obj_ref = None
-        self._update_draining_obj_ref = None
-
     @property
+    @abstractmethod
     def actor_id(self) -> str:
-        return self._actor_handle._actor_id.hex()
-
-    @property
-    def actor_handle(self) -> ActorHandle:
-        return self._actor_handle
-
-    @property
-    def ready_obj_ref(self):
-        return self._ready_obj_ref
-
-    @property
-    def health_check_obj_ref(self):
-        return self._health_check_obj_ref
-
-    @property
-    def is_drained_obj_ref(self):
-        return self._is_drained_obj_ref
-
-    def clear_health_check_obj_ref(self):
-        self._health_check_obj_ref = None
-
-    def clear_drained_obj_ref(self):
-        self._is_drained_obj_ref = None
+        """Return the actor id of the proxy actor."""
+        raise NotImplementedError
 
     @abstractmethod
     def start_new_ready_check(self):
@@ -107,12 +92,51 @@ class ActorWrapper(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def kill_proxy(self):
+    def kill(self):
         """Kill the proxy actor."""
         raise NotImplementedError
 
 
 class ProxyActorWrapper(ActorWrapper):
+    def __init__(self, actor_handle: ActorHandle):
+        self._actor_handle = actor_handle
+        self._ready_obj_ref = None
+        self._health_check_obj_ref = None
+        self._is_drained_obj_ref = None
+        self._update_draining_obj_ref = None
+
+    @property
+    def actor_id(self) -> str:
+        """Return the actor id of the proxy actor."""
+        return self._actor_handle._actor_id.hex()
+
+    @property
+    def actor_handle(self) -> ActorHandle:
+        """Return the actor handle of the proxy actor.
+
+        This is used in _start_controller() in _private/controller.py to check whether
+        the proxies exist as well as used in some tests.
+        """
+        return self._actor_handle
+
+    @property
+    def health_check_ongoing(self) -> bool:
+        """Return whether the health check is ongoing or not."""
+        return self._health_check_obj_ref is not None
+
+    @property
+    def is_draining(self) -> bool:
+        """Return whether the drained check is ongoing or not."""
+        return self._is_drained_obj_ref is not None
+
+    def reset_drained_check(self):
+        """Reset the drained check object reference."""
+        self._is_drained_obj_ref = None
+
+    def reset_health_check(self):
+        """Reset the health check object reference."""
+        self._health_check_obj_ref = None
+
     def start_new_ready_check(self):
         """Start a new ready check on the proxy actor."""
         self._ready_obj_ref = self._actor_handle.ready.remote()
@@ -127,16 +151,37 @@ class ProxyActorWrapper(ActorWrapper):
             _after=self._update_draining_obj_ref
         )
 
-    def is_ready(self) -> Any:
-        """Return the payload from proxy ready check when ready."""
-        finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
-        if finished:
-            return ray.get(finished[0])
+    def is_ready(self) -> Tuple[ActorWrapperStatus, str, str]:
+        """Return the payload from proxy ready check when ready.
+
+        The return type for this method is a tuple of worker id and log file path
+        returned from the proxy actor's ready() method. If the proxy actor is not
+        ready, then this method will return None.
+        """
+        try:
+            finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
+            if finished:
+                return json.loads(ray.get(finished[0]))
+        except RayActorError:
+            self.set_status(ProxyStatus.UNHEALTHY)
+            logger.warning(
+                "Unexpected actor death when checking readiness of "
+                f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
+            )
+        except Exception:
+            self.try_update_status(ProxyStatus.UNHEALTHY)
+            logger.warning(
+                "Unexpected error occurred when checking readiness of "
+                f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
+            )
 
         return None
 
     def is_healthy(self) -> bool:
-        """Return whether the proxy actor is healthy or not."""
+        """Return whether the proxy actor is healthy or not.
+
+        # TODO: describe the the ref is reset
+        """
         finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
         if finished:
             self._health_check_obj_ref = None
@@ -145,7 +190,10 @@ class ProxyActorWrapper(ActorWrapper):
         return False
 
     def is_drained(self) -> bool:
-        """Return whether the proxy actor is drained or not."""
+        """Return whether the proxy actor is drained or not.
+
+        # TODO: describe the the ref is reset
+        """
         finished, _ = ray.wait([self._is_drained_obj_ref], timeout=0)
         if finished:
             self._is_drained_obj_ref = None
@@ -155,7 +203,14 @@ class ProxyActorWrapper(ActorWrapper):
 
     def check_health(self):
         """Check the health of the proxy actor."""
-        ray.get(self._actor_handle.check_health.remote(), timeout=0.001)
+        try:
+            ray.get(self._actor_handle.check_health.remote(), timeout=0.001)
+        except RayActorError:
+            # The actor is dead, so it's ready for shutdown.
+            return True
+        except GetTimeoutError:
+            # The actor is still alive, so it's not ready for shutdown.
+            return False
 
     def update_draining(self, draining: bool):
         """Update the draining status of the proxy actor."""
@@ -163,9 +218,51 @@ class ProxyActorWrapper(ActorWrapper):
             draining, _after=self._update_draining_obj_ref
         )
 
-    def kill_proxy(self):
+    def kill(self):
         """Kill the proxy actor."""
         ray.kill(self._actor_handle, no_restart=True)
+
+    @classmethod
+    def start_proxy(
+        cls,
+        config: HTTPOptions,
+        grpc_options: gRPCOptions,
+        controller_name: str,
+        name: str,
+        node_id: str,
+        node_ip_address: str,
+        port: int,
+        detached: bool,
+    ) -> ActorWrapper:
+        """Helper to start a single proxy.
+
+        Takes the name of the proxy, the node id, and the node ip address. and creates a
+        new ProxyActor actor handle for the proxy. In addition, setting up
+        `TEST_WORKER_NODE_HTTP_PORT` env var will help head node and worker nodes to be
+        opening on different HTTP ports. Setting up `TEST_WORKER_NODE_GRPC_PORT` env var
+        will help head node and worker nodes to be opening on different gRPC ports.
+        """
+        proxy = ProxyActor.options(
+            num_cpus=config.num_cpus,
+            name=name,
+            namespace=SERVE_NAMESPACE,
+            lifetime="detached" if detached else None,
+            max_concurrency=ASYNC_CONCURRENCY,
+            max_restarts=0,
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+        ).remote(
+            config.host,
+            port,
+            config.root_path,
+            controller_name=controller_name,
+            node_ip_address=node_ip_address,
+            node_id=node_id,
+            http_middlewares=config.middlewares,
+            request_timeout_s=config.request_timeout_s,
+            keep_alive_timeout_s=config.keep_alive_timeout_s,
+            grpc_options=grpc_options,
+        )
+        return cls(actor_handle=proxy)
 
 
 class ProxyState:
@@ -266,7 +363,7 @@ class ProxyState:
         """Perform periodic health checks."""
         assert self._status in {ProxyStatus.HEALTHY, ProxyStatus.DRAINING}
 
-        if self._proxy_actor_wrapper.health_check_obj_ref:
+        if self._proxy_actor_wrapper.health_check_ongoing:
             try:
                 healthy = self._proxy_actor_wrapper.is_healthy()
                 if healthy:
@@ -277,7 +374,7 @@ class ProxyState:
                 ):
                     # Health check hasn't returned and the timeout is up, consider it
                     # failed.
-                    self._proxy_actor_wrapper.clear_health_check_obj_ref()
+                    self._proxy_actor_wrapper.reset_health_check()
                     logger.warning(
                         "Didn't receive health check response for proxy "
                         f"{self._node_id} after {PROXY_HEALTH_CHECK_TIMEOUT_S}s"
@@ -292,7 +389,7 @@ class ProxyState:
 
         # If there's no active in-progress health check and it has been more than 10
         # seconds since the last health check, perform another health check.
-        if self._proxy_actor_wrapper.health_check_obj_ref:
+        if self._proxy_actor_wrapper.health_check_ongoing:
             return
         randomized_period_s = PROXY_HEALTH_CHECK_PERIOD_S * random.uniform(0.9, 1.1)
         if time.time() - self._last_health_check_time > randomized_period_s:
@@ -303,7 +400,7 @@ class ProxyState:
         """Check whether the proxy actor is drained or not."""
         assert self._status == ProxyStatus.DRAINING
 
-        if self._proxy_actor_wrapper.is_drained_obj_ref:
+        if self._proxy_actor_wrapper.is_draining:
             try:
                 drained = self._proxy_actor_wrapper.is_drained()
                 if drained:
@@ -356,8 +453,8 @@ class ProxyState:
         if self._status == ProxyStatus.STARTING:
             try:
                 ready_payload = self._proxy_actor_wrapper.is_ready()
-                if ready_payload:
-                    worker_id, log_file_path = json.loads(ready_payload)
+                if ready_payload is not None:
+                    worker_id, log_file_path = ready_payload
                     self.try_update_status(ProxyStatus.HEALTHY)
                     self.update_actor_details(
                         worker_id=worker_id,
@@ -372,12 +469,6 @@ class ProxyState:
                         "Didn't receive ready check response for proxy "
                         f"{self._node_id} after {ready_check_timeout}s."
                     )
-            except RayActorError:
-                self.set_status(ProxyStatus.UNHEALTHY)
-                logger.warning(
-                    "Unexpected actor death when checking readiness of "
-                    f"proxy on node {self._node_id}:\n{traceback.format_exc()}"
-                )
             except Exception:
                 self.try_update_status(ProxyStatus.UNHEALTHY)
                 logger.warning(
@@ -398,7 +489,7 @@ class ProxyState:
             self.set_status(ProxyStatus.DRAINING)
             # All the update_draining calls are ordered via `_after`.
             self._proxy_actor_wrapper.update_draining(draining=True)
-            assert self._proxy_actor_wrapper.is_drained_obj_ref is None
+            assert self._proxy_actor_wrapper.is_draining is False
             assert self._last_drain_check_time is None
             self._last_drain_check_time = time.time()
 
@@ -406,7 +497,7 @@ class ProxyState:
             logger.info(f"Stop draining the proxy actor on node {self._node_id}")
             self.set_status(ProxyStatus.HEALTHY)
             self._proxy_actor_wrapper.update_draining(draining=False)
-            self._proxy_actor_wrapper.clear_drained_obj_ref()
+            self._proxy_actor_wrapper.reset_drained_check()
             self._last_drain_check_time = None
 
         if self._status == ProxyStatus.DRAINING:
@@ -414,7 +505,7 @@ class ProxyState:
 
     def shutdown(self):
         self._shutting_down = True
-        self._proxy_actor_wrapper.kill_proxy()
+        self._proxy_actor_wrapper.kill()
 
     def is_ready_for_shutdown(self) -> bool:
         """Return whether the proxy actor is shutdown.
@@ -427,7 +518,7 @@ class ProxyState:
             return False
 
         try:
-            self._proxy_actor_wrapper.check_health()
+            self._proxy_actor_wrapper.check_healt()
         except RayActorError:
             # The actor is dead, so it's ready for shutdown.
             return True
@@ -583,15 +674,7 @@ class ProxyStateManager:
 
     def _start_proxy(
         self, name: str, node_id: str, node_ip_address: str
-    ) -> ActorHandle:
-        """Helper to start a single proxy.
-
-        Takes the name of the proxy, the node id, and the node ip address. and creates a
-        new ProxyActor actor handle for the proxy. In addition, setting up
-        `TEST_WORKER_NODE_HTTP_PORT` env var will help head node and worker nodes to be
-        opening on different HTTP ports. Setting up `TEST_WORKER_NODE_GRPC_PORT` env var
-        will help head node and worker nodes to be opening on different gRPC ports.
-        """
+    ) -> ActorWrapper:
         port = self._config.port
         grpc_options = self._grpc_options
 
@@ -615,28 +698,16 @@ class ProxyStateManager:
                 f"{int(os.getenv('TEST_WORKER_NODE_GRPC_PORT'))}"
             )
             grpc_options.port = int(os.getenv("TEST_WORKER_NODE_GRPC_PORT"))
-
-        proxy = self._proxy_actor_class.options(
-            num_cpus=self._config.num_cpus,
-            name=name,
-            namespace=SERVE_NAMESPACE,
-            lifetime="detached" if self._detached else None,
-            max_concurrency=ASYNC_CONCURRENCY,
-            max_restarts=0,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
-        ).remote(
-            self._config.host,
-            port,
-            self._config.root_path,
-            controller_name=self._controller_name,
-            node_ip_address=node_ip_address,
-            node_id=node_id,
-            http_middlewares=self._config.middlewares,
-            request_timeout_s=self._config.request_timeout_s,
-            keep_alive_timeout_s=self._config.keep_alive_timeout_s,
+        return self._proxy_actor_wrapper_class.start_proxy(
+            config=self._config,
             grpc_options=grpc_options,
+            controller_name=self._controller_name,
+            name=name,
+            node_id=node_id,
+            node_ip_address=node_ip_address,
+            port=port,
+            detached=self._detached,
         )
-        return proxy
 
     def _start_proxies_if_needed(self, target_nodes) -> None:
         """Start a proxy on every node if it doesn't already exist."""
@@ -654,14 +725,14 @@ class ProxyStateManager:
                     f"listening on '{self._config.host}:{self._config.port}'",
                     extra={"log_to_stderr": False},
                 )
-                proxy = self._start_proxy(
+                proxy_actor_wrapper = self._start_proxy(
                     name=name,
                     node_id=node_id,
                     node_ip_address=node_ip_address,
                 )
 
             self._proxy_states[node_id] = ProxyState(
-                proxy_actor_wrapper=self._proxy_actor_wrapper_class(actor_handle=proxy),
+                proxy_actor_wrapper=proxy_actor_wrapper,
                 actor_name=name,
                 node_id=node_id,
                 node_ip=node_ip_address,
