@@ -10,11 +10,11 @@ import ray
 from ray import serve
 from ray._private.test_utils import (
     SignalActor,
+    run_string_as_driver,
     setup_tls,
     teardown_tls,
     wait_for_condition,
 )
-from ray._private.tls_utils import load_certs_from_env
 from ray.cluster_utils import Cluster
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
@@ -44,43 +44,68 @@ def ray_cluster():
     cluster.shutdown()
 
 
+@pytest.fixture
+def use_tls(request):
+    if request.param:
+        key_filepath, cert_filepath, temp_dir = setup_tls()
+    yield request.param
+    if request.param:
+        teardown_tls(key_filepath, cert_filepath, temp_dir)
+
+
 @pytest.mark.skipif(
     sys.platform == "darwin",
     reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
 )
-def test_tls(ray_cluster):
+@pytest.mark.parametrize("use_tls", [True], indirect=True)
+def test_tls(use_tls):
     """Test gRPC with TLS"""
 
-    key_filepath, cert_filepath, temp_dir = setup_tls()
-    server_cert_chain, private_key, ca_cert = load_certs_from_env()
+    run_string_as_driver(
+        """
+import ray
+from ray.cluster_utils import Cluster
+from ray._private.tls_utils import load_certs_from_env
+from ray import serve
+import grpc
+from ray.serve.tests.utils import ping_grpc_call_method
+from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve.tests.test_config_files.grpc_deployment import g
 
-    cluster = ray_cluster
-    cluster.add_node(num_cpus=2)
-    cluster.connect(namespace=SERVE_NAMESPACE)
+cluster = Cluster()
+cluster.add_node(num_cpus=2)
+cluster.connect(namespace=SERVE_NAMESPACE)
 
-    grpc_port = 9000
-    grpc_servicer_functions = [
-        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
-        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
-    ]
+server_cert_chain, private_key, ca_cert = load_certs_from_env()
 
-    serve.start(
-        grpc_options={
-            "port": grpc_port,
-            "grpc_servicer_functions": grpc_servicer_functions,
-        },
+grpc_port = 9000
+grpc_servicer_functions = [
+    "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+]
+
+serve.start(
+    grpc_options={
+        "port": grpc_port,
+        "grpc_servicer_functions": grpc_servicer_functions,
+    },
+)
+
+credentials = grpc.ssl_channel_credentials(
+    certificate_chain=server_cert_chain,
+    private_key=private_key,
+    root_certificates=ca_cert,
+)
+
+serve.run(target=g)
+channel = grpc.secure_channel("localhost:9000", credentials)
+ping_grpc_call_method(channel, "default")
+serve.shutdown()
+ray.shutdown()
+cluster.shutdown()
+        """,
+        env=os.environ.copy(),
     )
-
-    credentials = grpc.ssl_channel_credentials(
-        certificate_chain=server_cert_chain,
-        private_key=private_key,
-        root_certificates=ca_cert,
-    )
-
-    serve.run(target=g)
-    channel = grpc.secure_channel("localhost:9000", credentials)
-    ping_grpc_call_method(channel, "default")
-    teardown_tls(key_filepath, cert_filepath, temp_dir)
 
 
 def test_serving_request_through_grpc_proxy(ray_cluster):
