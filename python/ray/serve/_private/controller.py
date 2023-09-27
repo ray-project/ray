@@ -149,9 +149,6 @@ class ServeController:
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
-        # Dictionary of deployment_name -> proxy_name -> queue length.
-        self.deployment_stats = defaultdict(lambda: defaultdict(dict))
-
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
 
