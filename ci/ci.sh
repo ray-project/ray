@@ -219,7 +219,6 @@ test_python() {
       -python/ray/serve:test_standalone_2 # Multinode not supported on Windows
       -python/ray/serve:test_gradio
       -python/ray/serve:test_gradio_visualization
-      -python/ray/serve:test_air_integrations_gpu
       -python/ray/serve:test_fastapi
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
