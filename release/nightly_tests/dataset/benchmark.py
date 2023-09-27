@@ -17,30 +17,23 @@ class BenchmarkMetric(Enum):
 
 
 class Benchmark:
-    """Benchmark class used for Ray Datasets.
-
-    Call ``run(fn)`` to benchmark a specific piece of code/function.
-    ``fn`` is expected to return the final Dataset. Benchmark ensures
-    final Dataset is fully executed. Plan to add Dataset statistics
-    logging in the future.
-
-    Call ``write_result()`` to write benchmark result in file.
-    Result can be rendered in dashboard later through other tool.
-    We should use this class for any benchmark related to Ray Datasets.
-    It works for both local and distribute benchmarking.
+    """Utility class used for Ray Data release tests and benchmarks, which works
+    for both local and distributed benchmarking. When run on the nightly release
+    test pipeline, the results are written to our internal database, which
+    can then be rendered on the dashboard. Usage tips:
 
     A typical workflow would be:
 
-    benchmark = Benchmark(...)
+    benchmark = Benchmark("benchmark-name")
 
     # set up (such as input read or generation)
     ...
 
-    benchmark.run(..., fn_1)
-    benchmark.run(..., fn_2)
-    benchmark.run(..., fn_3)
+    benchmark.run_materialize_ds("case-1", fn_1)
+    benchmark.run_iterate_ds("case-2", ds_iter)
+    benchmark.run_fn("case-3", fn_3)
 
-    benchmark.write_result()
+    benchmark.write_result("output.json")
 
     See example usage in ``aggregate_benchmark.py``.
     """
@@ -50,12 +43,22 @@ class Benchmark:
         self.result = {}
         print(f"Running benchmark: {name}")
 
-    def run_materialize_ds(self, name: str, fn: Callable[..., Dataset], **fn_run_args):
+    def run_materialize_ds(
+        self,
+        name: str,
+        fn: Callable[..., Dataset],
+        *fn_args,
+        **fn_run_args,
+    ):
+        """Run a benchmark on materializing a Ray Dataset. ``fn`` is expected to
+        return the Dataset which is to be materialized. Runtime and throughput
+        are automatically calculated and reported."""
+
         gc.collect()
 
         print(f"Running case: {name}")
         start_time = time.perf_counter()
-        output_ds = fn(**fn_run_args)
+        output_ds = fn(*fn_args, **fn_run_args)
         output_ds.materialize()
         duration = time.perf_counter() - start_time
 
@@ -67,8 +70,16 @@ class Benchmark:
         print(f"Result of case {name}: {self.result[name]}")
 
     def run_iterate_ds(
-        self, name: str, ds_iterator: Iterator[Any], batch_size: int, **fn_run_args
+        self,
+        name: str,
+        ds_iterator: Iterator[Any],
+        batch_size: int,
     ):
+        """Run a benchmark iterating over a dataset (not limited to Ray Data,
+        e.g. could be an iterator over Torch dataloader). ``ds_iterator`` is expected
+        to be an iterator over the dataset, yielding batches of the given size.
+        Runtime and throughput are automatically calculated and reported."""
+
         gc.collect()
 
         print(f"Running case: {name}")
@@ -88,8 +99,12 @@ class Benchmark:
         print(f"Result of case {name}: {self.result[name]}")
 
     def run_fn(
-        self, name: str, fn: Callable[..., Dict[str, float]], *fn_args, **fn_kwargs
+        self, name: str, fn: Callable[..., Dict[str, Any]], *fn_args, **fn_kwargs
     ):
+        """Run a benchmark for a specific function. ``fn`` is expected to return a
+        Dict[str, Any] of metric labels to metric values, which are reported at
+        the end of the benchmark. Runtime is automatically calculated and reported."""
+
         gc.collect()
 
         print(f"Running case: {name}")
@@ -102,6 +117,8 @@ class Benchmark:
             BenchmarkMetric.RUNTIME.value: duration,
         }
         if isinstance(fn_output, dict):
+            # Filter out metrics which are not in BenchmarkMetric,
+            # to ensure proper format of outputs.
             for m in BenchmarkMetric:
                 metric_value = fn_output.get(m.value)
                 if metric_value:
@@ -111,6 +128,10 @@ class Benchmark:
         print(f"Result of case {name}: {curr_case_metrics}")
 
     def write_result(self, output_path="/tmp/result.json"):
+        """Write all collected benchmark results to `output_path`.
+        The result is a dict of the form:
+        ``{case_name: {metric_name: metric_value, ...}}``."""
+
         test_output_json = os.environ.get("TEST_OUTPUT_JSON", output_path)
         with open(test_output_json, "w") as f:
             self.result["name"] = self.name
