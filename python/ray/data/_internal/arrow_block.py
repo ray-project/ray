@@ -149,9 +149,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         pd = _lazy_import_pandas()
         if pd and isinstance(table, pd.DataFrame):
-            # Python types do not get checked at runtime,
-            # if the user explicity specifies batch_format='pandas'
-            # batches can be interleaved with both pandas and arrow blocks
+            # Python types are not checked at runtime.
+            # If the user explicity force batches to be
+            # be created with Pandas DataFrame blocks by specifying
+            # batch_format='pandas' in the task graph, then
+            # ArrowBlockAccessor(block) can be initalized with a
+            # table of type pandas.DataFrame.
             table = pyarrow.Table.from_pandas(table)
 
         super().__init__(table)
