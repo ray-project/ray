@@ -24,7 +24,7 @@ from ray.data._internal.numpy_support import (
     is_valid_udf_return,
 )
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import _truncated_repr, find_partitions
+from ray.data._internal.util import _truncated_repr, find_partitions, _lazy_import_pandas
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -139,9 +139,17 @@ class ArrowBlockBuilder(TableBlockBuilder):
 class ArrowBlockAccessor(TableBlockAccessor):
     ROW_TYPE = ArrowRow
 
-    def __init__(self, table: "pyarrow.Table"):
+    def __init__(self, table: Union["pyarrow.Table", "pandas.DataFrame"]):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
+
+        pd = _lazy_import_pandas()
+        if pd and isinstance(table, pd.DataFrame):
+            # Python types do not get checked at runtime,
+            # if the user explicity specifies batch_format='pandas'
+            # batches can be interleaved with both pandas and arrow blocks
+            table = pyarrow.Table.from_pandas(table)
+
         super().__init__(table)
 
     def column_names(self) -> List[str]:
