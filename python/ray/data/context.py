@@ -211,7 +211,9 @@ class DataContext:
         self.use_legacy_iter_batches = use_legacy_iter_batches
         self.enable_progress_bars = enable_progress_bars
         self.file_metadata_shuffler = file_metadata_shuffler
-        self.enable_get_object_locations_for_metrics = enable_get_object_locations_for_metrics
+        self.enable_get_object_locations_for_metrics = (
+            enable_get_object_locations_for_metrics
+        )
 
     @staticmethod
     def get_current() -> "DataContext":

@@ -16,6 +16,7 @@ def get_object_locations(
         object_refs (List[ObjectRef]): List of object refs.
         timeout_ms: The maximum amount of time in micro seconds to wait
             before returning. Wait infinitely if it's negative.
+        skip_get_locations: Whether or not to skip the get_object_locations call.
 
     Returns:
         A dict maps from an object to its location. The dict excludes those
@@ -27,8 +28,6 @@ def get_object_locations(
           copy of this object.
 
         - object_size (int): The size of data + metadata in bytes.
-
-        - for_metrics (bool): If the use case is purely for metrics.
 
     Raises:
         RuntimeError: if the processes were not started by ray.init().
