@@ -1,6 +1,7 @@
 import logging
 import os
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Any
 
 import ray
@@ -28,7 +29,7 @@ from ray.train.constants import (
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     DISABLE_LAZY_CHECKPOINTING_ENV,
-    SUPPORTED_ACCELERATOR_DEVICES_TO_CONFIG,
+    ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
@@ -43,6 +44,25 @@ class TrainBackendError(Exception):
 
 class TrainingWorkerError(Exception):
     """Raised if a worker fails during training."""
+
+
+@dataclass
+class ResourceConfig:
+    """
+    Resource configuration for resource_ids to share between workers.
+
+    Args:
+        resource_name: The name of the resource to configure
+         (Example: "neuron_cores" or "gpu").
+        resource_enable_sharing_env_var: The environment variable to
+         check if the resource should be shared.
+        share_resource_ids_env_var: The environment variable to configure for
+         sharing the resources with other workers.
+    """
+
+    resource_name: str
+    resource_enable_sharing_env_var: str
+    share_resource_ids_env_var: str
 
 
 class BackendExecutor:
@@ -103,6 +123,13 @@ class BackendExecutor:
         self._checkpoint_upload_from_workers = (
             checkpoint_config and checkpoint_config._checkpoint_upload_from_workers
         )
+        self._resource_configs = [
+            ResourceConfig(
+                ray_constants.NEURON_CORES,
+                ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
+                ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
+            )
+        ]
 
     def start(
         self,
@@ -156,17 +183,14 @@ class BackendExecutor:
             if self._num_gpus_per_worker > 0 and share_cuda_visible_devices_enabled:
                 self._share_cuda_visible_devices()
             elif self._additional_resources_per_worker:
-                for (
-                    accelerator,
-                    accelerator_config,
-                ) in SUPPORTED_ACCELERATOR_DEVICES_TO_CONFIG.items():
-                    enable_sharing_env = accelerator_config[0]
-                    accelerator_runtime_env_var = accelerator_config[1]
-                    if self._share_accelerator_devices_enabled(
-                        accelerator, enable_sharing_env
+                for resource_config in self._resource_configs:
+                    if self._is_share_resources_enabled(
+                        resource_config.resource_name,
+                        resource_config.resource_enable_sharing_env_var,
                     ):
                         self._share_resource_ids(
-                            accelerator, accelerator_runtime_env_var
+                            resource_config.resource_name,
+                            resource_config.share_resource_ids_env_var,
                         )
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
@@ -264,7 +288,7 @@ class BackendExecutor:
             ray_constants.GPU, ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR
         )
 
-    def _share_resource_ids(self, accelerator: str, env_var: str):
+    def _share_resource_ids(self, resource: str, env_var: str):
         """Sets the given env_var on all workers.
 
         For each worker, the cores/devices are visible to all the
@@ -286,13 +310,13 @@ class BackendExecutor:
             - Worker2: "0,1"
 
         Args:
-            accelerator: The name of the accelerator.
+            resource: The name of the resource/accelerator.
             env_var: The name of the environment variable to set.
         """
         node_ids_and_resource_ids = [
             (
                 w.metadata.node_id,
-                w.metadata.resource_ids[accelerator],
+                w.metadata.resource_ids[resource],
             )
             for w in self.worker_group.workers
         ]
@@ -317,23 +341,23 @@ class BackendExecutor:
                 )
         ray.get(futures)
 
-    def _share_accelerator_devices_enabled(
-        self, accelerator: str, enable_sharing_env: str
-    ):
-        """Whether to share cores/devices on all workers
+    def _is_share_resources_enabled(self, resource_name: str, enable_sharing_env: str):
+        """Whether to share resource IDs on all workers
         based on enable_sharing_env.
-        For example, user can disable it by configuring the
-        TRAIN_ENABLE_SHARE_ACCELERATOR_DEVICES to "0".
+
+        This will return true if resources are requested, or
+        `enable_sharing_env` is set to 1.
+        Also, user can disable by configuring the `enable_sharing_env` to "0".
 
         Args:
-            accelerator: The name of the accelerator.
+            resource_name: The name of the resource/accelerator.
             enable_sharing_env: The name of the environment variable
                 to check.
         """
-        has_accelerator_requested = (
-            self._additional_resources_per_worker.get(accelerator, None) is not None
+        has_resource_requested = (
+            self._additional_resources_per_worker.get(resource_name, None) is not None
         )
-        return bool(env_integer(enable_sharing_env, has_accelerator_requested))
+        return bool(env_integer(enable_sharing_env, has_resource_requested))
 
     def _create_rank_world_size_mappings(self) -> List[Dict]:
         """Create rank and world size mappings for workers.
