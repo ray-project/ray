@@ -1770,6 +1770,8 @@ def read_databricks_uc_tables(
     """
     Read from a Databricks UC table or Databricks SQL execution result that queries
     from Databricks UC tables.
+    If it is not called in databricks runtime, you need to set environment varaibles
+    'DATABRICKS_HOST' and 'DATABRICKS_TOKEN' firstly.
 
     This reader is implemented based on
     [Databricks statemenet execution API](https://docs.databricks.com/api/workspace/statementexecution).
