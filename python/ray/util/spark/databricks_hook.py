@@ -102,7 +102,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         if ray_cluster_handler.autoscale:
             # Disable auto shutdown if autoscaling enabled.
             # because in autoscaling mode, background spark job will be killed
-            # automatically nce ray cluster is idle.
+            # automatically nice ray cluster is idle.
             auto_shutdown_minutes = 0
         else:
             auto_shutdown_minutes = float(

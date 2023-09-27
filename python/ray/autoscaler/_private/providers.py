@@ -103,9 +103,9 @@ def _import_aliyun(provider_config):
 
 
 def _import_spark(provider_config):
-    from ray.autoscaler._private.spark.node_provider import RayOnSparkNodeProvider
+    from ray.autoscaler._private.spark.node_provider import SparkNodeProvider
 
-    return RayOnSparkNodeProvider
+    return SparkNodeProvider
 
 
 def _load_fake_multinode_docker_defaults_config():

@@ -1,9 +1,7 @@
 # Example command to start a cluster with this config:
 #
-# ray start --autoscaling-config=example.yaml --head --block
+# ray start --autoscaling-config=default.yaml --head --block
 #
-# Alternatively, you can programmatically create a fake autoscaling cluster
-# using ray.cluster_utils.AutoscalingCluster.
 cluster_name: ray_on_spark
 max_workers: 8
 provider:

@@ -21,14 +21,11 @@ from ray.autoscaler.tags import (
 
 logger = logging.getLogger(__name__)
 
-# We generate the node ids deterministically in the fake node provider, so that
-# we can associate launched nodes with their resource reports. IDs increment
-# starting with fffff*00000000 for the head node, fffff*00000001, etc. for workers.
 RAY_ON_SPARK_HEAD_NODE_ID = 0
 RAY_ON_SPARK_HEAD_NODE_TYPE = "ray.head.default"
 
 
-class RayOnSparkNodeProvider(NodeProvider):
+class SparkNodeProvider(NodeProvider):
     """A node provider that implements provider for nodes of Ray on spark."""
 
     def __init__(self, provider_config, cluster_name):
