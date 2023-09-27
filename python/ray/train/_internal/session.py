@@ -7,7 +7,6 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum, auto
 import functools
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type, Union
 import warnings
@@ -47,12 +46,6 @@ from ray.util.scheduling_strategies import (
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.tune.execution.placement_groups import PlacementGroupFactory
-
-
-
-class TrainingResultType(Enum):
-    REPORT = auto()
-    CHECKPOINT = auto()
 
 
 logger = logging.getLogger(__name__)
@@ -262,8 +255,8 @@ class _TrainSession:
         # If training finished successfully, then return results.
         return func_output
 
-    def get_next(self) -> Optional[TrainingResult]:
-        """Gets the next ``TrainingResult`` from the result queue.
+    def get_next(self) -> Optional[_TrainingResult]:
+        """Gets the next ``_TrainingResult`` from the result queue.
 
         If the result queue is empty, then this function returns ``None``.
         """
@@ -405,11 +398,6 @@ class _TrainSession:
         if self.stop_event.is_set():
             self.stop_event.clear()
             sys.exit(0)
-
-    def new_report(
-        self, metrics: Dict, checkpoint: Optional[Checkpoint] = None
-    ) -> None:
-
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # Special case: early fail for Torch tensors
