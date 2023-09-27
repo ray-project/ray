@@ -1,3 +1,4 @@
+import os
 import sys
 from typing import List
 from unittest import mock
@@ -63,6 +64,13 @@ class TestDockerContainer(RayCITestBase):
             "rayproject/ray-ml:nightly-py37-gpu",
             "rayproject/ray-ml:nightly-py37",
         ]
+
+        with mock.patch.dict(os.environ, {"BUILDKITE_BRANCH": "releases/1.0.0"}):
+            container = DockerContainer("py38", "cpu", "ray")
+            assert container._get_image_names() == [
+                "rayproject/ray:1.0.0.123456-py38-cpu",
+                "rayproject/ray:1.0.0.123456-py38",
+            ]
 
 
 if __name__ == "__main__":
