@@ -1071,7 +1071,7 @@ def test_map_batches_with_nested_lists(shutdown_only):
         return batch
 
     original_rows = list(ds.map_batches(identity).materialize().iter_rows())
-    mapped_ds_identical = list(ds.map_batches(identity).materialize().iter_rows())
+    mapped_ds_identical = ds.map_batches(identity).materialize().iter_rows()
     for orig_row, mapped_row in zip(original_rows, mapped_ds_identical):
         assert orig_row.keys() == mapped_row.keys()
         for orig, mapped in zip(orig_row.values(), mapped_row.values()):
@@ -1080,7 +1080,7 @@ def test_map_batches_with_nested_lists(shutdown_only):
             else:
                 assert orig == mapped
 
-    mapped_ds_identical_two = list(
+    mapped_ds_identical_two = (
         ds.map_batches(identity).map_batches(identity).materialize().iter_rows()
     )
     for orig_row, row_two in zip(original_rows, mapped_ds_identical_two):

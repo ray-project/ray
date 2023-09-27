@@ -366,23 +366,22 @@ class BlockAccessor:
             try:
                 return ArrowBlockAccessor.numpy_to_block(batch)
             except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError):
-                import pandas as pd
-
                 # TODO(ekl) once we support Python objects within Arrow blocks, we
                 # don't need this fallback path.
-                if not isinstance(batch, dict):
-                    return pd.DataFrame(dict(batch))
+                import pandas as pd
 
-                # batch is type of dict[str, np.ndarray]
-                # check for arrays with ndim > 1
+                # batch type should be dict[str, np.ndarray]
+                # validate that column arrays all have ndim == 1
+                # based on pandas constraint:
+                # https://github.com/pandas-dev/pandas/blob/main/pandas/core/internals/construction.py#L664
                 if all(np.ndim(val) == 1 for val in batch.values()):
-                    return pd.DataFrame(batch)
+                    return pd.DataFrame(dict(batch))
 
                 for key, val in batch.items():
                     if np.ndim(val) > 1:
                         raise ValueError(
                             "Unsupported value {} found in batch column {}".format(
-                                val, key
+                                _truncated_repr(val), key
                             )
                         )
 
