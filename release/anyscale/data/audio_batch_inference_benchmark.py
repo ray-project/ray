@@ -61,7 +61,7 @@ def run_benchmark(args):
     start_time = timer()
     for batch in ds.iter_batches(batch_size=None, batch_format="pyarrow"):
         num_files += len(batch)
-        total_size_bytes += sum(batch["audio_size_bytes"])
+        total_size_bytes += sum(batch["audio_size_bytes"].to_pylist())
     end_time = timer()
 
     total_time = end_time - start_time
