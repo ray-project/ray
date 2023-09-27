@@ -31,7 +31,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             RestMethod.DELETE: self._http_session.delete,
         }
 
-    async def proxy_request(self, req: Request, route: str, rest_method: RestMethod):
+    async def proxy_request(self, req: Request, route: str, method: RestMethod):
         """Forwards the req request to the Serve agent on the head node.
 
         Args:
@@ -52,20 +52,29 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             )
 
         try:
-            rest_method_executor = self.rest_method_executors[rest_method]
-            resp = rest_method_executor(f"{head_agent_address}/api/serve/applications/")
-            return resp
-        except Exception as e:
+            rest_method_executor = self.rest_method_executors[method]
+            target = f"{head_agent_address}{route}"
+            async with rest_method_executor(target) as resp:
+                resp_text = await resp.text()
+                return Response(
+                    text=resp_text,
+                    status=resp.status,
+                    content_type=resp.content_type,
+                )
+        except Exception:
+            import traceback
+
             return Response(
                 status=503,
                 text=(
-                    "Failed to hit serve agent on the head node. "
-                    "Check the dashboard_agent logs to see "
-                    f"if the agent failed to launch. {e}"
+                    f"Failed to hit serve agent at address {target} on "
+                    "the head node. Check the dashboard_agent logs to see "
+                    "if the agent failed to launch. "
+                    f"See traceback:\n{traceback.format_exc()}"
                 ),
             )
 
-    @routes.get("/api/ray/version")
+    @routes.get("/api/serve_head/version")
     async def get_version(self, req: Request) -> Response:
         return await self.proxy_request(
             req=req,
@@ -73,7 +82,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             method=RestMethod.GET,
         )
 
-    @routes.get("/api/serve/deployments/")
+    @routes.get("/api/serve_head/deployments/")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     async def get_all_deployments(self, req: Request) -> Response:
         return await self.proxy_request(
@@ -82,7 +91,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             method=RestMethod.GET,
         )
 
-    @routes.get("/api/serve/applications/")
+    @routes.get("/api/serve_head/applications/")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     async def get_serve_instance_details(self, req: Request) -> Response:
         return await self.proxy_request(
@@ -91,7 +100,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             method=RestMethod.GET,
         )
 
-    @routes.get("/api/serve/deployments/status")
+    @routes.get("/api/serve_head/deployments/status")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     async def get_all_deployment_statuses(self, req: Request) -> Response:
         return await self.proxy_request(
@@ -100,7 +109,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             method=RestMethod.GET,
         )
 
-    @routes.delete("/api/serve/deployments/")
+    @routes.delete("/api/serve_head/deployments/")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     async def delete_serve_application(self, req: Request) -> Response:
         return await self.proxy_request(
@@ -109,7 +118,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             method=RestMethod.DELETE,
         )
 
-    @routes.delete("/api/serve/applications/")
+    @routes.delete("/api/serve_head/applications/")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     async def delete_serve_applications(self, req: Request) -> Response:
         return await self.proxy_request(
@@ -118,7 +127,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             method=RestMethod.DELETE,
         )
 
-    @routes.put("/api/serve/deployments/")
+    @routes.put("/api/serve_head/deployments/")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     async def put_all_deployments(self, req: Request) -> Response:
         return await self.proxy_request(
@@ -127,7 +136,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
             method=RestMethod.PUT,
         )
 
-    @routes.put("/api/serve/applications/")
+    @routes.put("/api/serve_head/applications/")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     async def put_all_applications(self, req: Request) -> Response:
         return await self.proxy_request(
