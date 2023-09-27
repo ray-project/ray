@@ -1780,8 +1780,6 @@ def read_databricks_uc_tables(
         >>> from ray.data.read_api import read_databricks_uc_tables
         >>>
         >>> ds = read_databricks_uc_tables(
-        ...   host='...',
-        ...   token='...',
         ...   warehouse_id='a885ad08b64951ad',
         ...   catalog='catalog_1',
         ...   schema='db_1',
