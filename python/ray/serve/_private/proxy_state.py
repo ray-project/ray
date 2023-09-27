@@ -68,19 +68,22 @@ class ActorWrapper(ABC):
 
     @abstractmethod
     def start_new_ready_check(self):
+        """Start a new ready check on the proxy actor."""
         raise NotImplementedError
 
     @abstractmethod
     def start_new_health_check(self):
+        """Start a new health check on the proxy actor."""
         raise NotImplementedError
 
     @abstractmethod
     def start_new_drained_check(self):
+        """Start a new drained check on the proxy actor."""
         raise NotImplementedError
 
     @abstractmethod
     def is_ready(self) -> Any:
-        """Return the payload from proxy when ready."""
+        """Return the payload from proxy ready check when ready."""
         raise NotImplementedError
 
     @abstractmethod
@@ -100,16 +103,32 @@ class ActorWrapper(ABC):
 
     @abstractmethod
     def update_draining(self, draining: bool):
+        """Update the draining status of the proxy actor."""
         raise NotImplementedError
 
     @abstractmethod
     def kill_proxy(self):
+        """Kill the proxy actor."""
         raise NotImplementedError
 
 
 class ProxyActorWrapper(ActorWrapper):
+    def start_new_ready_check(self):
+        """Start a new ready check on the proxy actor."""
+        self._ready_obj_ref = self._actor_handle.ready.remote()
+
+    def start_new_health_check(self):
+        """Start a new health check on the proxy actor."""
+        self._health_check_obj_ref = self._actor_handle.check_health.remote()
+
+    def start_new_drained_check(self):
+        """Start a new drained check on the proxy actor."""
+        self._is_drained_obj_ref = self._actor_handle.is_drained.remote(
+            _after=self._update_draining_obj_ref
+        )
+
     def is_ready(self) -> Any:
-        """Return whether the proxy actor is ready or not."""
+        """Return the payload from proxy ready check when ready."""
         finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
         if finished:
             return ray.get(finished[0])
@@ -117,6 +136,7 @@ class ProxyActorWrapper(ActorWrapper):
         return None
 
     def is_healthy(self) -> bool:
+        """Return whether the proxy actor is healthy or not."""
         finished, _ = ray.wait([self._health_check_obj_ref], timeout=0)
         if finished:
             self._health_check_obj_ref = None
@@ -134,25 +154,17 @@ class ProxyActorWrapper(ActorWrapper):
         return False
 
     def check_health(self):
+        """Check the health of the proxy actor."""
         ray.get(self._actor_handle.check_health.remote(), timeout=0.001)
 
-    def start_new_ready_check(self):
-        self._ready_obj_ref = self._actor_handle.ready.remote()
-
-    def start_new_health_check(self):
-        self._health_check_obj_ref = self._actor_handle.check_health.remote()
-
-    def start_new_drained_check(self):
-        self._is_drained_obj_ref = self._actor_handle.is_drained.remote(
-            _after=self._update_draining_obj_ref
-        )
-
     def update_draining(self, draining: bool):
+        """Update the draining status of the proxy actor."""
         self._update_draining_obj_ref = self._actor_handle.update_draining.remote(
             draining, _after=self._update_draining_obj_ref
         )
 
     def kill_proxy(self):
+        """Kill the proxy actor."""
         ray.kill(self._actor_handle, no_restart=True)
 
 
@@ -442,6 +454,7 @@ class ProxyStateManager:
         cluster_node_info_cache: ClusterNodeInfoCache,
         grpc_options: Optional[gRPCOptions] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
+        proxy_actor_wrapper_class: Type[ActorWrapper] = ProxyActorWrapper,
     ):
         self._controller_name = controller_name
         self._detached = detached
@@ -454,6 +467,7 @@ class ProxyStateManager:
         self._proxy_restart_counts: Dict[NodeId, int] = dict()
         self._head_node_id: str = head_node_id
         self._proxy_actor_class = proxy_actor_class
+        self._proxy_actor_wrapper_class = proxy_actor_wrapper_class
 
         self._cluster_node_info_cache = cluster_node_info_cache
 
@@ -647,7 +661,7 @@ class ProxyStateManager:
                 )
 
             self._proxy_states[node_id] = ProxyState(
-                proxy_actor_wrapper=ProxyActorWrapper(actor_handle=proxy),
+                proxy_actor_wrapper=self._proxy_actor_wrapper_class(actor_handle=proxy),
                 actor_name=name,
                 node_id=node_id,
                 node_ip=node_ip_address,

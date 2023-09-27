@@ -135,6 +135,3 @@ deployments:
       user_config:
         threshold: 1.5
 ```
-
-
-
