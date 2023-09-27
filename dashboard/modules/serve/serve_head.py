@@ -1,4 +1,5 @@
 import logging
+from enum import Enum
 from typing import Optional
 
 import aiohttp
@@ -14,52 +15,126 @@ logger.setLevel(logging.INFO)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
+class RestMethod(str, Enum):
+    GET = "GET"
+    PUT = "PUT"
+    DELETE = "DELETE"
+
+
 class ServeHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._http_session = aiohttp.ClientSession()
+        self.rest_method_executors = {
+            RestMethod.GET: self._http_session.get,
+            RestMethod.PUT: self._http_session.put,
+            RestMethod.DELETE: self._http_session.delete,
+        }
 
-    @routes.get("/api/serve_head/applications/")
-    @dashboard_optional_utils.init_ray_and_catch_exceptions()
-    async def get_serve_instance_details(self, req: Request) -> Response:
-        """This proxies to the serve_agent's /api/serve/applications call."""
+    async def proxy_request(self, req: Request, route: str, rest_method: RestMethod):
+        """Forwards the req request to the Serve agent on the head node.
+
+        Args:
+            req: request to forward.
+            route: route to send the request to.
+            rest_method: REST method to use when sending the request.
+        """
+
         head_agent_address = await self._get_head_agent()
         if not head_agent_address:
             return Response(
                 status=503,
                 text=(
-                    "Failed to find the serve agent. "
+                    "Failed to find the Serve agent on the head node. "
                     "Check the dashboard_agent logs to see if the agent "
                     "failed to launch."
                 ),
             )
 
         try:
-            async with self._http_session.get(
-                f"{head_agent_address}/api/serve/applications/"
-            ) as resp:
-                if resp.status == 200:
-                    result_text = await resp.text()
-                    return Response(
-                        text=result_text,
-                        content_type="application/json",
-                    )
-                else:
-                    status = resp.status
-                    error_text = await resp.text()
-                    raise Response(
-                        status=500,
-                        text=f"Request failed with status code {status}: {error_text}.",
-                    )
+            rest_method_executor = self.rest_method_executors[rest_method]
+            resp = rest_method_executor(f"{head_agent_address}/api/serve/applications/")
+            return resp
         except Exception as e:
             return Response(
                 status=503,
                 text=(
-                    "Failed to hit serve agent. "
+                    "Failed to hit serve agent on the head node. "
                     "Check the dashboard_agent logs to see "
                     f"if the agent failed to launch. {e}"
                 ),
             )
+
+    @routes.get("/api/ray/version")
+    async def get_version(self, req: Request) -> Response:
+        return await self.proxy_request(
+            req=req,
+            route="/api/ray/version",
+            method=RestMethod.GET,
+        )
+
+    @routes.get("/api/serve/deployments/")
+    @dashboard_optional_utils.init_ray_and_catch_exceptions()
+    async def get_all_deployments(self, req: Request) -> Response:
+        return await self.proxy_request(
+            req=req,
+            route="/api/serve/deployments/",
+            method=RestMethod.GET,
+        )
+
+    @routes.get("/api/serve/applications/")
+    @dashboard_optional_utils.init_ray_and_catch_exceptions()
+    async def get_serve_instance_details(self, req: Request) -> Response:
+        return await self.proxy_request(
+            req=req,
+            route="/api/serve/applications/",
+            method=RestMethod.GET,
+        )
+
+    @routes.get("/api/serve/deployments/status")
+    @dashboard_optional_utils.init_ray_and_catch_exceptions()
+    async def get_all_deployment_statuses(self, req: Request) -> Response:
+        return await self.proxy_request(
+            req=req,
+            route="/api/serve/deployments/status",
+            method=RestMethod.GET,
+        )
+
+    @routes.delete("/api/serve/deployments/")
+    @dashboard_optional_utils.init_ray_and_catch_exceptions()
+    async def delete_serve_application(self, req: Request) -> Response:
+        return await self.proxy_request(
+            req=req,
+            route="/api/serve/deployments/",
+            method=RestMethod.DELETE,
+        )
+
+    @routes.delete("/api/serve/applications/")
+    @dashboard_optional_utils.init_ray_and_catch_exceptions()
+    async def delete_serve_applications(self, req: Request) -> Response:
+        return await self.proxy_request(
+            req=req,
+            route="/api/serve/applications/",
+            method=RestMethod.DELETE,
+        )
+
+    @routes.put("/api/serve/deployments/")
+    @dashboard_optional_utils.init_ray_and_catch_exceptions()
+    async def put_all_deployments(self, req: Request) -> Response:
+        return await self.proxy_request(
+            req=req,
+            route="/api/serve/deployments/",
+            method=RestMethod.PUT,
+        )
+
+    @routes.put("/api/serve/applications/")
+    @dashboard_optional_utils.init_ray_and_catch_exceptions()
+    async def put_all_applications(self, req: Request) -> Response:
+        return await self.proxy_request(
+            req=req,
+            route="/api/serve/applications/",
+            method=RestMethod.PUT,
+        )
 
     async def _get_head_agent(self) -> Optional[str]:
         """
