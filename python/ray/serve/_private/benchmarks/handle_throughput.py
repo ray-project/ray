@@ -1,10 +1,11 @@
 import asyncio
 import logging
+from typing import Tuple
 
 import click
 
 from ray import serve
-from ray.serve._private.benchmarks.microbenchmark import timeit
+from ray.serve._private.benchmarks.common import run_throughput_benchmark
 from ray.serve.handle import DeploymentHandle, RayServeHandle
 
 
@@ -37,8 +38,8 @@ class Caller:
     async def do_single_batch(self):
         await asyncio.gather(*[self._h.hi.remote() for _ in range(self._batch_size)])
 
-    async def run_benchmark(self):
-        return await timeit(
+    async def run_throughput_benchmark(self) -> Tuple[float, float]:
+        return await run_throughput_benchmark(
             fn=self.do_single_batch,
             multiplier=self._batch_size,
             num_trials=self._num_trials,
