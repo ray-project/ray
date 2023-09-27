@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-from ray.air.config import CheckpointConfig
 from ray.air._internal.util import StartTraceback
 from ray.data import Dataset
 from ray.train import DataConfig
@@ -11,9 +10,6 @@ from ray.train._internal.backend_executor import (
     InactiveWorkerGroupError,
     TrainBackendError,
     TrainingWorkerError,
-)
-from ray.train._internal.checkpoint import (
-    CheckpointManager,
 )
 from ray.train._internal.session import (
     _TrainingResult,
@@ -50,11 +46,7 @@ class TrainingIterator:
         datasets: Dict[str, Dataset],
         metadata: Dict[str, Any],
         data_config: DataConfig,
-        checkpoint_manager: CheckpointManager,
         checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
-        checkpoint_strategy: Optional[CheckpointConfig],
-        run_dir: Optional[Path] = None,
-        storage_path: Optional[str] = None,
     ):
         self._backend_executor = backend_executor
         self._backend = backend_config.backend_cls()
@@ -62,14 +54,9 @@ class TrainingIterator:
         self._datasets = datasets
         self._metadata = metadata
         self._data_config = data_config
-        self._run_dir = run_dir
-        self._checkpoint_manager = checkpoint_manager
-        self._checkpoint_strategy = checkpoint_strategy
-        self._storage_path = storage_path
 
         self._start_training(
             train_func=train_func,
-            run_dir=run_dir,
             datasets=self._datasets,
             metadata=self._metadata,
             data_config=self._data_config,
@@ -84,19 +71,11 @@ class TrainingIterator:
     def _start_training(
         self,
         train_func,
-        run_dir,
         datasets,
         metadata,
         data_config,
         checkpoint,
-        latest_checkpoint_id=None,
     ):
-        self._checkpoint_manager.on_start_training(
-            checkpoint_strategy=self._checkpoint_strategy,
-            run_dir=run_dir,
-            latest_checkpoint_id=latest_checkpoint_id,
-        )
-
         tune_session: _TrainSession = get_session()
         assert tune_session, "`_start_training` should only be called from within Tune"
         storage = tune_session.storage
@@ -121,17 +100,11 @@ class TrainingIterator:
                 "Workers have been successfully restarted. Resuming "
                 "training from latest checkpoint."
             )
-            logger.debug(
-                f"Latest checkpoint: {self._checkpoint_manager.latest_checkpoint}"
-            )
             self._start_training(
                 self._train_func,
-                self._run_dir,
                 self._datasets,
                 self._metadata,
                 self._data_config,
-                self._checkpoint_manager.latest_checkpoint,
-                self._checkpoint_manager.latest_checkpoint_id,
             )
             return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:
@@ -182,7 +155,6 @@ class TrainingIterator:
                 a single worker. If there are no more items to fetch,
                 returns None.
         """
-
         results = self._backend_executor.get_next_results()
         if results is None:
             return None

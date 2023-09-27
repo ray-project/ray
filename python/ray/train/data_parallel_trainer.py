@@ -1,4 +1,3 @@
-import copy
 import inspect
 import logging
 from pathlib import Path
@@ -9,7 +8,7 @@ import ray
 from ray import air
 from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
-from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY, LAZY_CHECKPOINT_MARKER_FILE
+from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train import BackendConfig, Checkpoint, TrainingIterator
 from ray.train._internal import session
@@ -507,49 +506,8 @@ class DataParallelTrainer(BaseTrainer):
             checkpoint_config=self.run_config.checkpoint_config,
         )
 
-        def clear_lazy_checkpoint_marker():
-            """Clears the stale lazy checkpointing marker on all worker nodes.
-
-            After recovery, the trainer may be scheduled on another node.
-            We should delete the marker files created earlier on each node to
-            Avoid converting checkpoints to string paths.
-
-            Please note that we need to clear the flag before the initialization
-            of the checkpoint_manager, during which it will create a new lazy
-            checkpointing marker file.
-            """
-
-            marker_file = Path(trial_info.logdir) / LAZY_CHECKPOINT_MARKER_FILE
-            if marker_file.exists():
-                logger.debug(
-                    f"Deleting the stale lazy checkpoint marker file: {marker_file}."
-                )
-                # Multiple workers on the same node may delete this file at the
-                # same time. Return if the marker file has been deleted.
-                # TODO(ml-team): replace this try-except block with `missing_ok=True`
-                # after we completely drop py37 support.
-                try:
-                    marker_file.unlink()
-                except FileNotFoundError:
-                    return
-
         # Start the remote actors.
-        backend_executor.start(initialization_hook=clear_lazy_checkpoint_marker)
-
-        checkpoint_manager = self._checkpoint_manager_cls(
-            preprocessor=self.preprocessor
-        )
-
-        # Disable TrainingIterator's CheckpointManager from handling
-        # checkpoints itself by setting num_to_keep to None.
-        # This is important because otherwise Trainer's CheckpointManager
-        # may delete a checkpoint prematurely, before the next checkpoint
-        # has been fully handled by Tune.
-        # TODO(jungong, justinvyu) : Trainer should not own a
-        # CheckpointManager.
-        checkpoint_strategy = copy.deepcopy(self.run_config.checkpoint_config)
-        checkpoint_strategy.num_to_keep = None
-        checkpoint_strategy.checkpoint_score_attribute = None
+        backend_executor.start()
 
         training_iterator = self._training_iterator_cls(
             backend_executor=backend_executor,
@@ -558,10 +516,7 @@ class DataParallelTrainer(BaseTrainer):
             datasets=self.datasets,
             metadata=self.metadata,
             data_config=self._data_config,
-            checkpoint_manager=checkpoint_manager,
             checkpoint=self.starting_checkpoint,
-            checkpoint_strategy=checkpoint_strategy,
-            storage_path=self.run_config.storage_path,
         )
 
         self._report(training_iterator)
