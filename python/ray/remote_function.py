@@ -250,7 +250,19 @@ class RemoteFunction:
 
                 return FunctionNode(func_cls._function, args, kwargs, updated_options)
 
+            @property
+            def task_options(self):
+                return updated_options
+
+            @property
+            def _function(self):
+                return func_cls._function
+
         return FuncWrapper()
+
+    @property
+    def task_options(self):
+        return self._default_options
 
     @wrap_auto_init
     @_tracing_task_invocation
