@@ -378,9 +378,13 @@ class BlockAccessor:
                 if all(np.ndim(val) == 1 for val in batch.values()):
                     return pd.DataFrame(batch)
 
-                for val in batch.values():
+                for key, val in batch.items():
                     if np.ndim(val) > 1:
-                        raise ValueError("Unsupported value in batch: {}".format(val))
+                        raise ValueError(
+                            "Unsupported value {} found in batch column {}".format(
+                                val, key
+                            )
+                        )
 
         return batch
 
