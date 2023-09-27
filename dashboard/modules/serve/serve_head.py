@@ -22,9 +22,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve_head/applications/")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     async def get_serve_instance_details(self, req: Request) -> Response:
-        """
-        This proxies to the serve_agent's /api/serve/applications call
-        """
+        """This proxies to the serve_agent's /api/serve/applications call."""
         head_agent_address = await self._get_head_agent()
         if not head_agent_address:
             return Response(
