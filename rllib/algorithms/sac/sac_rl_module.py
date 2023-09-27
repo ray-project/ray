@@ -1,4 +1,4 @@
-from typing import Any, Type
+from typing import Type
 from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
