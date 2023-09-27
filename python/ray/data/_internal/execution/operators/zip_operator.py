@@ -7,7 +7,6 @@ from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import _lazy_import_pyarrow_table
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -254,15 +253,12 @@ def _try_zip_with_pyarrow_fallback(block: Block, other_block: Block) -> Block:
     """
     try:
         return BlockAccessor.for_block(block).zip(other_block)
-    except ValueError as e:
-        pyarrow_table = _lazy_import_pyarrow_table()
-        if pyarrow_table:
-            if not isinstance(other_block, pyarrow_table):
-                other_block = BlockAccessor.for_block(other_block).to_arrow()
-                return BlockAccessor.for_block(block).zip(other_block)
-            else:
-                block = BlockAccessor.for_block(block).to_arrow()
-                return BlockAccessor.for_block(block).zip(other_block)
+    except ValueError:
+        import pyarrow
 
-        # Re-raise the ValueError in case `pyarrow` not installed as a dependency
-        raise e
+        if isinstance(other_block, pyarrow.Table):
+            block = BlockAccessor.for_block(block).to_arrow()
+            return BlockAccessor.for_block(block).zip(other_block)
+        else:
+            other_block = BlockAccessor.for_block(other_block).to_arrow()
+            return BlockAccessor.for_block(block).zip(other_block)

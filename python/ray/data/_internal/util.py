@@ -50,19 +50,6 @@ _EXAMPLE_SCHEME = "example"
 
 LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
-_pyarrow_table: LazyModule = None
-
-
-def _lazy_import_pyarrow_table() -> LazyModule:
-    global _pyarrow_table
-    if _pyarrow_table is None:
-        try:
-            from pyarrow import Table as _pyarrow_table
-        except ModuleNotFoundError:
-            # If module is not found, set _pyarrow to False so we won't
-            # keep trying to import it on every _lazy_import_pyarrow() call.
-            _pyarrow_table = False
-    return _pyarrow_table
 
 
 def _lazy_import_pyarrow_dataset() -> LazyModule:
