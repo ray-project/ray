@@ -264,7 +264,7 @@ class DataContext:
                     use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
                     file_metadata_shuffler=DEFAULT_FILE_METADATA_SHUFFLER,
-                    enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,
+                    enable_get_object_locations_for_metrics=DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS,  # noqa E501
                 )
 
             return _default_context

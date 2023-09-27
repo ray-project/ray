@@ -25,9 +25,8 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
     locations."""
     current_node_id = ray.get_runtime_context().get_node_id()
 
-    if (
-        ray.data.context.DataContext.get_current().enable_get_object_locations_for_metrics
-    ):
+    ctx = ray.data.context.DataContext.get_current()
+    if ctx.enable_get_object_locations_for_metrics:
         locs = ray.experimental.get_object_locations(refs)
     else:
         locs = {}

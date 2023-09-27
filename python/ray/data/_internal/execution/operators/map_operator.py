@@ -277,9 +277,8 @@ class MapOperator(OneToOneOperator, ABC):
             # Otherwise, if the task crashes in the middle, we can't rerun it.
             blocks = [input[0] for input in inputs.blocks]
             metadata = [input[1] for input in inputs.blocks]
-            if (
-                ray.data.context.DataContext.get_current().enable_get_object_locations_for_metrics
-            ):
+            ctx = ray.data.context.DataContext.get_current()
+            if ctx.enable_get_object_locations_for_metrics:
                 locations = ray.experimental.get_object_locations(blocks)
             else:
                 locations = {ref: {"did_spill": False} for ref in blocks}
