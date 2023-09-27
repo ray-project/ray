@@ -44,7 +44,6 @@ SERVE_HEAD_URLs = {
 
 def deploy_and_check_config(config: Dict, urls: Dict[str, str]):
     put_response = requests.put(urls["GET_OR_PUT"], json=config, timeout=30)
-    breakpoint()
     assert put_response.status_code == 200
     print("PUT request sent successfully.")
 
