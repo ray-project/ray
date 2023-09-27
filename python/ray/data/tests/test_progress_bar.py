@@ -72,7 +72,9 @@ def test_progress_bar(enable_tqdm_ray):
     assert pb._bar is not None
     patch_close(pb._bar)
     new_total = total * 2
-    pb.update_total(new_total)
+    pb.update(0, new_total)
 
     assert pb._bar.total == new_total
+    pb.update(total + 1, total)
+    assert pb._bar.total == total + 1
     pb.close()

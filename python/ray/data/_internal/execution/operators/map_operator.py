@@ -82,9 +82,8 @@ class MapOperator(OneToOneOperator, ABC):
         self._finished_streaming_gens: List[StreamingObjectRefGenerator] = []
         # Keep track of # of tasks finished, and the # of blocks they outputted.
         # Used for estimating the # of output blocks.
-        self._tasks_finished = 0
-        self._tasks_finished_blocks = 0
-        self._task_blocks_outputted: Dict[int, int] = defaultdict(int)
+        self._num_tasks_finished = 0
+        self._num_output_blocks = 0
         super().__init__(name, input_op)
 
     @classmethod
@@ -276,7 +275,7 @@ class MapOperator(OneToOneOperator, ABC):
             self._metrics.cur += allocated
             if self._metrics.cur > self._metrics.peak:
                 self._metrics.peak = self._metrics.cur
-            self._task_blocks_outputted[task_index] += len(output.blocks)
+            self._data_tasks[task_index].add_num_output_blocks(len(output.blocks))
 
         def _task_done_callback(task_index, inputs):
             # We should only destroy the input bundle when the whole task is done.
@@ -285,17 +284,21 @@ class MapOperator(OneToOneOperator, ABC):
             freed = inputs.size_bytes()
             self._metrics.freed += freed
             self._metrics.cur -= freed
-            self._tasks_finished += 1
-            self._tasks_finished_blocks += self._task_blocks_outputted[task_index]
-            self._estimated_output_blocks = round(
-                (self.num_outputs_total() or 1)
-                * self._tasks_finished_blocks
-                / self._tasks_finished
-            )
             task = self._data_tasks.pop(task_index)
             self._finished_streaming_gens.append(task.get_waitable())
             # Notify output queue that this task is complete.
             self._output_queue.notify_task_completed(task_index)
+            # Update estimate for blocks outputted
+            self._num_tasks_finished += 1
+            self._num_output_blocks += task.get_num_output_blocks()
+            num_tasks = 1
+            if len(self.input_dependencies) == 1:
+                # The number of outputs reported by upstream operator. Do not use
+                # self.num_outputs_total() because we update that value with this estimate
+                num_tasks = self.input_dependencies[0].num_outputs_total()
+            self._estimated_output_blocks = round(
+                num_tasks * self._num_output_blocks / self._num_tasks_finished
+            )
             if task_done_callback:
                 task_done_callback()
 

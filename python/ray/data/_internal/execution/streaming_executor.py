@@ -130,11 +130,9 @@ class StreamingExecutor(Executor, threading.Thread):
                     else:
                         # Otherwise return a concrete RefBundle.
                         if self._outer._global_info:
-                            self._outer._global_info.update(1)
-                            if dag._estimated_output_blocks is not None:
-                                self._outer._global_info.update_total(
-                                    dag._estimated_output_blocks
-                                )
+                            self._outer._global_info.update(
+                                1, dag._estimated_output_blocks
+                            )
                         return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.

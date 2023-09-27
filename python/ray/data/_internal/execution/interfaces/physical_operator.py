@@ -59,6 +59,7 @@ class DataOpTask(OpTask):
         self._streaming_gen = streaming_gen
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
+        self._num_output_blocks = 0
 
     def get_waitable(self) -> StreamingObjectRefGenerator:
         return self._streaming_gen
@@ -91,6 +92,14 @@ class DataOpTask(OpTask):
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
+
+    def add_num_output_blocks(self, num_output_blocks):
+        self._num_output_blocks += num_output_blocks
+
+    def get_num_output_blocks(
+        self,
+    ):
+        return self._num_output_blocks
 
 
 class MetadataOpTask(OpTask):
@@ -196,6 +205,8 @@ class PhysicalOperator(Operator):
 
         This is useful for reporting progress.
         """
+        if self._estimated_output_blocks is not None:
+            return self._estimated_output_blocks
         if len(self.input_dependencies) == 1:
             return self.input_dependencies[0].num_outputs_total()
         return None
