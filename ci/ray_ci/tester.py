@@ -5,8 +5,9 @@ from typing import List, Optional
 import yaml
 import click
 
+from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.tester_container import TesterContainer
-from ci.ray_ci.utils import shard_tests
+from ci.ray_ci.utils import shard_tests, docker_login
 
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
@@ -71,11 +72,11 @@ def main(
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
+    docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     if not build_name:
         build_name = f"{team}build"
     container = TesterContainer(build_name)
-    container.setup_test_environment()
     if run_flaky_tests:
         test_targets = _get_flaky_test_targets(team)
     else:
@@ -140,7 +141,7 @@ def _get_all_test_targets(
     """
 
     test_targets = (
-        container.run_script(
+        container.run_script_with_output(
             [
                 f'bazel query "{_get_all_test_query(targets, team, except_tags)}"',
             ]

@@ -1,6 +1,5 @@
 import os
 import subprocess
-import sys
 from typing import List
 
 from ci.ray_ci.utils import shard_tests
@@ -12,6 +11,10 @@ class TesterContainer(Container):
     """
     A wrapper for running tests in ray ci docker container
     """
+
+    def __init__(self, docker_tag: str) -> None:
+        super().__init__(docker_tag)
+        self.install_ray()
 
     def run_tests(
         self,
@@ -28,29 +31,6 @@ class TesterContainer(Container):
         ]
         exits = [run.wait() for run in runs]
         return all(exit == 0 for exit in exits)
-
-    def setup_test_environment(self) -> None:
-        """
-        Build the docker image for running tests
-        """
-        env = os.environ.copy()
-        env["DOCKER_BUILDKIT"] = "1"
-        subprocess.check_call(
-            [
-                "docker",
-                "build",
-                "--build-arg",
-                f"BASE_IMAGE={self._get_docker_image()}",
-                "-t",
-                self._get_docker_image(),
-                "-f",
-                "/ray/ci/ray_ci/tests.env.Dockerfile",
-                "/ray",
-            ],
-            env=env,
-            stdout=sys.stdout,
-            stderr=sys.stderr,
-        )
 
     def _run_tests_in_docker(
         self,

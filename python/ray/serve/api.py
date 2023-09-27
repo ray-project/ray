@@ -10,37 +10,17 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.util.annotations import Deprecated, PublicAPI, DeveloperAPI
-
-from ray.serve.built_application import BuiltApplication
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve.config import (
-    gRPCOptions,
-    AutoscalingConfig,
-    DeploymentMode,
-    ProxyLocation,
-    HTTPOptions,
-)
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    SERVE_DEFAULT_APP_NAME,
     MIGRATION_MESSAGE,
+    SERVE_DEFAULT_APP_NAME,
 )
-from ray.serve.context import (
-    ReplicaContext,
-    _get_global_client,
-    _get_internal_replica_context,
-    _set_global_client,
-)
-from ray.serve.deployment import Application, Deployment
-from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
-from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
@@ -50,16 +30,34 @@ from ray.serve._private.utils import (
     DEFAULT,
     Default,
     ensure_serialization_context,
+    extract_self_if_method_call,
+    get_random_letters,
+    guarded_deprecation_warning,
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
-    guarded_deprecation_warning,
-    get_random_letters,
-    extract_self_if_method_call,
 )
+from ray.serve.built_application import BuiltApplication
+from ray.serve.config import (
+    AutoscalingConfig,
+    DeploymentMode,
+    HTTPOptions,
+    ProxyLocation,
+    gRPCOptions,
+)
+from ray.serve.context import (
+    ReplicaContext,
+    _get_global_client,
+    _get_internal_replica_context,
+    _set_global_client,
+)
+from ray.serve.deployment import Application, Deployment
+from ray.serve.exceptions import RayServeException
+from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
+from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import ServeInstanceDetails, ServeStatus
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
-from ray.serve._private import api as _private_api
-
+from ray.serve._private import api as _private_api  # isort:skip
 
 logger = logging.getLogger(__file__)
 
@@ -70,7 +68,7 @@ def start(
     proxy_location: Union[None, str, ProxyLocation] = None,
     http_options: Union[None, dict, HTTPOptions] = None,
     dedicated_cpu: bool = False,
-    grpc_options: Optional[gRPCOptions] = None,
+    grpc_options: Union[None, dict, gRPCOptions] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -97,8 +95,9 @@ def start(
           `HTTPOptions` for supported options.
         dedicated_cpu: [DEPRECATED] Whether to reserve a CPU core for the
           Serve controller actor.
-        grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. See
-          `gRPCOptions` for supported options.
+        grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
+          be passed as an unstructured dictionary or the structured `gRPCOptions`
+          class See `gRPCOptions` for supported options.
     """
     if not detached:
         warnings.warn(
@@ -871,9 +870,7 @@ def get_app_handle(name: str) -> DeploymentHandle:
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
     # Default to async within a deployment and sync outside a deployment.
     sync = _get_internal_replica_context() is None
-    return client.get_handle(ingress, name, sync=sync).options(
-        use_new_handle_api=True,
-    )
+    return client.get_handle(ingress, name, sync=sync, use_new_handle_api=True)
 
 
 @DeveloperAPI
@@ -913,6 +910,6 @@ def get_deployment_handle(
     ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
     # Default to async within a deployment and sync outside a deployment.
     sync = internal_replica_context is None
-    return client.get_handle(deployment_name, app_name, sync=sync).options(
-        use_new_handle_api=True
+    return client.get_handle(
+        deployment_name, app_name, sync=sync, use_new_handle_api=True
     )

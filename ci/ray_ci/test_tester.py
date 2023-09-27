@@ -38,6 +38,9 @@ def test_get_test_targets() -> None:
         ), mock.patch(
             "subprocess.check_output",
             return_value="\n".join(test_targets).encode("utf-8"),
+        ), mock.patch(
+            "ci.ray_ci.tester_container.TesterContainer.install_ray",
+            return_value=None,
         ):
             assert _get_all_test_targets(
                 TesterContainer("core"),

@@ -1,19 +1,18 @@
 import asyncio
 import os
-import pytest
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+import pytest
 import requests
-from starlette.responses import StreamingResponse
+from fastapi import FastAPI
 from starlette.requests import Request
+from starlette.responses import StreamingResponse
 
 import ray
-from ray._private.test_utils import SignalActor
-
 from ray import serve
-from ray.serve.handle import RayServeHandle
+from ray._private.test_utils import SignalActor
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
+from ray.serve.handle import RayServeHandle
 
 
 @ray.remote
