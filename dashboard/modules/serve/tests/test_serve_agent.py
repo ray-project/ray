@@ -24,6 +24,11 @@ from ray.serve._private.common import (
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 
+# For local testing. If you're running these tests locally on a Macbook, set
+# this variable to False to enable tests.
+DISABLE_DARWIN = False
+
+
 SERVE_AGENT_URLs = {
     "GET_OR_PUT": "http://localhost:52365/api/serve/deployments/",
     "STATUS": "http://localhost:52365/api/serve/deployments/status",
@@ -55,7 +60,7 @@ def deploy_config_multi_app(config: Dict, urls: Dict[str, str]):
     print("PUT request sent successfully.")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_put_get(ray_start_stop, urls):
     config1 = {
@@ -122,7 +127,7 @@ def test_put_get(ray_start_stop, urls):
         print("Deployments are live and reachable over HTTP.\n")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_put_get_multi_app(ray_start_stop, urls):
     pizza_import_path = (
@@ -219,7 +224,7 @@ def test_put_get_multi_app(ray_start_stop, urls):
         print("Deployments are live and reachable over HTTP.\n")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize(
     "put_url",
     [
@@ -236,7 +241,7 @@ def test_put_bad_schema(ray_start_stop, put_url: str):
     assert put_response.status_code == 400
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_put_duplicate_apps(ray_start_stop, urls):
     """If a config with duplicate app names is deployed, the PUT request should fail.
@@ -261,7 +266,7 @@ def test_put_duplicate_apps(ray_start_stop, urls):
     assert put_response.status_code == 400 and "ValidationError" in put_response.text
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_put_duplicate_routes(ray_start_stop, urls):
     """If a config with duplicate routes is deployed, the PUT request should fail.
@@ -286,7 +291,7 @@ def test_put_duplicate_routes(ray_start_stop, urls):
     assert put_response.status_code == 400 and "ValidationError" in put_response.text
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_delete(ray_start_stop, urls):
     config = {
@@ -355,7 +360,7 @@ def test_delete(ray_start_stop, urls):
         print("Deployments have been deleted and are not reachable.\n")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_delete_multi_app(ray_start_stop, urls):
     py_module = (
@@ -441,7 +446,7 @@ def test_delete_multi_app(ray_start_stop, urls):
         print("Deployments have been deleted and are not reachable.\n")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_get_status(ray_start_stop, urls):
     print("Checking status info before any deployments.")
@@ -492,14 +497,14 @@ def test_get_status(ray_start_stop, urls):
     print("Serve app status is correct.")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_get_serve_instance_details_not_started(ray_start_stop, urls):
     """Test rest api when serve isn't started yet."""
     ServeInstanceDetails(**requests.get(urls["GET_OR_PUT_V2"]).json())
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize(
     "f_deployment_options",
     [
@@ -645,7 +650,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, urls):
     print("Finished checking application details.")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_put_single_then_multi(ray_start_stop, urls):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
@@ -685,7 +690,7 @@ def test_put_single_then_multi(ray_start_stop, urls):
     check_app()
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_put_multi_then_single(ray_start_stop, urls):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
@@ -748,7 +753,7 @@ def test_put_single_with_name(ray_start_stop, name, urls):
     assert MULTI_APP_MIGRATION_MESSAGE in resp.text
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin" and DISABLE_DARWIN, reason="Flaky on OSX.")
 @pytest.mark.parametrize("urls", [SERVE_AGENT_URLs, SERVE_HEAD_URLs])
 def test_serve_namespace(ray_start_stop, urls):
     """
