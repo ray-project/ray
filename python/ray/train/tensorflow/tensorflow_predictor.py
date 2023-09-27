@@ -93,12 +93,11 @@ class TensorflowPredictor(DLPredictor):
                 `TensorflowCheckpoint.from_model`.
             use_gpu: Whether GPU should be used during prediction.
         """
-        # TODO(justinvyu): [reenable_after_docs]
-        # if model_definition:
-        #     raise DeprecationWarning(
-        #         "`model_definition` is deprecated. `TensorflowCheckpoint.from_model` "
-        #         "now saves the full model definition in .keras format."
-        #     )
+        if model_definition:
+            raise DeprecationWarning(
+                "`model_definition` is deprecated. `TensorflowCheckpoint.from_model` "
+                "now saves the full model definition in .keras format."
+            )
 
         model = checkpoint.get_model()
         preprocessor = checkpoint.get_preprocessor()
