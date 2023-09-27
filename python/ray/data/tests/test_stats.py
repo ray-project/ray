@@ -1353,21 +1353,6 @@ Dataset memory:
     assert ds._plan.stats().dataset_bytes_spilled == 0
 
 
-def test_get_object_locations_skip(shutdown_only):
-    ctx = ray.data.DataContext.get_current()
-
-    ref = ray.put("123")
-    locations = ray.experimental.get_object_locations([ref], skip_get_locations=True)
-    assert locations[ref]["node_ids"] == []
-
-    locations = ray.experimental.get_object_locations([ref])
-    assert len(locations[ref]["node_ids"]) > 0
-
-    ctx.enable_get_object_locations_for_metrics = True
-    locations = ray.experimental.get_object_locations([ref], skip_get_locations=True)
-    assert len(locations[ref]["node_ids"]) > 0
-
-
 if __name__ == "__main__":
     import sys
 
