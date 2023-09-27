@@ -1,3 +1,4 @@
+import os
 import collections
 import logging
 import math
@@ -1758,13 +1759,11 @@ def read_sql(
 @PublicAPI(stability="alpha")
 def read_databricks_uc_tables(
     *,
-    host: str,
-    token: str,
     warehouse_id: str,
-    catalog: str,
-    schema: str,
-    table_name: Optional[str] = None,
+    table: Optional[str] = None,
     query: Optional[str] = None,
+    catalog: Optional[str] = None,
+    schema: Optional[str] = None,
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
@@ -1789,17 +1788,15 @@ def read_databricks_uc_tables(
         ... )
 
     Args:
-        host: The host name of your databricks shard, without "https://" prefix.
-        token: The access token for the your databricks shard.
         warehouse_id: The id of the databricks warehouse, the query statement is
             executed on this warehouse.
-        catalog: The default catalog name used by the query
-        schema: The default schema used by the query
-        table_name: The name of UC table you want to read. If this argument is set,
+        table: The name of UC table you want to read. If this argument is set,
             you can't set 'query' argument, and the reader generates query
             of 'select * from {table_name}' under the hood.
         query: The query you want to execute. If this argument is set,
             you can't set 'table_name' argument.
+        catalog: (Optional) The default catalog name used by the query
+        schema: (Optional) The default schema used by the query
         parallelism: The requested parallelism of the read. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
@@ -1812,12 +1809,37 @@ def read_databricks_uc_tables(
         A :class:`Dataset` containing the queried data.
     """
     from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
+    from ray.util.spark.utils import is_in_databricks_runtime, get_spark_session
+    from ray.util.spark.databricks_hook import get_dbutils
 
-    if query is not None and table_name is not None:
-        raise ValueError("Only one of 'query' and 'table_name' arguments can be set.")
+    host = os.environ.get("DATABRICKS_HOST", None)
+    token = os.environ.get("DATABRICKS_TOKEN", None)
 
-    if table_name:
-        query = f"select * from {table_name}"
+    if not host or not token:
+        if is_in_databricks_runtime():
+            ctx = get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
+            if not host:
+                host = ctx.tags().get("browserHostName").get()
+            if not token:
+                token = ctx.apiToken().get()
+        else:
+            raise ValueError(
+                "You are not in databricks runtime, please set environment variable"
+                "'DATABRICKS_HOST' and 'DATABRICKS_TOKEN'."
+            )
+
+    spark = get_spark_session()
+    if not catalog:
+        catalog = spark.sql("SELECT CURRENT_CATALOG()").collect()[0][0]
+
+    if not schema:
+        schema = spark.sql("SELECT CURRENT_DATABASE()").collect()[0][0]
+
+    if query is not None and table is not None:
+        raise ValueError("Only one of 'query' and 'table' arguments can be set.")
+
+    if table:
+        query = f"select * from {table}"
 
     if query is None:
         raise ValueError("One of 'query' and 'table_name' arguments should be set.")

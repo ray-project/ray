@@ -1,6 +1,7 @@
 import json
 import time
 
+import logging
 import requests
 import os
 from urllib.parse import urljoin, urlencode
@@ -16,6 +17,9 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.util.annotations import PublicAPI
+
+
+logger = logging.getLogger(__name__)
 
 
 class _DatabricksUCReader(Reader):
@@ -35,7 +39,6 @@ class _DatabricksUCReader(Reader):
         self.schema = schema
         self.query = query
 
-        # TODO: support canceling the query once exception happens.
         url_base = f"https://{self.host}/api/2.0/sql/statements/"
 
         payload = json.dumps({
@@ -60,20 +63,39 @@ class _DatabricksUCReader(Reader):
         statement_id = response.json()["statement_id"]
 
         state = response.json()["status"]["state"]
-        while state in ["PENDING", "RUNNING"]:
-            time.sleep(1)
-            response = requests.get(
-                urljoin(url_base, statement_id) + "/",
+
+        try:
+            while state in ["PENDING", "RUNNING"]:
+                time.sleep(1)
+                response = requests.get(
+                    urljoin(url_base, statement_id) + "/",
+                    auth=req_auth,
+                    headers=req_headers,
+                )
+                response.raise_for_status()
+                state = response.json()["status"]["state"]
+        except KeyboardInterrupt:
+            # User cancel the command, so we cancel query execution.
+            requests.post(
+                urljoin(url_base, f"{statement_id}/cancel"),
                 auth=req_auth,
                 headers=req_headers,
             )
             response.raise_for_status()
-            state = response.json()["status"]["state"]
+            raise
 
         if state != "SUCCEEDED":
             raise RuntimeError(f"Query {self.query} execution failed.")
 
-        chunks = response.json()["manifest"]["chunks"]
+        manifest = response.json()["manifest"]
+        is_truncated = manifest['truncated']
+
+        if is_truncated:
+            logger.warning(
+                f"The result dataset of '{query}' exceeding 100GiB and it is truncated."
+            )
+
+        chunks = manifest["chunks"]
 
         # Make chunks metadata are ordered by index.
         chunks = sorted(chunks, key=lambda x: x['chunk_index'])
@@ -146,6 +168,7 @@ class DatabricksUCDatasource(Datasource):
 
     def create_reader(
         self,
+        *,
         host: str,
         token: str,
         warehouse_id: str,
