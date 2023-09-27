@@ -153,6 +153,7 @@ _NODE_COMPONENT_METRICS = [
     "ray_component_cpu_percentage",
     "ray_component_rss_mb",
     "ray_component_uss_mb",
+    "ray_component_num_fds",
 ]
 
 _METRICS.append("ray_health_check_rpc_latency_ms_sum")
@@ -444,6 +445,7 @@ def test_per_func_name_stats(shutdown_only):
     comp_metrics = [
         "ray_component_cpu_percentage",
         "ray_component_rss_mb",
+        "ray_component_num_fds",
     ]
     if sys.platform == "linux" or sys.platform == "linux2":
         # Uss only available from Linux
