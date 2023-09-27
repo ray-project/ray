@@ -1204,6 +1204,8 @@ class DeploymentState:
 
         self._last_notified_running_replica_infos: List[RunningReplicaInfo] = []
 
+        self._counter = 1
+
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
@@ -1886,21 +1888,31 @@ class DeploymentState:
         2. Change the replica into stopping state.
         3. Set the health replica stats to 0.
         """
-        logger.debug(
+        logger.info(
             f"Adding STOPPING to replica_tag: {replica}, "
             f"deployment_name: {self.deployment_name}, app_name: {self.app_name}"
         )
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
         self._deployment_scheduler.on_replica_stopping(self._id, replica.replica_tag)
-        self.health_check_gauge.set(
-            0,
-            tags={
-                "deployment": self.deployment_name,
-                "replica": replica.replica_tag,
-                "application": self.app_name,
-            },
+        time.sleep(10)
+        print(
+            "[DEBUG]Stopping replica",
+            self.deployment_name,
+            replica.replica_tag,
+            self.app_name,
+            id(self.health_check_gauge)
         )
+        for _ in range(10):
+            self.health_check_gauge.set(
+                0.0,
+                tags={
+                    "deployment": self.deployment_name,
+                    "replica": replica.replica_tag,
+                    "application": self.app_name,
+                },
+            )
+        print("[debug]finish set")
 
     def _check_and_update_replicas(self):
         """
@@ -1912,14 +1924,18 @@ class DeploymentState:
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
             if replica.check_health():
                 self._replicas.add(ReplicaState.RUNNING, replica)
+
+                print("[debug] set health to 1", id(self.health_check_gauge))
                 self.health_check_gauge.set(
-                    1,
+                    self._counter,
                     tags={
                         "deployment": self.deployment_name,
                         "replica": replica.replica_tag,
                         "application": self.app_name,
                     },
                 )
+                self._counter += 1
+
             else:
                 app_msg = f" in application '{self.app_name}'" if self.app_name else ""
                 logger.warning(

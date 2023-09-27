@@ -100,6 +100,11 @@ void Metric::Record(double value, const TagsType &tags) {
     return;
   }
 
+  if (GetName() == "serve_deployment_replica_healthy") {
+    RAY_LOG(INFO) << "Record metrics " << GetName();
+    RAY_LOG(INFO) << "Record metrics value" << value;
+  }
+
   // NOTE(lingxuan.zlx): Double check for recording performance while
   // processing in multithread and avoid race since metrics may invoke
   // record in different threads or code pathes.

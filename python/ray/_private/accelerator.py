@@ -193,28 +193,6 @@ def _autodetect_tpu_version() -> Optional[str]:
 
     """
 
-    def accelerator_type_to_version(accelerator_type: str) -> str:
-        assert_tpu_accelerator_type(accelerator_type)
-        return "TPU-" + str(accelerator_type.split("-")[0]).upper()
-
-    # GKE-based check
-    accelerator_type = os.getenv(
-        ray_constants.RAY_GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, None
-    )
-    if accelerator_type is not None:
-        return accelerator_type_to_version(accelerator_type)
-
-    # GCE-based VM check
-    try:
-        accelerator_type_request = requests.get(
-            ray_constants.RAY_GCE_TPU_ACCELERATOR_ENDPOINT,
-            headers=ray_constants.RAY_GCE_TPU_HEADERS,
-        )
-        if accelerator_type_request.status_code == 200:
-            return accelerator_type_to_version(accelerator_type_request.text)
-    except requests.RequestException as e:
-        logging.info("Unable to poll TPU GCE metadata: %s", e)
-
     return None
 
 
