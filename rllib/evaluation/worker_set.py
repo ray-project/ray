@@ -37,7 +37,6 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.policy import validate_policy_id
-from ray.rllib.utils.rl_module import foreach_module
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -268,8 +267,7 @@ class WorkerSet:
         # Try to figure out spaces from the first remote worker.
         if issubclass(self.env_runner_cls, EnvRunner):
             remote_spaces = self.foreach_worker(
-                lambda worker: foreach_module(
-                    worker.module,
+                lambda worker: worker.marl_module.foreach_module(
                     lambda m, mid: (
                         mid,
                         m.config.observation_space,

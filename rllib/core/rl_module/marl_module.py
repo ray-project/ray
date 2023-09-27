@@ -3,8 +3,10 @@ import pathlib
 import pprint
 from typing import (
     Any,
+    Callable,
     Dict,
     KeysView,
+    List,
     Mapping,
     Optional,
     Set,
@@ -29,6 +31,7 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
+from ray.rllib.utils.typing import T
 
 ModuleID = str
 
@@ -152,6 +155,23 @@ class MultiAgentRLModule(RLModule):
         if raise_err_if_not_found:
             self._check_module_exists(module_id)
         del self._rl_modules[module_id]
+
+    def foreach_module(
+        self, func: Callable[[RLModule, ModuleID, Optional[Any]], T], **kwargs
+    ) -> List[T]:
+        """Calls the given function with each (module, module_id).
+
+        Args:
+            func: The function to call with each (module, module_id) tuple.
+
+        Returns:
+            The lsit of return values of all calls to
+            `func([module, module_id, **kwargs])`.
+        """
+        return [
+            func(module, module_id, **kwargs)
+            for module_id, module in self._rl_modules.items()
+        ]
 
     def __getitem__(self, module_id: ModuleID) -> RLModule:
         """Returns the module with the given module ID.

@@ -18,7 +18,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
-from ray.rllib.utils.rl_module import foreach_module
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 _, tf, _ = try_import_tf()
@@ -66,24 +65,20 @@ class PPOEnvRunner(EnvRunner):
             gym.vector.make(
                 "ppo-custom-env-v0",
                 num_envs=self.config.num_envs_per_worker,
-                asynchronous=False,  # self.config_remote_envs
+                asynchronous=self.config.remote_worker_envs,
             )
         )
 
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
 
-        # Create the PPORLModule to compute actions with.
-        if self.config.share_module_between_env_runner_and_learner:
-            self.module = None
         # Create our won instance of a PPORLModule (which then needs
         # to be weight-synched each iteration).
-        else:
-            policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
-            module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
-            # TODO (simon): This here is only for single agent.
-            # This is a MARL.
-            self.module: MultiAgentRLModule = module_spec.build()  # [DEFAULT_POLICY_ID]
+        policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
+        module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
+        # TODO (simon): This here is only for single agent. Later introduce MA.
+        # This is a MARL.
+        self.marl_module: MultiAgentRLModule = module_spec.build()
 
         # Let us set this as default for PPO.
         self._needs_initial_reset: bool = True
@@ -129,14 +124,11 @@ class PPOEnvRunner(EnvRunner):
         else:
             # `_sample_episodes` returns only a single list (with completed episodes)
             # therefore add the empty list for the truncated episodes.
-            return (
-                self._sample_episodes(
-                    num_episodes=num_episodes,
-                    explore=explore,
-                    random_actions=random_actions,
-                    with_render_data=with_render_data,
-                ),
-                [],
+            return self._sample_episodes(
+                num_episodes=num_episodes,
+                explore=explore,
+                random_actions=random_actions,
+                with_render_data=with_render_data,
             )
 
     def _sample_timesteps(
@@ -152,12 +144,15 @@ class PPOEnvRunner(EnvRunner):
 
         # Get initial states for all 'batch_size_B` rows in the forward batch,
         # i.e. for all vector sub_envs.
-        initial_states = tree.map_structure(
-            lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.module[DEFAULT_POLICY_ID].get_initial_state(),
-        )
+        if hasattr(self.marl_module, "get_initial_state"):
+            initial_states = tree.map_structure(
+                lambda s: np.repeat(s, self.num_envs, axis=0),
+                self.marl_module[DEFAULT_POLICY_ID].get_initial_state(),
+            )
+        else:
+            initial_states = {}
 
-        # Have to reset the env (on all vector sub_envs)
+        # Have to reset the env (on all vector sub_envs).
         if force_reset or self._needs_initial_reset:
             obs, infos = self.env.reset()
 
@@ -166,7 +161,7 @@ class PPOEnvRunner(EnvRunner):
 
             # Set initial obs and states in the episodes.
             for i in range(self.num_envs):
-                # Extract infor for the vector sub_env.
+                # Extract info for the vector sub_env.
                 self._episodes[i].add_initial_observation(
                     initial_observation=obs[i],
                     initial_info=infos[i],
@@ -178,7 +173,7 @@ class PPOEnvRunner(EnvRunner):
         else:
             # Pick up stored observations and states from previous timesteps.
             obs = np.stack([eps.observations[-1] for eps in self._episodes])
-            # COmpile the initial state for each batch row (vector sub_env):
+            # Compile the initial state for each batch row (vector sub_env):
             # If episode just started, use the model's initial state, in the
             # other case use the state stored last in the Episode.
             states = {
@@ -212,17 +207,19 @@ class PPOEnvRunner(EnvRunner):
                 # Explore or not.
                 if explore:
                     # TODO (simon) Implement this for MARL.
-                    fwd_out = self.module[DEFAULT_POLICY_ID].forward_exploration(batch)
+                    fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_exploration(
+                        batch
+                    )
                     # `self.module` is a MARL module.
-                    action_dist_cls = foreach_module(
-                        self.module,
+                    action_dist_cls = self.marl_module.foreach_module(
                         lambda m, mid: (mid, m.get_exploration_action_dist_cls()),
                     )
                 else:
-                    fwd_out = self.module[DEFAULT_POLICY_ID].forward_inference(batch)
+                    fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_inference(
+                        batch
+                    )
                     # `self.module` is a MARL module.
-                    action_dist_cls = foreach_module(
-                        self.module,
+                    action_dist_cls = self.marl_module.foreach_module(
                         lambda m, mid: (mid, m.get_inference_action_dist_cls()),
                     )
 
@@ -288,12 +285,12 @@ class PPOEnvRunner(EnvRunner):
                     self._episodes[i] = compute_gae_for_episode(
                         self._episodes[i],
                         self.config,
-                        self.module,
+                        self.marl_module,
                     )
                     # Reset h-states to nthe model's intiial ones b/c we are starting a
                     # new episode.
                     for k, v in (
-                        self.module[DEFAULT_POLICY_ID].get_initial_state().items()
+                        self.marl_module[DEFAULT_POLICY_ID].get_initial_state().items()
                     ):
                         states[k][i] = v.numpy()
 
@@ -322,12 +319,12 @@ class PPOEnvRunner(EnvRunner):
         # Make postprocessing here for ongoing episodes. Compute
         # advantages and value targets.
         ongoing_episodes = [
-            compute_gae_for_episode(eps, self.config, self.module)
+            compute_gae_for_episode(eps, self.config, self.marl_module)
             for eps in ongoing_episodes
         ]
         self._ts_since_last_metrics += ts
 
-        return done_episodes_to_return, ongoing_episodes
+        return done_episodes_to_return + ongoing_episodes
 
     def _sample_episodes(
         self,
@@ -348,7 +345,7 @@ class PPOEnvRunner(EnvRunner):
         # Multiply states n times according to our vector env batch size (num_envs).
         states = tree.map_structure(
             lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.module[DEFAULT_POLICY_ID].get_initial_state(),
+            self.marl_module[DEFAULT_POLICY_ID].get_initial_state(),
         )
 
         render_images = [None] * self.num_envs
@@ -381,22 +378,20 @@ class PPOEnvRunner(EnvRunner):
 
                     if explore:
                         # TODO (simon) Implement this for MARL.
-                        fwd_out = self.module[DEFAULT_POLICY_ID].forward_exploration(
-                            batch
-                        )
+                        fwd_out = self.marl_module[
+                            DEFAULT_POLICY_ID
+                        ].forward_exploration(batch)
                         # `self.module` is a MARL module.
-                        action_dist_cls = foreach_module(
-                            self.module,
+                        action_dist_cls = self.marl_module.foreach_module(
                             lambda m, mid: (mid, m.get_exploration_action_dist_cls()),
                         )
                     else:
                         # TODO (simon) Implement this for MARL.
-                        fwd_out = self.module[DEFAULT_POLICY_ID].forward_inference(
+                        fwd_out = self.marl_module[DEFAULT_POLICY_ID].forward_inference(
                             batch
                         )
                         # `self.module` is a MARL module.
-                        action_dist_cls = foreach_module(
-                            self.module,
+                        action_dist_cls = self.marl_module.foreach_module(
                             lambda m, mid: (mid, m.get_inference_action_dist_cls()),
                         )
 
@@ -467,7 +462,9 @@ class PPOEnvRunner(EnvRunner):
                         # Reset h-states to the model's initial ones b/c we are starting
                         # a new episode.
                         for k, v in (
-                            self.module[DEFAULT_POLICY_ID].get_initial_state().items()
+                            self.marl_module[DEFAULT_POLICY_ID]
+                            .get_initial_state()
+                            .items()
                         ):
                             states[k][i] = v.numpy()
 
@@ -529,24 +526,17 @@ class PPOEnvRunner(EnvRunner):
     #  API. Replace by proper state overriding via `EnvRunner.set_state()`
     def set_weights(self, weights, global_vars=None):
         """Writes the weights of our (single-agent) RLModule."""
-        if self.module is None:
-            assert self.config.share_module_between_env_runner_and_learner
-        else:
-            self.module.set_state(weights)
-            # self.module[DEFAULT_POLICY_ID].set_state(weights[DEFAULT_POLICY_ID])
+        self.marl_module.set_state(weights)
+        # self.module[DEFAULT_POLICY_ID].set_state(weights[DEFAULT_POLICY_ID])
 
     def get_weights(self, modules=None):
         """Returns the weights of our (single-agent) RLModule."""
-        if self.module is None:
-            assert self.config.share_module_between_env_runner_and_learner
-        else:
-            weights = self.module.get_state(modules)
-            return weights
+        return self.marl_module.get_state(modules)
 
     @override(EnvRunner)
     def assert_healthy(self):
         # Make sure, we have built our gym.vector.Env and RLModule properly.
-        assert self.env and self.module
+        assert self.env and self.marl_module
 
     @override(EnvRunner)
     def stop(self):

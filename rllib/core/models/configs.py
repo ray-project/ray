@@ -939,3 +939,4 @@ class ActorCriticEncoderConfig(ModelConfig):
                 return TfStatefulActorCriticEncoder(self)
             else:
                 return TfActorCriticEncoder(self)
+

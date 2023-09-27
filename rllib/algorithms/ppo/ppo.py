@@ -29,6 +29,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 # from ray.rllib.evaluation.postprocessing_v2 import compute_gae_for_episode
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
+    synchronous_parallel_sample
 )
 from ray.rllib.execution.train_ops import (
     train_one_step,
@@ -444,48 +445,47 @@ class PPO(Algorithm):
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
-            train_samples = self.workers.foreach_worker(lambda w: w.sample())
-            # if self.config.count_steps_by == "agent_steps":
-            #     train_batch = synchronous_parallel_sample(
-            #         worker_set=self.workers,
-            #         max_agent_steps=self.config.train_batch_size,
-            #     )
-            # else:
-            #     train_batch = synchronous_parallel_sample(
-            #         worker_set=self.workers,
-            #         max_env_steps=self.config.train_batch_size
-            #     )
-            train_batches = []
-            for sample in train_samples:
-                # Each sample contains two lists: completed episodes and truncated
-                # episodes.
-                # Convert completed episodes to `SampleBatch`es.
-                for episode in sample[0]:
-                    # TODO (sven): Check, if runs faster on local_worker with batched
-                    # episodes.
-                    # episode = compute_gae_for_episode(episode, self.config,
-                    # self.learner_group._learner._module)
-                    train_batches.append(episode.to_sample_batch())
-                # Convert truncated episodes to `SampleBatch`es. Here we have to
-                # convert data to numpy arrays, because the `_Episode.validate()`
-                # function does it for completed episodes and data must be shaped
-                # equally to concatenate `SampleBatch`es.
-                for episode in sample[1]:
-                    episode.observations = np.array(episode.observations)
-                    episode.actions = np.array(episode.actions)
-                    episode.rewards = np.array(episode.rewards)
-                    episode.render_images = np.array(
-                        episode.render_images, dtype=np.uint8
+            if self.config._enable_learner_api:
+                if self.workers.num_remote_workers() <= 0:
+                    train_samples = [self.workers.local_worker().sample()]
+                else:
+                    train_samples = self.workers.foreach_worker(
+                        lambda w: w.sample(), local_worker=False
                     )
-                    train_batches.append(episode.to_sample_batch())
-
-        train_batch = concat_samples(train_batches)
-        del train_batch[SampleBatch.INFOS]
+                train_batches = []
+                for sample in train_samples:
+                    # Each sample is a list of terminated and ongoing episodes.
+                    for episode in sample:
+                        if episode.is_terminated or episode.is_truncated:
+                            train_batches.append(episode.to_sample_batch())
+                        else:
+                            # We need to convert to arrays first.
+                            episode.observations = np.array(episode.observations)
+                            episode.actions = np.array(episode.actions)
+                            episode.rewards = np.array(episode.rewards)
+                            episode.render_images = np.array(
+                                episode.render_images, dtype=np.uint8
+                            )
+                            train_batches.append(episode.to_sample_batch())
+                train_batch = concat_samples(train_batches)
+                del train_batch[SampleBatch.INFOS]
+            else:
+                if self.config.count_steps_by == "agent_steps":
+                    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_agent_steps=self.config.train_batch_size,
+                    )
+                else:
+                    train_batch = synchronous_parallel_sample(
+                        worker_set=self.workers,
+                        max_env_steps=self.config.train_batch_size
+                    )
+            
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
-        # Standardize advantages
+        # Standardize advantages.
         train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
         if self.config._enable_learner_api:
@@ -496,9 +496,9 @@ class PPO(Algorithm):
             #  learner actors.
             # TODO (sven): What's the plan for multi-agent setups when the
             # policy is gone?
-            # TODO (simon): he default method has already this functionality,
-            # but this serves simply as a placeholder until
-            # it is decided on how to replace the functionalities of the policy.
+            # TODO (simon): The default method has already this functionality,
+            # but this serves simply as a placeholder until it is decided on 
+            # how to replace the functionalities of the policy.
 
             # is_module_trainable = self.workers.local_worker().is_policy_to_train
             # self.learner_group.set_is_module_trainable(is_module_trainable)
@@ -526,13 +526,16 @@ class PPO(Algorithm):
 
         # TODO (Kourosh): num_grad_updates per each policy should be accessible via
         # train_results
-        global_vars = {
-            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
-            "num_grad_updates_per_policy": {
-                pid: self.workers.local_worker().policy_map[pid].num_grad_updates
-                for pid in policies_to_update
-            },
-        }
+        if self.config._enable_learner_api:
+            global_vars = None
+        else:
+            global_vars = {
+                "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+                "num_grad_updates_per_policy": {
+                    pid: self.workers.local_worker().policy_map[pid].num_grad_updates
+                    for pid in policies_to_update
+                },
+            }
 
         # Update weights - after learning on the local worker - on all remote
         # workers.

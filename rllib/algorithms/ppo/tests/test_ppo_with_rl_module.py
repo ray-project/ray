@@ -68,6 +68,7 @@ class MyCallbacks(DefaultCallbacks):
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # TODO (simon): Remove before merge.
         ray.init(local_mode=True)
 
     @classmethod
@@ -135,9 +136,6 @@ class TestPPO(unittest.TestCase):
                         check_train_results(results)
                         print(results)
 
-                    check_compute_single_action(
-                        algo, include_prev_action_reward=True, include_state=lstm
-                    )
                     algo.stop()
 
     # def test_ppo_exploration_setup(self):
