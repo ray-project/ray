@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import subprocess
@@ -21,6 +22,7 @@ from ray.serve._private.utils import (
     get_all_live_placement_group_names,
     get_deployment_import_path,
     get_head_node_id,
+    is_running_in_asyncio_loop,
     merge_dict,
     msgpack_deserialize,
     msgpack_serialize,
@@ -746,6 +748,21 @@ def test_metrics_pusher_multiple_tasks():
         # Check there are three results set and all are expected.
         for key in expected_results.keys():
             assert result[key] == expected_results[key]
+
+
+def test_is_running_in_asyncio_loop_false():
+    assert is_running_in_asyncio_loop() is False
+
+
+@pytest.mark.asyncio
+async def test_is_running_in_asyncio_loop_true():
+    assert is_running_in_asyncio_loop() is True
+
+    async def check():
+        return is_running_in_asyncio_loop()
+
+    # Verify that it also works in a task.
+    assert await asyncio.ensure_future(check()) is True
 
 
 if __name__ == "__main__":
