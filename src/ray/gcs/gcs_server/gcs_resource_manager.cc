@@ -292,9 +292,7 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
       snapshot->set_idle_duration_ms(resources.idle_duration_ms());
     } else {
       snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
-      for (auto &activity : resources.node_activity()) {
-        snapshot->add_node_activity(activity);
-      }
+      snapshot->mutable_node_activity()->CopyFrom(resources.node_activity());
     }
     if (resources.is_draining()) {
       snapshot->set_state(rpc::NodeSnapshot::DRAINING);
