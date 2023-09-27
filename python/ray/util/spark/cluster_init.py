@@ -596,7 +596,7 @@ def _setup_ray_cluster(
 
         ray_worker_node_extra_envs = {
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
-            START_RAY_PARENT_PID: os.getpid(),
+            START_RAY_PARENT_PID: str(os.getpid()),
         }
 
         if num_gpus_worker_node > 0:

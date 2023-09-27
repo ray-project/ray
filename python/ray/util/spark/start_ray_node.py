@@ -113,7 +113,7 @@ if __name__ == "__main__":
             os.close(lock_fd)
 
     def check_parent_alive() -> None:
-        orig_parent_pid = os.environ[START_RAY_PARENT_PID]
+        orig_parent_pid = int(os.environ[START_RAY_PARENT_PID])
         while True:
             time.sleep(0.5)
             if os.getppid() != orig_parent_pid:
