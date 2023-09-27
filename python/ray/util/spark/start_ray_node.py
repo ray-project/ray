@@ -8,7 +8,10 @@ import signal
 import socket
 import logging
 import threading
-from ray.util.spark.cluster_init import RAY_ON_SPARK_COLLECT_LOG_TO_PATH
+from ray.util.spark.cluster_init import (
+    RAY_ON_SPARK_COLLECT_LOG_TO_PATH,
+    START_RAY_PARENT_PID,
+)
 from ray._private.ray_process_reaper import SIGTERM_GRACE_PERIOD_SECONDS
 
 
@@ -110,10 +113,10 @@ if __name__ == "__main__":
             os.close(lock_fd)
 
     def check_parent_alive() -> None:
-        orig_parent_id = os.getppid()
+        orig_parent_pid = os.environ[START_RAY_PARENT_PID]
         while True:
             time.sleep(0.5)
-            if os.getppid() != orig_parent_id:
+            if os.getppid() != orig_parent_pid:
                 process.terminate()
                 try_clean_temp_dir_at_exit()
                 # Keep the same exit code 143 with sigterm signal.
