@@ -17,7 +17,7 @@ from ray.train._internal.session import (
     init_session,
     shutdown_session,
 )
-from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._internal.storage import StorageContext
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
@@ -508,17 +508,6 @@ class BackendExecutor:
             else:
                 # Return None if all results are None.
                 return None
-
-        if not _use_storage_context():
-            first_result = results[0]
-            result_type = first_result.type
-            if any(r.type != result_type for r in results):
-                raise RuntimeError(
-                    "Some workers returned results with "
-                    "different types. Make sure that "
-                    "`session.report()` are called the "
-                    "same number of times on all workers."
-                )
 
         return results
 
